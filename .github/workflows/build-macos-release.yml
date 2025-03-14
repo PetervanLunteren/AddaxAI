@@ -49,6 +49,16 @@ jobs:
           echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV 
           echo "BUCKET_NAME is $BUCKET_NAME"
 
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
+  
+      - name: Set up Google Cloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: github-file-storage
+
       - name: Install Miniconda
         run: |
           mkdir "$HOME/miniforge"
@@ -199,7 +209,44 @@ jobs:
           $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 "setuptools<70"
           $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 jsonpickle
 
+          ### install env-speciesnet
+          $conda_exe create -p "${root}/envs/env-speciesnet" python=3.11 -y
+          $conda_exe run -p "${root}/envs/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
+          $conda_exe run -p "${root}/envs/env-speciesnet" pip install --timeout=120 speciesnet
+
+          ### clean
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
+
+          ### zip envs
+          cd "${root}/envs"
+          tar -caf "env-base.tar.xz" "env-base"
+          tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
+          tar -caf "env-pytorch.tar.xz" "env-pytorch"
+          tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
+          tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
+
+          ### upload envs
+          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          gsutil cp -r "env-tensorflow.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-tensorflow.tar.xz
+          gsutil cp -r "env-pytorch.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pytorch.tar.xz
+          gsutil cp -r "env-pywildlife.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pywildlife.tar.xz
+          gsutil cp -r "env-speciesnet.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-speciesnet.tar.xz
+
+          ### remove
+          rm "env-base.tar.xz"
+          rm -r "env-base"
+          rm "env-tensorflow.tar.xz"
+          rm -r "env-tensorflow"
+          rm "env-pytorch.tar.xz"
+          rm -r "env-pytorch"
+          rm "env-pywildlife.tar.xz"
+          rm -r "env-pywildlife"
+          rm "env-speciesnet.tar.xz"
+          rm -r "env-speciesnet"
+
           ### run pyinstaller from fresh environment
+          cd "/"
           $conda_exe create -p "$HOME/miniforge/envs/env-fresh" python=3.8 pyinstaller -y
           $conda_exe run -p "$HOME/miniforge/envs/env-fresh" pyinstaller --onefile --windowed --icon="${root}/AddaxAI/imgs/logo_small_bg.icns" --distpath="${HOME}/dist" --workpath="${HOME}/build" "${root}/main.py"
          
@@ -270,7 +317,7 @@ jobs:
       - name: Compress the macOS installer
         run: |
           cd "${{ github.workspace }}/install_files/macos"
-          zip -r "AddaxAI-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
+          zip -r "macos-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
 
       - name: Get Upload URL for Release
         id: get_upload_url
@@ -313,21 +360,11 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "${{ github.workspace }}/install_files/macos/AddaxAI-${{ env.RELEASE_VERSION }}-installer.zip"
+          asset_path: "${{ github.workspace }}/install_files/macos/macos-${{ env.RELEASE_VERSION }}-installer.zip"
           asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
-  
-      - name: Set up Google Cloud
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: github-file-storage
 
       - name: Upload program files to Google Cloud
         run: |
@@ -350,5 +387,5 @@ jobs:
       - name:  Upload installer to Google Cloud
         run: |
           cd "${{ github.workspace }}/install_files/macos/"
-          INSTALLER="AddaxAI-${{ env.RELEASE_VERSION }}-installer.zip"
-          gsutil cp -r $INSTALLER gs://${{ env.BUCKET_NAME }}/latest/AddaxAI-latest-installer.zip
+          INSTALLER="macos-${{ env.RELEASE_VERSION }}-installer.zip"
+          gsutil cp -r $INSTALLER gs://${{ env.BUCKET_NAME }}/latest/macos-latest-installer.zip
