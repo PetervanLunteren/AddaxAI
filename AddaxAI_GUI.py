@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 4 Mar 2025
+# Latest edit by Peter van Lunteren on 14 Mar 2025
 
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
 # TODO: RESUME DOWNLOAD - make some sort of mechanism that either continues the model download when interrupted, or downloads it to /temp/ folder and only moves it to the correct location after succesful download. Otherwise delete from /temp/. That makes sure that users will not be able to continue with half downloaded models. 
@@ -2832,7 +2832,7 @@ def show_update_info(model_vars, model_name):
     lmore_btn = customtkinter.CTkButton(btns_frm, text="Update", command=read_more)
     lmore_btn.grid(row=2, column=1, padx=(0, PADX), pady=PADY, sticky="nwse")
 
-# pop up window showing the user that a particular model needs downloading
+# check if a particular model needs downloading
 def model_needs_downloading(model_vars, model_type):
     model_name = var_cls_model.get() if model_type == "cls" else var_det_model.get()
     if model_name not in none_txt:
@@ -2853,6 +2853,24 @@ def model_needs_downloading(model_vars, model_type):
     else:
         # user selected none
         return [False, ""]
+
+# check if a particular environment needs downloading
+def environment_needs_downloading(model_vars):
+       
+    # find out which env is required
+    # if present take os-specific env else take general env
+    if os.name == 'nt': # windows
+        env_name = model_vars.get("env-windows", model_vars.get("env", "base"))
+    elif platform.system() == 'Darwin': # macos
+        env_name = model_vars.get("env-macos", model_vars.get("env", "base"))
+    else: # linux
+        env_name = model_vars.get("env-linux", model_vars.get("env", "base"))
+    
+    # check if that env is already present
+    if os.path.isdir(os.path.join(AddaxAI_files, "envs", f'env-{env_name}')):
+        return [False, env_name]
+    else:
+        return [True, env_name]
 
 # check if path contains special characters
 def contains_special_characters(path):
@@ -3005,6 +3023,21 @@ def start_deploy(simple_mode = False):
             return 
         elif bool: # model can be downloaded, ask user 
             user_wants_to_download = download_model(dirpath)
+            if not user_wants_to_download:
+                btn_start_deploy.configure(state=NORMAL)
+                sim_run_btn.configure(state=NORMAL)
+                return  # user doesn't want to download
+
+    # check if environment need to be downloaded
+    if simple_mode:
+        var_det_model.set("MegaDetector 5a")
+    for model_type in ["cls", "det"]:
+        model_vars = load_model_vars(model_type = model_type)
+        if model_vars == {}: # if selected model is None
+            continue
+        bool, env_name = environment_needs_downloading(model_vars)
+        if bool: # env needs be downloaded, ask user 
+            user_wants_to_download = download_environment(env_name, model_vars)
             if not user_wants_to_download:
                 btn_start_deploy.configure(state=NORMAL)
                 sim_run_btn.configure(state=NORMAL)
@@ -5065,7 +5098,7 @@ def download_model(model_dir, skip_ask=False):
             response.raise_for_status()
             
             with open(file_path, 'wb') as file:
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=65536):
                     if chunk:
                         file.write(chunk)
                         progress_bar.update(len(chunk))
@@ -5087,6 +5120,138 @@ def download_model(model_dir, skip_ask=False):
             # file_path is not set, meaning there is no incomplete download
             pass
         show_download_error_window(model_title, model_dir, model_vars)
+
+
+# download envrionment
+def download_environment(env_name, model_vars, skip_ask=False):
+    
+    # download
+    try:        
+        
+        env_dir = os.path.join(AddaxAI_files, "envs")
+        # set environment variables
+        if os.name == 'nt': # windows
+            import py7zr
+            download_url = f"https://storage.googleapis.com/github-release-files-storage-beta-versions/latest/windows-latest-env-{env_name}.7z"
+            filename = f"{env_name}.7z"
+        elif platform.system() == 'Darwin': # macos
+            import tarfile
+            download_url = f"https://storage.googleapis.com/github-release-files-storage-beta-versions/latest/macos-latest-env-{env_name}.tar.xz"
+            filename = f"{env_name}.tar.xz"
+        else: # linux
+            return False # linux install this during setup 
+
+        # set headers to trick host to thinking we are a browser
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
+            "Accept-Encoding": "*",
+            "Connection": "keep-alive"
+        }
+
+        # some envs have multiple files to be downloaded
+        # check the total size first
+        total_size = 0
+        response = requests.get(download_url, stream=True, timeout=30, headers=headers)
+        response.raise_for_status()
+        total_size += int(response.headers.get('content-length', 0))
+
+        # check if the user wants to download
+        if not skip_ask:
+            if not mb.askyesno(["Download required", "Descarga necesaria"][lang_idx],
+                            [f"The model you selected needs the virtual environment '{env_name}', which is not downloaded yet. It will take {format_size(total_size)}"
+                            f" of storage. Do you want to download?", f"El envo {env_name} aún no se ha descargado."
+                            f" Ocupará {format_size(total_size)} de almacenamiento. ¿Desea descargarlo?"][lang_idx]):
+                return False
+
+        # if yes, initiate download and show progress
+        progress_bar = tqdm(total=total_size, unit='B', unit_scale=True)
+        download_popup = EnvDownloadProgressWindow(env_title = env_name, total_size_str = format_size(total_size))
+        download_popup.open()
+        file_path = os.path.join(env_dir, filename)
+        response = requests.get(download_url, stream=True, timeout=30, headers=headers)
+        response.raise_for_status()
+        with open(file_path, 'wb') as file:
+            for chunk in response.iter_content(chunk_size=65536):
+                if chunk:
+                    file.write(chunk)
+                    progress_bar.update(len(chunk))
+                    percentage_done = progress_bar.n / total_size
+                    download_popup.update_download_progress(percentage_done)
+        progress_bar.close()
+        print(f"Download successful. File saved at: {file_path}")
+        
+        # After download, begin extraction
+        if filename.endswith(".tar.xz"):
+            # Extract the .tar.xz file
+            with tarfile.open(file_path, "r:xz") as tar:
+                # Get the total number of files to be extracted
+                total_files = len(tar.getnames())
+                extraction_progress_bar = tqdm(total=total_files, unit='file', desc="Extracting")
+                
+                # Extract each file and update the extraction progress
+                for member in tar:
+                    tar.extract(member, path=env_dir)
+                    extraction_progress_bar.update(1)
+                    extraction_progress_percentage = extraction_progress_bar.n / total_files
+                    download_popup.update_extraction_progress(extraction_progress_percentage)
+                extraction_progress_bar.close()
+            download_popup.close()
+            print(f"Extraction successful. Files extracted to: {env_dir}")
+
+            # Remove the .tar.xz file after extraction
+            try:
+                os.remove(file_path)
+                print(f"Removed the .tar.xz file: {file_path}")
+            except Exception as e:
+                print(f"Error removing file: {e}")
+
+        if filename.endswith(".7z"):
+            # Extract the .7z file
+            with py7zr.SevenZipFile(file_path, mode='r') as archive:
+                # Get the total number of files to be extracted
+                total_files = len(archive.getnames())
+                extraction_progress_bar = tqdm(total=total_files, unit='file', desc="Extracting")
+                
+                # Extract each file and update the extraction progress
+                for member in archive.getnames():
+                    archive.extract([member], path=env_dir)
+                    extraction_progress_bar.update(1)
+                    extraction_progress_percentage = extraction_progress_bar.n / total_files
+                    download_popup.update_extraction_progress(extraction_progress_percentage)
+                extraction_progress_bar.close()
+            download_popup.close()
+            print(f"Extraction successful. Files extracted to: {env_dir}")
+
+            # Remove the .7z file after extraction
+            try:
+                os.remove(file_path)
+                print(f"Removed the .7z file: {file_path}")
+            except Exception as e:
+                print(f"Error removing file: {e}")
+
+        # return succes
+        return True
+
+    # catch errors
+    except Exception as error:
+        print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+        try:
+            # remove incomplete archive
+            if os.path.isfile(file_path): 
+                os.remove(file_path)
+                
+            # remove incomplete extracted dir
+            extracted_dir = os.path.join(env_dir, f"env-{env_name}")
+            if os.path.isdir(extracted_dir): 
+                shutil.rmtree(extracted_dir)
+                
+            download_popup.close()
+                
+        except UnboundLocalError:
+            # file_path is not set, meaning there is no incomplete download
+            pass
+        show_download_error_window_env(env_name, env_dir, model_vars)
+
 
 ##############################################
 ############# FRONTEND FUNCTIONS #############
@@ -5282,6 +5447,57 @@ def show_download_error_window(model_title, model_dir, model_vars):
         close_btn = customtkinter.CTkButton(btns_frm2, text=["Close AddaxAI", "Cerrar AddaxAI"][lang_idx], command=on_toplevel_close)
         close_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
 
+# open window with env info
+def show_download_error_window_env(model_title, model_dir, model_vars):
+    
+    # create window
+    de_root = customtkinter.CTkToplevel(root)
+    de_root.title(["Download error", "Error de descarga"][lang_idx])
+    de_root.geometry("+10+10")
+    bring_window_to_top_but_not_for_ever(de_root)
+
+    # main label
+    lbl2 = customtkinter.CTkLabel(de_root, text=f"{model_title.capitalize()} download error", font = main_label_font)
+    lbl2.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nswe")
+    lbl2 = customtkinter.CTkLabel(de_root, text=["Something went wrong while trying to download the virtual environment. This can have "
+                                                 "several causes.", "Algo salió mal al intentar descargar el modelo. Esto "
+                                                 "puede tener varias causas."][lang_idx])
+    lbl2.grid(row=1, column=0, padx=PADX, pady=(0, PADY/2), columnspan = 2, sticky="nswe")
+
+    # internet connection frame
+    int_frm_1 = customtkinter.CTkFrame(master=de_root)
+    int_frm_1.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
+    int_frm_1.columnconfigure(0, weight=1, minsize=700)
+    int_frm_2 = customtkinter.CTkFrame(master=int_frm_1)
+    int_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
+    int_frm_2.columnconfigure(0, weight=1, minsize=700)
+    int_lbl = customtkinter.CTkLabel(int_frm_1, text=[" 1. Internet connection", " 1. Conexión a Internet"][lang_idx], font = main_label_font)
+    int_lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
+    int_txt_1 = customtkinter.CTkTextbox(master=int_frm_2, corner_radius=10, height = 55, wrap = "word", fg_color = "transparent")
+    int_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), sticky="nswe")
+    int_txt_1.insert(END, ["Check if you have a stable internet connection. If possible, try again on a fibre internet "
+                           "connection, or perhaps on a different, stronger, Wi-Fi network. Sometimes connecting to an "
+                           "open network such as a mobile hotspot can do the trick.", "Comprueba si tienes una conexión "
+                           "a Internet estable. Si es posible, inténtalo de nuevo con una conexión de fibra o quizás con "
+                           "otra red Wi-Fi más potente. A veces, conectarse a una red abierta, como un hotspot móvil, "
+                           "puede funcionar."][lang_idx])
+
+    # protection software frame
+    pro_frm_1 = customtkinter.CTkFrame(master=de_root)
+    pro_frm_1.grid(row=3, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
+    pro_frm_1.columnconfigure(0, weight=1, minsize=700)
+    pro_frm_2 = customtkinter.CTkFrame(master=pro_frm_1)
+    pro_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
+    pro_frm_2.columnconfigure(0, weight=1, minsize=700)
+    pro_lbl = customtkinter.CTkLabel(pro_frm_1, text=[" 2. Protection software", " 2. Software de protección"][lang_idx], font = main_label_font)
+    pro_lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
+    pro_txt_1 = customtkinter.CTkTextbox(master=pro_frm_2, corner_radius=10, height = 55, wrap = "word", fg_color = "transparent")
+    pro_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), sticky="nswe")
+    pro_txt_1.insert(END, ["Some firewall, proxy or VPN settings might block the internet connection. Try again with this "
+                           "protection software disabled.", "Algunas configuraciones de cortafuegos, proxy o VPN podrían "
+                           "bloquear la conexión a Internet. Inténtalo de nuevo con este software de protección "
+                           "desactivado."][lang_idx])
+
 # open frame to select species for advanc mode
 def open_species_selection():
 
@@ -5437,7 +5653,80 @@ class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
 def open_nosleep_page():
     webbrowser.open("https://nosleep.page")
 
-# show download progress
+# show download and extract progress for environments
+class EnvDownloadProgressWindow:
+    def __init__(self, env_title, total_size_str):
+        self.dm_root = customtkinter.CTkToplevel(root)
+        self.dm_root.title("Download progress")
+        self.dm_root.geometry("+10+10")
+        self.frm = customtkinter.CTkFrame(master=self.dm_root)
+        self.frm.grid(row=3, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nswe")
+        self.frm.columnconfigure(0, weight=1, minsize=500 * scale_factor)
+        
+        self.lbl = customtkinter.CTkLabel(self.dm_root, text=[f"Downloading environment '{env_title}' ({total_size_str})",
+                                                              f"Descargar entorno '{env_title}' ({total_size_str})"][lang_idx], 
+                                          font = customtkinter.CTkFont(family='CTkFont', size=14, weight = 'bold'))
+        self.lbl.grid(row=0, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
+        
+        self.war = customtkinter.CTkLabel(self.dm_root, text=["Please prevent computer from sleeping during the download.",
+                                                              "Por favor, evite que el ordenador se duerma durante la descarga."][lang_idx])
+        self.war.grid(row=1, column=0, padx=PADX, pady=0, sticky="nswe")
+        
+        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  "][lang_idx], command=open_nosleep_page)
+        self.but.grid(row=2, column=0, padx=PADX, pady=(PADY/2, 0), sticky="")
+        
+        # Label for Downloading Progress
+        self.lbl_download = customtkinter.CTkLabel(self.frm, text=["Downloading...", "Descargando..."][lang_idx])
+        self.lbl_download.grid(row=1, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
+
+        # Progress bar for downloading
+        self.pbr_download = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
+        self.pbr_download.set(0)
+        self.pbr_download.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nsew")
+
+        self.per_download = customtkinter.CTkLabel(self.frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
+        self.per_download.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="")
+
+        # Label for Extraction Progress
+        self.lbl_extraction = customtkinter.CTkLabel(self.frm, text=["Extracting...", "Extrayendo..."][lang_idx])
+        self.lbl_extraction.grid(row=3, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
+
+        # Progress bar for extraction
+        self.pbr_extraction = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
+        self.pbr_extraction.set(0)
+        self.pbr_extraction.grid(row=4, column=0, padx=PADX, pady=PADY, sticky="nsew")
+
+        self.per_extraction = customtkinter.CTkLabel(self.frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
+        self.per_extraction.grid(row=4, column=0, padx=PADX, pady=PADY, sticky="")
+
+        self.dm_root.withdraw()
+
+    def open(self):
+        self.dm_root.update()
+        self.dm_root.deiconify()
+
+    def update_download_progress(self, percentage):
+        self.pbr_download.set(percentage)
+        self.per_download.configure(text=f" {round(percentage * 100)}% ")
+        if percentage > 0.5:
+            self.per_download.configure(fg_color=(green_primary, "#1F6BA5"))
+        else:
+            self.per_download.configure(fg_color=("#949BA2", "#4B4D50"))
+        self.dm_root.update()
+
+    def update_extraction_progress(self, percentage):
+        self.pbr_extraction.set(percentage)
+        self.per_extraction.configure(text=f" {round(percentage * 100)}% ")
+        if percentage > 0.5:
+            self.per_extraction.configure(fg_color=(green_primary, "#1F6BA5"))
+        else:
+            self.per_extraction.configure(fg_color=("#949BA2", "#4B4D50"))
+        self.dm_root.update()
+
+    def close(self):
+        self.dm_root.destroy()
+
+# show download progress for model files
 class ModelDownloadProgressWindow:
     def __init__(self, model_title, total_size_str):
         self.dm_root = customtkinter.CTkToplevel(root)
@@ -5455,7 +5744,7 @@ class ModelDownloadProgressWindow:
         self.war.grid(row=1, column=0, padx=PADX, pady=0, sticky="nswe")
         self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  "][lang_idx], command=open_nosleep_page)
         self.but.grid(row=2, column=0, padx=PADX, pady=(PADY/2, 0), sticky="")
-        self.pbr = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=28, corner_radius=5, width=1)
+        self.pbr = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
         self.pbr.set(0)
         self.pbr.grid(row=1, column=0, padx=PADX, pady=PADY, sticky="nsew")
         self.per = customtkinter.CTkLabel(self.frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
