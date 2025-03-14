@@ -200,7 +200,7 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
-          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          gsutil cp -r "env-tensorflow.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-tensorflow.tar.xz
           rm "env-tensorflow.tar.xz"
           rm -r "env-tensorflow"
           cd "$HOME"
@@ -220,7 +220,7 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-pytorch.tar.xz" "env-pytorch"
-          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          gsutil cp -r "env-pytorch.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pytorch.tar.xz
           rm "env-pytorch.tar.xz"
           rm -r "env-pytorch"
           cd "$HOME"
@@ -236,7 +236,7 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
-          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          gsutil cp -r "env-pywildlife.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pywildlife.tar.xz
           rm "env-pywildlife.tar.xz"
           rm -r "env-pywildlife"
           cd "$HOME"
@@ -251,7 +251,7 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
-          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          gsutil cp -r "env-speciesnet.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-speciesnet.tar.xz
           rm "env-speciesnet.tar.xz"
           rm -r "env-speciesnet"
           cd "$HOME"
