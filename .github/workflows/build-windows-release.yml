@@ -188,7 +188,10 @@ jobs:
           "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "env-pytorch.7z" "%root%\envs\env-pytorch\*"
           gsutil cp -r "env-pytorch.7z" gs://${{ env.BUCKET_NAME }}/latest/windows-latest-env-pytorch.7z
           del "env-pytorch.7z"
+          dir "%root%\envs" REM debug
           rmdir /s /q "%root%\envs\env-pytorch"
+          dir "%root%\envs" REM debug
+          if not exist "%root%\envs" mkdir "%root%\envs"
           
           @REM build env-tensorflow
           call "%conda_exe%" create -p "%root%\envs\env-tensorflow" python=3.11 -y
@@ -215,6 +218,7 @@ jobs:
           gsutil cp -r "env-tensorflow.7z" gs://${{ env.BUCKET_NAME }}/latest/windows-latest-env-tensorflow.7z
           del "env-tensorflow.7z"
           rmdir /s /q "%root%\envs\env-tensorflow"
+          if not exist "%root%\envs" mkdir "%root%\envs"
 
           @REM build env-speciesnet
           call "%conda_exe%" create -p "%root%\envs\env-speciesnet" python=3.11 -y
@@ -226,6 +230,7 @@ jobs:
           gsutil cp -r "env-speciesnet.7z" gs://${{ env.BUCKET_NAME }}/latest/windows-latest-env-speciesnet.7z
           del "env-speciesnet.7z"
           rmdir /s /q "%root%\envs\env-speciesnet"
+          if not exist "%root%\envs" mkdir "%root%\envs"
 
       - name: Create archive of AddaxAI files
         shell: cmd
