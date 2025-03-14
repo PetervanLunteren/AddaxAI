@@ -157,12 +157,7 @@ jobs:
           call "%conda_exe%" run -p "%root%\envs\env-base" pip uninstall torch torchvision -y 
           call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 torch==2.3.1+cu118 torchvision==0.18.1+cu118 --index-url https://download.pytorch.org/whl/cu118 
 
-          @REM clean, zip, upload and remove env-base
-          call "%conda_exe%" clean --all --yes --force-pkgs-dirs
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "env-base.7z" "%root%\envs\env-base\*"
-          gsutil cp -r "env-base.7z" gs://${{ env.BUCKET_NAME }}/latest/windows-latest-env-base.7z
-          del "env-base.7z"
-          rmdir /s /q "%root%\envs\env-base"
+          @REM no need to clean, zip, upload and remove env-base because it will be included in the standard install 
           
           @REM build env-pytorch
           call "%conda_exe%" create -p "%root%\envs\env-pytorch" python=3.8 -y
