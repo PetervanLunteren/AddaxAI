@@ -6,7 +6,7 @@ on:
 jobs:
   test-env-sppnet:
     runs-on: windows-2022
-    
+
     env:
       # remove if proven succesful after a release triggered job
       # RELEASE_VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag_name }}
@@ -45,51 +45,8 @@ jobs:
           echo BUCKET_NAME=%BUCKET_NAME%>> %GITHUB_ENV%
           echo BUCKET_NAME is "%BUCKET_NAME%"
 
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
-  
-      - name: Set up Google Cloud
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: github-file-storage
-
-      - name: Install dependencies
+      - name: check gsutil
         shell: cmd
         run: |
-
-          echo off
-          @setlocal EnableDelayedExpansion
-          
-          @REM init environment vars
-          set envs_dir=%USERPROFILE%\envs
-          set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
-          echo Using conda %conda_exe%
-
-          @REM set high timeout value and ip address for ipv4 fallback issues
-          call "%conda_exe%" config --set remote_connect_timeout_secs 120
-          call "%conda_exe%" config --set remote_max_retries 5
-          call "%conda_exe%" config --set remote_read_timeout_secs 120
-          call "%conda_exe%" config --set ssl_verify False
-          call "%conda_exe%" config --set fetch_threads 2
-          call "%conda_exe%" config --show
-
-          @REM set IPv4
-          set PIP_NO_IPV6=1
-          set CONDA_SSL_VERIFY=0
-          set CONDA_USE_IPV4=1
-
-          @REM install mamba
-          call "%conda_exe%" install -n base -c conda-forge mamba -y
-
-          @REM env-speciesnet
-          call "%conda_exe%" create -p "%envs_dir%\envs\env-speciesnet" python=3.11 -y
-          call "%conda_exe%" run -p "%envs_dir%\envs\env-speciesnet" pip install --timeout=120 speciesnet
-
-          @REM create archive
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "env-speciesnet.7z" "%envs_dir%\envs\env-speciesnet\*"
-
-          @REM upload to google cloud          
-          gsutil cp -r "env-speciesnet.7z" gs://${{ env.BUCKET_NAME }}/latest/env-speciesnet.7z
-
+          gsutil --help
+          where gsutil
