@@ -53,6 +53,16 @@ jobs:
           echo BUCKET_NAME=%BUCKET_NAME%>> %GITHUB_ENV%
           echo BUCKET_NAME is "%BUCKET_NAME%"
 
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
+  
+      - name: Set up Google Cloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: github-file-storage
+
       - name: Install dependencies
         shell: cmd
         run: |
@@ -221,16 +231,6 @@ jobs:
         shell: cmd
         run: |
           "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "windows-${{ env.RELEASE_VERSION }}.7z" "%USERPROFILE%\AddaxAI\*"
-
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
-  
-      - name: Set up Google Cloud
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: github-file-storage
 
       # # feb 2025 - disabled to save sapce on github and reduce monthly costs
       # - name: Upload pinned 7z version to Google Cloud
