@@ -172,6 +172,8 @@ jobs:
           $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 PySide6
           $conda_exe run -p "${root}/envs/env-base" conda install lxml -y
           "${root}/envs/env-base/bin/pyside6-rcc" -o "${root}/Human-in-the-loop/libs/resources.py" "${root}/Human-in-the-loop/resources.qrc"
+
+          ### no need to upload and remove env-base as this will be included in the standard install
           
           ### install env-tensorflow
           $conda_exe create -p "${root}/envs/env-tensorflow" python=3.10 -y
@@ -192,7 +194,17 @@ jobs:
           $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 opencv-python==4.11.0.86
           $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 tensorflow-metal==1.1.0 
           $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 tensorflow-macos==2.16.2
-          
+
+          ### clean, zip, upload, and remove env-tensorflow
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
+          cd "${root}/envs"
+          tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
+          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          rm "env-tensorflow.tar.xz"
+          rm -r "env-tensorflow"
+          cd "$HOME"
+  
           ### install env-pytorch
           $conda_exe create -p "${root}/envs/env-pytorch" python=3.8 -y
           $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 torch==2.0.1 torchvision==0.15.2
@@ -202,51 +214,49 @@ jobs:
           $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 "jsonpickle==3.0.2"
           $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 timm
           $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 dill
-          
+
+          ### clean, zip, upload, and remove env-pytorch
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
+          cd "${root}/envs"
+          tar -caf "env-pytorch.tar.xz" "env-pytorch"
+          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          rm "env-pytorch.tar.xz"
+          rm -r "env-pytorch"
+          cd "$HOME"
+  
           ### install env-pywildlife
           $conda_exe create -p "${root}/envs/env-pywildlife" python=3.8 -y
           $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 pytorchwildlife
           $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 "setuptools<70"
           $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 jsonpickle
 
+          ### clean, zip, upload, and remove env-pywildlife
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
+          cd "${root}/envs"
+          tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
+          gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
+          rm "env-pywildlife.tar.xz"
+          rm -r "env-pywildlife"
+          cd "$HOME"
+
           ### install env-speciesnet
           $conda_exe create -p "${root}/envs/env-speciesnet" python=3.11 -y
           $conda_exe run -p "${root}/envs/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
           $conda_exe run -p "${root}/envs/env-speciesnet" pip install --timeout=120 speciesnet
 
-          ### clean
+          ### clean, zip, upload, and remove env-speciesnet
           $conda_exe clean --all --yes --force-pkgs-dirs
           $conda_exe clean --all --yes
-
-          ### zip envs
           cd "${root}/envs"
-          tar -caf "env-base.tar.xz" "env-base"
-          tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
-          tar -caf "env-pytorch.tar.xz" "env-pytorch"
-          tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
           tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
-
-          ### upload envs
           gsutil cp -r "env-base.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-base.tar.xz
-          gsutil cp -r "env-tensorflow.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-tensorflow.tar.xz
-          gsutil cp -r "env-pytorch.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pytorch.tar.xz
-          gsutil cp -r "env-pywildlife.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pywildlife.tar.xz
-          gsutil cp -r "env-speciesnet.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-speciesnet.tar.xz
-
-          ### remove
-          rm "env-base.tar.xz"
-          rm -r "env-base"
-          rm "env-tensorflow.tar.xz"
-          rm -r "env-tensorflow"
-          rm "env-pytorch.tar.xz"
-          rm -r "env-pytorch"
-          rm "env-pywildlife.tar.xz"
-          rm -r "env-pywildlife"
           rm "env-speciesnet.tar.xz"
           rm -r "env-speciesnet"
+          cd "$HOME"
 
           ### run pyinstaller from fresh environment
-          cd "/"
           $conda_exe create -p "$HOME/miniforge/envs/env-fresh" python=3.8 pyinstaller -y
           $conda_exe run -p "$HOME/miniforge/envs/env-fresh" pyinstaller --onefile --windowed --icon="${root}/AddaxAI/imgs/logo_small_bg.icns" --distpath="${HOME}/dist" --workpath="${HOME}/build" "${root}/main.py"
          
