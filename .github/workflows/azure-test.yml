@@ -36,6 +36,19 @@ jobs:
         connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
         container_name: github-zips
         source_folder: /home/runner/azure_upload
+        destination_folder: v5.23
+        is_recursive: false
+        delete_if_exists: true
+        
+    - uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      name: Uploading to Azure storage...
+      with:
+        connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+        container_name: github-zips
+        source_folder: /home/runner/azure_upload
+        destination_folder: latest
+        is_recursive: false
+        delete_if_exists: true    
 
     # - name: Upload file to Azure Storage
     #   run: |
