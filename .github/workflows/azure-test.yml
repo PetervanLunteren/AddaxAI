@@ -14,20 +14,29 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
-    - name: Set up Azure CLI
-      uses: azure/setup-azurecli@v1
-      with:
-        azure-cliversion: latest
+    # - name: Set up Azure CLI
+    #   uses: azure/setup-azurecli@v1
+    #   with:
+    #     azure-cliversion: latest
 
-    - name: Authenticate with Azure
-      run: |
-        echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
-        az login --service-principal -u $(jq -r .clientId azure_credentials.json) -p $(jq -r .clientSecret azure_credentials.json) --tenant $(jq -r .tenantId azure_credentials.json)
+    # - name: Authenticate with Azure
+    #   run: |
+    #     echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
+    #     az login --service-principal -u $(jq -r .clientId azure_credentials.json) -p $(jq -r .clientSecret azure_credentials.json) --tenant $(jq -r .tenantId azure_credentials.json)
 
     - name: Install Miniconda
       run: |
+        mkdir "$HOME/azure_upload"
+        cd "$HOME/azure_upload"
         curl --ipv4 -L "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh" -o miniforge.sh
 
-    - name: Upload file to Azure Storage
-      run: |
-        az storage blob upload --account-name addaxaifilestorage --container-name github-zips --file miniforge.sh --name miniforge.sh --auth-mode key
+    - uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      name: Uploading to Azure storage...
+      with:
+        connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+        container_name: github-zips
+        source_folder: $HOME/azure_upload
+
+    # - name: Upload file to Azure Storage
+    #   run: |
+    #     az storage blob upload --account-name addaxaifilestorage --container-name github-zips --file miniforge.sh --name miniforge.sh --auth-mode key
