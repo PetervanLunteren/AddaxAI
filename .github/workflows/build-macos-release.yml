@@ -95,39 +95,38 @@ jobs:
           conda_exe="$HOME/miniforge/bin/mamba"
 
           ### install env-speciesnet
-          $conda_exe create -p "${{ github.workspace }}/temp/envs/env-speciesnet" python=3.11 -y
-          $conda_exe run -p "${{ github.workspace }}/temp/envs/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
-          $conda_exe run -p "${{ github.workspace }}/temp/envs/env-speciesnet" pip install --timeout=120 speciesnet
+          $conda_exe create -p "${{ github.workspace }}/temp/env-speciesnet" python=3.11 -y
+          $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
+          $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 speciesnet
 
-          ### clean, zip, upload, and remove env-speciesnet
+          ### clean, zip, upload, and remove env-speciesnet dir
           $conda_exe clean --all --yes --force-pkgs-dirs
           $conda_exe clean --all --yes
           cd "${{ github.workspace }}/temp"
           tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
-          # rm "env-speciesnet.tar.xz"
           rm -r "env-speciesnet"
 
-      - name: Uploading envs Azure storage
+      - name: Uploading env-speciesnet to Azure storage
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp/envs
-          destination_folder: ${{ env.RELEASE_VERSION }}/envs
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: ${{ env.RELEASE_VERSION }}
           is_recursive: false
           delete_if_exists: true
 
-      - name: Uploading envs Azure storage
+      - name: Uploading env-speciesnet to Azure storage
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp/envs
-          destination_folder: latest/envs
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: latest
           is_recursive: false
           delete_if_exists: true
 
-      - name: Remove env-speciesnet.tar.xz
+      - name: Remove env-speciesnet
         run: |
           rm "${{ github.workspace }}/temp/env-speciesnet.tar.xz"
           rm -rf "${{ github.workspace }}/temp/"
