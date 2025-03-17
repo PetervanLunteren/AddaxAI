@@ -128,7 +128,9 @@ jobs:
           delete_if_exists: true
 
       - name: Remove env-speciesnet.tar.xz
-        run: rm "${{ github.workspace }}/temp/env-speciesnet.tar.xz"
+        run: |
+          rm "${{ github.workspace }}/temp/env-speciesnet.tar.xz"
+          rm -rf "${{ github.workspace }}/temp/"
 
 
 
