@@ -35,7 +35,7 @@ jobs:
       with:
         connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
         container_name: github-zips
-        source_folder: $HOME/azure_upload
+        source_folder: /home/runner/azure_upload
 
     # - name: Upload file to Azure Storage
     #   run: |
