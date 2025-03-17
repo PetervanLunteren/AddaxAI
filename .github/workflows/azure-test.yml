@@ -1,6 +1,9 @@
 name: Upload to Azure Storage
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
