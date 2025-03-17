@@ -42,22 +42,22 @@ jobs:
         run: |
           echo "BRANCH_NAME is $BRANCH_NAME"
           if [ "$BRANCH_NAME" = "main" ]; then
-            BUCKET_NAME="github-release-files-storage"
+            BUCKET_NAME="github-zips"
           else
-            BUCKET_NAME="github-release-files-storage-beta-versions"
+            BUCKET_NAME="github-zips-beta"
           fi
           echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV 
           echo "BUCKET_NAME is $BUCKET_NAME"
 
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
+      # - name: Authenticate with Google Cloud
+      #   uses: google-github-actions/auth@v1
+      #   with:
+      #     credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
   
-      - name: Set up Google Cloud
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: github-file-storage
+      # - name: Set up Google Cloud
+      #   uses: google-github-actions/setup-gcloud@v1
+      #   with:
+      #     project_id: github-file-storage
 
       - name: Install Miniconda
         run: |
@@ -200,9 +200,9 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
-          gsutil cp -r "env-tensorflow.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-tensorflow.tar.xz
-          rm "env-tensorflow.tar.xz"
-          rm -r "env-tensorflow"
+          # gsutil cp -r "env-tensorflow.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-tensorflow.tar.xz
+          # rm "env-tensorflow.tar.xz"
+          # rm -r "env-tensorflow"
           cd "$HOME"
   
           ### install env-pytorch
@@ -220,9 +220,9 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-pytorch.tar.xz" "env-pytorch"
-          gsutil cp -r "env-pytorch.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pytorch.tar.xz
-          rm "env-pytorch.tar.xz"
-          rm -r "env-pytorch"
+          # gsutil cp -r "env-pytorch.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pytorch.tar.xz
+          # rm "env-pytorch.tar.xz"
+          # rm -r "env-pytorch"
           cd "$HOME"
   
           ### install env-pywildlife
@@ -236,9 +236,9 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
-          gsutil cp -r "env-pywildlife.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pywildlife.tar.xz
-          rm "env-pywildlife.tar.xz"
-          rm -r "env-pywildlife"
+          # gsutil cp -r "env-pywildlife.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pywildlife.tar.xz
+          # rm "env-pywildlife.tar.xz"
+          # rm -r "env-pywildlife"
           cd "$HOME"
 
           ### install env-speciesnet
@@ -251,9 +251,9 @@ jobs:
           $conda_exe clean --all --yes
           cd "${root}/envs"
           tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
-          gsutil cp -r "env-speciesnet.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-speciesnet.tar.xz
-          rm "env-speciesnet.tar.xz"
-          rm -r "env-speciesnet"
+          # gsutil cp -r "env-speciesnet.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-speciesnet.tar.xz
+          # rm "env-speciesnet.tar.xz"
+          # rm -r "env-speciesnet"
           cd "$HOME"
 
           ### run pyinstaller from fresh environment
@@ -268,134 +268,155 @@ jobs:
           mv "${HOME}/dist/main" "${root}/AddaxAI debug"      # debug executable
           mv "${HOME}/dist/main.app" "${root}/AddaxAI.app"    # main app executable
 
-      - name: Zip folder contents
-        run: |
-          cd "$HOME"
-          tar -caf "macos-${{ env.RELEASE_VERSION }}.tar.xz" AddaxAI_files
-  
-      # - name: Get the release body
-      #   id: get_release
-      #   run: |
-      #     release=$(gh release view ${{ github.ref_name }} --json body -q .body)
-      #     echo "$release" > release_body.txt
-  
-      # - name: Append link to release body
-      #   id: append_link
-      #   run: |
-      #     new_body="$(cat release_body.txt)
-      #     - Install for **macOS** (Apple Silicon - M1, M2, M3, etc.): [macos-${{ env.RELEASE_VERSION }}.tar.xz](https://storage.googleapis.com/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos-${{ env.RELEASE_VERSION }}.tar.xz)"
-      #     echo "$new_body" > new_release_body.txt
-
-      # - name: Update the release body
-      #   run: |
-      #     gh release edit ${{ github.ref_name }} --notes "$(cat new_release_body.txt)"
-
-      - name: Install Platypus
-        run: |
-          # copy files into the right directory
-          sudo mkdir -p '/usr/local/share/platypus/'
-          sudo cp "${{ github.workspace }}/install_files/macos/ScriptExec" '/usr/local/share/platypus/'
-          sudo cp "${{ github.workspace }}/install_files/macos/platypus_clt" '/usr/local/share/platypus/'
-          sudo cp -r "${{ github.workspace }}/install_files/macos/MainMenu.nib" '/usr/local/share/platypus/'
-  
-          # make executable
-          sudo chmod +x '/usr/local/share/platypus/ScriptExec'
-          sudo chmod +x '/usr/local/share/platypus/platypus_clt'
-
-      - name: Append VERSION and URL to Platypus Installer Script
-        shell: bash
-        run: |
-          # Define the file path
-          FILE_PATH="${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh"
-      
-          # Create a new file with the VERSION line
-          echo "VERSION=\"${{ env.RELEASE_VERSION }}\"" > newFile.sh
-
-          # Append the URL line
-          echo "URL=\"https://storage.googleapis.com/${{ env.BUCKET_NAME }}/latest/macos-latest.tar.xz\"" >> newFile.sh
-      
-          # Append the original file's content
-          cat "$FILE_PATH" >> newFile.sh
-      
-          # Replace the original file with the new file
-          mv newFile.sh "$FILE_PATH"
-
-      - name: Create Installer
-        run: |
-          sudo '/usr/local/share/platypus/platypus_clt' --app-icon '${{ github.workspace }}/install_files/macos/logo.icns'  --name 'AddaxAI-${{ env.RELEASE_VERSION }}-installer'  --interface-type 'Progress Bar'  --interpreter '/bin/bash'   --app-version '${{ env.RELEASE_VERSION }}'  '${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh'
-
-      - name: Compress the macOS installer
-        run: |
-          cd "${{ github.workspace }}/install_files/macos"
-          zip -r "macos-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
-
-      - name: Get Upload URL for Release
-        id: get_upload_url
-        uses: actions/github-script@v6
+    
+      - name: Uploading envs Azure storage
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ env.RELEASE_VERSION }}',
-            });
-            // Write the upload URL to the environment file
-            const fs = require('fs');
-            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: github-zips-beta
+          source_folder: /home/runner/AddaxAI_files/envs
+          destination_folder: ${{ env.RELEASE_VERSION }}/envs
+          is_recursive: false
+          delete_if_exists: true
 
-      - name: Authenticate GitHub CLI
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Remove existing asset if present
-        run: |
-          # List all assets in the release
-          release_info=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }}
-            )
-          
-          # Extract asset ID by matching the name
-          asset_id=$(echo $release_info | jq -r '.assets[] | select(.name == "MacOS-installer-${{ env.RELEASE_VERSION }}.zip") | .id')
-          echo "asset_id is $asset_id"
-          
-          # Check if the asset exists and delete it
-          if [ ! -z "$asset_id" ]; then
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id"
-          else
-            echo "Asset not found. Continue with upload..."
-          fi
-  
-      - name: Upload Asset to GitHub Release
-        uses: actions/upload-release-asset@v1
+      - name: Uploading envs Azure storage
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "${{ github.workspace }}/install_files/macos/macos-${{ env.RELEASE_VERSION }}-installer.zip"
-          asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
-          asset_content_type: application/octet-stream
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: github-zips-beta
+          source_folder: /home/runner/AddaxAI_files/envs
+          destination_folder: latest/envs
+          is_recursive: false
+          delete_if_exists: true
 
-      - name: Upload program files to Google Cloud
-        run: |
-          cd "$HOME"
+      # - name: Zip folder contents
+      #   run: |
+      #     cd "$HOME"
+      #     tar -caf "macos-${{ env.RELEASE_VERSION }}.tar.xz" AddaxAI_files
+  
+      # # - name: Get the release body
+      # #   id: get_release
+      # #   run: |
+      # #     release=$(gh release view ${{ github.ref_name }} --json body -q .body)
+      # #     echo "$release" > release_body.txt
+  
+      # # - name: Append link to release body
+      # #   id: append_link
+      # #   run: |
+      # #     new_body="$(cat release_body.txt)
+      # #     - Install for **macOS** (Apple Silicon - M1, M2, M3, etc.): [macos-${{ env.RELEASE_VERSION }}.tar.xz](https://storage.googleapis.com/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos-${{ env.RELEASE_VERSION }}.tar.xz)"
+      # #     echo "$new_body" > new_release_body.txt
+
+      # # - name: Update the release body
+      # #   run: |
+      # #     gh release edit ${{ github.ref_name }} --notes "$(cat new_release_body.txt)"
+
+      # - name: Install Platypus
+      #   run: |
+      #     # copy files into the right directory
+      #     sudo mkdir -p '/usr/local/share/platypus/'
+      #     sudo cp "${{ github.workspace }}/install_files/macos/ScriptExec" '/usr/local/share/platypus/'
+      #     sudo cp "${{ github.workspace }}/install_files/macos/platypus_clt" '/usr/local/share/platypus/'
+      #     sudo cp -r "${{ github.workspace }}/install_files/macos/MainMenu.nib" '/usr/local/share/platypus/'
+  
+      #     # make executable
+      #     sudo chmod +x '/usr/local/share/platypus/ScriptExec'
+      #     sudo chmod +x '/usr/local/share/platypus/platypus_clt'
+
+      # - name: Append VERSION and URL to Platypus Installer Script
+      #   shell: bash
+      #   run: |
+      #     # Define the file path
+      #     FILE_PATH="${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh"
+      
+      #     # Create a new file with the VERSION line
+      #     echo "VERSION=\"${{ env.RELEASE_VERSION }}\"" > newFile.sh
+
+      #     # Append the URL line
+      #     echo "URL=\"https://storage.googleapis.com/${{ env.BUCKET_NAME }}/latest/macos-latest.tar.xz\"" >> newFile.sh
+      
+      #     # Append the original file's content
+      #     cat "$FILE_PATH" >> newFile.sh
+      
+      #     # Replace the original file with the new file
+      #     mv newFile.sh "$FILE_PATH"
+
+      # - name: Create Installer
+      #   run: |
+      #     sudo '/usr/local/share/platypus/platypus_clt' --app-icon '${{ github.workspace }}/install_files/macos/logo.icns'  --name 'AddaxAI-${{ env.RELEASE_VERSION }}-installer'  --interface-type 'Progress Bar'  --interpreter '/bin/bash'   --app-version '${{ env.RELEASE_VERSION }}'  '${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh'
+
+      # - name: Compress the macOS installer
+      #   run: |
+      #     cd "${{ github.workspace }}/install_files/macos"
+      #     zip -r "macos-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
+
+      # - name: Get Upload URL for Release
+      #   id: get_upload_url
+      #   uses: actions/github-script@v6
+      #   with:
+      #     script: |
+      #       const release = await github.rest.repos.getReleaseByTag({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         tag: '${{ env.RELEASE_VERSION }}',
+      #       });
+      #       // Write the upload URL to the environment file
+      #       const fs = require('fs');
+      #       fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
+
+      # - name: Authenticate GitHub CLI
+      #   run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      # - name: Remove existing asset if present
+      #   run: |
+      #     # List all assets in the release
+      #     release_info=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+      #       https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }}
+      #       )
           
-          # init vars
-          BUCKET_NAME="${{ env.BUCKET_NAME }}"
-          PINNED_FOLDER_NAME="${{ env.RELEASE_VERSION }}"
-          LATEST_FOLDER_NAME="latest"
-          PINNED_FILE_NAME="macos-${{ env.RELEASE_VERSION }}.tar.xz"
-          LATEST_FILE_NAME="macos-latest.tar.xz"
-
-          # # upload release pinned version
-          # # feb 2025 - disabled to save sapce on github and reduce monthly costs
-          # gsutil cp -r $PINNED_FILE_NAME gs://$BUCKET_NAME/$PINNED_FOLDER_NAME/$PINNED_FILE_NAME
+      #     # Extract asset ID by matching the name
+      #     asset_id=$(echo $release_info | jq -r '.assets[] | select(.name == "MacOS-installer-${{ env.RELEASE_VERSION }}.zip") | .id')
+      #     echo "asset_id is $asset_id"
           
-          # upload latest release version
-          gsutil cp -r $PINNED_FILE_NAME gs://$BUCKET_NAME/$LATEST_FOLDER_NAME/$LATEST_FILE_NAME
+      #     # Check if the asset exists and delete it
+      #     if [ ! -z "$asset_id" ]; then
+      #       curl -X DELETE \
+      #         -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+      #         "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id"
+      #     else
+      #       echo "Asset not found. Continue with upload..."
+      #     fi
+  
+      # - name: Upload Asset to GitHub Release
+      #   uses: actions/upload-release-asset@v1
+      #   with:
+      #     upload_url: ${{ env.UPLOAD_URL }}
+      #     asset_path: "${{ github.workspace }}/install_files/macos/macos-${{ env.RELEASE_VERSION }}-installer.zip"
+      #     asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
+      #     asset_content_type: application/octet-stream
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name:  Upload installer to Google Cloud
-        run: |
-          cd "${{ github.workspace }}/install_files/macos/"
-          INSTALLER="macos-${{ env.RELEASE_VERSION }}-installer.zip"
-          gsutil cp -r $INSTALLER gs://${{ env.BUCKET_NAME }}/latest/macos-latest-installer.zip
+      # - name: Upload program files to Google Cloud
+      #   run: |
+      #     cd "$HOME"
+          
+      #     # init vars
+      #     BUCKET_NAME="${{ env.BUCKET_NAME }}"
+      #     PINNED_FOLDER_NAME="${{ env.RELEASE_VERSION }}"
+      #     LATEST_FOLDER_NAME="latest"
+      #     PINNED_FILE_NAME="macos-${{ env.RELEASE_VERSION }}.tar.xz"
+      #     LATEST_FILE_NAME="macos-latest.tar.xz"
+
+      #     # # upload release pinned version
+      #     # # feb 2025 - disabled to save sapce on github and reduce monthly costs
+      #     # gsutil cp -r $PINNED_FILE_NAME gs://$BUCKET_NAME/$PINNED_FOLDER_NAME/$PINNED_FILE_NAME
+          
+      #     # upload latest release version
+      #     gsutil cp -r $PINNED_FILE_NAME gs://$BUCKET_NAME/$LATEST_FOLDER_NAME/$LATEST_FILE_NAME
+
+      # - name:  Upload installer to Google Cloud
+      #   run: |
+      #     cd "${{ github.workspace }}/install_files/macos/"
+      #     INSTALLER="macos-${{ env.RELEASE_VERSION }}-installer.zip"
+      #     gsutil cp -r $INSTALLER gs://${{ env.BUCKET_NAME }}/latest/macos-latest-installer.zip
