@@ -26,7 +26,7 @@ jobs:
 
     - name: Install Miniconda
       run: |
-        mkdir "$HOME/azure_upload"
+        mkdir "$HOME/azure_upload" 
         cd "$HOME/azure_upload"
         curl --ipv4 -L "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh" -o miniforge.sh
 
