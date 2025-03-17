@@ -3,7 +3,7 @@ name: Upload to Azure Storage
 on:
   push:
     branches:
-      - main
+      - env-download-runtime
   workflow_dispatch:
 
 jobs:
