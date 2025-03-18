@@ -486,6 +486,11 @@ jobs:
           ### remove folder contents
           rm -rf "AddaxAI_files"
 
+      - name: Set env.HOME variable
+        run: |
+          echo "HOME=$HOME" >> $GITHUB_ENV
+          echo "HOME is $HOME"
+
       - name: Uploading pinned version of base install
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
