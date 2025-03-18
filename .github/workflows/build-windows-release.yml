@@ -106,14 +106,6 @@ jobs:
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-pytorch"
 
-          
-          # gsutil cp -r "env-pytorch.7z" gs://${{ env.BUCKET_NAME }}/latest/windows-latest-env-pytorch.7z
-          # del "env-pytorch.7z"
-          # dir "${{ github.workspace }}\temp" REM debug
-          # rmdir /s /q "${{ github.workspace }}\temp\env-pytorch"
-          # dir "${{ github.workspace }}\temp" REM debug
-          # if not exist "${{ github.workspace }}\temp" mkdir "${{ github.workspace }}\temp"
-
       - name: Upload pinned version of env-pytorch.7z
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
