@@ -398,7 +398,7 @@ jobs:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
           source_folder: ${{ env.USERPROFILE }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
+          destination_folder: ${{ env.RELEASE_VERSION }}/windows
           is_recursive: false
           delete_if_exists: true
 
@@ -408,7 +408,7 @@ jobs:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
           source_folder: ${{ env.USERPROFILE }}\temp
-          destination_folder: latest/windows/envs
+          destination_folder: latest/windows
           is_recursive: false
           delete_if_exists: true
 
