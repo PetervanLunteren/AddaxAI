@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       info:
-        description: "Here you can manually trigger the build. ➡️ It will automatically fetch the latest release tag. ➡️ Selecting branch 'main' will upload to the official Google bucket. ➡️ Any other branch will upload to the beta-versions bucket."
+        description: "Here you can manually trigger the build. ➡️ It will automatically fetch the latest release tag. ➡️ Selecting branch 'main' will upload to the official Azure bucket. ➡️ Any other branch will upload to the beta-versions bucket."
         required: false
         default: "[dummy input field - no need to fill in]"
   release:
@@ -45,16 +45,6 @@ jobs:
           fi
           echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV 
           echo "BUCKET_NAME is $BUCKET_NAME"
-
-      # - name: Authenticate with Google Cloud
-      #   uses: google-github-actions/auth@v1
-      #   with:
-      #     credentials_json: ${{ secrets.GOOGLE_STORAGE_UPLOAD_KEY }}
-  
-      # - name: Set up Google Cloud
-      #   uses: google-github-actions/setup-gcloud@v1
-      #   with:
-      #     project_id: github-file-storage
 
       - name: Install Miniconda
         run: |
