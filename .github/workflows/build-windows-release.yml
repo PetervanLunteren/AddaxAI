@@ -101,7 +101,7 @@ jobs:
           call "%conda_exe%" clean --all --yes --force-pkgs-dirs
 
           @REM zip
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "env-pytorch.7z" "${{ github.workspace }}\temp\env-pytorch\*"
+          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-pytorch.7z" "${{ github.workspace }}\temp\env-pytorch\*"
 
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-pytorch"
