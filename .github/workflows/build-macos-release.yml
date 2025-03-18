@@ -16,9 +16,6 @@ jobs:
     runs-on: macos-15
 
     env:
-      # can remove this if proven succesfull
-      # RELEASE_VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag_name }}
-      # BUCKET_NAME: github-release-files-storage
       BRANCH_NAME: ${{ github.event_name == 'release' && 'main' || github.ref_name }}
     
     steps:
@@ -99,391 +96,539 @@ jobs:
           $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
           $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 speciesnet
 
-          ### clean, zip, upload, and remove env-speciesnet dir
+          ### clean
           $conda_exe clean --all --yes --force-pkgs-dirs
           $conda_exe clean --all --yes
+
+          ### zip
           cd "${{ github.workspace }}/temp"
           tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
+
+          ### remove folder but keep .tar.xz
           rm -r "env-speciesnet"
 
-      - name: Uploading env-speciesnet to Azure storage
+      - name: Upload pinned version of env-speciesnet.tar.xz 
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
           source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}
+          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
           is_recursive: false
           delete_if_exists: true
 
-      - name: Uploading env-speciesnet to Azure storage
+      - name: Upload latest version of env-speciesnet.tar.xz
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
           source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest
+          destination_folder: latest/macos/envs
           is_recursive: false
           delete_if_exists: true
 
-      - name: Remove env-speciesnet
+      - name: Remove env-speciesnet.tar.xz
         run: |
           rm "${{ github.workspace }}/temp/env-speciesnet.tar.xz"
           rm -rf "${{ github.workspace }}/temp/"
 
-
-
-      # - name: Install dependencies
-      #   run: |
-
-      #     ### log release version used
-      #     echo "Using tag name ${{ env.RELEASE_VERSION }}"
+      - name: Build env-tensorflow
+        run: |
         
-      #     ### refresh root
-      #     root="$HOME/AddaxAI_files"
-      #     if [ -d "${root}" ]; then
-      #         rm -rf "${root}"
-      #         echo "$root folder removed"
-      #     else
-      #         echo "$root folder does not exist"
-      #     fi
+          ### set ipv4 settings
+          export PIP_NO_IPV6=1
+          export CONDA_SSL_VERIFY=0
+          export CONDA_USE_IPV4=1
+          
+          ### create folder structure
+          mkdir -p "${{ github.workspace }}/temp"
+          
+          ### source conda 
+          source "$HOME/miniforge/etc/profile.d/conda.sh"
+          source "$HOME/miniforge/bin/activate"
+          conda_exe="$HOME/miniforge/bin/conda"
 
-      #     ### set ipv4 settings
-      #     export PIP_NO_IPV6=1
-      #     export CONDA_SSL_VERIFY=0
-      #     export CONDA_USE_IPV4=1
-          
-      #     ### create folder structure
-      #     mkdir -p "${root}"
-      #     mkdir -p "${root}/envs"
-      #     mkdir -p "${root}/models"
-      #     mkdir -p "${root}/models/det"
-      #     mkdir -p "${root}/models/cls"
-      #     mkdir -p "${root}/models/det/MegaDetector 5a"
-      #     mkdir -p "${root}/yolov5_versions/yolov5_old"
-      #     mkdir -p "${root}/yolov5_versions/yolov5_new"
-      #     echo "Hello world!" >> "${root}/first-startup.txt"
-          
-      #     ## clone repositories
-      #     git clone --ipv4 --depth 1 --branch $BRANCH_NAME https://github.com/PetervanLunteren/EcoAssist.git "${root}/AddaxAI"
-      #     rm -rf "${root}/AddaxAI/.git"
-      #     mv "${root}/AddaxAI/main.py" "${root}/main.py"
-      #     RAW_VERSION=${{ env.RELEASE_VERSION }}
-      #     CLEAN_VERSION="${RAW_VERSION#v}"
-      #     echo "$CLEAN_VERSION" > "${root}/AddaxAI/version.txt"
-      #     echo "AddaxAI cloned"
-          
-      #     git clone --ipv4 https://github.com/agentmorris/MegaDetector.git "${root}/MegaDetector"
-      #     git -C "${root}/MegaDetector" checkout a64a8f8c467ae6c87b5ca09f54b1abe502168b50
-      #     rm -rf "${root}/MegaDetector/.git"
-      #     mv "${root}/MegaDetector" "${root}/cameratraps"
-      #     echo "MegaDetector cloned"
-          
-      #     git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_old/yolov5"
-      #     git -C "${root}/yolov5_versions/yolov5_old/yolov5" checkout 868c0e9bbb45b031e7bfd73c6d3983bcce07b9c1
-      #     rm -rf "${root}/yolov5_versions/yolov5_old/yolov5/.git"
-      #     echo "yolov5 old version cloned"
-          
-      #     git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_new/yolov5"
-      #     git -C "${root}/yolov5_versions/yolov5_new/yolov5" checkout 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
-      #     rm -rf "${root}/yolov5_versions/yolov5_new/yolov5/.git"
-      #     echo "yolov5 new version cloned"
-          
-      #     git clone --ipv4 --branch pyside6 --depth 1 https://github.com/PetervanLunteren/Human-in-the-loop.git "${root}/Human-in-the-loop"
-      #     rm -rf "${root}/Human-in-the-loop/.git"
-      #     echo "Human-in-the-loop cloned"
-          
-      #     git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/visualise_detection.git "${root}/visualise_detection"
-      #     rm -rf "${root}/visualise_detection/.git"
-      #     echo "visualise_detection cloned"
-          
-      #     ### download megadetector 
-      #     curl --ipv4 -L https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt -o "${root}/models/det/MegaDetector 5a/md_v5a.0.0.pt"
-          
-      #     ### source conda 
-      #     source "$HOME/miniforge/etc/profile.d/conda.sh"
-      #     source "$HOME/miniforge/bin/activate"
-      #     conda_exe="$HOME/miniforge/bin/conda"
+          ### set high timeout value and ip address for ipv4 fallback issues
+          $conda_exe config --set remote_connect_timeout_secs 120
+          $conda_exe config --set remote_max_retries 5
+          $conda_exe config --set remote_read_timeout_secs 120
+          $conda_exe config --set ssl_verify False
+          $conda_exe config --set fetch_threads 2
+          $conda_exe config --show
 
-      #     ### set high timeout value and ip address for ipv4 fallback issues
-      #     $conda_exe config --set remote_connect_timeout_secs 120
-      #     $conda_exe config --set remote_max_retries 5
-      #     $conda_exe config --set remote_read_timeout_secs 120
-      #     $conda_exe config --set ssl_verify False
-      #     $conda_exe config --set fetch_threads 2
-      #     $conda_exe config --show
+          ### install mamba
+          $conda_exe install mamba -n base -c conda-forge -y
+          conda_exe="$HOME/miniforge/bin/mamba"
 
-      #     ### install mamba
-      #     $conda_exe install mamba -n base -c conda-forge -y
-      #     conda_exe="$HOME/miniforge/bin/mamba"
+          ### install env-tensorflow
+          $conda_exe create -p "${{ github.workspace }}/temp/env-tensorflow" python=3.10 -y
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 huggingface_hub==0.23.0 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 jax==0.4.28 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 jaxlib==0.4.28
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 keras==3.3.3 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 keras_cv==0.9.0 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 kimm==0.2.5
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 matplotlib==3.9.0 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 numpy==1.26.4 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 pandas==2.2.2
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 pytest==8.3.0 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 pyyaml==6.0.1 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 scikit-learn==1.4.2
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 tqdm==4.66.4 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 jsonpickle==4.0.1
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 opencv-python==4.11.0.86
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 tensorflow-metal==1.1.0 
+          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow" pip install --timeout=120 tensorflow-macos==2.16.2
+
+          ### clean
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
+
+          ### zip
+          cd "${{ github.workspace }}/temp"
+          tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
+
+          ### remove folder but keep .tar.xz
+          rm -r "env-tensorflow"
+
+      - name: Upload pinned version of env-tensorflow.tar.xz 
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+          is_recursive: false
+          delete_if_exists: true
+
+      - name: Upload latest version of env-tensorflow.tar.xz
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: latest/macos/envs
+          is_recursive: false
+          delete_if_exists: true
+
+      - name: Remove env-tensorflow.tar.xz
+        run: |
+          rm "${{ github.workspace }}/temp/env-tensorflow.tar.xz"
+          rm -rf "${{ github.workspace }}/temp/"
+
+      - name: Build env-pytorch
+        run: |
+        
+          ### set ipv4 settings
+          export PIP_NO_IPV6=1
+          export CONDA_SSL_VERIFY=0
+          export CONDA_USE_IPV4=1
           
-      #     ### install env-base
-      #     $conda_exe env create --file="${root}/cameratraps/envs/environment-detector-m1.yml" -p "${root}/envs/env-base"
-      #     $conda_exe run -p "${root}/envs/env-base" conda install pytorch==1.13.1 torchvision==0.14.1 -c pytorch -y
-      #     $conda_exe run -p "${root}/envs/env-base" conda uninstall opencv -y
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 opencv-python
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 RangeSlider
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 gpsphoto
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 exifread
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 piexif
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 openpyxl
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 customtkinter
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 CTkTable
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 folium
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 plotly
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "gitpython>=3.1.30"
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "tensorboard>=2.4.1"
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "thop>=0.1.1"
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "protobuf<=3.20.1"
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "setuptools>=65.5.1"
-      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 PySide6
-      #     $conda_exe run -p "${root}/envs/env-base" conda install lxml -y
-      #     "${root}/envs/env-base/bin/pyside6-rcc" -o "${root}/Human-in-the-loop/libs/resources.py" "${root}/Human-in-the-loop/resources.qrc"
-
-      #     ### no need to upload and remove env-base as this will be included in the standard install
+          ### create folder structure
+          mkdir -p "${{ github.workspace }}/temp"
           
-      #     ### install env-tensorflow
-      #     $conda_exe create -p "${root}/envs/env-tensorflow" python=3.10 -y
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 huggingface_hub==0.23.0 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 jax==0.4.28 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 jaxlib==0.4.28
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 keras==3.3.3 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 keras_cv==0.9.0 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 kimm==0.2.5
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 matplotlib==3.9.0 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 numpy==1.26.4 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 pandas==2.2.2
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 pytest==8.3.0 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 pyyaml==6.0.1 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 scikit-learn==1.4.2
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 tqdm==4.66.4 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 jsonpickle==4.0.1
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 opencv-python==4.11.0.86
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 tensorflow-metal==1.1.0 
-      #     $conda_exe run -p "${root}/envs/env-tensorflow" pip install --timeout=120 tensorflow-macos==2.16.2
+          ### source conda 
+          source "$HOME/miniforge/etc/profile.d/conda.sh"
+          source "$HOME/miniforge/bin/activate"
+          conda_exe="$HOME/miniforge/bin/conda"
 
-      #     ### clean, zip, upload, and remove env-tensorflow
-      #     $conda_exe clean --all --yes --force-pkgs-dirs
-      #     $conda_exe clean --all --yes
-      #     cd "${root}/envs"
-      #     tar -caf "env-tensorflow.tar.xz" "env-tensorflow"
-      #     # gsutil cp -r "env-tensorflow.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-tensorflow.tar.xz
-      #     # rm "env-tensorflow.tar.xz"
-      #     # rm -r "env-tensorflow"
-      #     cd "$HOME"
-  
-      #     ### install env-pytorch
-      #     $conda_exe create -p "${root}/envs/env-pytorch" python=3.8 -y
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 torch==2.0.1 torchvision==0.15.2
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 "ultralytics==8.0.191"
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 "numpy==1.24.1"
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 "humanfriendly==10.0"
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 "jsonpickle==3.0.2"
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 timm
-      #     $conda_exe run -p "${root}/envs/env-pytorch" pip install --timeout=120 dill
+          ### set high timeout value and ip address for ipv4 fallback issues
+          $conda_exe config --set remote_connect_timeout_secs 120
+          $conda_exe config --set remote_max_retries 5
+          $conda_exe config --set remote_read_timeout_secs 120
+          $conda_exe config --set ssl_verify False
+          $conda_exe config --set fetch_threads 2
+          $conda_exe config --show
 
-      #     ### clean, zip, upload, and remove env-pytorch
-      #     $conda_exe clean --all --yes --force-pkgs-dirs
-      #     $conda_exe clean --all --yes
-      #     cd "${root}/envs"
-      #     tar -caf "env-pytorch.tar.xz" "env-pytorch"
-      #     # gsutil cp -r "env-pytorch.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pytorch.tar.xz
-      #     # rm "env-pytorch.tar.xz"
-      #     # rm -r "env-pytorch"
-      #     cd "$HOME"
-  
-      #     ### install env-pywildlife
-      #     $conda_exe create -p "${root}/envs/env-pywildlife" python=3.8 -y
-      #     $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 pytorchwildlife
-      #     $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 "setuptools<70"
-      #     $conda_exe run -p "${root}/envs/env-pywildlife" pip install --timeout=120 jsonpickle
+          ### install mamba
+          $conda_exe install mamba -n base -c conda-forge -y
+          conda_exe="$HOME/miniforge/bin/mamba"
 
-      #     ### clean, zip, upload, and remove env-pywildlife
-      #     $conda_exe clean --all --yes --force-pkgs-dirs
-      #     $conda_exe clean --all --yes
-      #     cd "${root}/envs"
-      #     tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
-      #     # gsutil cp -r "env-pywildlife.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-pywildlife.tar.xz
-      #     # rm "env-pywildlife.tar.xz"
-      #     # rm -r "env-pywildlife"
-      #     cd "$HOME"
+          ### install env-pytorch
+          $conda_exe create -p "${{ github.workspace }}/temp/env-pytorch" python=3.8 -y
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 torch==2.0.1 torchvision==0.15.2
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 "ultralytics==8.0.191"
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 "numpy==1.24.1"
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 "humanfriendly==10.0"
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 "jsonpickle==3.0.2"
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 timm
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 dill
 
-      #     ### install env-speciesnet
-      #     $conda_exe create -p "${root}/envs/env-speciesnet" python=3.11 -y
-      #     $conda_exe run -p "${root}/envs/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
-      #     $conda_exe run -p "${root}/envs/env-speciesnet" pip install --timeout=120 speciesnet
+          ### clean
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
 
-      #     ### clean, zip, upload, and remove env-speciesnet
-      #     $conda_exe clean --all --yes --force-pkgs-dirs
-      #     $conda_exe clean --all --yes
-      #     cd "${root}/envs"
-      #     tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
-      #     # gsutil cp -r "env-speciesnet.tar.xz" gs://${{ env.BUCKET_NAME }}/latest/macos-latest-env-speciesnet.tar.xz
-      #     # rm "env-speciesnet.tar.xz"
-      #     # rm -r "env-speciesnet"
-      #     cd "$HOME"
+          ### zip
+          cd "${{ github.workspace }}/temp"
+          tar -caf "env-pytorch.tar.xz" "env-pytorch"
 
-      #     ### run pyinstaller from fresh environment
-      #     $conda_exe create -p "$HOME/miniforge/envs/env-fresh" python=3.8 pyinstaller -y
-      #     $conda_exe run -p "$HOME/miniforge/envs/env-fresh" pyinstaller --onefile --windowed --icon="${root}/AddaxAI/imgs/logo_small_bg.icns" --distpath="${HOME}/dist" --workpath="${HOME}/build" "${root}/main.py"
+          ### remove folder but keep .tar.xz
+          rm -r "env-pytorch"
+
+      - name: Upload pinned version of env-pytorch.tar.xz 
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+          is_recursive: false
+          delete_if_exists: true
+
+      - name: Upload latest version of env-pytorch.tar.xz
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: latest/macos/envs
+          is_recursive: false
+          delete_if_exists: true
+
+      - name: Remove env-pytorch.tar.xz
+        run: |
+          rm "${{ github.workspace }}/temp/env-pytorch.tar.xz"
+          rm -rf "${{ github.workspace }}/temp/"
+
+      - name: Build env-pywildlife
+        run: |
+        
+          ### set ipv4 settings
+          export PIP_NO_IPV6=1
+          export CONDA_SSL_VERIFY=0
+          export CONDA_USE_IPV4=1
+          
+          ### create folder structure
+          mkdir -p "${{ github.workspace }}/temp"
+          
+          ### source conda 
+          source "$HOME/miniforge/etc/profile.d/conda.sh"
+          source "$HOME/miniforge/bin/activate"
+          conda_exe="$HOME/miniforge/bin/conda"
+
+          ### set high timeout value and ip address for ipv4 fallback issues
+          $conda_exe config --set remote_connect_timeout_secs 120
+          $conda_exe config --set remote_max_retries 5
+          $conda_exe config --set remote_read_timeout_secs 120
+          $conda_exe config --set ssl_verify False
+          $conda_exe config --set fetch_threads 2
+          $conda_exe config --show
+
+          ### install mamba
+          $conda_exe install mamba -n base -c conda-forge -y
+          conda_exe="$HOME/miniforge/bin/mamba"
+
+          ### install env-pywildlife
+          $conda_exe create -p "${{ github.workspace }}/temp/env-pywildlife" python=3.8 -y
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 pytorchwildlife
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 "setuptools<70"
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 jsonpickle
+
+          ### clean
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
+
+          ### zip
+          cd "${{ github.workspace }}/temp"
+          tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
+
+          ### remove folder but keep .tar.xz
+          rm -r "env-pywildlife"
+
+      - name: Upload pinned version of env-pywildlife.tar.xz 
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+          is_recursive: false
+          delete_if_exists: true
+
+      - name: Upload latest version of env-pywildlife.tar.xz
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/temp
+          destination_folder: latest/macos/envs
+          is_recursive: false
+          delete_if_exists: true
+
+      - name: Remove env-pywildlife.tar.xz
+        run: |
+          rm "${{ github.workspace }}/temp/env-pywildlife.tar.xz"
+          rm -rf "${{ github.workspace }}/temp/"
+
+      - name: Build base install
+        run: |
+
+          ### log release version used
+          echo "Using tag name ${{ env.RELEASE_VERSION }}"
+        
+          ### refresh root
+          root="$HOME/base-install/AddaxAI_files"
+          if [ -d "${root}" ]; then
+              rm -rf "${root}"
+              echo "$root folder removed"
+          else
+              echo "$root folder does not exist"
+          fi
+
+          ### set ipv4 settings
+          export PIP_NO_IPV6=1
+          export CONDA_SSL_VERIFY=0
+          export CONDA_USE_IPV4=1
+          
+          ### create folder structure
+          mkdir -p "${root}"
+          mkdir -p "${root}/envs"
+          mkdir -p "${root}/models"
+          mkdir -p "${root}/models/det"
+          mkdir -p "${root}/models/cls"
+          mkdir -p "${root}/models/det/MegaDetector 5a"
+          mkdir -p "${root}/yolov5_versions/yolov5_old"
+          mkdir -p "${root}/yolov5_versions/yolov5_new"
+          echo "Hello world!" >> "${root}/first-startup.txt"
+          
+          ## clone repositories
+          git clone --ipv4 --depth 1 --branch $BRANCH_NAME https://github.com/PetervanLunteren/EcoAssist.git "${root}/AddaxAI"
+          rm -rf "${root}/AddaxAI/.git"
+          mv "${root}/AddaxAI/main.py" "${root}/main.py"
+          RAW_VERSION=${{ env.RELEASE_VERSION }}
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          echo "$CLEAN_VERSION" > "${root}/AddaxAI/version.txt"
+          echo "AddaxAI cloned"
+          
+          git clone --ipv4 https://github.com/agentmorris/MegaDetector.git "${root}/MegaDetector"
+          git -C "${root}/MegaDetector" checkout a64a8f8c467ae6c87b5ca09f54b1abe502168b50
+          rm -rf "${root}/MegaDetector/.git"
+          mv "${root}/MegaDetector" "${root}/cameratraps"
+          echo "MegaDetector cloned"
+          
+          git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_old/yolov5"
+          git -C "${root}/yolov5_versions/yolov5_old/yolov5" checkout 868c0e9bbb45b031e7bfd73c6d3983bcce07b9c1
+          rm -rf "${root}/yolov5_versions/yolov5_old/yolov5/.git"
+          echo "yolov5 old version cloned"
+          
+          git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_new/yolov5"
+          git -C "${root}/yolov5_versions/yolov5_new/yolov5" checkout 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
+          rm -rf "${root}/yolov5_versions/yolov5_new/yolov5/.git"
+          echo "yolov5 new version cloned"
+          
+          git clone --ipv4 --branch pyside6 --depth 1 https://github.com/PetervanLunteren/Human-in-the-loop.git "${root}/Human-in-the-loop"
+          rm -rf "${root}/Human-in-the-loop/.git"
+          echo "Human-in-the-loop cloned"
+          
+          git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/visualise_detection.git "${root}/visualise_detection"
+          rm -rf "${root}/visualise_detection/.git"
+          echo "visualise_detection cloned"
+          
+          ### download megadetector 
+          curl --ipv4 -L https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt -o "${root}/models/det/MegaDetector 5a/md_v5a.0.0.pt"
+          
+          ### source conda 
+          source "$HOME/miniforge/etc/profile.d/conda.sh"
+          source "$HOME/miniforge/bin/activate"
+          conda_exe="$HOME/miniforge/bin/conda"
+
+          ### set high timeout value and ip address for ipv4 fallback issues
+          $conda_exe config --set remote_connect_timeout_secs 120
+          $conda_exe config --set remote_max_retries 5
+          $conda_exe config --set remote_read_timeout_secs 120
+          $conda_exe config --set ssl_verify False
+          $conda_exe config --set fetch_threads 2
+          $conda_exe config --show
+
+          ### install mamba
+          $conda_exe install mamba -n base -c conda-forge -y
+          conda_exe="$HOME/miniforge/bin/mamba"
+          
+          ### install env-base
+          $conda_exe env create --file="${root}/cameratraps/envs/environment-detector-m1.yml" -p "${root}/envs/env-base"
+          $conda_exe run -p "${root}/envs/env-base" conda install pytorch==1.13.1 torchvision==0.14.1 -c pytorch -y
+          $conda_exe run -p "${root}/envs/env-base" conda uninstall opencv -y
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 opencv-python
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 RangeSlider
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 gpsphoto
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 exifread
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 piexif
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 openpyxl
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 customtkinter
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 CTkTable
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 folium
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 plotly
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "gitpython>=3.1.30"
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "tensorboard>=2.4.1"
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "thop>=0.1.1"
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "protobuf<=3.20.1"
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "setuptools>=65.5.1"
+          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 PySide6
+          $conda_exe run -p "${root}/envs/env-base" conda install lxml -y
+          "${root}/envs/env-base/bin/pyside6-rcc" -o "${root}/Human-in-the-loop/libs/resources.py" "${root}/Human-in-the-loop/resources.qrc"
+
+          ### run pyinstaller from fresh environment
+          $conda_exe create -p "$HOME/miniforge/envs/env-fresh" python=3.8 pyinstaller -y
+          $conda_exe run -p "$HOME/miniforge/envs/env-fresh" pyinstaller --onefile --windowed --icon="${root}/AddaxAI/imgs/logo_small_bg.icns" --distpath="${HOME}/dist" --workpath="${HOME}/build" "${root}/main.py"
          
-      #     ### clean
-      #     $conda_exe clean --all --yes --force-pkgs-dirs
-      #     $conda_exe clean --all --yes
+          ### clean
+          $conda_exe clean --all --yes --force-pkgs-dirs
+          $conda_exe clean --all --yes
 
-      #     ### move and rename executables
-      #     mv "${HOME}/dist/main" "${root}/AddaxAI debug"      # debug executable
-      #     mv "${HOME}/dist/main.app" "${root}/AddaxAI.app"    # main app executable
+          ### move and rename executables
+          mv "${HOME}/dist/main" "${root}/AddaxAI debug"      # debug executable
+          mv "${HOME}/dist/main.app" "${root}/AddaxAI.app"    # main app executable
 
-    
-      # - name: Uploading envs Azure storage
-      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-      #   with:
-      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-      #     container_name: github-zips-beta
-      #     source_folder: /home/runner/AddaxAI_files/envs
-      #     destination_folder: ${{ env.RELEASE_VERSION }}/envs
-      #     is_recursive: false
-      #     delete_if_exists: true
+          ### zip folder contents
+          cd "$HOME/base-install"
+          tar -caf "base-install.tar.xz" AddaxAI_files
+          
+          ### remove folder contents
+          rm -rf "AddaxAI_files"
 
-      # - name: Uploading envs Azure storage
-      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-      #   with:
-      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-      #     container_name: github-zips-beta
-      #     source_folder: /home/runner/AddaxAI_files/envs
-      #     destination_folder: latest/envs
-      #     is_recursive: false
-      #     delete_if_exists: true
+      - name: Uploading pinned version of base install
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ env.HOME }}/base-install
+          destination_folder: ${{ env.RELEASE_VERSION }}/macos
+          is_recursive: false
+          delete_if_exists: true
 
-      # - name: Zip folder contents
+      - name: Uploading latest version of base install
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ env.HOME }}/base-install
+          destination_folder: latest/macos
+          is_recursive: false
+          delete_if_exists: true
+
+      # - name: Get the release body
+      #   id: get_release
       #   run: |
-      #     cd "$HOME"
-      #     tar -caf "macos-${{ env.RELEASE_VERSION }}.tar.xz" AddaxAI_files
+      #     release=$(gh release view ${{ github.ref_name }} --json body -q .body)
+      #     echo "$release" > release_body.txt
   
-      # # - name: Get the release body
-      # #   id: get_release
-      # #   run: |
-      # #     release=$(gh release view ${{ github.ref_name }} --json body -q .body)
-      # #     echo "$release" > release_body.txt
-  
-      # # - name: Append link to release body
-      # #   id: append_link
-      # #   run: |
-      # #     new_body="$(cat release_body.txt)
-      # #     - Install for **macOS** (Apple Silicon - M1, M2, M3, etc.): [macos-${{ env.RELEASE_VERSION }}.tar.xz](https://storage.googleapis.com/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos-${{ env.RELEASE_VERSION }}.tar.xz)"
-      # #     echo "$new_body" > new_release_body.txt
-
-      # # - name: Update the release body
-      # #   run: |
-      # #     gh release edit ${{ github.ref_name }} --notes "$(cat new_release_body.txt)"
-
-      # - name: Install Platypus
+      # - name: Append link to release body
+      #   id: append_link
       #   run: |
-      #     # copy files into the right directory
-      #     sudo mkdir -p '/usr/local/share/platypus/'
-      #     sudo cp "${{ github.workspace }}/install_files/macos/ScriptExec" '/usr/local/share/platypus/'
-      #     sudo cp "${{ github.workspace }}/install_files/macos/platypus_clt" '/usr/local/share/platypus/'
-      #     sudo cp -r "${{ github.workspace }}/install_files/macos/MainMenu.nib" '/usr/local/share/platypus/'
-  
-      #     # make executable
-      #     sudo chmod +x '/usr/local/share/platypus/ScriptExec'
-      #     sudo chmod +x '/usr/local/share/platypus/platypus_clt'
+      #     new_body="$(cat release_body.txt)
+      #     - Install for **macOS** (Apple Silicon - M1, M2, M3, etc.): [macos-${{ env.RELEASE_VERSION }}.tar.xz](https://storage.googleapis.com/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos-${{ env.RELEASE_VERSION }}.tar.xz)"
+      #     echo "$new_body" > new_release_body.txt
 
-      # - name: Append VERSION and URL to Platypus Installer Script
-      #   shell: bash
+      # - name: Update the release body
       #   run: |
-      #     # Define the file path
-      #     FILE_PATH="${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh"
+      #     gh release edit ${{ github.ref_name }} --notes "$(cat new_release_body.txt)"
+
+      - name: Install Platypus
+        run: |
+          # copy files into the right directory
+          sudo mkdir -p '/usr/local/share/platypus/'
+          sudo cp "${{ github.workspace }}/install_files/macos/ScriptExec" '/usr/local/share/platypus/'
+          sudo cp "${{ github.workspace }}/install_files/macos/platypus_clt" '/usr/local/share/platypus/'
+          sudo cp -r "${{ github.workspace }}/install_files/macos/MainMenu.nib" '/usr/local/share/platypus/'
+  
+          # make executable
+          sudo chmod +x '/usr/local/share/platypus/ScriptExec'
+          sudo chmod +x '/usr/local/share/platypus/platypus_clt'
+
+      - name: Append VERSION and URL to Platypus Installer Script
+        shell: bash
+        run: |
+          # Define the file path
+          FILE_PATH="${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh"
       
-      #     # Create a new file with the VERSION line
-      #     echo "VERSION=\"${{ env.RELEASE_VERSION }}\"" > newFile.sh
+          # Create a new file with the VERSION line
+          echo "VERSION=\"${{ env.RELEASE_VERSION }}\"" > newFile.sh
 
-      #     # Append the URL line
-      #     echo "URL=\"https://storage.googleapis.com/${{ env.BUCKET_NAME }}/latest/macos-latest.tar.xz\"" >> newFile.sh
+          # Append the URL line
+          echo "URL=\"https://addaxaifilestorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos/base-install.tar.xz\"" >> newFile.sh
       
-      #     # Append the original file's content
-      #     cat "$FILE_PATH" >> newFile.sh
+          # Append the original file's content
+          cat "$FILE_PATH" >> newFile.sh
       
-      #     # Replace the original file with the new file
-      #     mv newFile.sh "$FILE_PATH"
+          # Replace the original file with the new file
+          mv newFile.sh "$FILE_PATH"
 
-      # - name: Create Installer
-      #   run: |
-      #     sudo '/usr/local/share/platypus/platypus_clt' --app-icon '${{ github.workspace }}/install_files/macos/logo.icns'  --name 'AddaxAI-${{ env.RELEASE_VERSION }}-installer'  --interface-type 'Progress Bar'  --interpreter '/bin/bash'   --app-version '${{ env.RELEASE_VERSION }}'  '${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh'
+      - name: Create Installer
+        run: |
+          sudo '/usr/local/share/platypus/platypus_clt' --app-icon '${{ github.workspace }}/install_files/macos/logo.icns'  --name 'AddaxAI-${{ env.RELEASE_VERSION }}-installer'  --interface-type 'Progress Bar'  --interpreter '/bin/bash'   --app-version '${{ env.RELEASE_VERSION }}'  '${{ github.workspace }}/install_files/macos/platypus-install-compiler.sh'
 
-      # - name: Compress the macOS installer
-      #   run: |
-      #     cd "${{ github.workspace }}/install_files/macos"
-      #     zip -r "macos-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
+      - name: Compress the macOS installer
+        run: |
+          cd "${{ github.workspace }}/install_files/macos"
+          zip -r "macos-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
 
-      # - name: Get Upload URL for Release
-      #   id: get_upload_url
-      #   uses: actions/github-script@v6
-      #   with:
-      #     script: |
-      #       const release = await github.rest.repos.getReleaseByTag({
-      #         owner: context.repo.owner,
-      #         repo: context.repo.repo,
-      #         tag: '${{ env.RELEASE_VERSION }}',
-      #       });
-      #       // Write the upload URL to the environment file
-      #       const fs = require('fs');
-      #       fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
+          # copy to a private dir so that it can be uploaded with Action-AzureBlobUpload@v2
+          mkdir -p temp
+          cp "macos-${{ env.RELEASE_VERSION }}-installer.zip" temp/
 
-      # - name: Authenticate GitHub CLI
-      #   run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+      - name: Get Upload URL for Release
+        id: get_upload_url
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: '${{ env.RELEASE_VERSION }}',
+            });
+            // Write the upload URL to the environment file
+            const fs = require('fs');
+            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
 
-      # - name: Remove existing asset if present
-      #   run: |
-      #     # List all assets in the release
-      #     release_info=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-      #       https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }}
-      #       )
+      - name: Authenticate GitHub CLI
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Remove existing asset if present
+        run: |
+          # List all assets in the release
+          release_info=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }}
+            )
           
-      #     # Extract asset ID by matching the name
-      #     asset_id=$(echo $release_info | jq -r '.assets[] | select(.name == "MacOS-installer-${{ env.RELEASE_VERSION }}.zip") | .id')
-      #     echo "asset_id is $asset_id"
+          # Extract asset ID by matching the name
+          asset_id=$(echo $release_info | jq -r '.assets[] | select(.name == "MacOS-installer-${{ env.RELEASE_VERSION }}.zip") | .id')
+          echo "asset_id is $asset_id"
           
-      #     # Check if the asset exists and delete it
-      #     if [ ! -z "$asset_id" ]; then
-      #       curl -X DELETE \
-      #         -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-      #         "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id"
-      #     else
-      #       echo "Asset not found. Continue with upload..."
-      #     fi
+          # Check if the asset exists and delete it
+          if [ ! -z "$asset_id" ]; then
+            curl -X DELETE \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id"
+          else
+            echo "Asset not found. Continue with upload..."
+          fi
   
-      # - name: Upload Asset to GitHub Release
-      #   uses: actions/upload-release-asset@v1
-      #   with:
-      #     upload_url: ${{ env.UPLOAD_URL }}
-      #     asset_path: "${{ github.workspace }}/install_files/macos/macos-${{ env.RELEASE_VERSION }}-installer.zip"
-      #     asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
-      #     asset_content_type: application/octet-stream
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Asset to GitHub Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ env.UPLOAD_URL }}
+          asset_path: "${{ github.workspace }}/install_files/macos/macos-${{ env.RELEASE_VERSION }}-installer.zip"
+          asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Upload program files to Google Cloud
-      #   run: |
-      #     cd "$HOME"
-          
-      #     # init vars
-      #     BUCKET_NAME="${{ env.BUCKET_NAME }}"
-      #     PINNED_FOLDER_NAME="${{ env.RELEASE_VERSION }}"
-      #     LATEST_FOLDER_NAME="latest"
-      #     PINNED_FILE_NAME="macos-${{ env.RELEASE_VERSION }}.tar.xz"
-      #     LATEST_FILE_NAME="macos-latest.tar.xz"
+      - name: Uploading pinned version of installer app
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/install_files/macos/temp
+          destination_folder: ${{ env.RELEASE_VERSION }}/macos
+          is_recursive: false
+          delete_if_exists: true
 
-      #     # # upload release pinned version
-      #     # # feb 2025 - disabled to save sapce on github and reduce monthly costs
-      #     # gsutil cp -r $PINNED_FILE_NAME gs://$BUCKET_NAME/$PINNED_FOLDER_NAME/$PINNED_FILE_NAME
-          
-      #     # upload latest release version
-      #     gsutil cp -r $PINNED_FILE_NAME gs://$BUCKET_NAME/$LATEST_FOLDER_NAME/$LATEST_FILE_NAME
-
-      # - name:  Upload installer to Google Cloud
-      #   run: |
-      #     cd "${{ github.workspace }}/install_files/macos/"
-      #     INSTALLER="macos-${{ env.RELEASE_VERSION }}-installer.zip"
-      #     gsutil cp -r $INSTALLER gs://${{ env.BUCKET_NAME }}/latest/macos-latest-installer.zip
+      - name: Uploading latest version of installer app
+        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+        with:
+          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+          container_name: ${{ env.BUCKET_NAME }}
+          source_folder: ${{ github.workspace }}/install_files/macos/temp
+          destination_folder: latest/macos
+          is_recursive: false
+          delete_if_exists: true
