@@ -42,9 +42,9 @@ jobs:
         run: |
           echo BRANCH_NAME is %BRANCH_NAME%
           if "%BRANCH_NAME%"=="main" (
-              set "BUCKET_NAME=github-release-files-storage"
+              set "BUCKET_NAME=github-zips"
           ) else (
-              set "BUCKET_NAME=github-release-files-storage-beta-versions"
+              set "BUCKET_NAME=github-zips-beta"
           )
           echo BUCKET_NAME=%BUCKET_NAME%>> %GITHUB_ENV%
           echo BUCKET_NAME is "%BUCKET_NAME%"
@@ -111,7 +111,7 @@ jobs:
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
+          source_folder: ${{ github.workspace }}\temp
           destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
           is_recursive: false
           delete_if_exists: true
@@ -121,7 +121,7 @@ jobs:
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
           container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
+          source_folder: ${{ github.workspace }}\temp
           destination_folder: latest/windows/envs
           is_recursive: false
           delete_if_exists: true
