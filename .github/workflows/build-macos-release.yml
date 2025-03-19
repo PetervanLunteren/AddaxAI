@@ -455,6 +455,7 @@ jobs:
           $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "setuptools>=65.5.1"
           $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 PySide6
           $conda_exe run -p "${root}/envs/env-base" conda install lxml -y
+          $conda_exe run -p "${root}/envs/env-base" conda install -c conda-forge libgfortran5 -y
           "${root}/envs/env-base/bin/pyside6-rcc" -o "${root}/Human-in-the-loop/libs/resources.py" "${root}/Human-in-the-loop/resources.qrc"
 
           ### run pyinstaller from fresh environment
