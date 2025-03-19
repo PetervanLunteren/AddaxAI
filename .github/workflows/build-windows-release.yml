@@ -475,7 +475,7 @@ jobs:
         shell: cmd
         run: |
           echo !define VERSION "${{ env.RELEASE_VERSION }}" > newFile.nsi
-          echo !define URL "https://addaxaifilestorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows/base-install.7z" >> newFile.nsi
+          echo !define URL "https://addaxaipremiumstorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows/base-install.7z" >> newFile.nsi
           type "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi" >> newFile.nsi
           move /Y newFile.nsi "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi"
 
