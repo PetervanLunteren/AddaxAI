@@ -103,8 +103,8 @@ jobs:
       - name: Upload pinned version of env-pytorch.7z
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
+          connection_string: ${{ secrets.FAST_TRAIL_CONNECTION_KEY_TEMP }}
+          container_name: fast-container
           source_folder: ${{ github.workspace }}\temp
           destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
           is_recursive: false
@@ -113,8 +113,8 @@ jobs:
       - name: Upload latest version of env-pytorch.7z
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
+          connection_string: ${{ secrets.FAST_TRAIL_CONNECTION_KEY_TEMP }}
+          container_name: fast-container
           source_folder: ${{ github.workspace }}\temp
           destination_folder: latest/windows/envs
           is_recursive: false
@@ -126,471 +126,471 @@ jobs:
           del "${{ github.workspace }}\temp\env-pytorch.7z"
           rmdir /s /q "${{ github.workspace }}\temp"
 
-      - name: Build env-tensorflow
-        shell: cmd
-        run: |
-
-          echo off
-          @setlocal EnableDelayedExpansion
-          
-          @REM init environment vars
-          set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
-          mkdir "${{ github.workspace }}\temp"
-
-          @REM set high timeout value and ip address for ipv4 fallback issues
-          call "%conda_exe%" config --set remote_connect_timeout_secs 120
-          call "%conda_exe%" config --set remote_max_retries 5
-          call "%conda_exe%" config --set remote_read_timeout_secs 120
-          call "%conda_exe%" config --set ssl_verify False
-          call "%conda_exe%" config --set fetch_threads 2
-          call "%conda_exe%" config --show
-
-          @REM set IPv4
-          set PIP_NO_IPV6=1
-          set CONDA_SSL_VERIFY=0
-          set CONDA_USE_IPV4=1
-          
-          @REM install mamba
-          call "%conda_exe%" install -n base -c conda-forge mamba -y
-          set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
-          
-          @REM build env-tensorflow
-          call "%conda_exe%" create -p "${{ github.workspace }}\temp\env-tensorflow" python=3.11 -y
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 tensorflow
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 huggingface_hub==0.23.0
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 jax==0.4.28
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 jaxlib==0.4.28
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 keras==3.3.3
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 keras_cv==0.9.0
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 kimm==0.2.5
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 matplotlib==3.9.0
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 numpy==1.26.4
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 pandas==2.2.2
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 pytest==8.3.0
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 pyyaml==6.0.1
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 scikit-learn==1.4.2
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 tqdm==4.66.4
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 jsonpickle==4.0.1
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 opencv-python==4.11.0.86
-
-          @REM clean
-          call "%conda_exe%" clean --all --yes --force-pkgs-dirs
-
-          @REM zip
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-tensorflow.7z" "${{ github.workspace }}\temp\env-tensorflow\*"
-
-          @REM remove folder contents
-          rmdir /s /q "${{ github.workspace }}\temp\env-tensorflow"
-
-      - name: Upload pinned version of env-tensorflow.7z
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-tensorflow.7z
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: latest/windows/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Remove env-tensorflow.7z
-        shell: cmd
-        run: |
-          del "${{ github.workspace }}\temp\env-tensorflow.7z"
-          rmdir /s /q "${{ github.workspace }}\temp"
-
-      - name: Build env-speciesnet
-        shell: cmd
-        run: |
-
-          echo off
-          @setlocal EnableDelayedExpansion
-          
-          @REM init environment vars
-          set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
-          mkdir "${{ github.workspace }}\temp"
-
-          @REM set high timeout value and ip address for ipv4 fallback issues
-          call "%conda_exe%" config --set remote_connect_timeout_secs 120
-          call "%conda_exe%" config --set remote_max_retries 5
-          call "%conda_exe%" config --set remote_read_timeout_secs 120
-          call "%conda_exe%" config --set ssl_verify False
-          call "%conda_exe%" config --set fetch_threads 2
-          call "%conda_exe%" config --show
-
-          @REM set IPv4
-          set PIP_NO_IPV6=1
-          set CONDA_SSL_VERIFY=0
-          set CONDA_USE_IPV4=1
-          
-          @REM install mamba
-          call "%conda_exe%" install -n base -c conda-forge mamba -y
-          set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
-
-          @REM build env-speciesnet
-          call "%conda_exe%" create -p "${{ github.workspace }}\temp\env-speciesnet" python=3.11 -y
-          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-speciesnet" pip install --timeout=120 speciesnet
-
-          @REM clean
-          call "%conda_exe%" clean --all --yes --force-pkgs-dirs
-
-          @REM zip
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-speciesnet.7z" "${{ github.workspace }}\temp\env-speciesnet\*"
-
-          @REM remove folder contents
-          rmdir /s /q "${{ github.workspace }}\temp\env-speciesnet"
-
-      - name: Upload pinned version of env-speciesnet.7z
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-speciesnet.7z
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: latest/windows/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Remove env-speciesnet.7z
-        shell: cmd
-        run: |
-          del "${{ github.workspace }}\temp\env-speciesnet.7z"
-          rmdir /s /q "${{ github.workspace }}\temp"
-
-      - name: Build base install
-        shell: cmd
-        run: |
-
-          echo off
-          @setlocal EnableDelayedExpansion
-          
-          @REM init environment vars
-          set root=%USERPROFILE%\AddaxAI
-          set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
-          echo Using conda %conda_exe%
-
-          @REM set high timeout value and ip address for ipv4 fallback issues
-          call "%conda_exe%" config --set remote_connect_timeout_secs 120
-          call "%conda_exe%" config --set remote_max_retries 5
-          call "%conda_exe%" config --set remote_read_timeout_secs 120
-          call "%conda_exe%" config --set ssl_verify False
-          call "%conda_exe%" config --set fetch_threads 2
-          call "%conda_exe%" config --show
-          
-          @REM refresh dir
-          if exist "%root%" (
-              rmdir /s /q "%root%"
-              echo %root% folder removed
-          )
-
-          @REM set IPv4
-          set PIP_NO_IPV6=1
-          set CONDA_SSL_VERIFY=0
-          set CONDA_USE_IPV4=1
-          
-          @REM create folder structure
-          mkdir "%root%"
-          mkdir "%root%\envs"
-          mkdir "%root%\models"
-          mkdir "%root%\models\det"
-          mkdir "%root%\models\cls"
-          mkdir "%root%\models\det\MegaDetector 5a"
-          mkdir "%root%\yolov5_versions\yolov5_old"
-          mkdir "%root%\yolov5_versions\yolov5_new"
-          echo Hello world! > "%root%\first-startup.txt"
-          
-          @REM AddaxAI
-          git clone --ipv4 --depth 1 --branch %BRANCH_NAME% https://github.com/PetervanLunteren/EcoAssist.git "%root%\AddaxAI"
-          rmdir /s /q "%root%\AddaxAI\.git"
-          move "%root%\AddaxAI\main.py" "%root%\main.py"
-          set RAW_VERSION=${{ env.RELEASE_VERSION }}
-          set CLEAN_VERSION=%RAW_VERSION:v=%
-          echo %CLEAN_VERSION% > "%root%\AddaxAI\version.txt"
-          echo AddaxAI cloned
-          
-          @REM MegaDetector
-          git clone --ipv4 https://github.com/agentmorris/MegaDetector.git "%root%\cameratraps"
-          pushd "%root%\cameratraps"
-          git checkout a64a8f8c467ae6c87b5ca09f54b1abe502168b50
-          popd
-          rmdir /s /q "%root%\cameratraps\.git"
-          echo MegaDetector cloned
-          
-          @REM YOLOv5 old
-          git clone --ipv4 https://github.com/ultralytics/yolov5.git "%root%\yolov5_versions\yolov5_old\yolov5"
-          pushd "%root%\yolov5_versions\yolov5_old\yolov5"
-          git checkout c23a441c9df7ca9b1f275e8c8719c949269160d1
-          popd
-          rmdir /s /q "%root%\yolov5_versions\yolov5_old\yolov5\.git"
-          echo YOLOv5 old cloned
-          
-          @REM YOLOv5 new
-          git clone --ipv4 https://github.com/ultralytics/yolov5.git "%root%\yolov5_versions\yolov5_new\yolov5"
-          pushd "%root%\yolov5_versions\yolov5_new\yolov5"
-          git checkout 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
-          popd
-          rmdir /s /q "%root%\yolov5_versions\yolov5_new\yolov5\.git"
-          echo YOLOv5 new cloned
-          
-          @REM Human in the loop
-          git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/Human-in-the-loop.git "%root%\Human-in-the-loop"
-          rmdir /s /q "%root%\Human-in-the-loop\.git"
-          echo Human-in-the-loop cloned
-          
-          @REM Visualise detections
-          git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/visualise_detection.git "%root%\visualise_detection"
-          rmdir /s /q "%root%\visualise_detection\.git"
-          echo visualise_detection cloned
-          
-          @REM MegaDetector model 5A
-          curl --ipv4 -L https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt -o "%root%/models\det\MegaDetector 5a\md_v5a.0.0.pt"
-
-          @REM install mamba
-          call "%conda_exe%" install -n base -c conda-forge mamba -y
-          @REM DEBUG
-          set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
-          
-          @REM build env-base
-          call "%conda_exe%" env create --file "%root%\cameratraps\envs\environment-detector.yml" -p "%root%\envs\env-base"
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 pyqt5==5.15.2 lxml
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 RangeSlider gpsphoto exifread piexif openpyxl pyarrow customtkinter CTkTable 
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 GitPython==3.1.30
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 folium plotly
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 numpy==1.23.4
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 pytorchwildlife==1.0.2.15
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip uninstall torch torchvision -y 
-          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 torch==2.3.1+cu118 torchvision==0.18.1+cu118 --index-url https://download.pytorch.org/whl/cu118 
-
-          @REM create archive of entire base install
-          mkdir "%USERPROFILE%\temp"
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "%USERPROFILE%\temp\base-install.7z" "%USERPROFILE%\AddaxAI\*"
-
-          @REM remove folder contents
-          rmdir /s /q "%USERPROFILE%\AddaxAI"
-
-      - name: Set env.USERPROFILE variable
-        shell: cmd
-        run: |
-          echo USERPROFILE=%USERPROFILE%>> %GITHUB_ENV%
-          echo USERPROFILE is "%USERPROFILE%"
-
-      - name: Upload pinned version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.USERPROFILE }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.USERPROFILE }}\temp
-          destination_folder: latest/windows
-          is_recursive: false
-          delete_if_exists: true
-
-      # - name: Get the release body
-      #   shell: pwsh
-      #   run: Invoke-RestMethod -Uri https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.release.tag_name }} | ForEach-Object { $_.body } | Out-File -FilePath release_body.txt -Encoding utf8
-
-      # - name: Append link to release body
-      #   shell: pwsh
-      #   run: |
-      #     Add-Content -Path "release_body.txt" -Value '- Install for **Windows**: [windows-${{ env.RELEASE_VERSION }}.7z](https://storage.googleapis.com/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows-${{ env.RELEASE_VERSION }}.7z)'
-
-      # - name: Update the release body
+      # - name: Build env-tensorflow
       #   shell: cmd
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+
+      #     echo off
+      #     @setlocal EnableDelayedExpansion
+          
+      #     @REM init environment vars
+      #     set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
+      #     mkdir "${{ github.workspace }}\temp"
+
+      #     @REM set high timeout value and ip address for ipv4 fallback issues
+      #     call "%conda_exe%" config --set remote_connect_timeout_secs 120
+      #     call "%conda_exe%" config --set remote_max_retries 5
+      #     call "%conda_exe%" config --set remote_read_timeout_secs 120
+      #     call "%conda_exe%" config --set ssl_verify False
+      #     call "%conda_exe%" config --set fetch_threads 2
+      #     call "%conda_exe%" config --show
+
+      #     @REM set IPv4
+      #     set PIP_NO_IPV6=1
+      #     set CONDA_SSL_VERIFY=0
+      #     set CONDA_USE_IPV4=1
+          
+      #     @REM install mamba
+      #     call "%conda_exe%" install -n base -c conda-forge mamba -y
+      #     set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
+          
+      #     @REM build env-tensorflow
+      #     call "%conda_exe%" create -p "${{ github.workspace }}\temp\env-tensorflow" python=3.11 -y
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 tensorflow
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 huggingface_hub==0.23.0
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 jax==0.4.28
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 jaxlib==0.4.28
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 keras==3.3.3
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 keras_cv==0.9.0
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 kimm==0.2.5
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 matplotlib==3.9.0
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 numpy==1.26.4
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 pandas==2.2.2
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 pytest==8.3.0
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 pyyaml==6.0.1
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 scikit-learn==1.4.2
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 tqdm==4.66.4
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 jsonpickle==4.0.1
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-tensorflow" pip install --timeout=120 opencv-python==4.11.0.86
+
+      #     @REM clean
+      #     call "%conda_exe%" clean --all --yes --force-pkgs-dirs
+
+      #     @REM zip
+      #     "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-tensorflow.7z" "${{ github.workspace }}\temp\env-tensorflow\*"
+
+      #     @REM remove folder contents
+      #     rmdir /s /q "${{ github.workspace }}\temp\env-tensorflow"
+
+      # - name: Upload pinned version of env-tensorflow.7z
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}\temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
+
+      # - name: Upload latest version of env-tensorflow.7z
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}\temp
+      #     destination_folder: latest/windows/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
+
+      # - name: Remove env-tensorflow.7z
+      #   shell: cmd
+      #   run: |
+      #     del "${{ github.workspace }}\temp\env-tensorflow.7z"
+      #     rmdir /s /q "${{ github.workspace }}\temp"
+
+      # - name: Build env-speciesnet
+      #   shell: cmd
+      #   run: |
+
+      #     echo off
+      #     @setlocal EnableDelayedExpansion
+          
+      #     @REM init environment vars
+      #     set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
+      #     mkdir "${{ github.workspace }}\temp"
+
+      #     @REM set high timeout value and ip address for ipv4 fallback issues
+      #     call "%conda_exe%" config --set remote_connect_timeout_secs 120
+      #     call "%conda_exe%" config --set remote_max_retries 5
+      #     call "%conda_exe%" config --set remote_read_timeout_secs 120
+      #     call "%conda_exe%" config --set ssl_verify False
+      #     call "%conda_exe%" config --set fetch_threads 2
+      #     call "%conda_exe%" config --show
+
+      #     @REM set IPv4
+      #     set PIP_NO_IPV6=1
+      #     set CONDA_SSL_VERIFY=0
+      #     set CONDA_USE_IPV4=1
+          
+      #     @REM install mamba
+      #     call "%conda_exe%" install -n base -c conda-forge mamba -y
+      #     set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
+
+      #     @REM build env-speciesnet
+      #     call "%conda_exe%" create -p "${{ github.workspace }}\temp\env-speciesnet" python=3.11 -y
+      #     call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-speciesnet" pip install --timeout=120 speciesnet
+
+      #     @REM clean
+      #     call "%conda_exe%" clean --all --yes --force-pkgs-dirs
+
+      #     @REM zip
+      #     "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-speciesnet.7z" "${{ github.workspace }}\temp\env-speciesnet\*"
+
+      #     @REM remove folder contents
+      #     rmdir /s /q "${{ github.workspace }}\temp\env-speciesnet"
+
+      # - name: Upload pinned version of env-speciesnet.7z
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}\temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
+
+      # - name: Upload latest version of env-speciesnet.7z
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}\temp
+      #     destination_folder: latest/windows/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
+
+      # - name: Remove env-speciesnet.7z
+      #   shell: cmd
+      #   run: |
+      #     del "${{ github.workspace }}\temp\env-speciesnet.7z"
+      #     rmdir /s /q "${{ github.workspace }}\temp"
+
+      # - name: Build base install
+      #   shell: cmd
+      #   run: |
+
+      #     echo off
+      #     @setlocal EnableDelayedExpansion
+          
+      #     @REM init environment vars
+      #     set root=%USERPROFILE%\AddaxAI
+      #     set conda_exe=${{ env.CONDA_DIR }}\Scripts\conda.exe
+      #     echo Using conda %conda_exe%
+
+      #     @REM set high timeout value and ip address for ipv4 fallback issues
+      #     call "%conda_exe%" config --set remote_connect_timeout_secs 120
+      #     call "%conda_exe%" config --set remote_max_retries 5
+      #     call "%conda_exe%" config --set remote_read_timeout_secs 120
+      #     call "%conda_exe%" config --set ssl_verify False
+      #     call "%conda_exe%" config --set fetch_threads 2
+      #     call "%conda_exe%" config --show
+          
+      #     @REM refresh dir
+      #     if exist "%root%" (
+      #         rmdir /s /q "%root%"
+      #         echo %root% folder removed
+      #     )
+
+      #     @REM set IPv4
+      #     set PIP_NO_IPV6=1
+      #     set CONDA_SSL_VERIFY=0
+      #     set CONDA_USE_IPV4=1
+          
+      #     @REM create folder structure
+      #     mkdir "%root%"
+      #     mkdir "%root%\envs"
+      #     mkdir "%root%\models"
+      #     mkdir "%root%\models\det"
+      #     mkdir "%root%\models\cls"
+      #     mkdir "%root%\models\det\MegaDetector 5a"
+      #     mkdir "%root%\yolov5_versions\yolov5_old"
+      #     mkdir "%root%\yolov5_versions\yolov5_new"
+      #     echo Hello world! > "%root%\first-startup.txt"
+          
+      #     @REM AddaxAI
+      #     git clone --ipv4 --depth 1 --branch %BRANCH_NAME% https://github.com/PetervanLunteren/EcoAssist.git "%root%\AddaxAI"
+      #     rmdir /s /q "%root%\AddaxAI\.git"
+      #     move "%root%\AddaxAI\main.py" "%root%\main.py"
+      #     set RAW_VERSION=${{ env.RELEASE_VERSION }}
+      #     set CLEAN_VERSION=%RAW_VERSION:v=%
+      #     echo %CLEAN_VERSION% > "%root%\AddaxAI\version.txt"
+      #     echo AddaxAI cloned
+          
+      #     @REM MegaDetector
+      #     git clone --ipv4 https://github.com/agentmorris/MegaDetector.git "%root%\cameratraps"
+      #     pushd "%root%\cameratraps"
+      #     git checkout a64a8f8c467ae6c87b5ca09f54b1abe502168b50
+      #     popd
+      #     rmdir /s /q "%root%\cameratraps\.git"
+      #     echo MegaDetector cloned
+          
+      #     @REM YOLOv5 old
+      #     git clone --ipv4 https://github.com/ultralytics/yolov5.git "%root%\yolov5_versions\yolov5_old\yolov5"
+      #     pushd "%root%\yolov5_versions\yolov5_old\yolov5"
+      #     git checkout c23a441c9df7ca9b1f275e8c8719c949269160d1
+      #     popd
+      #     rmdir /s /q "%root%\yolov5_versions\yolov5_old\yolov5\.git"
+      #     echo YOLOv5 old cloned
+          
+      #     @REM YOLOv5 new
+      #     git clone --ipv4 https://github.com/ultralytics/yolov5.git "%root%\yolov5_versions\yolov5_new\yolov5"
+      #     pushd "%root%\yolov5_versions\yolov5_new\yolov5"
+      #     git checkout 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
+      #     popd
+      #     rmdir /s /q "%root%\yolov5_versions\yolov5_new\yolov5\.git"
+      #     echo YOLOv5 new cloned
+          
+      #     @REM Human in the loop
+      #     git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/Human-in-the-loop.git "%root%\Human-in-the-loop"
+      #     rmdir /s /q "%root%\Human-in-the-loop\.git"
+      #     echo Human-in-the-loop cloned
+          
+      #     @REM Visualise detections
+      #     git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/visualise_detection.git "%root%\visualise_detection"
+      #     rmdir /s /q "%root%\visualise_detection\.git"
+      #     echo visualise_detection cloned
+          
+      #     @REM MegaDetector model 5A
+      #     curl --ipv4 -L https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt -o "%root%/models\det\MegaDetector 5a\md_v5a.0.0.pt"
+
+      #     @REM install mamba
+      #     call "%conda_exe%" install -n base -c conda-forge mamba -y
+      #     @REM DEBUG
+      #     set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
+          
+      #     @REM build env-base
+      #     call "%conda_exe%" env create --file "%root%\cameratraps\envs\environment-detector.yml" -p "%root%\envs\env-base"
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 pyqt5==5.15.2 lxml
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 RangeSlider gpsphoto exifread piexif openpyxl pyarrow customtkinter CTkTable 
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 GitPython==3.1.30
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 folium plotly
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 numpy==1.23.4
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 pytorchwildlife==1.0.2.15
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip uninstall torch torchvision -y 
+      #     call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 torch==2.3.1+cu118 torchvision==0.18.1+cu118 --index-url https://download.pytorch.org/whl/cu118 
+
+      #     @REM create archive of entire base install
+      #     mkdir "%USERPROFILE%\temp"
+      #     "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "%USERPROFILE%\temp\base-install.7z" "%USERPROFILE%\AddaxAI\*"
+
+      #     @REM remove folder contents
+      #     rmdir /s /q "%USERPROFILE%\AddaxAI"
+
+      # - name: Set env.USERPROFILE variable
+      #   shell: cmd
+      #   run: |
+      #     echo USERPROFILE=%USERPROFILE%>> %GITHUB_ENV%
+      #     echo USERPROFILE is "%USERPROFILE%"
+
+      # - name: Upload pinned version of base install
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ env.USERPROFILE }}\temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/windows
+      #     is_recursive: false
+      #     delete_if_exists: true
+
+      # - name: Upload latest version of base install
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ env.USERPROFILE }}\temp
+      #     destination_folder: latest/windows
+      #     is_recursive: false
+      #     delete_if_exists: true
+
+      # # - name: Get the release body
+      # #   shell: pwsh
+      # #   run: Invoke-RestMethod -Uri https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.release.tag_name }} | ForEach-Object { $_.body } | Out-File -FilePath release_body.txt -Encoding utf8
+
+      # # - name: Append link to release body
+      # #   shell: pwsh
+      # #   run: |
+      # #     Add-Content -Path "release_body.txt" -Value '- Install for **Windows**: [windows-${{ env.RELEASE_VERSION }}.7z](https://storage.googleapis.com/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows-${{ env.RELEASE_VERSION }}.7z)'
+
+      # # - name: Update the release body
+      # #   shell: cmd
+      # #   env:
+      # #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # #   run: |
+      # #     @echo off
+      # #     set RELEASE_NAME=${{ github.ref_name }}
+      # #     gh release edit %RELEASE_NAME% --notes-file release_body.txt
+
+      # - name: Install Nsis7z Plugin
       #   run: |
       #     @echo off
-      #     set RELEASE_NAME=${{ github.ref_name }}
-      #     gh release edit %RELEASE_NAME% --notes-file release_body.txt
+      #     SETLOCAL ENABLEDELAYEDEXPANSION
+      #     SET MAX_RETRIES=3
+      #     SET RETRY_COUNT=0
 
-      - name: Install Nsis7z Plugin
-        run: |
-          @echo off
-          SETLOCAL ENABLEDELAYEDEXPANSION
-          SET MAX_RETRIES=3
-          SET RETRY_COUNT=0
+      #     :retry
+      #     echo Attempting download and extraction. Try !RETRY_COUNT!...
 
-          :retry
-          echo Attempting download and extraction. Try !RETRY_COUNT!...
+      #     :: Download the file
+      #     curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/9/93/Nsis7z.zip"
+      #     dir "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
 
-          :: Download the file
-          curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/9/93/Nsis7z.zip"
-          dir "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+      #     :: Try to extract the file
+      #     7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
 
-          :: Try to extract the file
-          7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+      #     :: Check if extraction was successful
+      #     IF %ERRORLEVEL% NEQ 0 (
+      #         echo Extraction failed, retrying download...
+      #         del "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+      #         SET /A RETRY_COUNT+=1
+      #         IF !RETRY_COUNT! LSS %MAX_RETRIES% (
+      #             goto retry
+      #         ) ELSE (
+      #             echo Failed to download and extract after %MAX_RETRIES% attempts. Exiting.
+      #             EXIT /B 1
+      #         )
+      #     ) ELSE (
+      #         echo Extraction succeeded.
+      #     )
+      #     ENDLOCAL
+      #   shell: cmd
 
-          :: Check if extraction was successful
-          IF %ERRORLEVEL% NEQ 0 (
-              echo Extraction failed, retrying download...
-              del "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
-              SET /A RETRY_COUNT+=1
-              IF !RETRY_COUNT! LSS %MAX_RETRIES% (
-                  goto retry
-              ) ELSE (
-                  echo Failed to download and extract after %MAX_RETRIES% attempts. Exiting.
-                  EXIT /B 1
-              )
-          ) ELSE (
-              echo Extraction succeeded.
-          )
-          ENDLOCAL
-        shell: cmd
+      # - name: Install Inetc Plugin
+      #   run: |
+      #     curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Inetc_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
+      #     dir "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
+      #     7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
+      #   shell: cmd
 
-      - name: Install Inetc Plugin
-        run: |
-          curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Inetc_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
-          dir "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
-          7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
-        shell: cmd
+      # - name: Append VERSION and URL to NSIS script
+      #   shell: cmd
+      #   run: |
+      #     echo !define VERSION "${{ env.RELEASE_VERSION }}" > newFile.nsi
+      #     echo !define URL "https://addaxaifilestorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows/base-install.7z" >> newFile.nsi
+      #     type "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi" >> newFile.nsi
+      #     move /Y newFile.nsi "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi"
 
-      - name: Append VERSION and URL to NSIS script
-        shell: cmd
-        run: |
-          echo !define VERSION "${{ env.RELEASE_VERSION }}" > newFile.nsi
-          echo !define URL "https://addaxaifilestorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows/base-install.7z" >> newFile.nsi
-          type "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi" >> newFile.nsi
-          move /Y newFile.nsi "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi"
-
-      - name: Create NSIS installer
-        uses: joncloud/makensis-action@publish
-        with:
-          script-file: "install_files/windows/nsis-install-compiler.nsi"
-          additional-plugin-paths: ${{ github.workspace }}/NSIS_Plugins/Plugins
+      # - name: Create NSIS installer
+      #   uses: joncloud/makensis-action@publish
+      #   with:
+      #     script-file: "install_files/windows/nsis-install-compiler.nsi"
+      #     additional-plugin-paths: ${{ github.workspace }}/NSIS_Plugins/Plugins
           
-      - name: Move installer to private dir so that it can be uploaded with Action-AzureBlobUpload@v2
-        shell: cmd
-        run: |
-          mkdir "%GITHUB_WORKSPACE%\install_files\windows\temp"
-          copy "%GITHUB_WORKSPACE%\install_files\windows\AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe" "%GITHUB_WORKSPACE%\install_files\windows\temp\"
+      # - name: Move installer to private dir so that it can be uploaded with Action-AzureBlobUpload@v2
+      #   shell: cmd
+      #   run: |
+      #     mkdir "%GITHUB_WORKSPACE%\install_files\windows\temp"
+      #     copy "%GITHUB_WORKSPACE%\install_files\windows\AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe" "%GITHUB_WORKSPACE%\install_files\windows\temp\"
   
-      - name: Get Upload URL for Release
-        id: get_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ env.RELEASE_VERSION }}',
-            })
-            // Write the upload URL to the environment file instead of using set-output
-            const fs = require('fs');
-            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
+      # - name: Get Upload URL for Release
+      #   id: get_release
+      #   uses: actions/github-script@v6
+      #   with:
+      #     script: |
+      #       const release = await github.rest.repos.getReleaseByTag({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         tag: '${{ env.RELEASE_VERSION }}',
+      #       })
+      #       // Write the upload URL to the environment file instead of using set-output
+      #       const fs = require('fs');
+      #       fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
 
-      - name: Remove existing asset if present
-        run: |
-          @echo off
-          setlocal
+      # - name: Remove existing asset if present
+      #   run: |
+      #     @echo off
+      #     setlocal
           
-          REM List all assets in the release using curl
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }} > release_info.json
+      #     REM List all assets in the release using curl
+      #     curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
+      #       https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }} > release_info.json
           
-          REM Extract asset ID by matching the name
-          for /f "delims=" %%A in ('jq -r ".assets[] | select(.name == \"Windows-installer-${{ env.RELEASE_VERSION }}.exe\") | .id" release_info.json') do set asset_id=%%A
-          echo The asset_id is: %asset_id%
+      #     REM Extract asset ID by matching the name
+      #     for /f "delims=" %%A in ('jq -r ".assets[] | select(.name == \"Windows-installer-${{ env.RELEASE_VERSION }}.exe\") | .id" release_info.json') do set asset_id=%%A
+      #     echo The asset_id is: %asset_id%
           
-          REM Check if the asset exists and delete it
-          if not "%asset_id%"=="" (
-            curl -X DELETE ^
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
-              https://api.github.com/repos/${{ github.repository }}/releases/assets/%asset_id%
-          ) else (
-            echo Asset not found. Continue with upload...
-          )
-          endlocal
-        shell: cmd
+      #     REM Check if the asset exists and delete it
+      #     if not "%asset_id%"=="" (
+      #       curl -X DELETE ^
+      #         -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
+      #         https://api.github.com/repos/${{ github.repository }}/releases/assets/%asset_id%
+      #     ) else (
+      #       echo Asset not found. Continue with upload...
+      #     )
+      #     endlocal
+      #   shell: cmd
 
-      - name: Decode PFX certificate from GitHub Secrets
-        run: |
-          $base64String = "${{ secrets.PFX_BASE64_CERTIFICATE }}"
-          [IO.File]::WriteAllBytes("addax_cert.pfx", [Convert]::FromBase64String($base64String))
+      # - name: Decode PFX certificate from GitHub Secrets
+      #   run: |
+      #     $base64String = "${{ secrets.PFX_BASE64_CERTIFICATE }}"
+      #     [IO.File]::WriteAllBytes("addax_cert.pfx", [Convert]::FromBase64String($base64String))
   
-      # # the following is very helpful if you have a new github runner image and want to find signtool.exe
-      # - name: Get signtool.exe location
-      #   uses: eltorio/action-signtoolLocation@v1
+      # # # the following is very helpful if you have a new github runner image and want to find signtool.exe
+      # # - name: Get signtool.exe location
+      # #   uses: eltorio/action-signtoolLocation@v1
   
-      - name: Sign installer
-        shell: cmd
-        run: |
-          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" sign /f addax_cert.pfx /p "${{ secrets.CODE_SIGN_PASSWORD }}" /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 "${{ github.workspace }}/install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
+      # - name: Sign installer
+      #   shell: cmd
+      #   run: |
+      #     "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" sign /f addax_cert.pfx /p "${{ secrets.CODE_SIGN_PASSWORD }}" /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 "${{ github.workspace }}/install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
   
-      - name: Verify signature
-        shell: cmd
-        run: |
-          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" verify /pa /v "${{ github.workspace }}/install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
+      # - name: Verify signature
+      #   shell: cmd
+      #   run: |
+      #     "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" verify /pa /v "${{ github.workspace }}/install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
   
-      - name: Remove the PFX file after signing
-        run: |
-          # Check if the .pfx file exists before removal
-          if (Test-Path "addax_cert.pfx") {
-            echo "PFX file exists. Proceeding with removal."
-            Remove-Item -Path "addax_cert.pfx" -Force
-          } else {
-            echo "PFX file does not exist. Skipping removal."
-          }
+      # - name: Remove the PFX file after signing
+      #   run: |
+      #     # Check if the .pfx file exists before removal
+      #     if (Test-Path "addax_cert.pfx") {
+      #       echo "PFX file exists. Proceeding with removal."
+      #       Remove-Item -Path "addax_cert.pfx" -Force
+      #     } else {
+      #       echo "PFX file does not exist. Skipping removal."
+      #     }
       
-          # Check if the .pfx file still exists after removal
-          if (-not (Test-Path "addax_cert.pfx")) {
-            echo "PFX file successfully removed."
-          } else {
-            echo "Failed to remove PFX file."
-          }
+      #     # Check if the .pfx file still exists after removal
+      #     if (-not (Test-Path "addax_cert.pfx")) {
+      #       echo "PFX file successfully removed."
+      #     } else {
+      #       echo "Failed to remove PFX file."
+      #     }
 
-      - name: Upload Asset to GitHub Release
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
-          asset_name: "Windows-installer-${{ env.RELEASE_VERSION }}.exe"
-          asset_content_type: application/octet-stream
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+      # - name: Upload Asset to GitHub Release
+      #   uses: actions/upload-release-asset@v1
+      #   with:
+      #     upload_url: ${{ env.UPLOAD_URL }}
+      #     asset_path: "install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
+      #     asset_name: "Windows-installer-${{ env.RELEASE_VERSION }}.exe"
+      #     asset_content_type: application/octet-stream
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
 
-      - name: Upload pinned version of installer exe
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\install_files\windows\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload pinned version of installer exe
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}\install_files\windows\temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/windows
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Upload latest version of installer exe
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\install_files\windows\temp
-          destination_folder: latest/windows
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload latest version of installer exe
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}\install_files\windows\temp
+      #     destination_folder: latest/windows
+      #     is_recursive: false
+      #     delete_if_exists: true
