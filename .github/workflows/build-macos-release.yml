@@ -540,7 +540,7 @@ jobs:
           echo "VERSION=\"${{ env.RELEASE_VERSION }}\"" > newFile.sh
 
           # Append the URL line
-          echo "URL=\"https://addaxaifilestorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos/base-install.tar.xz\"" >> newFile.sh
+          echo "URL=\"https://addaxaipremiumstorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos/base-install.tar.xz\"" >> newFile.sh
       
           # Append the original file's content
           cat "$FILE_PATH" >> newFile.sh
