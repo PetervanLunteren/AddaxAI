@@ -497,44 +497,6 @@ jobs:
         run: |
           mkdir "%GITHUB_WORKSPACE%\install_files\windows\temp"
           copy "%GITHUB_WORKSPACE%\install_files\windows\AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe" "%GITHUB_WORKSPACE%\install_files\windows\temp\"
-  
-      - name: Get Upload URL for Release
-        id: get_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ env.RELEASE_VERSION }}',
-            })
-            // Write the upload URL to the environment file instead of using set-output
-            const fs = require('fs');
-            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
-
-      - name: Remove existing asset if present
-        run: |
-          @echo off
-          setlocal
-          
-          REM List all assets in the release using curl
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }} > release_info.json
-          
-          REM Extract asset ID by matching the name
-          for /f "delims=" %%A in ('jq -r ".assets[] | select(.name == \"Windows-installer-${{ env.RELEASE_VERSION }}.exe\") | .id" release_info.json') do set asset_id=%%A
-          echo The asset_id is: %asset_id%
-          
-          REM Check if the asset exists and delete it
-          if not "%asset_id%"=="" (
-            curl -X DELETE ^
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
-              https://api.github.com/repos/${{ github.repository }}/releases/assets/%asset_id%
-          ) else (
-            echo Asset not found. Continue with upload...
-          )
-          endlocal
-        shell: cmd
 
       - name: Decode PFX certificate from GitHub Secrets
         run: |
@@ -571,8 +533,49 @@ jobs:
           } else {
             echo "Failed to remove PFX file."
           }
+  
+      - name: Get upload URL for asset release update
+        if: ${{ env.BRANCH_NAME == 'main' }}
+        id: get_release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: '${{ env.RELEASE_VERSION }}',
+            })
+            // Write the upload URL to the environment file instead of using set-output
+            const fs = require('fs');
+            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
 
-      - name: Upload Asset to GitHub Release
+      - name: Remove existing asset if present
+        if: ${{ env.BRANCH_NAME == 'main' }}
+        run: |
+          @echo off
+          setlocal
+          
+          REM List all assets in the release using curl
+          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }} > release_info.json
+          
+          REM Extract asset ID by matching the name
+          for /f "delims=" %%A in ('jq -r ".assets[] | select(.name == \"Windows-installer-${{ env.RELEASE_VERSION }}.exe\") | .id" release_info.json') do set asset_id=%%A
+          echo The asset_id is: %asset_id%
+          
+          REM Check if the asset exists and delete it
+          if not "%asset_id%"=="" (
+            curl -X DELETE ^
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
+              https://api.github.com/repos/${{ github.repository }}/releases/assets/%asset_id%
+          ) else (
+            echo Asset not found. Continue with upload...
+          )
+          endlocal
+        shell: cmd
+
+      - name: Upload asset to GitHub release
+        if: ${{ env.BRANCH_NAME == 'main' }}
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ env.UPLOAD_URL }}
