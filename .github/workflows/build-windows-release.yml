@@ -492,11 +492,13 @@ jobs:
           script-file: "install_files/windows/nsis-install-compiler.nsi"
           additional-plugin-paths: ${{ github.workspace }}/NSIS_Plugins/Plugins
           
-      - name: Move installer to private dir so that it can be uploaded with Action-AzureBlobUpload@v2
+      - name: Move installer 
         shell: cmd
         run: |
+          # move installer to private dir so that it can be uploaded with Action-AzureBlobUpload@v2
+          # and also remove the release tag so that the latest url stays constant
           mkdir "%GITHUB_WORKSPACE%\install_files\windows\temp"
-          copy "%GITHUB_WORKSPACE%\install_files\windows\AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe" "%GITHUB_WORKSPACE%\install_files\windows\temp\"
+          move "%GITHUB_WORKSPACE%\install_files\windows\AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe" "%GITHUB_WORKSPACE%\install_files\windows\temp\AddaxAI-installer.exe"
 
       - name: Decode PFX certificate from GitHub Secrets
         run: |
@@ -510,12 +512,12 @@ jobs:
       - name: Sign installer
         shell: cmd
         run: |
-          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" sign /f addax_cert.pfx /p "${{ secrets.CODE_SIGN_PASSWORD }}" /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 "${{ github.workspace }}/install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
+          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" sign /f addax_cert.pfx /p "${{ secrets.CODE_SIGN_PASSWORD }}" /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe"
   
       - name: Verify signature
         shell: cmd
         run: |
-          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" verify /pa /v "${{ github.workspace }}/install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
+          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" verify /pa /v "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe"
   
       - name: Remove the PFX file after signing
         run: |
@@ -579,7 +581,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "install_files/windows/temp/AddaxAI-${{ env.RELEASE_VERSION }}-installer.exe"
+          asset_path: "install_files/windows/temp/AddaxAI-installer.exe"
           asset_name: "Windows-installer-${{ env.RELEASE_VERSION }}.exe"
           asset_content_type: application/octet-stream
         env:
