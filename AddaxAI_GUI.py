@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 14 Mar 2025
+# Latest edit by Peter van Lunteren on 20 Mar 2025
 
 # TODO: DEPTH - add depth estimation model: https://pytorch.org/hub/intelisl_midas_v2/
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
@@ -5132,7 +5132,6 @@ def download_environment(env_name, model_vars, skip_ask=False):
         env_dir = os.path.join(AddaxAI_files, "envs")
         # set environment variables
         if os.name == 'nt': # windows
-            import py7zr
             download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/windows/envs/env-{env_name}.7z" # DEBUG remove beta
             download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/windows/envs/env-{env_name}.7z" # DEBUG remove beta
             filename = f"{env_name}.7z"
@@ -5217,29 +5216,52 @@ def download_environment(env_name, model_vars, skip_ask=False):
             except Exception as e:
                 print(f"Error removing file: {e}")
 
-        if filename.endswith(".7z"):
-            # Extract the .7z file
-            with py7zr.SevenZipFile(file_path, mode='r') as archive:
-                # Get the total number of files to be extracted
-                total_files = len(archive.getnames())
+        if filename.endswith(".zip"):
+            # open the zip file for extraction
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                # get the total number of files to be extracted
+                total_files = len(zip_ref.namelist())
                 extraction_progress_bar = tqdm(total=total_files, unit='file', desc="Extracting")
                 
-                # Extract each file and update the extraction progress
-                for member in archive.getnames():
-                    archive.extract([member], path=env_dir)
+                # extract each file and update the extraction progress
+                for member in zip_ref.namelist():
+                    zip_ref.extract(member, path=env_dir)
                     extraction_progress_bar.update(1)
                     extraction_progress_percentage = extraction_progress_bar.n / total_files
                     download_popup.update_extraction_progress(extraction_progress_percentage)
                 extraction_progress_bar.close()
             download_popup.close()
             print(f"Extraction successful. Files extracted to: {env_dir}")
-
-            # Remove the .7z file after extraction
+            
+            # Remove the zip file after extraction
             try:
-                os.remove(file_path)
-                print(f"Removed the .7z file: {file_path}")
+                os.remove(zip_file_path)
+                print(f"Removed the zip file: {zip_file_path}")
             except Exception as e:
                 print(f"Error removing file: {e}")
+            
+            # # Extract the .7z file DEBUG
+            # with py7zr.SevenZipFile(file_path, mode='r') as archive:
+            #     # Get the total number of files to be extracted
+            #     total_files = len(archive.getnames())
+            #     extraction_progress_bar = tqdm(total=total_files, unit='file', desc="Extracting")
+                
+            #     # Extract each file and update the extraction progress
+            #     for member in archive.getnames():
+            #         archive.extract([member], path=env_dir)
+            #         extraction_progress_bar.update(1)
+            #         extraction_progress_percentage = extraction_progress_bar.n / total_files
+            #         download_popup.update_extraction_progress(extraction_progress_percentage)
+            #     extraction_progress_bar.close()
+            # download_popup.close()
+            # print(f"Extraction successful. Files extracted to: {env_dir}")
+
+            # # Remove the .7z file after extraction
+            # try:
+            #     os.remove(file_path)
+            #     print(f"Removed the .7z file: {file_path}")
+            # except Exception as e:
+            #     print(f"Error removing file: {e}")
 
         # return succes
         return True
@@ -5256,12 +5278,15 @@ def download_environment(env_name, model_vars, skip_ask=False):
             extracted_dir = os.path.join(env_dir, f"env-{env_name}")
             if os.path.isdir(extracted_dir): 
                 shutil.rmtree(extracted_dir)
-                
+
+            # close popup
             download_popup.close()
                 
         except UnboundLocalError:
             # file_path is not set, meaning there is no incomplete download
             pass
+
+        # show internet options
         show_download_error_window_env(env_name, env_dir, model_vars)
 
 
