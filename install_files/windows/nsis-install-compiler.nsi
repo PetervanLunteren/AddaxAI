@@ -1,5 +1,5 @@
 # Script to create an NSIS exe to install AddaxAI on Windows
-# Peter van Lunteren, last edit on 10 Mar 2025
+# Peter van Lunteren, last edit on 20 Mar 2025
 # Var VERSION and URL will be defined by github actions by adding a line above like '!define VERSION "v6.34"'
 
 # Name and output location for the installer
@@ -110,8 +110,9 @@ Section "Install"
     DetailPrint "Downloading files..."
     StrCpy $archiveUrl "${URL}"
     StrCpy $archiveName "$INSTDIR\windows-${VERSION}.7z"
-    NSISdl::download $archiveUrl $archiveName
-    # inetc::get $archiveUrl $archiveName
+    # NSISdl::download $archiveUrl $archiveName 	# standard download did not work with Azure blob storage links
+    # inetc::get /SILENT $archiveUrl $archiveName 	# this one works, but does not properly show progress on files > 2GB
+    NScurl::http get $archiveUrl $archiveName 
     Pop $0
 
     # Check if download was successful
