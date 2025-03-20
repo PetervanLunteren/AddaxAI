@@ -122,7 +122,7 @@ else: # linux
 
 # set versions
 with open(os.path.join(AddaxAI_files, 'AddaxAI', 'version.txt'), 'r') as file:
-    current_EA_version = file.read().strip()
+    current_AA_version = file.read().strip()
 corresponding_model_info_version = "5"
 
 # colors
@@ -731,7 +731,7 @@ def csv_to_coco(detections_df, files_df, output_path):
             "url": "NA"
             }],
         "info": {
-            "description": f"Object detection results exported from AddaxAI (v{str(current_EA_version)}).",
+            "description": f"Object detection results exported from AddaxAI (v{str(current_AA_version)}).",
             "url": "https://addaxdatascience.com/addaxai/",
             "date_created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -970,7 +970,7 @@ def start_postprocess():
         
         # show error
         mb.showerror(title=error_txt[lang_idx],
-                     message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_EA_version + "): '" + str(error) + "'.",
+                     message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                      detail=traceback.format_exc())
         
         # close window
@@ -2119,7 +2119,7 @@ def start_or_continue_hitl():
                 
                 # show error
                 mb.showerror(title=error_txt[lang_idx],
-                            message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_EA_version + "): '" + str(error) + "'.",
+                            message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                             detail=traceback.format_exc())
     
     # start new session
@@ -2725,7 +2725,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     root.update()
     
     # create addaxai metadata
-    addaxai_metadata = {"addaxai_metadata" : {"version" : current_EA_version,
+    addaxai_metadata = {"addaxai_metadata" : {"version" : current_AA_version,
                                                   "custom_model" : custom_model_bool,
                                                   "custom_model_info" : {}}}
     if custom_model_bool:
@@ -2812,7 +2812,7 @@ def show_update_info(model_vars, model_name):
     su_root.columnconfigure(1, weight=1, minsize=300)
     lbl1 = customtkinter.CTkLabel(su_root, text=f"Update required for model {model_name}", font = main_label_font)
     lbl1.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), columnspan = 2, sticky="nsew")
-    lbl2 = customtkinter.CTkLabel(su_root, text=f"Minimum AddaxAI version required is v{model_vars['min_version']}, while your current version is v{current_EA_version}.")
+    lbl2 = customtkinter.CTkLabel(su_root, text=f"Minimum AddaxAI version required is v{model_vars['min_version']}, while your current version is v{current_AA_version}.")
     lbl2.grid(row=1, column=0, padx=PADX, pady=(0, PADY), columnspan = 2, sticky="nsew")
 
     # define functions
@@ -3451,7 +3451,7 @@ def start_deploy(simple_mode = False):
         else:
             # show error
             mb.showerror(title=error_txt[lang_idx],
-                        message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_EA_version + "): '" + str(error) + "'.",
+                        message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=subprocess_output + "\n" + traceback.format_exc())
             
             # close window
@@ -3806,7 +3806,7 @@ def select_detections(selection_dict, prepare_files):
             
             # show error
             mb.showerror(title=error_txt[lang_idx],
-                        message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_EA_version + "): '" + str(error) + "'.",
+                        message=["An error has occurred", "Ha ocurrido un error"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=traceback.format_exc())
 
     # change json paths back, if converted earlier
@@ -4354,7 +4354,7 @@ def extract_label_map_from_model(model_file):
         # show error
         mb.showerror(title=error_txt[lang_idx],
                      message=["An error has occurred when trying to extract classes", "Se ha producido un error al intentar extraer las clases"][lang_idx] +
-                                " (AddaxAI v" + current_EA_version + "): '" + str(error) + "'" +
+                                " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'" +
                                 [".\n\nWill try to proceed and produce the output json file, but post-processing features of AddaxAI will not work.",
                                  ".\n\nIntentará continuar y producir el archivo json de salida, pero las características de post-procesamiento de AddaxAI no funcionarán."][lang_idx],
                      detail=traceback.format_exc())
@@ -5035,7 +5035,7 @@ def show_release_info(release):
 
 # check if the user needs an update
 def needs_EA_update(required_version):
-    current_parts = list(map(int, current_EA_version.split('.')))
+    current_parts = list(map(int, current_AA_version.split('.')))
     required_parts = list(map(int, required_version.split('.')))
 
     # Pad the shorter version with zeros
@@ -5132,11 +5132,13 @@ def download_environment(env_name, model_vars, skip_ask=False):
         # set environment variables
         if os.name == 'nt': # windows
             import py7zr
-            download_url = f"https://storage.googleapis.com/github-release-files-storage-beta-versions/latest/windows-latest-env-{env_name}.7z"
+            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/windows/envs/env-{env_name}.7z" # DEBUG remove beta
+            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/windows/envs/env-{env_name}.7z" # DEBUG remove beta
             filename = f"{env_name}.7z"
         elif platform.system() == 'Darwin': # macos
             import tarfile
-            download_url = f"https://storage.googleapis.com/github-release-files-storage-beta-versions/latest/macos-latest-env-{env_name}.tar.xz"
+            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/macos/envs/env-{env_name}.tar.xz" # DEBUG remove beta
+            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/macos/envs/env-{env_name}.tar.xz" # DEBUG remove beta
             filename = f"{env_name}.tar.xz"
         else: # linux
             return False # linux install this during setup 
@@ -5148,12 +5150,21 @@ def download_environment(env_name, model_vars, skip_ask=False):
             "Connection": "keep-alive"
         }
 
-        # some envs have multiple files to be downloaded
         # check the total size first
-        total_size = 0
-        response = requests.get(download_url, stream=True, timeout=30, headers=headers)
-        response.raise_for_status()
-        total_size += int(response.headers.get('content-length', 0))
+        try:
+            # first try the pinned version
+            total_size = 0
+            response = requests.get(download_pinned_url, stream=True, timeout=60, headers=headers)
+            response.raise_for_status()
+            total_size += int(response.headers.get('content-length', 0))
+            download_url = download_pinned_url
+        except:
+            # if that link doesn't woprk anymore, revert back to the latest version
+            total_size = 0
+            response = requests.get(download_latest_url, stream=True, timeout=60, headers=headers)
+            response.raise_for_status()
+            total_size += int(response.headers.get('content-length', 0))
+            download_url = download_latest_url
 
         # check if the user wants to download
         if not skip_ask:
@@ -5168,7 +5179,7 @@ def download_environment(env_name, model_vars, skip_ask=False):
         download_popup = EnvDownloadProgressWindow(env_title = env_name, total_size_str = format_size(total_size))
         download_popup.open()
         file_path = os.path.join(env_dir, filename)
-        response = requests.get(download_url, stream=True, timeout=30, headers=headers)
+        response = requests.get(download_url, stream=True, timeout=60, headers=headers)
         response.raise_for_status()
         with open(file_path, 'wb') as file:
             for chunk in response.iter_content(chunk_size=65536):
@@ -5887,9 +5898,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     liscense_present = False if license == "" else True
     needs_EA_update_bool = needs_EA_update(min_version)
     if needs_EA_update_bool:
-        update_var = f"Your current AddaxAI version (v{current_EA_version}) will not be able to run this model. An update is required."
+        update_var = f"Your current AddaxAI version (v{current_AA_version}) will not be able to run this model. An update is required."
     else:
-        update_var = f"Current version of AddaxAI (v{current_EA_version}) is able to use this model. No update required."
+        update_var = f"Current version of AddaxAI (v{current_AA_version}) is able to use this model. No update required."
     
     # define functions
     def close():
@@ -7894,7 +7905,7 @@ customtkinter.set_default_color_theme(os.path.join(AddaxAI_files, "AddaxAI", "th
 
 # ADVANCED MODE WINDOW 
 advanc_mode_win = customtkinter.CTkToplevel(root)
-advanc_mode_win.title(f"AddaxAI v{current_EA_version} - Advanced mode")
+advanc_mode_win.title(f"AddaxAI v{current_AA_version} - Advanced mode")
 advanc_mode_win.geometry("+20+20")
 advanc_mode_win.protocol("WM_DELETE_WINDOW", on_toplevel_close)
 advanc_bg_image = customtkinter.CTkImage(PIL_sidebar, size=(ADV_WINDOW_WIDTH, 10))
@@ -8932,7 +8943,7 @@ customtkinter.set_default_color_theme(os.path.join(AddaxAI_files, "AddaxAI", "th
 
 # set up window
 simple_mode_win = customtkinter.CTkToplevel(root)
-simple_mode_win.title(f"AddaxAI v{current_EA_version} - Simple mode")
+simple_mode_win.title(f"AddaxAI v{current_AA_version} - Simple mode")
 simple_mode_win.geometry("+20+20")
 simple_mode_win.protocol("WM_DELETE_WINDOW", on_toplevel_close)
 simple_mode_win.columnconfigure(0, weight=1, minsize=500)
