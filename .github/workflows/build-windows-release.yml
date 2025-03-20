@@ -95,12 +95,13 @@ jobs:
           call "%conda_exe%" clean --all --yes --force-pkgs-dirs
 
           @REM zip
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-pytorch.7z" "${{ github.workspace }}\temp\env-pytorch\*"
+          @REM DEBUG "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-pytorch.7z" "${{ github.workspace }}\temp\env-pytorch\*"
+          "C:\Program Files\7-Zip\7z.exe" a -tzip -mx9 "${{ github.workspace }}\temp\env-pytorch.zip" "${{ github.workspace }}\temp\env-pytorch\*"
 
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-pytorch"
 
-      - name: Upload pinned version of env-pytorch.7z
+      - name: Upload pinned version of env-pytorch.zip
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
@@ -110,7 +111,7 @@ jobs:
           is_recursive: false
           delete_if_exists: true
 
-      - name: Upload latest version of env-pytorch.7z
+      - name: Upload latest version of env-pytorch.zip
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
@@ -120,10 +121,10 @@ jobs:
           is_recursive: false
           delete_if_exists: true
 
-      - name: Remove env-pytorch.7z
+      - name: Remove env-pytorch.zip
         shell: cmd
         run: |
-          del "${{ github.workspace }}\temp\env-pytorch.7z"
+          del "${{ github.workspace }}\temp\env-pytorch.zip"
           rmdir /s /q "${{ github.workspace }}\temp"
 
       - name: Build env-tensorflow
@@ -177,12 +178,13 @@ jobs:
           call "%conda_exe%" clean --all --yes --force-pkgs-dirs
 
           @REM zip
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-tensorflow.7z" "${{ github.workspace }}\temp\env-tensorflow\*"
+          @REM DEBUG "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-tensorflow.7z" "${{ github.workspace }}\temp\env-tensorflow\*"
+          "C:\Program Files\7-Zip\7z.exe" a -tzip -mx9 "${{ github.workspace }}\temp\env-tensorflow.zip" "${{ github.workspace }}\temp\env-tensorflow\*"
 
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-tensorflow"
 
-      - name: Upload pinned version of env-tensorflow.7z
+      - name: Upload pinned version of env-tensorflow.zip
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
@@ -192,7 +194,7 @@ jobs:
           is_recursive: false
           delete_if_exists: true
 
-      - name: Upload latest version of env-tensorflow.7z
+      - name: Upload latest version of env-tensorflow.zip
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
@@ -202,10 +204,10 @@ jobs:
           is_recursive: false
           delete_if_exists: true
 
-      - name: Remove env-tensorflow.7z
+      - name: Remove env-tensorflow.zip
         shell: cmd
         run: |
-          del "${{ github.workspace }}\temp\env-tensorflow.7z"
+          del "${{ github.workspace }}\temp\env-tensorflow.zip"
           rmdir /s /q "${{ github.workspace }}\temp"
 
       - name: Build env-speciesnet
@@ -244,12 +246,13 @@ jobs:
           call "%conda_exe%" clean --all --yes --force-pkgs-dirs
 
           @REM zip
-          "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-speciesnet.7z" "${{ github.workspace }}\temp\env-speciesnet\*"
+          @REM DEBUG "C:\Program Files\7-Zip\7z.exe" a -t7z -mx9 "${{ github.workspace }}\temp\env-speciesnet.7z" "${{ github.workspace }}\temp\env-speciesnet\*"
+          "C:\Program Files\7-Zip\7z.exe" a -tzip -mx9 "${{ github.workspace }}\temp\env-speciesnet.zip" "${{ github.workspace }}\temp\env-speciesnet\*"
 
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-speciesnet"
 
-      - name: Upload pinned version of env-speciesnet.7z
+      - name: Upload pinned version of env-speciesnet.zip
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
@@ -259,7 +262,7 @@ jobs:
           is_recursive: false
           delete_if_exists: true
 
-      - name: Upload latest version of env-speciesnet.7z
+      - name: Upload latest version of env-speciesnet.zip
         uses: LanceMcCarthy/Action-AzureBlobUpload@v2
         with:
           connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
@@ -269,10 +272,10 @@ jobs:
           is_recursive: false
           delete_if_exists: true
 
-      - name: Remove env-speciesnet.7z
+      - name: Remove env-speciesnet.zip
         shell: cmd
         run: |
-          del "${{ github.workspace }}\temp\env-speciesnet.7z"
+          del "${{ github.workspace }}\temp\env-speciesnet.zip"
           rmdir /s /q "${{ github.workspace }}\temp"
 
       - name: Build base install
@@ -365,7 +368,6 @@ jobs:
 
           @REM install mamba
           call "%conda_exe%" install -n base -c conda-forge mamba -y
-          @REM DEBUG
           set conda_exe=${{ env.CONDA_DIR }}\condabin\mamba.bat
           
           @REM build env-base
