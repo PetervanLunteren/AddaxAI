@@ -556,11 +556,11 @@ jobs:
       - name: Compress the macOS installer
         run: |
           cd "${{ github.workspace }}/install_files/macos"
-          zip -r "macos-${{ env.RELEASE_VERSION }}-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
+          zip -r "MacOS-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
 
           # copy to a private dir so that it can be uploaded with Action-AzureBlobUpload@v2
           mkdir -p temp
-          cp "macos-${{ env.RELEASE_VERSION }}-installer.zip" temp/
+          mv "MacOS-installer.zip" temp/
 
       - name: Get Upload URL for Release
         if: ${{ env.BRANCH_NAME == 'main' }}
@@ -607,7 +607,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "${{ github.workspace }}/install_files/macos/macos-${{ env.RELEASE_VERSION }}-installer.zip"
+          asset_path: "${{ github.workspace }}/install_files/macos/temp/MacOS-installer.zip"
           asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
           asset_content_type: application/octet-stream
         env:
