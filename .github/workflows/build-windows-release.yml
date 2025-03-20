@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       info:
-        description: "Here you can manually trigger the build. ➡️ It will automatically fetch the latest release tag. ➡️ Selecting branch 'main' will upload to the official Azure bucket. ➡️ Any other branch will upload to the beta-versions bucket."
+        description: "Here you can manually trigger the build. It will automatically fetch the latest release tag. Selecting branch 'main' will upload to the official Azure bucket, while any other branch will upload to the beta-versions bucket."
         required: false
         default: "[dummy input field - no need to fill in]"
   release:
@@ -469,6 +469,13 @@ jobs:
           curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Inetc_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
           dir "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
           7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
+        shell: cmd
+
+      - name: Install NScurl Plugin
+        run: |
+          curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\NScurl.zip" "https://github.com/negrutiu/nsis-nscurl/releases/download/v25.3.12.183/NScurl.zip"
+          7z x -bb3 -o"%GITHUB_WORKSPACE%\NScurl" "%GITHUB_WORKSPACE%\NScurl.zip"
+          xcopy "%GITHUB_WORKSPACE%\NScurl" "%GITHUB_WORKSPACE%\NSIS_Plugins" /E /Y
         shell: cmd
 
       - name: Append VERSION and URL to NSIS script
