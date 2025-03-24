@@ -5132,9 +5132,9 @@ def download_environment(env_name, model_vars, skip_ask=False):
         env_dir = os.path.join(AddaxAI_files, "envs")
         # set environment variables
         if os.name == 'nt': # windows
-            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/windows/envs/env-{env_name}.7z" # DEBUG remove beta
-            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/windows/envs/env-{env_name}.7z" # DEBUG remove beta
-            filename = f"{env_name}.7z"
+            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/windows/envs/env-{env_name}.zip" # DEBUG remove beta
+            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/windows/envs/env-{env_name}.zip" # DEBUG remove beta
+            filename = f"{env_name}.zip"
         elif platform.system() == 'Darwin': # macos
             import tarfile
             download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/macos/envs/env-{env_name}.tar.xz" # DEBUG remove beta
