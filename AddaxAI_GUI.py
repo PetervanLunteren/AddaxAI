@@ -5217,8 +5217,9 @@ def download_environment(env_name, model_vars, skip_ask=False):
                 print(f"Error removing file: {e}")
 
         if filename.endswith(".zip"):
+            import zipfile
             # open the zip file for extraction
-            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+            with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 # get the total number of files to be extracted
                 total_files = len(zip_ref.namelist())
                 extraction_progress_bar = tqdm(total=total_files, unit='file', desc="Extracting")
@@ -5235,8 +5236,8 @@ def download_environment(env_name, model_vars, skip_ask=False):
             
             # Remove the zip file after extraction
             try:
-                os.remove(zip_file_path)
-                print(f"Removed the zip file: {zip_file_path}")
+                os.remove(file_path)
+                print(f"Removed the zip file: {file_path}")
             except Exception as e:
                 print(f"Error removing file: {e}")
             
