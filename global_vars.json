@@ -30,5 +30,7 @@
     "var_exp_format_idx": 0,
     "var_thresh": 0.3,
     "var_thresh_default": 0.3,
-    "var_scale_warning_shown": false
+    "var_scale_warning_shown": false,
+    "var_sppnet_location_idx": 0,
+    "speciesnet_warning_shown": false
 }
