@@ -56,6 +56,7 @@
 #import packages like a very pointy half christmas tree
 import os
 import re
+import io
 import sys
 import cv2
 import json
@@ -851,6 +852,309 @@ dtypes = {
     'max_confidence': 'float64',
 }
 
+# create dict with country codes for speciesnet
+countries = [
+    "ABW    \tAruba",
+    "AFG    \tAfghanistan",
+    "AGO    \tAngola",
+    "AIA    \tAnguilla",
+    "ALA    \t\u00c5land Islands",
+    "ALB    \tAlbania",
+    "AND    \tAndorra",
+    "ARE    \tUnited Arab Emirates",
+    "ARG    \tArgentina",
+    "ARM    \tArmenia",
+    "ASM    \tAmerican Samoa",
+    "ATA    \tAntarctica",
+    "ATF    \tFrench Southern Territories",
+    "ATG    \tAntigua and Barbuda",
+    "AUS    \tAustralia",
+    "AUT    \tAustria",
+    "AZE    \tAzerbaijan",
+    "BDI    \tBurundi",
+    "BEL    \tBelgium",
+    "BEN    \tBenin",
+    "BES    \tBonaire, Sint Eustatius and Saba",
+    "BFA    \tBurkina Faso",
+    "BGD    \tBangladesh",
+    "BGR    \tBulgaria",
+    "BHR    \tBahrain",
+    "BHS    \tBahamas",
+    "BIH    \tBosnia and Herzegovina",
+    "BLM    \tSaint Barth\u00e9lemy",
+    "BLR    \tBelarus",
+    "BLZ    \tBelize",
+    "BMU    \tBermuda",
+    "BOL    \tBolivia, Plurinational State of",
+    "BRA    \tBrazil",
+    "BRB    \tBarbados",
+    "BRN    \tBrunei Darussalam",
+    "BTN    \tBhutan",
+    "BVT    \tBouvet Island",
+    "BWA    \tBotswana",
+    "CAF    \tCentral African Republic",
+    "CAN    \tCanada",
+    "CCK    \tCocos (Keeling) Islands",
+    "CHE    \tSwitzerland",
+    "CHL    \tChile",
+    "CHN    \tChina",
+    "CIV    \tC\u00f4te d'Ivoire",
+    "CMR    \tCameroon",
+    "COD    \tCongo, Democratic Republic of the",
+    "COG    \tCongo",
+    "COK    \tCook Islands",
+    "COL    \tColombia",
+    "COM    \tComoros",
+    "CPV    \tCabo Verde",
+    "CRI    \tCosta Rica",
+    "CUB    \tCuba",
+    "CUW    \tCura\u00e7ao",
+    "CXR    \tChristmas Island",
+    "CYM    \tCayman Islands",
+    "CYP    \tCyprus",
+    "CZE    \tCzechia",
+    "DEU    \tGermany",
+    "DJI    \tDjibouti",
+    "DMA    \tDominica",
+    "DNK    \tDenmark",
+    "DOM    \tDominican Republic",
+    "DZA    \tAlgeria",
+    "ECU    \tEcuador",
+    "EGY    \tEgypt",
+    "ERI    \tEritrea",
+    "ESH    \tWestern Sahara",
+    "ESP    \tSpain",
+    "EST    \tEstonia",
+    "ETH    \tEthiopia",
+    "FIN    \tFinland",
+    "FJI    \tFiji",
+    "FLK    \tFalkland Islands (Malvinas)",
+    "FRA    \tFrance",
+    "FRO    \tFaroe Islands",
+    "FSM    \tMicronesia, Federated States of",
+    "GAB    \tGabon",
+    "GBR    \tUnited Kingdom of Great Britain and Northern Ireland",
+    "GEO    \tGeorgia",
+    "GGY    \tGuernsey",
+    "GHA    \tGhana",
+    "GIB    \tGibraltar",
+    "GIN    \tGuinea",
+    "GLP    \tGuadeloupe",
+    "GMB    \tGambia",
+    "GNB    \tGuinea-Bissau",
+    "GNQ    \tEquatorial Guinea",
+    "GRC    \tGreece",
+    "GRD    \tGrenada",
+    "GRL    \tGreenland",
+    "GTM    \tGuatemala",
+    "GUF    \tFrench Guiana",
+    "GUM    \tGuam",
+    "GUY    \tGuyana",
+    "HKG    \tHong Kong",
+    "HMD    \tHeard Island and McDonald Islands",
+    "HND    \tHonduras",
+    "HRV    \tCroatia",
+    "HTI    \tHaiti",
+    "HUN    \tHungary",
+    "IDN    \tIndonesia",
+    "IMN    \tIsle of Man",
+    "IND    \tIndia",
+    "IOT    \tBritish Indian Ocean Territory",
+    "IRL    \tIreland",
+    "IRN    \tIran, Islamic Republic of",
+    "IRQ    \tIraq",
+    "ISL    \tIceland",
+    "ISR    \tIsrael",
+    "ITA    \tItaly",
+    "JAM    \tJamaica",
+    "JEY    \tJersey",
+    "JOR    \tJordan",
+    "JPN    \tJapan",
+    "KAZ    \tKazakhstan",
+    "KEN    \tKenya",
+    "KGZ    \tKyrgyzstan",
+    "KHM    \tCambodia",
+    "KIR    \tKiribati",
+    "KNA    \tSaint Kitts and Nevis",
+    "KOR    \tKorea, Republic of",
+    "KWT    \tKuwait",
+    "LAO    \tLao People's Democratic Republic",
+    "LBN    \tLebanon",
+    "LBR    \tLiberia",
+    "LBY    \tLibya",
+    "LCA    \tSaint Lucia",
+    "LIE    \tLiechtenstein",
+    "LKA    \tSri Lanka",
+    "LSO    \tLesotho",
+    "LTU    \tLithuania",
+    "LUX    \tLuxembourg",
+    "LVA    \tLatvia",
+    "MAC    \tMacao",
+    "MAF    \tSaint Martin (French part)",
+    "MAR    \tMorocco",
+    "MCO    \tMonaco",
+    "MDA    \tMoldova, Republic of",
+    "MDG    \tMadagascar",
+    "MDV    \tMaldives",
+    "MEX    \tMexico",
+    "MHL    \tMarshall Islands",
+    "MKD    \tNorth Macedonia",
+    "MLI    \tMali",
+    "MLT    \tMalta",
+    "MMR    \tMyanmar",
+    "MNE    \tMontenegro",
+    "MNG    \tMongolia",
+    "MNP    \tNorthern Mariana Islands",
+    "MOZ    \tMozambique",
+    "MRT    \tMauritania",
+    "MSR    \tMontserrat",
+    "MTQ    \tMartinique",
+    "MUS    \tMauritius",
+    "MWI    \tMalawi",
+    "MYS    \tMalaysia",
+    "MYT    \tMayotte",
+    "NAM    \tNamibia",
+    "NCL    \tNew Caledonia",
+    "NER    \tNiger",
+    "NFK    \tNorfolk Island",
+    "NGA    \tNigeria",
+    "NIC    \tNicaragua",
+    "NIU    \tNiue",
+    "NLD    \tNetherlands, Kingdom of the",
+    "NOR    \tNorway",
+    "NPL    \tNepal",
+    "NRU    \tNauru",
+    "NZL    \tNew Zealand",
+    "OMN    \tOman",
+    "PAK    \tPakistan",
+    "PAN    \tPanama",
+    "PCN    \tPitcairn",
+    "PER    \tPeru",
+    "PHL    \tPhilippines",
+    "PLW    \tPalau",
+    "PNG    \tPapua New Guinea",
+    "POL    \tPoland",
+    "PRI    \tPuerto Rico",
+    "PRK    \tKorea, Democratic People's Republic of",
+    "PRT    \tPortugal",
+    "PRY    \tParaguay",
+    "PSE    \tPalestine, State of",
+    "PYF    \tFrench Polynesia",
+    "QAT    \tQatar",
+    "REU    \tR\u00e9union",
+    "ROU    \tRomania",
+    "RUS    \tRussian Federation",
+    "RWA    \tRwanda",
+    "SAU    \tSaudi Arabia",
+    "SDN    \tSudan",
+    "SEN    \tSenegal",
+    "SGP    \tSingapore",
+    "SGS    \tSouth Georgia and the South Sandwich Islands",
+    "SHN    \tSaint Helena, Ascension and Tristan da Cunha",
+    "SJM    \tSvalbard and Jan Mayen",
+    "SLB    \tSolomon Islands",
+    "SLE    \tSierra Leone",
+    "SLV    \tEl Salvador",
+    "SMR    \tSan Marino",
+    "SOM    \tSomalia",
+    "SPM    \tSaint Pierre and Miquelon",
+    "SRB    \tSerbia",
+    "SSD    \tSouth Sudan",
+    "STP    \tSao Tome and Principe",
+    "SUR    \tSuriname",
+    "SVK    \tSlovakia",
+    "SVN    \tSlovenia",
+    "SWE    \tSweden",
+    "SWZ    \tEswatini",
+    "SXM    \tSint Maarten (Dutch part)",
+    "SYC    \tSeychelles",
+    "SYR    \tSyrian Arab Republic",
+    "TCA    \tTurks and Caicos Islands",
+    "TCD    \tChad",
+    "TGO    \tTogo",
+    "THA    \tThailand",
+    "TJK    \tTajikistan",
+    "TKL    \tTokelau",
+    "TKM    \tTurkmenistan",
+    "TLS    \tTimor-Leste",
+    "TON    \tTonga",
+    "TTO    \tTrinidad and Tobago",
+    "TUN    \tTunisia",
+    "TUR    \tT\u00fcrkiye",
+    "TUV    \tTuvalu",
+    "TWN    \tTaiwan, Province of China",
+    "TZA    \tTanzania, United Republic of",
+    "UGA    \tUganda",
+    "UKR    \tUkraine",
+    "UMI    \tUnited States Minor Outlying Islands",
+    "URY    \tUruguay",
+    "USA-AL    \tUnited States of America - Alabama",
+    "USA-AK    \tUnited States of America - Alaska",
+    "USA-AZ    \tUnited States of America - Arizona",
+    "USA-AR    \tUnited States of America - Arkansas",
+    "USA-CA    \tUnited States of America - California",
+    "USA-CO    \tUnited States of America - Colorado",
+    "USA-CT    \tUnited States of America - Connecticut",
+    "USA-DE    \tUnited States of America - Delaware",
+    "USA-FL    \tUnited States of America - Florida",
+    "USA-GA    \tUnited States of America - Georgia",
+    "USA-HI    \tUnited States of America - Hawaii",
+    "USA-ID    \tUnited States of America - Idaho",
+    "USA-IL    \tUnited States of America - Illinois",
+    "USA-IN    \tUnited States of America - Indiana",
+    "USA-IA    \tUnited States of America - Iowa",
+    "USA-KS    \tUnited States of America - Kansas",
+    "USA-KY    \tUnited States of America - Kentucky",
+    "USA-LA    \tUnited States of America - Louisiana",
+    "USA-ME    \tUnited States of America - Maine",
+    "USA-MD    \tUnited States of America - Maryland",
+    "USA-MA    \tUnited States of America - Massachusetts",
+    "USA-MI    \tUnited States of America - Michigan",
+    "USA-MN    \tUnited States of America - Minnesota",
+    "USA-MS    \tUnited States of America - Mississippi",
+    "USA-MO    \tUnited States of America - Missouri",
+    "USA-MT    \tUnited States of America - Montana",
+    "USA-NE    \tUnited States of America - Nebraska",
+    "USA-NV    \tUnited States of America - Nevada",
+    "USA-NH    \tUnited States of America - New Hampshire",
+    "USA-NJ    \tUnited States of America - New Jersey",
+    "USA-NM    \tUnited States of America - New Mexico",
+    "USA-NY    \tUnited States of America - New York",
+    "USA-NC    \tUnited States of America - North Carolina",
+    "USA-ND    \tUnited States of America - North Dakota",
+    "USA-OH    \tUnited States of America - Ohio",
+    "USA-OK    \tUnited States of America - Oklahoma",
+    "USA-OR    \tUnited States of America - Oregon",
+    "USA-PA    \tUnited States of America - Pennsylvania",
+    "USA-RI    \tUnited States of America - Rhode Island",
+    "USA-SC    \tUnited States of America - South Carolina",
+    "USA-SD    \tUnited States of America - South Dakota",
+    "USA-TN    \tUnited States of America - Tennessee",
+    "USA-TX    \tUnited States of America - Texas",
+    "USA-UT    \tUnited States of America - Utah",
+    "USA-VT    \tUnited States of America - Vermont",
+    "USA-VA    \tUnited States of America - Virginia",
+    "USA-WA    \tUnited States of America - Washington",
+    "USA-WV    \tUnited States of America - West Virginia",
+    "USA-WI    \tUnited States of America - Wisconsin",
+    "USA-WY    \tUnited States of America - Wyoming",
+    "UZB    \tUzbekistan",
+    "VAT    \tHoly See",
+    "VCT    \tSaint Vincent and the Grenadines",
+    "VEN    \tVenezuela, Bolivarian Republic of",
+    "VGB    \tVirgin Islands (British)",
+    "VIR    \tVirgin Islands (U.S.)",
+    "VNM    \tViet Nam",
+    "VUT    \tVanuatu",
+    "WLF    \tWallis and Futuna",
+    "WSM    \tSamoa",
+    "YEM    \tYemen",
+    "ZAF    \tSouth Africa",
+    "ZMB    \tZambia",
+    "ZWE    \tZimbabwe"
+]
+# for simplicity, the same list is used for both english as spanish I'll fix everything properly in the new version
+dpd_options_sppnet_location = [countries, countries]
 
 # open progress window and initiate the post-process progress window
 def start_postprocess():
@@ -2881,6 +3185,18 @@ def contains_special_characters(path):
             return [True, char]
     return [False, ""]
 
+# needed for speciesnet
+speciesnet_warning_message = ["The SpeciesNet progress window might look a bit different. We're currently "
+                              "developing a completely new frontend, so we haven't spent much time refining"
+                              " this version. This is just a temporary solution—we wanted to ensure you "
+                              "could use SpeciesNet right away, even if the progress bars look different. "
+                              "Rest assured, it will work just as well.", "La ventana de progreso de SpeciesNet"
+                              " puede parecer un poco diferente. Actualmente estamos desarrollando un frontend"
+                              " completamente nuevo, por lo que no hemos dedicado mucho tiempo a perfeccionar "
+                              "esta versión. Esto es sólo una solución temporal, queríamos asegurarnos de que "
+                              "usted podría utilizar SpeciesNet de inmediato, incluso si las barras de progreso"
+                              " se ven diferentes. Puede estar seguro de que funcionará igual de bien."]
+
 # open progress window and initiate the model deployment
 def start_deploy(simple_mode = False):
     # log
@@ -2944,6 +3260,43 @@ def start_deploy(simple_mode = False):
                                     f"\n\nAcepta vídeos en formato {VIDEO_EXTENSIONS}."][lang_idx])
         btn_start_deploy.configure(state=NORMAL)
         sim_run_btn.configure(state=NORMAL)
+        return
+
+    # run species net
+    if var_cls_model.get() == "SpeciesNet":
+        
+        # check if env-speciesnet needs to be downloaded
+        model_vars = load_model_vars(model_type = "cls")
+        bool, env_name = environment_needs_downloading(model_vars)
+        if bool: # env needs be downloaded, ask user 
+            user_wants_to_download = download_environment(env_name, model_vars)
+            if not user_wants_to_download:
+                btn_start_deploy.configure(state=NORMAL)
+                sim_run_btn.configure(state=NORMAL)
+                return  # user doesn't want to download
+
+        # warn user
+        speciesnet_warning_shown = load_global_vars()["speciesnet_warning_shown"]
+        if not speciesnet_warning_shown:
+            mb.showinfo(["SpeciesNet progress", "Progresos de SpeciesNet"][lang_idx], speciesnet_warning_message[lang_idx])
+            write_global_vars({"speciesnet_warning_shown": True})
+
+        # open progress window
+        sppnet_output_window = SpeciesNetOutputWindow()
+        sppnet_output_window.add_string("SpeciesNet is starting up...\n\n")
+
+        # deploy speciesnet
+        return_value = deploy_speciesnet(chosen_folder, sppnet_output_window)
+        
+        # due to a package conflict on macos there might need to be a restart
+        if return_value == "restart":
+            sppnet_output_window.add_string("\n\nRestarting SpeciesNet...\n\n")
+            deploy_speciesnet(chosen_folder, sppnet_output_window)
+            
+        # enable button
+        btn_start_deploy.configure(state=NORMAL)
+        sim_run_btn.configure(state=NORMAL)
+        sppnet_output_window.close()
         return
 
     # note if user is video analysing without smoothing
@@ -3057,7 +3410,8 @@ def start_deploy(simple_mode = False):
     # save simple settings for next time
     write_global_vars({
         "lang_idx": lang_idx,
-        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get())
+        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
+        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),
     })
 
     # simple_mode and advanced mode shared image settings
@@ -4191,7 +4545,8 @@ def indent(elem, level=0):
 def on_toplevel_close():
     write_global_vars({
         "lang_idx": lang_idx,
-        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get())
+        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
+        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
         })
     root.destroy()
 
@@ -4228,6 +4583,330 @@ def fix_images(image_paths):
                     img_copy.save(image_path, format=img.format, exif=img.info.get('exif'))
             except Exception as e:
                 print(f"Could not fix image: {e}")
+
+# remove non ansi characters from text
+def remove_ansi_escape_sequences(text):
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+# classes to open window with speciesnet output
+class SpeciesNetOutputWindow:
+    def __init__(self):
+        self.sppnet_output_window_root = customtkinter.CTkToplevel(root)
+        self.sppnet_output_window_root.title("SpeciesNet output")
+        self.text_area = tk.Text(self.sppnet_output_window_root, wrap=tk.WORD, height=7, width=85)
+        self.text_area.pack(padx=10, pady=10)
+        self.close_button = tk.Button(self.sppnet_output_window_root, text="Cancel", command=self.cancel)
+        self.close_button.pack(pady=5)
+        self.sppnet_output_window_root.protocol("WM_DELETE_WINDOW", self.close)  # Handle window close
+    
+    def add_string(self, text, process=None):
+        if process is not None:
+            self.process = process
+        if text.strip():
+            print(text)
+            
+            clean_text = remove_ansi_escape_sequences(text)
+
+            # Check if this is a progress bar update
+            is_pbar = "%" in clean_text
+
+            if not is_pbar:
+                # Insert non-progress-bar messages above the progress section
+                self.text_area.insert(tk.END, clean_text + "\n")  # Insert at the top
+                self.text_area.see(tk.END)
+                self.sppnet_output_window_root.update()
+                return  # Exit function early, don't process as a progress bar
+
+            # Ensure attributes exist before updating
+            if not hasattr(self, "detector_preprocess_line"):
+                self.detector_preprocess_line =   " Detector preprocess:   0%\n"
+            if not hasattr(self, "detector_predict_line"):
+                self.detector_predict_line =      " Detector predict:      0%\n"
+            if not hasattr(self, "classifier_preprocess_line"):
+                self.classifier_preprocess_line = " Classifier preprocess: 0%\n"
+            if not hasattr(self, "classifier_predict_line"):
+                self.classifier_predict_line =    " Classifier predict:    0%\n"
+            if not hasattr(self, "geolocation_line"):
+                self.geolocation_line =           " Geolocation:           0%\n"
+
+            # Update progress bar lines based on prefixes
+            if clean_text.startswith("Detector preprocess"):
+                self.detector_preprocess_line = clean_text
+            elif clean_text.startswith("Detector predict"):
+                self.detector_predict_line = clean_text
+            elif clean_text.startswith("Classifier preprocess"):
+                self.classifier_preprocess_line = clean_text
+            elif clean_text.startswith("Classifier predict"):
+                self.classifier_predict_line = clean_text
+            elif clean_text.startswith("Geolocation"):
+                self.geolocation_line = clean_text
+
+            # Insert all progress bars together to maintain order
+            self.text_area.insert(tk.END, f"\n {self.detector_preprocess_line}", "progress")
+            self.text_area.insert(tk.END, f" {self.detector_predict_line}", "progress")
+            self.text_area.insert(tk.END, f" {self.classifier_preprocess_line}", "progress")
+            self.text_area.insert(tk.END, f" {self.classifier_predict_line}", "progress")
+            self.text_area.insert(tk.END, f" {self.geolocation_line}", "progress")
+
+            # Ensure scrolling to the latest update
+            self.text_area.see(tk.END)
+            self.sppnet_output_window_root.update()
+    
+    def close(self):
+        self.sppnet_output_window_root.destroy()
+        
+    def cancel(self):
+        global cancel_speciesnet_deploy_pressed
+        global btn_start_deploy
+        global sim_run_btn
+        if os.name == 'nt':
+            Popen(f"TASKKILL /F /PID {self.process.pid} /T")
+        else:
+            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+        btn_start_deploy.configure(state=NORMAL)
+        sim_run_btn.configure(state=NORMAL)
+        cancel_speciesnet_deploy_pressed = True
+        self.sppnet_output_window_root.destroy()
+
+# temporary function to deploy speciesnet
+warn_smooth_vid = True # TODO: does there need to be a video warning?
+# TODO: simple mode integration. 
+def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
+    # log
+    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    
+    # prepare variables
+    chosen_folder = str(Path(chosen_folder))
+    python_executable = get_python_interprator("speciesnet")
+    sppnet_output_file = os.path.join(chosen_folder, "sppnet_output_file.json")
+
+    # save settings for next time
+    write_global_vars({
+        "lang_idx": lang_idx,
+        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
+        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
+    })
+    
+    # save advanced settings for next time
+    if not simple_mode:
+        write_global_vars({
+            "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
+            "var_det_model_path": var_det_model_path.get(),
+            "var_det_model_short": var_det_model_short.get(),
+            "var_exclude_subs": var_exclude_subs.get(),
+            "var_use_custom_img_size_for_deploy": var_use_custom_img_size_for_deploy.get(),
+            "var_image_size_for_deploy": var_image_size_for_deploy.get() if var_image_size_for_deploy.get().isdigit() else "",
+            "var_abs_paths": var_abs_paths.get(),
+            "var_disable_GPU": var_disable_GPU.get(),
+            "var_process_img": var_process_img.get(),
+            "var_use_checkpnts": var_use_checkpnts.get(),
+            "var_checkpoint_freq": var_checkpoint_freq.get() if var_checkpoint_freq.get().isdecimal() else "",
+            "var_cont_checkpnt": var_cont_checkpnt.get(),
+            "var_process_vid": var_process_vid.get(),
+            "var_not_all_frames": var_not_all_frames.get(),
+            "var_nth_frame": var_nth_frame.get() if var_nth_frame.get().isdecimal() else ""
+        })
+    
+    # get param values
+    model_vars = load_model_vars()
+    if simple_mode:
+        # cls_class_thresh = model_vars["var_cls_class_thresh_default"] # DEBUG remove?
+        cls_detec_thresh = model_vars["var_cls_detec_thresh_default"]
+    else:
+        # cls_class_thresh = var_cls_class_thresh.get() DEBUG remove?
+        cls_detec_thresh = var_cls_detec_thresh.get()
+
+    # get location information
+    location_args = []
+    country_code = var_sppnet_location.get()[:3]
+    location_args.append(f"--country={country_code}")
+    if country_code == "USA":
+        state_code = var_sppnet_location.get()[4:6]
+        location_args.append(f"--admin1_region={state_code}")
+    write_global_vars({
+        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
+    })
+
+    # create commands for Windows
+    if os.name == 'nt':
+        if location_args == []:
+            command = [python_executable, "-m speciesnet.scripts.run_model", f"--folders={chosen_folder}", f"--predictions_json={sppnet_output_file}"]
+        else:
+            command = [python_executable, "-m speciesnet.scripts.run_model", f"--folders={chosen_folder}", f"--predictions_json={sppnet_output_file}", *location_args]
+
+     # create command for MacOS and Linux
+    else:
+        if location_args == []:
+            command = [f"'{python_executable}' -m speciesnet.scripts.run_model --folders='{chosen_folder}' --predictions_json='{sppnet_output_file}'"]
+        else:
+            location_args = "' '".join(location_args)
+            command = [f"'{python_executable}' -m speciesnet.scripts.run_model --folders='{chosen_folder}' --predictions_json='{sppnet_output_file}' '{location_args}'"]
+    
+    # log command
+    print("command:")
+    print(json.dumps(command, indent=4))
+
+    # prepare process and cancel method per OS
+    if os.name == 'nt':
+        # run windows command
+        p = Popen(command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                shell=True,
+                universal_newlines=True)
+
+    else:
+        # run unix command
+        p = Popen(command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                shell=True,
+                universal_newlines=True,
+                preexec_fn=os.setsid)
+
+    global cancel_speciesnet_deploy_pressed
+    cancel_speciesnet_deploy_pressed = False
+
+    # read output
+    for line in p.stdout:
+        
+        # log
+        sppnet_output_window.add_string(line, p)
+        
+        # early exit if cancel button is pressed
+        if cancel_speciesnet_deploy_pressed:
+            sppnet_output_window.add_string("\n\nCancel button pressed!")
+            time.sleep(2)
+            return
+        
+        # temporary fix for macOS package conflict
+        # since the env is compiled on macOS 10.15, scipy is not compatible with macOS 10.14
+        if line.startswith("ImportError: "):
+            sppnet_output_window.add_string(f"\n\nThere seems to be a mismatch between macOS versions: {line}\n\n")
+            sppnet_output_window.add_string("Attempting to solve conflict automatically...\n\n")
+            
+            # uninstall scipy
+            p = Popen(f"{python_executable} -m pip uninstall -y scipy",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                shell=True,
+                universal_newlines=True,
+                preexec_fn=os.setsid)
+            for line in p.stdout:
+                sppnet_output_window.add_string(line)
+            
+            # install scipy again
+            p = Popen(f"{python_executable} -m pip install --no-cache-dir scipy",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                shell=True,
+                universal_newlines=True,
+                preexec_fn=os.setsid)
+            for line in p.stdout:
+                sppnet_output_window.add_string(line)
+            
+            # retry
+            return "restart"
+    
+    # convert json to AddaxAI format
+    sppnet_output_window.add_string("\n\nConverting SpeciesNet output to AddaxAI format...")
+    speciesnet_to_md_py = os.path.join(AddaxAI_files, "AddaxAI", "classification_utils", "model_types", "speciesnet_to_md.py")
+    recognition_file = os.path.join(chosen_folder, "image_recognition_file.json")
+    
+    # cmd for windows
+    if os.name == 'nt': 
+        p = Popen([f"{python_executable}", f"{speciesnet_to_md_py}", f"{sppnet_output_file}", f"{recognition_file}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                shell=True,
+                universal_newlines=True)
+    
+    # cmd for macos and linux
+    else: 
+        p = Popen([f'"{python_executable}" "{speciesnet_to_md_py}" "{sppnet_output_file}" "{recognition_file}"'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                shell=True,
+                universal_newlines=True,
+                preexec_fn=os.setsid)
+    
+    # log output
+    for line in p.stdout:
+        sppnet_output_window.add_string(line, p)
+    sppnet_output_window.add_string("\n\nConverting Done!")
+    
+    # if that is done, remove the speciesnet output file
+    if os.path.exists(sppnet_output_file):
+        os.remove(sppnet_output_file)
+    
+    # create addaxai metadata
+    sppnet_output_window.add_string("\n\nAdding AddaxAI metadata...")
+    addaxai_metadata = {"addaxai_metadata" : {"version" : current_AA_version,
+                                                  "custom_model" : False,
+                                                  "custom_model_info" : {}}}
+    
+    # write metadata to json and make abosulte if specified
+    append_to_json(recognition_file, addaxai_metadata)
+    
+    # if in timelapse mode, change name of recognition file
+    if timelapse_mode:
+        timelapse_json = os.path.join(chosen_folder, "timelapse_recognition_file.json")
+        os.rename(recognition_file, timelapse_json)
+        
+    # convert JSON to AddaxAI format if not in timelapse mode
+    else:
+        with open(recognition_file) as image_recognition_file_content:
+            data = json.load(image_recognition_file_content)
+
+            # fetch and invert label maps
+            cls_label_map = data['classification_categories']
+            det_label_map = data['detection_categories']
+            inverted_cls_label_map = {v: k for k, v in cls_label_map.items()}
+            inverted_det_label_map = {v: k for k, v in det_label_map.items()}
+
+            # add cls classes to det label map
+            # if a model shares category names with MD, slightly modify it
+            # in species net MD outputs 'person' as opposed to 'human'
+            for k, v in inverted_cls_label_map.items():
+                if k in ["animal", "human", "vehicle"]: 
+                    k += " (cls)"                    
+                inverted_det_label_map[k] = str(len(inverted_det_label_map) + 1)
+
+            # loop and adjust
+            for image in data['images']:
+                if 'detections' in image:
+                    for detection in image['detections']:
+                        category_id = detection['category']
+                        category_conf = detection['conf']
+                        if category_conf >= cls_detec_thresh and det_label_map[category_id] == "animal":
+                            if 'classifications' in detection:
+                                highest_classification = detection['classifications'][0]
+                                class_idx = highest_classification[0]
+                                class_name = cls_label_map[class_idx]
+                                detec_idx = inverted_det_label_map[class_name]
+                                detection['prev_conf'] = detection["conf"]
+                                detection['prev_category'] = detection['category']
+                                detection["conf"] = highest_classification[1]
+                                detection['category'] = str(detec_idx)
+
+        # write json to be used by AddaxAI
+        data['detection_categories_original'] = data['detection_categories']
+        data['detection_categories'] = {v: k for k, v in inverted_det_label_map.items()}
+        
+        # overwrite the file wit adjusted data
+        with open(recognition_file, "w") as json_file:
+            json.dump(data, json_file, indent=1)
+
+    # reset window
+    update_frame_states()
+    root.update()
 
 # convert pascal bbox to yolo
 def convert_bbox_pascal_to_yolo(size, box):
@@ -4609,13 +5288,33 @@ def model_cls_animal_options(self):
     
     # get model specific variable values
     global sim_spp_scr
-    if self not in none_txt:
+    if self not in none_txt and self != "SpeciesNet": # normal procedure for all classifiers other than speciesnet
         model_vars = load_model_vars()
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
         var_cls_class_thresh.set(model_vars["var_cls_class_thresh"])
         var_smooth_cls_animal.set(model_vars["var_smooth_cls_animal"])
-    
+
+        # remove widgets of species net
+        lbl_sppnet_location.grid_remove()
+        dpd_sppnet_location.grid_remove()
+
+        # show widgets for other classifiers
+        lbl_choose_classes.grid(row=row_choose_classes, sticky='nesw', pady=2)
+        btn_choose_classes.grid(row=row_choose_classes, column=1, sticky='nesw', padx=5)
+        dsp_choose_classes.grid(row=row_choose_classes, column=0, sticky='e', padx=0)
+        lbl_cls_class_thresh.grid(row=row_cls_class_thresh, sticky='nesw', pady=2)
+        scl_cls_class_thresh.grid(row=row_cls_class_thresh, column=1, sticky='ew', padx=10)
+        dsp_cls_class_thresh.grid(row=row_cls_class_thresh, column=0, sticky='e', padx=0)
+        # lbl_cls_detec_thresh.grid(row=row_cls_detec_thresh, sticky='nesw', pady=2) # DEBUG remove?
+        # scl_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=1, sticky='ew', padx=10) # DEBUG remove?
+        # dsp_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=0, sticky='e', padx=0) # DEBUG remove?
+        lbl_smooth_cls_animal.grid(row=row_smooth_cls_animal, sticky='nesw', pady=2)
+        chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', padx=5)
+        
+        # set rowsize
+        set_minsize_rows(cls_frame)
+
         # adjust simple_mode window
         sim_spp_lbl.configure(text_color = "black")
         sim_spp_scr.grid_forget()
@@ -4624,6 +5323,37 @@ def model_cls_animal_options(self):
                                             all_classes=model_vars['all_classes'],
                                             selected_classes=model_vars['selected_classes'],
                                             command = on_spp_selection)
+        sim_spp_scr._scrollbar.configure(height=0)
+        sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
+
+    elif self == "SpeciesNet": # special procedure for speciesnet
+        
+        # remove widgets for other classifiers
+        lbl_choose_classes.grid_remove()
+        btn_choose_classes.grid_remove()
+        dsp_choose_classes.grid_remove()
+        lbl_cls_class_thresh.grid_remove()
+        scl_cls_class_thresh.grid_remove()
+        dsp_cls_class_thresh.grid_remove()
+        # lbl_cls_detec_thresh.grid_remove() # DEBUG remove?
+        # scl_cls_detec_thresh.grid_remove() # DEBUG remove?
+        # dsp_cls_detec_thresh.grid_remove() # DEBUG remove?
+        lbl_smooth_cls_animal.grid_remove()
+        chb_smooth_cls_animal.grid_remove()
+        
+        # set rowsize to 0
+        cls_frame.grid_rowconfigure(2, minsize=0)
+        cls_frame.grid_rowconfigure(3, minsize=0)
+        cls_frame.grid_rowconfigure(4, minsize=0)
+        
+        # place widgets for speciesnet
+        lbl_sppnet_location.grid(row=row_sppnet_location, sticky='nesw', pady=2)
+        dpd_sppnet_location.grid(row=row_sppnet_location, column=1, sticky='nesw', padx=5, pady=2)
+        
+        # set selection frame to dummy spp again
+        sim_spp_lbl.configure(text_color = "grey")
+        sim_spp_scr.grid_forget()
+        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp = True)
         sim_spp_scr._scrollbar.configure(height=0)
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
@@ -4636,7 +5366,10 @@ def model_cls_animal_options(self):
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     # save settings
-    write_global_vars({"var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get())}) # write index instead of value
+    write_global_vars({
+        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),  # write index instead of value
+        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),  # write index instead of value
+        })
  
     # finish up
     toggle_cls_frame()
@@ -5122,7 +5855,6 @@ def download_model(model_dir, skip_ask=False):
             pass
         show_download_error_window(model_title, model_dir, model_vars)
 
-
 # download envrionment
 def download_environment(env_name, model_vars, skip_ask=False):
     
@@ -5240,29 +5972,6 @@ def download_environment(env_name, model_vars, skip_ask=False):
                 print(f"Removed the zip file: {file_path}")
             except Exception as e:
                 print(f"Error removing file: {e}")
-            
-            # # Extract the .7z file DEBUG
-            # with py7zr.SevenZipFile(file_path, mode='r') as archive:
-            #     # Get the total number of files to be extracted
-            #     total_files = len(archive.getnames())
-            #     extraction_progress_bar = tqdm(total=total_files, unit='file', desc="Extracting")
-                
-            #     # Extract each file and update the extraction progress
-            #     for member in archive.getnames():
-            #         archive.extract([member], path=env_dir)
-            #         extraction_progress_bar.update(1)
-            #         extraction_progress_percentage = extraction_progress_bar.n / total_files
-            #         download_popup.update_extraction_progress(extraction_progress_percentage)
-            #     extraction_progress_bar.close()
-            # download_popup.close()
-            # print(f"Extraction successful. Files extracted to: {env_dir}")
-
-            # # Remove the .7z file after extraction
-            # try:
-            #     os.remove(file_path)
-            #     print(f"Removed the .7z file: {file_path}")
-            # except Exception as e:
-            #     print(f"Error removing file: {e}")
 
         # return succes
         return True
@@ -8154,6 +8863,17 @@ var_smooth_cls_animal = BooleanVar()
 var_smooth_cls_animal.set(model_vars.get('var_smooth_cls_animal', False))
 chb_smooth_cls_animal = Checkbutton(cls_frame, variable=var_smooth_cls_animal, anchor="w", command = on_chb_smooth_cls_animal_change)
 chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', padx=5)
+
+# choose location for species net
+lbl_sppnet_location_txt = ["Location", "Ubicación"]
+row_sppnet_location = 1
+lbl_sppnet_location = Label(master=cls_frame, text="     " + lbl_sppnet_location_txt[lang_idx], width=1, anchor="w")
+lbl_sppnet_location.grid(row=row_sppnet_location, sticky='nesw', pady=2)
+var_sppnet_location = StringVar(cls_frame)
+var_sppnet_location.set(dpd_options_sppnet_location[lang_idx][global_vars["var_sppnet_location_idx"]]) # take idx instead of string
+dpd_sppnet_location = OptionMenu(cls_frame, var_sppnet_location, *dpd_options_sppnet_location[lang_idx])
+dpd_sppnet_location.configure(width=1, state=DISABLED)
+# dpd_sppnet_location.grid(row=row_sppnet_location, column=1, sticky='nesw', padx=5, pady=2) # dont grid this by default
 
 # include subdirectories
 lbl_exclude_subs_txt = ["Don't process subdirectories", "No procesar subcarpetas"]
