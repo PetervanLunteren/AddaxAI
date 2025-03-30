@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/PetervanLunteren/AddaxAI,146,65
+/PetervanLunteren/AddaxAI/actions,133,4
+/PetervanLunteren/AddaxAI/tree/env-download-runtime,45,3
+/PetervanLunteren/AddaxAI/blob/main/install_files/windows/manual-install.md,40,26
+/PetervanLunteren/AddaxAI/tree/main,39,16
+/PetervanLunteren/AddaxAI/tree/env-download-runtime/.github/workflows,39,2
+/PetervanLunteren/AddaxAI/blob/env-download-runtime/.github/workflows/build-windows-release.yml,38,2
+/PetervanLunteren/AddaxAI/actions/workflows/build-windows-release.yml,37,1
+/PetervanLunteren/AddaxAI/blob/main/.github/workflows/build-macos-release.yml,29,4
+/PetervanLunteren/AddaxAI/blob/env-download-runtime/.github/workflows/build-macos-release.yml,29,2
