@@ -3185,18 +3185,6 @@ def contains_special_characters(path):
             return [True, char]
     return [False, ""]
 
-# needed for speciesnet
-speciesnet_warning_message = ["The SpeciesNet progress window might look a bit different. We're currently "
-                              "developing a completely new frontend, so we haven't spent much time refining"
-                              " this version. This is just a temporary solution—we wanted to ensure you "
-                              "could use SpeciesNet right away, even if the progress bars look different. "
-                              "Rest assured, it will work just as well.", "La ventana de progreso de SpeciesNet"
-                              " puede parecer un poco diferente. Actualmente estamos desarrollando un frontend"
-                              " completamente nuevo, por lo que no hemos dedicado mucho tiempo a perfeccionar "
-                              "esta versión. Esto es sólo una solución temporal, queríamos asegurarnos de que "
-                              "usted podría utilizar SpeciesNet de inmediato, incluso si las barras de progreso"
-                              " se ven diferentes. Puede estar seguro de que funcionará igual de bien."]
-
 # open progress window and initiate the model deployment
 def start_deploy(simple_mode = False):
     # log
@@ -3265,6 +3253,27 @@ def start_deploy(simple_mode = False):
     # run species net
     if var_cls_model.get() == "SpeciesNet":
         
+        # if simple mode, tell user to use the advanced mode
+        if simple_mode:
+            mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible"][lang_idx],
+                            message=[f"SpeciesNet is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
+                                        f"SpeciesNet no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet."][lang_idx])
+            
+            # reset
+            btn_start_deploy.configure(state=NORMAL)
+            sim_run_btn.configure(state=NORMAL)
+            return
+        
+        # if videos present, tell users that Species net cannot process them
+        if vid_present:
+            mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible"][lang_idx],
+                            message=[f"SpeciesNet cannot process videos. Please select images only.",
+                                        f"SpeciesNet no puede procesar vídeos. Seleccione sólo imágenes."][lang_idx])
+            # reset
+            btn_start_deploy.configure(state=NORMAL)
+            sim_run_btn.configure(state=NORMAL)
+            return
+        
         # check if env-speciesnet needs to be downloaded
         model_vars = load_model_vars(model_type = "cls")
         bool, env_name = environment_needs_downloading(model_vars)
@@ -3274,12 +3283,6 @@ def start_deploy(simple_mode = False):
                 btn_start_deploy.configure(state=NORMAL)
                 sim_run_btn.configure(state=NORMAL)
                 return  # user doesn't want to download
-
-        # warn user
-        speciesnet_warning_shown = load_global_vars()["speciesnet_warning_shown"]
-        if not speciesnet_warning_shown:
-            mb.showinfo(["SpeciesNet progress", "Progresos de SpeciesNet"][lang_idx], speciesnet_warning_message[lang_idx])
-            write_global_vars({"speciesnet_warning_shown": True})
 
         # open progress window
         sppnet_output_window = SpeciesNetOutputWindow()
@@ -4670,8 +4673,6 @@ class SpeciesNetOutputWindow:
         self.sppnet_output_window_root.destroy()
 
 # temporary function to deploy speciesnet
-warn_smooth_vid = True # TODO: does there need to be a video warning?
-# TODO: simple mode integration. 
 def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     # log
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
@@ -4711,10 +4712,8 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     # get param values
     model_vars = load_model_vars()
     if simple_mode:
-        # cls_class_thresh = model_vars["var_cls_class_thresh_default"] # DEBUG remove?
         cls_detec_thresh = model_vars["var_cls_detec_thresh_default"]
     else:
-        # cls_class_thresh = var_cls_class_thresh.get() DEBUG remove?
         cls_detec_thresh = var_cls_detec_thresh.get()
 
     # get location information
@@ -5306,9 +5305,6 @@ def model_cls_animal_options(self):
         lbl_cls_class_thresh.grid(row=row_cls_class_thresh, sticky='nesw', pady=2)
         scl_cls_class_thresh.grid(row=row_cls_class_thresh, column=1, sticky='ew', padx=10)
         dsp_cls_class_thresh.grid(row=row_cls_class_thresh, column=0, sticky='e', padx=0)
-        # lbl_cls_detec_thresh.grid(row=row_cls_detec_thresh, sticky='nesw', pady=2) # DEBUG remove?
-        # scl_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=1, sticky='ew', padx=10) # DEBUG remove?
-        # dsp_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=0, sticky='e', padx=0) # DEBUG remove?
         lbl_smooth_cls_animal.grid(row=row_smooth_cls_animal, sticky='nesw', pady=2)
         chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', padx=5)
         
@@ -5335,9 +5331,6 @@ def model_cls_animal_options(self):
         lbl_cls_class_thresh.grid_remove()
         scl_cls_class_thresh.grid_remove()
         dsp_cls_class_thresh.grid_remove()
-        # lbl_cls_detec_thresh.grid_remove() # DEBUG remove?
-        # scl_cls_detec_thresh.grid_remove() # DEBUG remove?
-        # dsp_cls_detec_thresh.grid_remove() # DEBUG remove?
         lbl_smooth_cls_animal.grid_remove()
         chb_smooth_cls_animal.grid_remove()
         
