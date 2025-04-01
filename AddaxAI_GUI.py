@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 20 Mar 2025
+# Latest edit by Peter van Lunteren on 1 Apr 2025
 
 # TODO: DEPTH - add depth estimation model: https://pytorch.org/hub/intelisl_midas_v2/
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
@@ -4924,6 +4924,13 @@ def convert_bbox_pascal_to_yolo(size, box):
 
 # special function because the sim dpd has a different value for 'None'
 def sim_mdl_dpd_callback(self):
+    
+    # this means the user chose SpeciesNet in simple mode, so tell user to use the advanced mode
+    if self == "SpeciesNet":
+        mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible"][lang_idx],
+                        message=[f"SpeciesNet is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
+                                    f"SpeciesNet no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet."][lang_idx])
+    
     var_cls_model.set(dpd_options_cls_model[lang_idx][sim_dpd_options_cls_model[lang_idx].index(self)])
     model_cls_animal_options(var_cls_model.get())
 
