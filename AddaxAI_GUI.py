@@ -4863,6 +4863,10 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     if timelapse_mode:
         timelapse_json = os.path.join(chosen_folder, "timelapse_recognition_file.json")
         os.rename(recognition_file, timelapse_json)
+        mb.showinfo("Analaysis done!", f"Recognition file created at \n\n{timelapse_json}\n\nTo use it in Timelapse, return to "
+                                        "Timelapse with the relevant image set open, select the menu item 'Recognition > Import "
+                                        "recognition data for this image set' and navigate to the file above.")
+        open_file_or_folder(os.path.dirname(timelapse_json))
         
     # convert JSON to AddaxAI format if not in timelapse mode
     else:
@@ -5068,7 +5072,7 @@ def fetch_label_map_from_json(path_to_json):
     return label_map
 
 # check if json paths are relative or absolute
-def check_json_paths(path_to_json):
+def check_json_paths(path_to_json): 
     with open(path_to_json, "r") as json_file:
         data = json.load(json_file)
     path = os.path.normpath(data['images'][0]['file'])
@@ -5870,13 +5874,13 @@ def download_environment(env_name, model_vars, skip_ask=False):
         env_dir = os.path.join(AddaxAI_files, "envs")
         # set environment variables
         if os.name == 'nt': # windows
-            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/windows/envs/env-{env_name}.zip" # DEBUG remove beta
-            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/windows/envs/env-{env_name}.zip" # DEBUG remove beta
+            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/v{current_AA_version}/windows/envs/env-{env_name}.zip"
+            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/latest/windows/envs/env-{env_name}.zip"
             filename = f"{env_name}.zip"
         elif platform.system() == 'Darwin': # macos
             import tarfile
-            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/v{current_AA_version}/macos/envs/env-{env_name}.tar.xz" # DEBUG remove beta
-            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips-beta/latest/macos/envs/env-{env_name}.tar.xz" # DEBUG remove beta
+            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/v{current_AA_version}/macos/envs/env-{env_name}.tar.xz"
+            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/latest/macos/envs/env-{env_name}.tar.xz"
             filename = f"{env_name}.tar.xz"
         else: # linux
             return False # linux install this during setup 
