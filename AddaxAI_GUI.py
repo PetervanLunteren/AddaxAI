@@ -531,14 +531,20 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
         
         # collect info to append to csv files
         if exp:
+
+            # read shape again - this is a temporary solution
+            # read in the hieght and width of the images and videos, as this was giving a bunch of bugs...
+            if data_type == "img":
+                img = cv2.imread(os.path.normpath(os.path.join(src_dir, file)))
+                height, width = img.shape[:2]
+            else:
+                cap = cv2.VideoCapture(os.path.join(src_dir, file))
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+
             # file info CSV
-            if len(bbox_info) > 0: # try to fetch existing values
-                file_height = bbox_info[0][7]
-                file_width = bbox_info[0][8]
-            else: # only get dimensions if no detections are present
-                with Image.open(os.path.normpath(os.path.join(src_dir, file))) as pil_img:
-                    file_width, file_height = pil_img.size
-            row = pd.DataFrame([[src_dir, file, data_type, len(bbox_info), file_height, file_width, max_detection_conf, manually_checked, *exif_params]])
+            row = pd.DataFrame([[src_dir, file, data_type, len(bbox_info), height, width, max_detection_conf, manually_checked, *exif_params]])
             row.to_csv(csv_for_files, encoding='utf-8', mode='a', index=False, header=False)
 
             # detections info CSV
@@ -676,7 +682,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
     if exp and exp_format == dpd_options_exp_format[lang_idx][2]: # COCO
         
         # init vars
-        coco_path = os.path.join(dst_dir, "results_coco.json")
+        coco_path = os.path.join(dst_dir, f"results_coco_{data_type}.json")
         detections_df = pd.read_csv(os.path.join(dst_dir, f"results_detections.csv"), dtype=dtypes, low_memory=False)
         files_df = pd.read_csv(os.path.join(dst_dir, f"results_files.csv"), dtype=dtypes, low_memory=False)
         
@@ -2800,7 +2806,11 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             return
     
     # display loading window
-    progress_window.update_values(process = f"{data_type}_det", status = "load")
+    # try to update progress window, if AttributeError, it means it tries to update the img_det and we're working with a full image classifier
+    try:
+        progress_window.update_values(process = f"{data_type}_det", status = "load")
+    except AttributeError:
+        pass 
 
     # prepare variables
     chosen_folder = str(Path(path_to_image_folder))
@@ -2840,194 +2850,204 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
         # add argument to command call
         selected_options.append("--class_mapping_filename=" + native_model_classes_json_file)
 
-    # create commands for Windows
-    if os.name == 'nt':
-        if selected_options == []:
-            img_command = [python_executable, run_detector_batch_py, det_model_fpath, '--threshold=0.01', chosen_folder, image_recognition_file]
-            vid_command = [python_executable, process_video_py, '--max_width=1280', '--verbose', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
-        else:
-            img_command = [python_executable, run_detector_batch_py, det_model_fpath, *selected_options, '--threshold=0.01', chosen_folder, image_recognition_file]
-            vid_command = [python_executable, process_video_py, *selected_options, '--max_width=1280', '--verbose', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
-
-     # create command for MacOS and Linux
-    else:
-        if selected_options == []:
-            img_command = [f"'{python_executable}' '{run_detector_batch_py}' '{det_model_fpath}' '--threshold=0.01' '{chosen_folder}' '{image_recognition_file}'"]
-            vid_command = [f"'{python_executable}' '{process_video_py}' '--max_width=1280' '--verbose' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
-        else:
-            selected_options = "' '".join(selected_options)
-            img_command = [f"'{python_executable}' '{run_detector_batch_py}' '{det_model_fpath}' '{selected_options}' '--threshold=0.01' '{chosen_folder}' '{image_recognition_file}'"]
-            vid_command = [f"'{python_executable}' '{process_video_py}' '{selected_options}' '--max_width=1280' '--verbose' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
-
-    # pick one command
-    if data_type == "img":
-        command = img_command
-    else:
-        command = vid_command
-
-    # if user specified to disable GPU, prepend and set system variable
-    if var_disable_GPU.get() and not simple_mode:
-        if os.name == 'nt': # windows
-            command[:0] = ['set', 'CUDA_VISIBLE_DEVICES=""', '&']
-        elif platform.system() == 'Darwin': # macos
-            mb.showwarning(warning_txt[lang_idx],
-                           ["Disabling GPU processing is currently only supported for CUDA devices on Linux and Windows "
-                            "machines, not on macOS. Proceeding without GPU disabled.", "Deshabilitar el procesamiento de "
-                            "la GPU actualmente sólo es compatible con dispositivos CUDA en máquinas Linux y Windows, no en"
-                            " macOS. Proceder sin GPU desactivada."][lang_idx])
-            var_disable_GPU.set(False)
-        else: # linux
-            command = "CUDA_VISIBLE_DEVICES='' " + command
-
-    # log
-    print(f"command:\n\n{command}\n\n")
-        
-    # prepare process and cancel method per OS
-    if os.name == 'nt':
-        # run windows command
-        p = Popen(command,
-                  stdout=subprocess.PIPE,
-                  stderr=subprocess.STDOUT,
-                  bufsize=1,
-                  shell=True,
-                  universal_newlines=True)
-
-    else:
-        # run unix command
-        p = Popen(command,
-                  stdout=subprocess.PIPE,
-                  stderr=subprocess.STDOUT,
-                  bufsize=1,
-                  shell=True,
-                  universal_newlines=True,
-                  preexec_fn=os.setsid)
-    
-    # set global vars
+    # set global cancel bool
     global cancel_deploy_model_pressed
     cancel_deploy_model_pressed = False
-    global subprocess_output
-    subprocess_output = ""
-    previous_processed_img = ["There is no previously processed image. The problematic character is in the first image to analyse.",
-                              "No hay ninguna imagen previamente procesada. El personaje problemático está en la primera imagen a analizar."][lang_idx]
-    extracting_frames_mode = False
+
+    # if a full image classifier is selected, imitate object detection to get full bboxes
+    full_image_cls = load_model_vars("cls").get("full_image_cls", False)
+    if full_image_cls:
+        imitate_object_detection_for_full_image_classifier(chosen_folder)
     
-    # check if the unit shown should be frame or video
-    if data_type == "vid" and var_cls_model.get() in none_txt:
-        frame_video_choice = "video"
-    elif data_type == "vid" and var_cls_model.get() not in none_txt:
-        frame_video_choice = "frame"
+    # for crop classifiers we need to run the detection first
     else:
-        frame_video_choice = None
-    
-    # read output
-    for line in p.stdout:
-        
-        # save output if something goes wrong
-        subprocess_output = subprocess_output + line
-        subprocess_output = subprocess_output[-1000:]
+
+        # create commands for Windows
+        if os.name == 'nt':
+            if selected_options == []:
+                img_command = [python_executable, run_detector_batch_py, det_model_fpath, '--threshold=0.01', chosen_folder, image_recognition_file]
+                vid_command = [python_executable, process_video_py, '--max_width=1280', '--verbose', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
+            else:
+                img_command = [python_executable, run_detector_batch_py, det_model_fpath, *selected_options, '--threshold=0.01', chosen_folder, image_recognition_file]
+                vid_command = [python_executable, process_video_py, *selected_options, '--max_width=1280', '--verbose', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
+
+        # create command for MacOS and Linux
+        else:
+            if selected_options == []:
+                img_command = [f"'{python_executable}' '{run_detector_batch_py}' '{det_model_fpath}' '--threshold=0.01' '{chosen_folder}' '{image_recognition_file}'"]
+                vid_command = [f"'{python_executable}' '{process_video_py}' '--max_width=1280' '--verbose' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
+            else:
+                selected_options = "' '".join(selected_options)
+                img_command = [f"'{python_executable}' '{run_detector_batch_py}' '{det_model_fpath}' '{selected_options}' '--threshold=0.01' '{chosen_folder}' '{image_recognition_file}'"]
+                vid_command = [f"'{python_executable}' '{process_video_py}' '{selected_options}' '--max_width=1280' '--verbose' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
+
+        # pick one command
+        if data_type == "img":
+            command = img_command
+        else:
+            command = vid_command
+
+        # if user specified to disable GPU, prepend and set system variable
+        if var_disable_GPU.get() and not simple_mode:
+            if os.name == 'nt': # windows
+                command[:0] = ['set', 'CUDA_VISIBLE_DEVICES=""', '&']
+            elif platform.system() == 'Darwin': # macos
+                mb.showwarning(warning_txt[lang_idx],
+                            ["Disabling GPU processing is currently only supported for CUDA devices on Linux and Windows "
+                                "machines, not on macOS. Proceeding without GPU disabled.", "Deshabilitar el procesamiento de "
+                                "la GPU actualmente sólo es compatible con dispositivos CUDA en máquinas Linux y Windows, no en"
+                                " macOS. Proceder sin GPU desactivada."][lang_idx])
+                var_disable_GPU.set(False)
+            else: # linux
+                command = "CUDA_VISIBLE_DEVICES='' " + command
 
         # log
-        print(line, end='')
+        print(f"command:\n\n{command}\n\n")
+            
+        # prepare process and cancel method per OS
+        if os.name == 'nt':
+            # run windows command
+            p = Popen(command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=1,
+                    shell=True,
+                    universal_newlines=True)
+
+        else:
+            # run unix command
+            p = Popen(command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=1,
+                    shell=True,
+                    universal_newlines=True,
+                    preexec_fn=os.setsid)
         
-        # catch model errors
-        if line.startswith("No image files found"):
-            mb.showerror(["No images found", "No se han encontrado imágenes"][lang_idx],
-                        [f"There are no images found in '{chosen_folder}'. \n\nAre you sure you specified the correct folder?"
-                        f" If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
-                        f"No se han encontrado imágenes en '{chosen_folder}'. \n\n¿Está seguro de haber especificado la carpeta correcta?"][lang_idx])
-            return
-        if line.startswith("No videos found"):
-            mb.showerror(["No videos found", "No se han encontrado vídeos"][lang_idx],
-                        line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
-                                "\n\n¿Está seguro de haber especificado la carpeta correcta?"][lang_idx])
-            return
-        if line.startswith("No frames extracted"):
-            mb.showerror(["Could not extract frames", "No se pueden extraer fotogramas"][lang_idx],
-                        line + ["\n\nConverting the videos to .mp4 might fix the issue.",
-                                "\n\nConvertir los vídeos a .mp4 podría solucionar el problema."][lang_idx])
-            return
-        if line.startswith("UnicodeEncodeError:"):
-            mb.showerror("Unparsable special character",
-                         [f"{line}\n\nThere seems to be a special character in a filename that cannot be parsed. Unfortunately, it's not"
-                          " possible to point you to the problematic file directly, but I can tell you that the last successfully analysed"
-                          f" image was\n\n{previous_processed_img}\n\nThe problematic character should be in the file or folder name of "
-                          "the next image, alphabetically. Please remove any special charachters from the path and try again.", 
-                          f"{line}\n\nParece que hay un carácter especial en un nombre de archivo que no se puede analizar. Lamentablemente,"
-                          " no es posible indicarle directamente el archivo problemático, pero puedo decirle que la última imagen analizada "
-                          f"con éxito fue\n\n{previous_processed_img}\n\nEl carácter problemático debe estar en el nombre del archivo o "
-                          "carpeta de la siguiente imagen, alfabéticamente. Elimine los caracteres especiales de la ruta e inténtelo de "
-                          "nuevo."][lang_idx])
-            return
-        if line.startswith("Processing image "):
-            previous_processed_img = line.replace("Processing image ", "")
+        # set global vars
+        global subprocess_output
+        subprocess_output = ""
+        previous_processed_img = ["There is no previously processed image. The problematic character is in the first image to analyse.",
+                                "No hay ninguna imagen previamente procesada. El personaje problemático está en la primera imagen a analizar."][lang_idx]
+        extracting_frames_mode = False
+        
+        # check if the unit shown should be frame or video
+        if data_type == "vid" and var_cls_model.get() in none_txt:
+            frame_video_choice = "video"
+        elif data_type == "vid" and var_cls_model.get() not in none_txt:
+            frame_video_choice = "frame"
+        else:
+            frame_video_choice = None
+        
+        # read output
+        for line in p.stdout:
+            
+            # save output if something goes wrong
+            subprocess_output = subprocess_output + line
+            subprocess_output = subprocess_output[-1000:]
 
-        # write errors to log file
-        if "Exception:" in line:
-            with open(model_error_log, 'a+') as f:
-                f.write(f"{line}\n")
-            f.close()
+            # log
+            print(line, end='')
+            
+            # catch model errors
+            if line.startswith("No image files found"):
+                mb.showerror(["No images found", "No se han encontrado imágenes"][lang_idx],
+                            [f"There are no images found in '{chosen_folder}'. \n\nAre you sure you specified the correct folder?"
+                            f" If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
+                            f"No se han encontrado imágenes en '{chosen_folder}'. \n\n¿Está seguro de haber especificado la carpeta correcta?"][lang_idx])
+                return
+            if line.startswith("No videos found"):
+                mb.showerror(["No videos found", "No se han encontrado vídeos"][lang_idx],
+                            line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
+                                    "\n\n¿Está seguro de haber especificado la carpeta correcta?"][lang_idx])
+                return
+            if line.startswith("No frames extracted"):
+                mb.showerror(["Could not extract frames", "No se pueden extraer fotogramas"][lang_idx],
+                            line + ["\n\nConverting the videos to .mp4 might fix the issue.",
+                                    "\n\nConvertir los vídeos a .mp4 podría solucionar el problema."][lang_idx])
+                return
+            if line.startswith("UnicodeEncodeError:"):
+                mb.showerror("Unparsable special character",
+                            [f"{line}\n\nThere seems to be a special character in a filename that cannot be parsed. Unfortunately, it's not"
+                            " possible to point you to the problematic file directly, but I can tell you that the last successfully analysed"
+                            f" image was\n\n{previous_processed_img}\n\nThe problematic character should be in the file or folder name of "
+                            "the next image, alphabetically. Please remove any special charachters from the path and try again.", 
+                            f"{line}\n\nParece que hay un carácter especial en un nombre de archivo que no se puede analizar. Lamentablemente,"
+                            " no es posible indicarle directamente el archivo problemático, pero puedo decirle que la última imagen analizada "
+                            f"con éxito fue\n\n{previous_processed_img}\n\nEl carácter problemático debe estar en el nombre del archivo o "
+                            "carpeta de la siguiente imagen, alfabéticamente. Elimine los caracteres especiales de la ruta e inténtelo de "
+                            "nuevo."][lang_idx])
+                return
+            if line.startswith("Processing image "):
+                previous_processed_img = line.replace("Processing image ", "")
 
-        # write warnings to log file
-        if "Warning:" in line:
-            if not "could not determine MegaDetector version" in line \
-                and not "no metadata for unknown detector version" in line \
-                and not "using user-supplied image size" in line \
-                and not "already exists and will be overwritten" in line:
-                with open(model_warning_log, 'a+') as f:
+            # write errors to log file
+            if "Exception:" in line:
+                with open(model_error_log, 'a+') as f:
                     f.write(f"{line}\n")
                 f.close()
-                
-        # print frame extraction progress and dont continue until done
-        if "Extracting frames for folder " in line and \
-            data_type == "vid":
-            progress_window.update_values(process = f"{data_type}_det",
-                                          status = "extracting frames")
-            extracting_frames_mode = True
-        if extracting_frames_mode:
-            if '%' in line[0:4]:
-                progress_window.update_values(process = f"{data_type}_det",
-                                            status = "extracting frames",
-                                            extracting_frames_txt = [f"Extracting frames... {line[:3]}%",
-                                                                    f"Extrayendo fotogramas... {line[:3]}%"])
-        if "Extracted frames for" in line and \
-            data_type == "vid":
-                extracting_frames_mode = False
-        if extracting_frames_mode:
-            continue
-        
-        # get process stats and send them to tkinter
-        if line.startswith("GPU available: False"):
-            GPU_param = "CPU"
-        elif line.startswith("GPU available: True"):
-            GPU_param = "GPU"
-        elif '%' in line[0:4]:
-            
-            # read stats
-            times = re.search("(\[.*?\])", line)[1]
-            progress_bar = re.search("^[^\/]*[^[^ ]*", line.replace(times, ""))[0]
-            percentage = re.search("\d*%", progress_bar)[0][:-1]
-            current_im = re.search("\d*\/", progress_bar)[0][:-1]
-            total_im = re.search("\/\d*", progress_bar)[0][1:]
-            elapsed_time = re.search("(?<=\[)(.*)(?=<)", times)[1]
-            time_left = re.search("(?<=<)(.*)(?=,)", times)[1]
-            processing_speed = re.search("(?<=,)(.*)(?=])", times)[1].strip()
 
-            # show progress
-            progress_window.update_values(process = f"{data_type}_det",
-                                            status = "running",
-                                            cur_it = int(current_im),
-                                            tot_it = int(total_im),
-                                            time_ela = elapsed_time,
-                                            time_rem = time_left,
-                                            speed = processing_speed,
-                                            hware = GPU_param,
-                                            cancel_func = lambda: cancel_subprocess(p),
-                                            frame_video_choice = frame_video_choice)
+            # write warnings to log file
+            if "Warning:" in line:
+                if not "could not determine MegaDetector version" in line \
+                    and not "no metadata for unknown detector version" in line \
+                    and not "using user-supplied image size" in line \
+                    and not "already exists and will be overwritten" in line:
+                    with open(model_warning_log, 'a+') as f:
+                        f.write(f"{line}\n")
+                    f.close()
+                    
+            # print frame extraction progress and dont continue until done
+            if "Extracting frames for folder " in line and \
+                data_type == "vid":
+                progress_window.update_values(process = f"{data_type}_det",
+                                            status = "extracting frames")
+                extracting_frames_mode = True
+            if extracting_frames_mode:
+                if '%' in line[0:4]:
+                    progress_window.update_values(process = f"{data_type}_det",
+                                                status = "extracting frames",
+                                                extracting_frames_txt = [f"Extracting frames... {line[:3]}%",
+                                                                        f"Extrayendo fotogramas... {line[:3]}%"])
+            if "Extracted frames for" in line and \
+                data_type == "vid":
+                    extracting_frames_mode = False
+            if extracting_frames_mode:
+                continue
+            
+            # get process stats and send them to tkinter
+            if line.startswith("GPU available: False"):
+                GPU_param = "CPU"
+            elif line.startswith("GPU available: True"):
+                GPU_param = "GPU"
+            elif '%' in line[0:4]:
+                
+                # read stats
+                times = re.search("(\[.*?\])", line)[1]
+                progress_bar = re.search("^[^\/]*[^[^ ]*", line.replace(times, ""))[0]
+                percentage = re.search("\d*%", progress_bar)[0][:-1]
+                current_im = re.search("\d*\/", progress_bar)[0][:-1]
+                total_im = re.search("\/\d*", progress_bar)[0][1:]
+                elapsed_time = re.search("(?<=\[)(.*)(?=<)", times)[1]
+                time_left = re.search("(?<=<)(.*)(?=,)", times)[1]
+                processing_speed = re.search("(?<=,)(.*)(?=])", times)[1].strip()
+
+                # show progress
+                progress_window.update_values(process = f"{data_type}_det",
+                                                status = "running",
+                                                cur_it = int(current_im),
+                                                tot_it = int(total_im),
+                                                time_ela = elapsed_time,
+                                                time_rem = time_left,
+                                                speed = processing_speed,
+                                                hware = GPU_param,
+                                                cancel_func = lambda: cancel_subprocess(p),
+                                                frame_video_choice = frame_video_choice)
+            root.update()
+        
+        # process is done
+        progress_window.update_values(process = f"{data_type}_det", status = "done")
         root.update()
-    
-    # process is done
-    progress_window.update_values(process = f"{data_type}_det", status = "done")
-    root.update()
     
     # create addaxai metadata
     addaxai_metadata = {"addaxai_metadata" : {"version" : current_AA_version,
@@ -3185,6 +3205,55 @@ def contains_special_characters(path):
             return [True, char]
     return [False, ""]
 
+# we run this instead of a detection model for full image classification
+def imitate_object_detection_for_full_image_classifier(chosen_folder):
+    # log
+    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    
+    # List all images in the chosen folder
+    image_files = [f for f in os.listdir(chosen_folder) if f.lower().endswith(('jpg', 'jpeg', 'png'))]
+
+    # Initialize the JSON structure
+    result = {
+        "images": [],
+        "detection_categories": {
+            "1": "animal",
+            "2": "person",
+            "3": "vehicle"
+        },
+        "info": {
+            "detection_completion_time": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "format_version": "",
+            "detector": None,
+            "detector_metadata": {
+            }
+        }
+    }
+    
+    # Loop through each image in the folder and add it to the result
+    for image_file in image_files:
+        # Prepare the image's detections with the full image bounding box
+        image_data = {
+            "file": image_file,
+            "detections": [
+                {
+                    "category": "1",  # Assuming all detections are animals
+                    "conf": 1.0,  # High confidence for full-image detection
+                    "bbox": [0.0, 0.0, 1.0, 1.0]  # Full image bounding box
+                }
+            ]
+        }
+        
+        # Add image data to the images list
+        result["images"].append(image_data)
+    
+    # Save the result as a JSON file
+    json_filename = os.path.join(chosen_folder, "image_recognition_file.json")
+    with open(json_filename, "w") as json_file:
+        json.dump(result, json_file, indent=4)
+    
+    print(f"JSON file created: {json_filename}")
+
 # open progress window and initiate the model deployment
 def start_deploy(simple_mode = False):
     # log
@@ -3322,6 +3391,11 @@ def start_deploy(simple_mode = False):
                             "'No' para regresar."][lang_idx]):
                             return
     
+    # de not allow full image classifier to process videos
+    full_image_cls = load_model_vars("cls").get("full_image_cls", False)
+    if full_image_cls:
+        vid_present = False
+    
     # check which processes need to be listed on the progress window
     if simple_mode:
         processes = []
@@ -3349,6 +3423,18 @@ def start_deploy(simple_mode = False):
             processes.append("vid_det")
             if var_cls_model.get() not in none_txt:
                 processes.append("vid_cls")
+    
+    # if working with a full image classifier is selected, remove the detection processes and video stuff
+    full_image_cls = load_model_vars("cls").get("full_image_cls", False)
+    if full_image_cls:
+        if "img_det" in processes:
+            processes.remove("img_det")
+        if "vid_det" in processes:
+            processes.remove("vid_det")
+        if "vid_cls" in processes:
+            processes.remove("vid_cls")
+        if "vid_pst" in processes:
+            processes.remove("vid_pst")
     
     # redirect warnings and error to log files
     global model_error_log
