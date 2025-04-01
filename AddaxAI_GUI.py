@@ -4602,6 +4602,7 @@ class SpeciesNetOutputWindow:
         self.close_button = tk.Button(self.sppnet_output_window_root, text="Cancel", command=self.cancel)
         self.close_button.pack(pady=5)
         self.sppnet_output_window_root.protocol("WM_DELETE_WINDOW", self.close)  # Handle window close
+        bring_window_to_top_but_not_for_ever(self.sppnet_output_window_root)
     
     def add_string(self, text, process=None):
         if process is not None:
@@ -4730,9 +4731,9 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     # create commands for Windows
     if os.name == 'nt':
         if location_args == []:
-            command = [python_executable, "-m speciesnet.scripts.run_model", f"--folders={chosen_folder}", f"--predictions_json={sppnet_output_file}"]
+            command = [python_executable, "-m", "speciesnet.scripts.run_model", f"--folders={chosen_folder}", f"--predictions_json={sppnet_output_file}"]
         else:
-            command = [python_executable, "-m speciesnet.scripts.run_model", f"--folders={chosen_folder}", f"--predictions_json={sppnet_output_file}", *location_args]
+            command = [python_executable, "-m", "speciesnet.scripts.run_model", f"--folders={chosen_folder}", f"--predictions_json={sppnet_output_file}", *location_args]
 
      # create command for MacOS and Linux
     else:
@@ -4853,6 +4854,10 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     
     # write metadata to json and make abosulte if specified
     append_to_json(recognition_file, addaxai_metadata)
+    
+    # get rid of absolute paths if specified
+    if check_json_paths(recognition_file) == "absolute":
+        make_json_relative(recognition_file)
     
     # if in timelapse mode, change name of recognition file
     if timelapse_mode:
@@ -5066,7 +5071,7 @@ def fetch_label_map_from_json(path_to_json):
 def check_json_paths(path_to_json):
     with open(path_to_json, "r") as json_file:
         data = json.load(json_file)
-    path = data['images'][0]['file']
+    path = os.path.normpath(data['images'][0]['file'])
     if path.startswith(os.path.normpath(var_choose_folder.get())):
         return "absolute"
     else:
@@ -5081,7 +5086,7 @@ def make_json_relative(path_to_json):
         
         # adjust
         for image in data['images']:
-            absolute_path = image['file']
+            absolute_path =  os.path.normpath(image['file'])
             relative_path = absolute_path.replace(os.path.normpath(var_choose_folder.get()), "")[1:]
             image['file'] = relative_path
         
@@ -8523,8 +8528,8 @@ def reset_values():
         # set model specific thresholds
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh_default"])
         var_cls_class_thresh.set(model_vars["var_cls_class_thresh_default"])
-        write_model_vars(new_values = {"var_cls_detec_thresh": var_cls_detec_thresh.get(),
-                                    "var_cls_class_thresh": var_cls_class_thresh.get()})
+        write_model_vars(new_values = {"var_cls_detec_thresh": str(var_cls_detec_thresh.get()),
+                                    "var_cls_class_thresh": str(var_cls_class_thresh.get())})
 
     # update window
     toggle_cls_frame()
@@ -8834,7 +8839,7 @@ var_cls_detec_thresh = DoubleVar()
 var_cls_detec_thresh.set(model_vars.get('var_cls_detec_thresh', 0.6))
 scl_cls_detec_thresh = Scale(cls_frame, from_=0.01, to=1, resolution=0.01, orient=HORIZONTAL,
                              variable=var_cls_detec_thresh, showvalue=0, width=10, length=1, state=DISABLED,
-                             command=lambda value: write_model_vars(new_values = {"var_cls_detec_thresh": value}))
+                             command=lambda value: write_model_vars(new_values = {"var_cls_detec_thresh": str(value)}))
 scl_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=1, sticky='ew', padx=10)
 dsp_cls_detec_thresh = Label(cls_frame, textvariable=var_cls_detec_thresh)
 dsp_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=0, sticky='e', padx=0)
