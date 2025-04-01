@@ -4871,12 +4871,13 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
             inverted_det_label_map = {v: k for k, v in det_label_map.items()}
 
             # add cls classes to det label map
-            # if a model shares category names with MD, slightly modify it
-            # in species net MD outputs 'person' as opposed to 'human'
-            for k, v in inverted_cls_label_map.items():
-                if k in ["animal", "human", "vehicle"]: 
-                    k += " (cls)"                    
-                inverted_det_label_map[k] = str(len(inverted_det_label_map) + 1)
+            # if a model shares category names with MD, add to existing value
+            for k, _ in inverted_cls_label_map.items():
+                if k in inverted_det_label_map.keys(): 
+                    value = str(inverted_det_label_map[k])
+                    inverted_det_label_map[k] = value
+                else:              
+                    inverted_det_label_map[k] = str(len(inverted_det_label_map) + 1)
 
             # loop and adjust
             for image in data['images']:
