@@ -1,7 +1,7 @@
 # Script to further identify MD animal detections using the DeepFaune classification model v1.2
 # https://www.deepfaune.cnrs.fr/en/
 # https://plmlab.math.cnrs.fr/deepfaune/software/-/tree/master
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architechture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Script created by Peter van Lunteren
 # Some code is created by the DeepFaune team and is indicated as so 

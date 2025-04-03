@@ -243,7 +243,7 @@ If you're having trouble with permissions issues, you can choose to run it insid
 <summary><b>macOS</b></summary>
 <br>
   
-1. EcoAssist requires you to have a recent version of Xcode Developer Tools. You can donwload and install it from the [Mac App Store](https://apps.apple.com/us/app/xcode/id497799835?mt=12). 
+1. EcoAssist requires you to have a recent version of Xcode Developer Tools. You can download and install it from the [Mac App Store](https://apps.apple.com/us/app/xcode/id497799835?mt=12). 
 2. Download and open [this file](https://PetervanLunteren.github.io/EcoAssist/install.command). Some computers can be quite reluctant when having to open command files downloaded from the internet. You can circumvent trust issues by opening it with right-click > open > open. If that still doesn't work, you can change the file permissions by opening a new terminal window and copy-pasting the following commands.
 ```bash
 chmod 755 $HOME/Downloads/install.command
@@ -276,7 +276,7 @@ bash $HOME/Downloads/install.command
 You can quickly verify its functionality by following the steps below.
 1. Choose a local copy of [this](https://drive.google.com/uc?export=download&id=1ZNAhMbWVoLuIlkejI0ydS1XVChYSCQ50) (unzipped) folder at step 1
 2. Check 'Process all images in the folder specified' 
-3. Click the 'Deploy model' button and wait for the prcess to complete
+3. Click the 'Deploy model' button and wait for the process to complete
 4. Select the `test-images` folder again as 'Destination folder'
 5. Check 'Export results to csv files'
 6. Click the 'Post-process files' button

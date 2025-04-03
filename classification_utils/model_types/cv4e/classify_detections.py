@@ -1,7 +1,7 @@
 # Script to further identify MD animal detections using PT classification models trained at CV4Ecology
 # https://cv4ecology.caltech.edu/
 
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 
 # Written by Peter van Lunteren

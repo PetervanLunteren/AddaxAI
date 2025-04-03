@@ -129,7 +129,7 @@ fi
 progress 2
 if ln -s "${INSTALL_DIR}/${APP_NAME}.app" "$SHORTCUT"; then
     echo ""
-    echo "Installation successfull!"
+    echo "Installation successful!"
     echo "ALERT:Installation successful!|You can now open AddaxAI via the Desktop shortcut: '${SHORTCUT}'"
     echo ""
     echo "You can now open AddaxAI via the Desktop shortcut:"

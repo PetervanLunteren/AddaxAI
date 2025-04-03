@@ -1,7 +1,7 @@
 # Script to further identify MD animal detections using the DeepFaune classification model v1.3
 # https://www.deepfaune.cnrs.fr/en/
 # https://plmlab.math.cnrs.fr/deepfaune/software/-/tree/master
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Script created by Peter van Lunteren
 # Some code is created by the DeepFaune team and is indicated as so 
@@ -49,10 +49,10 @@ def fetch_device():
     return device
 
 # The following ClassifTools code snippet is created by the DeepFaune team.
-# Orignal license is shown below.
+# Original license is shown below.
 # Source: https://plmlab.math.cnrs.fr/deepfaune/software/-/blob/master/classifTools.py
 # The code is unaltered, except for two minor adjustments:
-# 1. Accomodate for a non standard location of the model
+# 1. Accommodate a non standard location of the model
 # 2. Run on Apple Silicon GPU via MPS Metal GPU
 
 ################################################
@@ -199,7 +199,7 @@ if not GPU_availability:
     GPU_availability = torch.cuda.is_available()
 
 # read label map
-# not neccesary for yolov8 models to retreive label map exernally, as it is incorporated into the model itself
+# not necessary for yolov8 models to retrieve label map exernally, as it is incorporated into the model itself
 
 # predict from cropped image
 # input: cropped PIL image

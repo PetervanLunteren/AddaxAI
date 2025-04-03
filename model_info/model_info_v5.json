@@ -1043,7 +1043,7 @@
         },
         "Kirghizistan - Manas v1 - OSI-Panthera - Hex Data": {
             "model_fname": "best_model_Fri_Sep__1_18_50_55_2023.pt",
-            "description": "This model is dedicated to the classification of the fauna from Kirghizistan. It was developped by Hex Data (https://hex-data.io) on behalf of OSI-Panthera (https://www.osi-panthera.org/). The model was trained on 42k images, with around 4k images per class, provided by the camera traps set up by OSI-Panthera. Class 'vide' (empty, in French), is used to try to set aside the few false negatives returned by MegaDetector. The rest correspond to the scientific name of the family or species detected.",
+            "description": "This model is dedicated to the classification of the fauna from Kirghizistan. It was developed by Hex Data (https://hex-data.io) on behalf of OSI-Panthera (https://www.osi-panthera.org/). The model was trained on 42k images, with around 4k images per class, provided by the camera traps set up by OSI-Panthera. Class 'vide' (empty, in French), is used to try to set aside the few false negatives returned by MegaDetector. The rest correspond to the scientific name of the family or species detected.",
             "developer": "Hex Data",
             "owner": "OSI-Panthera",
             "env": "pytorch",

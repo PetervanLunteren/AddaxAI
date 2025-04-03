@@ -1,4 +1,4 @@
-Below you can find some common error messages and their potential solutions. If you can't figure it out yourself, raise an error in this repository or [email me](mailto:petervanlunteren@hotmail.com) the logfiles, a detailed explenation of what's going on and a way to recreate the error. 
+Below you can find some common error messages and their potential solutions. If you can't figure it out yourself, raise an error in this repository or [email me](mailto:petervanlunteren@hotmail.com) the logfiles, a detailed explanation of what's going on and a way to recreate the error. 
 
 ## Ask for debug mode
 There must be something going wrong in the backend. Can you run AddaxAI in debug mode and try again? 
@@ -157,7 +157,7 @@ Let me know how that goes!
 
 
 ## `Exception: '>=' not supported between instances of 'RuntimeError' and 'int'`
-Solution comming up...
+Solution coming up...
 
 ## Example email for faulty installation
 
@@ -335,7 +335,7 @@ Could you please:
 I’ll take a look and help you to get AddaxAI running!
 
 # Manually remove all addaxai files
-I'm not sure what is gogin on, but I believe a hard reset might do the trick. 
+I'm not sure what is going on, but I believe a hard reset might do the trick. 
 1. Reboot your computer.
 2. Open your C: drive in file explorer and search for "AddaxAI_files" and manually remove this folder. Make sure hidden items are shown.
 

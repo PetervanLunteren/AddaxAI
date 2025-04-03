@@ -2,7 +2,7 @@
 # MEWC - Mega Efficient Wildlife Classifier - University of Tasmania
 # https://github.com/zaandahl/mewc
 
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI
 # Written by Peter van Lunteren
 # Latest edit by Peter van Lunteren on 29 Jan 2025

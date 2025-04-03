@@ -1,5 +1,5 @@
 # Script to further identify MD animal detections using a pytorch-wildlife classification model
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Script by Peter van Lunteren
 # Model by Pytorch-Wildlife (https://github.com/microsoft/CameraTraps)

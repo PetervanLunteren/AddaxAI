@@ -1,5 +1,5 @@
 # Script to further identify MD animal detections using PT classification models
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Written by Peter van Lunteren
 # Latest edit by Peter van Lunteren on 11 Dec 2024
@@ -58,7 +58,7 @@ if not GPU_availability:
         GPU_availability = True
         device_str = 'cuda'
 
-# init model architechtures
+# init model architectures
 class EfficientNetV2M(nn.Module):
     def __init__(self, num_classes, tune=True):
         super(EfficientNetV2M, self).__init__()

@@ -373,11 +373,11 @@ def smooth_json_imgs(json_input_fpath):
     if os.path.isfile(original_json):
         os.remove(original_json)
     
-    # write smoothed classification results as orignal
+    # write smoothed classification results as original
     with open(os.path.join(filename_base, original_json),'w') as f:
         json.dump(d, f, indent=1)
 
-# for videos we don't need to read exif data becuase we will average the results per video
+# for videos we don't need to read exif data because we will average the results per video
 def smooth_json_video(json_path):
     
     # init vars

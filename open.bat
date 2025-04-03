@@ -1,7 +1,7 @@
 @REM This script opens the AddaxAI program and allows for shortcut creation and execution from within Timelapse.
 @REM Timelapse can also open it by executing the python command directly, but it is still here so that it mimics 
 @REM the old method. In the old method we needed this batch script to perform some conda operations before opening
-@REM the python script. With the Jan 2025 install update that is not neccesary anymore. But this script is still 
+@REM the python script. With the Jan 2025 install update that is not necessary anymore. But this script is still 
 @REM here so that Timelapse can run the same command as before and users don't have to update their Timelapse 
 @REM version when using a new AddaxAI version. 
 @REM Peter van Lunteren, 7 Mar 2025 (latest edit)

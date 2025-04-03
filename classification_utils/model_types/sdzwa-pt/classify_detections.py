@@ -2,7 +2,7 @@
 # SDZWA - San Diego Zoo Wildlife Alliance - The Conservation Technology Lab
 # https://github.com/conservationtechlab/animl-py
 
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 
 # Written by Peter van Lunteren

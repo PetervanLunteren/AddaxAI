@@ -93,7 +93,7 @@ echo "AddaxAI cloned"
 
 git clone https://github.com/agentmorris/MegaDetector.git "${LOCATION_ADDAXAI_FILES}/MegaDetector" || {
       # if this git repo fails to clone, chances are the conda environments will give problems too
-      # so better already set the conda settings to accomodate slow internet speeds
+      # so better already set the conda settings to accommodate slow internet speeds
       export CONDA_REMOTE_READ_TIMEOUT_SECS=120
       export CONDA_REMOTE_CONNECTIONS=1
       export CONDA_REMOTE_MAX_RETRIES=20
@@ -141,7 +141,7 @@ else
   } || { 
     echo "Curl could not be installed. Copy-paste all text in this console window and send it to peter@addaxdatascience.com for further support."; exit 1;
     }
-  echo "curl successfuly installed."
+  echo "curl successfully installed."
 fi
 
 ### download megadetector 

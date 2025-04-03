@@ -2,7 +2,7 @@
 # SDZWA - San Diego Zoo Wildlife Alliance - The Conservation Technology Lab
 # https://github.com/conservationtechlab/animl-py
 
-# It constsist of code that is specific for this kind of model architechture, and 
+# It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Written by Peter van Lunteren
 # Latest edit by Peter van Lunteren on 26 Jun 2024
@@ -64,7 +64,7 @@ def get_classification(PIL_crop):
     img = np.expand_dims(img, axis=0)
     
     # According to https://github.com/conservationtechlab/animl-py/blob/a9d1a2d0a40717f1f8346cbf9aca35161edc9a6e/src/animl/generator.py#L175
-    # there are no particular preprocessing steps or augmentations to handle prior to inference except for horzontal flip.
+    # there are no particular preprocessing steps or augmentations to handle prior to inference except for horizontal flip.
     
     pred = animal_model.predict(img, verbose=0)[0]
     class_ids = sorted(class_map.values())
