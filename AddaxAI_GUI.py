@@ -3383,7 +3383,7 @@ def start_deploy(simple_mode = False):
         return
 
     # run species net
-    if var_cls_model.get() == "SpeciesNet":
+    if var_cls_model.get() == "Global - SpeciesNet - Google":
         
         # if simple mode, tell user to use the advanced mode
         if simple_mode:
@@ -5084,10 +5084,10 @@ def convert_bbox_pascal_to_yolo(size, box):
 def sim_mdl_dpd_callback(self):
     
     # this means the user chose SpeciesNet in simple mode, so tell user to use the advanced mode
-    if self == "SpeciesNet":
+    if self == "Global - SpeciesNet - Google":
         mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible"][lang_idx],
-                        message=[f"SpeciesNet is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
-                                    f"SpeciesNet no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet."][lang_idx])
+                        message=[f"'Global - SpeciesNet - Google' is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
+                                    f"'Global - SpeciesNet - Google' no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet."][lang_idx])
     
     var_cls_model.set(dpd_options_cls_model[lang_idx][sim_dpd_options_cls_model[lang_idx].index(self)])
     model_cls_animal_options(var_cls_model.get())
@@ -5453,7 +5453,7 @@ def model_cls_animal_options(self):
     
     # get model specific variable values
     global sim_spp_scr
-    if self not in none_txt and self != "SpeciesNet": # normal procedure for all classifiers other than speciesnet
+    if self not in none_txt and self != "Global - SpeciesNet - Google": # normal procedure for all classifiers other than speciesnet
         model_vars = load_model_vars()
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
@@ -5488,7 +5488,7 @@ def model_cls_animal_options(self):
         sim_spp_scr._scrollbar.configure(height=0)
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
-    elif self == "SpeciesNet": # special procedure for speciesnet
+    elif self == "Global - SpeciesNet - Google": # special procedure for speciesnet
         
         # remove widgets for other classifiers
         lbl_choose_classes.grid_remove()
