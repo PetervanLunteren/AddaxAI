@@ -62,6 +62,10 @@ if not GPU_availability:
 # no need to remove forbidden classes from the predictions, that will happen in infrence_lib.py
 def get_classification(PIL_crop):
     preprocessed_crop = trans_clf(PIL_crop)
+    
+    if isinstance(preprocessed_crop, torch.Tensor): # Convert tensor to numpy array for PIL compatibility
+        preprocessed_crop = preprocessed_crop.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+        
     classifications = classification_model.single_image_classification(preprocessed_crop)['all_confidences']
     return classifications
 
