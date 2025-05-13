@@ -1,6 +1,6 @@
 # library of inference functions to be used for classifying MD crops 
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 10 April 2025
+# Latest edit by Peter van Lunteren on 13 May 2025
 
 # import packages
 import io
@@ -8,6 +8,7 @@ import os
 import json
 import datetime
 import contextlib
+import pandas as pd
 from tqdm import tqdm
 from PIL import Image
 from collections import defaultdict
@@ -28,7 +29,32 @@ def classify_MD_json(json_path,
                      crop_function,
                      inference_function,
                      temp_frame_folder,
-                     cls_model_fpath):
+                     cls_model_fpath,
+                     cls_tax_fallback,
+                     cls_tax_levels_idx):
+    
+    # get the taxonomy mapping, if required
+    if cls_tax_fallback:
+        
+        # load csv
+        taxonomy_df = pd.read_csv(os.path.join(os.path.dirname(cls_model_fpath), "taxon-mapping.csv"))
+
+        # check if the user wants to fix at a certain column
+        if cls_tax_levels_idx == 0:
+            tax_mode = "auto"
+            fixed_column = None
+        elif cls_tax_levels_idx > 0:
+            tax_mode = "manual"
+            level_cols = [col for col in taxonomy_df.columns if col.startswith('level_')]
+            only_above_cols = [col for col in taxonomy_df.columns if col.startswith('only_above_')]
+            fixed_cols_options = level_cols + only_above_cols
+            fixed_column = fixed_cols_options[cls_tax_levels_idx - 1] # minus 1 because the first option is for auto mode and does not have a column
+            print(f"fixed_column: {fixed_column}")
+    else:
+        taxonomy_df = None
+        tax_mode = None
+        fixed_column = None
+    
     if json_path.endswith('video_recognition_file.json'):
 
         # init vars
@@ -45,7 +71,11 @@ def classify_MD_json(json_path,
                                             smooth_bool = smooth_bool,
                                             crop_function = crop_function,
                                             inference_function = inference_function,
-                                            cls_model_fpath = cls_model_fpath)
+                                            cls_model_fpath = cls_model_fpath,
+                                            cls_tax_fallback = cls_tax_fallback,
+                                            tax_mode = tax_mode,
+                                            fixed_column = fixed_column,
+                                            cls_taxonomy_df = taxonomy_df)
 
     # for images it's much more straight forward
     else:
@@ -57,7 +87,11 @@ def classify_MD_json(json_path,
                                             smooth_bool = smooth_bool,
                                             crop_function = crop_function,
                                             inference_function = inference_function,
-                                            cls_model_fpath = cls_model_fpath)
+                                            cls_model_fpath = cls_model_fpath,
+                                            cls_tax_fallback = cls_tax_fallback,
+                                            tax_mode = tax_mode,
+                                            fixed_column = fixed_column,
+                                            cls_taxonomy_df = taxonomy_df)
 
 # fetch forbidden classes from the model's variables.json
 def fetch_forbidden_classes(cls_model_fpath):
@@ -83,103 +117,68 @@ def remove_forbidden_classes(name_classifications, forbidden_classes):
     name_classifications = [[name, score / total_confidence] if score > 0 else [name, 0] for name, score in name_classifications]
     return name_classifications
 
-# DEBUG start TRIAL FOR A HIERARCHICAL FALLBACK CLASSIFICATION (10 April 2025)
-# This is some work in progress for a hierarchical fallback classification, where if confidence at the species level is too low (below a certain threshold), you back off to genus, then family, order, etc., until one rank gives you enough confidence to make a prediction.
+# this function is used to classify the crops using a hierarchical classification so it can fall back to a higher level
+def hierarchical_classification(name_classifications, taxonomy_df, threshold=0.75, tax_mode = "auto", fixed_column="level_species"):
 
-# # it needs a CSV in this format:
-# Kingdom,Phylum,Class,Order,Family,Genus,Species,Common Name
-# Kingdom:Animalia,Phylum:Chordata,Class:Aves,Order:Struthioniformes,Family:Struthionidae,Genus:Struthio,Struthio camelus,Ostrich
-# Kingdom:Animalia,Phylum:Chordata,Class:Aves,Class:Aves,Class:Aves,Class:Aves,Class:Aves,Bird
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Bovidae,Genus:Antidorcas,Antidorcas marsupialis,Springbok
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Bovidae,Genus:Bos,Bos taurus,Cattle
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Bovidae,Genus:Oreotragus,Oreotragus oreotragus,Klipspringer
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Bovidae,Genus:Oryx,Oryx gazella,Gemsbok
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Bovidae,Genus:Raphicerus,Raphicerus campestris,Steenbok
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Bovidae,Genus:Tragelaphus,Genus:Tragelaphus,Kudu
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Artiodactyla,Family:Giraffidae,Genus:Giraffa,Genus:Giraffa,Giraffe
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Canidae,Genus:Canis,Genus:Canis,Jackal
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Canidae,Genus:Vulpes,Genus:Vulpes,Fox
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Felidae,Genus:Acinonyx,Acinonyx jubatus,Cheetah
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Felidae,Genus:Caracal,Caracal caracal,Caracal
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Felidae,Genus:Felis,Felis lybica,African Wild Cat
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Felidae,Genus:Panthera,Panthera leo,Lion
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Felidae,Genus:Panthera,Panthera pardus,Leopard
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Herpestidae,Genus:Herpestes,Genus:Herpestes,Mongoose
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Hyaenidae,Genus:Crocuta,Crocuta crocuta,Spotted Hyaena
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Hyaenidae,Genus:Hyaena,Hyaena brunnea,Brown Hyaena
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Hyaenidae,Genus:Proteles,Proteles cristata,Aardwolf
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Mustelidae,Genus:Mellivora,Mellivora capensis,Honey Badger
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Carnivora,Family:Viverridae,Genus:Genetta,Genus:Genetta,Genet
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Hyracoidea,Family:Procaviidae,Genus:Procavia,Genus:Procavia,Hyrax
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Lagomorpha,Family:Leporidae,Genus:Lepus,Genus:Lepus,Hare
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Perissodactyla,Family:Equidae,Genus:Equus,Equus africanus asinus,Donkey
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Perissodactyla,Family:Equidae,Genus:Equus,Genus:Equus,Zebra
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Perissodactyla,Family:Rhinocerotidae,Family:Rhinocerotidae,Family:Rhinocerotidae,Rhinoceros
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Primates,Family:Cercopithecidae,Genus:Papio,Genus:Papio,Baboon
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Proboscidea,Family:Elephantidae,Genus:Loxodonta,Genus:Loxodonta,Elephant
-# Kingdom:Animalia,Phylum:Chordata,Class:Mammalia,Order:Rodentia,Family:Hystricidae,Genus:Hystrix,Genus:Hystrix,Porcupine
+    # if the user wants to use the hierarchical classification
+    if tax_mode == "auto":
+        
+        # check all the 'level_' columns in the taxonomy_df, as they are the ones that are used for the hierarchical classification
+        # sometimes there are more than only the regular taxonomy levels, so we need to check which ones are present
+        # for example, ... family, genus, species, sex-age-group
+        # as long as all they are hierarchical levels, we can use them
+        hierarchical_levels = [col for col in taxonomy_df.columns if col.startswith('level_')]
+        hierarchical_level_map = {level: defaultdict(float) for level in hierarchical_levels}
+        
+        # compute the confidence scores for each level
+        for name, confidence in name_classifications:
+            name = name.lower()
+            match = taxonomy_df[taxonomy_df["model_class"] == name]
+            if not match.empty:
+                for level in hierarchical_levels:
+                    taxon = match.iloc[0][level]
+                    if pd.notna(taxon) and taxon != "":
+                        hierarchical_level_map[level][taxon] += confidence
 
-# it still needs some tweaking, but the user can specify to return the best proediction at a specified level (species, family, etc), or set a threshold and return the first one that exceeds that threshold
+        # # print the hierarchical level map
+        # # recursively sort inner dicts by value (confidence) in descending order
+        # def sort_nested_dict(d):
+        #     return {outer_k: dict(sorted(inner_d.items(), key=lambda x: x[1], reverse=True)) for outer_k, inner_d in d.items()}
+        # sorted_map = sort_nested_dict(hierarchical_level_map)
+        # print(json.dumps(sorted_map, indent=4))
 
-# import pandas as pd
-# from collections import defaultdict
+        # now check which level has a high enough confidence
+        # in reverse order since that is how the code expects it
+        for level in hierarchical_levels[::-1]: 
+            leveled = hierarchical_level_map[level]
+            if leveled:
+                top_label, top_conf = max(leveled.items(), key=lambda x: x[1])
+                if top_conf >= threshold:
+                    return {"pred": top_label, "conf": top_conf}
+        
+        # if nothing is found, we can just return the highest level of the class taxon
+        highest_level_class = max(hierarchical_level_map['level_class'].items(), key=lambda item: item[1])
+        return {"pred": highest_level_class[0], "conf": highest_level_class[1]}
 
-# taxonomy_df = pd.read_csv("/Applications/AddaxAI_files/models/cls/Namibian Desert - Addax Data Science/class_taxons.csv")
-
-# def hierarchical_prediction(name_classifications, taxonomy, threshold=0.6, mode="auto", level=None):
-#     """
-#     Args:
-#         name_classifications (list): List of [common_name, confidence] pairs.
-#         taxonomy (str or pd.DataFrame): Path to taxonomy CSV or a preloaded DataFrame.
-#         threshold (float): Confidence threshold to consider a prediction valid.
-#         mode (str): 'auto' for fallback logic, 'manual' to select a fixed level.
-#         level (str): Required if mode='manual'. One of 'Species', 'Genus', 'Family', 'Order', 'Class'.
-#     Returns:
-#         dict: Selected rank, label, and confidence.
-#     """
+    # if the user wants to fix the classification to a certain level, namely the *fixed_column*
+    elif tax_mode == "manual":        
+        fixed_level_map = defaultdict(float)
+        for name, confidence in name_classifications:
+            name = name.lower()
+            match = taxonomy_df[taxonomy_df["model_class"] == name]
+            if not match.empty:
+                taxon = match.iloc[0][fixed_column] # match it with the fixed column
+                if pd.notna(taxon) and taxon != "":
+                    fixed_level_map[taxon] += confidence
     
-#     # Load taxonomy if it's a filepath
-#     if isinstance(taxonomy, str):
-#         taxonomy_df = pd.read_csv(taxonomy)
-#     else:
-#         taxonomy_df = taxonomy.copy()
-    
-#     taxonomy_df["Common Name"] = taxonomy_df["Common Name"].str.lower()
-    
-#     ranks = ["Species", "Genus", "Family", "Order", "Class"]
-#     rank_maps = {rank: defaultdict(float) for rank in ranks}
+        # # print the predictions
+        # # recursively sort dict by value (confidence) in descending order
+        # sorted_data = dict(sorted(fixed_level_map.items(), key=lambda item: item[1], reverse=True))    
+        # print(json.dumps(sorted_data, indent=4))
 
-#     for name, confidence in name_classifications:
-#         name = name.lower()
-#         match = taxonomy_df[taxonomy_df["Common Name"] == name]
-#         if not match.empty:
-#             for rank in ranks:
-#                 taxon = match.iloc[0][rank]
-#                 if pd.notna(taxon) and taxon != "":
-#                     rank_maps[rank][taxon] += confidence
-
-#     if mode == "auto":
-#         for rank in ranks:
-#             ranked = rank_maps[rank]
-#             if ranked:
-#                 top_label, top_conf = max(ranked.items(), key=lambda x: x[1])
-#                 if top_conf >= threshold:
-#                     return {"rank": rank, "label": top_label, "confidence": top_conf}
-#         return {"rank": None, "label": None, "confidence": 0.0}
-
-#     elif mode == "manual":
-#         if level not in ranks:
-#             raise ValueError(f"Invalid level '{level}'. Choose from {ranks}.")
-#         ranked = rank_maps[level]
-#         if ranked:
-#             top_label, top_conf = max(ranked.items(), key=lambda x: x[1])
-#             return {"rank": level, "label": top_label, "confidence": top_conf}
-#         else:
-#             return {"rank": level, "label": None, "confidence": 0.0}
-
-#     else:
-#         raise ValueError("Mode must be either 'auto' or 'manual'.")
-# # DEBUG end
+        # always return the highest confidence score
+        top_label, top_conf = max(fixed_level_map.items(), key=lambda x: x[1])
+        return {"pred": top_label, "conf": top_conf}
 
 # run through json and convert detections to classficiations
 def convert_detections_to_classification(json_path,
@@ -190,7 +189,11 @@ def convert_detections_to_classification(json_path,
                                          smooth_bool,
                                          crop_function,
                                          inference_function,
-                                         cls_model_fpath):
+                                         cls_model_fpath,
+                                         cls_tax_fallback,
+                                         tax_mode,
+                                         fixed_column,
+                                         cls_taxonomy_df):
 
     # count the number of crops to classify
     n_crops_to_classify = 0
@@ -239,13 +242,11 @@ def convert_detections_to_classification(json_path,
                             name_classifications = inference_function(crop)
                             name_classifications = remove_forbidden_classes(name_classifications, forbidden_classes)
                             
-                            # # DEBUG start TRIAL FOR A HIERARCHICAL FALLBACK CLASSIFICATION (10 April 2025)
-                            # print("\n FILE: ", fname)
-                            # print("hierarchical_prediction")
-                            # print(hierarchical_prediction(name_classifications, taxonomy_df, mode="manual", level="Species"))
-                            # print("\n HIERARCHICAL PREDICTION AUTO")
-                            # print(hierarchical_prediction(name_classifications, taxonomy_df, threshold=0.4, mode="auto"))
-                            # # DEBUG end
+                            # fallback to hierarchical classification if the user specified this
+                            if cls_tax_fallback:
+                                hierarchical_prediction = hierarchical_classification(name_classifications, cls_taxonomy_df, threshold=cls_class_thresh, tax_mode=tax_mode, fixed_column=fixed_column)
+                                name_classifications = [[hierarchical_prediction["pred"], hierarchical_prediction["conf"]]] # this overwrites the orginal predictions
+                                initial_it = True # not sure why this is not always set to true, but it is needed for hierarchical prediction to always check if the name is already in the inverted_cls_label_map
                             
                             # check if name already in classification_categories
                             idx_classifications = []
