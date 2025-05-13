@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 6 Apr 2025
+# Latest edit by Peter van Lunteren on 13 May 2025
 
 # TODO: DEPTH - add depth estimation model: https://pytorch.org/hub/intelisl_midas_v2/
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
@@ -2635,7 +2635,7 @@ def update_json_from_img_list(verified_images, inverted_label_map, recognition_f
 # write model specific variables to file 
 def write_model_vars(model_type="cls", new_values = None):
         
-    # exit is no cls is selected
+    # exit if no cls is selected
     if var_cls_model.get() in none_txt:
         return
 
@@ -2653,6 +2653,16 @@ def write_model_vars(model_type="cls", new_values = None):
     var_file = os.path.join(AddaxAI_files, "models", model_type, model_dir, "variables.json")
     with open(var_file, 'w') as file:
         json.dump(variables, file, indent=4)
+        
+# check if there is a taxonomic csv file
+def taxon_mapping_csv_present():   
+    return os.path.isfile(os.path.join(AddaxAI_files, "models", "cls", var_cls_model.get(), "taxon-mapping.csv"))
+
+# return the dataframe if there is a taxonomic csv file
+def fetch_taxon_mapping_df():
+    taxon_mapping_csv = os.path.join(AddaxAI_files, "models", "cls", var_cls_model.get(), "taxon-mapping.csv")
+    if os.path.isfile(taxon_mapping_csv):
+        return pd.read_csv(taxon_mapping_csv)
 
 # take MD json and classify detections
 def classify_detections(json_fpath, data_type, simple_mode = False):
@@ -2669,6 +2679,9 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
     cls_model_type = model_vars["type"]
     cls_model_fpath = os.path.join(AddaxAI_files, "models", "cls", var_cls_model.get(), cls_model_fname)
 
+    # check if taxonomic csv file is present
+    taxon_mapping_csv_present_bool = taxon_mapping_csv_present()
+
     # if present take os-specific env else take general env
     if os.name == 'nt': # windows
         cls_model_env = model_vars.get("env-windows", model_vars["env"])
@@ -2678,16 +2691,24 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
         cls_model_env = model_vars.get("env-linux", model_vars["env"])
 
     # get param values
+    cls_tax_fallback = False
+    cls_tax_levels_idx = 0
     if simple_mode:
         cls_disable_GPU = False
         cls_detec_thresh = model_vars["var_cls_detec_thresh_default"]
         cls_class_thresh = model_vars["var_cls_class_thresh_default"]
         cls_animal_smooth = False
+        if taxon_mapping_csv_present():
+            cls_tax_fallback =  True
+            # leave cls_tax_levels_idx at 0 to let the model decide
     else:
         cls_disable_GPU = var_disable_GPU.get()
         cls_detec_thresh = var_cls_detec_thresh.get() 
         cls_class_thresh = var_cls_class_thresh.get()
         cls_animal_smooth = var_smooth_cls_animal.get()
+        if taxon_mapping_csv_present():
+            cls_tax_fallback = var_tax_fallback.get()
+            cls_tax_levels_idx = model_vars["var_tax_levels_idx"] # take idx from model vars
         
     # init paths
     python_executable = get_python_interprator(cls_model_env)
@@ -2708,6 +2729,8 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
     except NameError:
         command_args.append("None")
         pass
+    command_args.append(str(cls_tax_fallback))
+    command_args.append(str(cls_tax_levels_idx))
     
     # adjust command for unix OS
     if os.name != 'nt':
@@ -5472,8 +5495,9 @@ def model_cls_animal_options(self):
     
     # get model specific variable values
     global sim_spp_scr
+    model_vars = load_model_vars()
     if self not in none_txt and self != "Global - SpeciesNet - Google": # normal procedure for all classifiers other than speciesnet
-        model_vars = load_model_vars()
+        
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
         var_cls_class_thresh.set(model_vars["var_cls_class_thresh"])
@@ -5514,8 +5538,7 @@ def model_cls_animal_options(self):
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     elif self == "Global - SpeciesNet - Google": # special procedure for speciesnet
-
-        model_vars = load_model_vars()
+        
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
         var_cls_class_thresh.set(model_vars["var_cls_class_thresh"])
@@ -5569,9 +5592,74 @@ def model_cls_animal_options(self):
         "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),  # write index instead of value
         })
  
+    # show/hide taxonomic level widgets
+    if taxon_mapping_csv_present():
+        lbl_tax_fallback.grid(row=row_tax_fallback, sticky='nesw', pady=2)
+        chb_tax_fallback.grid(row=row_tax_fallback, column=1, sticky='nesw', padx=5)
+        var_tax_fallback.set(model_vars.get('var_tax_fallback', False))
+        toggle_tax_levels_dpd_options()
+        toggle_tax_levels()        
+    else:
+        lbl_tax_fallback.grid_forget()
+        chb_tax_fallback.grid_forget()
+        lbl_tax_levels.grid_forget()
+        dpd_tax_levels.grid_forget()
+        cls_frame.grid_rowconfigure(row_tax_levels, minsize=0)
+        cls_frame.grid_rowconfigure(row_tax_fallback, minsize=0)
+ 
     # finish up
     toggle_cls_frame()
     resize_canvas_to_content()
+
+def fetch_taxon_dpd_options():
+    # read model vars
+    model_vars = load_model_vars("cls")
+        
+    # read taxon options from csv
+    if taxon_mapping_csv_present():
+        taxon_mapping_df = fetch_taxon_mapping_df()
+        level_cols = [col.replace('level_', '') for col in taxon_mapping_df.columns if col.startswith('level_')]
+        only_above_cols = [col.replace('only_above_', '') for col in taxon_mapping_df.columns if col.startswith('only_above_')]
+        
+        # set the options for the dropdown
+        dpd_options_tax_levels_en = []
+        dpd_options_tax_levels_es = []
+        for level_col in level_cols:
+            dpd_options_tax_levels_en.append("Fix predictions at the " + level_col + " level (if available)")
+            dpd_options_tax_levels_es.append("Fijar predicciones en el nivel " + level_col + " (si está disponible)")
+        for only_above_col in only_above_cols:
+            dpd_options_tax_levels_en.append(f"Only predict categories with ≥ {int(only_above_col):,} training samples")
+            dpd_options_tax_levels_es.append(f"Predecir sólo categorías con ≥ {int(only_above_col):,} muestras de entrenamiento")
+        dpd_options_tax_levels = [["Let the model decide the best prediction level (recommended)"] + dpd_options_tax_levels_en,
+                                ["Dejar que el modelo decida el mejor nivel de predicción (recomendado)"] + dpd_options_tax_levels_es]
+    else:
+        dpd_options_tax_levels = [['dummy'], ['dummy']] # set dummy value to avoid error
+
+    return dpd_options_tax_levels
+
+# function to update the dropdown options for taxonomic levels
+def toggle_tax_levels_dpd_options():
+    
+    # fetch the taxon options
+    dpd_options_tax_levels = fetch_taxon_dpd_options()
+
+    # delte the old options
+    menu = dpd_tax_levels["menu"]
+    menu.delete(0, "end")
+
+    # Add new options
+    for option in dpd_options_tax_levels[lang_idx]:
+        menu.add_command(
+            label=option,
+            command=lambda value=option: (
+                var_tax_levels.set(value),
+                write_model_vars(new_values = {"var_tax_levels_idx": dpd_options_tax_levels[lang_idx].index(value)})
+            )
+        )
+
+    # set to the previously chosen value
+    model_vars = load_model_vars("cls")
+    var_tax_levels.set(dpd_options_tax_levels[lang_idx][model_vars["var_tax_levels_idx"]]) # take idx instead of string
 
 # load a custom yolov5 model
 def model_options(self):
@@ -7201,6 +7289,19 @@ def enable_ann_frame(row, hitl_ann_selection_frame):
     labelframe.configure(relief=RAISED)
     for widget in labelframe.winfo_children():
         widget.configure(state = NORMAL)
+
+
+# toggle taxonomic fallback widgets
+def toggle_tax_levels():
+    write_model_vars(new_values={"var_tax_fallback": var_tax_fallback.get()})
+    if var_tax_fallback.get():
+        lbl_tax_levels.grid(row=row_tax_levels, sticky='nesw', pady=2)
+        dpd_tax_levels.grid(row=row_tax_levels, column=1, sticky='nesw', padx=5, pady=2)
+        set_minsize_rows(cls_frame)
+    else:
+        lbl_tax_levels.grid_forget()
+        dpd_tax_levels.grid_forget()
+        cls_frame.grid_rowconfigure(6, minsize=0)
 
 # show hide the annotation selection frame in the human-in-the-loop settings window
 def toggle_hitl_ann_selection_frame(cmd = None):
@@ -9068,6 +9169,30 @@ var_smooth_cls_animal.set(model_vars.get('var_smooth_cls_animal', False))
 chb_smooth_cls_animal = Checkbutton(cls_frame, variable=var_smooth_cls_animal, anchor="w", command = on_chb_smooth_cls_animal_change)
 chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', padx=5)
 
+# taxonomic fallback checkbox (only visible if taxon mapping is present)
+lbl_tax_fallback_txt = ["Enable taxonomic confidence aggregation", "Activar agregación de confianza taxonómica"]
+row_tax_fallback = 5
+lbl_tax_fallback = Label(cls_frame, text="     " + lbl_tax_fallback_txt[lang_idx], width=1, anchor="w")
+var_tax_fallback = BooleanVar()
+var_tax_fallback.set(model_vars.get('var_tax_fallback', False))
+chb_tax_fallback = Checkbutton(cls_frame, variable=var_tax_fallback, anchor="w", command = toggle_tax_levels)
+
+# taxonomic fallbaock dropdown (only visible if taxon mapping is present)
+lbl_tax_levels_txt = ["Prediction level", "Nivel de predicción"]
+row_tax_levels = 6
+lbl_tax_levels = Label(cls_frame, text="     " + lbl_tax_levels_txt[lang_idx], width=1, anchor="w")
+var_tax_levels = StringVar(cls_frame)
+var_tax_levels.set("dummy") # set dummy value to avoid error
+dpd_tax_levels = OptionMenu(cls_frame, var_tax_levels, ["dummy"])
+dpd_tax_levels.configure(width=1, state=DISABLED)
+
+# make taxonomic fallback widgets visible if taxon mapping is present
+if taxon_mapping_csv_present():
+    toggle_tax_levels_dpd_options()
+    lbl_tax_fallback.grid(row=row_tax_fallback, sticky='nesw', pady=2)
+    chb_tax_fallback.grid(row=row_tax_fallback, column=1, sticky='nesw', padx=5)
+    toggle_tax_levels()
+
 # choose location for species net
 lbl_sppnet_location_txt = ["Location", "Ubicación"]
 row_sppnet_location = 1
@@ -9605,6 +9730,48 @@ def write_help_tab():
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
+
+    # fallback to higher taxonomy if uncertain
+    help_text.insert(END, f"{lbl_tax_fallback_txt[lang_idx]}\n")
+    help_text.insert(END, [
+        "If enabled, the model will automatically fall back to a higher taxonomic level (e.g., genus or family) when its confidence at the species level is low. "
+        "This can improve overall prediction accuracy by avoiding uncertain species-level classifications. Note that some categories may not have species-level predictions at all — "
+        "for example, if the model was trained on a broader class like 'bird', it will never predict individual bird species. "
+        "This option is only available in models that have been adjusted to support taxonomic fallback.",
+        
+        "Si está activado, el modelo recurrirá automáticamente a un nivel taxonómico superior (por ejemplo, género o familia) cuando su confianza en el nivel de especie sea baja. "
+        "Esto puede mejorar la precisión general al evitar clasificaciones inciertas a nivel de especie. Tenga en cuenta que algunas categorías no tienen predicciones a nivel de especie — "
+        "por ejemplo, si el modelo fue entrenado en una clase amplia como 'ave', nunca predecirá especies individuales de aves. "
+        "Esta opción solo está disponible en modelos que han sido ajustados para admitir el retroceso taxonómico."
+    ][lang_idx])
+    help_text.insert(END, "\n\n")
+    help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 1
+    help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
+
+    # prediction level
+    help_text.insert(END, f"{lbl_tax_levels_txt[lang_idx]}\n")
+    help_text.insert(END, [
+        "This setting allows you to control the granularity of the model's predictions. By default, the model will automatically choose the most appropriate "
+        "taxonomic level (e.g., species, genus, or family) depending on its confidence. You can also choose to force predictions to a specific level, "
+        "such as always predicting at the family or genus level, if available. This can be useful for applications where fine-grained classification is not needed or where high-level consistency is preferred. "
+        "You can also restrict predictions to only those categories that had a minimum number of training samples (e.g., ≥ 10,000). This helps reduce errors caused by underrepresented categories, "
+        "but may result in some predictions being skipped entirely if they don’t meet the threshold. "
+        "Note that the availability of certain taxonomic levels (e.g., class, genus, species) depends on how the model was trained. If a level is not available for a given detection, "
+        "the model will fall back to the closest broader category.",
+        
+        "Esta opción le permite controlar el nivel de detalle de las predicciones del modelo. Por defecto, el modelo elegirá automáticamente el nivel taxonómico más adecuado "
+        "(por ejemplo, especie, género o familia), en función de su confianza y de cómo se entrenó el modelo. También puede optar por forzar las predicciones a un nivel específico, "
+        "como predecir siempre a nivel de familia o género, si están disponibles. Esto puede ser útil en aplicaciones en las que no se necesita una clasificación precisa "
+        "o se prefiere una consistencia a un nivel superior. "
+        "También puede restringir las predicciones a categorías que hayan tenido un número mínimo de muestras de entrenamiento (por ejemplo, ≥ 10,000). Esto ayuda a reducir errores "
+        "causados por categorías poco representadas, pero puede dar lugar a que algunas predicciones se omitan si no cumplen ese umbral. "
+        "Tenga en cuenta que la disponibilidad de ciertos niveles taxonómicos (por ejemplo, clase, género, especie o grupo de edad y sexo) depende de cómo se entrenó el modelo. "
+        "Si un nivel no está disponible para una detección determinada, el modelo recurrirá al nivel más amplio disponible."
+    ][lang_idx])
+    help_text.insert(END, "\n\n")
+    help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 1
+    help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
+
 
     # exclude subs
     help_text.insert(END, f"{lbl_exclude_subs_txt[lang_idx]}\n")

@@ -1,8 +1,9 @@
 # Script to further identify MD animal detections using a yolov8 classification model
 # It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
+
 # Written by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 12 Aug 2024
+# Latest edit by Peter van Lunteren on 13 May 2025
 
 #############################################
 ############### MODEL GENERIC ###############
@@ -16,6 +17,8 @@ cls_class_thresh = float(sys.argv[4])
 smooth_bool = True if sys.argv[5] == 'True' else False
 json_path = str(sys.argv[6])
 temp_frame_folder =  None if str(sys.argv[7]) == 'None' else str(sys.argv[7])
+cls_tax_fallback = True if sys.argv[8] == 'True' else False
+cls_tax_levels_idx = int(sys.argv[9])
 
 # lets not freak out over truncated images
 from PIL import ImageFile
@@ -119,4 +122,6 @@ ea.classify_MD_json(json_path = json_path,
                     crop_function = get_crop,
                     inference_function = get_classification,
                     temp_frame_folder = temp_frame_folder,
-                    cls_model_fpath = cls_model_fpath)
+                    cls_model_fpath = cls_model_fpath,
+                    cls_tax_fallback = cls_tax_fallback,
+                    cls_tax_levels_idx = cls_tax_levels_idx)
