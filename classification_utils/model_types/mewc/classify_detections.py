@@ -5,7 +5,7 @@
 # It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Written by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 11 Jul 2024
+# Latest edit by Peter van Lunteren on 13 May 2025
 
 #############################################
 ############### MODEL GENERIC ###############
@@ -19,6 +19,8 @@ cls_class_thresh = float(sys.argv[4])
 smooth_bool = True if sys.argv[5] == 'True' else False
 json_path = str(sys.argv[6])
 temp_frame_folder =  None if str(sys.argv[7]) == 'None' else str(sys.argv[7])
+cls_tax_fallback = True if sys.argv[8] == 'True' else False
+cls_tax_levels_idx = int(sys.argv[9])
 
 # lets not freak out over truncated images
 from PIL import ImageFile
@@ -91,7 +93,7 @@ def get_classification(PIL_crop):
 # each developer has its own way of padding, squaring, cropping, resizing etc
 # it needs to happen exactly the same as on which the model was trained
 # thanks Dan Morris: https://github.com/agentmorris/MegaDetector/blob/main/md_visualization/visualization_utils.py
-def crop_image(image, bbox): 
+def get_crop(image, bbox): 
     x1, y1, w_box, h_box = bbox
     ymin,xmin,ymax,xmax = y1, x1, y1 + h_box, x1 + w_box
     im_width, im_height = image.size
@@ -116,7 +118,9 @@ ea.classify_MD_json(json_path = json_path,
                     cls_detec_thresh = cls_detec_thresh,
                     cls_class_thresh = cls_class_thresh,
                     smooth_bool = smooth_bool,
-                    crop_function = crop_image,
+                    crop_function = get_crop,
                     inference_function = get_classification,
                     temp_frame_folder = temp_frame_folder,
-                    cls_model_fpath = cls_model_fpath)
+                    cls_model_fpath = cls_model_fpath,
+                    cls_tax_fallback = cls_tax_fallback,
+                    cls_tax_levels_idx = cls_tax_levels_idx)
