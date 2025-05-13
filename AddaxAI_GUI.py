@@ -5495,8 +5495,9 @@ def model_cls_animal_options(self):
     
     # get model specific variable values
     global sim_spp_scr
+    model_vars = load_model_vars()
     if self not in none_txt and self != "Global - SpeciesNet - Google": # normal procedure for all classifiers other than speciesnet
-        model_vars = load_model_vars()
+        
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
         var_cls_class_thresh.set(model_vars["var_cls_class_thresh"])
@@ -5537,8 +5538,7 @@ def model_cls_animal_options(self):
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     elif self == "Global - SpeciesNet - Google": # special procedure for speciesnet
-
-        model_vars = load_model_vars()
+        
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
         var_cls_class_thresh.set(model_vars["var_cls_class_thresh"])
@@ -5596,6 +5596,7 @@ def model_cls_animal_options(self):
     if taxon_mapping_csv_present():
         lbl_tax_fallback.grid(row=row_tax_fallback, sticky='nesw', pady=2)
         chb_tax_fallback.grid(row=row_tax_fallback, column=1, sticky='nesw', padx=5)
+        var_tax_fallback.set(model_vars.get('var_tax_fallback', False))
         toggle_tax_levels_dpd_options()
         toggle_tax_levels()        
     else:
@@ -5657,6 +5658,7 @@ def toggle_tax_levels_dpd_options():
         )
 
     # set to the previously chosen value
+    model_vars = load_model_vars("cls")
     var_tax_levels.set(dpd_options_tax_levels[lang_idx][model_vars["var_tax_levels_idx"]]) # take idx instead of string
 
 # load a custom yolov5 model
@@ -9182,11 +9184,11 @@ lbl_tax_levels = Label(cls_frame, text="     " + lbl_tax_levels_txt[lang_idx], w
 var_tax_levels = StringVar(cls_frame)
 var_tax_levels.set("dummy") # set dummy value to avoid error
 dpd_tax_levels = OptionMenu(cls_frame, var_tax_levels, ["dummy"])
+dpd_tax_levels.configure(width=1, state=DISABLED)
 
 # make taxonomic fallback widgets visible if taxon mapping is present
 if taxon_mapping_csv_present():
     toggle_tax_levels_dpd_options()
-    dpd_tax_levels.configure(width=1)
     lbl_tax_fallback.grid(row=row_tax_fallback, sticky='nesw', pady=2)
     chb_tax_fallback.grid(row=row_tax_fallback, column=1, sticky='nesw', padx=5)
     toggle_tax_levels()
