@@ -5,7 +5,7 @@
 # It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI.
 # Written by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 26 Jun 2024
+# Latest edit by Peter van Lunteren on 13 May 2025
 
 #############################################
 ############### MODEL GENERIC ###############
@@ -19,6 +19,8 @@ cls_class_thresh = float(sys.argv[4])
 smooth_bool = True if sys.argv[5] == 'True' else False
 json_path = str(sys.argv[6])
 temp_frame_folder =  None if str(sys.argv[7]) == 'None' else str(sys.argv[7])
+cls_tax_fallback = True if sys.argv[8] == 'True' else False
+cls_tax_levels_idx = int(sys.argv[9])
 
 # lets not freak out over truncated images
 from PIL import ImageFile
@@ -81,7 +83,7 @@ def get_classification(PIL_crop):
 # it needs to happen exactly the same as on which the model was trained
 # I've pulled this crop function from
 # https://github.com/conservationtechlab/animl-py/blob/a9d1a2d0a40717f1f8346cbf9aca35161edc9a6e/src/animl/generator.py#L135
-def crop_image(img, bbox): 
+def get_crop(img, bbox): 
     buffer = 0 
     width, height = img.size
     bbox1, bbox2, bbox3, bbox4 = bbox
@@ -106,7 +108,9 @@ ea.classify_MD_json(json_path = json_path,
                     cls_detec_thresh = cls_detec_thresh,
                     cls_class_thresh = cls_class_thresh,
                     smooth_bool = smooth_bool,
-                    crop_function = crop_image,
+                    crop_function = get_crop,
                     inference_function = get_classification,
                     temp_frame_folder = temp_frame_folder,
-                    cls_model_fpath = cls_model_fpath)
+                    cls_model_fpath = cls_model_fpath,
+                    cls_tax_fallback = cls_tax_fallback,
+                    cls_tax_levels_idx = cls_tax_levels_idx)
