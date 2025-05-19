@@ -32,5 +32,6 @@
     "var_thresh_default": 0.3,
     "var_scale_warning_shown": false,
     "var_sppnet_location_idx": 0,
-    "speciesnet_warning_shown": false
+    "speciesnet_warning_shown": false,
+    "var_hitl_file_order": 2
 }
