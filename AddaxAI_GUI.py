@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 13 May 2025
+# Latest edit by Peter van Lunteren on 19 May 2025
 
 # TODO: DEPTH - add depth estimation model: https://pytorch.org/hub/intelisl_midas_v2/
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
@@ -4316,7 +4316,24 @@ def select_detections(selection_dict, prepare_files):
             patience_dialog.close()      
     steps_progress.update_progress(current_step);current_step += 1
     steps_progress.close()
-
+    
+    # if the user want to sort the files alphabetically
+    global_vars = load_global_vars()
+    if global_vars["var_hitl_file_order"] == 1:
+                
+        # read all lines of the file list
+        if os.path.isfile(file_list_txt):
+            with open(file_list_txt) as f:
+                previous_lines = f.readlines()
+            
+            # remove old file list
+            os.remove(file_list_txt)
+            
+            # and write them back in aphabetical order
+            with open(file_list_txt, 'w') as f:
+                for line in sorted(previous_lines):
+                    f.write(line)
+        
     # update total number of images
     lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][lang_idx])
     
@@ -4681,6 +4698,21 @@ def open_hitl_settings_window():
     btn_hitl_show.grid(row=0, column=1, rowspan=1, sticky='nesw', padx=5)
     btn_hitl_start = Button(master=hitl_test_frame, text=btn_hitl_start_txt, width=1, command=lambda: select_detections(selection_dict = selection_dict, prepare_files = True))
     btn_hitl_start.grid(row=0, column=2, rowspan=1, sticky='nesw', padx=5)
+    
+    # radio options for ordering
+    lbl_hitl_file_order_txt = ["\n   During validation, how would you like the files to be sorted?", "\n   Durante la validación, ¿cómo desea que se ordenen los archivos?"]
+    row_hitl_file_order = 1
+    lbl_hitl_file_order = Label(hitl_test_frame, text="     " + lbl_hitl_file_order_txt[lang_idx], pady=2, width=1, anchor="w")
+    lbl_hitl_file_order.grid(row=row_hitl_file_order, columnspan=3, sticky='nesw')
+    var_hitl_file_order = IntVar()
+    var_hitl_file_order.set(global_vars.get("var_hitl_file_order", 1))
+    rad_hitl_file_order_alpha = Radiobutton(hitl_test_frame, text=["Alphabetical by file name: keeps sequences and locations together.", "Alfabético por nombre de archivo: mantiene juntas las secuencias o ubicaciones."][lang_idx], variable=var_hitl_file_order, value=1)
+    rad_hitl_file_order_alpha.grid(row=row_hitl_file_order+1, columnspan=3, sticky='nsw', padx=25)
+    rad_hitl_file_order_class = Radiobutton(hitl_test_frame, text=["Group by class: first all images of class A, then B, etc.", "Agrupar por clases: primero todas las imágenes de la especie A, luego B, etc."][lang_idx], variable=var_hitl_file_order, value=2)
+    rad_hitl_file_order_class.grid(row=row_hitl_file_order+2, columnspan=3, sticky='nsw', padx=25)
+    def trace_callback(*args): # no idea why this is needed, but if not, the value is not saved
+        write_global_vars({"var_hitl_file_order": var_hitl_file_order.get()})
+    var_hitl_file_order.trace_add("write", trace_callback)
     
     # create scrollable canvas window
     hitl_settings_canvas.create_window((0, 0), window=hitl_settings_main_frame, anchor="nw")
