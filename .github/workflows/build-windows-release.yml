@@ -512,7 +512,7 @@ jobs:
           echo Attempting download and extraction. Try !RETRY_COUNT!...
 
           :: Download the file
-          curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/9/93/Nsis7z.zip"
+          curl --ipv4 --retry 25 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/9/93/Nsis7z.zip"
           dir "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
 
           :: Try to extract the file
