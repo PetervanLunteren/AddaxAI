@@ -1988,7 +1988,7 @@ def produce_plots(results_dir):
 # open human-in-the-loop verification windows
 def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, label_map):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    # print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # check if file list exists
     if not os.path.isfile(file_list_txt):
@@ -4099,7 +4099,7 @@ def create_pascal_voc_annotation(image_path, annotation_list, human_verified):
 # loop json and see which images and annotations fall in user-specified catgegory
 def select_detections(selection_dict, prepare_files):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    # print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # open patience window
     steps_progress = PatienceDialog(total = 8, text = [f"Loading...", f"Cargando..."][lang_idx])
