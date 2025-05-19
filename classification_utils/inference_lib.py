@@ -1,6 +1,6 @@
 # library of inference functions to be used for classifying MD crops 
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 13 May 2025
+# Latest edit by Peter van Lunteren on 19 May 2025
 
 # import packages
 import io
@@ -359,8 +359,6 @@ def smooth_json_imgs(json_input_fpath):
     min_valid_timestamp_year = 1990
     now = datetime.datetime.now()
     image_info = []
-    images_without_datetime = []
-    images_with_invalid_datetime = []
     exif_datetime_tag = 'DateTimeOriginal'
     for exif_result in exif_results:
 
@@ -373,35 +371,37 @@ def smooth_json_imgs(json_input_fpath):
         im['location'] = os.path.dirname(exif_result['file_name'])
         im['file_name'] = exif_result['file_name']
         im['id'] = im['file_name']
+        
+        # check if exif tags are present for this image
         if ('exif_tags' not in exif_result) or (exif_result['exif_tags'] is None) or \
             (exif_datetime_tag not in exif_result['exif_tags']): 
             exif_dt = None
         else:
             exif_dt = exif_result['exif_tags'][exif_datetime_tag]
             exif_dt = parse_exif_datetime_string(exif_dt)
+        
+        # if not present, do not add to image_info
         if exif_dt is None:
-            im['datetime'] = None
-            images_without_datetime.append(im['file_name'])
+            print('<EA>Warning: no DateTimeOriginal in EXIF data for {}<EA>'.format(im['file_name']))
+
+        # if present, check if valid
         else:
             dt = exif_dt
             
-            # an image from the future (or within the last hour) is invalid
+            # an image from the future (or within the last hour) is invalid, do not add to image_info
             if (now - dt).total_seconds() <= 1*60*60:
                 print('<EA>Warning: an image from the future (or within the last hour) is invalid - datetime for {} is {}<EA>'.format(
                     im['file_name'], dt))
-                im['datetime'] = None            
-                images_with_invalid_datetime.append(im['file_name'])
             
-            # an image from before the dawn of time is also invalid
+            # an image from before the dawn of time is also invalid, do not add to image_info
             elif dt.year < min_valid_timestamp_year:
                 print('<EA>Warning: an image from before the dawn of time is also invalid - datetime for {} is {}<EA>'.format(
                     im['file_name'],dt))
-                im['datetime'] = None
-                images_with_invalid_datetime.append(im['file_name'])
             
+            # only if valid and present, add to image_info
             else:
                 im['datetime'] = dt
-        image_info.append(im)
+                image_info.append(im)
 
     # assemble into sequences
     dummy_stream = io.StringIO()
