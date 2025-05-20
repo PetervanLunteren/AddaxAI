@@ -4320,7 +4320,7 @@ def select_detections(selection_dict, prepare_files):
         # read all lines of the file list
         if os.path.isfile(file_list_txt):
             with open(file_list_txt) as f:
-                previous_lines = [line.strip() for line in f if line.strip()]
+                previous_lines = f.readlines()
             
             # remove old file list
             os.remove(file_list_txt)
