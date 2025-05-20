@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 19 May 2025
+# Latest edit by Peter van Lunteren on 20 May 2025
 
 # TODO: DEPTH - add depth estimation model: https://pytorch.org/hub/intelisl_midas_v2/
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
@@ -1987,8 +1987,6 @@ def produce_plots(results_dir):
 
 # open human-in-the-loop verification windows
 def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, label_map):
-    # log
-    # print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # check if file list exists
     if not os.path.isfile(file_list_txt):
@@ -4098,8 +4096,6 @@ def create_pascal_voc_annotation(image_path, annotation_list, human_verified):
 
 # loop json and see which images and annotations fall in user-specified catgegory
 def select_detections(selection_dict, prepare_files):
-    # log
-    # print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # open patience window
     steps_progress = PatienceDialog(total = 8, text = [f"Loading...", f"Cargando..."][lang_idx])
@@ -4320,19 +4316,22 @@ def select_detections(selection_dict, prepare_files):
     # if the user want to sort the files alphabetically
     global_vars = load_global_vars()
     if global_vars["var_hitl_file_order"] == 1:
-                
+        
         # read all lines of the file list
         if os.path.isfile(file_list_txt):
             with open(file_list_txt) as f:
-                previous_lines = f.readlines()
+                previous_lines = [line.strip() for line in f if line.strip()]
             
             # remove old file list
             os.remove(file_list_txt)
             
+            # Apply natural sort using custom key
+            sorted_lines = sorted(previous_lines, key=natural_sort_key)
+        
             # and write them back in aphabetical order
             with open(file_list_txt, 'w') as f:
-                for line in sorted(previous_lines):
-                    f.write(line)
+                for line in sorted_lines:
+                    f.write(line + '\n')
         
     # update total number of images
     lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][lang_idx])
@@ -4377,6 +4376,13 @@ def select_detections(selection_dict, prepare_files):
     # change json paths back, if converted earlier
     if json_paths_converted:
         make_json_absolute(recognition_file)
+
+# Split string into a list of text and number chunks for natural sort
+def natural_sort_key(s):
+    # Remove leading/trailing whitespace
+    s = s.strip()
+    # Split into parts: e.g., "IMG_100.JPG" → ["IMG_", 100, ".JPG"]
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 # count confidence values per class for histograms
 def fetch_confs_per_class(json_fpath):
@@ -4705,11 +4711,11 @@ def open_hitl_settings_window():
     lbl_hitl_file_order = Label(hitl_test_frame, text="     " + lbl_hitl_file_order_txt[lang_idx], pady=2, width=1, anchor="w")
     lbl_hitl_file_order.grid(row=row_hitl_file_order, columnspan=3, sticky='nesw')
     var_hitl_file_order = IntVar()
-    var_hitl_file_order.set(global_vars.get("var_hitl_file_order", 1))
-    rad_hitl_file_order_alpha = Radiobutton(hitl_test_frame, text=["Alphabetical by file name: keeps sequences and locations together.", "Alfabético por nombre de archivo: mantiene juntas las secuencias o ubicaciones."][lang_idx], variable=var_hitl_file_order, value=1)
-    rad_hitl_file_order_alpha.grid(row=row_hitl_file_order+1, columnspan=3, sticky='nsw', padx=25)
+    var_hitl_file_order.set(global_vars.get("var_hitl_file_order", 2))
     rad_hitl_file_order_class = Radiobutton(hitl_test_frame, text=["Group by class: first all images of class A, then B, etc.", "Agrupar por clases: primero todas las imágenes de la especie A, luego B, etc."][lang_idx], variable=var_hitl_file_order, value=2)
     rad_hitl_file_order_class.grid(row=row_hitl_file_order+2, columnspan=3, sticky='nsw', padx=25)
+    rad_hitl_file_order_alpha = Radiobutton(hitl_test_frame, text=["Alphabetical by file name: keeps sequences and locations together.", "Alfabético por nombre de archivo: mantiene juntas las secuencias o ubicaciones."][lang_idx], variable=var_hitl_file_order, value=1)
+    rad_hitl_file_order_alpha.grid(row=row_hitl_file_order+1, columnspan=3, sticky='nsw', padx=25)
     def trace_callback(*args): # no idea why this is needed, but if not, the value is not saved
         write_global_vars({"var_hitl_file_order": var_hitl_file_order.get()})
     var_hitl_file_order.trace_add("write", trace_callback)
