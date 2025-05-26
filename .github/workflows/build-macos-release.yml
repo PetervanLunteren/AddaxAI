@@ -312,6 +312,7 @@ jobs:
           $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 "jsonpickle==3.0.2"
           $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 timm
           $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 dill
+          $conda_exe run -p "${{ github.workspace }}/temp/env-pytorch" pip install --timeout=120 omegaconf
 
           ### clean
           $conda_exe clean --all --yes --force-pkgs-dirs
