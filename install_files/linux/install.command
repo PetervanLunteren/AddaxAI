@@ -215,6 +215,7 @@ $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install "huma
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install "jsonpickle==3.0.2"
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install timm
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install dill
+$conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install omegaconf
 
 ### clean
 $conda_exe clean --all --yes --force-pkgs-dirs
