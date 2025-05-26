@@ -83,8 +83,7 @@ jobs:
 
           ### install env-speciesnet
           $conda_exe create -p "${{ github.workspace }}/temp/env-speciesnet" python=3.11 -y
-          $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 --use-pep517 reverse_geocoder
-          $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 speciesnet
+          $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 speciesnet --use-pep517
 
           ### clean
           $conda_exe clean --all --yes --force-pkgs-dirs
