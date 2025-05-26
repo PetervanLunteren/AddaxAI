@@ -310,6 +310,7 @@ jobs:
           @REM build env-speciesnet
           call "%conda_exe%" create -p "${{ github.workspace }}\temp\env-speciesnet" python=3.11 -y
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-speciesnet" pip install --timeout=120 speciesnet
+          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-speciesnet" pip install --timeout=120 torch torchvision --upgrade --force-reinstall --index-url https://download.pytorch.org/whl/cu118
 
           @REM clean
           call "%conda_exe%" clean --all --yes --force-pkgs-dirs
