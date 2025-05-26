@@ -90,6 +90,7 @@ jobs:
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 hachoir
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 versions
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 jsonpickle
+          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 omegaconf
 
           @REM clean
           call "%conda_exe%" clean --all --yes --force-pkgs-dirs
