@@ -78,7 +78,7 @@ All AddaxAI files are located in one folder, called `AddaxAI_files`. Please be a
     * `model_fname`  - The filename of your model. Make sure you check if you have the right extension. E.g.: `"model_file.h5"`.
     * `description`  - Leave blank. I.e., `""`.
     * `developer`  - Leave blank. I.e., `""`.
-    * `env`  - The virtual environment inside which the model should run. I.e., `"tensorflow"`.
+    * `env`  - The virtual environment inside which the model should run. I.e., `"tensorflow-v2"`.
     * `type`  - The type of model inferencing. I.e., `"mewc"`.
     * `download_info`  - Leave blank. I.e., `[["", ""]]`.
     * `citation`  - Leave blank. I.e., `""`.
@@ -100,7 +100,7 @@ All AddaxAI files are located in one folder, called `AddaxAI_files`. Please be a
   "model_fname": "model_file.pt",
   "description": "",
   "developer": "",
-  "env": "tensorflow",
+  "env": "tensorflow-v2",
   "type": "mewc",
   "download_info": [
     [
@@ -181,7 +181,7 @@ Addax Data Science supports open-source principles, aiming to facilitate the dis
   "model_fname": "model_file.pt",
   "description": "The model was trained on X images taken from database Y and is meant for Z.",
   "developer": "Addax Data Science",
-  "env": "tensorflow",
+  "env": "tensorflow-v2",
   "type": "mewc",
   "download_info": [
     [
