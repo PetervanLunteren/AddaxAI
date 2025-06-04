@@ -8,8 +8,10 @@ Below are instructions for AddaxAI users who are unable to execute the normal in
 <div align="center"><img width="400" alt="Screenshot 2025-01-26 at 11 28 56" src="https://github.com/user-attachments/assets/e18ab79e-e955-426e-ac99-6cdc3e6a7d80"></div>
 <br>
 <br>
+  
+2. Create an `AddaxAI_files` subfolder in your user folder: `C:\Users\<your_username>\AddaxAI_files`
 
-2. Download 7zip via [this link](https://www.7-zip.org/a/7z2408-x64.exe), double-click the `7z2408-x64.exe` file in your Downloads folder, leave the destination folder as it is, and press 'Install'. After a few seconds, it should be installed, and the window can be closed by clicking 'Close'.
+3. Download 7zip via [this link](https://www.7-zip.org/a/7z2408-x64.exe), double-click the `7z2408-x64.exe` file in your Downloads folder, leave the destination folder as it is, and press 'Install'. After a few seconds, it should be installed, and the window can be closed by clicking 'Close'.
 <div align="center">
   <img width="400" alt="Screenshot 2024-08-14 at 08 14 04" src="https://github.com/user-attachments/assets/f6ad90e6-1ce3-4b1c-a2fd-d22139408c22">
   <img width="400" alt="Screenshot 2025-01-26 at 11 34 55" src="https://github.com/user-attachments/assets/66155752-863f-4382-a969-97c5bbe907dc">
@@ -23,7 +25,7 @@ Below are instructions for AddaxAI users who are unable to execute the normal in
 <br>
 <br>
 
-6. Click the `...` button to browse your user folder. The location is important. Choose `C:\Users\<your_username>`.
+6. Click the `...` button to browse your user folder. The location is important. Choose `C:\Users\<your_username>\AddaxAI_files`.
 7. Make sure the checkbox under the 'Extract to' path is unchecked.
 8. Choose 'Overwrite without prompt' as 'Overwrite mode'. 
 9. Click OK. This process will take about 1–5 minutes. 
