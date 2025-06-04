@@ -4,7 +4,7 @@
 Below are instructions for AddaxAI users who are unable to execute the normal install due to unstable internet, security issues, or something else. Installing AddaxAI should be plan B, as the normal installation is much quicker, performs additional checks, and automates the whole process. If you haven't tried the [normal install](https://addaxdatascience.com/AddaxAI-windows/) yet, please try that first. 
 
 **Follow the steps below to install AddaxAI from a ZIP file.**
-1. Download the compressed files using [this link](https://storage.googleapis.com/github-release-files-storage/latest/windows-latest.7z). It might take a while, as it is 4.4 GB. If the internet connection is too unstable or slow for this to work, see the 'Download using the command line for a resume option in unstable internet' alternative at the bottom of this page.
+1. Download the compressed files using [this link](https://addaxaipremiumstorage.blob.core.windows.net/github-zips/latest/windows/base-install.7z). It might take a while, as it is 4.4 GB. If the internet connection is too unstable or slow for this to work, see the 'Download using the command line for a resume option in unstable internet' alternative at the bottom of this page.
 <div align="center"><img width="400" alt="Screenshot 2025-01-26 at 11 28 56" src="https://github.com/user-attachments/assets/e18ab79e-e955-426e-ac99-6cdc3e6a7d80"></div>
 <br>
 <br>
