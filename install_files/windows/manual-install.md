@@ -19,7 +19,7 @@ Below are instructions for AddaxAI users who are unable to execute the normal in
 <br>
 <br>
 
-4. Navigate to the `windows-latest.7z` file. It will be in your Downloads folder.
+4. Navigate to the `base-install.7z` file. It will be in your Downloads folder.
 5. Right-click > (Optionally: 'Show more options') > 7-zip > Extract files...
 <div align="center"><img width="800" alt="Screenshot 2024-08-14 at 07 31 51" src="https://github.com/user-attachments/assets/921a6f79-bf9a-4a7c-8137-df339eb9694e"></div>
 <br>
