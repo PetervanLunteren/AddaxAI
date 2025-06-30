@@ -514,7 +514,7 @@ jobs:
           echo Attempting download and extraction. Try !RETRY_COUNT!...
 
           :: Download the file
-          curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://downloads.sourceforge.net/project/nsis/Plugins/Nsis7z/Nsis7z_v1.6/Nsis7z_v1.6.zip"
+          curl --ipv4 --retry 25 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://github.com/PetervanLunteren/EcoAssist-metadata/releases/download/v0.1/Nsis7z.zip"
           dir "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
 
           :: Try to extract the file
@@ -539,7 +539,7 @@ jobs:
 
       - name: Install Inetc Plugin
         run: |
-          curl --ipv4 --retry 5 -L -o "%GITHUB_WORKSPACE%\Inetc_plugin.zip" "https://downloads.sourceforge.net/project/nsis/Plugins/INetC/INetC%201.0/Inetc.zip"
+          curl --ipv4 --retry 25 -L -o "%GITHUB_WORKSPACE%\Inetc_plugin.zip" "https://github.com/PetervanLunteren/EcoAssist-metadata/releases/download/v0.1/Inetc.zip"
           dir "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
           7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Inetc_plugin.zip"
         shell: cmd
