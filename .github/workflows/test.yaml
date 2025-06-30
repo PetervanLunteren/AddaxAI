@@ -1,0 +1,81 @@
+name: test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows-release:
+    runs-on: windows-2022
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Nsis7z Plugin media wiki
+        run: |
+          @echo off
+          SETLOCAL ENABLEDELAYEDEXPANSION
+          SET MAX_RETRIES=3
+          SET RETRY_COUNT=0
+
+          :retry
+          echo Attempting download and extraction. Try !RETRY_COUNT!...
+
+          :: Download the file
+          curl --ipv4 --retry 25 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://nsis.sourceforge.io/mediawiki/images/9/93/Nsis7z.zip"
+          dir "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+
+          :: Try to extract the file
+          7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+
+          :: Check if extraction was successful
+          IF %ERRORLEVEL% NEQ 0 (
+              echo Extraction failed, retrying download...
+              del "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+              SET /A RETRY_COUNT+=1
+              IF !RETRY_COUNT! LSS %MAX_RETRIES% (
+                  goto retry
+              ) ELSE (
+                  echo Failed to download and extract after %MAX_RETRIES% attempts. Exiting.
+                  EXIT /B 1
+              )
+          ) ELSE (
+              echo Extraction succeeded.
+          )
+          ENDLOCAL
+        shell: cmd
+
+      - name: Install Nsis7z Plugin sourceforge
+        run: |
+          @echo off
+          SETLOCAL ENABLEDELAYEDEXPANSION
+          SET MAX_RETRIES=3
+          SET RETRY_COUNT=0
+
+          :retry
+          echo Attempting download and extraction. Try !RETRY_COUNT!...
+
+          :: Download the file
+          curl --ipv4 --retry 25 -L -o "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip" "https://sourceforge.net/projects/nsis/files/NSIS%203/3.11/nsis-3.11.zip/download"
+          dir "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+
+          :: Try to extract the file
+          7z x -bb3 -o"%GITHUB_WORKSPACE%\NSIS_Plugins" "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+
+          :: Check if extraction was successful
+          IF %ERRORLEVEL% NEQ 0 (
+              echo Extraction failed, retrying download...
+              del "%GITHUB_WORKSPACE%\Nsis7z_plugin.zip"
+              SET /A RETRY_COUNT+=1
+              IF !RETRY_COUNT! LSS %MAX_RETRIES% (
+                  goto retry
+              ) ELSE (
+                  echo Failed to download and extract after %MAX_RETRIES% attempts. Exiting.
+                  EXIT /B 1
+              )
+          ) ELSE (
+              echo Extraction succeeded.
+          )
+          ENDLOCAL
+        shell: cmd
+    
