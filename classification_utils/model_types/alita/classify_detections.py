@@ -8,6 +8,7 @@
 # Script created by Peter van Lunteren
 # The Model specific parts created by Olly
 # Latest edit by Peter van Lunteren on 3 Jul 2025
+# Subsequent edit by Olly on 7 Jul 2025
 
 #############################################
 ############### MODEL GENERIC ###############
@@ -152,12 +153,13 @@ class ImageTransformer():
         
         return new_left, new_top, new_right, new_bottom
 
+
     def get_new_scale(self,
-                      bbox,
-                      buffer,
-                      width,
-                      height,
-                      final_size):
+                      bbox: List[float],
+                      buffer: float,
+                      width: int,
+                      height: int,
+                      final_size: int):
         '''
         Calculates how much to scale down the new image to, 
         so the max(bounding-box) + buffer = the desired crop size.
@@ -172,7 +174,10 @@ class ImageTransformer():
         max_dimension = max([(x_max - x_min)*width, (y_max - y_min)*height]) 
         return final_size/max_dimension if max_dimension > final_size else None
 
-    def md_crop_image(self, detections, image_arr):
+
+    def md_crop_image(self,
+                      bbox: List[float],
+                      image_arr: np.ndarray):
         '''Arguments: Detections for one file
                       The image as a NumPy array
            1. Select the highest confidence megadetector detection
@@ -180,13 +185,10 @@ class ImageTransformer():
            3. Convert the megadetector bbox to absolute pixel locations [left, top, right, bottom]
            4. Crop the numpy array
            '''
-        
         img_buffer = self.buffer
         resample =  self.downsample
         size=self.crop_size
         img_h, img_w = image_arr.shape[:2]
-        # bbox = max(detections["detections"], key=lambda d: d["conf"])["bbox"] # original
-        bbox = detections # Adjusted by Peter - *detections* is not a dict, but a list of floats
 
         if resample:
             scale = self.get_new_scale(bbox, img_buffer, img_w, img_h, size)
@@ -203,33 +205,11 @@ class ImageTransformer():
 
         return cropped_arr
 
-    # # original make_crop function
-    # def make_crop(self, 
-    #               f_path: str,
-    #               bbox: Tuple[float, float, float, float],
-    #               ):
-    #     '''Uses the bounding box from MegaDetector to crop the original image to 600 pixels
-    #        If the bounding box is geater than 600 pixels then it is downsized to 600 pixels
-    #        The final step normalises the colour chanels, and crops to 3x480x480 pixels'''
-    #     image = self.load_image(f_path, 'RGB')
-        
-    #     if image is None:
-    #         print(f"Warning: Unable to load the image at '{f_path}'. Skipping...")
-    #         return None, None, f_path, None, None
-    #     if self.resize_method == 'rescale':
-    #         image = self.rescale_image(image) #Just crops and downsamples image to a square of required size
-    #     else:
-    #         image = self.md_crop_image(bbox, image) #Uses MegaDetector bounding boxes to localise animal
-    #     image = self.transform(image=image)['image']
-        
-    #     return image
 
-    # modified make_crop function - adjusted by Peter
-    # Since the pipeline will input a PIL Image, this modefied function accepts a PIL Image object 
     def make_crop(self, 
-                image: Image.Image,
-                bbox: Tuple[float, float, float, float],
-                ):
+            image: Image.Image,
+            bbox: List[float],
+            ):
         '''Uses the bounding box from MegaDetector to crop the original image to 600 pixels.
         If the bounding box is greater than 600 pixels then it is downsized to 600 pixels.
         The final step normalises the colour channels, and crops to 3x480x480 pixels.'''
@@ -256,6 +236,7 @@ class ImageTransformer():
         transformed = self.transform(image=image_rgb)['image']
         
         return transformed
+
 
 class ClassifierHead(nn.Module):
     def __init__(self, num_features, num_classes, dropout_rate=0.2):
@@ -291,12 +272,11 @@ class CustomModel(pl.LightningModule):
         return logits
     
 
-def get_crop(image_path: str,
-             md_predictions):
+def get_crop(image: Image.Image,
+             bbox: List[float]):
     '''Wrapper to make the form consistent with AddaxAI
        Uses the global instance of ImageTransforms(): transforms'''
-    crop =  transforms.make_crop(image_path, md_predictions)
-    print(f"Crop shape: {crop.shape}")
+    crop =  transforms.make_crop(image, bbox)
     return crop
 
 
@@ -345,23 +325,10 @@ except:
 if not GPU_availability:
     GPU_availability = torch.cuda.is_available()
 
-root = Path(__file__).resolve().parent
-# temp_image_pth = str(root / '0AC899F4-9EF7-4ECC-83F8-FD1FF990B77C.JPG')
-
-# temp_detections = {"file": "0AC899F4-9EF7-4ECC-83F8-FD1FF990B77C.JPG",
-#                     "detections": [
-#                         {"category": "1",
-#                         "conf": 0.949,
-#                         "bbox": [0.4929, 0.046, 0.507, 0.6269 ]},         
-                        
-#                         #I made up this one, I only expect to classify the highest confidence bounding box
-#                         {"category": "1",
-#                         "conf": 0.6,
-#                         "bbox": [0.2, 0.16, 0.8, .9 ]}
-#                         ]
-#                         }
-    
+# root = Path(__file__).resolve().parent
+# temp_image_pth = str(root / '0AC899F4-9EF7-4ECC-83F8-FD1FF990B77C.JPG') 
 # temp_weights = str(root / 'Exp_46_Run_21_best_weights.pt')
+# temp_detection = [0.4929, 0.046, 0.507, 0.6269 ]
 
 species_list = ["banded_dotterel", "banded_rail", "bellbird", "black_backed_gull", "black_billed_gull", 
                 "black_fronted_tern", "blackbird", "canada_goose", "cat", "chamois", "chicken", "cow", 
