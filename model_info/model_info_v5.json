@@ -873,7 +873,7 @@
             "var_tax_levels_idx": 0,
             "var_tax_fallback": true,
             "min_version": "6.16",
-            "taxonomy_mapping_csv": "https://huggingface.co/Addax-Data-Science/sub_saharan_drylands_v1.pt/resolve/main/taxon-mapping.csv?download=true"
+            "taxon_mapping_csv": "https://huggingface.co/Addax-Data-Science/sub_saharan_drylands_v1.pt/resolve/main/taxon-mapping.csv?download=true"
         },
         "Terai region Nepal - Alexander Merdian-Tarko": {
             "model_fname": "model.keras",
