@@ -3,7 +3,7 @@
 # GUI to simplify camera trap image analysis with species recognition models
 # https://addaxdatascience.com/addaxai/
 # Created by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 20 May 2025
+# Latest edit by Peter van Lunteren on 10 Jul 2025
 
 # TODO: DEPTH - add depth estimation model: https://pytorch.org/hub/intelisl_midas_v2/
 # TODO: CLEAN - if the processing is done, and a image is deleted before the post processing, it crashes and just stops, i think it should just skip the file and then do the rest. I had to manually delete certain entries from the image_recognition_file.json to make it work
@@ -6017,6 +6017,22 @@ def set_up_unknown_model(title, model_dict, model_type):
     var_file = os.path.join(model_dir, "variables.json")
     with open(var_file, "w") as vars:
         json.dump(model_dict, vars, indent=2)
+        
+    # download taxonomy mapping csv if it is present
+    if model_dict.get("taxonomy_mapping_csv", None):
+        taxonomy_mapping_csv_url = model_dict["taxonomy_mapping_csv"]
+        taxonomy_mapping_csv_path = os.path.join(model_dir, "taxon-mapping.csv")
+        if not os.path.exists(taxonomy_mapping_csv_path):
+            try:
+                response = requests.get(taxonomy_mapping_csv_url, timeout=1)
+                if response.status_code == 200:
+                    with open(taxonomy_mapping_csv_path, 'wb') as file:
+                        file.write(response.content)
+                    print(f"Downloaded taxonomy mapping CSV for {title} to {taxonomy_mapping_csv_path}")
+                else:
+                    print(f"Failed to download taxonomy mapping CSV for {title}. Status code: {response.status_code}")
+            except requests.exceptions.RequestException as e:   
+                print(f"Error downloading taxonomy mapping CSV for {title}: {e}")
 
 # check if this is the first startup since install 
 def is_first_startup():
