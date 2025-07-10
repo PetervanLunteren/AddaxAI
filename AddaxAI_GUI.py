@@ -6019,16 +6019,16 @@ def set_up_unknown_model(title, model_dict, model_type):
         json.dump(model_dict, vars, indent=2)
         
     # download taxonomy mapping csv if it is present
-    if model_dict.get("taxonomy_mapping_csv", None):
-        taxonomy_mapping_csv_url = model_dict["taxonomy_mapping_csv"]
-        taxonomy_mapping_csv_path = os.path.join(model_dir, "taxon-mapping.csv")
-        if not os.path.exists(taxonomy_mapping_csv_path):
+    if model_dict.get("taxon_mapping_csv", None):
+        taxon_mapping_csv_url = model_dict["taxon_mapping_csv"]
+        taxon_mapping_csv_path = os.path.join(model_dir, "taxon-mapping.csv")
+        if not os.path.exists(taxon_mapping_csv_path):
             try:
-                response = requests.get(taxonomy_mapping_csv_url, timeout=1)
+                response = requests.get(taxon_mapping_csv_url, timeout=1)
                 if response.status_code == 200:
-                    with open(taxonomy_mapping_csv_path, 'wb') as file:
+                    with open(taxon_mapping_csv_path, 'wb') as file:
                         file.write(response.content)
-                    print(f"Downloaded taxonomy mapping CSV for {title} to {taxonomy_mapping_csv_path}")
+                    print(f"Downloaded taxonomy mapping CSV for {title} to {taxon_mapping_csv_path}")
                 else:
                     print(f"Failed to download taxonomy mapping CSV for {title}. Status code: {response.status_code}")
             except requests.exceptions.RequestException as e:   
