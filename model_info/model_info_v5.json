@@ -2232,6 +2232,29 @@
         }
     },
     "det": {
+        "MegaDetector DEBUG": {
+            "model_fname": "md_v5a.0.0.pt",
+            "description": "MegaDetector is an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
+            "developer": "Microsoft AI for Earth",
+            "type": "base",
+            "download_info": [
+                [
+                    "https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt",
+                    "md_v5a.0.0.pt"
+                ]
+            ],
+            "total_download_size": "281 MB",
+            "info_url": "https://github.com/agentmorris/MegaDetector",
+            "citation": "https://arxiv.org/abs/1907.06772",
+            "all_classes": [
+                "animal",
+                "person",
+                "vehicle"
+            ],
+            "min_version": "4.4",
+            "var_tax_levels_idx": 0,
+            "var_tax_fallback": false
+        },
         "MegaDetector 5a": {
             "model_fname": "md_v5a.0.0.pt",
             "description": "MegaDetector is an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
