@@ -453,6 +453,7 @@ jobs:
           call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 pytorchwildlife==1.0.2.15
           call "%conda_exe%" run -p "%root%\envs\env-base" pip uninstall torch torchvision -y 
           call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 torch==2.3.1+cu118 torchvision==0.18.1+cu118 --index-url https://download.pytorch.org/whl/cu118 
+          call "%conda_exe%" run -p "%root%\envs\env-base" pip install --timeout=120 dill
 
           @REM create archive of entire base install
           mkdir "%USERPROFILE%\temp"
