@@ -2232,9 +2232,9 @@
         }
     },
     "det": {
-        "MegaDetector DEBUG": {
+        "MegaDetector DEBUG2": {
             "model_fname": "md_v5a.0.0.pt",
-            "description": "MegaDetector is an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
+            "description": "This is a streamlined variant of the widely used MegaDetector 5A object detection model, designed to detect animals, people, and vehicles in camera trap images. This version is smaller and faster, making it suitable for speed-critical applications, though it may involve a modest trade-off in accuracy. Animals detected by this model will be passed on to species recognition models for further identification. \n By default, if you’re already using MDv5a or MDv5b, keep using it unless you have time to thoroughly compare performance on your own data against MDv1000-Redwood.\n If you're starting from scratch and want the safest, most extensively validated option, go with MDv5a—it's the version most studied in the literature.\n If you’re interested in exploring the cutting edge and want to experience some bananas-good recall, try MDv1000-Redwood.\n Only consider the smaller models if you’re certain you need them. While faster sounds appealing, in reality, a regular laptop without a GPU can already process 50,000 images per day with MDv5, and modern GPUs—now standard on many home PCs—can handle over a million per day. In most cases, speed won’t be the bottleneck. And if achieving faster throughput requires lowering your confidence threshold to maintain recall, you’re just shifting the burden from machine to human—which is almost never a tradeoff worth making.",
             "developer": "Microsoft AI for Earth",
             "type": "base",
             "download_info": [
