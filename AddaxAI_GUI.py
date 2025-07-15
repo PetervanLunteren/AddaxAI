@@ -9910,29 +9910,40 @@ def write_help_tab():
 
     # det model
     help_text.insert(END, f"{lbl_model_txt[lang_idx]}\n")
-    help_text.insert(END, ["AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate the animal, whereas the "
-                           "classification model will identify which species the animal belongs to. Here, you can select the detection model that you want to use. If the dropdown "
-                           "option 'Custom model' is selected, you will be prompted to select a custom YOLOv5 model file. The preloaded 'MegaDetector' models detect animals, people, "
-                           "and vehicles in camera trap imagery. It does not identify the animals; it just finds them. Version A and B differ only in their training data. Each model "
-                           "can outperform the other slightly, depending on your data. Try them both and see which one works best for you. If you really don't have a clue, just stick "
-                           "with the default 'MegaDetector 5a'. More info about MegaDetector models ", "AddaxAI utiliza una combinación de un modelo de detección y un modelo de "
-                           "clasificación para identificar animales. El modelo de detección localizará al animal, mientras que el modelo de clasificación identificará a qué especie "
-                           "pertenece el animal. Aquí puede seleccionar el modelo de detección que desea utilizar. Si selecciona la opción desplegable 'Modelo personalizado', se le "
-                           "pedirá que seleccione un archivo de modelo YOLOv5 personalizado. Los modelos 'MegaDetector' precargados detectan animales, personas y vehículos en imágenes"
-                           " de cámaras trampa. No identifica a los animales, sólo los encuentra. Las versiones A y B sólo se diferencian en los datos de entrenamiento. Cada modelo "
-                           "puede superar ligeramente al otro, dependiendo de sus datos. Pruebe los dos y vea cuál le funciona mejor. Si realmente no tienes ni idea, quédate con el "
-                           "'MegaDetector 5a' por defecto. Más información sobre los modelos MegaDetector ",
-                           "AddaxAI utilise une combinaison de modèles de détection et de classification pour identifier les animaux. Le modèle de détection localise l'animal, tandis "
-                           "que le modèle de classification identifiera l'espèce à laquelle appartient l'animal. Vous pouvez sélectionner ici le modèle de détection souhaité. Si "
-                           "l'option (menu déroulant) « Modèle personnalisé » est sélectionnée, vous serez invité à sélectionner un fichier de modèle YOLOv5 personnalisé. Les modèles "
-                           "« MegaDetector » préchargés détectent les animaux, les personnes, et les véhicules dans les images de pièges photographiques. Il n'identifie pas les "
-                           "animaux; il les trouve simplement. Les versions A et B ne diffèrent que par leurs données d'entraînement. Chaque modèle peut légèrement surpasser l'autre "
-                           "en fonction de vos données. Essayez-les tous les deux et voyez lequel vous convient le mieux. Si vous n'avez vraiment aucune idée, utiliser le modèle par "
-                           "défaut « MegaDetector 5a ». Plus d'informations sur les modèles MegaDetector "][lang_idx])
+    help_text.insert(END, [
+        "AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate the animal, whereas the "
+        "classification model will identify which species the animal belongs to. Here, you can select the detection model that you want to use. If the dropdown "
+        "option 'Custom model' is selected, you will be prompted to select a custom YOLOv5 model file. The preloaded 'MegaDetector' models detect animals, people, "
+        "and vehicles in camera trap imagery. It does not identify the animals; it just finds them. Version 5a and 5b differ only in their training data. Each may perform "
+        "slightly better depending on your specific dataset, so feel free to compare. If you don’t know where to start, stick with the default 'MegaDetector 5a'. "
+        "Newer detection models are also available. 'MDv1000-redwood' is a newer, larger model designed to improve detection accuracy and shows very high recall, but "
+        "it still needs community testing. Use it if you're willing to explore cutting-edge performance. 'MDv1000-spruce' is a smaller, faster model, but only use it if speed is a key requirement "
+        "and you're confident about its trade-offs. In general, speed is rarely a bottleneck anymore, since even modest hardware can process tens of thousands of images per day. "
+        "More info about MegaDetector models ",
+        
+        "AddaxAI utiliza una combinación de un modelo de detección y un modelo de clasificación para identificar animales. El modelo de detección localizará al animal, mientras que el modelo de "
+        "clasificación identificará a qué especie pertenece. Aquí puede seleccionar el modelo de detección que desea utilizar. Si selecciona la opción desplegable 'Modelo personalizado', se le "
+        "pedirá que seleccione un archivo de modelo YOLOv5 personalizado. Los modelos 'MegaDetector' precargados detectan animales, personas y vehículos en imágenes de cámaras trampa. "
+        "No identifican a los animales; solo los encuentran. Las versiones 5a y 5b difieren únicamente en sus datos de entrenamiento. Uno puede funcionar ligeramente mejor que el otro dependiendo de sus datos. "
+        "Si no está seguro, utilice el modelo predeterminado 'MegaDetector 5a'. "
+        "También hay modelos nuevos disponibles. 'MDv1000-redwood' es un modelo más grande diseñado para mejorar la precisión y tiene un excelente recall, aunque aún requiere más pruebas por la comunidad. "
+        "Úselo si quiere probar lo más avanzado. 'MDv1000-spruce' es un modelo más pequeño y rápido, pero sólo se recomienda si la velocidad es una prioridad clara y conoce sus limitaciones. En general, la velocidad rara vez es un cuello de botella, "
+        "ya que incluso hardware modesto puede procesar decenas de miles de imágenes por día. "
+        "Más información sobre los modelos MegaDetector ",
+
+        "AddaxAI utilise une combinaison de modèles de détection et de classification pour identifier les animaux. Le modèle de détection localise l'animal, tandis que le modèle de classification "
+        "détermine à quelle espèce appartient l'animal. Vous pouvez sélectionner ici le modèle de détection souhaité. Si vous sélectionnez l’option « Modèle personnalisé », vous devrez choisir un fichier YOLOv5 personnalisé. "
+        "Les modèles 'MegaDetector' préchargés détectent les animaux, les personnes et les véhicules dans les images de pièges photographiques. Ils ne reconnaissent pas les espèces. Les versions 5a et 5b ne diffèrent que par leurs données d'entraînement. "
+        "L’un peut être légèrement meilleur que l’autre selon vos données. Si vous hésitez, choisissez le modèle par défaut 'MegaDetector 5a'. "
+        "Des modèles plus récents sont également disponibles. 'MDv1000-redwood' est un modèle plus grand conçu pour une meilleure précision et montre un très bon rappel, mais il doit encore être testé par la communauté. "
+        "Utilisez-le si vous souhaitez expérimenter des performances de pointe. 'MDv1000-spruce' est plus petit et plus rapide, mais n’est recommandé que si la vitesse est une exigence importante et que vous en acceptez les compromis. "
+        "De manière générale, la vitesse n'est presque jamais un facteur limitant, car même du matériel modeste peut traiter des dizaines de milliers d'images par jour. "
+        "Plus d'informations sur les modèles MegaDetector "
+    ][lang_idx])
     help_text.insert(INSERT, ["here", "aquí", "ici"][lang_idx], hyperlink1.add(partial(webbrowser.open, "https://github.com/ecologize/CameraTraps/blob/main/megadetector.md#megadetector-v50-20220615")))
     help_text.insert(END, ".\n\n")
-    help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
-    help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
+    help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 1
+    help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
 
     # cls model
     help_text.insert(END, f"{lbl_cls_model_txt[lang_idx]}\n")
