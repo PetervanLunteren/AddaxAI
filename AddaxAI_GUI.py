@@ -2716,8 +2716,9 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
     cls_model_type = model_vars["type"]
     cls_model_fpath = os.path.join(AddaxAI_files, "models", "cls", var_cls_model.get(), cls_model_fname)
 
-    # check if taxonomic csv file is present
-    taxon_mapping_csv_present_bool = taxon_mapping_csv_present()
+    # check if taxonomic fallback should be the default
+    taxon_mapping_csv_is_present = taxon_mapping_csv_present()
+    taxon_mapping_is_default = model_vars["var_tax_fallback_default"]
 
     # if present take os-specific env else take general env
     if os.name == 'nt': # windows
@@ -2735,16 +2736,17 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
         cls_detec_thresh = model_vars["var_cls_detec_thresh_default"]
         cls_class_thresh = model_vars["var_cls_class_thresh_default"]
         cls_animal_smooth = False
-        if taxon_mapping_csv_present():
-            cls_tax_fallback =  True
-            # leave cls_tax_levels_idx at 0 to let the model decide
+        if taxon_mapping_csv_is_present:
+            if taxon_mapping_is_default:
+                cls_tax_fallback =  True
+                # leave cls_tax_levels_idx at default 0 to let the model decide
     else:
         cls_disable_GPU = var_disable_GPU.get()
         cls_detec_thresh = var_cls_detec_thresh.get() 
         cls_class_thresh = var_cls_class_thresh.get()
         cls_animal_smooth = var_smooth_cls_animal.get()
-        if taxon_mapping_csv_present():
-            cls_tax_fallback = var_tax_fallback.get()
+        if taxon_mapping_csv_is_present:
+            cls_tax_fallback = var_tax_fallback.get() # the users choice
             cls_tax_levels_idx = model_vars["var_tax_levels_idx"] # take idx from model vars
         
     # init paths
