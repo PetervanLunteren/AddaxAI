@@ -999,7 +999,7 @@
             "min_version": "6.12",
             "var_tax_levels_idx": 0,
             "var_tax_fallback": false,
-            "var_tax_fallback_default": false,
+            "var_tax_fallback_default": false
         },
         "Global - SpeciesNet - Google": {
             "model_fname": "Global - SpeciesNet - Google",
@@ -1124,7 +1124,7 @@
             "min_version": "6.03",
             "var_tax_levels_idx": 0,
             "var_tax_fallback": false,
-            "var_tax_fallback_default": false,
+            "var_tax_fallback_default": false
         },
         "Tasmanian vertebrates": {
             "model_fname": "tas_ens_mewc.keras",
