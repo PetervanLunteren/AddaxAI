@@ -67,6 +67,7 @@
             "min_version": "6.15",
             "var_tax_levels_idx": 0,
             "var_tax_fallback": false,
+            "var_tax_fallback_default": false,
             "taxon_mapping_csv": "https://huggingface.co/Addax-Data-Science/Japan_Gifu_v0.2/resolve/main/taxon-mapping.csv?download=true"
         },
         "New Zealand Species - DOC NZ - wekaResearch": {
@@ -256,6 +257,7 @@
             "min_version": "6.17",
             "var_tax_levels_idx": 0,
             "var_tax_fallback": false,
+            "var_tax_fallback_default": false,
             "taxon_mapping_csv": "https://huggingface.co/Addax-Data-Science/New_Zealand_Alita_v1/resolve/main/taxon-mapping.csv?download=true"
         },
         "Sub-Saharan Drylands - Addax Data Science": {
@@ -941,6 +943,7 @@
             "var_smooth_cls_animal": false,
             "var_tax_levels_idx": 0,
             "var_tax_fallback": true,
+            "var_tax_fallback_default": true,
             "min_version": "6.16",
             "taxon_mapping_csv": "https://huggingface.co/Addax-Data-Science/sub_saharan_drylands_v1.pt/resolve/main/taxon-mapping.csv?download=true"
         },
@@ -995,7 +998,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "6.12",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false,
         },
         "Global - SpeciesNet - Google": {
             "model_fname": "Global - SpeciesNet - Google",
@@ -1021,7 +1025,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "6.09",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Europe - DeepFaune v1.3": {
             "model_fname": "deepfaune-vit_large_patch14_dinov2.lvd142m.v3.pt",
@@ -1118,7 +1123,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "6.03",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false,
         },
         "Tasmanian vertebrates": {
             "model_fname": "tas_ens_mewc.keras",
@@ -1343,7 +1349,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "6.01",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Namibian Desert - Addax Data Science": {
             "model_fname": "namib_desert_v1.pt",
@@ -1432,7 +1439,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "4.4",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Europe - DeepFaune v1.2": {
             "model_fname": "deepfaune-vit_large_patch14_dinov2.lvd142m.v2.pt",
@@ -1521,7 +1529,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.19",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Europe - DeepFaune v1.1": {
             "model_fname": "deepfaune-vit_large_patch14_dinov2.lvd142m.pt",
@@ -1602,7 +1611,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.2",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "New Zealand Invasives - DOC NZ - Addax Data science": {
             "model_fname": "new_zealand_v1.pt",
@@ -1666,7 +1676,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.4",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Colombian Amazon - AI for Good Lab, Microsoft": {
             "model_fname": "AI4GAmazonClassification_v0.0.0.ckpt",
@@ -1769,7 +1780,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.6",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Peruvian Amazon - San Diego Zoo Wildlife Alliance": {
             "model_fname": "Peru-Amazon_0.86.h5",
@@ -1885,7 +1897,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.9",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Perivuan Andes - San Diego Zoo Wildlife Alliance": {
             "model_fname": "andes_v1.pt",
@@ -2027,7 +2040,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.16",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Iran - Addax Data Science": {
             "model_fname": "iran_v1.pt",
@@ -2082,7 +2096,8 @@
             "var_smooth_cls_animal": true,
             "min_version": "5.8",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Kirghizistan - Manas v1 - OSI-Panthera - Hex Data": {
             "model_fname": "best_model_Fri_Sep__1_18_50_55_2023.pt",
@@ -2138,7 +2153,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.18",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         },
         "Southwest USA v3 - San Diego Zoo Wildlife Alliance": {
             "model_fname": "southwest_v3.pt",
@@ -2228,7 +2244,8 @@
             "var_smooth_cls_animal": false,
             "min_version": "5.16",
             "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "var_tax_fallback": false,
+            "var_tax_fallback_default": false
         }
     },
     "det": {
@@ -2251,9 +2268,7 @@
                 "person",
                 "vehicle"
             ],
-            "min_version": "4.4",
-            "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "min_version": "4.4"
         },
         "MegaDetector 5b": {
             "model_fname": "md_v5b.0.0.pt",
@@ -2274,9 +2289,7 @@
                 "person",
                 "vehicle"
             ],
-            "min_version": "4.5",
-            "var_tax_levels_idx": 0,
-            "var_tax_fallback": false
+            "min_version": "4.5"
         }
     }
 }
