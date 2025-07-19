@@ -246,13 +246,15 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
 
     # check if user is not in the middle of an annotation session
     if data_type == "img" and get_hitl_var_in_json(recognition_file) == "in-progress":
-        if not mb.askyesno(["Verification session in progress", "Sesión de verificación en curso", "Session de vérification en cours"][lang_idx],
+        if not mb.askyesno(["Verification session in progress", "Sesión de verificación en curso", "Session de vérification en cours", "Überprüfungssitzung läuft"][lang_idx],
                            [f"Your verification session is not yet done. You can finish the session by clicking 'Continue' at '{lbl_hitl_main_txt[lang_idx]}', "
                             "or just continue to post-process with the results as they are now.\n\nDo you want to continue to post-process?",
                             f"La sesión de verificación aún no ha finalizado. Puede finalizarla haciendo clic en 'Continuar' en '{lbl_hitl_main_txt[lang_idx]}', "
                             "o simplemente continuar con el posprocesamiento con los resultados tal como están ahora.\n\n¿Quieres continuar con el posprocesamiento?",
                             f"Votre session de vérification n'est pas encore terminée. Vous pouvez la compléter en cliquant sur '{lbl_hitl_main_txt[lang_idx]}', "
-                            "ou juste continuer le post-traitement avec les résultats actuels.\n\nSouhaitez-vous continuer le post-traitement?"][lang_idx]):
+                            "ou juste continuer le post-traitement avec les résultats actuels.\n\nSouhaitez-vous continuer le post-traitement?",
+                            f"Ihre Überprüfungssitzung ist noch nicht abgeschlossen. Sie können die Sitzung beenden, indem Sie auf 'Weiter' bei '{lbl_hitl_main_txt[lang_idx]}' klicken, "
+                            "oder einfach mit den Ergebnissen so wie sie jetzt sind, nachbearbeiten.\n\nMöchten Sie mit der Nachbearbeitung fortfahren?"][lang_idx]):
             return
 
     # init vars
@@ -263,9 +265,9 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
     # warn user
     if data_type == "vid":
         if vis or crp or plt:
-            check_json_presence_and_warn_user(["visualize, crop, or plot", "visualizar, recortar o trazar", "visualiser, rogner ou afficher"][lang_idx],
-                                              ["visualizing, cropping, or plotting", "visualizando, recortando o trazando", "visualisation, rognage ou affichage"][lang_idx],
-                                              ["visualization, cropping, and plotting", "visualización, recorte y trazado", "visualisation, rognage et affichage"][lang_idx])
+            check_json_presence_and_warn_user(["visualize, crop, or plot", "visualizar, recortar o trazar", "visualiser, rogner ou afficher", "visualisieren, zuschneiden oder darstellen"][lang_idx],
+                                              ["visualizing, cropping, or plotting", "visualizando, recortando o trazando", "visualisation, rognage ou affichage", "visualisieren, zuschneiden oder darstellen"][lang_idx],
+                                              ["visualization, cropping, and plotting", "visualización, recorte y trazado", "visualisation, rognage et affichage", "Visualisierung, Zuschneiden und Darstellung"][lang_idx])
             vis, crp, plt = [False] * 3
 
     # fetch label map
@@ -332,11 +334,11 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
                     if detection["conf"] >= thresh:
                         n_rows_detections += 1
         if n_rows_detections > 1048576 or n_rows_files > 1048576:
-            mb.showerror(["To many rows", "Demasiadas filas", "Trop de lignes"][lang_idx],
+            mb.showerror(["To many rows", "Demasiadas filas", "Trop de lignes", "Zu viele Zeilen"][lang_idx],
                          ["The XLSX file you are trying to create is too large!\n\nThe maximum number of rows in an XSLX file is "
                           f"1048576, while you are trying to create a sheet with {max(n_rows_files, n_rows_detections)} rows.\n\nIf"
                           " you require the results in XLSX format, please run the process on smaller chunks so that it doesn't "
-                          f"exceed Microsoft's row limit. Or choose CSV as {lbl_exp_format_txt[lang_idx]} in advanced mode.", 
+                          f"exceed Microsoft's row limit. Or choose CSV as {lbl_exp_format_txt[lang_idx]} in advanced mode.",
                           "¡El archivo XLSX que está intentando crear es demasiado grande!\n\nEl número máximo de filas en un archivo"
                           f" XSLX es 1048576, mientras que usted está intentando crear una hoja con {max(n_rows_files, n_rows_detections)}"
                           " filas.\n\nSi necesita los resultados en formato XLSX, ejecute el proceso en trozos más pequeños para que no "
@@ -344,7 +346,11 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
                           "Le fichier XLSX que vous tenter de créer est trop long!\n\nLe nombre maximum de lignes dans un fichier XSLX est "
                           f"1048576, alors que vous tenter de créer une feuille avec {max(n_rows_files, n_rows_detections)} lignes.\n\nSi"
                           " vous souhaitez des résultats sous format XLSX, svp exécuter le processus sur de plus petites portions de sorte à ne pas "
-                          f"excéder la limite de lignes de Microsoft. Ou choisissez le format CSV comme {lbl_exp_format_txt[lang_idx]} dans le mode avancé."][lang_idx])
+                          f"excéder la limite de lignes de Microsoft. Ou choisissez le format CSV comme {lbl_exp_format_txt[lang_idx]} dans le mode avancé.",
+                          "Die XLSX-Datei, die Sie erstellen möchten, ist zu groß!\n\nDie maximale Anzahl von Zeilen in einer XSLX-Datei ist "
+                          f"1048576, während Sie versuchen, ein Blatt mit {max(n_rows_files, n_rows_detections)} Zeilen zu erstellen.\n\nWenn"
+                          " Sie die Ergebnisse im XLSX-Format benötigen, führen Sie den Prozess bitte in kleineren Teilen aus, damit er nicht "
+                          f"das Zeilenlimit von Microsoft überschreitet. Oder wählen Sie CSV als {lbl_exp_format_txt[lang_idx]} im erweiterten Modus."][lang_idx])
             return
 
     # loop through images
@@ -1286,42 +1292,49 @@ def start_postprocess():
     if not img_json and not vid_json:
         mb.showerror(error_txt[lang_idx], ["No model output file present. Make sure you run step 2 before post-processing the files.",
                                        "No hay archivo de salida del modelo. Asegúrese de ejecutar el paso 2 antes de postprocesar"
-                                       " los archivos.", 
+                                       " los archivos.",
                                        "Aucun fichier de sortie du modèle présent. Assurez-vous d'exécuter l'étape 2 avant le "
-                                       "post-traitement des fichiers"][lang_idx])
+                                       "post-traitement des fichiers.",
+                                       "Keine Modellausgabedatei vorhanden. Stellen Sie sicher, dass Sie Schritt 2 ausführen, bevor Sie die Dateien nachbearbeiten."][lang_idx])
         return
     
     # check if destination dir is valid and set to input dir if not
     if dst_dir in ["", "/", "\\", ".", "~", ":"] or not os.path.isdir(dst_dir):
-        mb.showerror(["Destination folder not set", "Carpeta de destino no establecida.", "Le répertoire de sortie n'est pas spécifié."][lang_idx],
+        mb.showerror(["Destination folder not set", "Carpeta de destino no establecida.", "Le répertoire de sortie n'est pas spécifié.", "Zielordner nicht festgelegt."][lang_idx],
                         ["Destination folder not set.\n\n You have not specified where the post-processing results should be placed or the set "
                         "folder does not exist. This is required.",
                         "Carpeta de destino no establecida. No ha especificado dónde deben colocarse los resultados del postprocesamiento o la "
                         "carpeta establecida no existe. Esto opción es obligatoria.",
                         "Le répertoire de sortie n'est pas spécifié. Vous n'avez pas spécifié l'emplacement où enregistrer les résultats du post-traitement "
-                        "ou le répertoire n'existe pas. Ceci est obligatoire."][lang_idx])
+                        "ou le répertoire n'existe pas. Ceci est obligatoire.",
+                        "Zielordner nicht festgelegt.\n\n Sie haben nicht angegeben, wo die Nachbearbeitungsergebnisse platziert werden sollen, oder der festgelegte "
+                        "Ordner existiert nicht. Dies ist erforderlich."][lang_idx])
         return
 
     # warn user if the original files will be overwritten with visualized files
     if os.path.normpath(dst_dir) == os.path.normpath(src_dir) and vis and not sep:
-        if not mb.askyesno(["Original images will be overwritten", "Las imágenes originales se sobrescribirán.", "Les images originales seront écrasées."][lang_idx], 
+        if not mb.askyesno(["Original images will be overwritten", "Las imágenes originales se sobrescribirán.", "Les images originales seront écrasées.", "Originalbilder werden überschrieben"][lang_idx],
                       [f"WARNING! The visualized images will be placed in the folder with the original data: '{src_dir}'. By doing this, you will overwrite the original images"
                       " with the visualized ones. Visualizing is permanent and cannot be undone. Are you sure you want to continue?",
                       f"ATENCIÓN. Las imágenes visualizadas se colocarán en la carpeta con los datos originales: '{src_dir}'. Al hacer esto, se sobrescribirán las imágenes "
                       "originales con las visualizadas. La visualización es permanente y no se puede deshacer. ¿Está seguro de que desea continuar?",
                       f"ATTENTION ! Les images visualisées seront placées dans le dossier contenant les données d'origine : « {src_dir} ». Ce faisant, vous écraserez les images d'origine par celles visualisées. "
-                      "La visualisation est définitive et irréversible. Voulez-vous vraiment continuer ? "][lang_idx]):
+                      "La visualisation est définitive et irréversible. Voulez-vous vraiment continuer ? ",
+                      f"WARNUNG! Die visualisierten Bilder werden in dem Ordner mit den Originaldaten abgelegt: '{src_dir}'. Dadurch werden die Originalbilder"
+                      " mit den visualisierten überschrieben. Die Visualisierung ist dauerhaft und kann nicht rückgängig gemacht werden. Sind Sie sicher, dass Sie fortfahren möchten?"][lang_idx]):
             return
     
     # warn user if images will be moved and visualized
     if sep and file_placement == 1 and vis:
-        if not mb.askyesno(["Original images will be overwritten", "Las imágenes originales se sobrescribirán.", "Les images originales seront écrasées."][lang_idx], 
+        if not mb.askyesno(["Original images will be overwritten", "Las imágenes originales se sobrescribirán.", "Les images originales seront écrasées.", "Originalbilder werden überschrieben"][lang_idx],
                       [f"WARNING! You specified to visualize the original images. Visualizing is permanent and cannot be undone. If you don't want to visualize the original "
                       f"images, please select 'Copy' as '{lbl_file_placement_txt}'. Are you sure you want to continue with the current settings?",
                       "ATENCIÓN. Ha especificado visualizar las imágenes originales. La visualización es permanente y no puede deshacerse. Si no desea visualizar las "
                       f"imágenes originales, seleccione 'Copiar' como '{lbl_file_placement_txt}'. ¿Está seguro de que desea continuar con la configuración actual?",
                       "ATTENTION ! Vous avez spécifié de visualiser les images originales. La visualisation est définitive et irréversible. Si vous ne souhaitez pas visualiser les images originales, "
-                      f"sélectionnez « Copier » au format « {lbl_file_placement_txt} ». Voulez-vous vraiment conserver les paramètres actuels ?"][lang_idx]):
+                      f"sélectionnez « Copier » au format « {lbl_file_placement_txt} ». Voulez-vous vraiment conserver les paramètres actuels ?",
+                      f"WARNUNG! Sie haben angegeben, die Originalbilder zu visualisieren. Die Visualisierung ist dauerhaft und kann nicht rückgängig gemacht werden. Wenn Sie die Originalbilder nicht "
+                      f"visualisieren möchten, wählen Sie bitte 'Kopieren' als '{lbl_file_placement_txt}'. Sind Sie sicher, dass Sie mit den aktuellen Einstellungen fortfahren möchten?"][lang_idx]):
             return
 
     # initialise progress window with processes
@@ -1355,7 +1368,9 @@ def start_postprocess():
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
                                                 f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
                                                 "Un ou plusieurs fichiers n'ont pas pu être analysés par le modèle (par exemple, des fichiers corrompus) et seront"
-                                                f"ignorés lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'info."][lang_idx])
+                                                f"ignorés lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'info.",
+                                                f"Eine oder mehrere Dateien konnten vom Modell nicht analysiert werden (z. B. beschädigte Dateien) und werden von den "
+                                                f"Nachbearbeitungsfunktionen übersprungen. Siehe\n\n'{postprocessing_error_log}'\n\nfür weitere Informationen."][lang_idx])
 
         # close progress window
         progress_window.close()
@@ -1366,7 +1381,7 @@ def start_postprocess():
         
         # show error
         mb.showerror(title=error_txt[lang_idx],
-                     message=["An error has occurred", "Ha ocurrido un error", "Une erreur s'est produite"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
+                     message=["An error has occurred", "Ha ocurrido un error", "Une erreur s'est produite", "Ein Fehler ist aufgetreten"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                      detail=traceback.format_exc())
         
         # close window
@@ -2025,13 +2040,15 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         for line in f:
             total_n_files += 1
     if total_n_files == 0:
-        mb.showerror(["No images to verify", "No hay imágenes para verificar", "Aucune image à vérifier"][lang_idx],
+        mb.showerror(["No images to verify", "No hay imágenes para verificar", "Aucune image à vérifier", "Keine Bilder zu überprüfen"][lang_idx],
                      ["There are no images to verify with the selected criteria. Use the 'Update counts' button to see how many "
                      "images you need to verify with the selected criteria.", "No hay imágenes para verificar con los criterios "
                      "seleccionados. Utilice el botón 'Actualizar recuentos' para ver cuántas imágenes necesita verificar con "
                      "los criterios seleccionados.",
-                     "Il n'y a aucune image à vérifier selon les critères sélectionnés. Utilisez le bouton « Mettre à jour le nombre » pour " 
-                     "voir le nombre d'images à vérifier selon les critères sélectionnés."][lang_idx])
+                     "Il n'y a aucune image à vérifier selon les critères sélectionnés. Utilisez le bouton « Mettre à jour le nombre » pour "
+                     "voir le nombre d'images à vérifier selon les critères sélectionnés.",
+                     "Es gibt keine Bilder zu überprüfen mit den ausgewählten Kriterien. Verwenden Sie die Schaltfläche 'Zählungen aktualisieren', um zu sehen, wie viele "
+                     "Bilder Sie mit den ausgewählten Kriterien überprüfen müssen."][lang_idx])
         return
     
     # TODO: progressbars are not in front of other windows
@@ -2053,7 +2070,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # count n verified files and locate images that need converting
     n_verified_files = 0
     if get_hitl_var_in_json(recognition_file) != "never-started":
-        init_dialog = PatienceDialog(total = total_n_files, text = ["Initializing...", "Inicializando...", "Initialisation..."][lang_idx])
+        init_dialog = PatienceDialog(total = total_n_files, text = ["Initializing...", "Inicializando...", "Initialisation...", "Initialisierung..."][lang_idx])
         init_dialog.open()
         init_current = 1
         imgs_needing_converting = []
@@ -2104,7 +2121,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     text_hitl_explanation_frame.insert(END, ["This is where you do the actual verification. You'll have to make sure that all objects in all images are correctly "
                                             "labeled. That also includes classes that you did not select but are on the image by chance. If an image is verified, "
                                             "you'll have to let AddaxAI know by pressing the space bar. If all images are verified and up-to-date, you can close "
-                                            "the window. AddaxAI will prompt you for the final step. You can also close the window and continue at a later moment.", 
+                                            "the window. AddaxAI will prompt you for the final step. You can also close the window and continue at a later moment.",
                                             "Deberá asegurarse de que todos los objetos en todas las imágenes estén "
                                             "etiquetados correctamente. Eso también incluye clases que no seleccionaste pero que están en la imagen por casualidad. "
                                             "Si se verifica una imagen, deberá informar a AddaxAI presionando la barra espaciadora. Si todas las imágenes están "
@@ -2114,11 +2131,15 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
                                             "les images sont correctement étiquetées. Cela inclut également les classes que vous n'avez pas sélectionnées, mais qui "
                                             "se trouvent sur l'image par hasard. Si une image est vérifiée, vous devrez en informer AddaxAI en appuyant sur la barre "
                                             "d'espacement. Si toutes les images sont vérifiées et à jour, vous pouvez fermer la fenêtre. AddaxAI vous invitera à effectuer "
-                                            "la dernière étape. Vous pouvez également fermer la fenêtre et continuer ultérieurement."][lang_idx])
+                                            "la dernière étape. Vous pouvez également fermer la fenêtre et continuer ultérieurement.",
+                                            "Hier führen Sie die eigentliche Überprüfung durch. Sie müssen sicherstellen, dass alle Objekte in allen Bildern korrekt "
+                                            "beschriftet sind. Dazu gehören auch Klassen, die Sie nicht ausgewählt haben, die aber zufällig auf dem Bild sind. Wenn ein Bild verifiziert ist, "
+                                            "müssen Sie AddaxAI durch Drücken der Leertaste informieren. Wenn alle Bilder verifiziert und auf dem neuesten Stand sind, können Sie das "
+                                            "Fenster schließen. AddaxAI wird Sie zum letzten Schritt auffordern. Sie können das Fenster auch schließen und zu einem späteren Zeitpunkt fortfahren."][lang_idx])
     text_hitl_explanation_frame.tag_add('explanation', '1.0', '1.end')
 
     # shortcuts frame
-    hitl_shortcuts_frame = LabelFrame(hitl_progress_window, text=[" Shortcuts ", " Atajos ", "Raccourci "][lang_idx],
+    hitl_shortcuts_frame = LabelFrame(hitl_progress_window, text=[" Shortcuts ", " Atajos ", "Raccourci ", "Kürzel "][lang_idx],
                                         pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary)
     hitl_shortcuts_frame.configure(font=(text_font, 15, "bold"))
     hitl_shortcuts_frame.grid(column=0, row=2, columnspan=2, sticky='ew')
@@ -2128,14 +2149,15 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # shortcuts label
     shortcut_labels = [["Next image:", "Previous image:", "Create box:", "Edit box:", "Delete box:", "Verify, save, and next image:"],
                        ["Imagen siguiente:", "Imagen anterior:", "Crear cuadro:", "Editar cuadro:", "Eliminar cuadro:", "Verificar, guardar, y siguiente imagen:"],
-                       ["Image suivante :", "Image précédente :", "Créer une zone :", "Modifier la zone :", "Supprimer la zone :", "Vérifier, enregistrer et image suivante :" ]][lang_idx]
-    shortcut_values = ["d", "a", "w", "s", "del", ["space", "espacio", "espace"][lang_idx]]
+                       ["Image suivante :", "Image précédente :", "Créer une zone :", "Modifier la zone :", "Supprimer la zone :", "Vérifier, enregistrer et image suivante :" ],
+                       ["Nächstes Bild:", "Vorheriges Bild:", "Box erstellen:", "Box bearbeiten:", "Box löschen:", "Überprüfen, speichern und nächstes Bild:"]][lang_idx]
+    shortcut_values = ["d", "a", "w", "s", "del", ["space", "espacio", "espace", "Leertaste"][lang_idx]]
     for i in range(len(shortcut_labels)):
         ttk.Label(master=hitl_shortcuts_frame, text=shortcut_labels[i]).grid(column=0, row=i, columnspan=1, sticky='w')
         ttk.Label(master=hitl_shortcuts_frame, text=shortcut_values[i]).grid(column=1, row=i, columnspan=1, sticky='e')
 
     # numbers frame
-    hitl_stats_frame = LabelFrame(hitl_progress_window, text=[" Progress ", " Progreso ", " Progression "][lang_idx],
+    hitl_stats_frame = LabelFrame(hitl_progress_window, text=[" Progress ", " Progreso ", " Progression ", " Fortschritt "][lang_idx],
                                     pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary)
     hitl_stats_frame.configure(font=(text_font, 15, "bold"))
     hitl_stats_frame.grid(column=0, row=3, columnspan=2, sticky='ew')
@@ -2147,13 +2169,13 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     hitl_progbar.grid(column=0, row=0, columnspan=2, padx=5, pady=(3,0))
 
     # percentage done
-    lbl_hitl_stats_percentage = ttk.Label(master=hitl_stats_frame, text=["Percentage done:", "Porcentaje realizado:", "Pourcentage complété:"][lang_idx])
+    lbl_hitl_stats_percentage = ttk.Label(master=hitl_stats_frame, text=["Percentage done:", "Porcentaje realizado:", "Pourcentage complété:", "Prozentsatz erledigt:"][lang_idx])
     lbl_hitl_stats_percentage.grid(column=0, row=1, columnspan=1, sticky='w')
     value_hitl_stats_percentage = ttk.Label(master=hitl_stats_frame, text="")
     value_hitl_stats_percentage.grid(column=1, row=1, columnspan=1, sticky='e')
 
     # total n images to verify
-    lbl_hitl_stats_verified = ttk.Label(master=hitl_stats_frame, text=["Files verified:", "Archivos verificados:", "Fichiers vérifiés"][lang_idx])
+    lbl_hitl_stats_verified = ttk.Label(master=hitl_stats_frame, text=["Files verified:", "Archivos verificados:", "Fichiers vérifiés", "Dateien überprüft:"][lang_idx])
     lbl_hitl_stats_verified.grid(column=0, row=2, columnspan=1, sticky='w')
     value_hitl_stats_verified = ttk.Label(master=hitl_stats_frame, text="")
     value_hitl_stats_verified.grid(column=1, row=2, columnspan=1, sticky='e')
@@ -2248,7 +2270,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # open patience window
     # TODO: dit moet een progresswindow worden die heen en weer gaat. Maar daar heb ik een grote json voor nodig.
     converting_patience_dialog = PatienceDialog(total = 1,
-                                                text = ["Running verification...", "Verificación de funcionamiento...", "Vérification en cours..."][lang_idx])
+                                                text = ["Running verification...", "Verificación de funcionamiento...", "Vérification en cours...", "Überprüfung läuft..."][lang_idx])
     converting_patience_dialog.open()
 
     # check which images need converting
@@ -2267,7 +2289,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         n_img_in_json = len(json.load(image_recognition_file_content)['images'])
 
     # open patience window
-    patience_dialog = PatienceDialog(total = len(imgs_needing_converting) + n_img_in_json, text = ["Checking results...", "Comprobando resultados...", "Vérification des résultats..."][lang_idx])
+    patience_dialog = PatienceDialog(total = len(imgs_needing_converting) + n_img_in_json, text = ["Checking results...", "Comprobando resultados...", "Vérification des résultats...", "Ergebnisse überprüfen..."][lang_idx])
     patience_dialog.open()
     current = 1
 
@@ -2309,12 +2331,14 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
 
     # finalise things if all images are verified
     if n_verified_files == total_n_files:
-        if mb.askyesno(title=["Are you done?", "¿Ya terminaste?", "Avez-vous terminé?"][lang_idx],
+        if mb.askyesno(title=["Are you done?", "¿Ya terminaste?", "Avez-vous terminé?", "Bist du fertig?"][lang_idx],
                        message=["All images are verified and the 'image_recognition_file.json' is up-to-date.\n\nDo you want to close this "
                                 "verification session and proceed to the final step?", "Todas las imágenes están verificadas y "
                                 "'image_recognition_file.json' está actualizado.\n\n¿Quieres cerrar esta sesión de verificación"
                                 " y continuar con el paso final?", "Toutes les images ont été vérifiées et le fichier 'image_recognition_file.json' "
-                                "est à jour.\n\nVoulez-vous quitter cette session de vérification et procéder à l'étape finale?"][lang_idx]):
+                                "est à jour.\n\nVoulez-vous quitter cette session de vérification et procéder à l'étape finale?",
+                                "Alle Bilder sind verifiziert und die 'image_recognition_file.json' ist auf dem neuesten Stand.\n\nMöchten Sie diese "
+                                "Überprüfungssitzung schließen und mit dem letzten Schritt fortfahren?"][lang_idx]):
             # close window
             hitl_progress_window.destroy()
             bind_scroll_to_deploy_canvas()
@@ -2334,7 +2358,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
             # button frame
             hitl_final_actions_frame = LabelFrame(hitl_final_window, text=[" Do you want to export these verified images as training data? ",
                                                                            " ¿Quieres exportar estas imágenes verificadas como datos de entrenamiento? ",
-                                                                           " Voulez-vous exporter ces images vérifiées à titre de données d'entraînement?"][lang_idx],
+                                                                           " Voulez-vous exporter ces images vérifiées à titre de données d'entraînement?",
+                                                                           " Möchten Sie diese verifizierten Bilder als Trainingsdaten exportieren? "][lang_idx],
                                                                            pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, labelanchor = 'n')
             hitl_final_actions_frame.configure(font=(text_font, 15, "bold"))
             hitl_final_actions_frame.grid(column=0, row=3, columnspan=2, sticky='ew')
@@ -2403,7 +2428,7 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
         f.seek(0)
 
         # open patience window
-        patience_dialog = PatienceDialog(total = n_imgs, text = ["Writing files...", "Escribir archivos...", "Écriture des fichiers..."][lang_idx])
+    patience_dialog = PatienceDialog(total = n_imgs, text = ["Writing files...", "Escribir archivos...", "Écriture des fichiers...", "Dateien schreiben..."][lang_idx])
         patience_dialog.open()
         current = 1
 
@@ -2475,7 +2500,9 @@ def start_or_continue_hitl():
                                             f"JSON es muy grande ({get_size(path_to_image_json)}). Esto puede hacer que el paso de verificación"
                                             " funcione muy lentamente. Funcionará, pero tendrás que tener paciencia. ",
                                             f"Le fichier JSON est très volumineux ({get_size(path_to_image_json)}). Ceci peut causer un ralentissement"
-                                            " de l'étape de vérification. Cela devrait toutefois fonctionner. SVP veuillez patienter. "][lang_idx])
+                                            " de l'étape de vérification. Cela devrait toutefois fonctionner. SVP veuillez patienter. ",
+                                            f"Die JSON-Datei ist sehr groß ({get_size(path_to_image_json)}). Dies kann dazu führen, dass der Überprüfungsschritt"
+                                            " sehr langsam ausgeführt wird. Es wird funktionieren, aber Sie müssen geduldig sein. "][lang_idx])
 
     # check requirements
     check_json_presence_and_warn_user(["verify", "verificar", "vérifier"][lang_idx],
@@ -2537,10 +2564,11 @@ def start_or_continue_hitl():
     
     # start new session
     elif status == "done":
-        if mb.askyesno(["Previous session is done", "Sesión anterior terminada.", "Dernière session complétée."][lang_idx], ["It seems like you have completed the previous manual "
+        if mb.askyesno(["Previous session is done", "Sesión anterior terminada.", "Dernière session complétée.", "Vorherige Sitzung ist abgeschlossen"][lang_idx], ["It seems like you have completed the previous manual "
                         "verification session. Do you want to start a new session?", "Parece que has completado la sesión de verificación manual "
                         "anterior. ¿Quieres iniciar una nueva sesión?",
-                        "Il semble que vous ayez déjà complété la dernière session de vérification. Souhaitez-vous démarrer un nouvelle session?"][lang_idx]):
+                        "Il semble que vous ayez déjà complété la dernière session de vérification. Souhaitez-vous démarrer un nouvelle session?",
+                        "Es scheint, als hätten Sie die vorherige manuelle Überprüfungssitzung abgeschlossen. Möchten Sie eine neue Sitzung starten?"][lang_idx]):
             open_hitl_settings_window()
 
 # open xml and check if the data is already in the json
@@ -2836,7 +2864,9 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
                                                 " de confianza de detección en alto.",
                                                 "Aucune détection d'animal ne rencontre les critères. Vous avez soit sélectionner "
                                                 "des images sans animaux présents, ou vous avez régler le seuil de confiance "
-                                                "de détection trop haut."][lang_idx])
+                                                "de détection trop haut.",
+                                                "Es gibt keine Tiererkennungen, die die Kriterien erfüllen. Sie haben entweder "
+                                                "Bilder ohne Tiere ausgewählt oder Ihren Erkennungsvertrauensschwellenwert zu hoch eingestellt."][lang_idx]):
             elapsed_time = "00:00",
             time_left = "00:00",
             current_im = "0",
@@ -2938,7 +2968,12 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             "Typiquement, un vidéo peut contenir plusieurs images d'un même animal, ce qui augmente les chances qu'au moins un "
                             f"des labels puisse être une fausse prédiction. Avec '{lbl_smooth_cls_animal_txt[lang_idx]}' activé, toute"
                             " les prédictions d'un seul vidéo seront moyennées, résultant en un seul label par vidéo. Souhaitez-vous"
-                            " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][lang_idx]):
+                            " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière.",
+                            "Sie sind dabei, Videos ohne Glättung der Konfidenzwerte zu analysieren. "
+                            "Normalerweise kann ein Video viele Bilder desselben Tieres enthalten, was die Wahrscheinlichkeit erhöht, dass mindestens "
+                            f"eines der Etiketten eine falsche Vorhersage sein könnte. Mit aktiviertem '{lbl_smooth_cls_animal_txt[lang_idx]}' werden alle "
+                            "Vorhersagen aus einem einzelnen Video gemittelt, was zu nur einem Etikett pro Video führt. Möchten Sie "
+                            "ohne Glättung fortfahren?\n\nDrücken Sie 'Nein', um zurückzugehen."][lang_idx]):
                             return
     
     # display loading window
@@ -3034,8 +3069,9 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                                 "la GPU actualmente sólo es compatible con dispositivos CUDA en máquinas Linux y Windows, no en"
                                 " macOS. Proceder sin GPU desactivada.",
                                 "La désactivation du traitement par GPU est uniquement supportée sur les dispositifs CUDA sous "
-                                "Linux et Windows, pas sous MacOS. Poursuite du traitement sans désactiver le GPU."
-                                ""][lang_idx])
+                                "Linux et Windows, pas sous MacOS. Poursuite du traitement sans désactiver le GPU.",
+                                "Die Deaktivierung der GPU-Verarbeitung wird derzeit nur für CUDA-Geräte auf Linux- und Windows-"
+                                "Rechnern unterstützt, nicht auf macOS. Fortfahren ohne deaktivierte GPU."][lang_idx])
                 var_disable_GPU.set(False)
             else: # linux
                 command = "CUDA_VISIBLE_DEVICES='' " + command
@@ -3068,7 +3104,8 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
         subprocess_output = ""
         previous_processed_img = ["There is no previously processed image. The problematic character is in the first image to analyse.",
                                 "No hay ninguna imagen previamente procesada. El personaje problemático está en la primera imagen a analizar.",
-                                "Il n'y a aucune image traitée précédemment. Le caractère problématique est dans la première image à analyser."][lang_idx]
+                                "Il n'y a aucune image traitée précédemment. Le caractère problématique est dans la première image à analyser.",
+                                "Es wurde kein zuvor verarbeitetes Bild vorhanden. Das problematische Zeichen befindet sich im ersten zu analysierenden Bild."][lang_idx]
         extracting_frames_mode = False
         
         # check if the unit shown should be frame or video
@@ -3091,32 +3128,36 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             
             # catch model errors
             if line.startswith("No image files found"):
-                mb.showerror(["No images found", "No se han encontrado imágenes", "Aucune image trouvée"][lang_idx],
+                mb.showerror(["No images found", "No se han encontrado imágenes", "Aucune image trouvée", "Keine Bilder gefunden"][lang_idx],
                             [f"There are no images found in '{chosen_folder}'. \n\nAre you sure you specified the correct folder?"
                             f" If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
                             f"No se han encontrado imágenes en '{chosen_folder}'. \n\n¿Está seguro de haber especificado la carpeta correcta?"
                             f" Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{lbl_exclude_subs_txt[lang_idx]}'.",
                             f"Aucune image trouvée dans '{chosen_folder}'. \n\nAvez-vous spécifié le bon dossier?"
-                            f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{lbl_exclude_subs_txt[lang_idx]}'."][lang_idx])
+                            f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{lbl_exclude_subs_txt[lang_idx]}'.",
+                            f"In '{chosen_folder}' wurden keine Bilder gefunden. \n\nSind Sie sicher, dass Sie den richtigen Ordner angegeben haben?"
+                            f" Wenn sich die Dateien in Unterverzeichnissen befinden, stellen Sie sicher, dass Sie '{lbl_exclude_subs_txt[lang_idx]}' nicht ankreuzen."][lang_idx])
                 return
             if line.startswith("No videos found"):
-                mb.showerror(["No videos found", "No se han encontrado vídeos", "Aucun vidéo trouvé"][lang_idx],
+                mb.showerror(["No videos found", "No se han encontrado vídeos", "Aucun vidéo trouvé", "Keine Videos gefunden"][lang_idx],
                             line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
                                     f"\n\n¿Está seguro de haber especificado la carpeta correcta? Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{lbl_exclude_subs_txt[lang_idx]}'.",
-                                    f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{lbl_exclude_subs_txt[lang_idx]}'."][lang_idx])
+                                    f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{lbl_exclude_subs_txt[lang_idx]}'.",
+                                    f"\n\nSind Sie sicher, dass Sie den richtigen Ordner angegeben haben? Wenn sich die Dateien in Unterverzeichnissen befinden, stellen Sie sicher, dass Sie '{lbl_exclude_subs_txt[lang_idx]}' nicht ankreuzen."][lang_idx])
                 return
             if line.startswith("No frames extracted"):
-                mb.showerror(["Could not extract frames", "No se pueden extraer fotogramas", "Impossible d'extraire les images"][lang_idx],
+                mb.showerror(["Could not extract frames", "No se pueden extraer fotogramas", "Impossible d'extraire les images", "Bilder konnten nicht extrahiert werden"][lang_idx],
                             line + ["\n\nConverting the videos to .mp4 might fix the issue.",
                                     "\n\nConvertir los vídeos a .mp4 podría solucionar el problema.",
-                                    "\n\nConvertir les vidéos au format .mp4 pourrait régler le problème."][lang_idx])
+                                    "\n\nConvertir les vidéos au format .mp4 pourrait régler le problème.",
+                                    "\n\nDas Konvertieren der Videos in .mp4 könnte das Problem beheben."][lang_idx])
                 return
             if line.startswith("UnicodeEncodeError:"):
                 mb.showerror("Unparsable special character",
                             [f"{line}\n\nThere seems to be a special character in a filename that cannot be parsed. Unfortunately, it's not"
                             " possible to point you to the problematic file directly, but I can tell you that the last successfully analysed"
                             f" image was\n\n{previous_processed_img}\n\nThe problematic character should be in the file or folder name of "
-                            "the next image, alphabetically. Please remove any special characters from the path and try again.", 
+                            "the next image, alphabetically. Please remove any special characters from the path and try again.",
                             f"{line}\n\nParece que hay un carácter especial en un nombre de archivo que no se puede analizar. Lamentablemente,"
                             " no es posible indicarle directamente el archivo problemático, pero puedo decirle que la última imagen analizada "
                             f"con éxito fue\n\n{previous_processed_img}\n\nEl carácter problemático debe estar en el nombre del archivo o "
@@ -3125,7 +3166,11 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             f"{line}\n\nIl semble y avoir un caractère spécial non-reconnu dans le nom d'un fichier. Malheureusement, il est"
                             " impossible d'identifier le fichier directement, cependant la dernière images correctement analysée était "
                             f" \n\n{previous_processed_img}\n\nLe caractère problématique devrait être dans le nom de fichier ou de dossier de "
-                            "la prochaine image, alphabetiquement. SVP remplacer tout caractère spécial du chemin et du nom de fichier et réessayer."][lang_idx])
+                            "la prochaine image, alphabetiquement. SVP remplacer tout caractère spécial du chemin et du nom de fichier et réessayer.",
+                            f"{line}\n\nEs scheint ein Sonderzeichen in einem Dateinamen zu geben, das nicht analysiert werden kann. Leider ist es nicht"
+                            " möglich, Sie direkt auf die problematische Datei hinzuweisen, aber ich kann Ihnen sagen, dass das letzte erfolgreich analysierte"
+                            f" Bild\n\n{previous_processed_img}\n\nwar. Das problematische Zeichen sollte sich im Datei- oder Ordnernamen des "
+                            "nächsten Bildes befinden, alphabetisch. Bitte entfernen Sie alle Sonderzeichen aus dem Pfad und versuchen Sie es erneut."][lang_idx])
                 return
             if line.startswith("Processing image "):
                 previous_processed_img = line.replace("Processing image ", "")
@@ -4052,24 +4097,28 @@ def start_deploy(simple_mode = False):
         if os.path.isfile(model_error_log):
             mb.showerror(error_txt[lang_idx], [f"There were one or more model errors. See\n\n'{model_error_log}'\n\nfor more information.",
                                             f"Se han producido uno o más errores de modelo. Consulte\n\n'{model_error_log}'\n\npara obtener más información.",
-                                            f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][lang_idx])
+                                            f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations.",
+                                            f"Es sind ein oder mehrere Modellfehler aufgetreten. Siehe\n\n'{model_error_log}'\n\nfür weitere Informationen."][lang_idx])
 
         # show model warning pop up window
         if os.path.isfile(model_warning_log):
             mb.showerror(error_txt[lang_idx], [f"There were one or more model warnings. See\n\n'{model_warning_log}'\n\nfor more information.",
                                         f"Se han producido uno o más advertencias de modelo. Consulte\n\n'{model_warning_log}'\n\npara obtener más información.",
-                                        f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][lang_idx])
+                                        f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations.",
+                                        f"Es sind eine oder mehrere Modellwarnungen aufgetreten. Siehe\n\n'{model_warning_log}'\n\nfür weitere Informationen."][lang_idx])
 
         # show postprocessing warning log
         global postprocessing_error_log
         postprocessing_error_log = os.path.join(chosen_folder, "postprocessing_error_log.txt")
-        if os.path.isfile(postprocessing_error_log): 
+        if os.path.isfile(postprocessing_error_log):
             mb.showwarning(warning_txt[lang_idx], [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
                                                 f"post-processing features. See\n\n'{postprocessing_error_log}'\n\nfor more info.",
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
                                                 f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
                                                 f"Un ou plusieurs fichiers n'ont pas pu être analysés par le modèle (par exemple, des fichiers corrompus) et seront ignorés "
-                                                f"lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'informations."][lang_idx])
+                                                f"lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'informations.",
+                                                f"Eine oder mehrere Dateien konnten vom Modell nicht analysiert werden (z. B. beschädigte Dateien) und werden von den "
+                                                f"Nachbearbeitungsfunktionen übersprungen. Siehe\n\n'{postprocessing_error_log}'\n\nfür weitere Informationen."][lang_idx])
 
         # enable button
         btn_start_deploy.configure(state=NORMAL)
@@ -4097,7 +4146,7 @@ def start_deploy(simple_mode = False):
         else:
             # show error
             mb.showerror(title=error_txt[lang_idx],
-                        message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
+                        message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue", "Ein Fehler ist aufgetreten"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=subprocess_output + "\n" + traceback.format_exc())
             
             # close window
@@ -4139,7 +4188,7 @@ def produce_graph(file_list_txt = None, dir = None):
         counts = list(count_dict.values())
         fig = plt.figure(figsize = (10, 5))
         plt.bar(classes, counts, width = 0.4, color=green_primary)
-        plt.ylabel(["No. of instances verified", "No de instancias verificadas", "No. de l'instance vérifiée"][lang_idx])
+    plt.ylabel(["No. of instances verified", "No de instancias verificadas", "No. de l'instance vérifiée", "Anzahl der verifizierten Instanzen"][lang_idx])
         plt.close()
 
         # return results
