@@ -191,28 +191,29 @@ def load_global_vars():
 global_vars = load_global_vars()
 
 # language settings
-languages_available = ['English', 'Español', 'Français']
+languages_available = ['English', 'Español', 'Français', 'Deutsch']
 lang_idx = global_vars["lang_idx"]
-step_txt = ['Step', 'Paso', 'Étape']
-browse_txt = ['Browse', 'Examinar', 'Parcourir']
-cancel_txt = ["Cancel", "Cancelar", "Annuler"]
-change_folder_txt = ['Change folder', '¿Cambiar carpeta', 'Changer le dossier']
-view_results_txt = ['View results', 'Ver resultados', 'Voir les résultats']
-custom_model_txt = ['Custom model', "Otro modelo", "Modèle personnalisé"]
-again_txt = ['Again?', '¿Otra vez?', 'Recommencer?']
-eg_txt = ['E.g.', 'Ejem.', 'Par. ex.']
-show_txt = ["Show", "Mostrar", "Afficher"]
-new_project_txt = ["<new project>", "<nuevo proyecto>", "<nouveau projet>"]
-warning_txt = ["Warning", "Advertencia", "Avertissement"]
-information_txt = ["Information", "Información", "Information"]
-error_txt = ["Error", "Error", "Erreur"]
-select_txt = ["Select", "Seleccionar", "Sélectionner"]
-invalid_value_txt = ["Invalid value", "Valor no válido", "Valeur invalide"]
-none_txt = ["None", "Ninguno", "Aucun"]
-of_txt = ["of", "de", "de"]
+step_txt = ['Step', 'Paso', 'Étape', 'Schritt']
+browse_txt = ['Browse', 'Examinar', 'Parcourir', 'Durchsuchen']
+cancel_txt = ["Cancel", "Cancelar", "Annuler", "Abbrechen"]
+change_folder_txt = ['Change folder', '¿Cambiar carpeta', 'Changer le dossier', 'Ordner wechseln']
+view_results_txt = ['View results', 'Ver resultados', 'Voir les résultats', 'Ergebnisse anzeigen']
+custom_model_txt = ['Custom model', "Otro modelo", "Modèle personnalisé", "Benutzerdefiniertes Modell"]
+again_txt = ['Again?', '¿Otra vez?', 'Recommencer?', 'Nochmal?']
+eg_txt = ['E.g.', 'Ejem.', 'Par. ex.', 'Z.B.']
+show_txt = ["Show", "Mostrar", "Afficher", "Anzeigen"]
+new_project_txt = ["<new project>", "<nuevo proyecto>", "<nouveau projet>", "<neues Projekt>"]
+warning_txt = ["Warning", "Advertencia", "Avertissement", "Warnung"]
+information_txt = ["Information", "Información", "Information", "Information"]
+error_txt = ["Error", "Error", "Erreur", "Fehler"]
+select_txt = ["Select", "Seleccionar", "Sélectionner", "Auswählen"]
+invalid_value_txt = ["Invalid value", "Valor no válido", "Valeur invalide", "Ungültiger Wert"]
+none_txt = ["None", "Ninguno", "Aucun", "Keine"]
+of_txt = ["of", "de", "de", "von"]
 suffixes_for_sim_none = [" - just show me where the animals are",
                          " - muéstrame dónde están los animales",
-                         " - montrez-moi uniquement où sont les animaux"]
+                         " - montrez-moi uniquement où sont les animaux",
+                         " - zeig mir nur, wo die Tiere sind"]
 
 #############################################
 ############# BACKEND FUNCTIONS #############
@@ -1234,7 +1235,7 @@ countries = [
 ]
 
 # for simplicity, the same list is used for both english, spanish and french. I'll fix everything properly in the new version
-dpd_options_sppnet_location = [countries, countries, countries]
+dpd_options_sppnet_location = [countries, countries, countries, countries]
 
 # open progress window and initiate the post-process progress window
 def start_postprocess():
