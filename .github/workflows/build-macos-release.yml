@@ -91,7 +91,7 @@ jobs:
 
           ### install env-megadetector
           curl -L -o environment-detector-m1.yml https://raw.githubusercontent.com/agentmorris/MegaDetector/refs/heads/main/envs/environment-detector-m1.yml
-          $conda_exe env create --file="environment-detector-m1.yml" -p "${root}/envs/env-megadetector"
+          $conda_exe env create --file="environment-detector-m1.yml" -p "${root}/envs/env-megadetector" -y
 
           ### clean
           $conda_exe clean --all --yes --force-pkgs-dirs
