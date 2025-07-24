@@ -2220,7 +2220,7 @@
                 "person",
                 "vehicle"
             ],
-            "min_version": "16.18"
+            "min_version": "6.18"
         },
         "MegaDetector 1000 Redwood": {
             "model_fname": "md_v1000.0.0-redwood.pt",
@@ -2241,7 +2241,7 @@
                 "person",
                 "vehicle"
             ],
-            "min_version": "16.18"
+            "min_version": "6.18"
         },
         "MegaDetector 5a": {
             "model_fname": "md_v5a.0.0.pt",
