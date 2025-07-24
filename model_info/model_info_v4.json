@@ -2201,10 +2201,52 @@
         }
     },
     "det": {
+        "MegaDetector 1000 Spruce": {
+            "model_fname": "md_v1000.0.0-spruce.pt",
+            "description": "This model is a new addition to the MegaDetector series, designed to improve processing speed, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them.  Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
+            "developer": "Dan Morris",
+            "type": "base",
+            "download_info": [
+                [
+                    "https://github.com/agentmorris/MegaDetector/releases/download/v1000.0/md_v1000.0.0-spruce.pt",
+                    "md_v1000.0.0-spruce.pt"
+                ]
+            ],
+            "total_download_size": "14 MB",
+            "info_url": "https://github.com/agentmorris/MegaDetector",
+            "citation": "https://arxiv.org/abs/1907.06772",
+            "all_classes": [
+                "animal",
+                "person",
+                "vehicle"
+            ],
+            "min_version": "6.18"
+        },
+        "MegaDetector 1000 Redwood": {
+            "model_fname": "md_v1000.0.0-redwood.pt",
+            "description": "This model is a new addition to the MegaDetector series, designed to improve accuracy, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them.  Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
+            "developer": "Dan Morris",
+            "type": "base",
+            "download_info": [
+                [
+                    "https://github.com/agentmorris/MegaDetector/releases/download/v1000.0/md_v1000.0.0-redwood.pt",
+                    "md_v1000.0.0-redwood.pt"
+                ]
+            ],
+            "total_download_size": "268 MB",
+            "info_url": "https://github.com/agentmorris/MegaDetector",
+            "citation": "https://arxiv.org/abs/1907.06772",
+            "all_classes": [
+                "animal",
+                "person",
+                "vehicle"
+            ],
+            "min_version": "6.18"
+        },
         "MegaDetector 5a": {
             "model_fname": "md_v5a.0.0.pt",
             "description": "MegaDetector is an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
-            "developer": "Microsoft AI for Earth",
+            "developer": "Dan Morris",
             "type": "base",
             "download_info": [
                 [
@@ -2225,7 +2267,7 @@
         "MegaDetector 5b": {
             "model_fname": "md_v5b.0.0.pt",
             "description": "MegaDetector 5b differs from 5a only in its training data and is also an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
-            "developer": "Microsoft AI for Earth",
+            "developer": "Dan Morris",
             "type": "base",
             "download_info": [
                 [
