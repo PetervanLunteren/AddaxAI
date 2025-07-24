@@ -92,6 +92,9 @@ jobs:
           ### install env-megadetector
           curl -L -o environment-detector-m1.yml https://raw.githubusercontent.com/agentmorris/MegaDetector/refs/heads/main/envs/environment-detector-m1.yml
           $conda_exe env create --file="environment-detector-m1.yml" -p "${{ github.workspace }}/temp/env-megadetector" -y
+          $conda_exe run -p "${root}/envs/env-megadetector" conda install pytorch==1.13.1 torchvision==0.14.1 -c pytorch -y
+          $conda_exe run -p "${root}/envs/env-megadetector" conda uninstall opencv -y
+          $conda_exe run -p "${root}/envs/env-megadetector" pip install --timeout=120 opencv-python
 
           ### clean
           $conda_exe clean --all --yes --force-pkgs-dirs
