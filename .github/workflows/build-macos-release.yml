@@ -97,9 +97,9 @@ jobs:
           $conda_exe clean --all --yes --force-pkgs-dirs
           $conda_exe clean --all --yes
 
-          # ### zip
-          # cd "${{ github.workspace }}/temp"
-          # tar -caf "env-megadetector.tar.xz" "env-megadetector"
+          ### zip
+          cd "${{ github.workspace }}/temp"
+          tar -caf "env-megadetector.tar.xz" "env-megadetector"
 
           ### remove folder but keep .tar.xz
           rm -r "env-megadetector"
