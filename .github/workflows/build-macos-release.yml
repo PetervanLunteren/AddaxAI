@@ -512,158 +512,158 @@ jobs:
       #     rm -rf "${{ github.workspace }}/temp/"
 
 
-      - name: Build base install
-        run: |
+      # - name: Build base install
+      #   run: |
 
-          ### log release version used
-          echo "Using tag name ${{ env.RELEASE_VERSION }}"
+      #     ### log release version used
+      #     echo "Using tag name ${{ env.RELEASE_VERSION }}"
         
-          ### refresh root
-          root="$HOME/base-install/AddaxAI_files"
-          if [ -d "${root}" ]; then
-              rm -rf "${root}"
-              echo "$root folder removed"
-          else
-              echo "$root folder does not exist"
-          fi
+      #     ### refresh root
+      #     root="$HOME/base-install/AddaxAI_files"
+      #     if [ -d "${root}" ]; then
+      #         rm -rf "${root}"
+      #         echo "$root folder removed"
+      #     else
+      #         echo "$root folder does not exist"
+      #     fi
 
-          ### set ipv4 settings
-          export PIP_NO_IPV6=1
-          export CONDA_SSL_VERIFY=0
-          export CONDA_USE_IPV4=1
+      #     ### set ipv4 settings
+      #     export PIP_NO_IPV6=1
+      #     export CONDA_SSL_VERIFY=0
+      #     export CONDA_USE_IPV4=1
           
-          ### create folder structure
-          mkdir -p "${root}"
-          mkdir -p "${root}/envs"
-          mkdir -p "${root}/models"
-          mkdir -p "${root}/models/det"
-          mkdir -p "${root}/models/cls"
-          mkdir -p "${root}/models/det/MegaDetector 5a"
-          mkdir -p "${root}/yolov5_versions/yolov5_old"
-          mkdir -p "${root}/yolov5_versions/yolov5_new"
-          echo "Hello world!" >> "${root}/first-startup.txt"
+      #     ### create folder structure
+      #     mkdir -p "${root}"
+      #     mkdir -p "${root}/envs"
+      #     mkdir -p "${root}/models"
+      #     mkdir -p "${root}/models/det"
+      #     mkdir -p "${root}/models/cls"
+      #     mkdir -p "${root}/models/det/MegaDetector 5a"
+      #     mkdir -p "${root}/yolov5_versions/yolov5_old"
+      #     mkdir -p "${root}/yolov5_versions/yolov5_new"
+      #     echo "Hello world!" >> "${root}/first-startup.txt"
           
-          ## clone repositories
-          git clone --ipv4 --depth 1 --branch $BRANCH_NAME https://github.com/PetervanLunteren/AddaxAI.git "${root}/AddaxAI"
-          rm -rf "${root}/AddaxAI/.git"
-          mv "${root}/AddaxAI/main.py" "${root}/main.py"
-          RAW_VERSION=${{ env.RELEASE_VERSION }}
-          CLEAN_VERSION="${RAW_VERSION#v}"
-          echo "$CLEAN_VERSION" > "${root}/AddaxAI/version.txt"
-          echo "AddaxAI cloned"
+      #     ## clone repositories
+      #     git clone --ipv4 --depth 1 --branch $BRANCH_NAME https://github.com/PetervanLunteren/AddaxAI.git "${root}/AddaxAI"
+      #     rm -rf "${root}/AddaxAI/.git"
+      #     mv "${root}/AddaxAI/main.py" "${root}/main.py"
+      #     RAW_VERSION=${{ env.RELEASE_VERSION }}
+      #     CLEAN_VERSION="${RAW_VERSION#v}"
+      #     echo "$CLEAN_VERSION" > "${root}/AddaxAI/version.txt"
+      #     echo "AddaxAI cloned"
           
-          git clone --ipv4 https://github.com/agentmorris/MegaDetector.git "${root}/MegaDetector"
-          git -C "${root}/MegaDetector" checkout a64a8f8c467ae6c87b5ca09f54b1abe502168b50
-          rm -rf "${root}/MegaDetector/.git"
-          mv "${root}/MegaDetector" "${root}/cameratraps"
-          echo "MegaDetector cloned"
+      #     git clone --ipv4 https://github.com/agentmorris/MegaDetector.git "${root}/MegaDetector"
+      #     git -C "${root}/MegaDetector" checkout a64a8f8c467ae6c87b5ca09f54b1abe502168b50
+      #     rm -rf "${root}/MegaDetector/.git"
+      #     mv "${root}/MegaDetector" "${root}/cameratraps"
+      #     echo "MegaDetector cloned"
           
-          git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_old/yolov5"
-          git -C "${root}/yolov5_versions/yolov5_old/yolov5" checkout 868c0e9bbb45b031e7bfd73c6d3983bcce07b9c1
-          rm -rf "${root}/yolov5_versions/yolov5_old/yolov5/.git"
-          echo "yolov5 old version cloned"
+      #     git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_old/yolov5"
+      #     git -C "${root}/yolov5_versions/yolov5_old/yolov5" checkout 868c0e9bbb45b031e7bfd73c6d3983bcce07b9c1
+      #     rm -rf "${root}/yolov5_versions/yolov5_old/yolov5/.git"
+      #     echo "yolov5 old version cloned"
           
-          git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_new/yolov5"
-          git -C "${root}/yolov5_versions/yolov5_new/yolov5" checkout 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
-          rm -rf "${root}/yolov5_versions/yolov5_new/yolov5/.git"
-          echo "yolov5 new version cloned"
+      #     git clone --ipv4 https://github.com/ultralytics/yolov5.git "${root}/yolov5_versions/yolov5_new/yolov5"
+      #     git -C "${root}/yolov5_versions/yolov5_new/yolov5" checkout 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
+      #     rm -rf "${root}/yolov5_versions/yolov5_new/yolov5/.git"
+      #     echo "yolov5 new version cloned"
           
-          git clone --ipv4 --branch pyside6 --depth 1 https://github.com/PetervanLunteren/Human-in-the-loop.git "${root}/Human-in-the-loop"
-          rm -rf "${root}/Human-in-the-loop/.git"
-          echo "Human-in-the-loop cloned"
+      #     git clone --ipv4 --branch pyside6 --depth 1 https://github.com/PetervanLunteren/Human-in-the-loop.git "${root}/Human-in-the-loop"
+      #     rm -rf "${root}/Human-in-the-loop/.git"
+      #     echo "Human-in-the-loop cloned"
           
-          git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/visualise_detection.git "${root}/visualise_detection"
-          rm -rf "${root}/visualise_detection/.git"
-          echo "visualise_detection cloned"
+      #     git clone --ipv4 --depth 1 https://github.com/PetervanLunteren/visualise_detection.git "${root}/visualise_detection"
+      #     rm -rf "${root}/visualise_detection/.git"
+      #     echo "visualise_detection cloned"
           
-          ### download megadetector 
-          curl --ipv4 -L https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt -o "${root}/models/det/MegaDetector 5a/md_v5a.0.0.pt"
+      #     ### download megadetector 
+      #     curl --ipv4 -L https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5a.0.0.pt -o "${root}/models/det/MegaDetector 5a/md_v5a.0.0.pt"
           
-          ### source conda 
-          source "$HOME/miniforge/etc/profile.d/conda.sh"
-          source "$HOME/miniforge/bin/activate"
-          conda_exe="$HOME/miniforge/bin/conda"
+      #     ### source conda 
+      #     source "$HOME/miniforge/etc/profile.d/conda.sh"
+      #     source "$HOME/miniforge/bin/activate"
+      #     conda_exe="$HOME/miniforge/bin/conda"
 
-          ### set high timeout value and ip address for ipv4 fallback issues
-          $conda_exe config --set remote_connect_timeout_secs 120
-          $conda_exe config --set remote_max_retries 5
-          $conda_exe config --set remote_read_timeout_secs 120
-          $conda_exe config --set ssl_verify False
-          $conda_exe config --set fetch_threads 2
-          $conda_exe config --show
+      #     ### set high timeout value and ip address for ipv4 fallback issues
+      #     $conda_exe config --set remote_connect_timeout_secs 120
+      #     $conda_exe config --set remote_max_retries 5
+      #     $conda_exe config --set remote_read_timeout_secs 120
+      #     $conda_exe config --set ssl_verify False
+      #     $conda_exe config --set fetch_threads 2
+      #     $conda_exe config --show
 
-          ### install mamba
-          $conda_exe install mamba -n base -c conda-forge -y
-          conda_exe="$HOME/miniforge/bin/mamba"
+      #     ### install mamba
+      #     $conda_exe install mamba -n base -c conda-forge -y
+      #     conda_exe="$HOME/miniforge/bin/mamba"
           
-          ### install env-base
-          $conda_exe env create --file="${root}/cameratraps/envs/environment-detector-m1.yml" -p "${root}/envs/env-base"
-          $conda_exe run -p "${root}/envs/env-base" conda install pytorch==1.13.1 torchvision==0.14.1 -c pytorch -y
-          $conda_exe run -p "${root}/envs/env-base" conda uninstall opencv -y
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 opencv-python
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 RangeSlider
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 gpsphoto
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 exifread
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 piexif
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 openpyxl
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 customtkinter
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 CTkTable
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 folium
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 plotly
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "gitpython>=3.1.30"
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "tensorboard>=2.4.1"
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "thop>=0.1.1"
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "protobuf<=3.20.1"
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "setuptools>=65.5.1"
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 PySide6
-          $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 dill
-          $conda_exe run -p "${root}/envs/env-base" conda install lxml -y
-          $conda_exe run -p "${root}/envs/env-base" conda install -c conda-forge libgfortran5 -y
-          "${root}/envs/env-base/bin/pyside6-rcc" -o "${root}/Human-in-the-loop/libs/resources.py" "${root}/Human-in-the-loop/resources.qrc"
+      #     ### install env-base
+      #     $conda_exe env create --file="${root}/cameratraps/envs/environment-detector-m1.yml" -p "${root}/envs/env-base"
+      #     $conda_exe run -p "${root}/envs/env-base" conda install pytorch==1.13.1 torchvision==0.14.1 -c pytorch -y
+      #     $conda_exe run -p "${root}/envs/env-base" conda uninstall opencv -y
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 opencv-python
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 RangeSlider
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 gpsphoto
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 exifread
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 piexif
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 openpyxl
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 customtkinter
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 CTkTable
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 folium
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 plotly
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "gitpython>=3.1.30"
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "tensorboard>=2.4.1"
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "thop>=0.1.1"
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "protobuf<=3.20.1"
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 "setuptools>=65.5.1"
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 PySide6
+      #     $conda_exe run -p "${root}/envs/env-base" pip install --timeout=120 dill
+      #     $conda_exe run -p "${root}/envs/env-base" conda install lxml -y
+      #     $conda_exe run -p "${root}/envs/env-base" conda install -c conda-forge libgfortran5 -y
+      #     "${root}/envs/env-base/bin/pyside6-rcc" -o "${root}/Human-in-the-loop/libs/resources.py" "${root}/Human-in-the-loop/resources.qrc"
 
-          ### run pyinstaller from fresh environment
-          $conda_exe create -p "$HOME/miniforge/envs/env-fresh" python=3.8 pyinstaller -y
-          $conda_exe run -p "$HOME/miniforge/envs/env-fresh" pyinstaller --onefile --windowed --icon="${root}/AddaxAI/imgs/logo_small_bg.icns" --distpath="${HOME}/dist" --workpath="${HOME}/build" "${root}/main.py"
+      #     ### run pyinstaller from fresh environment
+      #     $conda_exe create -p "$HOME/miniforge/envs/env-fresh" python=3.8 pyinstaller -y
+      #     $conda_exe run -p "$HOME/miniforge/envs/env-fresh" pyinstaller --onefile --windowed --icon="${root}/AddaxAI/imgs/logo_small_bg.icns" --distpath="${HOME}/dist" --workpath="${HOME}/build" "${root}/main.py"
          
-          ### clean
-          $conda_exe clean --all --yes --force-pkgs-dirs
-          $conda_exe clean --all --yes
+      #     ### clean
+      #     $conda_exe clean --all --yes --force-pkgs-dirs
+      #     $conda_exe clean --all --yes
 
-          ### move and rename executables
-          mv "${HOME}/dist/main" "${root}/AddaxAI debug"      # debug executable
-          mv "${HOME}/dist/main.app" "${root}/AddaxAI.app"    # main app executable
+      #     ### move and rename executables
+      #     mv "${HOME}/dist/main" "${root}/AddaxAI debug"      # debug executable
+      #     mv "${HOME}/dist/main.app" "${root}/AddaxAI.app"    # main app executable
 
-          ### zip folder contents
-          cd "$HOME/base-install"
-          tar -caf "base-install.tar.xz" AddaxAI_files
+      #     ### zip folder contents
+      #     cd "$HOME/base-install"
+      #     tar -caf "base-install.tar.xz" AddaxAI_files
           
-          ### remove folder contents
-          rm -rf "AddaxAI_files"
+      #     ### remove folder contents
+      #     rm -rf "AddaxAI_files"
 
-      - name: Set env.HOME variable
-        run: |
-          echo "HOME=$HOME" >> $GITHUB_ENV
-          echo "HOME is $HOME"
+      # - name: Set env.HOME variable
+      #   run: |
+      #     echo "HOME=$HOME" >> $GITHUB_ENV
+      #     echo "HOME is $HOME"
 
-      - name: Uploading pinned version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.HOME }}/base-install
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Uploading pinned version of base install
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ env.HOME }}/base-install
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/macos
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Uploading latest version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.HOME }}/base-install
-          destination_folder: latest/macos
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Uploading latest version of base install
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ env.HOME }}/base-install
+      #     destination_folder: latest/macos
+      #     is_recursive: false
+      #     delete_if_exists: true
 
       # - name: Get the release body
       #   id: get_release
