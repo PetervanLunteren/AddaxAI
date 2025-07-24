@@ -90,8 +90,8 @@ jobs:
           conda_exe="$HOME/miniforge/bin/mamba"
 
           ### install env-megadetector
-          $conda_exe create -p "${{ github.workspace }}/temp/env-megadetector" python=3.11 -y
-          $conda_exe run -p "${{ github.workspace }}/temp/env-megadetector" pip install --timeout=120 --upgrade megadetector
+          curl -L -o environment-detector-m1.yml https://raw.githubusercontent.com/agentmorris/MegaDetector/refs/heads/main/envs/environment-detector-m1.yml
+          $conda_exe env create --file="environment-detector-m1.yml" -p "${root}/envs/env-megadetector"
 
           ### clean
           $conda_exe clean --all --yes --force-pkgs-dirs
@@ -139,227 +139,230 @@ jobs:
 
 
 
-      - name: Build env-speciesnet
-        run: |
+      # - name: Build env-speciesnet
+      #   run: |
         
-          ### set ipv4 settings
-          export PIP_NO_IPV6=1
-          export CONDA_SSL_VERIFY=0
-          export CONDA_USE_IPV4=1
+      #     ### set ipv4 settings
+      #     export PIP_NO_IPV6=1
+      #     export CONDA_SSL_VERIFY=0
+      #     export CONDA_USE_IPV4=1
           
-          ### create folder structure
-          mkdir -p "${{ github.workspace }}/temp"
+      #     ### create folder structure
+      #     mkdir -p "${{ github.workspace }}/temp"
           
-          ### source conda 
-          source "$HOME/miniforge/etc/profile.d/conda.sh"
-          source "$HOME/miniforge/bin/activate"
-          conda_exe="$HOME/miniforge/bin/conda"
+      #     ### source conda 
+      #     source "$HOME/miniforge/etc/profile.d/conda.sh"
+      #     source "$HOME/miniforge/bin/activate"
+      #     conda_exe="$HOME/miniforge/bin/conda"
 
-          ### set high timeout value and ip address for ipv4 fallback issues
-          $conda_exe config --set remote_connect_timeout_secs 120
-          $conda_exe config --set remote_max_retries 5
-          $conda_exe config --set remote_read_timeout_secs 120
-          $conda_exe config --set ssl_verify False
-          $conda_exe config --set fetch_threads 2
-          $conda_exe config --show
+      #     ### set high timeout value and ip address for ipv4 fallback issues
+      #     $conda_exe config --set remote_connect_timeout_secs 120
+      #     $conda_exe config --set remote_max_retries 5
+      #     $conda_exe config --set remote_read_timeout_secs 120
+      #     $conda_exe config --set ssl_verify False
+      #     $conda_exe config --set fetch_threads 2
+      #     $conda_exe config --show
 
-          ### install mamba
-          $conda_exe install mamba -n base -c conda-forge -y
-          conda_exe="$HOME/miniforge/bin/mamba"
+      #     ### install mamba
+      #     $conda_exe install mamba -n base -c conda-forge -y
+      #     conda_exe="$HOME/miniforge/bin/mamba"
 
-          ### install env-speciesnet
-          $conda_exe create -p "${{ github.workspace }}/temp/env-speciesnet" python=3.11 -y
-          $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 speciesnet --use-pep517
+      #     ### install env-speciesnet
+      #     $conda_exe create -p "${{ github.workspace }}/temp/env-speciesnet" python=3.11 -y
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-speciesnet" pip install --timeout=120 speciesnet --use-pep517
 
-          ### clean
-          $conda_exe clean --all --yes --force-pkgs-dirs
-          $conda_exe clean --all --yes
+      #     ### clean
+      #     $conda_exe clean --all --yes --force-pkgs-dirs
+      #     $conda_exe clean --all --yes
 
-          ### zip
-          cd "${{ github.workspace }}/temp"
-          tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
+      #     ### zip
+      #     cd "${{ github.workspace }}/temp"
+      #     tar -caf "env-speciesnet.tar.xz" "env-speciesnet"
 
-          ### remove folder but keep .tar.xz
-          rm -r "env-speciesnet"
+      #     ### remove folder but keep .tar.xz
+      #     rm -r "env-speciesnet"
 
-      - name: Upload pinned version of env-speciesnet.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload pinned version of env-speciesnet.tar.xz 
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Upload latest version of env-speciesnet.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload latest version of env-speciesnet.tar.xz
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: latest/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Remove env-speciesnet.tar.xz
-        run: |
-          rm "${{ github.workspace }}/temp/env-speciesnet.tar.xz"
-          rm -rf "${{ github.workspace }}/temp/"
+      # - name: Remove env-speciesnet.tar.xz
+      #   run: |
+      #     rm "${{ github.workspace }}/temp/env-speciesnet.tar.xz"
+      #     rm -rf "${{ github.workspace }}/temp/"
 
-      - name: Build env-tensorflow-v1
-        run: |
+      # - name: Build env-tensorflow-v1
+      #   run: |
         
-          ### set ipv4 settings
-          export PIP_NO_IPV6=1
-          export CONDA_SSL_VERIFY=0
-          export CONDA_USE_IPV4=1
+      #     ### set ipv4 settings
+      #     export PIP_NO_IPV6=1
+      #     export CONDA_SSL_VERIFY=0
+      #     export CONDA_USE_IPV4=1
           
-          ### create folder structure
-          mkdir -p "${{ github.workspace }}/temp"
+      #     ### create folder structure
+      #     mkdir -p "${{ github.workspace }}/temp"
           
-          ### source conda 
-          source "$HOME/miniforge/etc/profile.d/conda.sh"
-          source "$HOME/miniforge/bin/activate"
-          conda_exe="$HOME/miniforge/bin/conda"
+      #     ### source conda 
+      #     source "$HOME/miniforge/etc/profile.d/conda.sh"
+      #     source "$HOME/miniforge/bin/activate"
+      #     conda_exe="$HOME/miniforge/bin/conda"
 
-          ### set high timeout value and ip address for ipv4 fallback issues
-          $conda_exe config --set remote_connect_timeout_secs 120
-          $conda_exe config --set remote_max_retries 5
-          $conda_exe config --set remote_read_timeout_secs 120
-          $conda_exe config --set ssl_verify False
-          $conda_exe config --set fetch_threads 2
-          $conda_exe config --show
+      #     ### set high timeout value and ip address for ipv4 fallback issues
+      #     $conda_exe config --set remote_connect_timeout_secs 120
+      #     $conda_exe config --set remote_max_retries 5
+      #     $conda_exe config --set remote_read_timeout_secs 120
+      #     $conda_exe config --set ssl_verify False
+      #     $conda_exe config --set fetch_threads 2
+      #     $conda_exe config --show
 
-          ### install mamba
-          $conda_exe install mamba -n base -c conda-forge -y
-          conda_exe="$HOME/miniforge/bin/mamba"
+      #     ### install mamba
+      #     $conda_exe install mamba -n base -c conda-forge -y
+      #     conda_exe="$HOME/miniforge/bin/mamba"
 
-          ### get the yml file from url
-          curl -o tensorflow-macos-silicon.yml "https://raw.githubusercontent.com/PetervanLunteren/AddaxAI/main/classification_utils/envs/tensorflow-macos-silicon.yml"          
+      #     ### get the yml file from url
+      #     curl -o tensorflow-macos-silicon.yml "https://raw.githubusercontent.com/PetervanLunteren/AddaxAI/main/classification_utils/envs/tensorflow-macos-silicon.yml"          
 
-          ### install env-tensorflow-v1
-          $conda_exe env create --file=tensorflow-macos-silicon.yml -p "${{ github.workspace }}/temp/env-tensorflow-v1"
+      #     ### install env-tensorflow-v1
+      #     $conda_exe env create --file=tensorflow-macos-silicon.yml -p "${{ github.workspace }}/temp/env-tensorflow-v1"
 
-          ### clean
-          $conda_exe clean --all --yes --force-pkgs-dirs
-          $conda_exe clean --all --yes
+      #     ### clean
+      #     $conda_exe clean --all --yes --force-pkgs-dirs
+      #     $conda_exe clean --all --yes
 
-          ### zip
-          cd "${{ github.workspace }}/temp"
-          tar -caf "env-tensorflow-v1.tar.xz" "env-tensorflow-v1"
+      #     ### zip
+      #     cd "${{ github.workspace }}/temp"
+      #     tar -caf "env-tensorflow-v1.tar.xz" "env-tensorflow-v1"
 
-          ### remove folder but keep .tar.xz
-          rm -r "env-tensorflow-v1"
+      #     ### remove folder but keep .tar.xz
+      #     rm -r "env-tensorflow-v1"
 
-      - name: Upload pinned version of env-tensorflow-v1.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload pinned version of env-tensorflow-v1.tar.xz 
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Upload latest version of env-tensorflow-v1.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload latest version of env-tensorflow-v1.tar.xz
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: latest/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Remove env-tensorflow-v1.tar.xz
-        run: |
-          rm "${{ github.workspace }}/temp/env-tensorflow-v1.tar.xz"
-          rm -rf "${{ github.workspace }}/temp/"
+      # - name: Remove env-tensorflow-v1.tar.xz
+      #   run: |
+      #     rm "${{ github.workspace }}/temp/env-tensorflow-v1.tar.xz"
+      #     rm -rf "${{ github.workspace }}/temp/"
 
-      - name: Build env-tensorflow-v2
-        run: |
+      # - name: Build env-tensorflow-v2
+      #   run: |
         
-          ### set ipv4 settings
-          export PIP_NO_IPV6=1
-          export CONDA_SSL_VERIFY=0
-          export CONDA_USE_IPV4=1
+      #     ### set ipv4 settings
+      #     export PIP_NO_IPV6=1
+      #     export CONDA_SSL_VERIFY=0
+      #     export CONDA_USE_IPV4=1
           
-          ### create folder structure
-          mkdir -p "${{ github.workspace }}/temp"
+      #     ### create folder structure
+      #     mkdir -p "${{ github.workspace }}/temp"
           
-          ### source conda 
-          source "$HOME/miniforge/etc/profile.d/conda.sh"
-          source "$HOME/miniforge/bin/activate"
-          conda_exe="$HOME/miniforge/bin/conda"
+      #     ### source conda 
+      #     source "$HOME/miniforge/etc/profile.d/conda.sh"
+      #     source "$HOME/miniforge/bin/activate"
+      #     conda_exe="$HOME/miniforge/bin/conda"
 
-          ### set high timeout value and ip address for ipv4 fallback issues
-          $conda_exe config --set remote_connect_timeout_secs 120
-          $conda_exe config --set remote_max_retries 5
-          $conda_exe config --set remote_read_timeout_secs 120
-          $conda_exe config --set ssl_verify False
-          $conda_exe config --set fetch_threads 2
-          $conda_exe config --show
+      #     ### set high timeout value and ip address for ipv4 fallback issues
+      #     $conda_exe config --set remote_connect_timeout_secs 120
+      #     $conda_exe config --set remote_max_retries 5
+      #     $conda_exe config --set remote_read_timeout_secs 120
+      #     $conda_exe config --set ssl_verify False
+      #     $conda_exe config --set fetch_threads 2
+      #     $conda_exe config --show
 
-          ### install mamba
-          $conda_exe install mamba -n base -c conda-forge -y
-          conda_exe="$HOME/miniforge/bin/mamba"
+      #     ### install mamba
+      #     $conda_exe install mamba -n base -c conda-forge -y
+      #     conda_exe="$HOME/miniforge/bin/mamba"
 
-          ### install env-tensorflow-v2
-          $conda_exe create -p "${{ github.workspace }}/temp/env-tensorflow-v2" python=3.10 -y
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 huggingface_hub==0.23.0 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 jax==0.4.28 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 jaxlib==0.4.28
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 keras==3.3.3 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 keras_cv==0.9.0 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 kimm==0.2.5
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 matplotlib==3.9.0 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 numpy==1.26.4 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 pandas==2.2.2
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 pytest==8.3.0 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 pyyaml==6.0.1 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 scikit-learn==1.4.2
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 tqdm==4.66.4 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 jsonpickle==4.0.1
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 opencv-python==4.11.0.86
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 tensorflow-metal==1.1.0 
-          $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 tensorflow-macos==2.16.2
+      #     ### install env-tensorflow-v2
+      #     $conda_exe create -p "${{ github.workspace }}/temp/env-tensorflow-v2" python=3.10 -y
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 huggingface_hub==0.23.0 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 jax==0.4.28 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 jaxlib==0.4.28
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 keras==3.3.3 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 keras_cv==0.9.0 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 kimm==0.2.5
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 matplotlib==3.9.0 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 numpy==1.26.4 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 pandas==2.2.2
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 pytest==8.3.0 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 pyyaml==6.0.1 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 scikit-learn==1.4.2
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 tqdm==4.66.4 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 jsonpickle==4.0.1
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 opencv-python==4.11.0.86
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 tensorflow-metal==1.1.0 
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-tensorflow-v2" pip install --timeout=120 tensorflow-macos==2.16.2
 
-          ### clean
-          $conda_exe clean --all --yes --force-pkgs-dirs
-          $conda_exe clean --all --yes
+      #     ### clean
+      #     $conda_exe clean --all --yes --force-pkgs-dirs
+      #     $conda_exe clean --all --yes
 
-          ### zip
-          cd "${{ github.workspace }}/temp"
-          tar -caf "env-tensorflow-v2.tar.xz" "env-tensorflow-v2"
+      #     ### zip
+      #     cd "${{ github.workspace }}/temp"
+      #     tar -caf "env-tensorflow-v2.tar.xz" "env-tensorflow-v2"
 
-          ### remove folder but keep .tar.xz
-          rm -r "env-tensorflow-v2"
+      #     ### remove folder but keep .tar.xz
+      #     rm -r "env-tensorflow-v2"
 
-      - name: Upload pinned version of env-tensorflow-v2.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload pinned version of env-tensorflow-v2.tar.xz 
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Upload latest version of env-tensorflow-v2.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload latest version of env-tensorflow-v2.tar.xz
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: latest/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Remove env-tensorflow-v2.tar.xz
-        run: |
-          rm "${{ github.workspace }}/temp/env-tensorflow-v2.tar.xz"
-          rm -rf "${{ github.workspace }}/temp/"
+      # - name: Remove env-tensorflow-v2.tar.xz
+      #   run: |
+      #     rm "${{ github.workspace }}/temp/env-tensorflow-v2.tar.xz"
+      #     rm -rf "${{ github.workspace }}/temp/"
+
+
+
 
       - name: Build env-pytorch
         run: |
@@ -438,75 +441,76 @@ jobs:
           rm "${{ github.workspace }}/temp/env-pytorch.tar.xz"
           rm -rf "${{ github.workspace }}/temp/"
 
-      - name: Build env-pywildlife
-        run: |
+      # - name: Build env-pywildlife
+      #   run: |
         
-          ### set ipv4 settings
-          export PIP_NO_IPV6=1
-          export CONDA_SSL_VERIFY=0
-          export CONDA_USE_IPV4=1
+      #     ### set ipv4 settings
+      #     export PIP_NO_IPV6=1
+      #     export CONDA_SSL_VERIFY=0
+      #     export CONDA_USE_IPV4=1
           
-          ### create folder structure
-          mkdir -p "${{ github.workspace }}/temp"
+      #     ### create folder structure
+      #     mkdir -p "${{ github.workspace }}/temp"
           
-          ### source conda 
-          source "$HOME/miniforge/etc/profile.d/conda.sh"
-          source "$HOME/miniforge/bin/activate"
-          conda_exe="$HOME/miniforge/bin/conda"
+      #     ### source conda 
+      #     source "$HOME/miniforge/etc/profile.d/conda.sh"
+      #     source "$HOME/miniforge/bin/activate"
+      #     conda_exe="$HOME/miniforge/bin/conda"
 
-          ### set high timeout value and ip address for ipv4 fallback issues
-          $conda_exe config --set remote_connect_timeout_secs 120
-          $conda_exe config --set remote_max_retries 5
-          $conda_exe config --set remote_read_timeout_secs 120
-          $conda_exe config --set ssl_verify False
-          $conda_exe config --set fetch_threads 2
-          $conda_exe config --show
+      #     ### set high timeout value and ip address for ipv4 fallback issues
+      #     $conda_exe config --set remote_connect_timeout_secs 120
+      #     $conda_exe config --set remote_max_retries 5
+      #     $conda_exe config --set remote_read_timeout_secs 120
+      #     $conda_exe config --set ssl_verify False
+      #     $conda_exe config --set fetch_threads 2
+      #     $conda_exe config --show
 
-          ### install mamba
-          $conda_exe install mamba -n base -c conda-forge -y
-          conda_exe="$HOME/miniforge/bin/mamba"
+      #     ### install mamba
+      #     $conda_exe install mamba -n base -c conda-forge -y
+      #     conda_exe="$HOME/miniforge/bin/mamba"
 
-          ### install env-pywildlife
-          $conda_exe create -p "${{ github.workspace }}/temp/env-pywildlife" python=3.8 -y
-          $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=180 --no-cache-dir --use-deprecated=legacy-resolver "pytorchwildlife==1.2.0"
-          $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 "setuptools<70"
-          $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 jsonpickle
+      #     ### install env-pywildlife
+      #     $conda_exe create -p "${{ github.workspace }}/temp/env-pywildlife" python=3.8 -y
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=180 --no-cache-dir --use-deprecated=legacy-resolver "pytorchwildlife==1.2.0"
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 "setuptools<70"
+      #     $conda_exe run -p "${{ github.workspace }}/temp/env-pywildlife" pip install --timeout=120 jsonpickle
 
-          ### clean
-          $conda_exe clean --all --yes --force-pkgs-dirs
-          $conda_exe clean --all --yes
+      #     ### clean
+      #     $conda_exe clean --all --yes --force-pkgs-dirs
+      #     $conda_exe clean --all --yes
 
-          ### zip
-          cd "${{ github.workspace }}/temp"
-          tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
+      #     ### zip
+      #     cd "${{ github.workspace }}/temp"
+      #     tar -caf "env-pywildlife.tar.xz" "env-pywildlife"
 
-          ### remove folder but keep .tar.xz
-          rm -r "env-pywildlife"
+      #     ### remove folder but keep .tar.xz
+      #     rm -r "env-pywildlife"
 
-      - name: Upload pinned version of env-pywildlife.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload pinned version of env-pywildlife.tar.xz 
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Upload latest version of env-pywildlife.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      # - name: Upload latest version of env-pywildlife.tar.xz
+      #   uses: LanceMcCarthy/Action-AzureBlobUpload@v2
+      #   with:
+      #     connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
+      #     container_name: ${{ env.BUCKET_NAME }}
+      #     source_folder: ${{ github.workspace }}/temp
+      #     destination_folder: latest/macos/envs
+      #     is_recursive: false
+      #     delete_if_exists: true
 
-      - name: Remove env-pywildlife.tar.xz
-        run: |
-          rm "${{ github.workspace }}/temp/env-pywildlife.tar.xz"
-          rm -rf "${{ github.workspace }}/temp/"
+      # - name: Remove env-pywildlife.tar.xz
+      #   run: |
+      #     rm "${{ github.workspace }}/temp/env-pywildlife.tar.xz"
+      #     rm -rf "${{ github.workspace }}/temp/"
+
 
       - name: Build base install
         run: |
