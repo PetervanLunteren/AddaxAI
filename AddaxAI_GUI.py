@@ -2718,7 +2718,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
 
     # check if taxonomic fallback should be the default
     taxon_mapping_csv_is_present = taxon_mapping_csv_present()
-    taxon_mapping_is_default = model_vars["var_tax_fallback_default"]
+    taxon_mapping_is_default = model_vars.get("var_tax_fallback_default", False)
 
     # if present take os-specific env else take general env
     if os.name == 'nt': # windows
@@ -10607,3 +10607,4 @@ def main():
 # executable as script
 if __name__ == "__main__":
     main()
+
