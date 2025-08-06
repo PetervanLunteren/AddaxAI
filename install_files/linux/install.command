@@ -186,18 +186,29 @@ $conda_exe clean --all --yes --force-pkgs-dirs
 $conda_exe clean --all --yes
 
 # requirements for Human-in-the-loop
-echo "We need to install libxcb-cursor-dev (https://packages.debian.org/sid/libxcb-cursor-dev) and libxcb-cursor0 (https://packages.debian.org/sid/libxcb-cursor0). If you don't have root privileges you might be prompted for a password. Press CONTROL+D to skip authentication and not install these packages. AddaxAI will still work fine without it but you might have problems with the Human-in-the-loop software."
-{ # first try without sudo
-  add-apt-repository universe
-  apt-get update
-  apt-get install libxcb-cursor-dev
-  apt-get install libxcb-cursor0
-} || { # otherwise with sudo
-  sudo add-apt-repository universe
-  sudo apt-get update
-  sudo apt-get install libxcb-cursor-dev
-  sudo apt-get install libxcb-cursor0
-  }
+echo "We need to install libxcb-cursor-dev and libxcb-cursor0. If you don't have root privileges you might be prompted for a password. Press CONTROL+D to skip authentication and not install these packages. AddaxAI will still work fine without it but you might have problems with the Human-in-the-loop software."
+if command -v apt-get &>/dev/null; then
+  echo "Detected Debian/Ubuntu based system. Attempting automatic installation."
+
+  { # first try without sudo
+    add-apt-repository universe
+    apt-get update
+    apt-get install libxcb-cursor-dev
+    apt-get install libxcb-cursor0
+  } || { # otherwise with sudo
+    sudo add-apt-repository universe
+    sudo apt-get update
+    sudo apt-get install libxcb-cursor-dev
+    sudo apt-get install libxcb-cursor0
+    }
+else
+  echo "Could not detect a Debian/Ubuntu based system (apt-get not found)."
+  echo
+  echo "INFO: To enable the optional Human-in-the-loop feature, you must install"
+  echo "      the XCB cursor libraries manually using your package manager."
+
+fi
+read -p "You can perform this optional step later, press [Enter] to continue the installation"
 
 ### install env-tensorflow
 $conda_exe env create --file="${LOCATION_ADDAXAI_FILES}/AddaxAI/classification_utils/envs/tensorflow-linux-windows.yml" -p "${LOCATION_ADDAXAI_FILES}/envs/env-tensorflow" -y
