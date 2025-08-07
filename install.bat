@@ -348,7 +348,7 @@ if not exist "%LOCATION_ECOASSIST_FILES%\classification_models\cls_vehicles" mkd
 @REM create conda env and install packages for MegaDetector
 set PATH=%PATH_TO_CONDA_INSTALLATION%\Scripts;%PATH%
 call "%PATH_TO_CONDA_INSTALLATION%\Scripts\activate.bat" "%PATH_TO_CONDA_INSTALLATION%"
-call %EA_CONDA_EXE% env remove -n ecoassistcondaenv || ( echo "There was an error trying to execute the conda command. Please get in touch with the developer." & cmd /k & exit )
+call %EA_CONDA_EXE% env remove -n ecoassistcondaenv -y 2>nul
 cd "%LOCATION_ECOASSIST_FILES%\cameratraps" || ( echo "Could not change directory to cameratraps. Command could not be run. Installation was terminated. Copy-paste this output and send it to petervanlunteren@hotmail.com for further support." | wtee -a "%LOG_FILE%" & cmd /k & exit )
 call %EA_CONDA_EXE% env create --name ecoassistcondaenv --file envs\environment-detector.yml || ( echo "There was an error trying to execute the conda command. Please get in touch with the developer." & cmd /k & exit )
 cd "%LOCATION_ECOASSIST_FILES%" || ( echo "Could not change directory to EcoAssist_files. Command could not be run. Installation was terminated. Copy-paste this output and send it to petervanlunteren@hotmail.com for further support." | wtee -a "%LOG_FILE%" & cmd /k & exit )
@@ -377,7 +377,7 @@ call %EA_CONDA_EXE% list >> "%LOG_FILE%"
 call %EA_CONDA_EXE% deactivate
 
 @REM activate dedicated environment for classification
-call %EA_CONDA_EXE% env remove -n ecoassistcondaenv-yolov8
+call %EA_CONDA_EXE% env remove -n ecoassistcondaenv-yolov8 -y 2>nul
 call %EA_CONDA_EXE% create -n ecoassistcondaenv-yolov8 python=3.8 -y
 call %EA_CONDA_EXE% activate ecoassistcondaenv-yolov8
 "%EA_PIP_EXE_CLA%" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
