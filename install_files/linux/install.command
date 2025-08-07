@@ -75,13 +75,64 @@ echo "Hello world!" >> "${LOCATION_ADDAXAI_FILES}/first-startup.txt"
 git clone --depth 1 https://github.com/PetervanLunteren/AddaxAI.git "${LOCATION_ADDAXAI_FILES}/AddaxAI"
 rm -rf "${LOCATION_ADDAXAI_FILES}/AddaxAI/.git"
 FILE="$LOCATION_ADDAXAI_FILES/AddaxAI/Linux_open_AddaxAI_shortcut.desktop" # create shortcut file
-echo "[Desktop Entry]" > $FILE
-echo "Type=Application" >> $FILE
-echo "Terminal=true" >> $FILE
-echo "Name=AddaxAI" >> $FILE
-echo "Icon=logo_small_bg" >> $FILE
-echo "Exec=gnome-terminal -e \"bash -c '\$HOME/.AddaxAI_files/envs/env-base/bin/python \$HOME/.AddaxAI_files/AddaxAI/AddaxAI_GUI.py;\$SHELL'\"" >> $FILE
-echo "Categories=Application;" >> $FILE
+
+# create desktop shortcut and launcher script
+LAUNCHER_SCRIPT="${LOCATION_ADDAXAI_FILES}/AddaxAI/launch_addaxai.sh"
+
+cat << 'EOF' > "$LAUNCHER_SCRIPT"
+#!/usr/bin/env bash
+CMD_TO_RUN="bash -c '$HOME/.AddaxAI_files/envs/env-base/bin/python $HOME/.AddaxAI_files/AddaxAI/AddaxAI_GUI.py; exec \$SHELL'"
+
+# Check for popular terminals
+if command -v konsole >/dev/null 2>&1; then
+  konsole -e "$CMD_TO_RUN"
+elif command -v gnome-terminal >/dev/null 2>&1; then
+  gnome-terminal -- "$CMD_TO_RUN"
+elif command -v xfce4-terminal >/dev/null 2>&1; then
+  xfce4-terminal --command="$CMD_TO_RUN"
+elif command -v alacritty >/dev/null 2>&1; then
+  alacritty -e bash -c "'$HOME/.AddaxAI_files/envs/env-base/bin/python $HOME/.AddaxAI_files/AddaxAI/AddaxAI_GUI.py; exec \$SHELL'"
+elif command -v kitty >/dev/null 2>&1; then
+  kitty --hold bash -c "$HOME/.AddaxAI_files/envs/env-base/bin/python $HOME/.AddaxAI_files/AddaxAI/AddaxAI_GUI.py"
+elif command -v xterm >/dev/null 2>&1; then
+  # xterm is a common fallback
+  xterm -e "$CMD_TO_RUN"
+else
+  ERROR_MSG="Could not find a known terminal, use your own terminal and run the following command:\n\n$HOME/.AddaxAI_files/envs/env-base/bin/python $HOME/.AddaxAI_files/AddaxAI/AddaxAI_GUI.py"
+  
+  if command -v zenity >/dev/null 2>&1; then
+    zenity --error --text="$ERROR_MSG" --width=400
+  elif command -v kdialog >/dev/null 2>&1; then
+    kdialog --error "$ERROR_MSG"
+  elif command -v xterm >/dev/null 2>&1; then
+    xterm -T "AddaxAI - Terminal Not Found" -e "printf '%b' \"$ERROR_MSG\n\n(Press Enter to close this window)\"; read" &
+  else
+    # This will only be seen if the script is run from an existing terminal, but it's a final fallback.
+    printf '%b' "$ERROR_MSG\n" >&2
+  fi
+  exit 1
+fi
+EOF
+
+chmod +x "$LAUNCHER_SCRIPT"
+echo "Launcher script created."
+
+
+# create the .desktop file
+DESKTOP_FILE_SOURCE="${LOCATION_ADDAXAI_FILES}/AddaxAI/Linux_open_AddaxAI_shortcut.desktop"
+
+cat << EOF > "$DESKTOP_FILE_SOURCE"
+[Desktop Entry]
+Type=Application
+Terminal=false
+Name=AddaxAI
+Icon=logo_small_bg
+Exec=$LAUNCHER_SCRIPT
+Categories=Application;
+EOF
+
+# Move the final .desktop file to the user's Desktop
+mv -f "$DESKTOP_FILE_SOURCE" "$HOME/Desktop/Linux_open_AddaxAI_shortcut.desktop"
 # and give it an icon
 SOURCE="$LOCATION_ADDAXAI_FILES/AddaxAI/imgs/logo_small_bg.png"
 DEST="$HOME/.icons/logo_small_bg.png"
