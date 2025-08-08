@@ -532,6 +532,7 @@ def sort_paths_per_dir_layer(file_paths):
 
 from PIL.ExifTags import TAGS
 from datetime import datetime
+from tqdm import tqdm
 
 def extract_timestamp_from_exif(filepath):
     """
@@ -567,7 +568,8 @@ def group_files_into_sequences(files, data_folder, max_gap_seconds=60):
     files_with_timestamps = []
     no_timestamp_files = []
     
-    for filename in files:
+    print("Extracting timestamps from images...")
+    for filename in tqdm(files, desc="Reading EXIF data"):
         filepath = os.path.join(data_folder, filename)
         timestamp = extract_timestamp_from_exif(filepath)
         if timestamp:
@@ -6201,3 +6203,4 @@ def main():
 # executable as script
 if __name__ == "__main__":
     main()
+
