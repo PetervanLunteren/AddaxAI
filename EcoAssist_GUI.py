@@ -1,8 +1,6 @@
 # Non-code GUI platform for training and deploying object detection models: https://github.com/PetervanLunteren/EcoAssist
 # Written by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 13 Dec 2024
-
-# -> search for 'SPLIT_DATASET' to find the part of the code where you decide the split train, val, test.
+# Latest edit by Peter van Lunteren on 8 Aug 2025
 
 # import packages like a christmas tree
 import os
@@ -532,30 +530,122 @@ def sort_paths_per_dir_layer(file_paths):
     # return
     return sorted_file_paths
 
+from PIL.ExifTags import TAGS
+from datetime import datetime
+
+def extract_timestamp_from_exif(filepath):
+    """
+    Extract timestamp from image EXIF DateTimeOriginal metadata.
+    """
+    try:
+        with Image.open(filepath) as img:
+            exif_data = img._getexif()
+            if exif_data is not None:
+                for tag_id, value in exif_data.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if tag == "DateTimeOriginal":
+                        # DateTimeOriginal format: "YYYY:MM:DD HH:MM:SS"
+                        return datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
+                        
+                # Fallback to DateTime if DateTimeOriginal not found
+                for tag_id, value in exif_data.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if tag == "DateTime":
+                        return datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
+        
+        return None
+    except Exception as e:
+        print(f"Error reading EXIF from {filepath}: {e}")
+        return None
+
+def group_files_into_sequences(files, data_folder, max_gap_seconds=60):
+    """
+    Group files into sequences based on EXIF timestamp proximity.
+    Files taken within max_gap_seconds of each other belong to the same sequence.
+    """
+    # Extract timestamps and sort files by timestamp
+    files_with_timestamps = []
+    no_timestamp_files = []
+    
+    for filename in files:
+        filepath = os.path.join(data_folder, filename)
+        timestamp = extract_timestamp_from_exif(filepath)
+        if timestamp:
+            files_with_timestamps.append((filename, timestamp))
+        else:
+            print(f"Warning: Could not extract timestamp from {filename}")
+            no_timestamp_files.append(filename)
+    
+    # Sort by timestamp
+    files_with_timestamps.sort(key=lambda x: x[1])
+    
+    if not files_with_timestamps:
+        # If no timestamps found, treat each file as its own sequence
+        return [[f] for f in files]
+    
+    sequences = []
+    current_sequence = [files_with_timestamps[0][0]]
+    last_timestamp = files_with_timestamps[0][1]
+    
+    for filename, timestamp in files_with_timestamps[1:]:
+        time_diff = (timestamp - last_timestamp).total_seconds()
+        
+        if time_diff <= max_gap_seconds:
+            # Same sequence
+            current_sequence.append(filename)
+        else:
+            # New sequence
+            sequences.append(current_sequence)
+            current_sequence = [filename]
+        
+        last_timestamp = timestamp
+    
+    # Don't forget the last sequence
+    sequences.append(current_sequence)
+    
+    # Add files without timestamps as individual sequences at the end
+    for filename in no_timestamp_files:
+        sequences.append([filename])
+    
+    return sequences
+
 # check data and prepare for training
 def prepare_data_for_training(data_folder, prop_to_test, prop_to_val):
     # log
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
-
     # convert pascal voc to yolo
     pascal_voc_to_yolo(data_folder)
-
     # get list of all images in dir
     data_folder = os.path.normpath(data_folder)
     files = [f for f in os.listdir(data_folder) if os.path.isfile(os.path.join(data_folder, f)) and not f.endswith(".DS_Store") and f.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'))]
-
+    
     # calculate amounts
     total_n = len(files)
     n_test = int(total_n * prop_to_test)
     n_val = int(total_n * prop_to_val)
-
-    # split dataset SPLIT_DATASET
-    # random.shuffle(files)                                                                 # DEBUG - dont randomly shuffle  
-    # files = sort_paths_per_dir_layer(files)                                               # DEBUG - also dont sort them by dir layer since the dirs start with the species name 
-    files = sorted(files, key=lambda x: re.search(r"PvL_seq_([a-zA-Z0-9_-]+)", x).group(1)) # DEBUG - sort based on the string starting from "PvL_seq" (extract the alphanumeric part after "PvL_seq")
+    
+    # Group files into sequences based on EXIF timestamps
+    sequences = group_files_into_sequences(files, data_folder, max_gap_seconds=60)
+    print(f"Found {len(sequences)} sequences from {total_n} files")
+    
+    # Show sequence size distribution
+    seq_sizes = [len(seq) for seq in sequences]
+    print(f"Sequence sizes: min={min(seq_sizes)}, max={max(seq_sizes)}, avg={sum(seq_sizes)/len(seq_sizes):.1f}")
+    
+    # Randomly shuffle the sequences
+    random.shuffle(sequences)
+    
+    # Flatten sequences back into a single list (maintaining sequence order within each sequence)
+    files = []
+    for sequence in sequences:
+        files.extend(sequence)
+    
+    # Normal split (at most one sequence will be split)
     test_files = files[:n_test]
     val_files = files[n_test:n_test+n_val]
     train_files = files[n_test+n_val:]
+    
+    print(f"Split: {len(test_files)} test, {len(val_files)} val, {len(train_files)} train")
 
     # remove files for previous training
     old_files = ["dataset.yaml", "train_selection.txt", "train_selection.cache", "train_selection.cache.npy", "val_selection.txt", "val_selection.cache",
@@ -589,6 +679,10 @@ def prepare_data_for_training(data_folder, prop_to_test, prop_to_val):
     with open(yaml_file, 'w') as f:
         f.write(yaml_content)
         send_to_output_window(f"\nWritten {yaml_file} with content:\n\n{yaml_content}\n");root.update()
+
+def is_on_c_drive(path):
+    drive, _ = os.path.splitdrive(os.path.abspath(path))
+    return drive.upper() == 'C:'
 
 # check input and execute train command
 def start_training():
@@ -766,9 +860,16 @@ def start_training():
             else:
                 command_args.append(f"--evolve=300")
     
-    # change directory to the destination folder
-    os.chdir(results_dir)
-
+    # change directory to the destination folder, if on C drive, else error
+    if is_on_c_drive(results_dir):
+        os.chdir(results_dir)
+    else:
+        send_to_output_window(f"\nDestination folder '{results_dir} is on {os.path.splitdrive(results_dir)[0]} drive. You need to choose a folder on your C: drive!")
+        clean_training_dir(data_dir)
+        cancel_training_bool.set(False)
+        set_buttons_to_idle()
+        return
+    
     # adjust command for unix OS
     if os.name != 'nt':
         command_args = "'" + "' '".join(command_args) + "'"
