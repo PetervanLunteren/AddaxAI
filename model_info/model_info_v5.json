@@ -6,7 +6,7 @@
             "developer": "wekaResearch",
             "owner": "New Zealand Department of Conservation",
             "env": "pytorch",
-            "type": "alita",
+            "type": "alita-v3.03",
             "download_info": [
                 [
                     "https://huggingface.co/Addax-Data-Science/NZS-WEK-v3-03/resolve/main/Exp_60_run_01_best_weights.pt?download=true",
