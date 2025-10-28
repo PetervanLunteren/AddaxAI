@@ -186,6 +186,11 @@ print(f"Model loaded with {len(class_names)} classes")
 # output: unsorted classifications formatted as [['aardwolf', 2.3025326090220233e-09], ['african wild cat', 5.658252888451898e-08], ... ]
 # no need to remove forbidden classes from the predictions, that will happen in inference_lib.py
 def get_classification(PIL_crop):
+    
+    # Ensure RGB
+    if isinstance(PIL_crop, Image.Image) and PIL_crop.mode != "RGB":
+        PIL_crop = PIL_crop.convert("RGB")
+    
     # Preprocess image
     input_tensor = preprocess(PIL_crop)
     input_batch = input_tensor.unsqueeze(0)
