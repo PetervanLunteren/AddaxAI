@@ -47,7 +47,7 @@ class FXClassifier(nn.Module):
 ```
 
 ### Stage unfreezing
-FX modules don’t expose tidy layer blocks the way timm backbones do. The raw graph contains roughly 490 individual parameter tensors, which is hard to reason about. Bucketing parameters by FX node name reduces that to 59 logical stages—much easier to manage and comparable to timm-style fine-tuning.
+FX modules don’t expose tidy layer blocks the way timm backbones do. The raw graph contains roughly 490 individual parameter tensors. Bucketing parameters by FX node name reduces that to 59 logical stages, which is much easier to manage and comparable to timm-style fine-tuning.
 
 ```python
 def stage_key_from_param_name(name: str) -> str:
