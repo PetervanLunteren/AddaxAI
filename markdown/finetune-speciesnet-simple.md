@@ -668,7 +668,6 @@ python finetune_simple.py --data_root /path/to/dataset --output_dir /tmp/run1
 ```
 
 ### CLI options
-This script is intentionally minimal so you can focus on the model’s behavior.
 
 ```bash
 Usage: Fine-tune SpeciesNet FX checkpoint directly [-h] --data_root DATA_ROOT [--epochs EPOCHS]
