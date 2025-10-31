@@ -8,7 +8,7 @@
             "type": "deepfaune-v1.4",
             "download_info": [
                 [
-                    "https://huggingface.co/Addax-Data-Science/Deepfaune_v1.3/resolve/main/deepfaune-vit_large_patch14_dinov2.lvd142m.v4.pt?download=true",
+                    "https://huggingface.co/Addax-Data-Science/Deepfaune_v1.4/resolve/main/deepfaune-vit_large_patch14_dinov2.lvd142m.v4.pt?download=true",
                     "deepfaune-vit_large_patch14_dinov2.lvd142m.v4.pt"
                 ]
             ],
