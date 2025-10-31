@@ -132,11 +132,11 @@ class Model(nn.Module):
         Constructor of model classifier
         """
         super().__init__()
-        self.base_model = timm.create_model(BACKBONE, pretrained=False, num_classes=len(txt_animalclasses['fr']),
+        self.base_model = timm.create_model(BACKBONE, pretrained=False, num_classes=len(txt_animalclasses['en']),
                                             dynamic_img_size=True)
         print(f"Using {BACKBONE} with weights at {weight_path}, in resolution {CROP_SIZE}x{CROP_SIZE}")
         self.backbone = BACKBONE
-        self.nbclasses = len(txt_animalclasses['fr'])
+        self.nbclasses = len(txt_animalclasses['en'])
 
     def forward(self, input):
         x = self.base_model(input)
