@@ -278,6 +278,8 @@ $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install "json
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install timm
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install dill
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install omegaconf
+$conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install onnx2torch
+$conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install transformers
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install "pytorch-lightning==2.0.6"
 $conda_exe run -p "${LOCATION_ADDAXAI_FILES}/envs/env-pytorch" pip install "albumentations==1.3.1"
 
