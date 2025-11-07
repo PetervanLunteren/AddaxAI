@@ -92,6 +92,7 @@ jobs:
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 jsonpickle
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 omegaconf
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 onnx2torch
+          call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 transformers
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 pytorch-lightning==2.0.6
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 albumentations==1.3.1
           call "%conda_exe%" run -p "${{ github.workspace }}\temp\env-pytorch" pip install --timeout=120 pip-system-certs
