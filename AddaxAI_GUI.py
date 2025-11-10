@@ -6306,7 +6306,10 @@ def download_model(model_dir, skip_ask=False):
         download_popup = ModelDownloadProgressWindow(model_title = model_title, total_size_str = format_size(total_size))
         download_popup.open()
         for download_url, fname in download_info:
-            file_path = os.path.join(model_dir, fname)
+            file_path = os.path.normpath(os.path.join(model_dir, fname))
+            dir_name = os.path.dirname(file_path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
             response = requests.get(download_url, stream=True, timeout=30, headers=headers)
             response.raise_for_status()
             
