@@ -275,13 +275,13 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
     if vis:
         colors = ["fuchsia", "blue", "orange", "yellow", "green", "red", "aqua", "navy", "teal", "olive", "lime", "maroon", "purple"]
         colors = colors * 30
-    
+
     # make sure json has relative paths
     json_paths_converted = False
     if check_json_paths(recognition_file) != "relative":
         make_json_relative(recognition_file)
         json_paths_converted = True
-    
+
     # set cancel bool
     cancel_var = False
     
@@ -3893,7 +3893,40 @@ def start_deploy(simple_mode = False):
         
         # if deployed through simple mode, add predefined postprocess directly after deployment and classification
         if simple_mode and not timelapse_mode:
-               
+
+                # FIX: For videos in simple mode, convert frame results to video results BEFORE postprocess
+                # This ensures the classification updates from .frames.json are applied to .json
+                video_recognition_file = os.path.join(chosen_folder, "video_recognition_file.json")
+                video_recognition_file_original = os.path.join(chosen_folder, "video_recognition_file_original.json")
+                video_recognition_file_frame = os.path.join(chosen_folder, "video_recognition_file.frames.json")
+                video_recognition_file_frame_original = os.path.join(chosen_folder, "video_recognition_file.frames_original.json")
+
+                if os.path.isfile(video_recognition_file) and\
+                   os.path.isfile(video_recognition_file_frame) and\
+                   os.path.isfile(video_recognition_file_frame_original):
+
+                    # get the frame_rates from the video_recognition_file.json
+                    frame_rates = {}
+                    with open(video_recognition_file) as f:
+                        data = json.load(f)
+                        images = data['images']
+                        for image in images:
+                            file = image['file']
+                            frame_rate = image['frame_rate']
+                            frame_rates[file] = frame_rate
+
+                    # convert frame results to video results
+                    options = FrameToVideoOptions()
+                    options.include_all_processed_frames = False
+                    frame_results_to_video_results(input_file = video_recognition_file_frame,
+                                                output_file = video_recognition_file,
+                                                options = options,
+                                                video_filename_to_frame_rate = frame_rates)
+                    frame_results_to_video_results(input_file = video_recognition_file_frame_original,
+                                                output_file = video_recognition_file_original,
+                                                options = options,
+                                                video_filename_to_frame_rate = frame_rates)
+
                 # if only analysing images, postprocess images with plots
                 if "img_pst" in processes and not "vid_pst" in processes:
                     postprocess(src_dir = chosen_folder,

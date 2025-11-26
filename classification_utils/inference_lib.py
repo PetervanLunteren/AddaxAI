@@ -305,10 +305,12 @@ def convert_detections_to_classification(json_path,
         # add cls classes to det label map
         for k, v in inverted_cls_label_map.items():
 
-            # if a model shares category names with MD, slightly modify it
-            if k in ["animal", "person", "vehicle"]:
-                k += " "
-            inverted_det_label_map[k] = str(len(inverted_det_label_map) + 1)
+            # only add if not already present in detection categories
+            if k not in inverted_det_label_map:
+                # if a model shares category names with MD, slightly modify it
+                if k in ["animal", "person", "vehicle"]:
+                    k += " "
+                inverted_det_label_map[k] = str(len(inverted_det_label_map) + 1)
 
         # loop and adjust
         for image in data['images']:
