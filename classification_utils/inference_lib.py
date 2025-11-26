@@ -20,6 +20,17 @@ from megadetector.data_management.read_exif import parse_exif_datetime_string
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+# Species to exclude from smoothing
+# These species will keep their original per-detection confidence
+# Include both exact model class names and taxonomic aggreation names to make sure they are excluded
+EXCLUDED_SPECIES = [
+    "false detection",      # prevents false detections from being averaged with real animals
+    "blank",
+    "empty",
+    "none"
+    # Add more species here as needed (include both common and scientific names)
+]
+
 # MAIN FUNCTION different workflow for videos than for images
 def classify_MD_json(json_path,
                      GPU_availability,
@@ -241,12 +252,15 @@ def convert_detections_to_classification(json_path,
                             crop = crop_function(Image.open(img_fpath), bbox)
                             name_classifications = inference_function(crop)
                             name_classifications = remove_forbidden_classes(name_classifications, forbidden_classes)
-                            
+
                             # fallback to hierarchical classification if the user specified this
+                            # but skip if the top species is in the excluded list
                             if cls_tax_fallback:
-                                hierarchical_prediction = hierarchical_classification(name_classifications, cls_taxonomy_df, threshold=cls_class_thresh, tax_mode=tax_mode, fixed_column=fixed_column)
-                                name_classifications = [[hierarchical_prediction["pred"], hierarchical_prediction["conf"]]] # this overwrites the orginal predictions
-                                initial_it = True # not sure why this is not always set to true, but it is needed for hierarchical prediction to always check if the name is already in the inverted_cls_label_map
+                                top_species = name_classifications[0][0].lower() if name_classifications else None
+                                if top_species and top_species not in [s.lower() for s in EXCLUDED_SPECIES]:
+                                    hierarchical_prediction = hierarchical_classification(name_classifications, cls_taxonomy_df, threshold=cls_class_thresh, tax_mode=tax_mode, fixed_column=fixed_column)
+                                    name_classifications = [[hierarchical_prediction["pred"], hierarchical_prediction["conf"]]] # this overwrites the orginal predictions
+                                    initial_it = True # not sure why this is not always set to true, but it is needed for hierarchical prediction to always check if the name is already in the inverted_cls_label_map
                             
                             # check if name already in classification_categories
                             idx_classifications = []
@@ -425,7 +439,14 @@ def smooth_json_imgs(json_input_fpath):
     filename_to_results = {}
     for im in d['images']:
         filename_to_results[im['file'].replace('\\','/')] = im
-    
+
+    # get excluded species category indices
+    excluded_cat_indices = set()
+    if 'classification_categories' in d:
+        for cat_idx, species_name in d['classification_categories'].items():
+            if species_name.lower() in [s.lower() for s in EXCLUDED_SPECIES]:
+                excluded_cat_indices.add(cat_idx)
+
     # link the classifications to each image of the sequence
     def fetch_classifications_for_sequence(images_this_sequence):
         classifications_this_sequence = []
@@ -444,14 +465,30 @@ def smooth_json_imgs(json_input_fpath):
     for _, seq_id in tqdm(enumerate(all_sequences),total=len(all_sequences)):
         images_this_sequence = sequence_to_images[seq_id]
 
+        # Store original classifications for excluded species detections
+        original_excluded_classifications = {}
+        for im in images_this_sequence:
+            fn = im['file_name']
+            results_this_image = filename_to_results.get(fn, {})
+            if "detections" in results_this_image:
+                for det_idx, detection in enumerate(results_this_image['detections']):
+                    if "classifications" in detection:
+                        # Check if this detection's top classification is an excluded species
+                        top_class = detection['classifications'][0][0] if detection['classifications'] else None
+                        if top_class in excluded_cat_indices:
+                            key = (fn, det_idx)
+                            original_excluded_classifications[key] = detection['classifications']
+
         # link the classifications to the images of the sequence
         classifications_this_sequence = fetch_classifications_for_sequence(images_this_sequence)
-        
-        # group all confidences per class together in a list
+
+        # group all confidences per class together in a list, excluding excluded species
         aggregated_confs = defaultdict(list)
         for conf_list in classifications_this_sequence:
             for cat_idx, conf in conf_list:
-                aggregated_confs[cat_idx].append(conf)
+                # Skip excluded species in the averaging calculation
+                if cat_idx not in excluded_cat_indices:
+                    aggregated_confs[cat_idx].append(conf)
 
         # calculate the average confidence per class
         smoothend_conf_list = []
@@ -468,9 +505,14 @@ def smooth_json_imgs(json_input_fpath):
             fn = im['file_name']
             results_this_image = filename_to_results[fn]
             if "detections" in results_this_image:
-                for detection in results_this_image['detections']:
+                for det_idx, detection in enumerate(results_this_image['detections']):
                     if "classifications" in detection:
-                        detection['classifications'] = smoothend_conf
+                        # Restore original classification if this is an excluded species
+                        key = (fn, det_idx)
+                        if key in original_excluded_classifications:
+                            detection['classifications'] = original_excluded_classifications[key]
+                        else:
+                            detection['classifications'] = smoothend_conf
     
     # remove exif.json if present
     exif_json = os.path.join(filename_base, "exif_data.json")
@@ -488,7 +530,7 @@ def smooth_json_imgs(json_input_fpath):
 
 # for videos we don't need to read exif data because we will average the results per video
 def smooth_json_video(json_path):
-    
+
     # init vars
     json_path_frames = os.path.join(os.path.dirname(json_path), "video_recognition_file.frames_original.json")
     videos_dict = defaultdict(dict)
@@ -496,15 +538,37 @@ def smooth_json_video(json_path):
     # gather all confs per class and per video
     with open(json_path_frames, "r") as json_file:
         d = json.load(json_file)
+
+    # get excluded species category indices
+    excluded_cat_indices = set()
+    if 'classification_categories' in d:
+        for cat_idx, species_name in d['classification_categories'].items():
+            if species_name.lower() in [s.lower() for s in EXCLUDED_SPECIES]:
+                excluded_cat_indices.add(cat_idx)
+
+    # Store original classifications for excluded species detections
+    original_excluded_classifications = {}
+    for im_idx, im in enumerate(d['images']):
+        if 'detections' in im:
+            for det_idx, det in enumerate(im['detections']):
+                if 'classifications' in det:
+                    # Check if this detection's top classification is an excluded species
+                    top_class = det['classifications'][0][0] if det['classifications'] else None
+                    if top_class in excluded_cat_indices:
+                        key = (im_idx, det_idx)
+                        original_excluded_classifications[key] = det['classifications']
+
     for im in d['images']:
         video_fn = os.path.dirname(im['file'])
         if 'detections' in im:
             for det in im['detections']:
                 if 'classifications' in det:
                     for cat_idx, conf in det['classifications']:
-                        if cat_idx not in videos_dict[video_fn]:
-                            videos_dict[video_fn][cat_idx] = []
-                        videos_dict[video_fn][cat_idx].append(conf)
+                        # Skip excluded species in the averaging calculation
+                        if cat_idx not in excluded_cat_indices:
+                            if cat_idx not in videos_dict[video_fn]:
+                                videos_dict[video_fn][cat_idx] = []
+                            videos_dict[video_fn][cat_idx].append(conf)
     
     # smooth per video
     smoothed_confs_dict = defaultdict()
@@ -524,34 +588,40 @@ def smooth_json_video(json_path):
         smoothed_confs_dict[video] = smoothend_conf
 
     # loop through json one last time to replace the classifications and remove unidentified animals
-    for im in d['images']:
+    for im_idx, im in enumerate(d['images']):
         video_fn = os.path.dirname(im['file'])
         if 'detections' in im:
             new_detections = []
-            for det in im['detections']:
+            for det_idx, det in enumerate(im['detections']):
                 if det['category'] == '1':
                     if 'classifications' in det:
-                        
-                        # because we select the best frame based on confidence, we want the frame with the clearest animal
-                        # (i.e., the highest detection confidence) to have a slightly better confidence than the other frames
-                        # therefore we take the weighted average of the two confidence scores
-                        ave_conf = round(((smoothed_confs_dict[video_fn][0][1] * 29) + (det['conf'])) / 30, 5)
-                        det['classifications'] = [[smoothed_confs_dict[video_fn][0][0], ave_conf]]
-                        new_detections.append(det)
-                        
-                    # these are the unidentified animals that also have a frame that is good enough for a classification 
+                        # Check if this is an excluded species detection
+                        key = (im_idx, det_idx)
+                        if key in original_excluded_classifications:
+                            # Restore original classification for excluded species
+                            det['classifications'] = original_excluded_classifications[key]
+                            new_detections.append(det)
+                        else:
+                            # because we select the best frame based on confidence, we want the frame with the clearest animal
+                            # (i.e., the highest detection confidence) to have a slightly better confidence than the other frames
+                            # therefore we take the weighted average of the two confidence scores
+                            ave_conf = round(((smoothed_confs_dict[video_fn][0][1] * 29) + (det['conf'])) / 30, 5)
+                            det['classifications'] = [[smoothed_confs_dict[video_fn][0][0], ave_conf]]
+                            new_detections.append(det)
+
+                    # these are the unidentified animals that also have a frame that is good enough for a classification
                     # there fore we can skip those since the other frames are better
                     elif video_fn in smoothed_confs_dict:
-                        continue  
-                    
-                    # these are the unidentified animals without any frame that is good enough for a classification 
+                        continue
+
+                    # these are the unidentified animals without any frame that is good enough for a classification
                     else:
                         new_detections.append(det)
-                
-                # these are persons and vehicles    
+
+                # these are persons and vehicles
                 else:
                     new_detections.append(det)
-            
+
             # replace with the filtered detections
             im['detections'] = new_detections
 
