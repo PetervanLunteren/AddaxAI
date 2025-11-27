@@ -4,7 +4,7 @@
 # It consists of code that is specific for this kind of model architecture, and 
 # code that is generic for all model architectures that will be run via AddaxAI
 # Script written by Peter van Lunteren and Andrea Zampetti.
-# Latest edit by Peter van Lunteren on 28 Jul 2025.
+# Latest edit by Peter van Lunteren on 27 Nov 2025.
 
 #############################################
 ############### MODEL GENERIC ###############
@@ -30,29 +30,63 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 ##############################################
 # imports
 import os
+import json
+import csv
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tensorflow.keras.models import load_model # type: ignore
 from PIL import Image
+from tqdm import tqdm
 
 # if on macOS Apple Silicon, disable GPU and Metal backend
 if os.name == 'posix' and 'darwin' in os.uname().sysname.lower():
     tf.config.set_visible_devices([], 'GPU')
 
-# this is a saved model, so we need the directory, not the file path
-cls_model_dir_fpath = os.path.dirname(cls_model_fpath) 
+# check GPU availability (tensorflow does support the GPU on Windows Native)
+GPU_availability = True if len(tf.config.list_logical_devices('GPU')) > 0 else False
+
+# We need to define LayerScale to avoid the previous error with the SavedModel
+@tf.keras.utils.register_keras_serializable(package="custom_layers")
+class LayerScale(tf.keras.layers.Layer):
+    def __init__(self, projection_dim=None, init_values=1e-6, **kwargs):
+        super().__init__(**kwargs)
+        self.projection_dim = int(projection_dim) if projection_dim is not None else None
+        self.init_values = float(init_values)
+
+    def build(self, input_shape):
+        channel_dim = self.projection_dim if self.projection_dim is not None else int(input_shape[-1])
+        self.gamma = self.add_weight(
+            name="gamma",
+            shape=(channel_dim,),
+            initializer=tf.keras.initializers.Constant(self.init_values),
+            trainable=True,
+            dtype=self.dtype, # Apparently this is the fix, suggested by https://github.com/tensorflow/tensorflow/issues/59767
+        )
+        super().build(input_shape)
+
+    def call(self, inputs):
+        return inputs * self.gamma
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({
+            "projection_dim": self.projection_dim,
+            "init_values": self.init_values,
+        })
+        return cfg
 
 # Load model and taxonomy
-model = tf.keras.models.load_model(cls_model_dir_fpath)
+# Pass custom LayerScale so load_model can deserialize ConvNeXt-based H5
+model = load_model(cls_model_fpath, compile=False, custom_objects={"LayerScale": LayerScale})
 taxonomy_path = os.path.join(os.path.dirname(cls_model_fpath), "taxon-mapping.csv")
 taxonomy_df = pd.read_csv(taxonomy_path)
 class_names = taxonomy_df['model_class'].tolist()
 
-# check GPU availability (tensorflow does support the GPU on Windows Native)
-GPU_availability = True if len(tf.config.list_logical_devices('GPU')) > 0 else False
-
 # preprocess function for crops
 def preprocess_crop(cropped_img, target_size=(224, 224)):
+    if cropped_img.mode != "RGB":
+        cropped_img = cropped_img.convert("RGB")
     img_resized = cropped_img.resize(target_size, Image.Resampling.LANCZOS)
     img_array = tf.keras.preprocessing.image.img_to_array(img_resized)
     img_array = tf.keras.applications.convnext.preprocess_input(img_array)
@@ -85,6 +119,7 @@ def get_crop(img, bbox):
     right, bottom = int((bbox[0] + bbox[2]) * w), int((bbox[1] + bbox[3]) * h)
     return img.crop((max(0, left), max(0, top), min(w, right), min(h, bottom)))
 
+    
 #############################################
 ############### MODEL GENERIC ###############
 #############################################
