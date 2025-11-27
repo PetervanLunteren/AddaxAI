@@ -131,11 +131,10 @@ class FXClassifier(nn.Module):
 # Load Model (run this once at startup)
 # ============================================================================
 
-# Paths
+# Model paths
 BEST_PT = Path(cls_model_fpath)
-try:
-    BACKBONE_WEIGHTS = Path(os.path.join(os.path.dirname(BEST_PT), "always_crop_99710272_22x8_v12_epoch_00148.pt"))
-except:
+BACKBONE_WEIGHTS = Path(os.path.join(os.path.dirname(BEST_PT), "always_crop_99710272_22x8_v12_epoch_00148.pt"))
+if not BACKBONE_WEIGHTS.exists():
     BACKBONE_WEIGHTS = Path(os.path.join(os.path.dirname(BEST_PT), "full_image_88545560_22x8_v12_epoch_00153.pt"))
 
 # Device
