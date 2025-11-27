@@ -5963,10 +5963,11 @@ def load_model_vars(model_type = "cls"):
     model_dir = var_cls_model.get() if model_type == "cls" else var_det_model.get()
     var_file = os.path.join(AddaxAI_files, "models", model_type, model_dir, "variables.json")
     try:
-        with open(var_file, 'r') as file:
+        with open(var_file, 'r', encoding='utf-8') as file:
             variables = json.load(file)
-        return variables
-    except:
+            return variables
+    except Exception as e:
+        print("DEBUG – load_model_vars failed:", e)
         return {}
 
 # write global variables to file 
@@ -10643,4 +10644,5 @@ def main():
 # executable as script
 if __name__ == "__main__":
     main()
+
 
