@@ -3001,20 +3001,20 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
         if os.name == 'nt':
             if selected_options == []:
                 img_command = [python_executable, run_detector_batch_py, det_model_fpath, '--threshold=0.01', chosen_folder, image_recognition_file]
-                vid_command = [python_executable, process_video_py, '--max_width=1280', '--verbose', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
+                vid_command = [python_executable, process_video_py, '--max_width=1280', '--verbose', '--allow_empty_videos', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
             else:
                 img_command = [python_executable, run_detector_batch_py, det_model_fpath, *selected_options, '--threshold=0.01', chosen_folder, image_recognition_file]
-                vid_command = [python_executable, process_video_py, *selected_options, '--max_width=1280', '--verbose', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
+                vid_command = [python_executable, process_video_py, *selected_options, '--max_width=1280', '--verbose', '--allow_empty_videos', '--quality=85', video_recognition_file, det_model_fpath, chosen_folder]
 
         # create command for MacOS and Linux
         else:
             if selected_options == []:
                 img_command = [f"'{python_executable}' '{run_detector_batch_py}' '{det_model_fpath}' '--threshold=0.01' '{chosen_folder}' '{image_recognition_file}'"]
-                vid_command = [f"'{python_executable}' '{process_video_py}' '--max_width=1280' '--verbose' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
+                vid_command = [f"'{python_executable}' '{process_video_py}' '--max_width=1280' '--verbose' '--allow_empty_videos' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
             else:
                 selected_options = "' '".join(selected_options)
                 img_command = [f"'{python_executable}' '{run_detector_batch_py}' '{det_model_fpath}' '{selected_options}' '--threshold=0.01' '{chosen_folder}' '{image_recognition_file}'"]
-                vid_command = [f"'{python_executable}' '{process_video_py}' '{selected_options}' '--max_width=1280' '--verbose' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
+                vid_command = [f"'{python_executable}' '{process_video_py}' '{selected_options}' '--max_width=1280' '--verbose' '--allow_empty_videos' '--quality=85' '{video_recognition_file}' '{det_model_fpath}' '{chosen_folder}'"]
 
         # pick one command
         if data_type == "img":
@@ -10644,5 +10644,6 @@ def main():
 # executable as script
 if __name__ == "__main__":
     main()
+
 
 
