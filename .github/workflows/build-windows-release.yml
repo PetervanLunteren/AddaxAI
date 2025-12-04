@@ -584,7 +584,7 @@ jobs:
 
       - name: Decode PFX certificate from GitHub Secrets
         run: |
-          $base64String = "${{ secrets.PFX_BASE64_CERTIFICATE }}"
+          $base64String = "${{ secrets.ADDAX_3YEAR_2025_BASE64 }}"
           [IO.File]::WriteAllBytes("addax_cert.pfx", [Convert]::FromBase64String($base64String))
   
       # # the following is very helpful if you have a new github runner image and want to find signtool.exe
@@ -594,7 +594,7 @@ jobs:
       - name: Sign installer
         shell: cmd
         run: |
-          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" sign /f addax_cert.pfx /p "${{ secrets.CODE_SIGN_PASSWORD }}" /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe"
+          "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe" sign /f addax_cert.pfx /p "${{ secrets.ADDAX_3YEAR_2025_PFX_PASSWORD }}" /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe"
   
       - name: Verify signature
         shell: cmd
