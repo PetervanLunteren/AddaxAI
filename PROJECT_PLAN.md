@@ -1666,8 +1666,9 @@ This is a high-level dependency-ordered checklist. Details for each item will be
 
 ### Core Functionality
 8. ✅ Implement CRUD API endpoints for projects and sites
-9. ✅ Build frontend navigation and basic UI layout (header, sidebar)
+9. ✅ Build frontend navigation and basic UI layout (sidebar with project-scoped tools)
 10. ✅ Create project/site creation and edit forms
+10a. ✅ Create deployments page UI (mock data, will connect to backend later)
 11. Implement file storage setup (copy files to project directory)
 12. Build file import workflow (select folder, scan files, extract EXIF)
 13. Set up AsyncIO workers + Redis/LiteQ for background job processing
