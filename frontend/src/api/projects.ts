@@ -14,9 +14,17 @@ import type {
   ProjectWithStats,
 } from "./types";
 
+// Re-export types for convenience
+export type { ProjectCreate, ProjectResponse, ProjectUpdate, ProjectWithStats };
+
 export const projectsApi = {
   /**
    * List all projects
+   */
+  getProjects: () => api.get<ProjectResponse[]>("/api/projects"),
+
+  /**
+   * List all projects (alias for getProjects)
    */
   list: () => api.get<ProjectResponse[]>("/api/projects"),
 

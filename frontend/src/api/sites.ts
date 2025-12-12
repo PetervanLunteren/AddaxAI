@@ -9,6 +9,9 @@
 import { api } from "../lib/api-client";
 import type { SiteCreate, SiteResponse, SiteUpdate } from "./types";
 
+// Re-export types
+export type { SiteCreate, SiteResponse, SiteUpdate };
+
 export const sitesApi = {
   /**
    * List all sites, optionally filtered by project
