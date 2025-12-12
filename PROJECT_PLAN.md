@@ -1665,7 +1665,7 @@ This is a high-level dependency-ordered checklist. Details for each item will be
 7. ✅ Create initial Project, Site, Deployment, File database models
 
 ### Core Functionality
-8. Implement CRUD API endpoints for projects and sites
+8. ✅ Implement CRUD API endpoints for projects and sites
 9. Build frontend navigation and basic UI layout (header, sidebar)
 10. Create project/site creation and edit forms
 11. Implement file storage setup (copy files to project directory)
