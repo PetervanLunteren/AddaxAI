@@ -1656,13 +1656,13 @@ For MVP: Manual download and install new versions
 This is a high-level dependency-ordered checklist. Details for each item will be refined during implementation.
 
 ### Setup & Infrastructure
-1. Initialize monorepo with backend/, frontend/, electron/ directories
-2. Set up FastAPI backend with basic project structure
+1. ✅ Initialize monorepo with backend/, frontend/, electron/ directories
+2. ✅ Set up FastAPI backend with basic project structure
 3. Set up React + Vite + TypeScript frontend
 4. Configure Electron shell to launch backend and load frontend
-5. Set up SQLite database with SQLAlchemy models and Alembic migrations
-6. Implement basic CI/CD (linting, type-checking, tests)
-7. Create initial Project, Site, Deployment, File database models
+5. ✅ Set up SQLite database with SQLAlchemy models and Alembic migrations
+6. ✅ Implement basic CI/CD (linting, type-checking, tests)
+7. ✅ Create initial Project, Site, Deployment, File database models
 
 ### Core Functionality
 8. Implement CRUD API endpoints for projects and sites
@@ -1672,7 +1672,7 @@ This is a high-level dependency-ordered checklist. Details for each item will be
 12. Build file import workflow (select folder, scan files, extract EXIF)
 13. Set up AsyncIO workers + Redis/LiteQ for background job processing
 14. Implement WebSocket manager for real-time progress updates
-15. Build jobs and audit_log database tables
+15. ✅ Build jobs and audit_log database tables
 16. Implement import job progress tracking with WebSocket streaming
 17. Build file list view with TanStack Table and pagination
 18. Implement event grouping logic (time-based clustering)
