@@ -1,16 +1,13 @@
 /**
- * Project Detail page showing sites for a project.
+ * Sites Management Page
  *
- * Following DEVELOPERS.md principles:
- * - Type hints everywhere
- * - Simple, clear structure
+ * Dedicated page for managing sites within a project.
  */
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, useNavigate } from "react-router-dom";
-import { Plus, ArrowLeft, Settings, MapPin, Mountain } from "lucide-react";
-import { projectsApi } from "../api/projects";
+import { useParams } from "react-router-dom";
+import { Plus, Settings, MapPin, Mountain } from "lucide-react";
 import { sitesApi } from "../api/sites";
 import type { SiteResponse } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -24,17 +21,10 @@ import {
 import { CreateSiteDialog } from "../components/sites/CreateSiteDialog";
 import { EditSiteDialog } from "../components/sites/EditSiteDialog";
 
-export function ProjectDetailPage() {
+export function SitesPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const navigate = useNavigate();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteResponse | null>(null);
-
-  const { data: project } = useQuery({
-    queryKey: ["projects", projectId],
-    queryFn: () => projectsApi.get(projectId!),
-    enabled: !!projectId,
-  });
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites", projectId],
@@ -47,27 +37,16 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen">
+      {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/projects")}
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  {project?.name || "Loading..."}
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {project?.description || "Manage sites for this project"}
-                </p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Sites</h1>
+              <p className="text-sm text-muted-foreground">
+                Manage monitoring locations for this project
+              </p>
             </div>
             <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="h-4 w-4" />
@@ -77,6 +56,7 @@ export function ProjectDetailPage() {
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {isLoading ? (
           <div className="text-center text-muted-foreground">
