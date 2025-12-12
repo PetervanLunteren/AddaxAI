@@ -1658,7 +1658,7 @@ This is a high-level dependency-ordered checklist. Details for each item will be
 ### Setup & Infrastructure
 1. ✅ Initialize monorepo with backend/, frontend/, electron/ directories
 2. ✅ Set up FastAPI backend with basic project structure
-3. Set up React + Vite + TypeScript frontend
+3. ✅ Set up React + Vite + TypeScript frontend
 4. Configure Electron shell to launch backend and load frontend
 5. ✅ Set up SQLite database with SQLAlchemy models and Alembic migrations
 6. ✅ Implement basic CI/CD (linting, type-checking, tests)
