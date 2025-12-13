@@ -13,7 +13,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import projects_router, sites_router
+from app.api.routers import deployments_router, projects_router, sites_router
 from app.core.config import get_settings
 from app.db.base import init_db
 
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
     # Register API routers
     app.include_router(projects_router)
     app.include_router(sites_router)
+    app.include_router(deployments_router)
 
     # Health check endpoint
     @app.get("/health", tags=["Health"])

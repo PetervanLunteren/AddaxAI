@@ -1,7 +1,7 @@
 /**
- * Deployments Page - ML Model Deployment Management
+ * Analyses Page - ML Analysis Management
  *
- * Allows users to create and manage ML model deployments to analyze images.
+ * Allows users to create and manage ML analyses to detect animals in camera trap images.
  */
 
 import { useState } from "react";
@@ -16,8 +16,8 @@ import {
   CardTitle,
 } from "../components/ui/card";
 
-// Mock deployment data - will be replaced with real API calls
-interface Deployment {
+// Mock analysis data - will be replaced with real API calls
+interface Analysis {
   id: string;
   name: string;
   model: string;
@@ -28,7 +28,7 @@ interface Deployment {
   total_images: number;
 }
 
-const mockDeployments: Deployment[] = [
+const mockAnalyses: Analysis[] = [
   {
     id: "1",
     name: "Wildlife Detection - Summer 2024",
@@ -51,12 +51,12 @@ const mockDeployments: Deployment[] = [
   },
 ];
 
-export function DeploymentsPage() {
+export function AnalysesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [deployments] = useState<Deployment[]>(mockDeployments);
+  const [analyses] = useState<Analysis[]>(mockAnalyses);
 
-  const getStatusColor = (status: Deployment["status"]) => {
+  const getStatusColor = (status: Analysis["status"]) => {
     switch (status) {
       case "running":
         return "text-blue-600 bg-blue-50";
@@ -69,7 +69,7 @@ export function DeploymentsPage() {
     }
   };
 
-  const getStatusIcon = (status: Deployment["status"]) => {
+  const getStatusIcon = (status: Analysis["status"]) => {
     switch (status) {
       case "running":
         return <Play className="h-3 w-3" />;
@@ -93,14 +93,14 @@ export function DeploymentsPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Deployments</h1>
+              <h1 className="text-2xl font-bold tracking-tight">New Analysis</h1>
               <p className="text-sm text-muted-foreground">
-                Run ML models to analyze your camera trap images
+                Run AI models to detect and classify wildlife in your camera trap images
               </p>
             </div>
             <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="h-4 w-4" />
-              New Deployment
+              Create Analysis
             </Button>
           </div>
         </div>
@@ -108,36 +108,36 @@ export function DeploymentsPage() {
 
       {/* Main Content */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {deployments.length > 0 ? (
+        {analyses.length > 0 ? (
           <div className="space-y-4">
-            {deployments.map((deployment) => (
-              <Card key={deployment.id} className="transition-shadow hover:shadow-lg">
+            {analyses.map((analysis) => (
+              <Card key={analysis.id} className="transition-shadow hover:shadow-lg">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
-                        <CardTitle>{deployment.name}</CardTitle>
+                        <CardTitle>{analysis.name}</CardTitle>
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${getStatusColor(
-                            deployment.status
+                            analysis.status
                           )}`}
                         >
-                          {getStatusIcon(deployment.status)}
-                          {deployment.status.charAt(0).toUpperCase() +
-                            deployment.status.slice(1)}
+                          {getStatusIcon(analysis.status)}
+                          {analysis.status.charAt(0).toUpperCase() +
+                            analysis.status.slice(1)}
                         </span>
                       </div>
                       <CardDescription className="mt-1">
-                        Model: {deployment.model}
+                        Model: {analysis.model}
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
-                      {deployment.status === "running" && (
+                      {analysis.status === "running" && (
                         <Button variant="outline" size="sm">
                           <Pause className="h-4 w-4" />
                         </Button>
                       )}
-                      {deployment.status === "paused" && (
+                      {analysis.status === "paused" && (
                         <Button variant="outline" size="sm">
                           <Play className="h-4 w-4" />
                         </Button>
@@ -153,27 +153,27 @@ export function DeploymentsPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Progress</span>
-                      <span className="font-medium">{deployment.progress}%</span>
+                      <span className="font-medium">{analysis.progress}%</span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full bg-primary transition-all duration-500"
-                        style={{ width: `${deployment.progress}%` }}
+                        style={{ width: `${analysis.progress}%` }}
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {deployment.images_processed.toLocaleString()} /{" "}
-                      {deployment.total_images.toLocaleString()} images processed
+                      {analysis.images_processed.toLocaleString()} /{" "}
+                      {analysis.total_images.toLocaleString()} images processed
                     </p>
                   </div>
 
                   {/* Metadata */}
                   <div className="flex items-center justify-between border-t pt-4 text-xs text-muted-foreground">
                     <span>
-                      Started: {new Date(deployment.created_at).toLocaleDateString()}{" "}
-                      {new Date(deployment.created_at).toLocaleTimeString()}
+                      Started: {new Date(analysis.created_at).toLocaleDateString()}{" "}
+                      {new Date(analysis.created_at).toLocaleTimeString()}
                     </span>
-                    {deployment.status === "running" && (
+                    {analysis.status === "running" && (
                       <span className="text-blue-600">
                         Estimated time remaining: ~15 minutes
                       </span>
@@ -187,20 +187,20 @@ export function DeploymentsPage() {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <p className="mb-4 text-muted-foreground">
-                No deployments yet. Create your first deployment to start analyzing images.
+                No analyses yet. Create your first analysis to start detecting wildlife.
               </p>
               <Button onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="h-4 w-4" />
-                Create Deployment
+                Create Analysis
               </Button>
             </CardContent>
           </Card>
         )}
       </main>
 
-      {/* TODO: Add CreateDeploymentDialog */}
+      {/* TODO: Add CreateAnalysisDialog */}
       {createDialogOpen && (
-        <div>CreateDeploymentDialog - Coming soon</div>
+        <div>CreateAnalysisDialog - Coming soon</div>
       )}
     </div>
   );

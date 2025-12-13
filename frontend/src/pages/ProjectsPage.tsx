@@ -68,7 +68,7 @@ export function ProjectsPage() {
                 key={project.id}
                 className="transition-shadow hover:shadow-lg"
               >
-                <CardHeader className="cursor-pointer" onClick={() => navigate(`/projects/${project.id}/sites`)}>
+                <CardHeader className="cursor-pointer" onClick={() => navigate(`/projects/${project.id}/analyses`)}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle>{project.name}</CardTitle>
@@ -88,7 +88,7 @@ export function ProjectsPage() {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="cursor-pointer" onClick={() => navigate(`/projects/${project.id}/sites`)}>
+                <CardContent className="cursor-pointer" onClick={() => navigate(`/projects/${project.id}/analyses`)}>
                   <p className="text-xs text-muted-foreground">
                     Created: {new Date(project.created_at).toLocaleDateString()}
                   </p>
