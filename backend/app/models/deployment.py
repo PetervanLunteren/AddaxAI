@@ -9,7 +9,7 @@ Following DEVELOPERS.md principles:
 
 import uuid
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import Date, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from .event import Event
     from .file import File
     from .site import Site
+
+
+FolderStatus = Literal["valid", "missing", "needs_relink"]
 
 
 class Deployment(Base):
@@ -39,6 +42,19 @@ class Deployment(Base):
     site_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
     )
+
+    # File storage
+    folder_path: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # Absolute path to deployment folder
+    folder_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="valid"
+    )  # "valid", "missing", "needs_relink"
+    last_validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )  # When folder was last checked
+
+    # Deployment metadata
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     camera_model: Mapped[str | None] = mapped_column(String(255), nullable=True)

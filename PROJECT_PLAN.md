@@ -1651,11 +1651,22 @@ For MVP: Manual download and install new versions
 
 ---
 
-## General Build Order (Todo List)
+## General Build Order (MVP-First Approach)
 
-This is a high-level dependency-ordered checklist. Details for each item will be refined during implementation.
+**Strategy**: Build a Minimum Viable Product (MVP) first to validate the entire deployment pipeline (Electron packaging, code signing, cross-platform installers) before investing heavily in advanced features. This de-risks the project early.
 
-### Setup & Infrastructure
+**MVP Scope**:
+- Deployment creation with folder selection (no file copying)
+- File scanning with EXIF extraction
+- MegaDetector (animal detection) + Simple Classifier (species)
+- Basic file browsing with thumbnails
+- Image viewer with bounding box visualization
+- Simple detection timeline chart
+- Electron packaging and distribution
+
+### Phase 1: MVP Development
+
+#### Setup & Infrastructure
 1. ✅ Initialize monorepo with backend/, frontend/, electron/ directories
 2. ✅ Set up FastAPI backend with basic project structure
 3. ✅ Set up React + Vite + TypeScript frontend
@@ -1664,39 +1675,64 @@ This is a high-level dependency-ordered checklist. Details for each item will be
 6. ✅ Implement basic CI/CD (linting, type-checking, tests)
 7. ✅ Create initial Project, Site, Deployment, File database models
 
-### Core Functionality
+#### Core Functionality (MVP)
 8. ✅ Implement CRUD API endpoints for projects and sites
 9. ✅ Build frontend navigation and basic UI layout (sidebar with project-scoped tools)
 10. ✅ Create project/site creation and edit forms
 10a. ✅ Create deployments page UI (mock data, will connect to backend later)
-11. Implement file storage setup (copy files to project directory)
-12. Build file import workflow (select folder, scan files, extract EXIF)
-13. Set up AsyncIO workers + Redis/LiteQ for background job processing
-14. Implement WebSocket manager for real-time progress updates
-15. ✅ Build jobs and audit_log database tables
-16. Implement import job progress tracking with WebSocket streaming
-17. Build file list view with TanStack Table and pagination
-18. Implement event grouping logic (time-based clustering)
-19. Create event list and event detail views
+11. ✅ Update deployment model for no-copy file storage (folder_path approach)
+11a. Implement deployment CRUD API endpoints
+11b. Build file scanner service (recursive scan with EXIF extraction)
+11c. Create deployment creation dialog with folder selection
+11d. Implement FilesPage to display scanned files (list/grid with thumbnails)
 
-### ML Integration
-20. Design and implement model manifest YAML format (with sha256 checksums)
-21. Build environment manager (create, verify, cache micromamba environments)
+#### ML Integration (MVP - MegaDetector + Classifier Only)
+20. Design simple model manifest format (YAML, basic version)
+21. Build environment manager for micromamba
 22. Integrate micromamba for isolated Python environments
-23. Implement model weight download and caching with integrity verification
-24. Create AsyncIO task for model inference execution with WebSocket progress
-25. Integrate MegaDetector (first model)
+23. Implement model weight download and caching
+24. Create AsyncIO task for model inference execution
+25. **Integrate MegaDetector** (animal detection - MVP priority)
+29. **Integrate simple species classifier** (MVP priority)
 26. Implement detection storage in database
-27. Build detection list view on file detail page
-28. Add model execution real-time progress tracking via WebSocket
-29. Integrate species classifier (second model)
+
+#### Basic Data Browsing (MVP)
+32. Build file detail page with image viewer
+33. Implement Konva canvas for bounding box visualization
+34. Display ML detections on images
+
+#### Basic Visualization (MVP)
+43. Create simple dashboard with summary statistics
+45. **Add detection count timeline** (bar/line chart - MVP priority)
+
+#### Electron Integration (MVP)
+4. Configure Electron shell to launch backend and load frontend
+
+### Phase 2: Packaging & Distribution (CRITICAL VALIDATION)
+
+**🚨 DECISION POINT**: Validate packaging/distribution pipeline before building more features.
+
+53. Set up PyInstaller for backend bundling
+54. Configure electron-builder for macOS and Windows installers
+55. Bundle micromamba and Python environment
+56. Configure Windows code signing with existing certificate
+57. **Test installation on clean macOS machine**
+58. **Test signed Windows installer**
+59. Create Linux AppImage configuration (stretch goal)
+60. **Validate cross-platform compatibility**
+61. Set up GitHub Actions for automated builds and signing
+62. Test automated release pipeline
+
+**If packaging issues arise, fix them NOW before Phase 3.**
+
+### Phase 3: Feature Expansion (After MVP Validates)
+
+#### Advanced ML
+28. Add real-time progress tracking via WebSocket
 30. Implement multi-model support and sequential pipelines
 31. Add GPU detection and CPU fallback logic
 
-### Review & Annotation
-32. Build file detail page with image viewer
-33. Implement Konva (react-konva) canvas for bounding box visualization
-34. Display existing ML detections on canvas
+#### Review & Annotation
 35. Add confidence threshold filtering
 36. Implement "mark as reviewed" functionality with audit log
 37. Add keyboard shortcuts for navigation (next/previous file)
@@ -1706,39 +1742,46 @@ This is a high-level dependency-ordered checklist. Details for each item will be
 41. Implement annotation save/update API with audit log tracking
 42. Build batch selection and operations UI
 
-### Visualization & Export
-43. Create dashboard with summary statistics
-44. Build species distribution chart (bar chart with Plotly)
-45. Add detection timeline visualization
+#### Event Grouping & Advanced Browsing
+17. Build file list view with TanStack Table and pagination
+18. Implement event grouping logic (time-based clustering)
+19. Create event list and event detail views
+
+#### Advanced Visualization
+44. Build species distribution chart (pie/bar with Plotly)
 46. Implement site map view with MapLibre GL JS + Deck.gl
 47. Add interactive site location editing (drag markers)
 48. Implement heatmap layer for detection density
 49. Add hexbin/grid visualization for camera coverage analysis
+
+#### Export & Reporting
 50. Build CSV export functionality (AsyncIO task with WebSocket progress)
 51. Implement Camtrap DP export format
 52. Create export download API and UI
 
-### Packaging & Polish
-53. Set up PyInstaller for backend bundling
-54. Configure electron-builder for macOS and Windows installers
-55. Bundle micromamba and Redis binaries
-56. Configure Windows code signing with existing certificate
-57. Test installation on clean macOS machine
-58. Test signed Windows installer
-59. Create Linux AppImage configuration
-60. Test installations on Windows and Linux
-61. Implement comprehensive error handling and user feedback
-62. Add loading states and empty states throughout UI
-63. Write in-app help/onboarding content
-64. Create end-to-end tests for critical workflows (Playwright)
-65. Performance optimization for large datasets (WebSocket efficiency, virtual scrolling)
-66. Write user documentation (installation, workflows)
-67. Write developer documentation (architecture, AsyncIO workers, WebSocket setup)
-68. Create README with screenshots and getting started guide
-69. Internal testing with real camera trap datasets
-70. Beta testing with domain experts and gather feedback
-71. Bug fixes and UX improvements based on feedback
-72. Prepare GitHub release with installers and documentation
+#### Background Processing (if not needed in MVP)
+13. Set up AsyncIO workers + Redis/LiteQ for background job processing
+14. Implement WebSocket manager for real-time progress updates
+15. ✅ Build jobs and audit_log database tables
+16. Implement import job progress tracking with WebSocket streaming
+
+#### Folder Management
+11e. Add folder validation and re-linking functionality
+
+### Phase 4: Polish & Release
+
+63. Implement comprehensive error handling and user feedback
+64. Add loading states and empty states throughout UI
+65. Write in-app help/onboarding content
+66. Create end-to-end tests for critical workflows (Playwright)
+67. Performance optimization for large datasets
+68. Write user documentation (installation, workflows)
+69. Write developer documentation (architecture, deployment)
+70. Create README with screenshots and getting started guide
+71. Internal testing with real camera trap datasets
+72. Beta testing with domain experts and gather feedback
+73. Bug fixes and UX improvements based on feedback
+74. Prepare GitHub release with installers and documentation
 
 ---
 
