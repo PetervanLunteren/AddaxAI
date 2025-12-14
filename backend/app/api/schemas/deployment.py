@@ -90,3 +90,31 @@ class DeploymentWithStats(DeploymentResponse):
     detection_count: int = Field(
         0, description="Total number of detections in this deployment"
     )
+
+
+class GPSCoordinates(BaseModel):
+    """GPS coordinates from EXIF data."""
+
+    latitude: float = Field(..., description="Latitude in decimal degrees")
+    longitude: float = Field(..., description="Longitude in decimal degrees")
+
+
+class FolderPreviewResponse(BaseModel):
+    """
+    Preview of a deployment folder before running analysis.
+
+    Provides quick counts and GPS location check without storing files in DB.
+    """
+
+    image_count: int = Field(..., description="Number of image files found")
+    video_count: int = Field(..., description="Number of video files found")
+    total_count: int = Field(..., description="Total number of media files")
+    gps_location: GPSCoordinates | None = Field(
+        None, description="Average GPS coordinates if found in EXIF"
+    )
+    suggested_site_id: str | None = Field(
+        None, description="ID of nearby site if GPS matched"
+    )
+    sample_files: list[str] = Field(
+        [], description="Sample of file paths (relative to deployment folder)"
+    )
