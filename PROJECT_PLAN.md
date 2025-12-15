@@ -58,6 +58,7 @@ Build a local-first, cross-platform desktop application for camera trap wildlife
 | **Maps** | MapLibre GL JS + Deck.gl | WebGL-accelerated, complex spatial viz (heatmaps, hexbins, coverage analysis), offline vector tiles | Leaflet (simpler but limited for advanced geospatial analysis) |
 | **Plots** | Plotly | Interactive, feature-rich, publication-quality | Recharts (lighter but less features) |
 | **Packaging** | electron-builder | Industry standard, code signing, auto-update support | electron-forge (less features) |
+| **Logging** | Python `logging` + Winston | Built-in rotating file handlers, structured logs, cross-component aggregation | Loki/Grafana (overkill for local app) |
 
 ### Detailed Subsystem Recommendations
 
@@ -150,6 +151,8 @@ Build a local-first, cross-platform desktop application for camera trap wildlife
 │  │  - Annotation save/update                                │   │
 │  │  - Job submission & status polling                       │   │
 │  │  - Export generation                                     │   │
+│  │  - Log forwarding (frontend logs)                       │   │
+│  │  - Log export (ZIP all logs + system info)             │   │
 │  └────────┬──────────────────────────────┬──────────────────┘   │
 │           │                               │                       │
 │  ┌────────▼─────────┐          ┌─────────▼──────────────────┐   │
@@ -836,6 +839,13 @@ POST   /api/exports/camtrap-dp   Generate Camtrap DP export
 GET    /api/exports/{id}/download  Download completed export
 ```
 
+#### Logging & Diagnostics
+```
+POST   /api/logs                 Forward frontend logs to backend (batched)
+GET    /api/logs/export          Export all logs as ZIP (backend.log, frontend.log, electron.log, system-info.json)
+GET    /api/system/info          Get system information (OS, Python version, Node version, hardware, disk space)
+```
+
 ### Request/Response Examples
 
 #### Import Files
@@ -1221,6 +1231,9 @@ test('toggles annotation mode', () => {
 │   ├── environments/
 │   └── weights/
 └── logs/
+    ├── backend.log         # Backend logs (rotates at 33MB, keeps 3 backups)
+    ├── frontend.log        # Frontend logs (rotates at 33MB, keeps 3 backups)
+    └── electron.log        # Electron main process logs (rotates at 33MB, keeps 3 backups)
 ```
 
 #### Startup Process
@@ -1547,16 +1560,17 @@ For MVP: Manual download and install new versions
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| **Model environments fail to install on some systems** | Medium | High | Thorough testing on clean VMs, fallback to manual environment setup instructions, verbose error messages |
+| **Model environments fail to install on some systems** | Medium | High | Thorough testing on clean VMs, fallback to manual environment setup instructions, verbose error messages, comprehensive logging system for remote debugging |
 | **Large datasets (1M+ images) cause performance issues** | Medium | High | Early performance testing with synthetic large datasets, database query optimization, pagination, lazy loading |
 | **GPU detection fails or is unreliable** | Medium | Medium | CPU fallback always available, clear messaging about GPU status, test on various hardware |
 | **File format compatibility issues** | Low | Medium | Use battle-tested libraries (Pillow, OpenCV), document supported formats, graceful error handling |
 | **micromamba download blocked by firewalls** | Medium | Medium | Bundle common environments in installer (increases size), provide offline installation guide |
 | **Cross-platform inconsistencies** | Medium | Medium | Continuous testing on all platforms, use cross-platform libraries, avoid platform-specific code |
 | **Database corruption or migration failures** | Low | High | Regular backups (automated), migration tests, rollback capability, database integrity checks |
-| **Background jobs hang or crash** | Medium | Medium | Timeout mechanisms, restart failed tasks, Celery monitoring, detailed logging |
+| **Background jobs hang or crash** | Medium | Medium | Timeout mechanisms, restart failed tasks, Celery monitoring, comprehensive logging system captures full stack traces and progress state |
 | **Installer blocked by antivirus/Gatekeeper** | High | Medium | Code signing (future), clear bypass instructions, build trust with community |
 | **Team capacity (1-2 devs) causes delays** | Medium | High | Ruthless scope prioritization, use proven libraries vs custom code, avoid premature optimization |
+| **Users unable to effectively report bugs** | High | Medium | Comprehensive logging system with one-click export (backend, frontend, Electron logs + system info), logs capture errors, user actions, and full stack traces for remote debugging |
 
 ---
 
@@ -1674,6 +1688,11 @@ For MVP: Manual download and install new versions
 5. ✅ Set up SQLite database with SQLAlchemy models and Alembic migrations
 6. ✅ Implement basic CI/CD (linting, type-checking, tests)
 7. ✅ Create initial Project, Site, Deployment, File database models
+7a. ✅ Implement backend logging with RotatingFileHandler (Python `logging` module)
+7b. ✅ Create frontend logger with batching (forwards to POST /api/logs every 5s)
+7c. ⏸️ Add Electron Winston logger for main process events (deferred - Electron not implemented yet)
+7d. ⏸️ Create log export endpoint (GET /api/logs/export - ZIP with all logs + system-info.json) (deferred)
+7e. ⏸️ Add "Export Logs" button to Settings page with privacy warning (deferred)
 
 #### Core Functionality (MVP)
 8. ✅ Implement CRUD API endpoints for projects and sites
@@ -1681,8 +1700,8 @@ For MVP: Manual download and install new versions
 10. ✅ Create project/site creation and edit forms
 10a. ✅ Create deployments page UI (mock data, will connect to backend later)
 11. ✅ Update deployment model for no-copy file storage (folder_path approach)
-11a. Implement deployment CRUD API endpoints
-11b. Build file scanner service (recursive scan with EXIF extraction)
+11a. ✅ Implement deployment CRUD API endpoints (backend/app/api/routers/deployments.py)
+11b. ✅ Build file scanner service (recursive scan with EXIF extraction) (backend/app/services/folder_scanner.py + preview-folder endpoint)
 11c. Create deployment creation dialog with folder selection
 11d. Implement FilesPage to display scanned files (list/grid with thumbnails)
 

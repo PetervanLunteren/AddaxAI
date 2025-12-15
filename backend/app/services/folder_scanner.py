@@ -19,6 +19,10 @@ from typing import TypedDict
 from PIL import Image
 from PIL.ExifTags import GPSTAGS, TAGS
 
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class GPSCoordinates(TypedDict):
     """GPS coordinates extracted from EXIF."""
@@ -122,8 +126,11 @@ def _extract_gps_from_sample(
             coords = _extract_gps_from_image(img_path)
             if coords:
                 gps_coords.append(coords)
-        except Exception:
-            # Skip files with corrupt EXIF or other issues
+        except Exception as e:
+            # Skip files with corrupt EXIF or other issues, but log it
+            logger.warning(
+                f"Failed to extract GPS from {img_path.name}: {type(e).__name__}: {e}"
+            )
             continue
 
         # If we found GPS in a few files, we can stop early
@@ -183,8 +190,11 @@ def _extract_gps_from_image(img_path: Path) -> GPSCoordinates | None:
 
             return None
 
-    except Exception:
-        # Image corrupt, not readable, or other error
+    except Exception as e:
+        # Image corrupt, not readable, or other error - log it
+        logger.debug(
+            f"Cannot read image {img_path.name}: {type(e).__name__}: {e}"
+        )
         return None
 
 

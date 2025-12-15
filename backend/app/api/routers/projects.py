@@ -18,8 +18,10 @@ from app.api.schemas.project import (
     ProjectUpdate,
     ProjectWithStats,
 )
+from app.core.logging_config import get_logger
 from app.db.base import get_db
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
 
@@ -45,9 +47,10 @@ def create_project(
     """
     try:
         db_project = crud_project.create_project(db, project)
+        logger.info(f"Created project: {project.name} (ID: {db_project.id})")
         return ProjectResponse.model_validate(db_project)
     except IntegrityError as e:
-        # Duplicate name constraint violation
+        logger.warning(f"Failed to create project '{project.name}': duplicate name")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Project with name '{project.name}' already exists",
@@ -63,6 +66,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectRespon
     """
     db_project = crud_project.get_project(db, project_id)
     if db_project is None:
+        logger.warning(f"Project not found: {project_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with id '{project_id}' not found",
@@ -83,12 +87,15 @@ def update_project(
     try:
         db_project = crud_project.update_project(db, project_id, project)
         if db_project is None:
+            logger.warning(f"Cannot update project: {project_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project with id '{project_id}' not found",
             )
+        logger.info(f"Updated project: {project_id}")
         return ProjectResponse.model_validate(db_project)
     except IntegrityError as e:
+        logger.warning(f"Failed to update project {project_id}: duplicate name")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Project name already exists",
@@ -105,10 +112,12 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
     """
     deleted = crud_project.delete_project(db, project_id)
     if not deleted:
+        logger.warning(f"Cannot delete project: {project_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with id '{project_id}' not found",
         )
+    logger.info(f"Deleted project: {project_id} (cascaded to all related data)")
 
 
 @router.get("/{project_id}/stats", response_model=ProjectWithStats)

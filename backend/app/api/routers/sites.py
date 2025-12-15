@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import site as crud_site
 from app.api.schemas.site import SiteCreate, SiteResponse, SiteUpdate
+from app.core.logging_config import get_logger
 from app.db.base import get_db
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/api/sites", tags=["Sites"])
 
 
@@ -42,18 +44,21 @@ def create_site(site: SiteCreate, db: Session = Depends(get_db)) -> SiteResponse
     """
     try:
         db_site = crud_site.create_site(db, site)
+        logger.info(f"Created site: {site.name} in project {site.project_id} (ID: {db_site.id})")
         return SiteResponse.model_validate(db_site)
     except IntegrityError as e:
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
 
         # Check if it's a foreign key error (project doesn't exist)
         if "FOREIGN KEY" in error_msg or "foreign key" in error_msg.lower():
+            logger.warning(f"Failed to create site: project {site.project_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Project with id '{site.project_id}' does not exist",
             ) from e
 
         # Otherwise it's likely a unique constraint violation (duplicate name)
+        logger.warning(f"Failed to create site '{site.name}': duplicate name in project")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Site with name '{site.name}' already exists in this project",
@@ -111,7 +116,9 @@ def delete_site(site_id: str, db: Session = Depends(get_db)) -> None:
     """
     deleted = crud_site.delete_site(db, site_id)
     if not deleted:
+        logger.warning(f"Cannot delete site: {site_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Site with id '{site_id}' not found",
         )
+    logger.info(f"Deleted site: {site_id} (cascaded to deployments and files)")

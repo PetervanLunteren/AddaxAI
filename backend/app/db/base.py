@@ -15,6 +15,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -97,6 +100,9 @@ def init_db() -> None:
     engine = get_engine()
 
     try:
+        logger.info("Creating database tables...")
         Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
     except Exception as e:
+        logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize database: {e}") from e

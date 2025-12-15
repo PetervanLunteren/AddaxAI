@@ -20,9 +20,11 @@ from app.api.schemas.deployment import (
     FolderPreviewResponse,
     GPSCoordinates,
 )
+from app.core.logging_config import get_logger
 from app.db.base import get_db
 from app.services.folder_scanner import scan_folder
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/api/deployments", tags=["Deployments"])
 
 
@@ -53,9 +55,11 @@ def create_deployment(
     """
     try:
         db_deployment = crud_deployment.create_deployment(db, deployment)
+        logger.info(f"Created deployment for site {deployment.site_id} (ID: {db_deployment.id})")
         return DeploymentResponse.model_validate(db_deployment)
     except IntegrityError as e:
         # Foreign key constraint violation (invalid site_id)
+        logger.warning(f"Failed to create deployment: site {deployment.site_id} not found")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid site_id: {deployment.site_id}",
@@ -115,10 +119,12 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> None
     """
     deleted = crud_deployment.delete_deployment(db, deployment_id)
     if not deleted:
+        logger.warning(f"Cannot delete deployment: {deployment_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Deployment with id '{deployment_id}' not found",
         )
+    logger.info(f"Deleted deployment: {deployment_id} (cascaded to files and events)")
 
 
 @router.get("/{deployment_id}/stats", response_model=DeploymentWithStats)
@@ -183,18 +189,29 @@ def preview_deployment_folder(
 
     # Scan folder
     try:
+        logger.info(f"Scanning folder for deployment {deployment_id}: {db_deployment.folder_path}")
         preview = scan_folder(db_deployment.folder_path)
+        logger.info(
+            f"Folder scan complete for {deployment_id}: "
+            f"{preview['image_count']} images, {preview['video_count']} videos"
+        )
     except FileNotFoundError as e:
+        logger.error(f"Folder not found for deployment {deployment_id}: {db_deployment.folder_path}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Folder not found: {str(e)}",
         ) from e
     except PermissionError as e:
+        logger.error(f"Permission denied for deployment {deployment_id}: {db_deployment.folder_path}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied: {str(e)}",
         ) from e
     except Exception as e:
+        logger.error(
+            f"Error scanning folder for deployment {deployment_id}: {type(e).__name__}: {e}",
+            exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error scanning folder: {str(e)}",

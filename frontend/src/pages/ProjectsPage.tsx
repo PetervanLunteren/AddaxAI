@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Plus, Settings } from "lucide-react";
 import { projectsApi, type ProjectResponse } from "../api/projects";
+import { logger } from "../lib/logger";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -32,8 +33,10 @@ export function ProjectsPage() {
     queryFn: () => projectsApi.getProjects(),
   });
 
-  // Debug logging
-  console.log("ProjectsPage render:", { isLoading, projects, error });
+  // Log errors
+  if (error) {
+    logger.error("Failed to load projects", { error: error.message });
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -47,7 +50,12 @@ export function ProjectsPage() {
                 Manage your camera trap monitoring projects
               </p>
             </div>
-            <Button onClick={() => setCreateDialogOpen(true)}>
+            <Button
+              onClick={() => {
+                logger.info("User clicked New Project button");
+                setCreateDialogOpen(true);
+              }}
+            >
               <Plus className="h-4 w-4" />
               New Project
             </Button>
@@ -68,7 +76,15 @@ export function ProjectsPage() {
                 key={project.id}
                 className="transition-shadow hover:shadow-lg"
               >
-                <CardHeader className="cursor-pointer" onClick={() => navigate(`/projects/${project.id}/analyses`)}>
+                <CardHeader
+                  className="cursor-pointer"
+                  onClick={() => {
+                    logger.info(`User navigated to project: ${project.name}`, {
+                      projectId: project.id,
+                    });
+                    navigate(`/projects/${project.id}/analyses`);
+                  }}
+                >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle>{project.name}</CardTitle>
@@ -81,6 +97,7 @@ export function ProjectsPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
+                        logger.info(`User opened edit dialog for project: ${project.name}`);
                         setEditingProject(project);
                       }}
                     >
@@ -88,7 +105,15 @@ export function ProjectsPage() {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="cursor-pointer" onClick={() => navigate(`/projects/${project.id}/analyses`)}>
+                <CardContent
+                  className="cursor-pointer"
+                  onClick={() => {
+                    logger.info(`User navigated to project: ${project.name}`, {
+                      projectId: project.id,
+                    });
+                    navigate(`/projects/${project.id}/analyses`);
+                  }}
+                >
                   <p className="text-xs text-muted-foreground">
                     Created: {new Date(project.created_at).toLocaleDateString()}
                   </p>

@@ -13,9 +13,19 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import deployments_router, projects_router, sites_router
+from app.api.routers import (
+    deployments_router,
+    logs_router,
+    projects_router,
+    sites_router,
+)
 from app.core.config import get_settings
+from app.core.logging_config import get_logger, setup_logging
 from app.db.base import init_db
+
+# Initialize logging first, before anything else
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -28,18 +38,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Startup
     settings = get_settings()
-    print(f"Starting AddaxAI Backend (Environment: {settings.environment})")
-    print(f"Database: {settings.database_url}")
-    print(f"User data directory: {settings.user_data_dir}")
+    logger.info(f"Starting AddaxAI Backend (Environment: {settings.environment})")
+    logger.info(f"Database: {settings.database_url}")
+    logger.info(f"User data directory: {settings.user_data_dir}")
 
     # Initialize database - will crash if it fails
-    init_db()
-    print("Database initialized successfully")
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.critical(f"Failed to initialize database: {e}", exc_info=True)
+        raise
 
     yield
 
     # Shutdown
-    print("Shutting down AddaxAI Backend")
+    logger.info("Shutting down AddaxAI Backend")
 
 
 def create_app() -> FastAPI:
@@ -78,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(sites_router)
     app.include_router(deployments_router)
+    app.include_router(logs_router)
 
     # Health check endpoint
     @app.get("/health", tags=["Health"])
