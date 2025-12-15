@@ -32,11 +32,13 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     """
     Set SQLite performance and concurrency settings.
 
+    foreign_keys: Enable foreign key constraints (SQLite doesn't enforce by default!)
     WAL mode: Allows concurrent reads during writes
     NORMAL synchronous: Safe with WAL, faster than FULL
     64MB cache: Better performance for large queries
     """
     cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")  # CRITICAL: Enable FK constraints
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache

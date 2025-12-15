@@ -14,3 +14,30 @@
 
 **Remember:** It's better to crash during development than to hide bugs that cause problems later. We'll add resilience (retries, fallbacks, graceful degradation) after the core functionality works.
 
+## Logging & Debugging
+
+**Log files:** All logs (backend + frontend) are written to `~/AddaxAI/logs/backend.log`
+
+**Watch logs in real-time:**
+```bash
+tail -f ~/AddaxAI/logs/backend.log
+```
+
+**Add logging in code:**
+```python
+# Backend (Python)
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
+logger.info("Operation completed")
+logger.error("Something failed", exc_info=True)  # Include stack trace
+```
+
+```typescript
+// Frontend (TypeScript)
+import { logger } from "@/lib/logger";
+logger.info("User clicked button", { buttonId: "create-project" });
+logger.error("API call failed", { endpoint: "/api/projects", error: err.message });
+```
+
+**Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days).
+
