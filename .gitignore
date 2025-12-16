@@ -81,3 +81,8 @@ htmlcov/
 
 # Alembic
 alembic/versions/*.pyc
+
+# SQLite runtime files
+*.db
+*.db-wal
+*.db-shm
