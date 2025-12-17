@@ -76,18 +76,39 @@ class EnvironmentManager:
         download_url = self._get_micromamba_download_url()
 
         try:
-            with urllib.request.urlopen(download_url, timeout=60) as response:
+            logger.info(f"Downloading from {download_url}")
+            with urllib.request.urlopen(download_url, timeout=120) as response:
+                content = response.read()
+                logger.info(f"Downloaded {len(content)} bytes")
+
                 with open(micromamba_path, "wb") as f:
-                    f.write(response.read())
+                    f.write(content)
 
             # Make executable on Unix
             if platform.system() != "Windows":
                 micromamba_path.chmod(0o755)
 
+            # Verify it's executable
+            try:
+                result = subprocess.run(
+                    [str(micromamba_path), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(f"Micromamba not executable: {result.stderr}")
+                logger.info(f"Micromamba version: {result.stdout.strip()}")
+            except Exception as verify_err:
+                micromamba_path.unlink()  # Clean up if verification fails
+                raise RuntimeError(f"Downloaded micromamba failed verification: {verify_err}")
+
             logger.info(f"Downloaded micromamba to {micromamba_path}")
             return micromamba_path
 
         except Exception as e:
+            if micromamba_path.exists():
+                micromamba_path.unlink()
             raise RuntimeError(
                 f"Failed to download micromamba from {download_url}: {e}"
             ) from e

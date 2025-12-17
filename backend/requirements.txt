@@ -18,6 +18,10 @@ pydantic-settings==2.7.0
 # Image Processing
 Pillow==11.0.0
 
+# ML & Model Management
+huggingface-hub>=0.20.0
+pyyaml==6.0.2
+
 # Development
 pytest==8.3.4
 pytest-asyncio==0.24.0

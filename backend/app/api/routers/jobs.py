@@ -129,7 +129,7 @@ def delete_job(job_id: str, db: Session = Depends(get_db)) -> None:
 
 
 @router.post("/run-queue", response_model=RunQueueResponse)
-def run_queue(
+async def run_queue(
     background_tasks: BackgroundTasks,
     project_id: str | None = Query(None, description="Filter by project_id"),
     db: Session = Depends(get_db),
@@ -167,10 +167,8 @@ def run_queue(
     # Start background workers for each job
     for job_id in job_ids:
         logger.info(f"Starting background worker for job {job_id}")
-        # Wrap async function to run in background
-        background_tasks.add_task(
-            lambda jid=job_id: asyncio.create_task(process_deployment_analysis(jid))
-        )
+        # Create task in current event loop
+        asyncio.create_task(process_deployment_analysis(job_id))
 
     logger.info(
         f"Run queue triggered for project {project_id or 'all'}: "

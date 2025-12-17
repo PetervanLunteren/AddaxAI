@@ -79,8 +79,8 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
-export type DetectionModel = "MegaDetector 5A" | "MegaDetector v1000 Redwood";
-export type ClassificationModel = "Europe" | "Africa";
+export type DetectionModel = "MDV5A" | "MDV5B";
+export type ClassificationModel = "EUR-DF-v1-3" | "AFR-BASIC-v1";
 
 export interface DeploymentAnalysisPayload {
   project_id: string;

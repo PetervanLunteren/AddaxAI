@@ -17,9 +17,9 @@ from pydantic import BaseModel, Field
 JobType = Literal["deployment_analysis", "import", "ml_inference", "export", "event_computation"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
-# Model options for deployment analysis
-DetectionModel = Literal["MegaDetector 5A", "MegaDetector v1000 Redwood"]
-ClassificationModel = Literal["Europe", "Africa"]
+# Model options for deployment analysis (use model IDs from manifests)
+DetectionModel = Literal["MDV5A", "MDV5B"]
+ClassificationModel = Literal["EUR-DF-v1-3", "AFR-BASIC-v1"]
 
 
 class DeploymentAnalysisPayload(BaseModel):
@@ -44,8 +44,8 @@ class JobCreate(BaseModel):
                 "payload": {
                     "project_id": "abc-123",
                     "folder_path": "/Users/peter/camera-traps/site-a",
-                    "detection_model": "MegaDetector 5A",
-                    "classification_model": "Europe",
+                    "detection_model": "MDV5A",
+                    "classification_model": "EUR-DF-v1-3",
                 },
             }
         }

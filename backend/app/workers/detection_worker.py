@@ -22,7 +22,7 @@ from app.api.crud import site as site_crud
 from app.api.schemas.detection import DetectionCreate
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
-from app.db.session import get_db
+from app.db.base import get_db
 from app.ml.detection import MegaDetectorRunner
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.manifest_manager import ManifestManager

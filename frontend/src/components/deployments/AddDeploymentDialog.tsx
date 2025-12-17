@@ -46,8 +46,8 @@ import {
 
 const deploymentSchema = z.object({
   folder_path: z.string().min(1, "Folder path is required"),
-  detection_model: z.enum(["MegaDetector 5A", "MegaDetector v1000 Redwood"]),
-  classification_model: z.enum(["Europe", "Africa"]),
+  detection_model: z.enum(["MDV5A", "MDV5B"]),
+  classification_model: z.enum(["EUR-DF-v1-3", "AFR-BASIC-v1"]),
 });
 
 type DeploymentFormValues = z.infer<typeof deploymentSchema>;
@@ -68,8 +68,8 @@ export function AddDeploymentDialog({
     resolver: zodResolver(deploymentSchema),
     defaultValues: {
       folder_path: "",
-      detection_model: "MegaDetector 5A",
-      classification_model: "Europe",
+      detection_model: "MDV5A",
+      classification_model: "EUR-DF-v1-3",
     },
   });
 
@@ -158,11 +158,11 @@ export function AddDeploymentDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="MegaDetector 5A">
-                        MegaDetector 5A
+                      <SelectItem value="MDV5A">
+                        MegaDetector v5a
                       </SelectItem>
-                      <SelectItem value="MegaDetector v1000 Redwood">
-                        MegaDetector v1000 Redwood
+                      <SelectItem value="MDV5B">
+                        MegaDetector v5b
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -191,8 +191,12 @@ export function AddDeploymentDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="Europe">Europe</SelectItem>
-                      <SelectItem value="Africa">Africa</SelectItem>
+                      <SelectItem value="EUR-DF-v1-3">
+                        Europe (Deepfaune v1.3)
+                      </SelectItem>
+                      <SelectItem value="AFR-BASIC-v1">
+                        Africa (Basic v1)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>

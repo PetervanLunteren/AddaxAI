@@ -114,6 +114,23 @@ def delete_job(db: Session, job_id: str) -> bool:
     return True
 
 
+def update_job_status(db: Session, job_id: str, status: str) -> Job | None:
+    """
+    Update job status (convenience function).
+
+    Args:
+        db: Database session
+        job_id: Job ID
+        status: New status ("pending", "running", "completed", "failed", "cancelled")
+
+    Returns:
+        Updated Job or None if job doesn't exist
+    """
+    from app.api.schemas.job import JobUpdate
+
+    return update_job(db, job_id, JobUpdate(status=status))
+
+
 def get_pending_jobs(db: Session, job_type: str | None = None) -> list[Job]:
     """
     Get all pending jobs, optionally filtered by type.
