@@ -1,0 +1,170 @@
+# Model Manifests
+#
+# Following DEVELOPERS.md principles:
+# - Explicit configuration
+# - Clear documentation
+# - Type-safe validation via Pydantic schema
+
+detection_models:
+  MDV5A:
+    model_id: "MDV5A"
+    friendly_name: "MegaDetector v5a"
+    emoji: "🔍"
+    type: detection
+    framework: pytorch
+
+    # Use official megadetector package
+    package: "megadetector>=5.0"
+    model_fname: "md_v5a.0.0.pt"
+
+    # Environment
+    environment: "megadetector-env"
+    python_version: "3.11"
+    dependencies:
+      - megadetector>=5.0
+
+    # Metadata
+    description: |
+      MegaDetector v5a is a state-of-the-art object detection model specifically designed
+      for camera trap images. It can detect animals, people, and vehicles with high accuracy.
+      Developed by Microsoft AI for Earth and the conservation AI community.
+    developer: "Microsoft AI for Earth"
+    citation: null
+    license: "MIT"
+    info_url: "https://github.com/agentmorris/MegaDetector"
+    min_app_version: "0.1.0"
+
+    # Runtime config
+    input_size: [1280, 1280]
+    batch_size_gpu: 8
+    batch_size_cpu: 2
+    confidence_threshold: 0.1
+    species_list: null
+
+  MDV5B:
+    model_id: "MDV5B"
+    friendly_name: "MegaDetector v5b"
+    emoji: "🔍"
+    type: detection
+    framework: pytorch
+
+    package: "megadetector>=5.0"
+    model_fname: "md_v5b.0.0.pt"
+
+    environment: "megadetector-env"
+    python_version: "3.11"
+    dependencies:
+      - megadetector>=5.0
+
+    description: |
+      MegaDetector v5b is an alternative version trained on different data splits.
+      Generally performs similarly to v5a but may be better on certain datasets.
+    developer: "Microsoft AI for Earth"
+    citation: null
+    license: "MIT"
+    info_url: "https://github.com/agentmorris/MegaDetector"
+    min_app_version: "0.1.0"
+
+    input_size: [1280, 1280]
+    batch_size_gpu: 8
+    batch_size_cpu: 2
+    confidence_threshold: 0.1
+    species_list: null
+
+classification_models:
+  EUR-DF-v1-3:
+    model_id: "EUR-DF-v1-3"
+    friendly_name: "Europe (Deepfaune v1.3)"
+    emoji: "🇪🇺"
+    type: classification
+    framework: pytorch
+
+    # Model files (will be downloaded)
+    model_fname: "deepfaune-vit_large_patch14_dinov2.lvd142m.v3.pt"
+    weights_url: "https://plmbox.math.cnrs.fr/f/6f5c13e33e6e4f39bd14/?dl=1"
+    checksum_sha256: null  # TODO: Add checksum when available
+    package: null
+
+    # Environment
+    environment: "deepfaune-env"
+    python_version: "3.11"
+    dependencies:
+      - torch>=2.0
+      - torchvision>=0.15
+      - timm>=0.9.12
+      - pillow>=10.0
+
+    # Metadata
+    description: |
+      The Deepfaune initiative aims at developing 'artificial intelligence' models to automatically
+      classify species in images and videos collected using camera-traps. The initiative is led by
+      a core academic team from the French 'Centre National de la Recherche Scientifique' (CNRS),
+      in collaboration with more than 50 European partners involved in wildlife research, conservation
+      and management. The Deepfaune models can be run through a custom software freely available on
+      the website, or through other software packages or platforms like EcoAssist. New versions of
+      the model are published regularly, increasing classification accuracy or adding new species
+      to the list of species that can be recognized.
+    developer: "The DeepFaune initiative"
+    citation: "https://doi.org/10.1007/s10344-023-01742-7"
+    license: "CC BY-SA 4.0"
+    info_url: "https://www.deepfaune.cnrs.fr/en/"
+    min_app_version: "0.1.0"
+
+    # Runtime config
+    input_size: [224, 224]
+    batch_size_gpu: 32
+    batch_size_cpu: 8
+    confidence_threshold: 0.5
+    species_list:
+      - Red Deer
+      - Roe Deer
+      - Wild Boar
+      - Red Fox
+      - European Badger
+      - Brown Bear
+      - Wolf
+      - Lynx
+      # Additional species would be listed here
+
+  AFR-BASIC-v1:
+    model_id: "AFR-BASIC-v1"
+    friendly_name: "Africa (Basic v1)"
+    emoji: "🌍"
+    type: classification
+    framework: pytorch
+
+    # Placeholder - would be replaced with real model
+    model_fname: "africa_classifier_v1.pt"
+    weights_url: null  # TODO: Add when model available
+    checksum_sha256: null
+    package: null
+
+    environment: "africa-classifier-env"
+    python_version: "3.11"
+    dependencies:
+      - torch>=2.0
+      - torchvision>=0.15
+      - pillow>=10.0
+
+    description: |
+      Placeholder for African species classifier. This would be trained on African wildlife
+      species commonly found in camera trap studies.
+    developer: "AddaxAI"
+    citation: null
+    license: "MIT"
+    info_url: "https://github.com/addaxai"
+    min_app_version: "0.1.0"
+
+    input_size: [224, 224]
+    batch_size_gpu: 32
+    batch_size_cpu: 8
+    confidence_threshold: 0.5
+    species_list:
+      - Lion
+      - Leopard
+      - Elephant
+      - Buffalo
+      - Giraffe
+      - Zebra
+      - Wildebeest
+      # Additional species would be listed here

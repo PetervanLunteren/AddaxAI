@@ -2,6 +2,7 @@
 
 from .audit_log import AuditLog
 from .deployment import Deployment
+from .detection import Detection
 from .event import Event, event_files
 from .file import File
 from .job import Job
@@ -11,6 +12,7 @@ from .site import Site
 __all__ = [
     "AuditLog",
     "Deployment",
+    "Detection",
     "Event",
     "File",
     "Job",

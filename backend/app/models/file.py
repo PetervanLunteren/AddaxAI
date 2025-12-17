@@ -20,6 +20,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from .deployment import Deployment
+    from .detection import Detection
     from .event import Event
 
 
@@ -74,6 +75,9 @@ class File(Base):
     deployment: Mapped["Deployment"] = relationship("Deployment", back_populates="files")
     events: Mapped[list["Event"]] = relationship(
         "Event", secondary="event_files", back_populates="files"
+    )
+    detections: Mapped[list["Detection"]] = relationship(
+        "Detection", back_populates="file", cascade="all, delete-orphan"
     )
 
     # Indexes for common queries

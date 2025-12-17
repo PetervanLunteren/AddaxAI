@@ -5,6 +5,7 @@ from .jobs import router as jobs_router
 from .logs import router as logs_router
 from .projects import router as projects_router
 from .sites import router as sites_router
+from .websocket import router as websocket_router
 
 __all__ = [
     "deployments_router",
@@ -12,4 +13,5 @@ __all__ = [
     "logs_router",
     "projects_router",
     "sites_router",
+    "websocket_router",
 ]

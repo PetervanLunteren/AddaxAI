@@ -19,6 +19,7 @@ from app.api.routers import (
     logs_router,
     projects_router,
     sites_router,
+    websocket_router,
 )
 from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(deployments_router)
     app.include_router(jobs_router)
     app.include_router(logs_router)
+    app.include_router(websocket_router)
 
     # Health check endpoint
     @app.get("/health", tags=["Health"])

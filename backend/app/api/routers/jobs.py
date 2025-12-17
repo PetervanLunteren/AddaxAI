@@ -7,13 +7,16 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import asyncio
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.crud import job as crud_job
 from app.api.schemas.job import JobCreate, JobResponse, JobUpdate, RunQueueResponse
 from app.core.logging_config import get_logger
 from app.db.base import get_db
+from app.workers import process_deployment_analysis
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
@@ -127,22 +130,24 @@ def delete_job(job_id: str, db: Session = Depends(get_db)) -> None:
 
 @router.post("/run-queue", response_model=RunQueueResponse)
 def run_queue(
+    background_tasks: BackgroundTasks,
     project_id: str | None = Query(None, description="Filter by project_id"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> RunQueueResponse:
     """
     Trigger processing of pending deployment_analysis jobs.
 
     If project_id is provided, only processes jobs for that project.
-    For MVP: This is a no-op that returns success.
-    Later: Will trigger AsyncIO workers to process jobs.
+    Starts background workers to process each job asynchronously.
 
     Returns count of jobs that were started.
     """
     # Get pending deployment_analysis jobs
     if project_id:
         # Get project-specific pending jobs
-        all_pending = crud_job.get_jobs_by_project(db, project_id, job_type="deployment_analysis")
+        all_pending = crud_job.get_jobs_by_project(
+            db, project_id, job_type="deployment_analysis"
+        )
         pending_jobs = [j for j in all_pending if j.status == "pending"]
     else:
         # Get all pending jobs
@@ -151,15 +156,29 @@ def run_queue(
     job_ids = [job.id for job in pending_jobs]
     job_count = len(job_ids)
 
-    # TODO: When ML is implemented, start AsyncIO workers here
-    # For now, just log and return success
+    if job_count == 0:
+        logger.info(f"No pending jobs to process for project {project_id or 'all'}")
+        return RunQueueResponse(
+            message="No pending jobs to process.",
+            jobs_started=0,
+            job_ids=[],
+        )
+
+    # Start background workers for each job
+    for job_id in job_ids:
+        logger.info(f"Starting background worker for job {job_id}")
+        # Wrap async function to run in background
+        background_tasks.add_task(
+            lambda jid=job_id: asyncio.create_task(process_deployment_analysis(jid))
+        )
+
     logger.info(
         f"Run queue triggered for project {project_id or 'all'}: "
-        f"{job_count} pending deployment_analysis jobs found (no-op for MVP)"
+        f"Started {job_count} workers"
     )
 
     return RunQueueResponse(
-        message=f"Queue processing started (MVP: no-op). {job_count} jobs would be processed.",
+        message=f"Queue processing started. {job_count} jobs are being processed.",
         jobs_started=job_count,
         job_ids=job_ids,
     )
