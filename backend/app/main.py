@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import (
     deployments_router,
+    jobs_router,
     logs_router,
     projects_router,
     sites_router,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(sites_router)
     app.include_router(deployments_router)
+    app.include_router(jobs_router)
     app.include_router(logs_router)
 
     # Health check endpoint

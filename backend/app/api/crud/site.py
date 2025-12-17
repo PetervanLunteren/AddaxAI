@@ -98,3 +98,44 @@ def delete_site(db: Session, site_id: str) -> bool:
     db.delete(db_site)
     db.commit()
     return True
+
+
+def get_or_create_unknown_site(db: Session, project_id: str) -> Site:
+    """
+    Get or create the "Unknown Site" for a project.
+
+    This is used when deployments are created without explicit site selection.
+    Always returns a valid site, creating it if it doesn't exist.
+
+    Args:
+        db: Database session
+        project_id: Project ID to get/create unknown site for
+
+    Returns:
+        The "Unknown Site" for this project
+
+    Raises:
+        IntegrityError if project_id is invalid
+    """
+    # Try to find existing "Unknown Site" for this project
+    query = select(Site).where(
+        Site.project_id == project_id, Site.name == "Unknown Site"
+    )
+    result = db.execute(query)
+    existing_site = result.scalar_one_or_none()
+
+    if existing_site:
+        return existing_site
+
+    # Create new "Unknown Site"
+    site_create = SiteCreate(
+        project_id=project_id,
+        name="Unknown Site",
+        latitude=None,
+        longitude=None,
+        elevation_m=None,
+        habitat_type=None,
+        notes="Auto-created site for deployments without explicit site selection",
+    )
+
+    return create_site(db, site_create)

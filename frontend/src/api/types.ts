@@ -63,3 +63,64 @@ export interface SiteResponse {
   notes: string | null;
   created_at: string;
 }
+
+// Job types
+export type JobType =
+  | "deployment_analysis"
+  | "import"
+  | "ml_inference"
+  | "export"
+  | "event_computation";
+
+export type JobStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type DetectionModel = "MegaDetector 5A" | "MegaDetector v1000 Redwood";
+export type ClassificationModel = "Europe" | "Africa";
+
+export interface DeploymentAnalysisPayload {
+  project_id: string;
+  folder_path: string;
+  detection_model: DetectionModel;
+  classification_model: ClassificationModel;
+}
+
+export interface JobCreate {
+  type: JobType;
+  payload: Record<string, unknown>;
+}
+
+export interface JobResponse {
+  id: string;
+  type: string;
+  status: string;
+  progress_current: number;
+  progress_total: number | null;
+  payload: Record<string, unknown> | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface RunQueueResponse {
+  message: string;
+  jobs_started: number;
+  job_ids: string[];
+}
+
+// Model options for deployment analysis
+export const DETECTION_MODELS: DetectionModel[] = [
+  "MegaDetector 5A",
+  "MegaDetector v1000 Redwood",
+];
+
+export const CLASSIFICATION_MODELS: ClassificationModel[] = [
+  "Europe",
+  "Africa",
+];
