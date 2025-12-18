@@ -1,0 +1,41 @@
+name: env-addaxai-base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    # Core Streamlit packages
+    - streamlit
+    - streamlit-extras
+    - streamlit-aggrid
+    
+    # Map and UI components
+    - folium
+    - streamlit-folium
+    - st-checkbox-tree
+    - streamlit-antd-components
+    - st-flexible-callout-elements
+    - streamlit-lottie
+    
+    # Image processing and metadata
+    - exifread
+    - piexif
+    - gpsphoto
+    - hachoir
+    
+    # Utility packages
+    - appdirs
+    - requests
+    - pillow
+    - tqdm
+    - huggingface_hub
+    - anyio<4.0  # Pin to v3.x for Python 3.11 typing compatibility
+    - st-modal
+    - openpyxl
+    
+    # MegaDetector and detection packages
+    - megadetector==10.0.8
+    - ultralytics==8.3.177
+    # Note: speciesnet must be installed separately with --use-pep517 flag

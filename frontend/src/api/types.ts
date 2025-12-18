@@ -79,8 +79,26 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
-export type DetectionModel = "MDV5A" | "MDV5B";
-export type ClassificationModel = "EUR-DF-v1-3" | "AFR-BASIC-v1";
+export type DetectionModel = "MD5A-0-0" | "MD5B-0-0";
+export type ClassificationModel = "EUR-DF-v1-3" | "NAM-ADS-v1" | "none";
+
+// ML Model Status
+export type ModelStatus = "ready" | "needs_weights" | "needs_env" | "needs_both";
+
+export interface ModelStatusResponse {
+  model_id: string;
+  friendly_name: string;
+  weights_ready: boolean;
+  env_ready: boolean;
+  weights_size_mb: number | null;
+  status: ModelStatus;
+}
+
+export interface ModelPrepareResponse {
+  model_id: string;
+  message: string;
+  task_id: string;
+}
 
 export interface DeploymentAnalysisPayload {
   project_id: string;
@@ -116,11 +134,11 @@ export interface RunQueueResponse {
 
 // Model options for deployment analysis
 export const DETECTION_MODELS: DetectionModel[] = [
-  "MegaDetector 5A",
-  "MegaDetector v1000 Redwood",
+  "MD5A-0-0",
+  "MD5B-0-0",
 ];
 
 export const CLASSIFICATION_MODELS: ClassificationModel[] = [
-  "Europe",
-  "Africa",
+  "EUR-DF-v1-3",
+  "NAM-ADS-v1",
 ];

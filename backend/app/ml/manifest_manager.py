@@ -7,12 +7,10 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
-import urllib.request
+import json
 from pathlib import Path
-from typing import Any
 
-import yaml
-
+from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
 
@@ -28,66 +26,82 @@ class ManifestManager:
     bundled ones to allow model updates without app updates.
     """
 
-    def __init__(self, bundled_path: str | None = None, remote_url: str | None = None):
+    def __init__(self, models_dir: Path | None = None):
         """
         Initialize manifest manager.
 
         Args:
-            bundled_path: Path to bundled manifests YAML (relative to app root)
-            remote_url: URL to fetch remote manifest updates from
+            models_dir: Root models directory containing det/ and cls/ subdirectories
         """
-        self.bundled_path = bundled_path or "app/ml/manifests/models.yaml"
-        self.remote_url = remote_url or "https://raw.githubusercontent.com/yourusername/addaxai-manifests/main/models.yaml"
+        if models_dir is None:
+            settings = get_settings()
+            models_dir = settings.user_data_dir / "models"
+        self.models_dir = models_dir
         self._cache: dict[str, ModelManifest] | None = None
 
     def load_manifests(self, force_refresh: bool = False) -> dict[str, ModelManifest]:
         """
-        Load all model manifests (bundled + remote).
+        Load all model manifests by scanning det/ and cls/ subdirectories.
 
-        Bundled manifests are always available (shipped with app).
-        Remote manifests are fetched if available and override bundled ones.
+        Each model directory should contain a manifest.json file.
 
         Args:
-            force_refresh: If True, ignore cache and reload from disk/network
+            force_refresh: If True, ignore cache and reload from disk
 
         Returns:
             Dictionary mapping model_id to ModelManifest
 
         Raises:
-            FileNotFoundError: If bundled manifest file doesn't exist
+            FileNotFoundError: If models directory doesn't exist
             ValueError: If manifest validation fails
         """
         if self._cache is not None and not force_refresh:
             return self._cache
 
-        # Load bundled manifests (always available, crash if missing)
-        bundled_data = self._load_bundled()
-        logger.info(f"Loaded {len(bundled_data)} models from bundled manifests")
+        if not self.models_dir.exists():
+            raise FileNotFoundError(
+                f"Models directory not found: {self.models_dir}. "
+                f"Application is misconfigured."
+            )
 
-        # Try to fetch remote updates (non-blocking, fail gracefully)
-        try:
-            remote_data = self._fetch_remote()
-            if remote_data:
-                logger.info(f"Loaded {len(remote_data)} models from remote manifests")
-                # Merge: remote overrides bundled
-                merged_data = {**bundled_data, **remote_data}
-            else:
-                merged_data = bundled_data
-        except Exception as e:
-            logger.warning(f"Failed to fetch remote manifests (using bundled only): {e}")
-            merged_data = bundled_data
-
-        # Validate and convert to ModelManifest objects
+        # Scan det/ and cls/ subdirectories for model directories
         validated_manifests: dict[str, ModelManifest] = {}
-        for model_id, model_data in merged_data.items():
-            try:
-                manifest = ModelManifest(**model_data)
-                validated_manifests[model_id] = manifest
-            except Exception as e:
-                logger.error(f"Invalid manifest for model {model_id}: {e}")
-                # Crash early in development, skip in production
-                raise ValueError(f"Invalid manifest for model {model_id}: {e}") from e
 
+        for model_type in ["det", "cls"]:
+            type_dir = self.models_dir / model_type
+            if not type_dir.exists():
+                logger.warning(f"Model type directory not found: {type_dir}")
+                continue
+
+            # Each subdirectory is a model
+            for model_dir in type_dir.iterdir():
+                if not model_dir.is_dir():
+                    continue
+
+                manifest_path = model_dir / "manifest.json"
+                if not manifest_path.exists():
+                    logger.warning(f"No manifest.json found in {model_dir}")
+                    continue
+
+                try:
+                    with open(manifest_path) as f:
+                        data = json.load(f)
+
+                    manifest = ModelManifest(**data)
+                    validated_manifests[manifest.model_id] = manifest
+                    logger.debug(f"Loaded manifest for {manifest.model_id} from {model_dir.name}")
+
+                except Exception as e:
+                    logger.error(f"Invalid manifest in {manifest_path}: {e}")
+                    # Crash early in development
+                    raise ValueError(f"Invalid manifest in {manifest_path}: {e}") from e
+
+        if not validated_manifests:
+            logger.warning(f"No valid model manifests found in {self.models_dir}")
+            self._cache = {}
+            return self._cache
+
+        logger.info(f"Loaded {len(validated_manifests)} model manifests from {self.models_dir}")
         self._cache = validated_manifests
         return self._cache
 
@@ -130,71 +144,3 @@ class ManifestManager:
             if manifest.type == "classification"
         }
 
-    def _load_bundled(self) -> dict[str, Any]:
-        """
-        Load bundled manifest YAML file.
-
-        Returns:
-            Raw manifest data (not yet validated)
-
-        Raises:
-            FileNotFoundError: If bundled manifest doesn't exist
-        """
-        # Convert relative path to absolute
-        manifest_path = Path(__file__).parent / "manifests" / "models.yaml"
-
-        if not manifest_path.exists():
-            raise FileNotFoundError(
-                f"Bundled manifest not found: {manifest_path}. "
-                f"Application is misconfigured."
-            )
-
-        with open(manifest_path) as f:
-            data = yaml.safe_load(f)
-
-        # Combine detection and classification models into single dict
-        all_models = {}
-        if "detection_models" in data:
-            all_models.update(data["detection_models"])
-        if "classification_models" in data:
-            all_models.update(data["classification_models"])
-
-        return all_models
-
-    def _fetch_remote(self, timeout: int = 5) -> dict[str, Any] | None:
-        """
-        Fetch remote manifest updates.
-
-        Non-blocking - returns None if fetch fails or times out.
-
-        Args:
-            timeout: Request timeout in seconds
-
-        Returns:
-            Raw manifest data or None if fetch fails
-        """
-        try:
-            logger.info(f"Fetching remote manifests from {self.remote_url}")
-
-            # Fetch remote YAML
-            req = urllib.request.Request(
-                self.remote_url,
-                headers={"User-Agent": "AddaxAI/0.1.0"},
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                raw_yaml = response.read().decode("utf-8")
-
-            data = yaml.safe_load(raw_yaml)
-
-            # Combine detection and classification models
-            all_models = {}
-            if "detection_models" in data:
-                all_models.update(data["detection_models"])
-            if "classification_models" in data:
-                all_models.update(data["classification_models"])
-
-            return all_models
-
-        except Exception as e:
-            logger.debug(f"Remote manifest fetch failed: {e}")
-            return None

@@ -5,6 +5,8 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 - Explicit validation
 - Clear documentation
+
+Based on proven patterns from streamlit-AddaxAI.
 """
 
 from typing import Literal
@@ -17,39 +19,29 @@ class ModelManifest(BaseModel):
     Model manifest defining all metadata and configuration for an ML model.
 
     This schema is used to define both detection and classification models.
-    Manifests are stored in YAML format and loaded at runtime.
+    Manifests are stored in JSON format and loaded at runtime.
     """
 
     # Identity
-    model_id: str = Field(..., description="Unique identifier for the model (e.g., 'MDV5A', 'EUR-DF-v1-3')")
+    model_id: str = Field(..., description="Unique identifier for the model (e.g., 'MD5A-0-0', 'NAM-ADS-v1')")
     friendly_name: str = Field(..., description="Human-readable display name")
     emoji: str = Field(..., description="Emoji icon for UI display")
     type: Literal["detection", "classification"] = Field(..., description="Model type")
-    framework: Literal["pytorch", "tensorflow"] = Field(..., description="ML framework used")
 
-    # Model Files
-    model_fname: str | None = Field(None, description="Model weights filename (for classification models)")
-    package: str | None = Field(None, description="Python package to install (e.g., 'megadetector>=5.0')")
-    weights_url: str | None = Field(None, description="URL to download model weights from")
-    checksum_sha256: str | None = Field(None, description="SHA256 checksum for weight file verification")
-
-    # Environment Configuration
-    environment: str = Field(..., description="Micromamba environment name")
-    python_version: str = Field(..., description="Python version for environment (e.g., '3.11')")
-    dependencies: list[str] = Field(..., description="List of pip/conda packages to install")
+    # Environment & Model Files
+    env: str = Field(..., description="Environment name (points to envs/{env}/ directory)")
+    model_fname: str = Field(..., description="Model weights filename (e.g., 'md_v5a.0.0.pt')")
+    hf_repo: str | None = Field(None, description="HuggingFace repo (defaults to Addax-Data-Science/{model_id})")
 
     # Metadata
     description: str = Field(..., description="Detailed description of the model")
     developer: str = Field(..., description="Organization or person who created the model")
     citation: str | None = Field(None, description="DOI or URL for academic citation")
-    license: str = Field(..., description="License type or URL")
+    license: str | None = Field(None, description="License type or URL")
     info_url: str = Field(..., description="Website with more information")
-    min_app_version: str = Field(..., description="Minimum AddaxAI version required")
+    min_app_version: str = Field(..., description="Minimum AddaxAI version required (e.g., '0.1.0')")
 
     # Runtime Configuration
-    input_size: tuple[int, int] | None = Field(None, description="Model input size (width, height)")
-    batch_size_gpu: int = Field(8, description="Batch size for GPU inference")
-    batch_size_cpu: int = Field(2, description="Batch size for CPU inference")
     confidence_threshold: float = Field(0.1, description="Minimum confidence threshold for detections")
 
     # Classification-specific
@@ -60,23 +52,18 @@ class ModelManifest(BaseModel):
 
         json_schema_extra = {
             "example": {
-                "model_id": "MDV5A",
-                "friendly_name": "MegaDetector v5a",
+                "model_id": "MD5A-0-0",
+                "friendly_name": "MegaDetector 5a",
                 "emoji": "🔍",
                 "type": "detection",
-                "framework": "pytorch",
-                "package": "megadetector>=5.0",
+                "env": "megadetector",
                 "model_fname": "md_v5a.0.0.pt",
-                "environment": "megadetector-env",
-                "python_version": "3.11",
-                "dependencies": ["megadetector>=5.0"],
+                "hf_repo": "Addax-Data-Science/MD5A-0-0",
                 "description": "MegaDetector v5a for animal detection in camera trap images",
-                "developer": "Microsoft AI for Earth",
+                "developer": "Dan Morris",
                 "license": "MIT",
                 "info_url": "https://github.com/agentmorris/MegaDetector",
                 "min_app_version": "0.1.0",
-                "batch_size_gpu": 8,
-                "batch_size_cpu": 2,
                 "confidence_threshold": 0.1,
             }
         }

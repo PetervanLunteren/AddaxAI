@@ -18,8 +18,8 @@ JobType = Literal["deployment_analysis", "import", "ml_inference", "export", "ev
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 # Model options for deployment analysis (use model IDs from manifests)
-DetectionModel = Literal["MDV5A", "MDV5B"]
-ClassificationModel = Literal["EUR-DF-v1-3", "AFR-BASIC-v1"]
+DetectionModel = Literal["MD5A-0-0", "MD5B-0-0"]
+ClassificationModel = Literal["EUR-DF-v1-3", "NAM-ADS-v1", "none"]
 
 
 class DeploymentAnalysisPayload(BaseModel):
@@ -28,7 +28,9 @@ class DeploymentAnalysisPayload(BaseModel):
     project_id: str = Field(..., description="ID of the project (site will be auto-created)")
     folder_path: str = Field(..., description="Absolute path to deployment folder")
     detection_model: DetectionModel = Field(..., description="Detection model to use")
-    classification_model: ClassificationModel = Field(..., description="Classification model to use")
+    classification_model: ClassificationModel = Field(
+        ..., description="Classification model to use (or 'none' for detection only)"
+    )
 
 
 class JobCreate(BaseModel):
@@ -44,7 +46,7 @@ class JobCreate(BaseModel):
                 "payload": {
                     "project_id": "abc-123",
                     "folder_path": "/Users/peter/camera-traps/site-a",
-                    "detection_model": "MDV5A",
+                    "detection_model": "MD5A-0-0",
                     "classification_model": "EUR-DF-v1-3",
                 },
             }

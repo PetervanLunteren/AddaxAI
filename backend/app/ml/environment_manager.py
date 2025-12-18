@@ -1,5 +1,8 @@
 """
-Micromamba environment manager with content-based caching.
+Micromamba environment manager with static YAML-based environments.
+
+Based on proven patterns from streamlit-AddaxAI.
+Reads environment.yml files from backend/app/ml/envs/{env_name}/{platform}/.
 
 Following DEVELOPERS.md principles:
 - Crash early if setup fails
@@ -14,6 +17,7 @@ import shutil
 import subprocess
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
@@ -23,264 +27,253 @@ logger = get_logger(__name__)
 
 class EnvironmentManager:
     """
-    Manages micromamba environments with content-based caching.
+    Manages micromamba environments using static YAML files.
 
-    Environments are cached based on content hash of their dependencies.
-    If dependencies change, old environment is removed and new one is created.
-    This ensures environments are always up-to-date while being fast to reuse.
+    Environments are defined in backend/app/ml/envs/{env_name}/{platform}/environment.yml
+    and created in ~/AddaxAI/envs/env-{env_name}/
     """
 
-    def __init__(self, envs_dir: Path | None = None, micromamba_dir: Path | None = None):
+    def __init__(self, envs_dir: Path | None = None, micromamba_path: Path | None = None):
         """
         Initialize environment manager.
 
         Args:
-            envs_dir: Directory to store environments (default: ~/AddaxAI/ml_envs)
-            micromamba_dir: Directory for micromamba binary (default: ~/AddaxAI/bin)
+            envs_dir: Directory to store environments (default: ~/AddaxAI/envs)
+            micromamba_path: Path to micromamba binary (default: ~/AddaxAI/bin/micromamba)
         """
         user_data_dir = Path.home() / "AddaxAI"
-        self.envs_dir = envs_dir or (user_data_dir / "ml_envs")
-        self.micromamba_dir = micromamba_dir or (user_data_dir / "bin")
-
-        # Create directories
+        self.envs_dir = envs_dir or (user_data_dir / "envs")
         self.envs_dir.mkdir(parents=True, exist_ok=True)
-        self.micromamba_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get or download micromamba
-        self.micromamba_path = self._get_micromamba()
+        bin_dir = user_data_dir / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        self.micromamba_path = micromamba_path or (bin_dir / "micromamba")
 
-    def _get_micromamba(self) -> Path:
-        """
-        Get path to micromamba executable (download if needed).
+        # Ensure micromamba is installed
+        if not self.micromamba_path.exists():
+            logger.info("Micromamba not found, downloading...")
+            self._download_micromamba()
 
-        Returns:
-            Path to micromamba executable
+    def _download_micromamba(self):
+        """Download micromamba binary for the current platform."""
+        system = platform.system()
+        machine = platform.machine()
 
-        Raises:
-            RuntimeError: If download/setup fails
-        """
-        # Check if micromamba already exists
-        if platform.system() == "Windows":
-            exe_name = "micromamba.exe"
+        # Determine download URL based on platform
+        if system == "Darwin":
+            if machine == "arm64":
+                url = "https://micro.mamba.pm/api/micromamba/osx-arm64/latest"
+            else:
+                url = "https://micro.mamba.pm/api/micromamba/osx-64/latest"
+        elif system == "Linux":
+            if machine == "aarch64":
+                url = "https://micro.mamba.pm/api/micromamba/linux-aarch64/latest"
+            else:
+                url = "https://micro.mamba.pm/api/micromamba/linux-64/latest"
+        elif system == "Windows":
+            url = "https://micro.mamba.pm/api/micromamba/win-64/latest"
         else:
-            exe_name = "micromamba"
+            raise RuntimeError(
+                f"Unsupported platform: {system} {machine}. "
+                f"Please install micromamba manually."
+            )
 
-        micromamba_path = self.micromamba_dir / exe_name
-
-        if micromamba_path.exists():
-            logger.info(f"Using existing micromamba: {micromamba_path}")
-            return micromamba_path
-
-        # Download micromamba
-        logger.info("Downloading micromamba...")
-        download_url = self._get_micromamba_download_url()
+        logger.info(f"Downloading micromamba from {url}")
 
         try:
-            logger.info(f"Downloading from {download_url}")
-            with urllib.request.urlopen(download_url, timeout=120) as response:
-                content = response.read()
-                logger.info(f"Downloaded {len(content)} bytes")
+            # Download the compressed tar archive
+            with urllib.request.urlopen(url, timeout=60) as response:
+                compressed_content = response.read()
 
-                with open(micromamba_path, "wb") as f:
-                    f.write(content)
+            logger.info(f"Downloaded {len(compressed_content)} bytes")
 
-            # Make executable on Unix
-            if platform.system() != "Windows":
-                micromamba_path.chmod(0o755)
+            # Decompress bz2
+            import bz2
+            import tarfile
+            import tempfile
 
-            # Verify it's executable
+            tar_content = bz2.decompress(compressed_content)
+            logger.info(f"Decompressed to {len(tar_content)} bytes")
+
+            # Extract bin/micromamba from tar archive
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".tar") as tmp_tar:
+                tmp_tar.write(tar_content)
+                tmp_tar_path = tmp_tar.name
+
             try:
-                result = subprocess.run(
-                    [str(micromamba_path), "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode != 0:
-                    raise RuntimeError(f"Micromamba not executable: {result.stderr}")
-                logger.info(f"Micromamba version: {result.stdout.strip()}")
-            except Exception as verify_err:
-                micromamba_path.unlink()  # Clean up if verification fails
-                raise RuntimeError(f"Downloaded micromamba failed verification: {verify_err}")
+                with tarfile.open(tmp_tar_path, "r") as tar:
+                    member = tar.getmember("bin/micromamba")
+                    member_file = tar.extractfile(member)
+                    if member_file:
+                        with open(self.micromamba_path, "wb") as f:
+                            f.write(member_file.read())
+                        logger.info("Extracted micromamba binary from tar archive")
+            finally:
+                Path(tmp_tar_path).unlink()
 
-            logger.info(f"Downloaded micromamba to {micromamba_path}")
-            return micromamba_path
+            # Make executable
+            self.micromamba_path.chmod(0o755)
+            logger.info(f"Micromamba installed successfully at {self.micromamba_path}")
 
         except Exception as e:
-            if micromamba_path.exists():
-                micromamba_path.unlink()
-            raise RuntimeError(
-                f"Failed to download micromamba from {download_url}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to download micromamba: {e}") from e
 
-    def _get_micromamba_download_url(self) -> str:
+    def get_env_yaml_path(self, env_name: str) -> Path:
         """
-        Get micromamba download URL for current platform.
-
-        Returns:
-            Download URL
-
-        Raises:
-            RuntimeError: If platform is not supported
-        """
-        system = platform.system()
-        machine = platform.machine().lower()
-
-        base_url = "https://micro.mamba.pm/api/micromamba"
-
-        if system == "Linux":
-            if machine in ("x86_64", "amd64"):
-                return f"{base_url}/linux-64/latest"
-            elif machine in ("aarch64", "arm64"):
-                return f"{base_url}/linux-aarch64/latest"
-        elif system == "Darwin":  # macOS
-            if machine in ("x86_64", "amd64"):
-                return f"{base_url}/osx-64/latest"
-            elif machine in ("arm64", "aarch64"):
-                return f"{base_url}/osx-arm64/latest"
-        elif system == "Windows":
-            return f"{base_url}/win-64/latest"
-
-        raise RuntimeError(
-            f"Unsupported platform: {system} {machine}. "
-            f"Please install micromamba manually."
-        )
-
-    def get_or_create_env(self, manifest: ModelManifest) -> Path:
-        """
-        Get cached environment or create new one.
-
-        Uses content-based caching: if dependencies haven't changed,
-        reuses existing environment. If changed, creates new one.
+        Get path to environment YAML file for current platform.
 
         Args:
-            manifest: Model manifest with environment specifications
+            env_name: Environment name (e.g., "megadetector", "pytorch-classifier")
+
+        Returns:
+            Path to environment.yml file
+
+        Raises:
+            FileNotFoundError: If environment YAML not found
+        """
+        # Determine platform directory
+        system = platform.system().lower()
+        if system == "darwin":
+            platform_dir = "darwin"
+        elif system == "linux":
+            platform_dir = "linux"
+        elif system == "windows":
+            platform_dir = "windows"
+        else:
+            raise RuntimeError(f"Unsupported platform: {system}")
+
+        # Path to YAML file in repo
+        # backend/app/ml/envs/{env_name}/{platform}/environment.yml
+        backend_root = Path(__file__).parent
+        yaml_path = backend_root / "envs" / env_name / platform_dir / "environment.yml"
+
+        if not yaml_path.exists():
+            raise FileNotFoundError(
+                f"Environment YAML not found: {yaml_path}\n"
+                f"Expected location: backend/app/ml/envs/{env_name}/{platform_dir}/environment.yml"
+            )
+
+        return yaml_path
+
+    def get_or_create_env(
+        self, manifest: ModelManifest, progress_callback: Callable[[str, float], None] | None = None
+    ) -> Path:
+        """
+        Get existing environment or create new one from YAML.
+
+        Args:
+            manifest: Model manifest with env name
+            progress_callback: Optional callback function(message: str, progress: float)
 
         Returns:
             Path to environment directory
 
         Raises:
             RuntimeError: If environment creation fails
+            FileNotFoundError: If environment YAML not found
         """
-        # Generate environment YAML
-        env_yaml = self._generate_env_yaml(manifest)
-
-        # Hash the env.yaml content
-        env_hash = hashlib.sha256(env_yaml.encode()).hexdigest()[:8]
-
-        # Environment name: {base_name}_{hash}
-        env_name = f"{manifest.environment}_{env_hash}"
+        env_name = f"env-{manifest.env}"
         env_path = self.envs_dir / env_name
 
         # Check if environment exists and is valid
         if env_path.exists() and self._validate_env(env_path):
-            logger.info(f"Using cached environment: {env_name}")
+            logger.info(f"Using existing environment: {env_name}")
+            if progress_callback:
+                progress_callback(f"Environment {env_name} already exists", 1.0)
             return env_path
 
-        # Clean old environments with same base name
-        self._clean_old_envs(manifest.environment, keep=env_name)
+        # Get environment YAML path
+        yaml_path = self.get_env_yaml_path(manifest.env)
+
+        # If env_path exists but is invalid (from failed previous attempt), remove it
+        if env_path.exists():
+            logger.warning(f"Removing invalid/incomplete environment at {env_path}")
+            self._safe_rmtree(env_path)
 
         # Create new environment
-        logger.info(f"Creating new environment: {env_name} (hash: {env_hash})")
-        self._create_env(env_name, env_path, manifest)
+        logger.info(f"Creating environment {env_name} from {yaml_path}")
+        self._create_env(env_name, env_path, yaml_path, progress_callback)
 
         return env_path
 
-    def _generate_env_yaml(self, manifest: ModelManifest) -> str:
+    def _create_env(
+        self,
+        env_name: str,
+        env_path: Path,
+        yaml_path: Path,
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> None:
         """
-        Generate environment.yaml content from manifest.
-
-        Args:
-            manifest: Model manifest
-
-        Returns:
-            YAML content as string
-        """
-        # Convert dependencies list to YAML format
-        pip_deps = "\n    - ".join(manifest.dependencies)
-
-        yaml_content = f"""name: {manifest.environment}
-channels:
-  - pytorch
-  - nvidia
-  - conda-forge
-  - defaults
-dependencies:
-  - python={manifest.python_version}
-  - pip
-  - pip:
-    - {pip_deps}
-"""
-        return yaml_content
-
-    def _create_env(self, env_name: str, env_path: Path, manifest: ModelManifest) -> None:
-        """
-        Create micromamba environment.
+        Create micromamba environment from YAML file.
 
         Args:
             env_name: Environment name
             env_path: Path where environment will be created
-            manifest: Model manifest
+            yaml_path: Path to environment.yml file
+            progress_callback: Optional callback function(message: str, progress: float)
 
         Raises:
             RuntimeError: If environment creation fails
         """
-        # Write env.yaml to temp file
-        env_yaml = self._generate_env_yaml(manifest)
-        tmp_yaml = self.envs_dir / f"{env_name}.yaml"
-        tmp_yaml.write_text(env_yaml)
-
         try:
             # Create environment with micromamba
+            if progress_callback:
+                progress_callback("Starting package installation...", 0.1)
+
             logger.info(f"Running micromamba create for {env_name}...")
             cmd = [
                 str(self.micromamba_path),
                 "create",
-                "-f", str(tmp_yaml),
-                "-p", str(env_path),
+                "-f",
+                str(yaml_path),
+                "-p",
+                str(env_path),
                 "-y",
                 "--no-rc",  # Don't use .condarc
             ]
 
-            result = subprocess.run(
+            # Stream output line by line to show progress
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                check=False,
+                bufsize=1,
             )
 
-            if result.returncode != 0:
+            last_line = ""
+            for line in process.stdout:
+                line = line.strip()
+                if line:
+                    last_line = line
+                    # Send progress updates with the current line
+                    if progress_callback:
+                        progress_callback(line[:80], 0.5)
+                    logger.debug(f"micromamba: {line}")
+
+            process.wait()
+
+            if process.returncode != 0:
                 raise RuntimeError(
                     f"micromamba create failed:\n"
                     f"Command: {' '.join(cmd)}\n"
-                    f"Stdout: {result.stdout}\n"
-                    f"Stderr: {result.stderr}"
+                    f"Last output: {last_line}"
                 )
+
+            if progress_callback:
+                progress_callback("Packages installed successfully", 0.8)
 
             logger.info(f"Environment {env_name} created successfully")
 
-            # GPU fix for Windows (PyTorch CUDA)
-            if platform.system() == "Windows" and "torch" in manifest.dependencies[0].lower():
-                logger.info("Applying Windows GPU fix (reinstalling PyTorch with CUDA)...")
-                python = self.get_python(env_name)
-                gpu_fix_cmd = [
-                    str(python), "-m", "pip", "install",
-                    "torch", "torchvision",
-                    "--upgrade", "--force-reinstall",
-                    "--index-url", "https://download.pytorch.org/whl/cu118"
-                ]
-                subprocess.run(gpu_fix_cmd, check=True, capture_output=True)
-                logger.info("GPU fix applied")
+            if progress_callback:
+                progress_callback("Environment ready", 1.0)
 
         except Exception as e:
             # Clean up failed environment
             if env_path.exists():
-                shutil.rmtree(env_path)
+                logger.warning(f"Cleaning up failed environment at {env_path}")
+                self._safe_rmtree(env_path)
             raise RuntimeError(f"Failed to create environment {env_name}: {e}") from e
-        finally:
-            # Clean up temp YAML
-            if tmp_yaml.exists():
-                tmp_yaml.unlink()
 
     def _validate_env(self, env_path: Path) -> bool:
         """
@@ -295,28 +288,32 @@ dependencies:
         python_path = self._get_python_path(env_path)
         return python_path.exists()
 
-    def _clean_old_envs(self, env_base: str, keep: str) -> None:
+    def _safe_rmtree(self, path: Path) -> None:
         """
-        Delete old environment versions with same base name.
+        Safely remove a directory tree, handling permission errors on macOS.
 
         Args:
-            env_base: Base environment name (e.g., "megadetector-env")
-            keep: Full environment name to keep (e.g., "megadetector-env_abc123")
+            path: Path to directory to remove
         """
-        for env_dir in self.envs_dir.glob(f"{env_base}_*"):
-            if env_dir.name != keep:
-                logger.info(f"Removing old environment: {env_dir.name}")
-                try:
-                    shutil.rmtree(env_dir)
-                except Exception as e:
-                    logger.warning(f"Failed to remove old environment {env_dir.name}: {e}")
+        import stat
+
+        def handle_remove_readonly(func, path, exc):
+            """Handle permission errors by making files writable."""
+            if not os.access(path, os.W_OK):
+                # Change permissions and retry
+                os.chmod(path, stat.S_IWUSR | stat.S_IRUSR | stat.S_IXUSR)
+                func(path)
+            else:
+                raise
+
+        shutil.rmtree(path, onerror=handle_remove_readonly)
 
     def get_python(self, env_name: str) -> Path:
         """
         Get path to Python executable in environment.
 
         Args:
-            env_name: Environment name (with hash)
+            env_name: Environment name (with env- prefix, e.g., "env-megadetector")
 
         Returns:
             Path to python executable
@@ -330,9 +327,7 @@ dependencies:
 
         python_path = self._get_python_path(env_path)
         if not python_path.exists():
-            raise FileNotFoundError(
-                f"Python not found in environment {env_name}: {python_path}"
-            )
+            raise FileNotFoundError(f"Python not found in environment {env_name}: {python_path}")
 
         return python_path
 
@@ -341,33 +336,3 @@ dependencies:
         if platform.system() == "Windows":
             return env_path / "python.exe"
         return env_path / "bin" / "python"
-
-    def list_environments(self) -> list[str]:
-        """
-        List all installed environments.
-
-        Returns:
-            List of environment names
-        """
-        if not self.envs_dir.exists():
-            return []
-
-        return [d.name for d in self.envs_dir.iterdir() if d.is_dir()]
-
-    def remove_environment(self, env_name: str) -> bool:
-        """
-        Remove an environment.
-
-        Args:
-            env_name: Environment name to remove
-
-        Returns:
-            True if removed, False if didn't exist
-        """
-        env_path = self.envs_dir / env_name
-        if not env_path.exists():
-            return False
-
-        logger.info(f"Removing environment: {env_name}")
-        shutil.rmtree(env_path)
-        return True
