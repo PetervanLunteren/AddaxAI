@@ -132,6 +132,36 @@ export interface RunQueueResponse {
   job_ids: string[];
 }
 
+// File types
+export interface DetectionResponse {
+  id: string;
+  category: string;
+  confidence: number;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+  species: string | null;
+  species_confidence: number | null;
+}
+
+export interface FileResponse {
+  id: string;
+  deployment_id: string;
+  file_path: string;
+  file_type: string;
+  file_format: string;
+  size_bytes: number | null;
+  width_px: number | null;
+  height_px: number | null;
+  timestamp: string;
+  created_at: string;
+}
+
+export interface FileWithDetections extends FileResponse {
+  detections: DetectionResponse[];
+}
+
 // Model options for deployment analysis
 export const DETECTION_MODELS: DetectionModel[] = [
   "MD5A-0-0",

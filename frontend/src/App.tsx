@@ -12,6 +12,7 @@ import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
+import ImagesPage from "./pages/ImagesPage";
 
 function App() {
   return (
@@ -26,7 +27,7 @@ function App() {
             <Route index element={<Navigate to="analyses" replace />} />
             <Route path="analyses" element={<AnalysesPage />} />
             <Route path="dashboard" element={<div className="p-8">Dashboard - Coming soon</div>} />
-            <Route path="images" element={<div className="p-8">Images - Coming soon</div>} />
+            <Route path="images" element={<ImagesPage />} />
             <Route path="settings" element={<div className="p-8">Settings - Coming soon</div>} />
           </Route>
         </Routes>

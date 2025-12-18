@@ -1,6 +1,7 @@
 """API routers."""
 
 from .deployments import router as deployments_router
+from .files import router as files_router
 from .jobs import router as jobs_router
 from .logs import router as logs_router
 from .ml_models import router as ml_models_router
@@ -10,6 +11,7 @@ from .websocket import router as websocket_router
 
 __all__ = [
     "deployments_router",
+    "files_router",
     "jobs_router",
     "logs_router",
     "ml_models_router",

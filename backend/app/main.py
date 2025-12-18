@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import (
     deployments_router,
+    files_router,
     jobs_router,
     logs_router,
     ml_models_router,
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(sites_router)
     app.include_router(deployments_router)
+    app.include_router(files_router)
     app.include_router(jobs_router)
     app.include_router(logs_router)
     app.include_router(ml_models_router)
