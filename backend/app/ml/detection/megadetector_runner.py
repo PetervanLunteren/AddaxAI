@@ -88,6 +88,13 @@ class MegaDetectorRunner:
 
         logger.info(f"Using environment: {env_path.name}")
 
+        # Get model file path
+        from app.ml.model_storage import ModelStorage
+
+        model_storage = ModelStorage()
+        model_file = model_storage.get_model_file(manifest)
+        logger.info(f"Using model file: {model_file}")
+
         # Create temp file list
         if progress_callback:
             progress_callback("Preparing image list...", 0.10)
@@ -103,7 +110,7 @@ class MegaDetectorRunner:
                 python_path=python_path,
                 file_list_path=file_list_path,
                 confidence_threshold=confidence_threshold,
-                model_id=manifest.model_id,
+                model_file=model_file,
                 progress_callback=progress_callback,
             )
 
@@ -146,7 +153,7 @@ class MegaDetectorRunner:
         python_path: Path,
         file_list_path: Path,
         confidence_threshold: float,
-        model_id: str,
+        model_file: Path,
         progress_callback: Callable[[str, float], None] | None,
     ) -> dict[str, Any]:
         """
@@ -156,7 +163,7 @@ class MegaDetectorRunner:
             python_path: Path to Python executable in environment
             file_list_path: Path to file list
             confidence_threshold: Minimum confidence threshold
-            model_id: Model ID (e.g., "MDV5A")
+            model_file: Path to model weights file (e.g., "md_v5a.0.0.pt")
             progress_callback: Optional progress callback
 
         Returns:
@@ -173,12 +180,12 @@ class MegaDetectorRunner:
 
         try:
             # Build command
-            # Using MegaDetector's detect_images.py script
+            # Using MegaDetector's run_detector_batch module
             cmd = [
                 str(python_path),
                 "-m",
                 "megadetector.detection.run_detector_batch",
-                str(model_id),  # Model version (e.g., "MDV5A")
+                str(model_file),  # Path to model weights file
                 str(file_list_path),
                 str(output_file),
                 "--threshold",
