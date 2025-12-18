@@ -25,49 +25,54 @@ async function startBackend(): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log('[Electron] Starting backend server...');
 
-    // Determine backend directory
     const isDev = !app.isPackaged;
-    const backendDir = isDev
-      ? path.join(__dirname, '..', '..', 'backend')
-      : path.join(process.resourcesPath, 'backend');
 
-    console.log('[Electron] Backend directory:', backendDir);
+    let backendExecutable: string;
+    let backendCwd: string;
+    let backendArgs: string[] = [];
 
-    // Check if backend directory exists
-    if (!fs.existsSync(backendDir)) {
-      reject(new Error(`Backend directory not found: ${backendDir}`));
-      return;
+    if (isDev) {
+      // Development: Use venv Python with uvicorn
+      const backendDir = path.join(__dirname, '..', '..', 'backend');
+      const pythonPath = path.join(backendDir, 'venv', 'bin', 'python');
+
+      if (!fs.existsSync(pythonPath)) {
+        reject(new Error(`Python not found: ${pythonPath}`));
+        return;
+      }
+
+      backendExecutable = pythonPath;
+      backendCwd = backendDir;
+      backendArgs = [
+        '-m', 'uvicorn',
+        'app.main:app',
+        '--host', '127.0.0.1',
+        '--port', String(BACKEND_PORT),
+        '--log-level', 'info'
+      ];
+
+      console.log('[Electron] Development mode - using venv Python');
+    } else {
+      // Production: Use PyInstaller bundled executable
+      backendExecutable = path.join(process.resourcesPath, 'backend', 'backend');
+      backendCwd = process.cwd(); // Current working directory for database/files
+
+      if (!fs.existsSync(backendExecutable)) {
+        reject(new Error(`Backend executable not found: ${backendExecutable}`));
+        return;
+      }
+
+      console.log('[Electron] Production mode - using PyInstaller executable');
     }
 
-    // In development, use the venv Python
-    // In production, we'd use the bundled Python (TODO: PyInstaller bundling)
-    const pythonPath = isDev
-      ? path.join(backendDir, 'venv', 'bin', 'python')
-      : path.join(backendDir, 'venv', 'bin', 'python');
+    console.log('[Electron] Starting backend:', backendExecutable);
 
-    // Check if Python exists
-    if (!fs.existsSync(pythonPath)) {
-      reject(new Error(`Python not found: ${pythonPath}`));
-      return;
-    }
-
-    // Start uvicorn server
-    const args = [
-      '-m', 'uvicorn',
-      'app.main:app',
-      '--host', '127.0.0.1',
-      '--port', String(BACKEND_PORT),
-      '--log-level', 'info'
-    ];
-
-    console.log('[Electron] Starting backend:', pythonPath, args.join(' '));
-
-    backendProcess = spawn(pythonPath, args, {
-      cwd: backendDir,
+    backendProcess = spawn(backendExecutable, backendArgs, {
+      cwd: backendCwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        PYTHONPATH: backendDir,
+        ...(isDev ? { PYTHONPATH: backendCwd } : {})
       }
     });
 

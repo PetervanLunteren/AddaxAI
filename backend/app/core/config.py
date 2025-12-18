@@ -2,23 +2,55 @@
 Application configuration.
 
 Following DEVELOPERS.md principles:
-- No defaults - all required config must be explicitly set
-- Crash early if configuration is missing
+- Sensible defaults for bundled mode (PyInstaller)
+- Can be overridden via environment variables
+- Crash early if configuration is invalid
 - Type hints everywhere
 """
 
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def get_default_user_data_dir() -> Path:
+    """Get default user data directory."""
+    return Path.home() / "AddaxAI"
+
+
+def get_default_database_url() -> str:
+    """Get default database URL."""
+    return "sqlite:///./addaxai.db"
+
+
+def get_default_models_dir() -> Path:
+    """Get default models directory."""
+    return get_default_user_data_dir() / "models"
+
+
+def get_default_model_manifests_dir() -> Path:
+    """Get default model manifests directory."""
+    return get_default_models_dir() / "manifests"
+
+
+def get_default_model_weights_dir() -> Path:
+    """Get default model weights directory."""
+    return get_default_models_dir() / "weights"
+
+
+def get_default_model_environments_dir() -> Path:
+    """Get default model environments directory."""
+    return get_default_user_data_dir() / "environments"
 
 
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
 
-    No defaults for critical paths - will crash if not provided.
-    This follows the "crash early and loudly" principle.
+    Provides sensible defaults for bundled mode but can be overridden.
+    Crashes if directories cannot be created.
     """
 
     model_config = SettingsConfigDict(
@@ -37,21 +69,21 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
-    # Database - NO DEFAULT PATH, must be explicitly set
-    database_url: str
+    # Database - defaults to local SQLite in working directory
+    database_url: str = Field(default_factory=get_default_database_url)
 
-    # User data directory - NO DEFAULT, must be explicitly set
-    user_data_dir: Path
+    # User data directory - defaults to ~/AddaxAI
+    user_data_dir: Path = Field(default_factory=get_default_user_data_dir)
 
     # Redis
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
 
-    # Models
-    models_dir: Path
-    model_manifests_dir: Path
-    model_weights_dir: Path
-    model_environments_dir: Path
+    # Models - all default to subdirectories of user_data_dir
+    models_dir: Path = Field(default_factory=get_default_models_dir)
+    model_manifests_dir: Path = Field(default_factory=get_default_model_manifests_dir)
+    model_weights_dir: Path = Field(default_factory=get_default_model_weights_dir)
+    model_environments_dir: Path = Field(default_factory=get_default_model_environments_dir)
 
     def __init__(self, **kwargs: object) -> None:
         """

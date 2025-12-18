@@ -33,14 +33,9 @@
     ],
     "extraResources": [
       {
-        "from": "../backend",
+        "from": "../backend/dist",
         "to": "backend",
-        "filter": [
-          "app/**/*",
-          "alembic/**/*",
-          "alembic.ini",
-          "requirements.txt"
-        ]
+        "filter": ["backend*"]
       }
     ],
     "mac": {
@@ -60,6 +55,18 @@
           "path": "/Applications"
         }
       ]
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "publisherName": "AddaxAI"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Science"
     }
   }
 }
