@@ -8,6 +8,7 @@ Following DEVELOPERS.md principles:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,7 @@ from app.api.schemas.project import (
 )
 from app.core.logging_config import get_logger
 from app.db.base import get_db
+from app.models import Detection, Deployment, File, Site
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -149,3 +151,27 @@ def get_project_stats(
     project_dict.update(stats)
 
     return ProjectWithStats(**project_dict)
+
+
+@router.get("/{project_id}/detection-stats")
+def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
+    """
+    Get detection category statistics for a project.
+
+    Returns counts by category (animal, person, vehicle).
+    """
+    # Query detection counts grouped by category
+    stats = (
+        db.query(Detection.category, func.count(Detection.id).label("count"))
+        .join(File)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .group_by(Detection.category)
+        .all()
+    )
+
+    # Convert to dict
+    result = {category: count for category, count in stats}
+
+    return result

@@ -1706,23 +1706,39 @@ For MVP: Manual download and install new versions
 11d. Implement FilesPage to display scanned files (list/grid with thumbnails)
 
 #### ML Integration (MVP - MegaDetector + Classifier Only)
-20. Design simple model manifest format (YAML, basic version)
-21. Build environment manager for micromamba
-22. Integrate micromamba for isolated Python environments
-23. Implement model weight download and caching
-24. Create AsyncIO task for model inference execution
-25. **Integrate MegaDetector** (animal detection - MVP priority)
-29. **Integrate simple species classifier** (MVP priority)
-26. Implement detection storage in database
+20. ✅ Design simple model manifest format (JSON, with support for det/cls model organization)
+21. ✅ Build environment manager for micromamba (EnvironmentManager with env creation, validation, and caching)
+22. ✅ Integrate micromamba for isolated Python environments (environments stored in ~/AddaxAI/envs/)
+23. ✅ Implement model weight download and caching (HuggingFaceRepoDownloader with progress tracking)
+23a. ✅ Add download progress bar with speed display (updates every 500ms via WebSocket)
+24. ✅ Create AsyncIO task for model inference execution (detection_worker.py with progress callbacks)
+25. ✅ **Integrate MegaDetector** (MegaDetectorRunner with subprocess execution in isolated envs)
+26. ✅ Implement detection storage in database (Detection model with file_id, category, confidence, bbox)
+26a. ✅ Create ML model preparation UI (separate buttons for "Download Weights" and "Build Environment")
+26b. ✅ Add model status API endpoint (check weights_ready and env_ready status)
+26c. ✅ Fix model file path resolution (pass .pt file path instead of model ID to CLI)
+26d. ✅ Organize models by type (models/det/ and models/cls/ with manifest.json in each model dir)
+26e. ✅ Simplify environment directory naming (ml_envs → envs)
+29. **Integrate simple species classifier** (pending - detection works, classification not yet implemented)
 
 #### Basic Data Browsing (MVP)
-32. Build file detail page with image viewer
-33. Implement Konva canvas for bounding box visualization
-34. Display ML detections on images
+32. ✅ Build file detail page with image viewer (ImagesPage with grid of image cards)
+32a. ✅ Create files API router (list files with filters, get file with detections, serve image files)
+32b. ✅ Add image serving endpoint (/api/files/{file_id}/image to bypass file:// protocol restrictions)
+33. ✅ Implement SVG overlay for bounding box visualization (replaced Konva with simpler SVG solution)
+34. ✅ Display ML detections on images (click image card → modal with full image + bounding boxes)
+34a. ✅ Add color-coded bounding boxes by category (green=animal, red=person, blue=vehicle)
+34b. ✅ Show detection labels with confidence percentages
+34c. ✅ Add detection list below image with category, species, and confidence details
+34d. ✅ Make image cards clickable to open detailed viewer modal
 
 #### Basic Visualization (MVP)
-43. Create simple dashboard with summary statistics
-45. **Add detection count timeline** (bar/line chart - MVP priority)
+43. ✅ Create simple dashboard with summary statistics (DashboardPage with detection counts by category)
+43a. ✅ Add detection statistics API endpoint (/api/projects/{id}/detection-stats)
+43b. ✅ Install recharts library for data visualization
+43c. ✅ Implement pie chart showing detection category distribution (animal/person/vehicle)
+43d. ✅ Add summary cards showing total detections and breakdown by category with percentages
+45. **Add detection count timeline** (bar/line chart - deferred, pie chart completed first)
 
 #### Electron Integration (MVP)
 4. Configure Electron shell to launch backend and load frontend
