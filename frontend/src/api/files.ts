@@ -2,7 +2,7 @@
  * Files API client
  */
 
-import { apiClient } from "./client";
+import { api } from "../lib/api-client";
 import type { FileResponse, FileWithDetections } from "./types";
 
 export const filesApi = {
@@ -24,13 +24,13 @@ export const filesApi = {
     const query = searchParams.toString();
     const url = query ? `/api/files?${query}` : "/api/files";
 
-    return apiClient.get<FileResponse[]>(url);
+    return api.get<FileResponse[]>(url);
   },
 
   /**
    * Get file by ID with detections
    */
   get: async (id: string): Promise<FileWithDetections> => {
-    return apiClient.get<FileWithDetections>(`/api/files/${id}`);
+    return api.get<FileWithDetections>(`/api/files/${id}`);
   },
 };

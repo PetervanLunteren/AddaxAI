@@ -4,14 +4,17 @@ Files API router.
 Provides endpoints for browsing and viewing files (images/videos) with detections.
 """
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
 from app.api.schemas.file import FileResponse, FileWithDetections
 from app.db.base import get_db
 
-router = APIRouter(prefix="/files", tags=["files"])
+router = APIRouter(prefix="/api/files", tags=["files"])
 
 
 @router.get("", response_model=list[FileResponse])
@@ -68,3 +71,36 @@ def get_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     return file
+
+
+@router.get("/{file_id}/image")
+def get_file_image(
+    file_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Serve the actual image file.
+
+    Args:
+        file_id: File ID
+        db: Database session
+
+    Returns:
+        Image file
+
+    Raises:
+        HTTPException: If file not found or path invalid
+    """
+    file = file_crud.get_file_with_detections(db, file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_path = Path(file.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found on disk")
+
+    return FastAPIFileResponse(
+        path=str(file_path),
+        media_type=f"image/{file.file_format}",
+        filename=file_path.name,
+    )
