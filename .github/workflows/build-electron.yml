@@ -49,7 +49,6 @@ jobs:
         run: npm ci
 
       - name: Import Code Signing Certificate
-        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
         env:
           CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -107,7 +106,7 @@ jobs:
           ls -lh electron/dist-build/
 
       - name: Cleanup keychain
-        if: ${{ always() && secrets.MACOS_CERTIFICATE != '' }}
+        if: always()
         run: |
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           security delete-keychain $KEYCHAIN_PATH || true
