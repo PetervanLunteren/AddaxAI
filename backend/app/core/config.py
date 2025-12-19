@@ -21,8 +21,9 @@ def get_default_user_data_dir() -> Path:
 
 
 def get_default_database_url() -> str:
-    """Get default database URL."""
-    return "sqlite:///./addaxai.db"
+    """Get default database URL in user's home directory."""
+    db_path = get_default_user_data_dir() / "addaxai.db"
+    return f"sqlite:///{db_path}"
 
 
 def get_default_models_dir() -> Path:

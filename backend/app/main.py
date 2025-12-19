@@ -8,10 +8,13 @@ Following DEVELOPERS.md principles:
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
 
 from app.api.routers import (
     deployments_router,
@@ -78,10 +81,13 @@ def create_app() -> FastAPI:
     )
 
     # CORS middleware - allow frontend to access API
-    # In production (Electron), frontend and backend are on same localhost
+    # In Electron: frontend and backend both served from port 8000 (same origin)
+    # In dev: frontend on Vite dev server (5173), backend on 8000
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
+            "http://localhost:8000",  # Electron app (same origin)
+            "http://127.0.0.1:8000",  # Electron app (same origin)
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:5173",  # Vite dev server
@@ -92,7 +98,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register API routers
+    # Register API routers (already have /api prefix in their definitions)
     app.include_router(projects_router)
     app.include_router(sites_router)
     app.include_router(deployments_router)
@@ -116,19 +122,67 @@ def create_app() -> FastAPI:
             "environment": settings.environment,
         }
 
-    @app.get("/", tags=["Root"])
-    def root() -> dict[str, str]:
-        """
-        Root endpoint.
+    # Get frontend static files directory
+    # In development: frontend/dist from repo root
+    # In production (PyInstaller): bundled with executable
+    import sys
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle
+        frontend_dir = Path(sys._MEIPASS) / "frontend" / "dist"
+    else:
+        # Running in development
+        backend_dir = Path(__file__).parent.parent
+        frontend_dir = backend_dir.parent / "frontend" / "dist"
 
-        Returns welcome message and API information.
-        """
-        return {
-            "message": "AddaxAI API",
-            "version": "0.1.0",
-            "docs": "/docs",
-            "health": "/health",
-        }
+    # Serve frontend static files if available
+    if frontend_dir.exists():
+        logger.info(f"Serving frontend from: {frontend_dir}")
+
+        # Mount static assets directory
+        assets_dir = frontend_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        # Serve vite.svg favicon
+        @app.get("/vite.svg")
+        def serve_vite_svg():
+            return FileResponse(str(frontend_dir / "vite.svg"))
+
+        # Catch-all route for SPA - serve index.html for all frontend routes
+        # This must be last to not override API routes
+        @app.get("/{full_path:path}")
+        def serve_frontend(full_path: str):
+            """
+            Serve React frontend for all routes not handled by API.
+
+            This enables client-side routing for the SPA.
+            """
+            # If path looks like a file request, try to serve it
+            file_path = frontend_dir / full_path
+            if file_path.is_file():
+                return FileResponse(str(file_path))
+
+            # Otherwise, serve index.html for SPA routing
+            return FileResponse(str(frontend_dir / "index.html"))
+    else:
+        logger.warning(f"Frontend directory not found: {frontend_dir}")
+        logger.warning("API will be available but frontend UI will not be served")
+
+        # Fallback root endpoint showing API info
+        @app.get("/", tags=["Root"])
+        def root() -> dict[str, str]:
+            """
+            Root endpoint.
+
+            Returns welcome message and API information.
+            """
+            return {
+                "message": "AddaxAI API",
+                "version": "0.1.0",
+                "docs": "/docs",
+                "health": "/health",
+                "note": "Frontend not available - build frontend and bundle with PyInstaller",
+            }
 
     return app
 
