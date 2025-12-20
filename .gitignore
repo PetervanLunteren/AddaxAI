@@ -59,7 +59,7 @@ frontend/build/
 
 # Electron
 electron/dist/
-electron/build/
+electron/dist-build/
 
 # Logs
 *.log
