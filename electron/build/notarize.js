@@ -37,17 +37,39 @@ exports.default = async function notarizing(context) {
   try {
     const startTime = Date.now();
 
-    await notarize({
-      tool: 'notarytool',
-      appBundleId: 'com.addaxai.cameratrap',
-      appPath: appPath,
-      appleId: process.env.APPLE_ID,
-      appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-      teamId: process.env.APPLE_TEAM_ID,
-    });
+    // Progress logging
+    const progressInterval = setInterval(() => {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      console.log(`⏱️  Still notarizing... (${elapsed}s elapsed)`);
+    }, 60000); // Log every 60 seconds
 
-    const duration = Math.round((Date.now() - startTime) / 1000);
-    console.log(`\n✅ Notarization complete for ${appName} (took ${duration}s)`);
+    try {
+      // Add timeout wrapper (20 minutes)
+      console.log('📤 Submitting to Apple notarization service...');
+
+      const notarizePromise = notarize({
+        tool: 'notarytool',
+        appBundleId: 'com.addaxai.cameratrap',
+        appPath: appPath,
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID,
+      });
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Notarization timeout after 20 minutes - Apple servers not responding')), 20 * 60 * 1000)
+      );
+
+      await Promise.race([notarizePromise, timeoutPromise]);
+
+      clearInterval(progressInterval);
+
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      console.log(`\n✅ Notarization complete for ${appName} (took ${duration}s)`);
+    } catch (innerError) {
+      clearInterval(progressInterval);
+      throw innerError;
+    }
   } catch (error) {
     console.error('\n❌ Notarization failed!');
     console.error('Error type:', error.constructor.name);
