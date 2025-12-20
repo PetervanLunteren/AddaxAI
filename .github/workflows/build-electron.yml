@@ -81,8 +81,9 @@ jobs:
         run: npm run build
 
       - name: Build PyInstaller backend
-        working-directory: backend
-        run: python -m PyInstaller backend.spec --clean
+        run: |
+          cd backend
+          python -m PyInstaller backend.spec --clean
 
       - name: Verify backend build
         run: ls -lh backend/dist/
