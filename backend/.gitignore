@@ -12,6 +12,7 @@ ENV/
 build/
 dist/
 *.spec
+!backend.spec
 
 # Database
 *.db

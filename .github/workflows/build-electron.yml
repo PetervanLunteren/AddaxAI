@@ -83,6 +83,8 @@ jobs:
       - name: Build PyInstaller backend
         run: |
           cd backend
+          pwd
+          ls -la
           python -m PyInstaller backend.spec --clean
 
       - name: Verify backend build
