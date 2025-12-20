@@ -82,7 +82,7 @@ jobs:
 
       - name: Build PyInstaller backend
         working-directory: backend
-        run: pyinstaller backend.spec --clean
+        run: python -m PyInstaller backend.spec --clean
 
       - name: Verify backend build
         run: ls -lh backend/dist/
