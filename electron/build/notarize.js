@@ -9,9 +9,9 @@ exports.default = async function notarizing(context) {
   }
 
   // Check if we have the required credentials
-  if (!process.env.APPLE_ID || !process.env.APPLE_ID_PASSWORD || !process.env.APPLE_TEAM_ID) {
+  if (!process.env.APPLE_ID || !process.env.APPLE_APP_SPECIFIC_PASSWORD || !process.env.APPLE_TEAM_ID) {
     console.log('Skipping notarization: missing credentials');
-    console.log('Set APPLE_ID, APPLE_ID_PASSWORD, and APPLE_TEAM_ID environment variables to enable notarization');
+    console.log('Set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID environment variables to enable notarization');
     return;
   }
 
@@ -22,10 +22,11 @@ exports.default = async function notarizing(context) {
 
   try {
     await notarize({
+      tool: 'notarytool',
       appBundleId: 'com.addaxai.cameratrap',
       appPath: `${appOutDir}/${appName}.app`,
       appleId: process.env.APPLE_ID,
-      appleIdPassword: process.env.APPLE_ID_PASSWORD,
+      appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
       teamId: process.env.APPLE_TEAM_ID,
     });
 
