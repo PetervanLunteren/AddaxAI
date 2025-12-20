@@ -1,0 +1,108 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""
+PyInstaller spec file for AddaxAI backend.
+
+This builds a single-file executable that includes:
+- FastAPI application
+- All Python dependencies
+- Database migrations (alembic)
+"""
+
+import sys
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+
+# Get the backend directory
+backend_dir = Path.cwd()
+
+block_cipher = None
+
+# Collect all data from key packages
+datas = [
+    # Include the app package
+    ('app', 'app'),
+    # Include alembic for database migrations
+    ('alembic', 'alembic'),
+    ('alembic.ini', '.'),
+    # Include frontend static files
+    ('../frontend/dist', 'frontend/dist'),
+]
+
+# Collect data files from packages
+datas += collect_data_files('huggingface_hub')
+datas += collect_data_files('pydantic')
+datas += collect_data_files('fastapi')
+
+# Comprehensive hidden imports - collect ALL submodules
+hiddenimports = []
+hiddenimports += collect_submodules('fastapi')
+hiddenimports += collect_submodules('starlette')
+hiddenimports += collect_submodules('uvicorn')
+hiddenimports += collect_submodules('pydantic')
+hiddenimports += collect_submodules('pydantic_core')
+hiddenimports += collect_submodules('pydantic_settings')
+hiddenimports += collect_submodules('sqlalchemy')
+hiddenimports += collect_submodules('alembic')
+hiddenimports += collect_submodules('huggingface_hub')
+hiddenimports += collect_submodules('PIL')
+hiddenimports += collect_submodules('multipart')
+hiddenimports += collect_submodules('websockets')
+hiddenimports += collect_submodules('httpx')
+hiddenimports += collect_submodules('redis')
+hiddenimports += ['yaml', 'yaml.loader', 'yaml.dumper']
+
+a = Analysis(
+    ['run_server.py'],
+    pathex=[str(backend_dir)],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        'pytest',
+        'mypy',
+        'ruff',
+        'tkinter',
+        'matplotlib',
+        'numpy',  # Not used, reduces size
+    ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+    # Use --collect-all for problematic packages
+    module_collection_mode={
+        'fastapi': 'py',
+        'starlette': 'py',
+        'uvicorn': 'py',
+        'pydantic': 'py',
+        'sqlalchemy': 'py',
+        'huggingface_hub': 'py',
+    }
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name='backend',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
