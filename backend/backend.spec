@@ -96,7 +96,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,  # Disable UPX - can cause issues with code signing
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
@@ -105,4 +105,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # These options help with macOS code signing
+    bundle_identifier='com.addaxai.cameratrap.backend',
 )
