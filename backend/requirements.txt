@@ -20,6 +20,7 @@ Pillow==11.0.0
 
 # ML & Model Management
 huggingface-hub>=0.20.0
+requests>=2.31.0  # Required by huggingface-hub
 pyyaml==6.0.2
 
 # Development
