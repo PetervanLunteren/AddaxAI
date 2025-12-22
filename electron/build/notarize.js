@@ -57,7 +57,7 @@ exports.default = async function notarizing(context) {
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Notarization timeout after 20 minutes - Apple servers not responding')), 20 * 60 * 1000)
+        setTimeout(() => reject(new Error('Notarization timeout after 40 minutes - Apple servers not responding')), 40 * 60 * 1000)
       );
 
       await Promise.race([notarizePromise, timeoutPromise]);
