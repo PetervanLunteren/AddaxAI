@@ -88,10 +88,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
+    [],  # Remove binaries, zipfiles, datas - will be in COLLECT
+    exclude_binaries=True,  # Important: don't bundle everything into one file
     name='backend',
     debug=False,
     bootloader_ignore_signals=False,
@@ -107,4 +105,15 @@ exe = EXE(
     entitlements_file=None,
     # These options help with macOS code signing
     bundle_identifier='com.addaxai.cameratrap.backend',
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='backend',
 )
