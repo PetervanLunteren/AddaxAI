@@ -92,12 +92,12 @@ exports.default = async function notarizing(context) {
   };
 
   try {
-    // First attempt: 10 minutes
+    // First attempt: 5 minutes
     try {
-      await attemptNotarization(appPath, credentials, 10, 1);
+      await attemptNotarization(appPath, credentials, 5, 1);
       return; // Success!
     } catch (firstError) {
-      console.log(`\n⚠️  First attempt timed out after 10 minutes`);
+      console.log(`\n⚠️  First attempt timed out after 5 minutes`);
       console.log('Checking if notarization ticket exists...');
 
       // Check if the app was actually notarized despite the timeout
@@ -106,15 +106,32 @@ exports.default = async function notarizing(context) {
         return;
       }
 
-      console.log('❌ No ticket found. Retrying with 30-minute timeout...');
+      console.log('❌ No ticket found. Retrying with 10-minute timeout...');
     }
 
-    // Second attempt: 30 minutes
+    // Second attempt: 10 minutes
     try {
-      await attemptNotarization(appPath, credentials, 30, 2);
+      await attemptNotarization(appPath, credentials, 10, 2);
       return; // Success!
     } catch (secondError) {
-      console.log(`\n⚠️  Second attempt timed out after 30 minutes`);
+      console.log(`\n⚠️  Second attempt timed out after 10 minutes`);
+      console.log('Checking if notarization ticket exists...');
+
+      // Check if the app was actually notarized despite the timeout
+      if (checkNotarizationTicket(appPath)) {
+        console.log('✅ Notarization ticket found! The app was notarized successfully.');
+        return;
+      }
+
+      console.log('❌ No ticket found. Final attempt with 30-minute timeout...');
+    }
+
+    // Third attempt: 30 minutes
+    try {
+      await attemptNotarization(appPath, credentials, 30, 3);
+      return; // Success!
+    } catch (thirdError) {
+      console.log(`\n⚠️  Third attempt timed out after 30 minutes`);
       console.log('Checking if notarization ticket exists...');
 
       // Final check
@@ -123,8 +140,8 @@ exports.default = async function notarizing(context) {
         return;
       }
 
-      // Both attempts failed
-      throw new Error(`Notarization failed after 2 attempts (10min + 30min). Apple's servers may be experiencing issues. Error: ${secondError.message}`);
+      // All attempts failed
+      throw new Error(`Notarization failed after 3 attempts (5min + 10min + 30min). Apple's servers may be experiencing issues. Error: ${thirdError.message}`);
     }
   } catch (error) {
     console.error('\n❌ Notarization failed!');
