@@ -28,6 +28,7 @@
     "directories": {
       "output": "dist-build"
     },
+    "publish": null,
     "files": [
       "dist/**/*",
       "package.json"
