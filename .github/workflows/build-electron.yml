@@ -87,8 +87,14 @@ jobs:
           ls -la
           python -m PyInstaller backend.spec --clean
 
+      - name: Remove conflicting signatures from PyInstaller bundle
+        run: |
+          cd backend
+          python3 remove_python_signature.py
+          echo "✓ Removed signatures from Python libraries to prevent Team ID mismatch"
+
       - name: Verify backend build
-        run: ls -lh backend/dist/
+        run: ls -lh backend/dist/backend/
 
       - name: Build Electron app
         working-directory: electron
