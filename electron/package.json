@@ -29,6 +29,7 @@
       "output": "dist-build"
     },
     "publish": null,
+    "generateUpdatesFilesForAllChannels": false,
     "files": [
       "dist/**/*",
       "package.json"
