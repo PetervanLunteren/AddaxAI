@@ -12,6 +12,7 @@
 9. **No quick fixes** - Fix issues in a way that holds for all future deployments, not only the current device.
 10. **GitHub** - Always commit manually. Never commit automatically. 
 11. **Clean repo** - Value simplicity and cleanliness. No redundant MD files. 
+12. **No Title Case** - Use natural English capitalisation. That means only capitalising the first word of sentences and proper nouns (like "Peter van Lunteren", "Utrecht", "MegaDetector", "SpeciesNet", "Today, I was walking in the park.",  "Things I love about Amsterdam.", "Cities visited").
 
 **Remember:** It's better to crash during development than to hide bugs that cause problems later. We'll add resilience (retries, fallbacks, graceful degradation) after the core functionality works.
 

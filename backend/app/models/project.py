@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from .deployment_queue import DeploymentQueue
     from .site import Site
 
 
@@ -44,6 +45,9 @@ class Project(Base):
     # Relationships
     sites: Mapped[list["Site"]] = relationship(
         "Site", back_populates="project", cascade="all, delete-orphan"
+    )
+    deployment_queue: Mapped[list["DeploymentQueue"]] = relationship(
+        "DeploymentQueue", back_populates="project", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
