@@ -249,8 +249,13 @@ class MegaDetectorRunner:
 
         finally:
             # Clean up output file
-            if output_file.exists():
-                output_file.unlink()
+            # Use try/except for Windows file locking issues
+            try:
+                if output_file.exists():
+                    output_file.unlink()
+            except PermissionError:
+                # On Windows, file may still be locked - ignore, temp dir will clean up
+                logger.debug(f"Could not delete temp file {output_file}, will be cleaned up later")
 
     def validate_environment(self, manifest: ModelManifest) -> bool:
         """

@@ -47,7 +47,9 @@ class EnvironmentManager:
 
         bin_dir = user_data_dir / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
-        self.micromamba_path = micromamba_path or (bin_dir / "micromamba")
+        # Windows uses .exe extension
+        micromamba_name = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
+        self.micromamba_path = micromamba_path or (bin_dir / micromamba_name)
 
         # Ensure micromamba is installed
         if not self.micromamba_path.exists():
@@ -102,12 +104,17 @@ class EnvironmentManager:
 
             try:
                 with tarfile.open(tmp_tar_path, "r") as tar:
-                    member = tar.getmember("bin/micromamba")
+                    # Windows uses Library/bin/micromamba.exe, others use bin/micromamba
+                    if system == "Windows":
+                        member_path = "Library/bin/micromamba.exe"
+                    else:
+                        member_path = "bin/micromamba"
+                    member = tar.getmember(member_path)
                     member_file = tar.extractfile(member)
                     if member_file:
                         with open(self.micromamba_path, "wb") as f:
                             f.write(member_file.read())
-                        logger.info("Extracted micromamba binary from tar archive")
+                        logger.info(f"Extracted micromamba binary from {member_path}")
             finally:
                 Path(tmp_tar_path).unlink()
 
