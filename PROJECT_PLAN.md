@@ -1684,26 +1684,26 @@ For MVP: Manual download and install new versions
 1. ✅ Initialize monorepo with backend/, frontend/, electron/ directories
 2. ✅ Set up FastAPI backend with basic project structure
 3. ✅ Set up React + Vite + TypeScript frontend
-4. Configure Electron shell to launch backend and load frontend
+4. ✅ Configure Electron shell to launch backend and load frontend (main.ts complete with health checks)
 5. ✅ Set up SQLite database with SQLAlchemy models and Alembic migrations
 6. ✅ Implement basic CI/CD (linting, type-checking, tests)
 7. ✅ Create initial Project, Site, Deployment, File database models
 7a. ✅ Implement backend logging with RotatingFileHandler (Python `logging` module)
 7b. ✅ Create frontend logger with batching (forwards to POST /api/logs every 5s)
-7c. ⏸️ Add Electron Winston logger for main process events (deferred - Electron not implemented yet)
-7d. ⏸️ Create log export endpoint (GET /api/logs/export - ZIP with all logs + system-info.json) (deferred)
-7e. ⏸️ Add "Export Logs" button to Settings page with privacy warning (deferred)
+7c. ❌ Add Electron Winston logger for main process events (not implemented)
+7d. ❌ Create log export endpoint (GET /api/logs/export - ZIP with all logs + system-info.json) (not implemented)
+7e. ❌ Add "Export Logs" button to Settings page with privacy warning (not implemented)
 
 #### Core Functionality (MVP)
 8. ✅ Implement CRUD API endpoints for projects and sites
 9. ✅ Build frontend navigation and basic UI layout (sidebar with project-scoped tools)
 10. ✅ Create project/site creation and edit forms
-10a. ✅ Create deployments page UI (mock data, will connect to backend later)
+10a. ✅ Create deployments page UI → Now called AnalysesPage (queue management UI)
 11. ✅ Update deployment model for no-copy file storage (folder_path approach)
 11a. ✅ Implement deployment CRUD API endpoints (backend/app/api/routers/deployments.py)
 11b. ✅ Build file scanner service (recursive scan with EXIF extraction) (backend/app/services/folder_scanner.py + preview-folder endpoint)
-11c. Create deployment creation dialog with folder selection
-11d. Implement FilesPage to display scanned files (list/grid with thumbnails)
+11c. ✅ Create deployment creation dialog with folder selection (AddDeploymentDialog.tsx)
+11d. ✅ Implement ImagesPage to display scanned files (grid with thumbnails, click to view modal with detections)
 
 #### ML Integration (MVP - MegaDetector + Classifier Only)
 20. ✅ Design simple model manifest format (JSON, with support for det/cls model organization)
@@ -1719,7 +1719,11 @@ For MVP: Manual download and install new versions
 26c. ✅ Fix model file path resolution (pass .pt file path instead of model ID to CLI)
 26d. ✅ Organize models by type (models/det/ and models/cls/ with manifest.json in each model dir)
 26e. ✅ Simplify environment directory naming (ml_envs → envs)
-29. **Integrate simple species classifier** (pending - detection works, classification not yet implemented)
+27. ✅ Add WebSocket for real-time job progress updates (websocket.py router)
+28. ✅ Implement job queue management (jobs.py router with list, create, update, delete, run_queue)
+29. ❌ **Integrate species classifier** (manifests defined for EUR-DF-v1-3 and AFR-BASIC-v1 but runners not implemented)
+30. ❌ **Sequential pipeline (detect → classify)** - Not wired up
+31. ❌ **GPU detection and CPU fallback** - Not implemented
 
 #### Basic Data Browsing (MVP)
 32. ✅ Build file detail page with image viewer (ImagesPage with grid of image cards)
@@ -1738,89 +1742,147 @@ For MVP: Manual download and install new versions
 43b. ✅ Install recharts library for data visualization
 43c. ✅ Implement pie chart showing detection category distribution (animal/person/vehicle)
 43d. ✅ Add summary cards showing total detections and breakdown by category with percentages
-45. **Add detection count timeline** (bar/line chart - deferred, pie chart completed first)
+45. ❌ **Add detection count timeline** (bar/line chart - not implemented)
 
 #### Electron Integration (MVP)
-4. Configure Electron shell to launch backend and load frontend
+4. ✅ Configure Electron shell to launch backend and load frontend (main.ts with uvicorn/PyInstaller support, health checks, graceful shutdown)
 
 ### Phase 2: Packaging & Distribution (CRITICAL VALIDATION)
 
 **🚨 DECISION POINT**: Validate packaging/distribution pipeline before building more features.
 
-53. Set up PyInstaller for backend bundling
-54. Configure electron-builder for macOS and Windows installers
-55. Bundle micromamba and Python environment
-56. Configure Windows code signing with existing certificate
-57. **Test installation on clean macOS machine**
-58. **Test signed Windows installer**
-59. Create Linux AppImage configuration (stretch goal)
-60. **Validate cross-platform compatibility**
-61. Set up GitHub Actions for automated builds and signing
-62. Test automated release pipeline
+53. ✅ Set up PyInstaller for backend bundling (backend.spec configured, onedir mode)
+54. ✅ Configure electron-builder for macOS and Windows installers (package.json build config complete)
+55. 🚧 Bundle micromamba binary (configured in extraResources but not tested end-to-end)
+56. ✅ Configure Windows code signing (CSC_IDENTITY_AUTO_DISCOVERY in workflow)
+56a. ✅ Fix missing requests module in PyInstaller bundle (added to requirements.txt + hiddenimports)
+56b. ✅ Implement smart notarization retry (5min → 10min → 30min with ticket validation)
+57. ✅ **Test installation on clean macOS machine** (v0.1.0 release validated by user)
+58. ✅ **Test signed Windows installer** (GitHub Actions builds Windows .exe + .zip)
+59. ❌ Create Linux AppImage configuration (not in current workflow)
+60. 🚧 **Validate cross-platform compatibility** (macOS + Windows working, Linux not tested)
+61. ✅ Set up GitHub Actions for automated builds and signing (build-electron.yml with parallel macOS/Windows jobs)
+62. ✅ Test automated release pipeline (releases created with DMG, ZIP, EXE artifacts)
 
-**If packaging issues arise, fix them NOW before Phase 3.**
+**✅ PACKAGING VALIDATED** - macOS notarized, Windows signed, releases working!
 
 ### Phase 3: Feature Expansion (After MVP Validates)
 
 #### Advanced ML
-28. Add real-time progress tracking via WebSocket
-30. Implement multi-model support and sequential pipelines
-31. Add GPU detection and CPU fallback logic
+28. ✅ Real-time progress tracking via WebSocket (already implemented)
+29. ❌ Integrate species classifiers (EUR-DF, AFR-BASIC runners needed)
+30. ❌ Implement multi-model support and sequential pipelines (detect → classify)
+31. ❌ Add GPU detection and CPU fallback logic
 
 #### Review & Annotation
-35. Add confidence threshold filtering
-36. Implement "mark as reviewed" functionality with audit log
-37. Add keyboard shortcuts for navigation (next/previous file)
-38. Build bounding box drawing tool (new annotations)
-39. Implement bounding box editing (resize, move, delete)
-40. Add species category assignment (dropdown)
-41. Implement annotation save/update API with audit log tracking
-42. Build batch selection and operations UI
+35. ❌ Add confidence threshold filtering (API supports it, UI filter not built)
+36. ❌ Implement "mark as reviewed" functionality with audit log
+37. ❌ Add keyboard shortcuts for navigation (next/previous file)
+38. ❌ Build bounding box drawing tool (new annotations) - Currently SVG read-only
+39. ❌ Implement bounding box editing (resize, move, delete) - Konva not integrated
+40. ❌ Add species category assignment (dropdown)
+41. ❌ Implement annotation save/update API with audit log tracking
+42. ❌ Build batch selection and operations UI
 
 #### Event Grouping & Advanced Browsing
-17. Build file list view with TanStack Table and pagination
-18. Implement event grouping logic (time-based clustering)
-19. Create event list and event detail views
+17. 🚧 File list view (ImagesPage exists with grid, TanStack Table not used, pagination not implemented)
+18. ❌ Implement event grouping logic (Event model exists but time-clustering not integrated in workers)
+19. ❌ Create event list and event detail views
 
 #### Advanced Visualization
-44. Build species distribution chart (pie/bar with Plotly)
-46. Implement site map view with MapLibre GL JS + Deck.gl
-47. Add interactive site location editing (drag markers)
-48. Implement heatmap layer for detection density
-49. Add hexbin/grid visualization for camera coverage analysis
+44. 🚧 Species distribution chart (pie chart with Recharts done, Plotly not integrated)
+46. ❌ Implement site map view with MapLibre GL JS + Deck.gl
+47. ❌ Add interactive site location editing (drag markers)
+48. ❌ Implement heatmap layer for detection density
+49. ❌ Add hexbin/grid visualization for camera coverage analysis
 
 #### Export & Reporting
-50. Build CSV export functionality (AsyncIO task with WebSocket progress)
-51. Implement Camtrap DP export format
-52. Create export download API and UI
+50. ❌ Build CSV export functionality (AsyncIO task with WebSocket progress)
+51. ❌ Implement Camtrap DP export format
+52. ❌ Create export download API and UI
 
-#### Background Processing (if not needed in MVP)
-13. Set up AsyncIO workers + Redis/LiteQ for background job processing
-14. Implement WebSocket manager for real-time progress updates
+#### Background Processing
+13. ✅ AsyncIO workers implemented (detection_worker.py with async queue processing)
+14. ✅ WebSocket manager for real-time progress updates (websocket.py router)
 15. ✅ Build jobs and audit_log database tables
-16. Implement import job progress tracking with WebSocket streaming
+16. 🚧 Import job progress tracking (detection job progress works via WebSocket, file import progress not separately tracked)
 
 #### Folder Management
-11e. Add folder validation and re-linking functionality
+11e. ❌ Add folder validation and re-linking functionality
 
 ### Phase 4: Polish & Release
 
-63. Implement comprehensive error handling and user feedback
-64. Add loading states and empty states throughout UI
-65. Write in-app help/onboarding content
-66. Create end-to-end tests for critical workflows (Playwright)
-67. Performance optimization for large datasets
-68. Write user documentation (installation, workflows)
-69. Write developer documentation (architecture, deployment)
-70. Create README with screenshots and getting started guide
-71. Internal testing with real camera trap datasets
-72. Beta testing with domain experts and gather feedback
-73. Bug fixes and UX improvements based on feedback
-74. Prepare GitHub release with installers and documentation
+63. 🚧 Error handling (basic error messages, no comprehensive error boundary)
+64. 🚧 Loading states (basic spinners, not comprehensive)
+65. ❌ Write in-app help/onboarding content
+66. ❌ Create end-to-end tests for critical workflows (Playwright)
+67. ❌ Performance optimization for large datasets (not tested with 100K+ images yet)
+68. ❌ Write user documentation (installation, workflows)
+69. 🚧 Developer documentation (DEVELOPERS.md exists, architecture details limited)
+70. 🚧 README (exists but needs screenshots and getting started guide)
+71. 🚧 Internal testing with real camera trap datasets (basic testing done, not comprehensive)
+72. ❌ Beta testing with domain experts
+73. ❌ Bug fixes and UX improvements based on feedback
+74. ✅ GitHub release with installers (v0.1.0 published with macOS DMG/ZIP + Windows EXE/ZIP)
 
 ---
 
-## Summary
+---
+
+## CURRENT STATUS SUMMARY (Updated: Dec 2024)
+
+### Overall Progress: **~65% of MVP Complete**
+
+**✅ COMPLETED PHASES:**
+- **Phase 1 (Foundation)**: 95% complete - All infrastructure, data models, API endpoints, and Electron shell working
+- **Phase 2 (Packaging)**: 90% complete - macOS + Windows installers working, notarized/signed, automated releases ✅
+
+**🚧 IN PROGRESS:**
+- **Phase 3 (Features)**: 40% complete
+  - ✅ MegaDetector integration fully working
+  - ✅ File browsing with detection visualization
+  - ✅ Basic dashboard with statistics
+  - ❌ Species classifiers not integrated
+  - ❌ Annotation editing not implemented
+  - ❌ Event grouping not wired up
+
+**❌ NOT STARTED:**
+- Export functionality (CSV, Camtrap DP)
+- Maps visualization (MapLibre/Deck.gl)
+- Interactive annotation tools (Konva)
+- GPU detection/fallback
+- E2E testing
+- Comprehensive documentation
+
+### What Works Today:
+1. ✅ Create projects, sites, deployments
+2. ✅ Scan folders for camera trap images (EXIF extraction)
+3. ✅ Download MegaDetector model + build isolated environment
+4. ✅ Run MegaDetector on images (animal/person/vehicle detection)
+5. ✅ View images with bounding box overlays
+6. ✅ See detection statistics and pie charts
+7. ✅ Install via signed DMG (macOS) or EXE (Windows)
+8. ✅ Real-time progress updates via WebSocket
+
+### Critical Gaps for Full MVP:
+1. Species classifiers (EUR-DF, AFR-BASIC) - runners needed
+2. Annotation editing (draw/edit bounding boxes)
+3. Event grouping (time-based clustering)
+4. Export functionality (CSV, Camtrap DP)
+5. Performance testing with 100K+ images
+6. User documentation
+
+### Next Priorities:
+Based on user feedback focusing on "contents" over packaging, recommended order:
+1. Implement species classifier runners (reuse MegaDetector pattern)
+2. Add CSV export for detections
+3. Build event grouping logic into file import worker
+4. Add confidence threshold filtering in UI
+5. Performance optimization and testing with large datasets
+
+---
+
+## Original Plan Summary
 
 This plan provides a realistic, implementable roadmap for building a local-first camera trap analysis platform with:
 
