@@ -54,7 +54,9 @@ async function startBackend(): Promise<void> {
       console.log('[Electron] Development mode - using venv Python');
     } else {
       // Production: Use PyInstaller bundled executable
-      backendExecutable = path.join(process.resourcesPath, 'backend', 'backend');
+      // Windows requires .exe extension, macOS/Linux do not
+      const exeName = process.platform === 'win32' ? 'backend.exe' : 'backend';
+      backendExecutable = path.join(process.resourcesPath, 'backend', exeName);
       backendCwd = process.cwd(); // Current working directory for database/files
 
       if (!fs.existsSync(backendExecutable)) {
