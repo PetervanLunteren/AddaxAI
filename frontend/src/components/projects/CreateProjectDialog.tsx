@@ -14,8 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { projectsApi, type ProjectCreate } from "../../api/projects";
 import { modelsApi } from "../../api/models";
-import type { TaxonomyNode } from "../../api/types";
-import { TreeNode } from "../taxonomy/TreeNode";
+import { TaxonomyEditor } from "../taxonomy/TaxonomyEditor";
 import { Button } from "../ui/button";
 import {
   Select,
@@ -42,13 +41,6 @@ import {
   FormMessage,
 } from "../ui/form";
 import { Input } from "../ui/input";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "../ui/accordion";
-import { ScrollArea } from "../ui/scroll-area";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -70,8 +62,7 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
-  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(new Set());
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [taxonomyEditorOpen, setTaxonomyEditorOpen] = useState(false);
 
   // Fetch available models
   const { data: detectionModels = [] } = useQuery({
@@ -105,97 +96,6 @@ export function CreateProjectDialog({
     enabled: open && !!classificationModelId && classificationModelId !== "none",
   });
 
-  const allClasses = taxonomy?.all_classes || [];
-  const tree = taxonomy?.tree || [];
-
-  // Initialize selected classes when taxonomy loads (default to all)
-  useEffect(() => {
-    if (taxonomy?.all_classes && selectedClasses.size === 0) {
-      setSelectedClasses(new Set(taxonomy.all_classes));
-      form.setValue("taxonomy_config", { selected_classes: taxonomy.all_classes });
-    }
-  }, [taxonomy?.all_classes]);
-
-  // Update form when selected classes change
-  useEffect(() => {
-    form.setValue("taxonomy_config", { selected_classes: Array.from(selectedClasses) });
-  }, [selectedClasses]);
-
-  // Tree handlers
-  const handleToggle = (nodeId: string, checked: boolean) => {
-    const newSelected = new Set(selectedClasses);
-
-    const findAndToggleNode = (nodes: TaxonomyNode[]): boolean => {
-      for (const node of nodes) {
-        if (node.id === nodeId) {
-          toggleNodeAndDescendants(node, checked, newSelected);
-          return true;
-        }
-        if (node.children && findAndToggleNode(node.children)) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    findAndToggleNode(tree);
-    setSelectedClasses(newSelected);
-  };
-
-  const toggleNodeAndDescendants = (
-    node: TaxonomyNode,
-    checked: boolean,
-    selectedSet: Set<string>
-  ) => {
-    if (!node.children || node.children.length === 0) {
-      if (checked) {
-        selectedSet.add(node.id);
-      } else {
-        selectedSet.delete(node.id);
-      }
-    } else {
-      for (const child of node.children) {
-        toggleNodeAndDescendants(child, checked, selectedSet);
-      }
-    }
-  };
-
-  const handleSelectAll = () => {
-    setSelectedClasses(new Set(allClasses));
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedClasses(new Set());
-  };
-
-  const handleExpandAll = () => {
-    const allNodeIds = new Set<string>();
-    const collectAllNodeIds = (nodes: TaxonomyNode[]) => {
-      for (const node of nodes) {
-        allNodeIds.add(node.id);
-        if (node.children) {
-          collectAllNodeIds(node.children);
-        }
-      }
-    };
-    collectAllNodeIds(tree);
-    setExpandedNodes(allNodeIds);
-  };
-
-  const handleCollapseAll = () => {
-    setExpandedNodes(new Set());
-  };
-
-  const handleExpand = (nodeId: string, expanded: boolean) => {
-    const newExpanded = new Set(expandedNodes);
-    if (expanded) {
-      newExpanded.add(nodeId);
-    } else {
-      newExpanded.delete(nodeId);
-    }
-    setExpandedNodes(newExpanded);
-  };
-
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => projectsApi.create(data),
     onSuccess: () => {
@@ -218,7 +118,7 @@ export function CreateProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Create new project</DialogTitle>
           <DialogDescription>
@@ -227,8 +127,7 @@ export function CreateProjectDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 overflow-y-auto">
-            <Accordion type="multiple" defaultValue={["basic", "models"]} className="w-full">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
