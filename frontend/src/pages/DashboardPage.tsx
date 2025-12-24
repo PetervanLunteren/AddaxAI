@@ -2,19 +2,14 @@
  * Dashboard page with detection statistics
  */
 
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { Button } from "../components/ui/button";
-import { X } from "lucide-react";
 import { api } from "../lib/api-client";
 
 export default function DashboardPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const [showModelAlert, setShowModelAlert] = useState(false);
 
   // Fetch detection statistics
   const { data: stats, isLoading } = useQuery({
@@ -22,20 +17,6 @@ export default function DashboardPage() {
     queryFn: () =>
       api.get<Record<string, number>>(`/api/projects/${projectId}/detection-stats`),
   });
-
-  // Fetch model updates
-  const { data: updates } = useQuery({
-    queryKey: ["model-updates"],
-    queryFn: () => api.get<{ new_models: string[]; checked_at: string | null }>("/api/ml/updates"),
-    staleTime: Infinity, // Only check once per session
-  });
-
-  // Show alert if new models found
-  useEffect(() => {
-    if (updates?.new_models && updates.new_models.length > 0) {
-      setShowModelAlert(true);
-    }
-  }, [updates]);
 
   // Transform data for pie chart
   const chartData = stats
@@ -62,26 +43,6 @@ export default function DashboardPage() {
           Overview of detection statistics
         </p>
       </div>
-
-      {/* New models alert */}
-      {showModelAlert && updates?.new_models && updates.new_models.length > 0 && (
-        <Alert className="mb-6">
-          <AlertTitle className="flex items-center justify-between">
-            <span>New models available</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowModelAlert(false)}
-              className="h-6 w-6 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </AlertTitle>
-          <AlertDescription>
-            {updates.new_models.length} new model{updates.new_models.length > 1 ? "s" : ""} added to your catalog
-          </AlertDescription>
-        </Alert>
-      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64">

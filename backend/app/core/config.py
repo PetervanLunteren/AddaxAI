@@ -31,18 +31,8 @@ def get_default_models_dir() -> Path:
     return get_default_user_data_dir() / "models"
 
 
-def get_default_model_manifests_dir() -> Path:
-    """Get default model manifests directory."""
-    return get_default_models_dir() / "manifests"
-
-
-def get_default_model_weights_dir() -> Path:
-    """Get default model weights directory."""
-    return get_default_models_dir() / "weights"
-
-
-def get_default_model_environments_dir() -> Path:
-    """Get default model environments directory."""
+def get_default_environments_dir() -> Path:
+    """Get default environments directory."""
     return get_default_user_data_dir() / "environments"
 
 
@@ -80,11 +70,11 @@ class Settings(BaseSettings):
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
 
-    # Models - all default to subdirectories of user_data_dir
+    # Models directory
     models_dir: Path = Field(default_factory=get_default_models_dir)
-    model_manifests_dir: Path = Field(default_factory=get_default_model_manifests_dir)
-    model_weights_dir: Path = Field(default_factory=get_default_model_weights_dir)
-    model_environments_dir: Path = Field(default_factory=get_default_model_environments_dir)
+
+    # Environments directory (for micromamba)
+    environments_dir: Path = Field(default_factory=get_default_environments_dir)
 
     # Model catalog sync
     model_catalog_url: str = Field(
@@ -113,19 +103,17 @@ class Settings(BaseSettings):
                     f"Failed to create user data directory at {self.user_data_dir}: {e}"
                 ) from e
 
-        # Ensure models directories exist
+        # Ensure required directories exist
         for directory in [
             self.models_dir,
-            self.model_manifests_dir,
-            self.model_weights_dir,
-            self.model_environments_dir,
+            self.environments_dir,
         ]:
             if not directory.exists():
                 try:
                     directory.mkdir(parents=True, exist_ok=True)
                 except Exception as e:
                     raise RuntimeError(
-                        f"Failed to create models directory at {directory}: {e}"
+                        f"Failed to create directory at {directory}: {e}"
                     ) from e
 
 

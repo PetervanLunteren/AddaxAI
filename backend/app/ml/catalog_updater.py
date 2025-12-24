@@ -65,8 +65,8 @@ class ModelCatalogUpdater:
             catalog = json.loads(data)
 
             # Validate basic structure
-            if "version" not in catalog or "models" not in catalog:
-                logger.error("Invalid catalog structure: missing 'version' or 'models'")
+            if "models" not in catalog:
+                logger.error("Invalid catalog structure: missing 'models'")
                 return None
 
             if "det" not in catalog["models"] or "cls" not in catalog["models"]:
@@ -74,8 +74,8 @@ class ModelCatalogUpdater:
                 return None
 
             logger.info(
-                f"Fetched catalog v{catalog['version']} "
-                f"({len(catalog['models']['det'])} det, {len(catalog['models']['cls'])} cls models)"
+                f"Fetched catalog: "
+                f"{len(catalog['models']['det'])} det, {len(catalog['models']['cls'])} cls models"
             )
             return catalog
 
@@ -122,7 +122,7 @@ class ModelCatalogUpdater:
             local_models: Local model IDs from get_local_models()
 
         Returns:
-            List of new model manifests (dicts with 'model_type' and manifest data)
+            List of new model info (dicts with model_id, friendly_name, model_type)
         """
         new_models: list[dict[str, Any]] = []
 
@@ -135,6 +135,9 @@ class ModelCatalogUpdater:
                 if model_id not in local_models[model_type]:
                     new_models.append(
                         {
+                            "model_id": model_id,
+                            "friendly_name": manifest_data.get("friendly_name", model_id),
+                            "emoji": manifest_data.get("emoji", "🤖"),
                             "model_type": model_type,
                             "manifest": manifest_data,
                         }
@@ -184,7 +187,10 @@ class ModelCatalogUpdater:
         Returns:
             Dict with sync results:
             {
-                "new_models": ["MODEL-ID-1", "MODEL-ID-2"],
+                "new_models": [
+                    {"model_id": "...", "friendly_name": "..."},
+                    ...
+                ],
                 "checked_at": "2025-12-24T10:00:00Z",
                 "error": "error message" (if failed)
             }
@@ -212,7 +218,11 @@ class ModelCatalogUpdater:
             # Create stubs for new models
             for new_model in new_models:
                 self.create_model_stub(new_model["model_type"], new_model["manifest"])
-                result["new_models"].append(new_model["manifest"]["model_id"])
+                result["new_models"].append({
+                    "model_id": new_model["model_id"],
+                    "friendly_name": new_model["friendly_name"],
+                    "emoji": new_model["emoji"],
+                })
 
             if result["new_models"]:
                 logger.info(f"Model catalog sync complete: {len(result['new_models'])} new models added")
