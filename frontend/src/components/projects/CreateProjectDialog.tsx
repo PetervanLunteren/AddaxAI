@@ -296,7 +296,7 @@ export function CreateProjectDialog({
                     <FormControl>
                       <Textarea
                         placeholder="Brief description of the project"
-                        className="resize-y min-h-[80px]"
+                        className="resize-y min-h-12"
                         {...field}
                       />
                     </FormControl>
@@ -325,14 +325,21 @@ export function CreateProjectDialog({
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-12">
                           <SelectValue placeholder="Select detection model" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {detectionModels.map((model) => (
                           <SelectItem key={model.model_id} value={model.model_id}>
-                            {model.emoji} {model.friendly_name}
+                            <div className="flex flex-col gap-0.5 items-start text-left">
+                              <div>{model.emoji} {model.friendly_name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {model.description.length > 50
+                                  ? `${model.description.substring(0, 50)}...`
+                                  : model.description}
+                              </div>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -366,14 +373,21 @@ export function CreateProjectDialog({
                       defaultValue={field.value || "none"}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-12">
                           <SelectValue placeholder="Select classification model" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {classificationModels.map((model) => (
                           <SelectItem key={model.model_id} value={model.model_id}>
-                            {model.emoji} {model.friendly_name}
+                            <div className="flex flex-col gap-0.5 items-start text-left">
+                              <div>{model.emoji} {model.friendly_name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {model.description.length > 50
+                                  ? `${model.description.substring(0, 50)}...`
+                                  : model.description}
+                              </div>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>

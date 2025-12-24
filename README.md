@@ -1,6 +1,9 @@
 # AddaxAI-WebUI
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
+# WHEREWASI
+- I just added model descriptions to dropdowns in project creation. 
+
 ## Architecture
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the comprehensive technical architecture, technology stack, and implementation roadmap.
