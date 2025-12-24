@@ -101,7 +101,7 @@ export function EditProjectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Project</DialogTitle>
+          <DialogTitle>Edit project</DialogTitle>
           <DialogDescription>
             Update project details or delete the project
           </DialogDescription>
@@ -114,7 +114,7 @@ export function EditProjectDialog({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Project Name</FormLabel>
+                  <FormLabel>Project name</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., Yellowstone 2024" {...field} />
                   </FormControl>
@@ -131,13 +131,16 @@ export function EditProjectDialog({
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormLabel>Description (optional)</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="Brief description of the project"
                       {...field}
                     />
                   </FormControl>
+                  <FormDescription>
+                    Optional notes about the project's purpose or location
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

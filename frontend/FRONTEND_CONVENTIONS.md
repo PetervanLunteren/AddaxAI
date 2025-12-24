@@ -23,19 +23,21 @@ We use a HSL-based color system defined in `src/index.css`:
 ```css
 --background: 0 0% 100%
 --foreground: 222.2 84% 4.9%
---primary: 183 74% 23%        /* #0f6064 - Teal */
---secondary: 210 40% 96.1%
+--primary: #0f6064              /* Teal - Main brand color */
+--secondary: #e4ecee            /* Light teal - Supporting elements */
+--card-background: #f5f7fb      /* Grey - Card/container backgrounds */
 --accent: 210 40% 96.1%
 --destructive: 0 84.2% 60.2%
 --muted: 210 40% 96.1%
 --border: 214.3 31.8% 91.4%
 ```
 
-**Usage:**
-- Primary: Main actions, important elements
-- Secondary: Supporting actions
-- Destructive: Delete, danger actions
-- Muted: Disabled states, subtle backgrounds
+**Color Usage:**
+- **Primary (#0f6064)**: Main actions, buttons, important elements, checkboxes, brand elements
+- **Secondary (#e4ecee)**: Supporting actions, subtle backgrounds, hover states
+- **Card Background (#f5f7fb)**: Cards, containers, panels, background sections
+- **Destructive**: Delete, danger actions
+- **Muted**: Disabled states, subtle text
 
 ### Typography
 
@@ -361,6 +363,18 @@ onClick={() => {
 - Follow the pattern: imports → component → exports
 - Add JSDoc comments for complex logic
 - Keep components single-purpose
+
+### Text Capitalization
+
+**No Title Case** - Use natural English capitalization throughout the UI:
+- Only capitalize the first word of sentences and proper nouns
+- Examples:
+  - ✅ "Create new project", "Edit project", "Select species"
+  - ✅ "Project name", "Detection model", "Species taxonomy"
+  - ✅ "Cities visited: Utrecht, Amsterdam"
+  - ❌ "Create New Project", "Edit Project", "Select Species"
+  - ❌ "Project Name", "Detection Model", "Species Taxonomy"
+- Proper nouns remain capitalized: "MegaDetector", "SpeciesNet", "Peter van Lunteren"
 
 ## Testing (To Be Implemented)
 

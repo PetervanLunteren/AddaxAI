@@ -105,7 +105,7 @@ export function CreateSiteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create New Site</DialogTitle>
+          <DialogTitle>Create new site</DialogTitle>
           <DialogDescription>
             Add a new site to this project
           </DialogDescription>
@@ -121,10 +121,13 @@ export function CreateSiteDialog({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Site Name</FormLabel>
+                  <FormLabel>Site name</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., North Ridge" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    A descriptive name for this camera trap location
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -140,6 +143,9 @@ export function CreateSiteDialog({
                     <FormControl>
                       <Input type="number" step="any" placeholder="44.4280" {...field} />
                     </FormControl>
+                    <FormDescription>
+                      Decimal degrees (e.g., 44.4280)
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -154,6 +160,9 @@ export function CreateSiteDialog({
                     <FormControl>
                       <Input type="number" step="any" placeholder="-110.5885" {...field} />
                     </FormControl>
+                    <FormDescription>
+                      Decimal degrees (e.g., -110.5885)
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -169,6 +178,9 @@ export function CreateSiteDialog({
                   <FormControl>
                     <Input type="number" placeholder="2000" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    Height above sea level in meters
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -179,10 +191,13 @@ export function CreateSiteDialog({
               name="habitat_type"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Habitat Type</FormLabel>
+                  <FormLabel>Habitat type</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., Forest, Grassland" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    Main vegetation or ecosystem type
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

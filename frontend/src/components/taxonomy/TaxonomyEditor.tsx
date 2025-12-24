@@ -4,14 +4,15 @@
  * Following DEVELOPERS.md principles:
  * - Type hints everywhere
  * - Simple, clear implementation
- * - MVP: Flat list with checkboxes (tree component deferred)
  *
- * Full-screen modal for selecting species classes to monitor.
+ * Hierarchical tree with tri-state checkboxes for selecting species.
  */
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { modelsApi } from "../../api/models";
+import { TreeNode } from "./TreeNode";
+import type { TaxonomyNode } from "../../api/types";
 import {
   Dialog,
   DialogContent,
@@ -21,8 +22,6 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Checkbox } from "../ui/checkbox";
 import { ScrollArea } from "../ui/scroll-area";
 
 interface TaxonomyEditorProps {
@@ -40,10 +39,10 @@ export function TaxonomyEditor({
   selectedClasses,
   onSave,
 }: TaxonomyEditorProps) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [localSelected, setLocalSelected] = useState<Set<string>>(
     new Set(selectedClasses)
   );
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   // Fetch taxonomy when model changes
   const { data: taxonomy, isLoading } = useQuery({
@@ -52,42 +51,97 @@ export function TaxonomyEditor({
     enabled: open && !!modelId,
   });
 
-  // Update local state when selectedClasses prop changes
+  // Update local state when selectedClasses prop changes or when taxonomy loads
   useEffect(() => {
-    setLocalSelected(new Set(selectedClasses));
-  }, [selectedClasses]);
+    if (selectedClasses.length === 0 && taxonomy?.all_classes) {
+      // If no classes selected, default to all classes
+      setLocalSelected(new Set(taxonomy.all_classes));
+    } else {
+      setLocalSelected(new Set(selectedClasses));
+    }
+  }, [selectedClasses, taxonomy?.all_classes]);
 
   const allClasses = taxonomy?.all_classes || [];
-  const filteredClasses = allClasses.filter((cls) =>
-    cls.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const tree = taxonomy?.tree || [];
 
-  const handleToggle = (className: string) => {
+  // Handle node toggle with cascading to children
+  const handleToggle = (nodeId: string, checked: boolean) => {
     const newSelected = new Set(localSelected);
-    if (newSelected.has(className)) {
-      newSelected.delete(className);
-    } else {
-      newSelected.add(className);
-    }
+
+    // Find the node in the tree
+    const findAndToggleNode = (nodes: TaxonomyNode[]): boolean => {
+      for (const node of nodes) {
+        if (node.id === nodeId) {
+          // Toggle this node and all descendants
+          toggleNodeAndDescendants(node, checked, newSelected);
+          return true;
+        }
+        if (node.children && findAndToggleNode(node.children)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    findAndToggleNode(tree);
     setLocalSelected(newSelected);
   };
 
+  // Recursively toggle node and all descendants
+  const toggleNodeAndDescendants = (
+    node: TaxonomyNode,
+    checked: boolean,
+    selectedSet: Set<string>
+  ) => {
+    // If it's a leaf node (model_class), toggle it
+    if (!node.children || node.children.length === 0) {
+      if (checked) {
+        selectedSet.add(node.id);
+      } else {
+        selectedSet.delete(node.id);
+      }
+    } else {
+      // If it's a parent, toggle all descendants
+      for (const child of node.children) {
+        toggleNodeAndDescendants(child, checked, selectedSet);
+      }
+    }
+  };
+
   const handleSelectAll = () => {
-    setLocalSelected(new Set(filteredClasses));
+    setLocalSelected(new Set(allClasses));
   };
 
   const handleDeselectAll = () => {
     setLocalSelected(new Set());
   };
 
-  const handleInvert = () => {
-    const newSelected = new Set<string>();
-    allClasses.forEach((cls) => {
-      if (!localSelected.has(cls)) {
-        newSelected.add(cls);
+  const handleExpandAll = () => {
+    const allNodeIds = new Set<string>();
+    const collectAllNodeIds = (nodes: TaxonomyNode[]) => {
+      for (const node of nodes) {
+        allNodeIds.add(node.id);
+        if (node.children) {
+          collectAllNodeIds(node.children);
+        }
       }
-    });
-    setLocalSelected(newSelected);
+    };
+    collectAllNodeIds(tree);
+    setExpandedNodes(allNodeIds);
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedNodes(new Set());
+  };
+
+  const handleExpand = (nodeId: string, expanded: boolean) => {
+    const newExpanded = new Set(expandedNodes);
+    if (expanded) {
+      newExpanded.add(nodeId);
+    } else {
+      newExpanded.delete(nodeId);
+    }
+    setExpandedNodes(newExpanded);
   };
 
   const handleSave = () => {
@@ -123,7 +177,7 @@ export function TaxonomyEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Configure Species Taxonomy</DialogTitle>
+          <DialogTitle>Configure species taxonomy</DialogTitle>
           <DialogDescription>
             Select which species classes you want to monitor for this project.
             {localSelected.size > 0 && (
@@ -135,13 +189,6 @@ export function TaxonomyEditor({
         </DialogHeader>
 
         <div className="flex-1 flex flex-col gap-4 min-h-0">
-          {/* Search */}
-          <Input
-            placeholder="Search species..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-
           {/* Bulk actions */}
           <div className="flex gap-2">
             <Button
@@ -150,7 +197,7 @@ export function TaxonomyEditor({
               onClick={handleSelectAll}
               disabled={isLoading}
             >
-              Select All {searchQuery && `(${filteredClasses.length})`}
+              Select all ({allClasses.length})
             </Button>
             <Button
               variant="outline"
@@ -158,44 +205,50 @@ export function TaxonomyEditor({
               onClick={handleDeselectAll}
               disabled={isLoading}
             >
-              Deselect All
+              Deselect all
+            </Button>
+            <div className="flex-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExpandAll}
+              disabled={isLoading}
+            >
+              Expand all
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={handleInvert}
+              onClick={handleCollapseAll}
               disabled={isLoading}
             >
-              Invert Selection
+              Collapse all
             </Button>
           </div>
 
-          {/* Species list */}
+          {/* Taxonomy tree */}
           <ScrollArea className="flex-1 border rounded-md">
             {isLoading ? (
               <div className="p-4 text-center text-muted-foreground">
                 Loading taxonomy...
               </div>
-            ) : filteredClasses.length === 0 ? (
+            ) : tree.length === 0 ? (
               <div className="p-4 text-center text-muted-foreground">
-                {searchQuery ? "No species found" : "No species available"}
+                No taxonomy available
               </div>
             ) : (
-              <div className="p-4 space-y-2">
-                {filteredClasses.map((className) => (
-                  <div
-                    key={className}
-                    className="flex items-center space-x-2 p-2 hover:bg-accent rounded-md cursor-pointer"
-                    onClick={() => handleToggle(className)}
-                  >
-                    <Checkbox
-                      checked={localSelected.has(className)}
-                      onCheckedChange={() => handleToggle(className)}
-                    />
-                    <label className="flex-1 cursor-pointer capitalize">
-                      {className}
-                    </label>
-                  </div>
+              <div className="p-4">
+                {tree.map((node, index) => (
+                  <TreeNode
+                    key={node.id}
+                    node={node}
+                    level={0}
+                    selectedClasses={localSelected}
+                    onToggle={handleToggle}
+                    expandedNodes={expandedNodes}
+                    onExpand={handleExpand}
+                    isLastChild={index === tree.length - 1}
+                  />
                 ))}
               </div>
             )}

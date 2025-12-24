@@ -1,5 +1,5 @@
 /**
- * Edit Site Dialog.
+ * Edit site Dialog.
  */
 
 import { useEffect } from "react";
@@ -128,7 +128,7 @@ export function EditSiteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Site</DialogTitle>
+          <DialogTitle>Edit site</DialogTitle>
           <DialogDescription>
             Update site details or delete the site
           </DialogDescription>
@@ -144,10 +144,13 @@ export function EditSiteDialog({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Site Name</FormLabel>
+                  <FormLabel>Site name</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., North Ridge" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    A descriptive name for this camera trap location
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -163,6 +166,9 @@ export function EditSiteDialog({
                     <FormControl>
                       <Input type="number" step="any" placeholder="44.4280" {...field} />
                     </FormControl>
+                    <FormDescription>
+                      Decimal degrees (e.g., 44.4280)
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -177,6 +183,9 @@ export function EditSiteDialog({
                     <FormControl>
                       <Input type="number" step="any" placeholder="-110.5885" {...field} />
                     </FormControl>
+                    <FormDescription>
+                      Decimal degrees (e.g., -110.5885)
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -192,6 +201,9 @@ export function EditSiteDialog({
                   <FormControl>
                     <Input type="number" placeholder="2000" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    Height above sea level in meters
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -202,10 +214,13 @@ export function EditSiteDialog({
               name="habitat_type"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Habitat Type</FormLabel>
+                  <FormLabel>Habitat type</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., Forest, Grassland" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    Main vegetation or ecosystem type
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
