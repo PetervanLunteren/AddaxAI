@@ -60,6 +60,18 @@ class ModelPrepareResponse(BaseModel):
     task_id: str
 
 
+class ModelInfo(BaseModel):
+    """Model information for UI display."""
+
+    model_id: str
+    friendly_name: str
+    emoji: str
+    type: Literal["detection", "classification"]
+    description: str
+    developer: str | None = None
+    info_url: str | None = None
+
+
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
 async def get_model_status(model_id: str) -> ModelStatusResponse:
     """
@@ -406,3 +418,134 @@ def get_model_updates(request: Request) -> dict:
         "checked_at": None
     })
     return updates
+
+
+@router.get("/models/detection", response_model=list[ModelInfo])
+def list_detection_models() -> list[ModelInfo]:
+    """
+    List all available detection models.
+
+    Returns model metadata for UI dropdowns.
+    """
+    manifest_mgr, _, _ = _get_managers()
+    models = manifest_mgr.get_detection_models()
+
+    return [
+        ModelInfo(
+            model_id=manifest.model_id,
+            friendly_name=manifest.friendly_name,
+            emoji=manifest.emoji,
+            type="detection",
+            description=manifest.description or "",
+            developer=manifest.developer,
+            info_url=manifest.info_url,
+        )
+        for manifest in models.values()
+    ]
+
+
+@router.get("/models/classification", response_model=list[ModelInfo])
+def list_classification_models() -> list[ModelInfo]:
+    """
+    List all available classification models.
+
+    Returns model metadata for UI dropdowns.
+    Includes a "None" option for projects without classification.
+    """
+    manifest_mgr, _, _ = _get_managers()
+    models = manifest_mgr.get_classification_models()
+
+    # Add "None" option first
+    result = [
+        ModelInfo(
+            model_id="none",
+            friendly_name="No classification",
+            emoji="⊘",
+            type="classification",
+            description="Run detection only, without species classification",
+        )
+    ]
+
+    # Add actual classification models
+    result.extend([
+        ModelInfo(
+            model_id=manifest.model_id,
+            friendly_name=manifest.friendly_name,
+            emoji=manifest.emoji,
+            type="classification",
+            description=manifest.description or "",
+            developer=manifest.developer,
+            info_url=manifest.info_url,
+        )
+        for manifest in models.values()
+    ])
+
+    return result
+
+
+@router.get("/models/{model_id}/taxonomy")
+def get_model_taxonomy(model_id: str):
+    """
+    Get taxonomy tree for a classification model.
+
+    Returns the hierarchical taxonomy structure and a flat list of all species.
+    Reads from ~/AddaxAI/models/cls/{model_id}/taxonomy.csv
+
+    Args:
+        model_id: Classification model identifier (e.g., "NAM-ADS-v1")
+
+    Returns:
+        {
+            "tree": list[TaxonomyNode],  # Hierarchical tree structure
+            "all_classes": list[str]      # Flat list of all model_class values
+        }
+
+    Raises:
+        404: If model not found or no taxonomy.csv exists
+        500: If taxonomy.csv parsing fails
+    """
+    from pathlib import Path
+    from app.ml.taxonomy_parser import parse_taxonomy_csv, get_all_leaf_classes
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    manifest_mgr, _, _ = _get_managers()
+
+    # Validate model exists
+    try:
+        manifest = manifest_mgr.get_model(model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    # Only classification models have taxonomy
+    if manifest.type in ("detection", "base"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {model_id} is a detection model and does not have taxonomy"
+        )
+
+    # Find taxonomy.csv in model directory
+    # Look in ~/AddaxAI/models/cls/{model_id}/taxonomy.csv
+    taxonomy_path = settings.user_data_dir / "models" / "cls" / model_id / "taxonomy.csv"
+
+    if not taxonomy_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Taxonomy file not found for model {model_id}. "
+                   f"Expected at: {taxonomy_path}"
+        )
+
+    try:
+        tree = parse_taxonomy_csv(taxonomy_path)
+        all_classes = get_all_leaf_classes(tree)
+
+        return {
+            "tree": tree,
+            "all_classes": all_classes
+        }
+    except Exception as e:
+        logger.error(f"Failed to parse taxonomy for {model_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse taxonomy: {str(e)}"
+        )

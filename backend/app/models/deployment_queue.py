@@ -49,18 +49,7 @@ class DeploymentQueue(Base):
         String(36), ForeignKey("sites.id", ondelete="SET NULL"), nullable=True
     )
 
-    # Step 3: Models
-    detection_model_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
-    )  # e.g., "megadetector_v5a"
-    classification_model_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
-    )  # e.g., "EUR-DF-v1-3"
-
-    # Step 4: Species
-    species_list: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True
-    )  # List of expected species
+    # Model configuration now inherited from project (not per-deployment)
 
     # Processing status
     status: Mapped[str] = mapped_column(

@@ -3,15 +3,12 @@ Model manifest schema for ML models.
 
 Following DEVELOPERS.md principles:
 - Type hints everywhere
-- Explicit validation
 - Clear documentation
 
 Based on proven patterns from streamlit-AddaxAI.
 """
 
-from typing import Literal
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ModelManifest(BaseModel):
@@ -23,29 +20,26 @@ class ModelManifest(BaseModel):
     """
 
     # Identity
-    model_id: str = Field(..., description="Unique identifier for the model (e.g., 'MD5A-0-0', 'NAM-ADS-v1')")
-    friendly_name: str = Field(..., description="Human-readable display name")
-    emoji: str = Field(..., description="Emoji icon for UI display")
-    type: Literal["detection", "classification"] = Field(..., description="Model type")
+    model_id: str
+    friendly_name: str
+    emoji: str
+    type: str
 
     # Environment & Model Files
-    env: str = Field(..., description="Environment name (points to envs/{env}/ directory)")
-    model_fname: str = Field(..., description="Model weights filename (e.g., 'md_v5a.0.0.pt')")
-    hf_repo: str | None = Field(None, description="HuggingFace repo (defaults to Addax-Data-Science/{model_id})")
+    env: str
+    model_fname: str
+    hf_repo: str | None = None
 
     # Metadata
-    description: str = Field(..., description="Detailed description of the model")
-    developer: str = Field(..., description="Organization or person who created the model")
-    citation: str | None = Field(None, description="DOI or URL for academic citation")
-    license: str | None = Field(None, description="License type or URL")
-    info_url: str = Field(..., description="Website with more information")
-    min_app_version: str = Field(..., description="Minimum AddaxAI version required (e.g., '0.1.0')")
-
-    # Runtime Configuration
-    confidence_threshold: float = Field(0.1, description="Minimum confidence threshold for detections")
+    description: str
+    developer: str
+    citation: str | None = None
+    license: str | None = None
+    info_url: str
+    min_app_version: str
 
     # Classification-specific
-    species_list: list[str] | None = Field(None, description="List of species this classifier can recognize")
+    species_list: list[str] | None = None
 
     class Config:
         """Pydantic config."""
@@ -64,6 +58,5 @@ class ModelManifest(BaseModel):
                 "license": "MIT",
                 "info_url": "https://github.com/agentmorris/MegaDetector",
                 "min_app_version": "0.1.0",
-                "confidence_threshold": 0.1,
             }
         }

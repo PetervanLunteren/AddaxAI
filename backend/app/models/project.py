@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -40,6 +40,17 @@ class Project(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Model configuration (project-scoped)
+    detection_model_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="MD5A-0-0"
+    )
+    classification_model_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    taxonomy_config: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict
     )
 
     # Relationships

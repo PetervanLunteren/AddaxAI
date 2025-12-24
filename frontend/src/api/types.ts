@@ -10,17 +10,32 @@
 export interface ProjectCreate {
   name: string;
   description?: string | null;
+  detection_model_id: string;
+  classification_model_id: string | null;
+  taxonomy_config: {
+    selected_classes: string[];
+  };
 }
 
 export interface ProjectUpdate {
   name?: string | null;
   description?: string | null;
+  detection_model_id?: string | null;
+  classification_model_id?: string | null;
+  taxonomy_config?: {
+    selected_classes: string[];
+  } | null;
 }
 
 export interface ProjectResponse {
   id: string;
   name: string;
   description: string | null;
+  detection_model_id: string;
+  classification_model_id: string | null;
+  taxonomy_config: {
+    selected_classes: string[];
+  };
   created_at: string;
   updated_at: string;
 }
@@ -172,3 +187,28 @@ export const CLASSIFICATION_MODELS: ClassificationModel[] = [
   "EUR-DF-v1-3",
   "NAM-ADS-v1",
 ];
+
+// Model Info types (for UI dropdowns)
+export interface ModelInfo {
+  model_id: string;
+  friendly_name: string;
+  emoji: string;
+  type: "detection" | "classification";
+  description: string;
+  developer?: string | null;
+  info_url?: string | null;
+}
+
+// Taxonomy types
+export interface TaxonomyNode {
+  id: string;
+  name: string;
+  level: number;
+  children: TaxonomyNode[];
+  selected: boolean;
+}
+
+export interface TaxonomyResponse {
+  tree: TaxonomyNode[];
+  all_classes: string[];
+}

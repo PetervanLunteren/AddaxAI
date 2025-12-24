@@ -146,9 +146,44 @@ class ModelCatalogUpdater:
 
         return new_models
 
+    def download_taxonomy(self, model_id: str, model_dir: Path) -> None:
+        """
+        Download taxonomy.csv from HuggingFace repo.
+
+        Args:
+            model_id: Model ID (used to construct HF repo URL)
+            model_dir: Local directory to save taxonomy.csv
+
+        Raises:
+            Never raises - logs errors and continues
+        """
+        # Construct HuggingFace URL
+        hf_repo = f"Addax-Data-Science/{model_id}"
+        taxonomy_url = f"https://huggingface.co/{hf_repo}/resolve/main/taxonomy.csv?download=true"
+        taxonomy_path = model_dir / "taxonomy.csv"
+
+        try:
+            logger.info(f"Downloading taxonomy.csv from {taxonomy_url}")
+
+            with urllib.request.urlopen(taxonomy_url, timeout=5) as response:
+                data = response.read()
+
+            with open(taxonomy_path, "wb") as f:
+                f.write(data)
+
+            logger.info(f"Downloaded taxonomy.csv for {model_id}")
+
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                logger.debug(f"No taxonomy.csv found for {model_id} (404)")
+            else:
+                logger.warning(f"Failed to download taxonomy.csv for {model_id}: HTTP {e.code}")
+        except Exception as e:
+            logger.warning(f"Failed to download taxonomy.csv for {model_id}: {e}")
+
     def create_model_stub(self, model_type: str, manifest_data: dict[str, Any]) -> None:
         """
-        Create model directory with manifest.json.
+        Create model directory with manifest.json and taxonomy.csv.
 
         Args:
             model_type: 'det' or 'cls'
@@ -176,6 +211,10 @@ class ModelCatalogUpdater:
                 json.dump(manifest_data, f, indent=2)
 
             logger.info(f"Created manifest for {model_type}/{model_id}")
+
+            # Download taxonomy.csv (only for classification models)
+            if model_type == "cls":
+                self.download_taxonomy(model_id, model_dir)
 
         except Exception as e:
             logger.error(f"Failed to create model stub for {model_type}/{model_id}: {e}", exc_info=True)

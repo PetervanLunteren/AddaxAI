@@ -17,6 +17,9 @@ class ProjectBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
     description: str | None = Field(None, description="Optional project description")
+    detection_model_id: str = Field(..., description="Detection model ID (e.g., 'MD5A-0-0')")
+    classification_model_id: str | None = Field(None, description="Classification model ID or null for detection-only")
+    taxonomy_config: dict = Field(default_factory=dict, description="Selected species classes configuration")
 
 
 class ProjectCreate(ProjectBase):
@@ -38,6 +41,9 @@ class ProjectUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
+    detection_model_id: str | None = None
+    classification_model_id: str | None = None
+    taxonomy_config: dict | None = None
 
 
 class ProjectResponse(ProjectBase):

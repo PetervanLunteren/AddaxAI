@@ -204,19 +204,6 @@
         "min_app_version": "0.1.0"
       },
       {
-        "model_id": "PAN-SDZWA-v1",
-        "friendly_name": "Peruvian Andes",
-        "emoji": "\ud83c\uddf5\ud83c\uddea",
-        "type": "sdzwa-pt",
-        "env": "pytorch",
-        "model_fname": "andes_v1.pt",
-        "description": "This model distinguishes between 53 species native to the Peruvian Andes. The training data was collected by SDZWA and comprises 201,943 images. We used a 70/20/10 Train/Val/Test split. The model reached an overall accuracy, precision, and recall of 88.9%, 88.6%, and 87.3% respectively on the test set.",
-        "developer": "San Diego Zoo Wildlife Alliance",
-        "license": "https://opensource.org/license/mit",
-        "info_url": "https://github.com/conservationtechlab",
-        "min_app_version": "0.1.0"
-      },
-      {
         "model_id": "IRA-ADS-v1",
         "friendly_name": "Iran",
         "emoji": "\ud83c\uddee\ud83c\uddf7",
@@ -270,20 +257,6 @@
         "citation": "https://jglobal.jst.go.jp/en/detail?JGLOBAL_ID=201902236803626745",
         "license": "https://github.com/gifu-wildlife/MDetToolsForJCameraTraps?tab=MIT-1-ov-file",
         "info_url": "https://github.com/gifu-wildlife/TrainingMdetClassifire",
-        "min_app_version": "0.1.0"
-      },
-      {
-        "model_id": "NZS-WEK-v1",
-        "friendly_name": "New Zealand species (Alita v1)",
-        "emoji": "\ud83c\uddf3\ud83c\uddff",
-        "type": "alita",
-        "env": "pytorch",
-        "model_fname": "Exp_46_Run_21_best_weights.pt",
-        "description": "Model to identify 77 species or higher-level taxons present in New Zealand. The model was trained on a set of camera trap images from various projects across the country. These projects were run by multiple organizations and took place in a diverse range of habitats, using a variety of trail camera brands and models. When tested on a balanced out-of-sample test set of 6,372 images, the model scored 0.90 and 0.95 for balanced accuracy and macro average precision, respectively. The model was designed to expedite the monitoring of New Zealand species, including native species.",
-        "developer": "wekaResearch",
-        "owner": "New Zealand Department of Conservation",
-        "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "info_url": "https://wekaresearch.com/",
         "min_app_version": "0.1.0"
       }
     ]

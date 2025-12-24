@@ -127,20 +127,20 @@ class ManifestManager:
         return manifests[model_id]
 
     def get_detection_models(self) -> dict[str, ModelManifest]:
-        """Get all detection models."""
+        """Get all detection models (includes 'base' type models)."""
         manifests = self.load_manifests()
         return {
             model_id: manifest
             for model_id, manifest in manifests.items()
-            if manifest.type == "detection"
+            if manifest.type in ("detection", "base")
         }
 
     def get_classification_models(self) -> dict[str, ModelManifest]:
-        """Get all classification models."""
+        """Get all classification models (excludes detection and base types)."""
         manifests = self.load_manifests()
         return {
             model_id: manifest
             for model_id, manifest in manifests.items()
-            if manifest.type == "classification"
+            if manifest.type not in ("detection", "base")
         }
 

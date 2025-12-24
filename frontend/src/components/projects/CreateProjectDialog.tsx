@@ -7,12 +7,22 @@
  * - Explicit error handling
  */
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { projectsApi, type ProjectCreate } from "../../api/projects";
+import { modelsApi } from "../../api/models";
+import { TaxonomyEditor } from "../taxonomy/TaxonomyEditor";
 import { Button } from "../ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +45,11 @@ import { Input } from "../ui/input";
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
   description: z.string().max(500, "Description too long").optional(),
+  detection_model_id: z.string().min(1, "Detection model is required"),
+  classification_model_id: z.string().nullable(),
+  taxonomy_config: z.object({
+    selected_classes: z.array(z.string()),
+  }),
 });
 
 interface CreateProjectDialogProps {
@@ -47,12 +62,29 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
+  const [taxonomyEditorOpen, setTaxonomyEditorOpen] = useState(false);
+
+  // Fetch available models
+  const { data: detectionModels = [] } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
+    enabled: open,
+  });
+
+  const { data: classificationModels = [] } = useQuery({
+    queryKey: ["models", "classification"],
+    queryFn: () => modelsApi.listClassificationModels(),
+    enabled: open,
+  });
 
   const form = useForm<ProjectCreate>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
       name: "",
       description: "",
+      detection_model_id: "MD5A-0-0",
+      classification_model_id: null,
+      taxonomy_config: { selected_classes: [] },
     },
   });
 
@@ -110,7 +142,7 @@ export function CreateProjectDialog({
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormLabel>Description (optional)</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="Brief description of the project"
@@ -121,6 +153,80 @@ export function CreateProjectDialog({
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name="detection_model_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Detection model</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select detection model" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {detectionModels.map((model) => (
+                        <SelectItem key={model.model_id} value={model.model_id}>
+                          {model.emoji} {model.friendly_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="classification_model_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Classification model (optional)</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                    defaultValue={field.value || "none"}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select classification model" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {classificationModels.map((model) => (
+                        <SelectItem key={model.model_id} value={model.model_id}>
+                          {model.emoji} {model.friendly_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Taxonomy configuration button */}
+            {form.watch("classification_model_id") && form.watch("classification_model_id") !== "none" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Species Taxonomy</label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setTaxonomyEditorOpen(true)}
+                  >
+                    Configure Species ({form.watch("taxonomy_config")?.selected_classes?.length || 0} selected)
+                  </Button>
+                  {form.watch("taxonomy_config")?.selected_classes?.length === 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      Default: All species enabled
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {form.formState.errors.root && (
               <p className="text-sm font-medium text-destructive">
@@ -143,6 +249,17 @@ export function CreateProjectDialog({
           </form>
         </Form>
       </DialogContent>
+
+      {/* Taxonomy Editor */}
+      <TaxonomyEditor
+        open={taxonomyEditorOpen}
+        onOpenChange={setTaxonomyEditorOpen}
+        modelId={form.watch("classification_model_id")}
+        selectedClasses={form.watch("taxonomy_config")?.selected_classes || []}
+        onSave={(selectedClasses) => {
+          form.setValue("taxonomy_config", { selected_classes: selectedClasses });
+        }}
+      />
     </Dialog>
   );
 }

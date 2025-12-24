@@ -45,8 +45,42 @@ def create_project(
     """
     Create a new project.
 
+    Validates that selected models exist before creating project.
+    Normalizes "none" to NULL for classification_model_id.
+
+    Returns 400 if model IDs are invalid.
     Returns 409 if project name already exists.
     """
+    from app.ml.manifest_manager import ManifestManager
+    from app.core.config import get_settings
+
+    # Validate models exist
+    settings = get_settings()
+    manifest_mgr = ManifestManager(settings.user_data_dir / "models")
+
+    # Validate detection model
+    try:
+        manifest_mgr.get_model(project.detection_model_id)
+    except ValueError:
+        logger.warning(f"Invalid detection model: {project.detection_model_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Detection model '{project.detection_model_id}' not found",
+        )
+
+    # Normalize "none" to NULL and validate classification model
+    if project.classification_model_id == "none":
+        project.classification_model_id = None
+    elif project.classification_model_id is not None:
+        try:
+            manifest_mgr.get_model(project.classification_model_id)
+        except ValueError:
+            logger.warning(f"Invalid classification model: {project.classification_model_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Classification model '{project.classification_model_id}' not found",
+            )
+
     try:
         db_project = crud_project.create_project(db, project)
         logger.info(f"Created project: {project.name} (ID: {db_project.id})")
