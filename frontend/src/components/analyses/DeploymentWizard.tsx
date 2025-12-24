@@ -1,18 +1,18 @@
 /**
- * Deployment Wizard - 4-step wizard for creating deployment queue entries.
+ * Deployment Wizard - 3-step wizard for creating deployment queue entries.
  *
  * Steps:
  * 1. Data - folder selection
  * 2. Deployment - site selection
- * 3. Model - detection and classification models
- * 4. Species - expected species (optional)
+ * 3. Species - expected species (optional)
+ *
+ * Note: Detection and classification models are now configured at the project level.
  */
 
 import { useState } from "react";
 import { Wizard, WizardStep } from "@/components/wizard/Wizard";
 import { StepData } from "./StepData";
 import { StepDeployment } from "./StepDeployment";
-import { StepModel } from "./StepModel";
 import { StepSpecies } from "./StepSpecies";
 import { useAddToQueue } from "@/hooks/useDeploymentQueue";
 
@@ -24,8 +24,6 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
   // Wizard state
   const [folderPath, setFolderPath] = useState("");
   const [siteId, setSiteId] = useState<string | null>(null);
-  const [detectionModelId, setDetectionModelId] = useState<string | null>(null);
-  const [classificationModelId, setClassificationModelId] = useState<string | null>(null);
   const [speciesList, setSpeciesList] = useState<string[]>([]);
 
   const addToQueue = useAddToQueue();
@@ -33,8 +31,6 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
   const resetWizard = () => {
     setFolderPath("");
     setSiteId(null);
-    setDetectionModelId(null);
-    setClassificationModelId(null);
     setSpeciesList([]);
   };
 
@@ -44,8 +40,8 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
         project_id: projectId,
         folder_path: folderPath,
         site_id: siteId,
-        detection_model_id: detectionModelId,
-        classification_model_id: classificationModelId,
+        detection_model_id: null, // Models come from project settings
+        classification_model_id: null, // Models come from project settings
         species_list: speciesList.length > 0 ? { species: speciesList } : null,
       });
 
@@ -62,7 +58,7 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
 
   return (
     <Wizard
-      steps={["Data", "Deployment", "Model", "Species"]}
+      steps={["Data", "Deployment", "Species"]}
       onComplete={handleComplete}
       onReset={resetWizard}
       submitLabel="Add to Queue"
@@ -81,15 +77,6 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
       </WizardStep>
 
       <WizardStep stepIndex={2}>
-        <StepModel
-          detectionModelId={detectionModelId}
-          classificationModelId={classificationModelId}
-          onDetectionModelChange={setDetectionModelId}
-          onClassificationModelChange={setClassificationModelId}
-        />
-      </WizardStep>
-
-      <WizardStep stepIndex={3}>
         <StepSpecies speciesList={speciesList} onSpeciesChange={setSpeciesList} />
       </WizardStep>
     </Wizard>

@@ -4,8 +4,8 @@ Queue processor service for deployment queue.
 Processes deployment queue entries sequentially:
 1. Create deployment
 2. Scan folder for files
-3. Run detection model
-4. Run classification model (if specified)
+3. Run detection model (from project settings)
+4. Run classification model (from project settings, if configured)
 
 Following DEVELOPERS.md principles:
 - Crash early on errors
@@ -16,6 +16,7 @@ Following DEVELOPERS.md principles:
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
+from app.api.crud import project as crud_project
 from app.core.logging_config import get_logger
 from app.models import DeploymentQueue
 
@@ -27,17 +28,31 @@ def process_queue_entry(db: Session, entry: DeploymentQueue) -> None:
     Process a single queue entry.
 
     Steps:
-    1. Create deployment from entry data
-    2. Scan folder and create file records
-    3. Run detection model
-    4. Run classification model (if specified)
-    5. Update entry status to completed or failed
+    1. Get project to retrieve model configuration
+    2. Create deployment from entry data
+    3. Scan folder and create file records
+    4. Run detection model (from project)
+    5. Run classification model (from project, if configured)
+    6. Update entry status to completed or failed
+
+    Models are now configured at the project level, not per-deployment.
+    Legacy entries may still have model IDs, but they will be ignored in favor of project settings.
 
     Crashes on errors - caller should handle exceptions.
     """
     logger.info(f"Processing queue entry: {entry.id}")
 
     try:
+        # Get project to retrieve model configuration
+        project = crud_project.get_project(db, entry.project_id)
+        if not project:
+            raise ValueError(f"Project {entry.project_id} not found")
+
+        detection_model_id = project.detection_model_id
+        classification_model_id = project.classification_model_id
+
+        logger.info(f"Using models from project {project.id}: detection={detection_model_id}, classification={classification_model_id}")
+
         # TODO: Implement deployment creation
         # deployment = create_deployment_from_queue_entry(db, entry)
 
@@ -45,11 +60,11 @@ def process_queue_entry(db: Session, entry: DeploymentQueue) -> None:
         # scan_and_import_files(db, deployment.id, entry.folder_path)
 
         # TODO: Implement model execution
-        # if entry.detection_model_id:
-        #     run_detection_model(db, deployment.id, entry.detection_model_id)
+        # if detection_model_id:
+        #     run_detection_model(db, deployment.id, detection_model_id)
 
-        # if entry.classification_model_id:
-        #     run_classification_model(db, deployment.id, entry.classification_model_id)
+        # if classification_model_id and classification_model_id != "none":
+        #     run_classification_model(db, deployment.id, classification_model_id, project.taxonomy_config)
 
         # Update status to completed
         crud_queue.update_queue_status(

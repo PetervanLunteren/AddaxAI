@@ -1,14 +1,14 @@
 /**
- * Edit Project Dialog.
+ * Duplicate Project Dialog.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, AlertTriangle } from "lucide-react";
-import { projectsApi, type ProjectUpdate, type ProjectResponse } from "../../api/projects";
+import { Info } from "lucide-react";
+import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -21,7 +21,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -38,78 +37,78 @@ import {
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
-  description: z
-    .string()
-    .max(500, "Description too long")
-    .optional()
-    .transform((val) => (val === "" ? undefined : val)),
+  description: z.string().max(500, "Description too long").optional(),
+  detection_model_id: z.string().min(1, "Detection model is required"),
+  classification_model_id: z.string().nullable(),
+  taxonomy_config: z.object({
+    selected_classes: z.array(z.string()),
+  }),
 });
 
-interface EditProjectDialogProps {
-  project: ProjectResponse;
+interface DuplicateProjectDialogProps {
+  project: ProjectResponse | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function EditProjectDialog({
+export function DuplicateProjectDialog({
   project,
   open,
   onOpenChange,
-}: EditProjectDialogProps) {
+}: DuplicateProjectDialogProps) {
   const queryClient = useQueryClient();
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  const form = useForm<ProjectUpdate>({
+  const form = useForm<ProjectCreate>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
-      name: project.name,
-      description: project.description || "",
+      name: "",
+      description: "",
+      detection_model_id: project?.detection_model_id || "MD5A-0-0",
+      classification_model_id: project?.classification_model_id || null,
+      taxonomy_config: project?.taxonomy_config || { selected_classes: [] },
     },
   });
 
   // Reset form when project changes
   useEffect(() => {
-    form.reset({
-      name: project.name,
-      description: project.description || "",
-    });
+    if (project) {
+      form.reset({
+        name: "",
+        description: "",
+        detection_model_id: project.detection_model_id,
+        classification_model_id: project.classification_model_id,
+        taxonomy_config: project.taxonomy_config,
+      });
+    }
   }, [project, form]);
 
-  // Reset delete confirmation when dialog opens/closes
-  useEffect(() => {
-    if (!open) {
-      setShowDeleteConfirm(false);
-      setDeleteConfirmText("");
-    }
-  }, [open]);
-
-  const updateMutation = useMutation({
-    mutationFn: (data: ProjectUpdate) => projectsApi.update(project.id, data),
+  const createMutation = useMutation({
+    mutationFn: (data: ProjectCreate) => projectsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", project.id] });
+      form.reset();
       onOpenChange(false);
     },
     onError: (error: Error) => {
       form.setError("root", {
-        message: error.message || "Failed to update project",
+        message: error.message || "Failed to duplicate project",
       });
     },
   });
 
-
-  const onSubmit = (data: ProjectUpdate) => {
-    updateMutation.mutate(data);
+  const onSubmit = (data: ProjectCreate) => {
+    createMutation.mutate(data);
   };
+
+  if (!project) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit project</DialogTitle>
+          <DialogTitle>Duplicate project</DialogTitle>
           <DialogDescription>
-            Update project name and description
+            Create a copy of "{project.name}" with the same models and taxonomy configuration
           </DialogDescription>
         </DialogHeader>
 
@@ -129,13 +128,13 @@ export function EditProjectDialog({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            A unique name for your project
+                            A unique name for the duplicated project
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Yellowstone 2024" {...field} />
+                      <Input placeholder="e.g., Yellowstone 2024 (Copy)" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -174,7 +173,7 @@ export function EditProjectDialog({
 
               <div className="rounded-lg border bg-muted/50 p-4">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> To edit detection/classification models and taxonomy configuration, open the project and go to Settings.
+                  <strong>Note:</strong> The duplicated project will use the same detection model, classification model, and taxonomy configuration as the original.
                 </p>
               </div>
 
@@ -192,8 +191,8 @@ export function EditProjectDialog({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? "Saving..." : "Save changes"}
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? "Duplicating..." : "Duplicate project"}
                 </Button>
               </DialogFooter>
             </TooltipProvider>

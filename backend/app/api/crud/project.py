@@ -44,6 +44,9 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
     db_project = Project(
         name=project.name,
         description=project.description,
+        detection_model_id=project.detection_model_id,
+        classification_model_id=project.classification_model_id,
+        taxonomy_config=project.taxonomy_config if project.taxonomy_config else {},
     )
     db.add(db_project)
     db.commit()

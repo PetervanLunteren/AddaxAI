@@ -425,12 +425,12 @@ def list_detection_models() -> list[ModelInfo]:
     """
     List all available detection models.
 
-    Returns model metadata for UI dropdowns.
+    Returns model metadata for UI dropdowns, sorted alphabetically by friendly_name.
     """
     manifest_mgr, _, _ = _get_managers()
     models = manifest_mgr.get_detection_models()
 
-    return [
+    model_list = [
         ModelInfo(
             model_id=manifest.model_id,
             friendly_name=manifest.friendly_name,
@@ -443,13 +443,16 @@ def list_detection_models() -> list[ModelInfo]:
         for manifest in models.values()
     ]
 
+    # Sort alphabetically by friendly_name
+    return sorted(model_list, key=lambda m: m.friendly_name)
+
 
 @router.get("/models/classification", response_model=list[ModelInfo])
 def list_classification_models() -> list[ModelInfo]:
     """
     List all available classification models.
 
-    Returns model metadata for UI dropdowns.
+    Returns model metadata for UI dropdowns, sorted alphabetically by friendly_name.
     Includes a "None" option for projects without classification.
     """
     manifest_mgr, _, _ = _get_managers()
@@ -466,8 +469,8 @@ def list_classification_models() -> list[ModelInfo]:
         )
     ]
 
-    # Add actual classification models
-    result.extend([
+    # Add actual classification models, sorted alphabetically
+    model_list = [
         ModelInfo(
             model_id=manifest.model_id,
             friendly_name=manifest.friendly_name,
@@ -478,7 +481,10 @@ def list_classification_models() -> list[ModelInfo]:
             info_url=manifest.info_url,
         )
         for manifest in models.values()
-    ])
+    ]
+
+    # Sort alphabetically by friendly_name
+    result.extend(sorted(model_list, key=lambda m: m.friendly_name))
 
     return result
 

@@ -6,11 +6,12 @@
  * - Simple, clear structure
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Plus, Settings } from "lucide-react";
+import { Plus, Pencil, Copy, Trash2, Calendar, Scan, PawPrint, ListChecks, ScrollText } from "lucide-react";
 import { projectsApi, type ProjectResponse } from "../api/projects";
+import { modelsApi } from "../api/models";
 import { logger } from "../lib/logger";
 import { Button } from "../components/ui/button";
 import {
@@ -22,16 +23,54 @@ import {
 } from "../components/ui/card";
 import { CreateProjectDialog } from "../components/projects/CreateProjectDialog";
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
+import { DuplicateProjectDialog } from "../components/projects/DuplicateProjectDialog";
+import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectResponse | null>(null);
+  const [duplicatingProject, setDuplicatingProject] = useState<ProjectResponse | null>(null);
+  const [deletingProject, setDeletingProject] = useState<ProjectResponse | null>(null);
 
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ["projects"],
     queryFn: () => projectsApi.getProjects(),
   });
+
+  // Debug: log projects data to see classification_model_id values
+  useEffect(() => {
+    if (projects) {
+      console.log("Projects data:", projects);
+      projects.forEach(p => {
+        console.log(`Project "${p.name}":`, {
+          detection_model_id: p.detection_model_id,
+          classification_model_id: p.classification_model_id,
+          taxonomy_config: p.taxonomy_config
+        });
+      });
+    }
+  }, [projects]);
+
+  const { data: detectionModels = [] } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
+  });
+
+  const { data: classificationModels = [] } = useQuery({
+    queryKey: ["models", "classification"],
+    queryFn: () => modelsApi.listClassificationModels(),
+  });
+
+  // Helper to get model name by ID
+  const getModelName = (modelId: string | null, type: "detection" | "classification") => {
+    if (!modelId || modelId === "none") return "None";
+    const models = type === "detection" ? detectionModels : classificationModels;
+    console.log(`Getting ${type} model name for:`, modelId, "Available models:", models);
+    const model = models.find((m) => m.model_id === modelId);
+    console.log(`Found model:`, model);
+    return model ? `${model.emoji} ${model.friendly_name}` : modelId;
+  };
 
   // Log errors
   if (error) {
@@ -74,49 +113,114 @@ export function ProjectsPage() {
             {projects.map((project: ProjectResponse) => (
               <Card
                 key={project.id}
-                className="transition-shadow hover:shadow-lg"
+                className="transition-shadow hover:shadow-lg cursor-pointer"
+                onClick={() => {
+                  logger.info(`User navigated to project: ${project.name}`, {
+                    projectId: project.id,
+                  });
+                  navigate(`/projects/${project.id}/analyses`);
+                }}
               >
-                <CardHeader
-                  className="cursor-pointer"
-                  onClick={() => {
-                    logger.info(`User navigated to project: ${project.name}`, {
-                      projectId: project.id,
-                    });
-                    navigate(`/projects/${project.id}/analyses`);
-                  }}
-                >
+                <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle>{project.name}</CardTitle>
-                      <CardDescription>
-                        {project.description || "No description"}
-                      </CardDescription>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        logger.info(`User opened edit dialog for project: ${project.name}`);
-                        setEditingProject(project);
-                      }}
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          logger.info(`User opened edit dialog for project: ${project.name}`);
+                          setEditingProject(project);
+                        }}
+                        title="Edit project"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          logger.info(`User opened duplicate dialog for project: ${project.name}`);
+                          setDuplicatingProject(project);
+                        }}
+                        title="Duplicate project"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          logger.info(`User opened delete dialog for project: ${project.name}`);
+                          setDeletingProject(project);
+                        }}
+                        title="Delete project"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
-                <CardContent
-                  className="cursor-pointer"
-                  onClick={() => {
-                    logger.info(`User navigated to project: ${project.name}`, {
-                      projectId: project.id,
-                    });
-                    navigate(`/projects/${project.id}/analyses`);
-                  }}
-                >
-                  <p className="text-xs text-muted-foreground">
-                    Created: {new Date(project.created_at).toLocaleDateString()}
-                  </p>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2 text-sm">
+                    {project.description && (
+                      <div className="flex items-start gap-2">
+                        <ScrollText className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-muted-foreground">Description</p>
+                          <p className="font-medium line-clamp-2">
+                            {project.description}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2">
+                      <Scan className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground">Detection model</p>
+                        <p className="font-medium truncate">
+                          {getModelName(project.detection_model_id, "detection")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      <PawPrint className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground">Classification model</p>
+                        <p className="font-medium truncate">
+                          {getModelName(project.classification_model_id, "classification")}
+                        </p>
+                      </div>
+                    </div>
+
+                    {project.classification_model_id && project.classification_model_id !== "none" && (
+                      <div className="flex items-start gap-2">
+                        <ListChecks className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-muted-foreground">Selected species</p>
+                          <p className="font-medium">
+                            {project.taxonomy_config?.selected_classes?.length || 0}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-start gap-2">
+                      <Calendar className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground">Created</p>
+                        <p className="font-medium">
+                          {new Date(project.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -148,6 +252,18 @@ export function ProjectsPage() {
           onOpenChange={(open) => !open && setEditingProject(null)}
         />
       )}
+
+      <DuplicateProjectDialog
+        project={duplicatingProject}
+        open={!!duplicatingProject}
+        onOpenChange={(open) => !open && setDuplicatingProject(null)}
+      />
+
+      <DeleteProjectDialog
+        project={deletingProject}
+        open={!!deletingProject}
+        onOpenChange={(open) => !open && setDeletingProject(null)}
+      />
     </div>
   );
 }
