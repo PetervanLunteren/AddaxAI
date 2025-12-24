@@ -31,11 +31,6 @@ def get_default_models_dir() -> Path:
     return get_default_user_data_dir() / "models"
 
 
-def get_default_environments_dir() -> Path:
-    """Get default environments directory."""
-    return get_default_user_data_dir() / "environments"
-
-
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
@@ -73,9 +68,6 @@ class Settings(BaseSettings):
     # Models directory
     models_dir: Path = Field(default_factory=get_default_models_dir)
 
-    # Environments directory (for micromamba)
-    environments_dir: Path = Field(default_factory=get_default_environments_dir)
-
     # Model catalog sync
     model_catalog_url: str = Field(
         default="https://raw.githubusercontent.com/PetervanLunteren/AddaxAI-WebUI/main/models.json",
@@ -103,18 +95,14 @@ class Settings(BaseSettings):
                     f"Failed to create user data directory at {self.user_data_dir}: {e}"
                 ) from e
 
-        # Ensure required directories exist
-        for directory in [
-            self.models_dir,
-            self.environments_dir,
-        ]:
-            if not directory.exists():
-                try:
-                    directory.mkdir(parents=True, exist_ok=True)
-                except Exception as e:
-                    raise RuntimeError(
-                        f"Failed to create directory at {directory}: {e}"
-                    ) from e
+        # Ensure models directory exists
+        if not self.models_dir.exists():
+            try:
+                self.models_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create models directory at {self.models_dir}: {e}"
+                ) from e
 
 
 def get_settings() -> Settings:

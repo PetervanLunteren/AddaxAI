@@ -212,20 +212,30 @@ class ModelCatalogUpdater:
             # Get local models
             local_models = self.get_local_models()
 
+            # Check if this is a fresh install (no models at all)
+            total_local = len(local_models["det"]) + len(local_models["cls"])
+            is_fresh_install = total_local == 0
+
             # Compare and find new models
             new_models = self.compare_models(catalog, local_models)
 
             # Create stubs for new models
             for new_model in new_models:
                 self.create_model_stub(new_model["model_type"], new_model["manifest"])
-                result["new_models"].append({
-                    "model_id": new_model["model_id"],
-                    "friendly_name": new_model["friendly_name"],
-                    "emoji": new_model["emoji"],
-                })
 
-            if result["new_models"]:
-                logger.info(f"Model catalog sync complete: {len(result['new_models'])} new models added")
+                # Only add to notification list if not a fresh install
+                if not is_fresh_install:
+                    result["new_models"].append({
+                        "model_id": new_model["model_id"],
+                        "friendly_name": new_model["friendly_name"],
+                        "emoji": new_model["emoji"],
+                    })
+
+            if new_models:
+                if is_fresh_install:
+                    logger.info(f"Model catalog sync complete: {len(new_models)} models initialized (fresh install)")
+                else:
+                    logger.info(f"Model catalog sync complete: {len(result['new_models'])} new models added")
             else:
                 logger.info("Model catalog sync complete: no new models")
 

@@ -61,7 +61,9 @@ function ModelUpdateToast() {
     >
       <div className="flex items-start gap-3">
         <div className="flex-1">
-          <div className="font-semibold text-sm mb-2">New models available</div>
+          <div className="font-semibold text-sm mb-2">
+            New {updates.new_models.length === 1 ? "model" : "models"} available
+          </div>
           <ul className="text-sm text-muted-foreground space-y-1">
             {updates.new_models.slice(0, 3).map((model) => (
               <li key={model.model_id}>{model.emoji} {model.friendly_name}</li>
