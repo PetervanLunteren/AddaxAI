@@ -86,6 +86,16 @@ class Settings(BaseSettings):
     model_weights_dir: Path = Field(default_factory=get_default_model_weights_dir)
     model_environments_dir: Path = Field(default_factory=get_default_model_environments_dir)
 
+    # Model catalog sync
+    model_catalog_url: str = Field(
+        default="https://raw.githubusercontent.com/PetervanLunteren/AddaxAI-WebUI/main/models.json",
+        description="URL to fetch model catalog from"
+    )
+    disable_model_updates: bool = Field(
+        default=False,
+        description="Disable automatic model catalog sync on startup"
+    )
+
     def __init__(self, **kwargs: object) -> None:
         """
         Initialize settings and validate critical paths exist or can be created.

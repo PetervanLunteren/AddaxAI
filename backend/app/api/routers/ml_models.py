@@ -9,7 +9,7 @@ Following DEVELOPERS.md principles:
 import asyncio
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.core.logging_config import get_logger
@@ -390,3 +390,19 @@ async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
     except Exception as e:
         logger.error(f"Failed to build environment for {model_id}: {e}", exc_info=True)
         await ws_manager.send_error(task_id, f"Environment build failed: {e}")
+
+
+@router.get("/updates")
+def get_model_updates(request: Request) -> dict:
+    """
+    Get new models discovered during last startup check.
+
+    Returns:
+        Dict with new_models list and checked_at timestamp
+    """
+    # Access app.state from request
+    updates = getattr(request.app.state, "model_updates", {
+        "new_models": [],
+        "checked_at": None
+    })
+    return updates

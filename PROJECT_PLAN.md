@@ -283,235 +283,287 @@ Build a local-first, cross-platform desktop application for camera trap wildlife
 
 #### Directory Structure
 ```
-~/AddaxAI/models/
-├── environments/
-│   ├── megadetector/          # Each model gets isolated environment
-│   ├── species_classifier_v2/
-│   └── yolov8_custom/
-├── weights/
-│   ├── megadetector_v5a.pt
-│   ├── species_classifier_v2.h5
-│   └── yolov8_custom.pt
-└── manifests/
-    ├── megadetector.yaml
-    ├── species_classifier_v2.yaml
-    └── yolov8_custom.yaml
+~/AddaxAI/
+├── envs/                      # Conda environments (created by micromamba)
+│   ├── env-addaxai-base/      # Base environment for utilities
+│   ├── env-pytorch/           # PyTorch environment for detection models
+│   ├── env-tensorflow-v1/     # TensorFlow 1.x for legacy classifiers
+│   └── env-tensorflow-v2/     # TensorFlow 2.x for modern classifiers
+├── models/                    # Model weights (self-contained by type)
+│   ├── det/                   # Detection models
+│   │   ├── MD5A-0-0/          # MegaDetector v5a
+│   │   │   ├── manifest.json
+│   │   │   └── md_v5a.0.0.pt
+│   │   └── MD5B-0-0/          # MegaDetector v5b
+│   │       └── manifest.json
+│   └── cls/                   # Classification models
+│       ├── EUR-DF-v1-3/       # European species classifier
+│       │   ├── manifest.json
+│       │   └── model.h5
+│       └── AFR-BASIC-v1/      # African species classifier
+│           ├── manifest.json
+│           └── model.pth
+├── bin/
+│   └── micromamba             # Micromamba binary
+├── logs/
+│   ├── backend.log
+│   ├── frontend.log
+│   └── electron.log
+└── addaxai.db                 # SQLite database
 ```
 
 #### Model Manifest Format
 
-Each model is defined by a YAML manifest:
+Each model is defined by a JSON manifest stored in its model directory:
 
-```yaml
-# manifests/megadetector.yaml
-name: megadetector
-version: "5a"
-description: "Microsoft MegaDetector v5a - Wildlife detection"
-
-environment:
-  name: megadetector
-  python_version: "3.10"
-  channels:
-    - pytorch
-    - conda-forge
-    - defaults
-  conda_dependencies:
-    - pytorch=2.0.1
-    - torchvision=0.15.2
-    - pillow=10.0.0
-    - numpy=1.24.3
-  pip_dependencies:
-    - humanfriendly==10.0
-    - jsonpickle==3.0.1
-
-weights:
-  - name: megadetector_v5a.pt
-    url: "https://github.com/microsoft/CameraTraps/releases/download/v5.0/md_v5a.0.0.pt"
-    sha256: "abc123..."  # For integrity verification
-
-entrypoint:
-  script: "run_detector.py"
-  args:
-    - "--model-path"
-    - "{WEIGHTS_DIR}/megadetector_v5a.pt"
-    - "--input"
-    - "{INPUT_JSON}"
-    - "--output"
-    - "{OUTPUT_JSON}"
-
-hardware:
-  gpu_required: false
-  gpu_preferred: true
-  min_vram_gb: 4  # If GPU used
-  fallback_to_cpu: true
-
-input_schema:
-  type: "file_list"
-  format: "json"
-  fields:
-    - path
-    - id
-
-output_schema:
-  type: "detection_list"
-  format: "json"
-  fields:
-    - file_id
-    - bbox  # [x, y, w, h] normalized
-    - confidence
-    - category  # animal, person, vehicle
+```json
+// ~/AddaxAI/models/det/MD5A-0-0/manifest.json
+{
+  "model_id": "MD5A-0-0",
+  "friendly_name": "MegaDetector 5a",
+  "emoji": "🐅",
+  "type": "detection",
+  "env": "addaxai-base",
+  "model_fname": "md_v5a.0.0.pt",
+  "hf_repo": "Addax-Data-Science/MD5A-0-0",
+  "description": "MegaDetector is an object detection model that identifies animals, people, and vehicles in camera trap images.",
+  "developer": "Dan Morris",
+  "info_url": "https://github.com/agentmorris/MegaDetector",
+  "min_app_version": "0.1.0",
+  "confidence_threshold": 0.1
+}
 ```
+
+```json
+// ~/AddaxAI/models/cls/EUR-DF-v1-3/manifest.json
+{
+  "model_id": "EUR-DF-v1-3",
+  "friendly_name": "European species classifier v1.3",
+  "emoji": "🦌",
+  "type": "classification",
+  "env": "tensorflow-v1",
+  "model_fname": "model.h5",
+  "hf_repo": "Addax-Data-Science/EUR-DF-v1-3",
+  "description": "Species classifier for European wildlife (deer, fox, etc.)",
+  "developer": "AddaxAI Team",
+  "info_url": "https://addax.ai/models/eur-df",
+  "min_app_version": "0.1.0",
+  "confidence_threshold": 0.5
+}
+```
+
+**Manifest Fields:**
+- `model_id`: Unique identifier (used as directory name)
+- `friendly_name`: Human-readable name shown in UI
+- `emoji`: Icon for UI display
+- `type`: "detection" or "classification"
+- `env`: Environment name (points to ~/AddaxAI/envs/env-{env}/)
+- `model_fname`: Filename of model weights (e.g., .pt, .h5, .pth)
+- `hf_repo`: HuggingFace repository (format: org/repo)
+- `description`: Model description for UI
+- `developer`: Model creator/organization
+- `info_url`: Documentation/source URL
+- `min_app_version`: Minimum app version required
+- `confidence_threshold`: Default confidence threshold for predictions
 
 #### Environment Creation & Management
 
 **Environment Manager Component (Python):**
 
 ```python
-# backend/ml/environment_manager.py
+# backend/app/ml/environment_manager.py
 
 class EnvironmentManager:
-    def __init__(self, base_path: Path):
-        self.base_path = base_path
-        self.envs_dir = base_path / "environments"
-        self.weights_dir = base_path / "weights"
-        self.manifests_dir = base_path / "manifests"
+    """
+    Manages micromamba environments using static YAML files.
 
-    def ensure_environment(self, model_name: str) -> Path:
+    Environments are defined in backend/app/ml/envs/{env_name}/{platform}/environment.yml
+    and created in ~/AddaxAI/envs/env-{env_name}/
+    """
+
+    def __init__(self, envs_dir: Path | None = None, micromamba_path: Path | None = None):
+        user_data_dir = Path.home() / "AddaxAI"
+        self.envs_dir = envs_dir or (user_data_dir / "envs")
+        self.envs_dir.mkdir(parents=True, exist_ok=True)
+
+        bin_dir = user_data_dir / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        self.micromamba_path = micromamba_path or (bin_dir / "micromamba")
+
+        # Auto-download micromamba if missing
+        if not self.micromamba_path.exists():
+            self._download_micromamba()
+
+    def get_or_create_env(
+        self, manifest: ModelManifest, progress_callback: Callable[[str, float], None] | None = None
+    ) -> Path:
         """
-        Ensures model environment exists, creates if missing.
-        Raises if creation fails.
+        Get existing environment or create new one from YAML.
+
+        Args:
+            manifest: Model manifest with env name
+            progress_callback: Optional callback(message: str, progress: float)
+
+        Returns:
+            Path to environment directory (~/AddaxAI/envs/env-{env_name}/)
         """
-        manifest = self.load_manifest(model_name)
-        env_path = self.envs_dir / manifest.environment.name
-
-        if env_path.exists():
-            # Verify environment is valid
-            if self.verify_environment(env_path, manifest):
-                return env_path
-            else:
-                # Environment corrupted, recreate
-                shutil.rmtree(env_path)
-
-        # Create new environment
-        return self.create_environment(manifest)
-
-    def create_environment(self, manifest: ModelManifest) -> Path:
-        env_name = manifest.environment.name
+        env_name = f"env-{manifest.env}"
         env_path = self.envs_dir / env_name
 
-        # Build micromamba create command
-        cmd = [
-            "micromamba", "create",
-            "-p", str(env_path),
-            "-y",
-            f"python={manifest.environment.python_version}",
-        ]
+        # Check if environment exists and is valid
+        if env_path.exists() and self._validate_env(env_path):
+            logger.info(f"Using existing environment: {env_name}")
+            return env_path
 
-        # Add channels
-        for channel in manifest.environment.channels:
-            cmd.extend(["-c", channel])
+        # Get environment YAML path from repo
+        # backend/app/ml/envs/{env_name}/{platform}/environment.yml
+        yaml_path = self.get_env_yaml_path(manifest.env)
 
-        # Add conda dependencies
-        cmd.extend(manifest.environment.conda_dependencies)
-
-        # Execute
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise EnvironmentCreationError(f"Failed to create env: {result.stderr}")
-
-        # Install pip dependencies if any
-        if manifest.environment.pip_dependencies:
-            pip_cmd = [
-                "micromamba", "run", "-p", str(env_path),
-                "pip", "install", *manifest.environment.pip_dependencies
-            ]
-            result = subprocess.run(pip_cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise EnvironmentCreationError(f"Failed to install pip deps: {result.stderr}")
-
+        # Create new environment
+        self._create_env(env_name, env_path, yaml_path, progress_callback)
         return env_path
 
-    def ensure_weights(self, model_name: str) -> Path:
-        """Download model weights if not cached."""
-        manifest = self.load_manifest(model_name)
-
-        for weight in manifest.weights:
-            weight_path = self.weights_dir / weight.name
-            if not weight_path.exists():
-                self.download_weight(weight.url, weight_path, weight.sha256)
-
-        return self.weights_dir
-
-    def run_model(self, model_name: str, input_data: dict) -> dict:
-        """Execute model in isolated environment."""
-        manifest = self.load_manifest(model_name)
-        env_path = self.ensure_environment(model_name)
-        weights_path = self.ensure_weights(model_name)
-
-        # Prepare input JSON
-        input_file = self.temp_dir / f"input_{uuid.uuid4()}.json"
-        output_file = self.temp_dir / f"output_{uuid.uuid4()}.json"
-
-        with open(input_file, 'w') as f:
-            json.dump(input_data, f)
-
-        # Build command
-        script_path = self.manifests_dir.parent / "scripts" / manifest.entrypoint.script
+    def _create_env(
+        self, env_name: str, env_path: Path, yaml_path: Path,
+        progress_callback: Callable[[str, float], None] | None = None
+    ) -> None:
+        """Create micromamba environment from YAML file."""
         cmd = [
-            "micromamba", "run", "-p", str(env_path),
-            "python", str(script_path)
+            str(self.micromamba_path),
+            "create",
+            "-f", str(yaml_path),
+            "-p", str(env_path),
+            "-y",
+            "--no-rc",
         ]
 
-        # Substitute placeholders in args
-        for arg in manifest.entrypoint.args:
-            arg = arg.replace("{WEIGHTS_DIR}", str(weights_path))
-            arg = arg.replace("{INPUT_JSON}", str(input_file))
-            arg = arg.replace("{OUTPUT_JSON}", str(output_file))
-            cmd.append(arg)
+        # Stream output line by line to show progress
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
-        # Execute
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-        if result.returncode != 0:
-            raise ModelExecutionError(f"Model failed: {result.stderr}")
+        for line in process.stdout:
+            if line.strip() and progress_callback:
+                progress_callback(line[:80], 0.5)
 
-        # Load results
-        with open(output_file) as f:
-            return json.load(f)
+        process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"micromamba create failed")
+
+    def get_python(self, env_name: str) -> Path:
+        """Get path to Python executable in environment."""
+        env_path = self.envs_dir / env_name
+        return self._get_python_path(env_path)
 ```
+
+**Model Storage Component:**
+
+```python
+# backend/app/ml/model_storage.py
+
+class ModelStorage:
+    """
+    Manages model weight downloads from HuggingFace.
+
+    All models download to ~/AddaxAI/models/{det|cls}/{model_id}/
+    """
+
+    def __init__(self, models_dir: Path | None = None):
+        user_data_dir = Path.home() / "AddaxAI"
+        self.models_dir = models_dir or (user_data_dir / "models")
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+
+    def check_weights_ready(self, manifest: ModelManifest) -> bool:
+        """Check if model weights are downloaded."""
+        model_type = "det" if manifest.type == "detection" else "cls"
+        model_path = self.models_dir / model_type / manifest.model_id
+        model_file = model_path / manifest.model_fname
+        return model_file.exists()
+
+    def download_weights(
+        self, manifest: ModelManifest,
+        progress_callback: Callable[[str, float], None] | None = None
+    ) -> Path:
+        """Download model weights from HuggingFace if not cached."""
+        model_type = "det" if manifest.type == "detection" else "cls"
+        model_path = self.models_dir / model_type / manifest.model_id
+
+        if self.check_weights_ready(manifest):
+            return model_path
+
+        # Download from HuggingFace
+        hf_repo = manifest.hf_repo or f"Addax-Data-Science/{manifest.model_id}"
+        downloader = HuggingFaceRepoDownloader(max_workers=4)
+        downloader.download_repo(
+            repo_id=hf_repo,
+            local_dir=model_path,
+            progress_callback=progress_callback,
+            revision="main"
+        )
+
+        return model_path
+
+    def get_model_file(self, manifest: ModelManifest) -> Path:
+        """Get path to model weight file (.pt, .h5, .pth)."""
+        model_path = self.get_model_path(manifest)
+        return model_path / manifest.model_fname
+```
+
+#### Environment Definition with Static YAML Files
+
+Environments are defined in the repository at `backend/app/ml/envs/{env_name}/{platform}/environment.yml`:
+
+```yaml
+# backend/app/ml/envs/addaxai-base/darwin/environment.yml
+name: addaxai-base
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch::pytorch=2.3.1
+  - pytorch::torchvision=0.18.1
+  - pillow=10.3.0
+  - numpy=1.26.4
+  - pip
+  - pip:
+    - ultralytics==8.3.38
+```
+
+**Platform-specific YAMLs:**
+- `darwin/` - macOS (both Intel and Apple Silicon)
+- `linux/` - Linux x86_64
+- `windows/` - Windows x86_64
+
+**Benefits:**
+- Version-controlled, reproducible environments
+- Platform-specific package selection
+- Explicit dependency management
+- No runtime dependency resolution issues
 
 #### GPU vs CPU Handling
 
-Manifests specify `gpu_preferred: true` and `fallback_to_cpu: true`. The environment manager:
-1. Detects GPU availability at runtime (`torch.cuda.is_available()` or `nvidia-smi`)
-2. If GPU available and preferred, creates environment with CUDA-enabled packages
-3. If GPU not available, uses CPU-only packages (smaller download)
-4. Model scripts check for GPU at runtime and use appropriate device
+**Current implementation:** CPU-only packages in all environments.
 
-#### Reproducibility
-
-- Lock files: After first environment creation, export exact versions:
-  ```bash
-  micromamba env export -p ~/AddaxAI/models/environments/megadetector > megadetector.lock.yaml
-  ```
-- Store lock files in `manifests/locks/` for reproducible rebuilds
-- Version manifests in git alongside code
+**Future:** Add GPU-enabled environments when needed:
+- Detect GPU availability at app startup
+- Use separate environment YAMLs (e.g., `pytorch-gpu/` vs `pytorch-cpu/`)
+- Model runners select appropriate environment based on hardware
 
 #### Offline Reuse
 
 Once environments and weights are downloaded:
-- Environments cached in `~/AddaxAI/models/environments/`
-- Weights cached in `~/AddaxAI/models/weights/`
+- Environments cached in `~/AddaxAI/envs/`
+- Weights cached in `~/AddaxAI/models/det/` and `~/AddaxAI/models/cls/`
 - Subsequent runs use cached versions (no network required)
-- For offline deployment, create environments on an internet-connected machine, then transfer the entire `~/AddaxAI/models/` directory to the offline machine
+- For offline deployment, transfer the entire `~/AddaxAI/` directory to the offline machine
 
 #### On-Demand Installation
 
-- App ships with micromamba binary and minimal Python runtime
+- App ships with micromamba binary (auto-downloaded on first run)
 - First time user runs a model:
-  1. UI shows "Installing MegaDetector environment (this may take 5-10 minutes)..."
-  2. Progress bar shows download progress via WebSocket updates
-  3. AsyncIO task runs environment creation in background
-  4. Cached for all future use
+  1. **Download weights:** "Downloading MegaDetector from HuggingFace..." (progress bar with speed)
+  2. **Build environment:** "Installing packages..." (streaming micromamba output via WebSocket)
+  3. Cached for all future use
 - User only downloads what they need (if they never use model X, they never download it)
 
 ---
@@ -1195,11 +1247,15 @@ test('toggles annotation mode', () => {
 
 #### Packaging Approach
 
-**Components Bundled:**
-1. **Electron app** (React frontend + launcher logic)
-2. **Python backend** (FastAPI + dependencies, bundled with PyInstaller or similar)
-3. **Redis binary** (platform-specific)
-4. **micromamba binary** (platform-specific)
+**Components Bundled in Installer:**
+1. **Electron app** - Desktop shell with main.ts launcher logic
+2. **Python backend** - FastAPI + dependencies bundled as single executable (PyInstaller)
+3. **React frontend** - Static files bundled inside PyInstaller executable
+
+**Downloaded on First Run:**
+- **micromamba** - Downloaded to `~/AddaxAI/bin/` on first launch
+- **Model weights** - Downloaded from HuggingFace when user selects a model
+- **Conda environments** - Created on demand when running models
 
 **Directory Structure After Installation:**
 
@@ -1208,32 +1264,37 @@ test('toggles annotation mode', () => {
 ├── Contents/
 │   ├── MacOS/
 │   │   ├── AddaxAI              # Electron executable
-│   │   └── backend/
-│   │       ├── api              # FastAPI bundled binary (PyInstaller)
-│   │       ├── celery-worker    # Celery worker bundled binary
-│   │       └── redis-server     # Redis binary
-│   ├── Resources/
-│   │   ├── app/                 # React frontend static files
-│   │   ├── micromamba           # micromamba binary
-│   │   └── python/              # Minimal Python runtime (if needed)
-│   └── Info.plist
+│   │   └── Resources/
+│   │       └── backend/
+│   │           └── backend      # FastAPI bundled binary (PyInstaller)
+│   └── Resources/
+│       └── app/                 # React frontend static files (bundled in PyInstaller)
+└── Info.plist
 
-~/AddaxAI/  (user data directory)
-├── config.yaml
-├── database.sqlite
-├── data/
-│   └── projects/
-│       └── <project-id>/
-│           ├── media/
-│           └── exports/
-├── models/
-│   ├── manifests/
-│   ├── environments/
-│   └── weights/
-└── logs/
-    ├── backend.log         # Backend logs (rotates at 33MB, keeps 3 backups)
-    ├── frontend.log        # Frontend logs (rotates at 33MB, keeps 3 backups)
-    └── electron.log        # Electron main process logs (rotates at 33MB, keeps 3 backups)
+~/AddaxAI/  (user data directory - all runtime data)
+├── addaxai.db                   # SQLite database
+├── bin/
+│   └── micromamba               # Downloaded on first run
+├── envs/                        # Conda environments (created on demand)
+│   ├── env-addaxai-base/
+│   ├── env-pytorch/
+│   ├── env-tensorflow-v1/
+│   └── env-tensorflow-v2/
+├── models/                      # Model weights (downloaded from HuggingFace)
+│   ├── det/
+│   │   ├── MD5A-0-0/
+│   │   │   ├── manifest.json
+│   │   │   └── md_v5a.0.0.pt
+│   │   └── MD5B-0-0/
+│   └── cls/
+│       └── EUR-DF-v1-3/
+│           ├── manifest.json
+│           └── model.h5
+├── logs/
+│   ├── backend.log              # Backend logs (rotates at 33MB, 3 backups)
+│   ├── frontend.log             # Frontend logs (rotates at 33MB, 3 backups)
+│   └── electron.log             # Electron logs (rotates at 33MB, 3 backups)
+└── pkgs/                        # Micromamba package cache
 ```
 
 #### Startup Process
@@ -1371,13 +1432,16 @@ exe = EXE(
 
 #### Application Data Storage
 
-- **Config:** `~/AddaxAI/config.yaml`
-- **Database:** `~/AddaxAI/database.sqlite`
-- **User data:** `~/AddaxAI/data/`
-- **Model cache:** `~/AddaxAI/models/`
-- **Logs:** `~/AddaxAI/logs/`
+All application data is stored in `~/AddaxAI/`:
 
-Use `app.getPath('userData')` to locate the directory cross-platform.
+- **Database:** `~/AddaxAI/addaxai.db` (SQLite database with project/site/deployment/file/detection data)
+- **Conda environments:** `~/AddaxAI/envs/env-{env_name}/`
+- **Model weights:** `~/AddaxAI/models/{det|cls}/{model_id}/`
+- **Logs:** `~/AddaxAI/logs/` (backend.log, frontend.log, electron.log)
+- **Binaries:** `~/AddaxAI/bin/micromamba`
+- **Package cache:** `~/AddaxAI/pkgs/` (micromamba package cache)
+
+**Cross-platform note:** On Windows, this becomes `%USERPROFILE%\AddaxAI\`
 
 #### Auto-Update Support (Future)
 
@@ -1615,8 +1679,8 @@ For MVP: Manual download and install new versions
 #### Backend
 - **API responses:** No server-side HTTP caching (local app, TanStack Query handles client cache)
 - **Thumbnails:** Generate once, store in project directory, serve with Cache-Control headers
-- **Model weights:** Download once, cache indefinitely in `~/AddaxAI/models/weights/`
-- **Environments:** Create once, reuse until deleted
+- **Model weights:** Download once, cache indefinitely in `~/AddaxAI/models/{det|cls}/{model_id}/`
+- **Environments:** Create once in `~/AddaxAI/envs/`, reuse until deleted
 
 #### Frontend (TanStack Query)
 - **Default stale time:** 5 minutes (data considered fresh, no refetch)

@@ -7,6 +7,7 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -30,10 +31,34 @@ from app.api.routers import (
 from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
 from app.db.base import init_db
+from app.ml.catalog_updater import ModelCatalogUpdater
 
 # Initialize logging first, before anything else
 setup_logging()
 logger = get_logger(__name__)
+
+
+async def update_model_catalog(app: FastAPI) -> None:
+    """
+    Background task to sync model catalog.
+
+    Runs non-blocking during startup - app continues immediately.
+    """
+    settings = get_settings()
+
+    # Skip if disabled
+    if settings.disable_model_updates:
+        logger.info("Model catalog updates disabled")
+        app.state.model_updates = {"new_models": [], "checked_at": None, "disabled": True}
+        return
+
+    try:
+        updater = ModelCatalogUpdater(catalog_url=settings.model_catalog_url)
+        result = await updater.sync()
+        app.state.model_updates = result
+    except Exception as e:
+        logger.error(f"Model catalog sync failed: {e}", exc_info=True)
+        app.state.model_updates = {"new_models": [], "error": str(e)}
 
 
 @asynccontextmanager
@@ -58,9 +83,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise
 
+    # Start model catalog sync in background (non-blocking)
+    sync_task = asyncio.create_task(update_model_catalog(app))
+
     yield
 
     # Shutdown
+    # Cancel catalog sync if still running
+    if not sync_task.done():
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
+
     logger.info("Shutting down AddaxAI Backend")
 
 
