@@ -7,14 +7,15 @@
  * - Explicit error handling
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { projectsApi, type ProjectCreate } from "../../api/projects";
 import { modelsApi } from "../../api/models";
-import { TaxonomyEditor } from "../taxonomy/TaxonomyEditor";
+import type { TaxonomyNode } from "../../api/types";
+import { TreeNode } from "../taxonomy/TreeNode";
 import { Button } from "../ui/button";
 import {
   Select,
@@ -41,6 +42,7 @@ import {
   FormMessage,
 } from "../ui/form";
 import { Input } from "../ui/input";
+import { ScrollArea } from "../ui/scroll-area";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -62,7 +64,9 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
-  const [taxonomyEditorOpen, setTaxonomyEditorOpen] = useState(false);
+  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(new Set());
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [initializedForModel, setInitializedForModel] = useState<string | null>(null);
 
   // Fetch available models
   const { data: detectionModels = [] } = useQuery({
@@ -96,6 +100,114 @@ export function CreateProjectDialog({
     enabled: open && !!classificationModelId && classificationModelId !== "none",
   });
 
+  const allClasses = taxonomy?.all_classes || [];
+  const tree = taxonomy?.tree || [];
+
+  // Reset when model changes to none or null
+  useEffect(() => {
+    if (!classificationModelId || classificationModelId === "none") {
+      setSelectedClasses(new Set());
+      setExpandedNodes(new Set());
+      setInitializedForModel(null);
+      form.setValue("taxonomy_config", { selected_classes: [] });
+    }
+  }, [classificationModelId, form]);
+
+  // Initialize with all classes when taxonomy loads for a new model
+  useEffect(() => {
+    if (
+      classificationModelId &&
+      classificationModelId !== "none" &&
+      taxonomy?.all_classes &&
+      !taxonomyLoading &&
+      initializedForModel !== classificationModelId
+    ) {
+      const newSelected = new Set(taxonomy.all_classes);
+      setSelectedClasses(newSelected);
+      form.setValue("taxonomy_config", { selected_classes: taxonomy.all_classes });
+      setInitializedForModel(classificationModelId);
+    }
+  }, [classificationModelId, taxonomy?.all_classes, taxonomyLoading, initializedForModel, form]);
+
+  // Tree handlers
+  const handleToggle = (nodeId: string, checked: boolean) => {
+    const newSelected = new Set(selectedClasses);
+
+    const findAndToggleNode = (nodes: TaxonomyNode[]): boolean => {
+      for (const node of nodes) {
+        if (node.id === nodeId) {
+          toggleNodeAndDescendants(node, checked, newSelected);
+          return true;
+        }
+        if (node.children && findAndToggleNode(node.children)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    findAndToggleNode(tree);
+    setSelectedClasses(newSelected);
+    form.setValue("taxonomy_config", { selected_classes: Array.from(newSelected) });
+  };
+
+  const toggleNodeAndDescendants = (
+    node: TaxonomyNode,
+    checked: boolean,
+    selectedSet: Set<string>
+  ) => {
+    if (!node.children || node.children.length === 0) {
+      if (checked) {
+        selectedSet.add(node.id);
+      } else {
+        selectedSet.delete(node.id);
+      }
+    } else {
+      for (const child of node.children) {
+        toggleNodeAndDescendants(child, checked, selectedSet);
+      }
+    }
+  };
+
+  const handleSelectAll = () => {
+    const newSelected = new Set(allClasses);
+    setSelectedClasses(newSelected);
+    form.setValue("taxonomy_config", { selected_classes: allClasses });
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedClasses(new Set());
+    form.setValue("taxonomy_config", { selected_classes: [] });
+  };
+
+  const handleExpandAll = () => {
+    const allNodeIds = new Set<string>();
+    const collectAllNodeIds = (nodes: TaxonomyNode[]) => {
+      for (const node of nodes) {
+        allNodeIds.add(node.id);
+        if (node.children) {
+          collectAllNodeIds(node.children);
+        }
+      }
+    };
+    collectAllNodeIds(tree);
+    setExpandedNodes(allNodeIds);
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedNodes(new Set());
+  };
+
+  const handleExpand = (nodeId: string, expanded: boolean) => {
+    const newExpanded = new Set(expandedNodes);
+    if (expanded) {
+      newExpanded.add(nodeId);
+    } else {
+      newExpanded.delete(nodeId);
+    }
+    setExpandedNodes(newExpanded);
+  };
+
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => projectsApi.create(data),
     onSuccess: () => {
@@ -118,7 +230,7 @@ export function CreateProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create new project</DialogTitle>
           <DialogDescription>
@@ -224,22 +336,74 @@ export function CreateProjectDialog({
               )}
             />
 
-            {/* Taxonomy configuration button */}
-            {form.watch("classification_model_id") && form.watch("classification_model_id") !== "none" && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Species taxonomy</label>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setTaxonomyEditorOpen(true)}
-                  >
-                    Select species
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Selected: {form.watch("taxonomy_config")?.selected_classes?.length || taxonomy?.all_classes?.length || 0} of {taxonomy?.all_classes?.length || 0}
-                  </span>
+            {/* Species selection - inline */}
+            {classificationModelId && classificationModelId !== "none" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">
+                    Species selection ({selectedClasses.size} of {allClasses.length} selected)
+                  </label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAll}
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeselectAll}
+                    >
+                      Deselect all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExpandAll}
+                    >
+                      Expand all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCollapseAll}
+                    >
+                      Collapse all
+                    </Button>
+                  </div>
                 </div>
+
+                {taxonomyLoading ? (
+                  <div className="text-sm text-muted-foreground py-4">
+                    Loading taxonomy...
+                  </div>
+                ) : tree.length > 0 ? (
+                  <ScrollArea className="h-[300px] border rounded-md p-4">
+                    <div className="space-y-1">
+                      {tree.map((node) => (
+                        <TreeNode
+                          key={node.id}
+                          node={node}
+                          selectedClasses={selectedClasses}
+                          expandedNodes={expandedNodes}
+                          onToggle={handleToggle}
+                          onExpand={handleExpand}
+                          level={0}
+                        />
+                      ))}
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="text-sm text-muted-foreground py-4">
+                    No taxonomy available for this model
+                  </div>
+                )}
               </div>
             )}
 
@@ -264,17 +428,6 @@ export function CreateProjectDialog({
           </form>
         </Form>
       </DialogContent>
-
-      {/* Taxonomy Editor */}
-      <TaxonomyEditor
-        open={taxonomyEditorOpen}
-        onOpenChange={setTaxonomyEditorOpen}
-        modelId={form.watch("classification_model_id")}
-        selectedClasses={form.watch("taxonomy_config")?.selected_classes || []}
-        onSave={(selectedClasses) => {
-          form.setValue("taxonomy_config", { selected_classes: selectedClasses });
-        }}
-      />
     </Dialog>
   );
 }
