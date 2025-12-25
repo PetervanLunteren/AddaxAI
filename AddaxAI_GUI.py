@@ -219,7 +219,7 @@ suffixes_for_sim_none = [" - just show me where the animals are",
 #############################################
 
 # post-process files
-def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type):
+def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type):
     # log
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
@@ -289,6 +289,16 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
     with open(recognition_file) as image_recognition_file_content:
         data = json.load(image_recognition_file_content)
     n_images = len(data['images'])
+
+    # --- series support: build timestamp index once for efficiency ----
+    if keep_series:
+        try:
+            _file_list_for_index = [img['file'] for img in data.get('images', [])]
+            timestamp_index = build_image_timestamp_index(src_dir, _file_list_for_index)
+        except Exception:
+            timestamp_index = {}
+    # used to avoid moving the same original file multiple times
+    already_moved_files = set()
 
     # initialise the csv files
     # csv files are always created, no matter what the user specified as export format
@@ -565,19 +575,50 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
                 rows.append(row)
             rows = pd.DataFrame(rows)
             rows.to_csv(csv_for_detections, encoding='utf-8', mode='a', index=False, header=False)
-    
-        # separate files
-        if sep:
-            if n_detections == 0:
-                file = move_files(file, "empty", file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
-            else:
-                if len(unique_labels) > 1:
-                    labels_str = "_".join(unique_labels)
-                    file = move_files(file, labels_str, file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
-                elif len(unique_labels) == 0:
-                    file = move_files(file, "empty", file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
+
+            # separate files (with optional "keep whole series" feature)
+            if sep:
+                if n_detections == 0:
+                    detection_type = "empty"
                 else:
-                    file = move_files(file, label, file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
+                    if len(unique_labels) > 1:
+                        detection_type = "_".join(unique_labels)
+                    elif len(unique_labels) == 0:
+                        detection_type = "empty"
+                    else:
+                        detection_type = label
+
+                # keep-series configuration
+                should_keep_series = False
+                if keep_series:
+                    keep_series_species = ["wolf"]
+
+                    # decide whether this detection should trigger series-keeping
+                    species_in_detection = set() if detection_type == "empty" else set(detection_type.split('_'))
+                    if keep_series_species:
+                        if species_in_detection.intersection(set(keep_series_species)):
+                            should_keep_series = True
+
+                if should_keep_series:
+                    # move/copy the whole series (files within +/- window_seconds)
+                    series_files = find_series_images(file, timestamp_index, window_seconds=keep_series_seconds)
+                    for sf in series_files:
+                        if sf in already_moved_files:
+                            continue
+                        moved_rel = move_files(sf, detection_type, file_placement, max_detection_conf, sep_conf,
+                                               dst_dir, src_dir, manually_checked)
+                        # record original relative path as moved so we don't try to move it again
+                        already_moved_files.add(sf)
+                        # if this is the current loop item, update the 'file' variable used later for visualization
+                        if sf == file:
+                            file = moved_rel
+                else:
+                    # default behaviour: move/copy single file
+                    if file not in already_moved_files:
+                        orig_file_for_move = file
+                        file = move_files(orig_file_for_move, detection_type, file_placement, max_detection_conf,
+                                          sep_conf, dst_dir, src_dir, manually_checked)
+                        already_moved_files.add(orig_file_for_move)
     
         # visualize images
         if vis and len(bbox_info) > 0:
@@ -1245,6 +1286,8 @@ def start_postprocess():
     write_global_vars({
         "lang_idx": lang_idx,
         "var_separate_files": var_separate_files.get(),
+        "var_keep_series": var_keep_series.get(),
+        "var_keep_series_seconds": var_keep_series_seconds.get(),
         "var_file_placement": var_file_placement.get(),
         "var_sep_conf": var_sep_conf.get(),
         "var_vis_files": var_vis_files.get(),
@@ -1263,6 +1306,8 @@ def start_postprocess():
     dst_dir = var_output_dir.get()
     thresh = var_thresh.get()
     sep = var_separate_files.get()
+    keep_series = var_keep_series.get()
+    keep_series_seconds = var_keep_series_seconds.get()
     file_placement = var_file_placement.get()
     sep_conf = var_sep_conf.get()
     vis = var_vis_files.get()
@@ -1338,11 +1383,11 @@ def start_postprocess():
     try:
         # postprocess images
         if img_json:
-            postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img")
+            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img")
 
         # postprocess videos
         if vid_json and not cancel_var:
-            postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid")
+            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid")
             
         # complete
         complete_frame(fth_step)
@@ -5591,6 +5636,130 @@ conf_dirs = {0.0 : "conf_0.0",
              0.9 : "conf_0.8-0.9",
              1.0 : "conf_0.9-1.0"}
 
+def _parse_timestamp_from_filename(filename):
+    """
+    Try common filename timestamp patterns (YYYYMMDDHHMMSS, YYYYMMDD_HHMMSS, etc.)
+    Return a datetime or None.
+    """
+    patterns = [
+        r'(?P<ts>\d{14})',                # 20220101123045
+        r'(?P<ts>\d{8}[_-]\d{6})',        # 20220101_123045 or 20220101-123045
+        r'(?P<ts>\d{4}-\d{2}-\d{2}[_-]\d{6})'
+    ]
+    for pat in patterns:
+        m = re.search(pat, filename)
+        if not m:
+            continue
+        ts = re.sub(r'[_-]', '', m.group('ts'))
+        try:
+            return datetime.datetime.strptime(ts, '%Y%m%d%H%M%S')
+        except Exception:
+            continue
+    return None
+
+def get_image_timestamp(src_dir, rel_path):
+    """
+    Return datetime for given file (src_dir + rel_path).
+    1) Try EXIF DateTimeOriginal / DateTime
+    2) Try filename patterns
+    3) Fallback to filesystem mtime
+    """
+    abs_path = os.path.join(src_dir, rel_path)
+    # (1) EXIF
+    try:
+        img = Image.open(abs_path)
+        exif = img.getexif()
+        if exif:
+            # map tag name -> id
+            tag_map = {v:k for k,v in PIL.ExifTags.TAGS.items()}
+            for tag_name in ("DateTimeOriginal", "DateTime"):
+                if tag_name in tag_map:
+                    tid = tag_map[tag_name]
+                    if tid in exif:
+                        val = exif.get(tid)
+                        if isinstance(val, bytes):
+                            val = val.decode(errors="ignore")
+                        if val:
+                            val = val.replace('\x00','').strip()
+                            try:
+                                return datetime.datetime.strptime(val, "%Y:%m:%d %H:%M:%S")
+                            except Exception:
+                                try:
+                                    return datetime.datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+                                except Exception:
+                                    pass
+    except Exception:
+        # ignore EXIF-read errors and fall back
+        pass
+
+    # (2) filename
+    try:
+        ts = _parse_timestamp_from_filename(os.path.basename(rel_path))
+        if ts:
+            return ts
+    except Exception:
+        pass
+
+    # (3) filesystem mtime
+    try:
+        return datetime.datetime.fromtimestamp(os.path.getmtime(abs_path))
+    except Exception:
+        return None
+
+def build_image_timestamp_index(src_dir, file_list):
+    """
+    Build dict {rel_path: datetime or None} for the given files.
+    Call this once before the main loop (expensive to open images; we cache).
+    """
+    idx = {}
+    for rel in file_list:
+        try:
+            idx[rel] = get_image_timestamp(src_dir, rel)
+        except Exception:
+            idx[rel] = None
+    return idx
+
+def _camera_prefix_of_filename(filename):
+    """
+    Heuristic: return the filename part before the first timestamp pattern.
+    If no timestamp found, return None.
+    """
+    m = re.search(r'\d{14}', filename)
+    if m:
+        return filename[:m.start()]
+    m = re.search(r'\d{8}[_-]\d{6}', filename)
+    if m:
+        return filename[:m.start()]
+    return None
+
+def find_series_images(target_rel_path, timestamp_index, window_seconds=10, require_same_camera=True):
+    """
+    Return list of rel_paths that belong to same 'burst' as target_rel_path.
+    - Uses timestamp_index (dict from build_image_timestamp_index).
+    - window_seconds: include files within +/- window_seconds of the target timestamp.
+    - require_same_camera: only include files with same filename prefix (heuristic).
+    """
+    if target_rel_path not in timestamp_index:
+        return [target_rel_path]
+    t0 = timestamp_index.get(target_rel_path)
+    if t0 is None:
+        return [target_rel_path]
+
+    prefix0 = _camera_prefix_of_filename(os.path.basename(target_rel_path)) if require_same_camera else None
+    candidates = []
+    for rel, t in timestamp_index.items():
+        if t is None:
+            continue
+        if require_same_camera:
+            prefix = _camera_prefix_of_filename(os.path.basename(rel))
+            if prefix0 is not None and prefix is not None and prefix0 != prefix:
+                continue
+        if abs((t - t0).total_seconds()) <= window_seconds:
+            candidates.append((rel, t))
+    # sort ascending (optional — we keep chronological)
+    candidates.sort(key=lambda x: x[1] or datetime.datetime.max)
+    return [c[0] for c in candidates]
+
 # move files into subdirectories
 def move_files(file, detection_type, var_file_placement, max_detection_conf, var_sep_conf, dst_root, src_dir, manually_checked):
     # log
@@ -8740,6 +8909,18 @@ def toggle_sep_frame():
         sep_frame.grid_forget()
     resize_canvas_to_content()
 
+# toggle keep series subframe
+def toggle_keep_series_frame():
+    if var_keep_series.get():
+        keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
+        enable_widgets(keep_series_frame)
+        keep_series_frame.configure(fg='black')
+    else:
+        disable_widgets(keep_series_frame)
+        keep_series_frame.configure(fg='grey80')
+        keep_series_frame.grid_forget()
+    resize_canvas_to_content()
+
 # toggle export subframe
 def toggle_exp_frame():
     if var_exp.get() and lbl_exp.cget("state") == "normal":
@@ -8902,6 +9083,7 @@ def enable_frame(frame):
         toggle_image_size_for_deploy()
     if fth_step:
         toggle_sep_frame()
+        toggle_keep_series_frame()
         toggle_exp_frame()
         toggle_vis_frame()
         sep_frame.configure(relief = 'solid')
@@ -9078,6 +9260,8 @@ def reset_values():
     var_not_all_frames.set(True)
     var_nth_frame.set("1")
     var_separate_files.set(False)
+    var_keep_series.set(False)
+    var_keep_series_seconds.set(5)
     var_file_placement.set(2)
     var_sep_conf.set(False)
     var_vis_files.set(False)
@@ -9105,6 +9289,8 @@ def reset_values():
         "var_not_all_frames": var_not_all_frames.get(),
         "var_nth_frame": var_nth_frame.get() if var_nth_frame.get().isdecimal() else "",
         "var_separate_files": var_separate_files.get(),
+        "var_keep_series": var_keep_series.get(),
+        "var_keep_series_seconds": var_keep_series_seconds.get(),
         "var_file_placement": var_file_placement.get(),
         "var_sep_conf": var_sep_conf.get(),
         "var_vis_files": var_vis_files.get(),
@@ -9139,6 +9325,7 @@ def reset_values():
     toggle_exp_frame()
     toggle_vis_frame()
     toggle_sep_frame()
+    toggle_keep_series_frame()
     toggle_image_size_for_deploy()
     resize_canvas_to_content()
 
@@ -9750,9 +9937,45 @@ var_sep_conf.set(global_vars['var_sep_conf'])
 chb_sep_conf = Checkbutton(sep_frame, variable=var_sep_conf, anchor="w")
 chb_sep_conf.grid(row=row_sep_conf, column=1, sticky='nesw', padx=5)
 
+# keep series files
+# todo: There is a one row gap after var_keep_series which dispersers when it is checked and the keep_series_frame is
+#  shown, how to fix that? The same logic for the sep_frame works without gaps.
+lbl_keep_series_txt = ["Keep series (if animal detected in one image)", "Conservar series (si se detecta un animal en una imagen)", "Conserver les séries (si un animal est détecté dans une image)"]
+row_keep_series = 3
+lbl_keep_series = Label(fth_step, text=lbl_keep_series_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series.grid(row=row_keep_series, sticky='nesw', pady=2)
+var_keep_series = BooleanVar()
+var_keep_series.set(global_vars['var_keep_series'])
+chb_keep_series = Checkbutton(fth_step, variable=var_keep_series, command=toggle_keep_series_frame, anchor="w")
+chb_keep_series.grid(row=row_keep_series, column=1, sticky='nesw', padx=5)
+
+## keep_series frame
+keep_series_frame_txt = ["Keep series options", "Opciones de conservación de series", "Options de conservation des séries"]
+keep_series_frame_row = 4
+keep_series_frame = LabelFrame(fth_step, text=" ↳ " + keep_series_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+keep_series_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
+keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
+keep_series_frame.grid_rowconfigure(keep_series_frame_row, minsize=0)
+keep_series_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
+keep_series_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correction_factor)
+keep_series_frame.grid_forget()
+
+# keep series seconds - only visible if keep series is checked
+lbl_keep_series_seconds_txt = ["Seconds", "Segundos", "Secondes"]
+row_keep_series_seconds = 0
+lbl_keep_series_seconds = Label(keep_series_frame, text="     " + lbl_keep_series_seconds_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series_seconds.grid(row=row_keep_series_seconds, sticky='nesw', pady=2)
+var_keep_series_seconds = DoubleVar()
+var_keep_series_seconds.set(global_vars['var_keep_series_seconds'])
+chb_keep_series_seconds = Scale(keep_series_frame, from_=0.1, to=10, resolution=0.1, orient=HORIZONTAL, variable=var_keep_series_seconds, showvalue=0, width=10, length=1)
+chb_keep_series_seconds.grid(row=row_keep_series_seconds, column=1, sticky='ew', padx=10)
+dsp_keep_series_seconds = Label(keep_series_frame, textvariable=var_keep_series_seconds)
+dsp_keep_series_seconds.configure(fg=green_primary)
+dsp_keep_series_seconds.grid(row=row_keep_series_seconds, column=0, sticky='e', padx=0)
+
 ## visualize images
 lbl_vis_files_txt = ["Visualise detections and blur people", "Mostrar detecciones y difuminar personas", "Visualiser les détections et anonymiser les personnes"]
-row_vis_files = 3
+row_vis_files = 5
 lbl_vis_files = Label(fth_step, text=lbl_vis_files_txt[lang_idx], width=1, anchor="w")
 lbl_vis_files.grid(row=row_vis_files, sticky='nesw', pady=2)
 var_vis_files = BooleanVar()
@@ -9762,7 +9985,7 @@ chb_vis_files.grid(row=row_vis_files, column=1, sticky='nesw', padx=5)
 
 ## visualization options
 vis_frame_txt = ["Visualization options", "Opciones de visualización", "Options de visualisation"]
-vis_frame_row = 4
+vis_frame_row = 6
 vis_frame = LabelFrame(fth_step, text=" ↳ " + vis_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 vis_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 vis_frame.grid(row=vis_frame_row, column=0, columnspan=2, sticky = 'ew')
@@ -9806,7 +10029,7 @@ chb_vis_blur.grid(row=row_vis_blur, column=1, sticky='nesw', padx=5)
 
 ## crop images
 lbl_crp_files_txt = ["Crop detections", "Recortar detecciones", "Rogner les détection"]
-row_crp_files = 5
+row_crp_files = 7
 lbl_crp_files = Label(fth_step, text=lbl_crp_files_txt[lang_idx], width=1, anchor="w")
 lbl_crp_files.grid(row=row_crp_files, sticky='nesw', pady=2)
 var_crp_files = BooleanVar()
@@ -9816,7 +10039,7 @@ chb_crp_files.grid(row=row_crp_files, column=1, sticky='nesw', padx=5)
 
 # plot
 lbl_plt_txt = ["Create maps and graphs", "Crear mapas y gráficos", "Créer les cartes et graphiques"]
-row_plt = 6
+row_plt = 8
 lbl_plt = Label(fth_step, text=lbl_plt_txt[lang_idx], width=1, anchor="w")
 lbl_plt.grid(row=row_plt, sticky='nesw', pady=2)
 var_plt = BooleanVar()
@@ -9826,7 +10049,7 @@ chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
 
 # export results
 lbl_exp_txt = ["Export results and retrieve metadata", "Exportar resultados y recuperar metadatos", "Exporter les résultats and récupérer les métadonnées"]
-row_exp = 7
+row_exp = 9
 lbl_exp = Label(fth_step, text=lbl_exp_txt[lang_idx], width=1, anchor="w")
 lbl_exp.grid(row=row_exp, sticky='nesw', pady=2)
 var_exp = BooleanVar()
@@ -9836,7 +10059,7 @@ chb_exp.grid(row=row_exp, column=1, sticky='nesw', padx=5)
 
 ## exportation options
 exp_frame_txt = ["Export options", "Opciones de exportación", "Options d'exportation"]
-exp_frame_row = 8
+exp_frame_row = 10
 exp_frame = LabelFrame(fth_step, text=" ↳ " + exp_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 exp_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 exp_frame.grid(row=exp_frame_row, column=0, columnspan=2, sticky = 'ew')
@@ -9858,7 +10081,7 @@ dpd_exp_format.grid(row=row_exp_format, column=1, sticky='nesw', padx=5)
 
 # threshold
 lbl_thresh_txt = ["Confidence threshold", "Umbral de confianza", "Seuil de confiance"]
-row_lbl_thresh = 9
+row_lbl_thresh = 11
 lbl_thresh = Label(fth_step, text=lbl_thresh_txt[lang_idx], width=1, anchor="w")
 lbl_thresh.grid(row=row_lbl_thresh, sticky='nesw', pady=2)
 var_thresh = DoubleVar()
@@ -9871,7 +10094,7 @@ dsp_thresh.grid(row=row_lbl_thresh, column=0, sticky='e', padx=0)
 
 # postprocessing button
 btn_start_postprocess_txt = ["Start post-processing", "Iniciar el postprocesamiento", "Démarrer le post-traitement"]
-row_start_postprocess = 10
+row_start_postprocess = 12
 btn_start_postprocess = Button(fth_step, text=btn_start_postprocess_txt[lang_idx], command=start_postprocess)
 btn_start_postprocess.grid(row=row_start_postprocess, column=0, columnspan = 2, sticky='ew')
 
@@ -9888,6 +10111,7 @@ snd_step.grid_rowconfigure(vid_frame_row, minsize=0) # video options
 cls_frame.grid_rowconfigure(row_cls_detec_thresh, minsize=0) # cls animal thresh
 # cls_frame.grid_rowconfigure(row_smooth_cls_animal, minsize=0) # cls animal smooth
 fth_step.grid_rowconfigure(sep_frame_row, minsize=0) # sep options
+fth_step.grid_rowconfigure(keep_series_frame_row, minsize=0) # keep series options
 fth_step.grid_rowconfigure(exp_frame_row, minsize=0) # exp options
 fth_step.grid_rowconfigure(vis_frame_row, minsize=0) # vis options
 

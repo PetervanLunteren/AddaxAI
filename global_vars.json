@@ -33,5 +33,8 @@
     "var_scale_warning_shown": false,
     "var_sppnet_location_idx": 0,
     "speciesnet_warning_shown": false,
-    "var_hitl_file_order": 2
+    "var_hitl_file_order": 2,
+    "var_keep_series": false,
+    "var_keep_series_species": [],
+    "var_keep_series_seconds": 5.0
 }
