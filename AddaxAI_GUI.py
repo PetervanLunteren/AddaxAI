@@ -7074,15 +7074,25 @@ def open_keep_series_species_selection():
 
     all_classes = get_all_supported_model_classes()
     selected_classes = global_vars.get('var_keep_series_species', []) or []
+
     # remove selections that no longer exist in the available list
     selected_classes = [c for c in selected_classes if c in all_classes]
 
     def update_count_label():
         cur = scrollable_checkbox_frame.get_checked_items()
         if len(cur) == 0:
-            lbl2.configure(text=["Trigger: any animal detection", "Activador: cualquier detección de animal", "Déclencheur : toute détection d'animal"][lang_idx])
+            lbl2.configure(
+                text=[
+                    "Trigger: any animal detection",
+                    "Activador: cualquier detección de animal",
+                    "Déclencheur : toute détection d'animal",
+                ][lang_idx]
+            )
         else:
-            lbl2.configure(text=f"{['Selected', 'Seleccionadas', 'Sélection de'][lang_idx]} {len(cur)} {['of', 'de', 'de'][lang_idx]} {len(all_classes)}")
+            lbl2.configure(
+                text=f"{['Selected', 'Seleccionadas', 'Sélection de'][lang_idx]} "
+                     f"{len(cur)} {['of', 'de', 'de'][lang_idx]} {len(all_classes)}"
+            )
 
     def save():
         chosen = scrollable_checkbox_frame.get_checked_items()
@@ -7104,12 +7114,19 @@ def open_keep_series_species_selection():
 
     # create window
     ss_root = customtkinter.CTkToplevel(root)
-    ss_root.title(["Keep-series trigger species", "Especies activadoras para conservar series", "Espèces déclencheuses pour conserver les séries"][lang_idx])
+    ss_root.title(
+        [
+            "Keep-series trigger species",
+            "Especies activadoras para conservar series",
+            "Espèces déclencheuses pour conserver les séries",
+        ][lang_idx]
+    )
     ss_root.geometry("+10+10")
     bring_window_to_top_but_not_for_ever(ss_root)
 
     spp_frm_1 = customtkinter.CTkFrame(master=ss_root)
     spp_frm_1.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
+
     spp_frm = customtkinter.CTkFrame(master=spp_frm_1, width=1000)
     spp_frm.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
 
@@ -7122,11 +7139,12 @@ def open_keep_series_species_selection():
         ][lang_idx],
         font=main_label_font,
     )
-    lbl1.grid(row=0, column=0, padx=2*PADX, pady=PADY, columnspan=2, sticky="nsw")
+    lbl1.grid(row=0, column=0, padx=2 * PADX, pady=PADY, columnspan=2, sticky="nsw")
 
     lbl2 = customtkinter.CTkLabel(spp_frm, text="")
-    lbl2.grid(row=1, column=0, padx=2*PADX, pady=0, columnspan=2, sticky="nsw")
+    lbl2.grid(row=1, column=0, padx=2 * PADX, pady=0, columnspan=2, sticky="nsw")
 
+    # NOTE: SpeciesSelectionFrame now auto-picks a safe number of columns internally
     scrollable_checkbox_frame = SpeciesSelectionFrame(
         master=spp_frm,
         command=update_count_label,
@@ -7137,26 +7155,6 @@ def open_keep_series_species_selection():
     )
     scrollable_checkbox_frame._scrollbar.configure(height=0)
     scrollable_checkbox_frame.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="ew")
-
-    # -------------------- FIX 1: force + keep scrollregion correct --------------------
-    def _refresh_scrollregion(event=None):
-        try:
-            canvas = scrollable_checkbox_frame._parent_canvas
-            # ensure geometry is calculated before bbox("all")
-            scrollable_checkbox_frame.update_idletasks()
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        except Exception:
-            pass
-
-    # run once after initial layout
-    ss_root.after_idle(_refresh_scrollregion)
-
-    # keep it correct when content/size changes
-    try:
-        scrollable_checkbox_frame.bind("<Configure>", _refresh_scrollregion)
-    except Exception:
-        pass
-    # -------------------------------------------------------------------------------
 
     update_count_label()
 
