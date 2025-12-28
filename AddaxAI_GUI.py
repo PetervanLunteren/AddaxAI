@@ -9504,6 +9504,7 @@ def reset_values():
         "var_separate_files": var_separate_files.get(),
         "var_keep_series": var_keep_series.get(),
         "var_keep_series_seconds": var_keep_series_seconds.get(),
+        "var_keep_series_species": [],
         "var_file_placement": var_file_placement.get(),
         "var_sep_conf": var_sep_conf.get(),
         "var_vis_files": var_vis_files.get(),
