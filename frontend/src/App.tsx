@@ -16,6 +16,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
 import ImagesPage from "./pages/ImagesPage";
 import DashboardPage from "./pages/DashboardPage";
+import SettingsPage from "./pages/SettingsPage";
 import { Button } from "./components/ui/button";
 import { api } from "./lib/api-client";
 
@@ -100,7 +101,7 @@ function App() {
             <Route path="analyses" element={<AnalysesPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="images" element={<ImagesPage />} />
-            <Route path="settings" element={<div className="p-8">Settings - Coming soon</div>} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
 

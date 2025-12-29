@@ -9,7 +9,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Copy, Trash2, Calendar, Scan, PawPrint, ListChecks, ScrollText } from "lucide-react";
+import { Plus, Pencil, Copy, Trash2, Calendar, Scan, ScrollText } from "lucide-react";
 import { projectsApi, type ProjectResponse } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { logger } from "../lib/logger";
@@ -52,22 +52,16 @@ export function ProjectsPage() {
     }
   }, [projects]);
 
-  const { data: detectionModels = [] } = useQuery({
-    queryKey: ["models", "detection"],
-    queryFn: () => modelsApi.listDetectionModels(),
-  });
-
   const { data: classificationModels = [] } = useQuery({
     queryKey: ["models", "classification"],
     queryFn: () => modelsApi.listClassificationModels(),
   });
 
-  // Helper to get model name by ID
-  const getModelName = (modelId: string | null, type: "detection" | "classification") => {
+  // Helper to get classification model name by ID
+  const getClassificationModelName = (modelId: string | null) => {
     if (!modelId || modelId === "none") return "None";
-    const models = type === "detection" ? detectionModels : classificationModels;
-    console.log(`Getting ${type} model name for:`, modelId, "Available models:", models);
-    const model = models.find((m) => m.model_id === modelId);
+    console.log(`Getting classification model name for:`, modelId, "Available models:", classificationModels);
+    const model = classificationModels.find((m) => m.model_id === modelId);
     console.log(`Found model:`, model);
     return model ? `${model.emoji} ${model.friendly_name}` : modelId;
   };
@@ -166,59 +160,29 @@ export function ProjectsPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-2.5">
                   <div className="space-y-2 text-sm">
                     {project.description && (
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-start gap-2.5">
                         <ScrollText className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-muted-foreground">Description</p>
-                          <p className="font-medium line-clamp-2">
-                            {project.description}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex items-start gap-2">
-                      <Scan className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground">Detection model</p>
-                        <p className="font-medium truncate">
-                          {getModelName(project.detection_model_id, "detection")}
+                        <p className="text-muted-foreground line-clamp-2 flex-1">
+                          {project.description}
                         </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2">
-                      <PawPrint className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground">Classification model</p>
-                        <p className="font-medium truncate">
-                          {getModelName(project.classification_model_id, "classification")}
-                        </p>
-                      </div>
-                    </div>
-
-                    {project.classification_model_id && project.classification_model_id !== "none" && (
-                      <div className="flex items-start gap-2">
-                        <ListChecks className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-muted-foreground">Selected species</p>
-                          <p className="font-medium">
-                            {project.taxonomy_config?.selected_classes?.length || 0}
-                          </p>
-                        </div>
                       </div>
                     )}
 
-                    <div className="flex items-start gap-2">
-                      <Calendar className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground">Created</p>
-                        <p className="font-medium">
-                          {new Date(project.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                    <div className="flex items-center gap-2.5">
+                      <Scan className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <p className="font-medium truncate">
+                        {getClassificationModelName(project.classification_model_id)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(project.created_at).toLocaleDateString()}
+                      </p>
                     </div>
                   </div>
                 </CardContent>

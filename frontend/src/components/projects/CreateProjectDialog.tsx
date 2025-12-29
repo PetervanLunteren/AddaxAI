@@ -7,16 +7,14 @@
  * - Explicit error handling
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, CheckSquare, Square, ChevronDown, ChevronRight } from "lucide-react";
+import { Info } from "lucide-react";
 import { projectsApi, type ProjectCreate } from "../../api/projects";
 import { modelsApi } from "../../api/models";
-import type { TaxonomyNode } from "../../api/types";
-import { TreeNode } from "../taxonomy/TreeNode";
 import { Button } from "../ui/button";
 import {
   Select,
@@ -44,7 +42,6 @@ import {
 } from "../ui/form";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import { ScrollArea } from "../ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -55,11 +52,16 @@ import {
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
   description: z.string().max(500, "Description too long").optional(),
-  detection_model_id: z.string().min(1, "Detection model is required"),
-  classification_model_id: z.string().nullable(),
-  taxonomy_config: z.object({
-    selected_classes: z.array(z.string()),
-  }),
+  detection_model_id: z.literal("MD5A-0-0"),
+  classification_model_id: z.string().min(1, "Classification model is required"),
+  excluded_classes: z.array(z.string()),
+  country_code: z.string().optional().nullable(),
+  state_code: z.string().optional().nullable(),
+  detection_threshold: z.number().min(0).max(1),
+  event_smoothing: z.boolean(),
+  taxonomic_rollup: z.boolean(),
+  taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
+  independence_interval: z.number().min(0),
 });
 
 interface CreateProjectDialogProps {
@@ -72,17 +74,8 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
-  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(new Set());
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [initializedForModel, setInitializedForModel] = useState<string | null>(null);
 
-  // Fetch available models (already sorted alphabetically by backend)
-  const { data: detectionModels = [] } = useQuery({
-    queryKey: ["models", "detection"],
-    queryFn: () => modelsApi.listDetectionModels(),
-    enabled: open,
-  });
-
+  // Fetch available classification models (already sorted alphabetically by backend)
   const { data: classificationModels = [] } = useQuery({
     queryKey: ["models", "classification"],
     queryFn: () => modelsApi.listClassificationModels(),
@@ -95,126 +88,17 @@ export function CreateProjectDialog({
       name: "",
       description: "",
       detection_model_id: "MD5A-0-0",
-      classification_model_id: null,
-      taxonomy_config: { selected_classes: [] },
+      classification_model_id: "",
+      excluded_classes: [],
+      country_code: null,
+      state_code: null,
+      detection_threshold: 0.5,
+      event_smoothing: true,
+      taxonomic_rollup: true,
+      taxonomic_rollup_threshold: 0.65,
+      independence_interval: 1800, // Will be converted from minutes in UI
     },
   });
-
-  // Fetch taxonomy to get total class count
-  const classificationModelId = form.watch("classification_model_id");
-  const { data: taxonomy, isLoading: taxonomyLoading } = useQuery({
-    queryKey: ["taxonomy", classificationModelId],
-    queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
-    enabled: open && !!classificationModelId && classificationModelId !== "none",
-  });
-
-  const allClasses = taxonomy?.all_classes || [];
-  const tree = taxonomy?.tree || [];
-
-  // Reset when model changes to none or null
-  useEffect(() => {
-    if (!classificationModelId || classificationModelId === "none") {
-      setSelectedClasses(new Set());
-      setExpandedNodes(new Set());
-      setInitializedForModel(null);
-      form.setValue("taxonomy_config", { selected_classes: [] });
-    }
-  }, [classificationModelId, form]);
-
-  // Initialize with all classes when taxonomy loads for a new model
-  useEffect(() => {
-    if (
-      classificationModelId &&
-      classificationModelId !== "none" &&
-      taxonomy?.all_classes &&
-      !taxonomyLoading &&
-      initializedForModel !== classificationModelId
-    ) {
-      const newSelected = new Set(taxonomy.all_classes);
-      setSelectedClasses(newSelected);
-      form.setValue("taxonomy_config", { selected_classes: taxonomy.all_classes });
-      setInitializedForModel(classificationModelId);
-    }
-  }, [classificationModelId, taxonomy?.all_classes, taxonomyLoading, initializedForModel, form]);
-
-  // Tree handlers
-  const handleToggle = (nodeId: string, checked: boolean) => {
-    const newSelected = new Set(selectedClasses);
-
-    const findAndToggleNode = (nodes: TaxonomyNode[]): boolean => {
-      for (const node of nodes) {
-        if (node.id === nodeId) {
-          toggleNodeAndDescendants(node, checked, newSelected);
-          return true;
-        }
-        if (node.children && findAndToggleNode(node.children)) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    findAndToggleNode(tree);
-    setSelectedClasses(newSelected);
-    form.setValue("taxonomy_config", { selected_classes: Array.from(newSelected) });
-  };
-
-  const toggleNodeAndDescendants = (
-    node: TaxonomyNode,
-    checked: boolean,
-    selectedSet: Set<string>
-  ) => {
-    if (!node.children || node.children.length === 0) {
-      if (checked) {
-        selectedSet.add(node.id);
-      } else {
-        selectedSet.delete(node.id);
-      }
-    } else {
-      for (const child of node.children) {
-        toggleNodeAndDescendants(child, checked, selectedSet);
-      }
-    }
-  };
-
-  const handleSelectAll = () => {
-    const newSelected = new Set(allClasses);
-    setSelectedClasses(newSelected);
-    form.setValue("taxonomy_config", { selected_classes: allClasses });
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedClasses(new Set());
-    form.setValue("taxonomy_config", { selected_classes: [] });
-  };
-
-  const handleExpandAll = () => {
-    const allNodeIds = new Set<string>();
-    const collectAllNodeIds = (nodes: TaxonomyNode[]) => {
-      for (const node of nodes) {
-        allNodeIds.add(node.id);
-        if (node.children) {
-          collectAllNodeIds(node.children);
-        }
-      }
-    };
-    collectAllNodeIds(tree);
-    setExpandedNodes(allNodeIds);
-  };
-
-  const handleCollapseAll = () => {
-    setExpandedNodes(new Set());
-  };
-
-  const handleExpand = (nodeId: string, expanded: boolean) => {
-    const newExpanded = new Set(expandedNodes);
-    if (expanded) {
-      newExpanded.add(nodeId);
-    } else {
-      newExpanded.delete(nodeId);
-    }
-    setExpandedNodes(newExpanded);
-  };
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => projectsApi.create(data),
@@ -238,11 +122,11 @@ export function CreateProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create new project</DialogTitle>
           <DialogDescription>
-            Create a new camera trap monitoring project
+            Projects organize your camera trap sites, deployments, and analysis settings
           </DialogDescription>
         </DialogHeader>
 
@@ -268,7 +152,7 @@ export function CreateProjectDialog({
                       </Tooltip>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Yellowstone 2024" {...field} />
+                      <Input placeholder="e.g., Yellowstone camera trap project" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -296,54 +180,11 @@ export function CreateProjectDialog({
                     <FormControl>
                       <Textarea
                         placeholder="Brief description of the project"
-                        className="resize-y min-h-12"
+                        className="resize-y"
+                        rows={2}
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="detection_model_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-1.5">
-                      Detection model
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            The AI model that will scan your data for the presence of animals, persons, and vehicles. It does not identify the animals, it just labels them as a generic "animal"
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="h-12">
-                          <SelectValue placeholder="Select detection model" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {detectionModels.map((model) => (
-                          <SelectItem key={model.model_id} value={model.model_id}>
-                            <div className="flex flex-col gap-0.5 items-start text-left">
-                              <div>{model.emoji} {model.friendly_name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {model.description.length > 50
-                                  ? `${model.description.substring(0, 50)}...`
-                                  : model.description}
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -362,136 +203,35 @@ export function CreateProjectDialog({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            After detecting animals, this model will identify the species.
+                            The AI model that will identify species in your camera trap images.
                             Choose a model trained on species from your geographic region.
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     </FormLabel>
                     <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      defaultValue={field.value || "none"}
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
                     >
                       <FormControl>
-                        <SelectTrigger className="h-12">
+                        <SelectTrigger>
                           <SelectValue placeholder="Select classification model" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {classificationModels.map((model) => (
-                          <SelectItem key={model.model_id} value={model.model_id}>
-                            <div className="flex flex-col gap-0.5 items-start text-left">
-                              <div>{model.emoji} {model.friendly_name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {model.description.length > 50
-                                  ? `${model.description.substring(0, 50)}...`
-                                  : model.description}
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {classificationModels
+                          .filter((model) => model.model_id !== "none")
+                          .map((model) => (
+                            <SelectItem key={model.model_id} value={model.model_id}>
+                              {model.emoji} {model.friendly_name}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
-              {/* Species selection - inline */}
-              {classificationModelId && classificationModelId !== "none" && (
-                <div className="space-y-2">
-                  <FormLabel className="flex items-center gap-1.5">
-                    Species selection
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs">
-                          Select which species the model should identify. All species are selected by default,
-                          but narrowing this to only species present in your study area will improve
-                          classification accuracy.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </FormLabel>
-
-                  <div className="space-y-2 border rounded-md p-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSelectAll}
-                        className="flex-1 min-w-[100px]"
-                      >
-                        <CheckSquare className="h-4 w-4 mr-1.5" />
-                        Select all
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleDeselectAll}
-                        className="flex-1 min-w-[100px]"
-                      >
-                        <Square className="h-4 w-4 mr-1.5" />
-                        Deselect all
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleExpandAll}
-                        className="flex-1 min-w-[100px]"
-                      >
-                        <ChevronDown className="h-4 w-4 mr-1.5" />
-                        Expand all
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCollapseAll}
-                        className="flex-1 min-w-[100px]"
-                      >
-                        <ChevronRight className="h-4 w-4 mr-1.5" />
-                        Collapse all
-                      </Button>
-                    </div>
-
-                    <p className="text-sm text-muted-foreground">
-                      Currently selected: {selectedClasses.size} of {allClasses.length}
-                    </p>
-
-                    {taxonomyLoading ? (
-                      <div className="text-sm text-muted-foreground py-4">
-                        Loading taxonomy...
-                      </div>
-                    ) : tree.length > 0 ? (
-                      <ScrollArea className="h-[300px] border rounded-md p-4 bg-background">
-                        <div className="space-y-1">
-                          {tree.map((node) => (
-                            <TreeNode
-                              key={node.id}
-                              node={node}
-                              selectedClasses={selectedClasses}
-                              expandedNodes={expandedNodes}
-                              onToggle={handleToggle}
-                              onExpand={handleExpand}
-                              level={0}
-                            />
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    ) : (
-                      <div className="text-sm text-muted-foreground py-4">
-                        No taxonomy available for this model
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {form.formState.errors.root && (
                 <p className="text-sm font-medium text-destructive">

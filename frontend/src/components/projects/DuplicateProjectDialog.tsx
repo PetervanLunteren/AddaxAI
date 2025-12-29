@@ -38,11 +38,16 @@ import {
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
   description: z.string().max(500, "Description too long").optional(),
-  detection_model_id: z.string().min(1, "Detection model is required"),
-  classification_model_id: z.string().nullable(),
-  taxonomy_config: z.object({
-    selected_classes: z.array(z.string()),
-  }),
+  detection_model_id: z.literal("MD5A-0-0"),
+  classification_model_id: z.string().min(1, "Classification model is required"),
+  excluded_classes: z.array(z.string()),
+  country_code: z.string().optional().nullable(),
+  state_code: z.string().optional().nullable(),
+  detection_threshold: z.number().min(0).max(1),
+  event_smoothing: z.boolean(),
+  taxonomic_rollup: z.boolean(),
+  taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
+  independence_interval: z.number().min(0),
 });
 
 interface DuplicateProjectDialogProps {
@@ -63,9 +68,16 @@ export function DuplicateProjectDialog({
     defaultValues: {
       name: "",
       description: "",
-      detection_model_id: project?.detection_model_id || "MD5A-0-0",
-      classification_model_id: project?.classification_model_id || null,
-      taxonomy_config: project?.taxonomy_config || { selected_classes: [] },
+      detection_model_id: "MD5A-0-0",
+      classification_model_id: project?.classification_model_id || "",
+      excluded_classes: project?.excluded_classes || [],
+      country_code: project?.country_code || null,
+      state_code: project?.state_code || null,
+      detection_threshold: project?.detection_threshold || 0.5,
+      event_smoothing: project?.event_smoothing ?? true,
+      taxonomic_rollup: project?.taxonomic_rollup ?? true,
+      taxonomic_rollup_threshold: project?.taxonomic_rollup_threshold || 0.65,
+      independence_interval: project?.independence_interval || 1800,
     },
   });
 
@@ -75,9 +87,16 @@ export function DuplicateProjectDialog({
       form.reset({
         name: "",
         description: "",
-        detection_model_id: project.detection_model_id,
-        classification_model_id: project.classification_model_id,
-        taxonomy_config: project.taxonomy_config,
+        detection_model_id: "MD5A-0-0",
+        classification_model_id: project.classification_model_id || "",
+        excluded_classes: project.excluded_classes || [],
+        country_code: project.country_code || null,
+        state_code: project.state_code || null,
+        detection_threshold: project.detection_threshold,
+        event_smoothing: project.event_smoothing,
+        taxonomic_rollup: project.taxonomic_rollup,
+        taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
+        independence_interval: project.independence_interval,
       });
     }
   }, [project, form]);
@@ -104,11 +123,11 @@ export function DuplicateProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Duplicate project</DialogTitle>
           <DialogDescription>
-            Create a copy of "{project.name}" with the same models and taxonomy configuration
+            Create a copy of "{project.name}" with the same configuration
           </DialogDescription>
         </DialogHeader>
 
@@ -134,7 +153,7 @@ export function DuplicateProjectDialog({
                       </Tooltip>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Yellowstone 2024 (Copy)" {...field} />
+                      <Input placeholder={`${project.name} but better`} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -162,7 +181,8 @@ export function DuplicateProjectDialog({
                     <FormControl>
                       <Textarea
                         placeholder="Brief description of the project"
-                        className="resize-y min-h-[80px]"
+                        className="resize-y"
+                        rows={2}
                         {...field}
                       />
                     </FormControl>
@@ -173,7 +193,7 @@ export function DuplicateProjectDialog({
 
               <div className="rounded-lg border bg-muted/50 p-4">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> The duplicated project will use the same detection model, classification model, and taxonomy configuration as the original.
+                  <strong>Note:</strong> The duplicated project will copy all configuration settings from the original, including classification model, species selection, detection thresholds, post-processing features, and independence durations. You can modify these settings in the duplicated project afterward.
                 </p>
               </div>
 

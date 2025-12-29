@@ -32,51 +32,53 @@ export default function ImagesPage() {
   });
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Images</h1>
-        <p className="text-muted-foreground mt-2">
-          Browse camera trap images and detections
-        </p>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-muted-foreground">Loading images...</div>
+    <div className="p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Images</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Browse camera trap images and detections
+          </p>
         </div>
-      ) : !files || files.length === 0 ? (
+
+        {/* Content card */}
         <Card>
-          <CardContent className="py-12">
-            <div className="text-center text-muted-foreground">
-              <p className="text-lg">No images found</p>
-              <p className="text-sm mt-2">
-                Run detection on a deployment to see images here
-              </p>
-            </div>
+          <CardContent className="p-6">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-muted-foreground">Loading images...</div>
+              </div>
+            ) : !files || files.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12">
+                <p className="text-lg">No images found</p>
+                <p className="text-sm mt-2">
+                  Run detection on a deployment to see images here
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {files.map((file) => (
+                  <ImageCard
+                    key={file.id}
+                    file={file}
+                    onClick={() => setSelectedFileId(file.id)}
+                  />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {files.map((file) => (
-              <ImageCard
-                key={file.id}
-                file={file}
-                onClick={() => setSelectedFileId(file.id)}
-              />
-            ))}
-          </div>
 
-          {/* Image viewer modal with detections */}
-          <Dialog open={!!selectedFileId} onOpenChange={() => setSelectedFileId(null)}>
-            <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto">
-              {selectedFile && (
-                <ImageViewer file={selectedFile} />
-              )}
-            </DialogContent>
-          </Dialog>
-        </>
-      )}
+        {/* Image viewer modal with detections */}
+        <Dialog open={!!selectedFileId} onOpenChange={() => setSelectedFileId(null)}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto">
+            {selectedFile && (
+              <ImageViewer file={selectedFile} />
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

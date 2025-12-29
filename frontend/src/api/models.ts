@@ -7,7 +7,7 @@
  */
 
 import { api } from "../lib/api-client";
-import type { ModelInfo, ModelStatusResponse, TaxonomyResponse } from "./types";
+import type { ModelInfo, ModelStatusResponse, TaxonomyResponse, LocationsResponse } from "./types";
 
 export const modelsApi = {
   /**
@@ -43,4 +43,10 @@ export const modelsApi = {
    */
   getTaxonomy: (modelId: string) =>
     api.get<TaxonomyResponse>(`/api/ml/models/${modelId}/taxonomy`),
+
+  /**
+   * Get available countries and US states for SpeciesNet models
+   */
+  getSpeciesNetLocations: () =>
+    api.get<LocationsResponse>("/api/ml/models/speciesnet/locations"),
 };

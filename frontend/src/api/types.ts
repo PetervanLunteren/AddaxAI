@@ -12,9 +12,14 @@ export interface ProjectCreate {
   description?: string | null;
   detection_model_id: string;
   classification_model_id: string | null;
-  taxonomy_config: {
-    selected_classes: string[];
-  };
+  excluded_classes: string[];
+  country_code?: string | null;
+  state_code?: string | null;
+  detection_threshold: number;
+  event_smoothing: boolean;
+  taxonomic_rollup: boolean;
+  taxonomic_rollup_threshold: number;
+  independence_interval: number;
 }
 
 export interface ProjectUpdate {
@@ -22,9 +27,14 @@ export interface ProjectUpdate {
   description?: string | null;
   detection_model_id?: string | null;
   classification_model_id?: string | null;
-  taxonomy_config?: {
-    selected_classes: string[];
-  } | null;
+  excluded_classes?: string[] | null;
+  country_code?: string | null;
+  state_code?: string | null;
+  detection_threshold?: number | null;
+  event_smoothing?: boolean | null;
+  taxonomic_rollup?: boolean | null;
+  taxonomic_rollup_threshold?: number | null;
+  independence_interval?: number | null;
 }
 
 export interface ProjectResponse {
@@ -33,9 +43,14 @@ export interface ProjectResponse {
   description: string | null;
   detection_model_id: string;
   classification_model_id: string | null;
-  taxonomy_config: {
-    selected_classes: string[];
-  };
+  excluded_classes: string[];
+  country_code: string | null;
+  state_code: string | null;
+  detection_threshold: number;
+  event_smoothing: boolean;
+  taxonomic_rollup: boolean;
+  taxonomic_rollup_threshold: number;
+  independence_interval: number;
   created_at: string;
   updated_at: string;
 }
@@ -195,6 +210,7 @@ export interface ModelInfo {
   emoji: string;
   type: "detection" | "classification";
   description: string;
+  description_short?: string | null;
   developer?: string | null;
   info_url?: string | null;
 }
@@ -211,4 +227,10 @@ export interface TaxonomyNode {
 export interface TaxonomyResponse {
   tree: TaxonomyNode[];
   all_classes: string[];
+}
+
+// SpeciesNet Locations types
+export interface LocationsResponse {
+  countries: Record<string, string>;  // Display name -> ISO code
+  us_states: Record<string, string>;  // Display name -> State code
 }

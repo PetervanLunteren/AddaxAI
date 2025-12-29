@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -49,8 +49,33 @@ class Project(Base):
     classification_model_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )
-    taxonomy_config: Mapped[dict] = mapped_column(
-        JSON, nullable=False, default=dict
+    excluded_classes: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+
+    # SpeciesNet geographic location (alternative to excluded_classes)
+    country_code: Mapped[str | None] = mapped_column(
+        String(3), nullable=True
+    )
+    state_code: Mapped[str | None] = mapped_column(
+        String(2), nullable=True
+    )
+
+    # Detection and processing settings
+    detection_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.5
+    )
+    event_smoothing: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    taxonomic_rollup: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    taxonomic_rollup_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.65
+    )
+    independence_interval: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1800  # seconds
     )
 
     # Relationships

@@ -68,6 +68,7 @@ class ModelInfo(BaseModel):
     emoji: str
     type: Literal["detection", "classification"]
     description: str
+    description_short: str | None = None
     developer: str | None = None
     info_url: str | None = None
 
@@ -437,6 +438,7 @@ def list_detection_models() -> list[ModelInfo]:
             emoji=manifest.emoji,
             type="detection",
             description=manifest.description or "",
+            description_short=getattr(manifest, "description_short", None),
             developer=manifest.developer,
             info_url=manifest.info_url,
         )
@@ -477,6 +479,7 @@ def list_classification_models() -> list[ModelInfo]:
             emoji=manifest.emoji,
             type="classification",
             description=manifest.description or "",
+            description_short=getattr(manifest, "description_short", None),
             developer=manifest.developer,
             info_url=manifest.info_url,
         )
@@ -554,4 +557,32 @@ def get_model_taxonomy(model_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to parse taxonomy: {str(e)}"
+        )
+
+
+@router.get("/models/speciesnet/locations")
+def get_speciesnet_locations():
+    """
+    Get available countries and US states for SpeciesNet geographic location selection.
+
+    Returns dictionaries mapping display names (with emojis) to ISO codes.
+
+    Returns:
+        {
+            "countries": {"🇺🇸 United States": "USA", ...},
+            "us_states": {"🌴 California": "CA", ...}
+        }
+    """
+    try:
+        from app.ml.data.countries import countries_data, us_states_data
+
+        return {
+            "countries": countries_data,
+            "us_states": us_states_data
+        }
+    except Exception as e:
+        logger.error(f"Failed to load location data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load location data: {str(e)}"
         )

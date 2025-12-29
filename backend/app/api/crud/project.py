@@ -46,7 +46,12 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
         description=project.description,
         detection_model_id=project.detection_model_id,
         classification_model_id=project.classification_model_id,
-        taxonomy_config=project.taxonomy_config if project.taxonomy_config else {},
+        excluded_classes=project.excluded_classes if project.excluded_classes else [],
+        detection_threshold=project.detection_threshold,
+        event_smoothing=project.event_smoothing,
+        taxonomic_rollup=project.taxonomic_rollup,
+        taxonomic_rollup_threshold=project.taxonomic_rollup_threshold,
+        independence_interval=project.independence_interval,
     )
     db.add(db_project)
     db.commit()

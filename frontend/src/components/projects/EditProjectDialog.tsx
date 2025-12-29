@@ -5,11 +5,19 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { Info, AlertTriangle } from "lucide-react";
 import { projectsApi, type ProjectUpdate, type ProjectResponse } from "../../api/projects";
+import { modelsApi } from "../../api/models";
 import { Button } from "../ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +51,7 @@ const projectSchema = z.object({
     .max(500, "Description too long")
     .optional()
     .transform((val) => (val === "" ? undefined : val)),
+  classification_model_id: z.string().min(1, "Classification model is required"),
 });
 
 interface EditProjectDialogProps {
@@ -60,11 +69,19 @@ export function EditProjectDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
+  // Fetch available classification models
+  const { data: classificationModels = [] } = useQuery({
+    queryKey: ["models", "classification"],
+    queryFn: () => modelsApi.listClassificationModels(),
+    enabled: open,
+  });
+
   const form = useForm<ProjectUpdate>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
       name: project.name,
       description: project.description || "",
+      classification_model_id: project.classification_model_id || "",
     },
   });
 
@@ -73,6 +90,7 @@ export function EditProjectDialog({
     form.reset({
       name: project.name,
       description: project.description || "",
+      classification_model_id: project.classification_model_id || "",
     });
   }, [project, form]);
 
@@ -105,11 +123,11 @@ export function EditProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit project</DialogTitle>
           <DialogDescription>
-            Update project name and description
+            Update project details
           </DialogDescription>
         </DialogHeader>
 
@@ -135,7 +153,7 @@ export function EditProjectDialog({
                       </Tooltip>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Yellowstone 2024" {...field} />
+                      <Input placeholder="e.g., Yellowstone camera trap project" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -163,7 +181,8 @@ export function EditProjectDialog({
                     <FormControl>
                       <Textarea
                         placeholder="Brief description of the project"
-                        className="resize-y min-h-[80px]"
+                        className="resize-y"
+                        rows={2}
                         {...field}
                       />
                     </FormControl>
@@ -172,11 +191,48 @@ export function EditProjectDialog({
                 )}
               />
 
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> To edit detection/classification models and taxonomy configuration, open the project and go to Settings.
-                </p>
-              </div>
+              <FormField
+                control={form.control}
+                name="classification_model_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1.5">
+                      Classification model
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            The AI model that will identify species in your camera trap images.
+                            Choose a model trained on species from your geographic region.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select classification model" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {classificationModels
+                          .filter((model) => model.model_id !== "none")
+                          .map((model) => (
+                            <SelectItem key={model.model_id} value={model.model_id}>
+                              {model.emoji} {model.friendly_name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {form.formState.errors.root && (
                 <p className="text-sm font-medium text-destructive">

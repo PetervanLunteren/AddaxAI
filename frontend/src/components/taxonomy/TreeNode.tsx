@@ -16,6 +16,7 @@ interface TreeNodeProps {
   node: TaxonomyNodeType;
   level: number;
   selectedClasses: Set<string>;
+  excludedMode?: boolean; // If true, selectedClasses represents excluded species
   onToggle: (nodeId: string, checked: boolean) => void;
   expandedNodes: Set<string>;
   onExpand: (nodeId: string, expanded: boolean) => void;
@@ -27,6 +28,7 @@ export function TreeNode({
   node,
   level,
   selectedClasses,
+  excludedMode = false,
   onToggle,
   expandedNodes,
   onExpand,
@@ -41,8 +43,12 @@ export function TreeNode({
   // Calculate checkbox state
   const getCheckboxState = (): { checked: boolean; indeterminate: boolean } => {
     if (isLeaf) {
-      // Leaf nodes: checked if in selectedClasses
-      return { checked: selectedClasses.has(node.id), indeterminate: false };
+      // Leaf nodes: in excluded mode, checked means NOT excluded (inverted)
+      const isInSet = selectedClasses.has(node.id);
+      return {
+        checked: excludedMode ? !isInSet : isInSet,
+        indeterminate: false
+      };
     }
 
     // Parent nodes: check children state
@@ -69,7 +75,11 @@ export function TreeNode({
     child: TaxonomyNodeType
   ): { checked: boolean; indeterminate: boolean } => {
     if (!child.children || child.children.length === 0) {
-      return { checked: selectedClasses.has(child.id), indeterminate: false };
+      const isInSet = selectedClasses.has(child.id);
+      return {
+        checked: excludedMode ? !isInSet : isInSet,
+        indeterminate: false
+      };
     }
 
     const checkedDescendants = child.children.filter((descendant) => {
@@ -200,6 +210,7 @@ export function TreeNode({
                 node={child}
                 level={level + 1}
                 selectedClasses={selectedClasses}
+                excludedMode={excludedMode}
                 onToggle={onToggle}
                 expandedNodes={expandedNodes}
                 onExpand={onExpand}
