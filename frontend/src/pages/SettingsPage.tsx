@@ -168,6 +168,23 @@ export default function SettingsPage() {
     }
   }, [countryCode, form]);
 
+  // Clear excluded_classes when classification model changes
+  useEffect(() => {
+    if (classificationModelId && taxonomy?.all_classes) {
+      // Filter excluded_classes to only keep species that exist in the new model
+      const currentExcluded = form.getValues("excluded_classes");
+      const validExcluded = currentExcluded.filter(cls =>
+        taxonomy.all_classes.includes(cls)
+      );
+
+      // Only update if some species were removed
+      if (validExcluded.length !== currentExcluded.length) {
+        form.setValue("excluded_classes", validExcluded, { shouldDirty: true });
+        setExcludedClasses(validExcluded);
+      }
+    }
+  }, [classificationModelId, taxonomy, form]);
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (data: ProjectUpdate) => projectsApi.update(projectId!, data),
@@ -252,7 +269,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection model</FormLabel>
                         <FormDescription className="text-sm">
@@ -269,12 +286,13 @@ export default function SettingsPage() {
                           <SelectContent>
                             {detectionModels.map((model) => (
                               <SelectItem key={model.model_id} value={model.model_id}>
-                                <div className="flex flex-col">
-                                  <span>{model.emoji} {model.friendly_name}</span>
-                                  {model.description_short && (
+                                {model.emoji} {model.friendly_name}
+                                {model.description_short && (
+                                  <>
+                                    <br />
                                     <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                  )}
-                                </div>
+                                  </>
+                                )}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -290,7 +308,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="classification_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
@@ -314,12 +332,13 @@ export default function SettingsPage() {
                               .filter((model) => model.model_id !== "none")
                               .map((model) => (
                                 <SelectItem key={model.model_id} value={model.model_id}>
-                                  <div className="flex flex-col">
-                                    <span>{model.emoji} {model.friendly_name}</span>
-                                    {model.description_short && (
+                                  {model.emoji} {model.friendly_name}
+                                  {model.description_short && (
+                                    <>
+                                      <br />
                                       <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                    )}
-                                  </div>
+                                    </>
+                                  )}
                                 </SelectItem>
                               ))}
                           </SelectContent>
@@ -348,7 +367,7 @@ export default function SettingsPage() {
                     control={form.control}
                     name="country_code"
                     render={({ field }) => (
-                      <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                      <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                         <div className="space-y-1">
                           <FormLabel>Country</FormLabel>
                           <FormDescription className="text-sm">
@@ -416,7 +435,7 @@ export default function SettingsPage() {
                       control={form.control}
                       name="state_code"
                       render={({ field }) => (
-                        <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                        <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                           <div className="space-y-1">
                             <FormLabel>State</FormLabel>
                             <FormDescription className="text-sm">
@@ -491,7 +510,7 @@ export default function SettingsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-[70%_1fr] gap-8">
+                  <div className="grid grid-cols-[60%_1fr] gap-8">
                     <div className="space-y-1">
                       <FormLabel>Species selection</FormLabel>
                       <FormDescription className="text-sm">
@@ -505,7 +524,7 @@ export default function SettingsPage() {
                         onClick={() => setSpeciesModalOpen(true)}
                         className="w-full"
                       >
-                        Select
+                        Select species
                       </Button>
                       <p className="text-xs text-muted-foreground">
                         Currently included: {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
@@ -530,7 +549,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_threshold"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection confidence threshold</FormLabel>
                         <FormDescription className="text-sm">
@@ -560,7 +579,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="independence_interval"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Independence interval</FormLabel>
                         <FormDescription className="text-sm">
@@ -589,7 +608,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="event_smoothing"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Event smoothing</FormLabel>
                         <FormDescription className="text-sm">
@@ -611,7 +630,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="taxonomic_rollup"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[70%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Taxonomic rollup</FormLabel>
                         <FormDescription className="text-sm">

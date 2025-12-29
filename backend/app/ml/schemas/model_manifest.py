@@ -32,6 +32,7 @@ class ModelManifest(BaseModel):
 
     # Metadata
     description: str
+    description_short: str | None = None
     developer: str
     citation: str | None = None
     license: str | None = None
