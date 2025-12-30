@@ -6,10 +6,10 @@
  * - Simple, clear structure
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Copy, Trash2, Calendar, Scan, ScrollText } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Copy, Trash2 } from "lucide-react";
 import { projectsApi, type ProjectResponse } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { logger } from "../lib/logger";
@@ -17,10 +17,15 @@ import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { CreateProjectDialog } from "../components/projects/CreateProjectDialog";
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 import { DuplicateProjectDialog } from "../components/projects/DuplicateProjectDialog";
@@ -38,32 +43,39 @@ export function ProjectsPage() {
     queryFn: () => projectsApi.getProjects(),
   });
 
-  // Debug: log projects data to see classification_model_id values
-  useEffect(() => {
-    if (projects) {
-      console.log("Projects data:", projects);
-      projects.forEach(p => {
-        console.log(`Project "${p.name}":`, {
-          detection_model_id: p.detection_model_id,
-          classification_model_id: p.classification_model_id,
-          taxonomy_config: p.taxonomy_config
-        });
-      });
-    }
-  }, [projects]);
 
   const { data: classificationModels = [] } = useQuery({
     queryKey: ["models", "classification"],
     queryFn: () => modelsApi.listClassificationModels(),
   });
 
+  const { data: locations } = useQuery({
+    queryKey: ["speciesnet-locations"],
+    queryFn: () => modelsApi.getSpeciesNetLocations(),
+  });
+
   // Helper to get classification model name by ID
   const getClassificationModelName = (modelId: string | null) => {
     if (!modelId || modelId === "none") return "None";
-    console.log(`Getting classification model name for:`, modelId, "Available models:", classificationModels);
     const model = classificationModels.find((m) => m.model_id === modelId);
-    console.log(`Found model:`, model);
     return model ? `${model.emoji} ${model.friendly_name}` : modelId;
+  };
+
+  // Helper to check if a model is SpeciesNet
+  const isSpeciesNet = (modelId: string | null) => {
+    return modelId?.toLowerCase().includes("speciesnet") ?? false;
+  };
+
+  // Helper to get country name by code
+  const getCountryName = (code: string | null) => {
+    if (!code || !locations) return null;
+    return Object.entries(locations.countries).find(([_, c]) => c === code)?.[0];
+  };
+
+  // Helper to get state name by code
+  const getStateName = (code: string | null) => {
+    if (!code || !locations) return null;
+    return Object.entries(locations.us_states).find(([_, c]) => c === code)?.[0];
   };
 
   // Log errors
@@ -120,70 +132,83 @@ export function ProjectsPage() {
                     <div className="flex-1">
                       <CardTitle>{project.name}</CardTitle>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          logger.info(`User opened edit dialog for project: ${project.name}`);
-                          setEditingProject(project);
-                        }}
-                        title="Edit project"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          logger.info(`User opened duplicate dialog for project: ${project.name}`);
-                          setDuplicatingProject(project);
-                        }}
-                        title="Duplicate project"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          logger.info(`User opened delete dialog for project: ${project.name}`);
-                          setDeletingProject(project);
-                        }}
-                        title="Delete project"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            logger.info(`User opened edit dialog for project: ${project.name}`);
+                            setEditingProject(project);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            logger.info(`User opened duplicate dialog for project: ${project.name}`);
+                            setDuplicatingProject(project);
+                          }}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            logger.info(`User opened delete dialog for project: ${project.name}`);
+                            setDeletingProject(project);
+                          }}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2.5">
-                  <div className="space-y-2 text-sm">
-                    {project.description && (
-                      <div className="flex items-start gap-2.5">
-                        <ScrollText className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                        <p className="text-muted-foreground line-clamp-2 flex-1">
-                          {project.description}
-                        </p>
-                      </div>
+                <CardContent className="space-y-3">
+                  {project.description && (
+                    <>
+                      <p className="text-sm text-muted-foreground line-clamp-4">
+                        {project.description}
+                      </p>
+                      <div className="border-t border-border/50" />
+                    </>
+                  )}
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      {getClassificationModelName(project.classification_model_id)}
+                    </p>
+
+                    {isSpeciesNet(project.classification_model_id) && (
+                      <>
+                        <div className="border-t border-border/50" />
+                        <div className="space-y-2 text-sm text-muted-foreground">
+                          {getCountryName(project.country_code) && (
+                            <p>{getCountryName(project.country_code)}</p>
+                          )}
+                          {getCountryName(project.country_code) && getStateName(project.state_code) && (
+                            <div className="border-t border-border/50" />
+                          )}
+                          {getStateName(project.state_code) && (
+                            <p>{getStateName(project.state_code)}</p>
+                          )}
+                        </div>
+                      </>
                     )}
-
-                    <div className="flex items-center gap-2.5">
-                      <Scan className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <p className="font-medium truncate">
-                        {getClassificationModelName(project.classification_model_id)}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(project.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
                   </div>
                 </CardContent>
               </Card>

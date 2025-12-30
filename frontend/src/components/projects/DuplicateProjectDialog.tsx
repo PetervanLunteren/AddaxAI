@@ -183,17 +183,27 @@ export function DuplicateProjectDialog({
                         placeholder="Brief description of the project"
                         className="resize-y"
                         rows={2}
+                        maxLength={500}
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <div className="flex items-center justify-between">
+                      <FormMessage />
+                      <p className={`text-xs ${
+                        (field.value?.length || 0) > 450
+                          ? "text-orange-600"
+                          : "text-muted-foreground"
+                      }`}>
+                        {field.value?.length || 0} / 500
+                      </p>
+                    </div>
                   </FormItem>
                 )}
               />
 
               <div className="rounded-lg border bg-muted/50 p-4">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> The duplicated project will copy all configuration settings from the original, including classification model, species selection, detection thresholds, post-processing features, and independence durations. You can modify these settings in the duplicated project afterward.
+                  <strong>Note:</strong> The duplicated project will copy all configuration settings from the original. You can modify these settings in the duplicated project afterward.
                 </p>
               </div>
 
