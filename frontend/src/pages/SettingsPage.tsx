@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Settings2, Check, ChevronsUpDown } from "lucide-react";
+import { Save, RotateCcw, Settings2, Check, ChevronsUpDown, ListTodo } from "lucide-react";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
@@ -522,13 +522,16 @@ export default function SettingsPage() {
                         type="button"
                         variant="outline"
                         onClick={() => setSpeciesModalOpen(true)}
-                        className="w-full"
+                        className="w-full min-h-14 flex flex-col items-start justify-center gap-1 text-left"
                       >
-                        Select species
+                        <div className="flex items-center gap-2">
+                          <ListTodo className="h-4 w-4" />
+                          <span>Select species</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Currently included {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
+                        </span>
                       </Button>
-                      <p className="text-xs text-muted-foreground">
-                        Currently included: {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
-                      </p>
                     </div>
                   </div>
                 </CardContent>

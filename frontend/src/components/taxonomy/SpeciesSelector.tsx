@@ -80,6 +80,23 @@ export function SpeciesSelector({
     enabled: !!modelId,
   });
 
+  // Expand all nodes by default when taxonomy loads
+  useEffect(() => {
+    if (taxonomy?.tree) {
+      const allNodeIds = new Set<string>();
+      const collectAllNodeIds = (nodes: TaxonomyNode[]) => {
+        for (const node of nodes) {
+          allNodeIds.add(node.id);
+          if (node.children) {
+            collectAllNodeIds(node.children);
+          }
+        }
+      };
+      collectAllNodeIds(taxonomy.tree);
+      setExpandedNodes(allNodeIds);
+    }
+  }, [taxonomy]);
+
   const allClasses = taxonomy?.all_classes || [];
   const tree = taxonomy?.tree || [];
 
@@ -216,8 +233,8 @@ export function SpeciesSelector({
 
       {/* Inclusion counter (showing included = total - excluded) */}
       <p className="text-sm text-muted-foreground">
-        Currently included: {allClasses.length - excludedSet.size} of {allClasses.length}
-        {excludedSet.size > 0 && <span className="text-destructive ml-1">({excludedSet.size} excluded)</span>}
+        Currently included {allClasses.length - excludedSet.size} of {allClasses.length}
+        {excludedSet.size > 0 && <span className="ml-1">({excludedSet.size} excluded)</span>}
       </p>
 
       {/* Taxonomy tree */}

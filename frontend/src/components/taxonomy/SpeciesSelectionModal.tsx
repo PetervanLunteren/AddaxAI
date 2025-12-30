@@ -39,7 +39,7 @@ export function SpeciesSelectionModal({
         <DialogHeader>
           <DialogTitle>Configure species selection</DialogTitle>
           <DialogDescription>
-            Select which species to include in classifications. Currently: {includedCount} included, {excludedClasses.length} excluded
+            Select which species to include in classifications.
           </DialogDescription>
         </DialogHeader>
 
