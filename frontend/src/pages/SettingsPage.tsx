@@ -129,6 +129,15 @@ export default function SettingsPage() {
         taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
       });
+
+      // WORKAROUND: Set state_code again after a tick to ensure the field is rendered
+      // This handles the race condition where the state field is conditionally rendered
+      // based on country_code === "USA"
+      if (project.state_code) {
+        setTimeout(() => {
+          form.setValue("state_code", project.state_code);
+        }, 0);
+      }
     }
   }, [project, form]);
 

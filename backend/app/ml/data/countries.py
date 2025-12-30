@@ -12,6 +12,7 @@ To avoid this, we prefix states with emojis, split them in two parts, and map th
 
 # Country data with flag emojis and ISO country codes
 countries_data = {
+    "∅ Do not limit predictions to one country": "NONE",
     "🇦🇼 Aruba": "ABW",
     "🇦🇫 Afghanistan": "AFG",
     "🇦🇴 Angola": "AGO",
@@ -326,4 +327,8 @@ us_states_part_two = {
     "🦬 Wyoming": "WY",             # Yellowstone bison
     "🏛️ District of Columbia": "DC" # US Capitol
 }
-us_states_data = {**us_states_part_one, **us_states_part_two}
+us_states_data = {
+    "∅ Do not limit predictions to one state": "NONE",
+    **us_states_part_one,
+    **us_states_part_two
+}
