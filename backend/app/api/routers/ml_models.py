@@ -445,8 +445,17 @@ def list_detection_models() -> list[ModelInfo]:
         for manifest in models.values()
     ]
 
-    # Sort alphabetically by friendly_name
-    return sorted(model_list, key=lambda m: m.friendly_name)
+    # Sort by user-friendly order: MD5A, MD5B first, then MD1000 models by accuracy (best to lowest)
+    sort_order = {
+        "MD5A-0-0": 0,
+        "MD5B-0-0": 1,
+        "MD1000-REDWOOD-0-0": 2,
+        "MD1000-CEDAR-0-0": 3,
+        "MD1000-LARCH-0-0": 4,
+        "MD1000-SORREL-0-0": 5,
+        "MD1000-SPRUCE-0-0": 6,
+    }
+    return sorted(model_list, key=lambda m: sort_order.get(m.model_id, 999))
 
 
 @router.get("/models/classification", response_model=list[ModelInfo])

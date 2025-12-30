@@ -224,6 +224,12 @@ export function CreateProjectDialog({
                           .map((model) => (
                             <SelectItem key={model.model_id} value={model.model_id}>
                               {model.emoji} {model.friendly_name}
+                              {model.description_short && (
+                                <>
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">{model.description_short}</span>
+                                </>
+                              )}
                             </SelectItem>
                           ))}
                       </SelectContent>
