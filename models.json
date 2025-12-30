@@ -212,7 +212,7 @@
         "env": "tensorflow-v1",
         "model_fname": "Peru-Amazon_0.86.h5",
         "description": "This model was trained by Mathias Tobler from the San Diego Zoo Wildlife Alliance. Information about the source of the training dataset and model metrics is not available.",
-        "description_short": "Peruvian Amazon rainforest • San Diego Zoo Wildlife Alliance",
+        "description_short": "Peruvian Amazon rainforest • 53 classes",
         "developer": "San Diego Zoo Wildlife Alliance",
         "license": "https://opensource.org/license/mit",
         "info_url": "https://github.com/conservationtechlab",
