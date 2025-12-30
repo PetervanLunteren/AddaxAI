@@ -178,6 +178,7 @@ export function ProjectsPage() {
                     </DropdownMenu>
                   </div>
                 </CardHeader>
+                <div className="border-t border-border/50 mx-6 mb-3" />
                 <CardContent className="space-y-3">
                   {project.description && (
                     <>

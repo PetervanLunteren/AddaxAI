@@ -79,6 +79,8 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [excludedClasses, setExcludedClasses] = useState<string[]>([]);
   const [speciesModalOpen, setSpeciesModalOpen] = useState(false);
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [stateOpen, setStateOpen] = useState(false);
 
   // Fetch current project
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -384,7 +386,7 @@ export default function SettingsPage() {
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
-                          <Popover>
+                          <Popover open={countryOpen} onOpenChange={setCountryOpen}>
                             <PopoverTrigger asChild>
                               <FormControl>
                                 <Button
@@ -416,6 +418,7 @@ export default function SettingsPage() {
                                         value={name}
                                         onSelect={() => {
                                           form.setValue("country_code", code, { shouldDirty: true });
+                                          setCountryOpen(false);
                                         }}
                                       >
                                         <Check
@@ -452,7 +455,7 @@ export default function SettingsPage() {
                             </FormDescription>
                           </div>
                           <div className="space-y-2">
-                            <Popover>
+                            <Popover open={stateOpen} onOpenChange={setStateOpen}>
                               <PopoverTrigger asChild>
                                 <FormControl>
                                   <Button
@@ -484,6 +487,7 @@ export default function SettingsPage() {
                                           value={name}
                                           onSelect={() => {
                                             form.setValue("state_code", code, { shouldDirty: true });
+                                            setStateOpen(false);
                                           }}
                                         >
                                           <Check

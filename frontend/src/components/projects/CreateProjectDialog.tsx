@@ -7,7 +7,7 @@
  * - Explicit error handling
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -76,7 +76,33 @@ const projectSchema = z.object({
   taxonomic_rollup: z.boolean(),
   taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
-});
+}).refine(
+  (data) => {
+    // If SpeciesNet is selected, country must be provided
+    const isSpeciesNet = data.classification_model_id?.toLowerCase().includes("speciesnet");
+    if (isSpeciesNet && !data.country_code) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: "Country is required for SpeciesNet models",
+    path: ["country_code"],
+  }
+).refine(
+  (data) => {
+    // If SpeciesNet is selected and country is USA, state must be provided
+    const isSpeciesNet = data.classification_model_id?.toLowerCase().includes("speciesnet");
+    if (isSpeciesNet && data.country_code === "USA" && !data.state_code) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: "State is required when USA is selected",
+    path: ["state_code"],
+  }
+);
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -88,6 +114,8 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [stateOpen, setStateOpen] = useState(false);
 
   // Fetch available classification models (already sorted alphabetically by backend)
   const { data: classificationModels = [] } = useQuery({
@@ -305,7 +333,7 @@ export function CreateProjectDialog({
                           </TooltipContent>
                         </Tooltip>
                       </FormLabel>
-                      <Popover>
+                      <Popover open={countryOpen} onOpenChange={setCountryOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
@@ -337,6 +365,7 @@ export function CreateProjectDialog({
                                     value={name}
                                     onSelect={() => {
                                       form.setValue("country_code", code);
+                                      setCountryOpen(false);
                                     }}
                                   >
                                     <Check
@@ -379,7 +408,7 @@ export function CreateProjectDialog({
                           </TooltipContent>
                         </Tooltip>
                       </FormLabel>
-                      <Popover>
+                      <Popover open={stateOpen} onOpenChange={setStateOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
@@ -411,6 +440,7 @@ export function CreateProjectDialog({
                                     value={name}
                                     onSelect={() => {
                                       form.setValue("state_code", code);
+                                      setStateOpen(false);
                                     }}
                                   >
                                     <Check
