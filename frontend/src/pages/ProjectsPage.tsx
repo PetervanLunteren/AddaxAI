@@ -128,7 +128,7 @@ export function ProjectsPage() {
                 }}
               >
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <CardTitle>{project.name}</CardTitle>
                     </div>
