@@ -8,7 +8,7 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -180,6 +180,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      preload: path.join(__dirname, 'preload.js'), // Compiled from preload.ts
     },
     show: false, // Don't show until ready
   });
@@ -208,6 +209,24 @@ async function createWindow(): Promise<void> {
     mainWindow.webContents.openDevTools();
   }
 }
+
+/**
+ * IPC handlers
+ */
+
+// Handle folder selection dialog
+ipcMain.handle('dialog:selectFolder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: 'Select folder with camera trap images',
+  });
+
+  if (result.canceled) {
+    return null;
+  }
+
+  return result.filePaths[0] || null;
+});
 
 /**
  * Application lifecycle handlers

@@ -66,6 +66,66 @@ def create_deployment(
         ) from e
 
 
+@router.get("/preview-folder", response_model=FolderPreviewResponse)
+def preview_folder_path(
+    path: str = Query(..., description="Absolute path to folder to preview"),
+) -> FolderPreviewResponse:
+    """
+    Preview a folder before creating a deployment.
+
+    Scans the folder to count images/videos and check for GPS coordinates.
+    Used by the frontend to validate folder selection before adding to queue.
+
+    Returns 400 if folder doesn't exist or isn't accessible.
+    """
+    if not path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Folder path is required",
+        )
+
+    # Scan folder
+    try:
+        logger.info(f"Scanning folder: {path}")
+        preview = scan_folder(path)
+        logger.info(
+            f"Folder scan complete: {preview['image_count']} images, {preview['video_count']} videos"
+        )
+    except FileNotFoundError as e:
+        logger.error(f"Folder not found: {path}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Folder not found: {str(e)}",
+        ) from e
+    except PermissionError as e:
+        logger.error(f"Permission denied: {path}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission denied: {str(e)}",
+        ) from e
+    except Exception as e:
+        logger.error(
+            f"Error scanning folder: {type(e).__name__}: {e}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error scanning folder: {str(e)}",
+        ) from e
+
+    # Convert to response schema
+    return FolderPreviewResponse(
+        image_count=preview["image_count"],
+        video_count=preview["video_count"],
+        total_count=preview["total_count"],
+        gps_location=GPSCoordinates(**preview["gps_location"])
+        if preview["gps_location"]
+        else None,
+        suggested_site_id=None,
+        sample_files=preview["sample_files"],
+    )
+
+
 @router.get("/{deployment_id}", response_model=DeploymentResponse)
 def get_deployment(
     deployment_id: str, db: Session = Depends(get_db)
