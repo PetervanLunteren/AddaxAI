@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
+import exiftool
 from PIL import Image
 from PIL.ExifTags import GPSTAGS, TAGS
 
@@ -97,8 +98,8 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
     # Try to extract GPS from random sample of images
     gps_location = _extract_gps_from_sample(folder, image_files, gps_sample_size)
 
-    # Extract date range from images with validation
-    start_date, end_date, validation_log = _extract_date_range(image_files)
+    # Extract date range from images and videos with validation
+    start_date, end_date, validation_log = _extract_date_range(image_files, video_files)
 
     return FolderPreview(
         image_count=len(image_files),
@@ -241,80 +242,114 @@ def _convert_to_degrees(
 
 def _extract_date_range(
     image_files: list[Path],
+    video_files: list[Path],
 ) -> tuple[datetime | None, datetime | None, list[str]]:
     """
-    Extract date range from image EXIF datetime metadata with validation.
+    Extract date range from image and video EXIF datetime metadata with validation.
 
-    Tries EXIF date tags in order of preference:
+    For images, tries EXIF date tags in order of preference:
     1. DateTimeOriginal (36867) - camera capture time
     2. DateTimeDigitized (36868) - when digitized
     3. DateTime (306) - file modification time in camera
 
-    Validates that date range is at least 6 hours (filters out invalid/corrupt timestamps).
+    For videos, tries metadata fields in order:
+    1. CreateDate - most common for camera traps
+    2. DateTimeOriginal - some cameras use this
+    3. MediaCreateDate - MP4 container metadata
+    4. TrackCreateDate - video track metadata
 
-    Checks first 50 and last 50 images (sorted by filename) for date range.
-    Camera traps use sequential filenames (IMG_0001.jpg, IMG_0002.jpg, etc.)
+    Validates that date range is at least 3 hours (filters out invalid/corrupt timestamps).
+
+    Checks first 5 and last 5 files (sorted by filename) for date range.
+    Camera traps use sequential filenames (IMG_0001.jpg, VID_0001.mp4, etc.)
     so first and last files give accurate min/max dates.
 
     Returns:
         Tuple of (start_date, end_date, validation_log)
         validation_log contains human-readable messages about what was tried
     """
-    if not image_files:
-        return None, None, ["No image files found"]
+    if not image_files and not video_files:
+        return None, None, ["No image or video files found"]
 
     validation_log: list[str] = []
 
-    # Minimum valid timespan: 6 hours
+    # Minimum valid timespan: 3 hours
     # Catches file modification/creation times which cluster together
-    MIN_TIMESPAN_HOURS = 6
+    MIN_TIMESPAN_HOURS = 3
 
     # Sort by filename and sample first/last
     # Camera traps use sequential filenames, so this gives us chronological order
-    sorted_files = sorted(image_files, key=lambda p: p.name)
+    sorted_images = sorted(image_files, key=lambda p: p.name)
+    sorted_videos = sorted(video_files, key=lambda p: p.name)
 
-    # Take first 50 and last 50 (or whatever is available)
-    num_to_sample = min(50, len(sorted_files))
-    if len(sorted_files) <= 100:
-        # If we have 100 or fewer images, just check them all
-        sample = sorted_files
-        validation_log.append(f"Checking EXIF metadata in all {len(sample)} images...")
+    # Take first 5 and last 5 (or whatever is available)
+    num_to_sample = 5
+
+    # Sample images
+    if len(sorted_images) <= num_to_sample * 2:
+        image_sample = sorted_images
+        validation_log.append(f"Checking EXIF metadata in all {len(image_sample)} images...")
     else:
-        # Take first 50 and last 50
-        first_n = sorted_files[:num_to_sample]
-        last_n = sorted_files[-num_to_sample:]
-        sample = first_n + last_n
+        first_n = sorted_images[:num_to_sample]
+        last_n = sorted_images[-num_to_sample:]
+        image_sample = first_n + last_n
         validation_log.append(
-            f"Checking EXIF metadata in {len(sample)} images "
+            f"Checking EXIF metadata in {len(image_sample)} images "
             f"(first {num_to_sample} and last {num_to_sample} sorted by filename) "
             f"out of {len(image_files)} total..."
         )
 
-    validation_log.append("Trying: DateTimeOriginal → DateTimeDigitized → DateTime")
-    exif_dates = _extract_exif_dates(sample)
+    # Sample videos
+    if len(sorted_videos) <= num_to_sample * 2:
+        video_sample = sorted_videos
+        if video_sample:
+            validation_log.append(f"Checking metadata in all {len(video_sample)} videos...")
+    else:
+        first_n = sorted_videos[:num_to_sample]
+        last_n = sorted_videos[-num_to_sample:]
+        video_sample = first_n + last_n
+        validation_log.append(
+            f"Checking metadata in {len(video_sample)} videos "
+            f"(first {num_to_sample} and last {num_to_sample} sorted by filename) "
+            f"out of {len(video_files)} total..."
+        )
 
-    if exif_dates:
-        start_date, end_date = min(exif_dates), max(exif_dates)
+    # Extract dates from images
+    validation_log.append("Images: Trying DateTimeOriginal → DateTimeDigitized → DateTime")
+    image_dates = _extract_exif_dates(image_sample)
+
+    # Extract dates from videos
+    if video_sample:
+        validation_log.append("Videos: Trying CreateDate → DateTimeOriginal → MediaCreateDate → TrackCreateDate")
+        video_dates = _extract_video_dates(video_sample)
+    else:
+        video_dates = []
+
+    # Combine all dates
+    all_dates = image_dates + video_dates
+
+    if all_dates:
+        start_date, end_date = min(all_dates), max(all_dates)
         timespan_hours = (end_date - start_date).total_seconds() / 3600
 
         if timespan_hours >= MIN_TIMESPAN_HOURS:
             validation_log.append(
-                f"✓ Found valid EXIF dates: {len(exif_dates)} images spanning "
-                f"{timespan_hours:.1f} hours ({start_date.strftime('%Y-%m-%d %H:%M')} to "
+                f"✓ Found valid timestamps: {len(image_dates)} images + {len(video_dates)} videos "
+                f"spanning {timespan_hours:.1f} hours ({start_date.strftime('%Y-%m-%d %H:%M')} to "
                 f"{end_date.strftime('%Y-%m-%d %H:%M')})"
             )
             return start_date, end_date, validation_log
         else:
             validation_log.append(
-                f"✗ EXIF dates rejected: Only {timespan_hours:.1f} hours span "
+                f"✗ Timestamps rejected: Only {timespan_hours:.1f} hours span "
                 f"(minimum {MIN_TIMESPAN_HOURS} hours required). "
-                f"This likely indicates corrupt timestamps or images all taken at the same time."
+                f"This likely indicates corrupt timestamps or all files taken at the same time."
             )
     else:
-        validation_log.append("✗ No EXIF datetime metadata found in any images")
+        validation_log.append("✗ No datetime metadata found in any images or videos")
 
     validation_log.append(
-        "✗ DateTime extraction failed - no valid EXIF timestamps found"
+        "✗ DateTime extraction failed - no valid timestamps found"
     )
     return None, None, validation_log
 
@@ -358,5 +393,76 @@ def _extract_exif_dates(sample: list[Path]) -> list[datetime]:
                 f"Cannot read EXIF from {img_path.name}: {type(e).__name__}: {e}"
             )
             continue
+
+    return dates
+
+
+def _extract_video_dates(sample: list[Path]) -> list[datetime]:
+    """
+    Extract dates from video metadata using exiftool.
+
+    Tries metadata fields in order of preference:
+    1. CreateDate - most common for camera traps
+    2. DateTimeOriginal - some cameras use this
+    3. MediaCreateDate - MP4 container metadata
+    4. TrackCreateDate - video track metadata
+
+    Returns:
+        List of datetime objects extracted from videos
+    """
+    dates: list[datetime] = []
+
+    try:
+        with exiftool.ExifToolHelper() as et:
+            for video_path in sample:
+                try:
+                    # Extract metadata from video
+                    metadata_list = et.get_metadata([str(video_path)])
+                    if not metadata_list:
+                        continue
+
+                    metadata = metadata_list[0]
+
+                    # Try date fields in order of preference
+                    date_str = None
+                    for field in [
+                        "QuickTime:CreateDate",
+                        "EXIF:DateTimeOriginal",
+                        "QuickTime:MediaCreateDate",
+                        "QuickTime:TrackCreateDate",
+                    ]:
+                        if field in metadata:
+                            date_str = metadata[field]
+                            break
+
+                    if date_str:
+                        # Parse various datetime formats
+                        # ExifTool typically returns: "YYYY:MM:DD HH:MM:SS" or ISO format
+                        try:
+                            # Try EXIF format first
+                            date_obj = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                            dates.append(date_obj)
+                        except ValueError:
+                            try:
+                                # Try ISO format with timezone
+                                # Remove timezone info if present (e.g., "+00:00")
+                                date_str_clean = date_str.split("+")[0].split("-")[0].strip()
+                                date_obj = datetime.fromisoformat(date_str_clean)
+                                dates.append(date_obj)
+                            except ValueError:
+                                logger.debug(
+                                    f"Invalid date format in {video_path.name}: {date_str}"
+                                )
+                                continue
+
+                except Exception as e:
+                    logger.debug(
+                        f"Cannot read metadata from {video_path.name}: {type(e).__name__}: {e}"
+                    )
+                    continue
+
+    except Exception as e:
+        logger.warning(f"ExifTool error: {type(e).__name__}: {e}")
+        return []
 
     return dates

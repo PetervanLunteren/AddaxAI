@@ -10,6 +10,7 @@
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { MapPin, WifiOff, RefreshCw } from "lucide-react";
@@ -68,6 +69,7 @@ export function AddSiteModal({
     reset,
     formState: { errors },
   } = useForm<SiteFormData>({
+    resolver: zodResolver(siteSchema),
     defaultValues: {
       name: "",
       latitude: 0,
@@ -114,6 +116,9 @@ export function AddSiteModal({
       onOpenChange(false);
       reset();
       setSelectedLocation(null);
+    },
+    onError: (error) => {
+      console.error("Failed to create site:", error);
     },
   });
 
@@ -169,7 +174,6 @@ export function AddSiteModal({
           <div className="space-y-2">
             <Label htmlFor="name">
               Site name
-              <span className="text-red-600 ml-1">*</span>
             </Label>
             <Input
               id="name"
@@ -204,7 +208,6 @@ export function AddSiteModal({
             <div className="space-y-2">
               <Label>
                 Location
-                <span className="text-red-600 ml-1">*</span>
               </Label>
               <SiteMap
                 projectId={projectId}
@@ -251,7 +254,12 @@ export function AddSiteModal({
           {/* Error message */}
           {createSite.isError && (
             <div className="text-sm text-red-600">
-              Failed to create site. {createSite.error instanceof Error && createSite.error.message}
+              Failed to create site.{" "}
+              {createSite.error instanceof Error
+                ? createSite.error.message
+                : typeof createSite.error === 'object' && createSite.error !== null
+                  ? JSON.stringify(createSite.error)
+                  : String(createSite.error)}
             </div>
           )}
 

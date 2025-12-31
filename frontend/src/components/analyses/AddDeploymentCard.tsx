@@ -63,8 +63,9 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       // Refresh queue
       queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
 
-      // Clear folder (but keep site selected)
+      // Clear folder and site
       setFolderPath(null);
+      setSiteId(null);
     },
     onError: (error) => {
       // Only show error alerts
@@ -110,7 +111,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Add deployment to queue</CardTitle>
+          <CardTitle>New deployment</CardTitle>
           <CardDescription>
             Configure a new deployment to analyze camera trap images
           </CardDescription>

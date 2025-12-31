@@ -12,7 +12,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, Check, ChevronsUpDown } from "lucide-react";
+import { Info, Check, ChevronsUpDown, InfoIcon } from "lucide-react";
 import { projectsApi, type ProjectCreate } from "../../api/projects";
 import { modelsApi } from "../../api/models";
 import { Button } from "../ui/button";
@@ -61,6 +61,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../ui/popover";
+import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import { cn } from "../../lib/utils";
 
 const projectSchema = z.object({
@@ -116,6 +117,7 @@ export function CreateProjectDialog({
   const queryClient = useQueryClient();
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
+  const [showModelInfo, setShowModelInfo] = useState(false);
 
   // Fetch available classification models (already sorted alphabetically by backend)
   const { data: classificationModels = [] } = useQuery({
@@ -282,13 +284,33 @@ export function CreateProjectDialog({
                         </TooltipContent>
                       </Tooltip>
                     </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select classification model" />
+                    <div className="flex gap-2">
+                      <Select
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select classification model">
+                            {field.value && (() => {
+                              const selectedModel = classificationModels.find(
+                                (m) => m.model_id === field.value
+                              );
+                              if (!selectedModel) return null;
+                              return (
+                                <div className="flex flex-col items-start py-1">
+                                  <div>
+                                    {selectedModel.emoji} {selectedModel.friendly_name}
+                                  </div>
+                                  {selectedModel.description_short && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {selectedModel.description_short}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </SelectValue>
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -307,10 +329,21 @@ export function CreateProjectDialog({
                           ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowModelInfo(true)}
+                      disabled={!field.value}
+                      title="View model information"
+                    >
+                      <InfoIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
               {/* Country Selection (SpeciesNet only) */}
               {isSpeciesNet && locations && (
@@ -485,6 +518,13 @@ export function CreateProjectDialog({
           </form>
         </Form>
       </DialogContent>
+
+      {/* Model Info Sheet */}
+      <ModelInfoSheet
+        modelId={form.watch("classification_model_id")}
+        open={showModelInfo}
+        onOpenChange={setShowModelInfo}
+      />
     </Dialog>
   );
 }

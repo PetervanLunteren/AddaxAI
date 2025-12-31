@@ -291,7 +291,26 @@ export default function SettingsPage() {
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select detection model" />
+                              <SelectValue placeholder="Select detection model">
+                                {field.value && (() => {
+                                  const selectedModel = detectionModels.find(
+                                    (m) => m.model_id === field.value
+                                  );
+                                  if (!selectedModel) return null;
+                                  return (
+                                    <div className="flex flex-col items-start py-1">
+                                      <div>
+                                        {selectedModel.emoji} {selectedModel.friendly_name}
+                                      </div>
+                                      {selectedModel.description_short && (
+                                        <div className="text-xs text-muted-foreground">
+                                          {selectedModel.description_short}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </SelectValue>
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -335,7 +354,26 @@ export default function SettingsPage() {
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select classification model" />
+                              <SelectValue placeholder="Select classification model">
+                                {field.value && (() => {
+                                  const selectedModel = classificationModels.find(
+                                    (m) => m.model_id === field.value
+                                  );
+                                  if (!selectedModel) return null;
+                                  return (
+                                    <div className="flex flex-col items-start py-1">
+                                      <div>
+                                        {selectedModel.emoji} {selectedModel.friendly_name}
+                                      </div>
+                                      {selectedModel.description_short && (
+                                        <div className="text-xs text-muted-foreground">
+                                          {selectedModel.description_short}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </SelectValue>
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>

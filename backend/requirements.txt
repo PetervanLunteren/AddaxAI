@@ -18,6 +18,9 @@ pydantic-settings==2.7.0
 # Image Processing
 Pillow==11.0.0
 
+# Video Metadata
+PyExifTool==0.5.6
+
 # ML & Model Management
 huggingface-hub>=0.20.0
 requests>=2.31.0  # Required by huggingface-hub

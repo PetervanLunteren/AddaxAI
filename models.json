@@ -102,13 +102,13 @@
     "cls": [
       {
         "model_id": "SPECIESNET-v4-0-1-A-v1",
-        "friendly_name": "Global (SpeciesNet)",
+        "friendly_name": "Global",
         "emoji": "🌏",
         "type": "speciesnet",
         "env": "addaxai-base",
         "model_fname": "always_crop_99710272_22x8_v12_epoch_00148.pt",
         "description": "SpeciesNet is an image classifier designed to accelerate the review of images from motion-triggered wildlife cameras ('camera traps'). This classifier was trained at Google using a large dataset of camera trap images and an EfficientNet V2 M architecture (https://arxiv.org/abs/2104.00574). It is designed to classify images into one of more than 2000 labels, covering diverse animal species, higher-level taxa (like 'mammalia' or 'felidae'), and non-animal classes ('blank', 'vehicle'). The SpeciesNet classifier is typically run in an ensemble with MegaDetector (https://github.com/agentmorris/MegaDetector), an object detector that identifies the locations and types of objects present in camera trap images, categorizing them as animals, humans, or vehicles. The SpeciesNet ensemble combines these two models using a set of heuristics and, optionally, geofencing rules and taxonomic aggregation that take into account the geographical origin of the image to improve the reliability of its species classification. This ensemble is used for image classification in the Wildlife Insights platform (https://www.wildlifeinsights.org/).",
-        "description_short": "Global coverage • 2,000+ classes • Google Research",
+        "description_short": "SpeciesNet • 2,000+ classes • Google Research",
         "developer": "Google",
         "citation": "https://doi.org/10.1049/cvi2.12318",
         "license": "https://github.com/google/cameratrapai/blob/main/LICENSE",

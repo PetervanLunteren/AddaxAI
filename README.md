@@ -2,7 +2,7 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 # WHEREWASI
-- I just added model descriptions to dropdowns in project creation. 
+- I was doing the info button next to the classification model seleciton in the create project modal. There a re couple of things missing.... If that looks good, then do it for the deteciton model and classification model selection in the settings pages too. 
 
 ## Architecture
 

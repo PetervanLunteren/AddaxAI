@@ -213,6 +213,9 @@ export interface ModelInfo {
   description_short?: string | null;
   developer?: string | null;
   info_url?: string | null;
+  citation?: string | null;
+  license?: string | null;
+  min_app_version?: string | null;
 }
 
 // Taxonomy types

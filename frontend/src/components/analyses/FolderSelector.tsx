@@ -104,13 +104,27 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
               <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent>
-              <p className="max-w-sm">
-                Select a folder containing all images and videos from a single deployment.
-                A deployment is one camera SD card from start to end at a single site. It is essential
-                to add one complete deployment at a time (not partial, not multiple) to ensure accurate
-                statistics, exports, maps, and graphs. The system will recursively search all subfolders
-                for images and videos. Add multiple deployments by queuing each one separately.
-              </p>
+              <div className="max-w-sm space-y-2">
+                <p>
+                  Select a folder that contains all images and videos from a single deployment.
+                  A deployment is one camera SD card from start to end at a single site.
+                </p>
+                <p>
+                  Add exactly one complete deployment at a time. Do not add partial deployments
+                  or multiple deployments in a single folder. This ensures accurate statistics,
+                  exports, maps, and graphs.
+                </p>
+                <p>
+                  The system will recursively scan all subfolders for images and videos. To add
+                  multiple deployments, queue each one separately.
+                </p>
+                <p>
+                  The selected folder must already be in its final location. AddaxAI does not
+                  store the media files themselves, only the file paths. If the folder is moved
+                  or renamed after analysis, the files can no longer be found. You can relink
+                  them at any time.
+                </p>
+              </div>
             </TooltipContent>
           </Tooltip>
         </label>
@@ -215,7 +229,7 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
                   <span>
                     {scanResult.gps_location
                       ? `${scanResult.gps_location.latitude.toFixed(6)}, ${scanResult.gps_location.longitude.toFixed(6)}`
-                      : 'Not found'}
+                      : 'GPS metadata not found'}
                   </span>
                 </div>
 
@@ -233,7 +247,7 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
                         })()}
                       </>
                     ) : (
-                      'Not found'
+                      'DateTime metadata not found'
                     )}
                   </span>
                 </div>
@@ -245,7 +259,7 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription className="text-sm">
                     <div className="space-y-2">
-                      <p className="font-semibold">DateTime metadata not found in images.</p>
+                      <p className="font-semibold">DateTime metadata not found.</p>
 
                       <p>DateTime information is essential for accurate statistics, graphs, and exports in AddaxAI. This usually means the images have been processed, uploaded/downloaded, copied, or stripped of metadata. Please use the raw data directly from the camera SD card with DateTime metadata intact.</p>
 
@@ -266,7 +280,7 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
                       )}
 
                       <p className="text-sm">
-                        AddaxAI still can't find the timestamps? Please contact{' '}
+                        Using raw data and AddaxAI still can't find the timestamps? Please contact{' '}
                         <a href="mailto:peter@addaxdatascience.com" className="underline font-semibold">
                           peter@addaxdatascience.com
                         </a>

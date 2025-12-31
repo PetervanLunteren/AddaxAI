@@ -45,9 +45,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
   });
 
   const handleDelete = async (id: string) => {
-    if (confirm("Remove this deployment from the queue?")) {
-      await deleteMutation.mutateAsync(id);
-    }
+    await deleteMutation.mutateAsync(id);
   };
 
   const handleRunQueue = () => {
@@ -79,8 +77,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ListTodo className="h-5 w-5" />
+          <CardTitle>
             Analysis queue
           </CardTitle>
           <CardDescription>
@@ -96,7 +93,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
 
         <CardContent>
           {entries && entries.length > 0 ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+            <div className="space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
               {entries.map((entry) => (
                 <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
               ))}
