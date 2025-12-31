@@ -103,7 +103,7 @@ class FolderPreviewResponse(BaseModel):
     """
     Preview of a deployment folder before running analysis.
 
-    Provides quick counts and GPS location check without storing files in DB.
+    Provides quick counts, GPS location, and date range without storing files in DB.
     """
 
     image_count: int = Field(..., description="Number of image files found")
@@ -117,4 +117,17 @@ class FolderPreviewResponse(BaseModel):
     )
     sample_files: list[str] = Field(
         [], description="Sample of file paths (relative to deployment folder)"
+    )
+    start_date: datetime | None = Field(
+        None, description="Earliest DateTimeOriginal found in images"
+    )
+    end_date: datetime | None = Field(
+        None, description="Latest DateTimeOriginal found in images"
+    )
+    missing_datetime: bool = Field(
+        False, description="True if no EXIF datetime metadata was found"
+    )
+    datetime_validation_log: list[str] = Field(
+        default_factory=list,
+        description="Log of datetime extraction attempts and validation results",
     )

@@ -13,9 +13,6 @@ export interface DeploymentQueueEntry {
   project_id: string;
   folder_path: string;
   site_id: string | null;
-  detection_model_id: string | null;
-  classification_model_id: string | null;
-  species_list: Record<string, any> | null;
   status: "pending" | "processing" | "completed" | "failed";
   created_at: string;
   processed_at: string | null;
@@ -27,9 +24,6 @@ export interface DeploymentQueueCreate {
   project_id: string;
   folder_path: string;
   site_id?: string | null;
-  detection_model_id?: string | null;
-  classification_model_id?: string | null;
-  species_list?: Record<string, any> | null;
 }
 
 export interface ProcessQueueRequest {

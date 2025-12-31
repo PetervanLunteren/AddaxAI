@@ -123,6 +123,10 @@ def preview_folder_path(
         else None,
         suggested_site_id=None,
         sample_files=preview["sample_files"],
+        start_date=preview["start_date"],
+        end_date=preview["end_date"],
+        missing_datetime=preview["missing_datetime"],
+        datetime_validation_log=preview["datetime_validation_log"],
     )
 
 
@@ -290,4 +294,8 @@ def preview_deployment_folder(
         else None,
         suggested_site_id=suggested_site_id,
         sample_files=preview["sample_files"],
+        start_date=preview["start_date"],
+        end_date=preview["end_date"],
+        missing_datetime=preview["missing_datetime"],
+        datetime_validation_log=preview["datetime_validation_log"],
     )

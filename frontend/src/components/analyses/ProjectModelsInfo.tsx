@@ -1,24 +1,31 @@
 /**
  * Project Models Info Component
  *
- * Displays readonly information about project's model configuration.
- * Shows detection model, classification model, and species selection.
- * Links to project settings for editing.
+ * Simplified version matching Create Project modal style.
+ * - Clean readonly display with info tooltip
+ * - Button to view full settings in modal
  */
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { Settings, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { projectsApi } from "@/api/projects";
-import { mlModelsApi } from "@/api/ml-models";
+import { modelsApi } from "@/api/models";
+import { ProjectSettingsModal } from "./ProjectSettingsModal";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ProjectModelsInfoProps {
   projectId: string;
 }
 
 export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
-  const navigate = useNavigate();
+  const [showModal, setShowModal] = useState(false);
 
   // Fetch project data
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -28,21 +35,21 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
 
   // Fetch detection models
   const { data: detectionModels } = useQuery({
-    queryKey: ["ml-models", "detection"],
-    queryFn: () => mlModelsApi.listDetection(),
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
   });
 
   // Fetch classification models
   const { data: classificationModels } = useQuery({
-    queryKey: ["ml-models", "classification"],
-    queryFn: () => mlModelsApi.listClassification(),
+    queryKey: ["models", "classification"],
+    queryFn: () => modelsApi.listClassificationModels(),
   });
 
   if (projectLoading || !project) {
     return (
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
+        <div className="animate-pulse space-y-2">
+          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
           <div className="h-3 bg-gray-200 rounded w-1/2"></div>
         </div>
       </div>
@@ -57,77 +64,80 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
     ? classificationModels?.find((m) => m.model_id === project.classification_model_id)
     : null;
 
-  // Count excluded species (inverse of selected)
+  // Count excluded species
   const excludedCount = project.excluded_classes?.length || 0;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium">Analysis configuration</label>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate(`/projects/${projectId}/settings`)}
-        >
-          <Settings className="h-3 w-3 mr-1" />
-          Edit
-        </Button>
-      </div>
+    <TooltipProvider>
+      <div className="space-y-2">
+        {/* Label with info tooltip */}
+        <label className="flex items-center gap-1.5 text-sm font-medium">
+          Analysis configuration
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="max-w-xs">
+                These settings apply to all deployments in this project. Deployments will use the models and species configured here.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </label>
 
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-        {/* Detection model */}
-        <div>
-          <p className="text-xs text-gray-600 mb-1">Detection model</p>
-          <div className="flex items-center gap-2">
-            {detectionModel ? (
-              <>
-                <span className="text-lg">{detectionModel.emoji}</span>
-                <span className="text-sm font-medium">{detectionModel.friendly_name}</span>
-              </>
-            ) : (
-              <span className="text-sm text-gray-500">{project.detection_model_id}</span>
-            )}
-          </div>
-        </div>
-
-        {/* Classification model */}
-        <div>
-          <p className="text-xs text-gray-600 mb-1">Classification model</p>
-          <div className="flex items-center gap-2">
-            {classificationModel ? (
-              <>
-                <span className="text-lg">{classificationModel.emoji}</span>
-                <span className="text-sm font-medium">{classificationModel.friendly_name}</span>
-              </>
-            ) : (
-              <span className="text-sm text-gray-500">
-                {project.classification_model_id || "None"}
+        {/* Settings summary */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+          {/* Detection model */}
+          <div>
+            <p className="text-xs text-gray-600 mb-1">Detection model</p>
+            <div className="flex items-center gap-2">
+              {detectionModel && <span className="text-lg">{detectionModel.emoji}</span>}
+              <span className="text-sm font-medium">
+                {detectionModel?.friendly_name || project.detection_model_id}
               </span>
-            )}
+            </div>
           </div>
-        </div>
 
-        {/* Species selection */}
-        <div>
-          <p className="text-xs text-gray-600 mb-1">Species selection</p>
-          <div className="flex items-center gap-2">
-            <span className="text-sm">
-              {excludedCount > 0
-                ? `${excludedCount} species excluded`
-                : "All species included"}
-            </span>
+          {/* Classification model */}
+          <div>
+            <p className="text-xs text-gray-600 mb-1">Classification model</p>
+            <div className="flex items-center gap-2">
+              {classificationModel && <span className="text-lg">{classificationModel.emoji}</span>}
+              <span className="text-sm font-medium">
+                {classificationModel?.friendly_name || project.classification_model_id || "None"}
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* Info note */}
-        <div className="flex items-start gap-2 pt-2 border-t border-gray-200">
-          <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-gray-600">
-            These settings apply to all deployments in this project. Deployments will use the
-            models and species configured here.
-          </p>
+          {/* Species selection */}
+          {project.classification_model_id && (
+            <div>
+              <p className="text-xs text-gray-600 mb-1">Species selection</p>
+              <span className="text-sm">
+                {excludedCount > 0 ? `${excludedCount} species excluded` : "All species"}
+              </span>
+            </div>
+          )}
+
+          {/* View/Edit button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowModal(true)}
+            className="w-full mt-2"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            View settings
+          </Button>
         </div>
       </div>
-    </div>
+
+      {/* Settings modal */}
+      <ProjectSettingsModal
+        projectId={projectId}
+        open={showModal}
+        onOpenChange={setShowModal}
+      />
+    </TooltipProvider>
   );
 }

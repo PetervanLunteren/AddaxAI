@@ -15,6 +15,10 @@ interface FolderScanResult {
   gps_location: { latitude: number; longitude: number } | null;
   suggested_site_id: string | null;
   sample_files: string[];
+  start_date: string | null;
+  end_date: string | null;
+  missing_datetime: boolean;
+  datetime_validation_log: string[];
 }
 
 /**
@@ -35,6 +39,10 @@ export function useFolderScan(folderPath: string | null) {
           gps_location: null,
           suggested_site_id: null,
           sample_files: [],
+          start_date: null,
+          end_date: null,
+          missing_datetime: false,
+          datetime_validation_log: [],
         };
       }
 

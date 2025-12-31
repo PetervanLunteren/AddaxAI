@@ -17,9 +17,6 @@ class DeploymentQueueBase(BaseModel):
 
     folder_path: str = Field(..., min_length=1, description="Absolute path to deployment folder")
     site_id: str | None = Field(None, description="Site ID (optional)")
-    detection_model_id: str | None = Field(None, description="Detection model ID (e.g., 'megadetector_v5a')")
-    classification_model_id: str | None = Field(None, description="Classification model ID (e.g., 'EUR-DF-v1-3')")
-    species_list: dict | None = Field(None, description="Expected species list")
 
 
 class DeploymentQueueCreate(DeploymentQueueBase):

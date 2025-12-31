@@ -27,7 +27,13 @@ export function QueueCard({ projectId }: QueueCardProps) {
   const { data: entries, isLoading } = useQuery({
     queryKey: ["deployment-queue", projectId],
     queryFn: () => deploymentQueueApi.list(projectId),
-    refetchInterval: 5000, // Refresh every 5 seconds to catch status changes
+    // Only poll when there are deployments being processed
+    refetchInterval: (query) => {
+      const hasProcessing = query.state.data?.some(
+        (entry: any) => entry.status === "processing"
+      );
+      return hasProcessing ? 5000 : false;
+    },
   });
 
   // Delete mutation

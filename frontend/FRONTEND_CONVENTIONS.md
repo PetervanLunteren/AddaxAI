@@ -24,7 +24,7 @@ We use a HSL-based color system defined in `src/index.css`:
 --background: 0 0% 100%
 --foreground: 222.2 84% 4.9%
 --primary: #0f6064              /* Teal - Main brand color */
---secondary: #e4ecee            /* Light teal - Supporting elements */
+--secondary: #ebf0f2            /* Light teal - Supporting elements */
 --card-background: #f5f7fb      /* Grey - Card/container backgrounds */
 --accent: 210 40% 96.1%
 --destructive: 0 84.2% 60.2%

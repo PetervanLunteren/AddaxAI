@@ -49,14 +49,13 @@ def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQ
 
     Crashes if database constraint violated.
     This is intentional - we want to surface errors immediately.
+
+    Note: Model configuration is now project-scoped (not per-deployment).
     """
     db_entry = DeploymentQueue(
         project_id=entry.project_id,
         folder_path=entry.folder_path,
         site_id=entry.site_id,
-        detection_model_id=entry.detection_model_id,
-        classification_model_id=entry.classification_model_id,
-        species_list=entry.species_list,
         status="pending",
     )
     db.add(db_entry)

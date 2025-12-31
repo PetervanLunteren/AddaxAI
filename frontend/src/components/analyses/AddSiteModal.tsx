@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { MapPin } from "lucide-react";
+import { MapPin, WifiOff, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { sitesApi } from "@/api/sites";
 import { SiteMap } from "./SiteMap";
 
@@ -41,6 +42,7 @@ interface AddSiteModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSiteCreated?: (siteId: string) => void;
+  initialLocation?: { lat: number; lon: number };
 }
 
 export function AddSiteModal({
@@ -48,11 +50,14 @@ export function AddSiteModal({
   open,
   onOpenChange,
   onSiteCreated,
+  initialLocation,
 }: AddSiteModalProps) {
   const queryClient = useQueryClient();
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lon: number } | null>(
     null
   );
+  const [mapOffline, setMapOffline] = useState(false);
+  const [showMap, setShowMap] = useState(true);
 
   // Form setup
   const {
@@ -72,6 +77,15 @@ export function AddSiteModal({
 
   const latitude = watch("latitude");
   const longitude = watch("longitude");
+
+  // Set initial location when modal opens with GPS from deployment
+  useEffect(() => {
+    if (open && initialLocation) {
+      setValue("latitude", initialLocation.lat);
+      setValue("longitude", initialLocation.lon);
+      setSelectedLocation(initialLocation);
+    }
+  }, [open, initialLocation, setValue]);
 
   // Update selected location when form values change
   useEffect(() => {
@@ -110,6 +124,18 @@ export function AddSiteModal({
     setSelectedLocation({ lat, lon });
   };
 
+  // Handle map error (offline)
+  const handleMapError = () => {
+    setMapOffline(true);
+    setShowMap(false);
+  };
+
+  // Retry loading map
+  const handleRetryMap = () => {
+    setMapOffline(false);
+    setShowMap(true);
+  };
+
   // Handle form submission
   const onSubmit = (data: SiteFormData) => {
     createSite.mutate(data);
@@ -120,6 +146,8 @@ export function AddSiteModal({
     if (!open) {
       reset();
       setSelectedLocation(null);
+      setMapOffline(false);
+      setShowMap(true);
     }
   }, [open, reset]);
 
@@ -152,20 +180,42 @@ export function AddSiteModal({
             {errors.name && <p className="text-sm text-red-600">{errors.name.message}</p>}
           </div>
 
-          {/* Map */}
-          <div className="space-y-2">
-            <Label>
-              Location
-              <span className="text-red-600 ml-1">*</span>
-            </Label>
-            <SiteMap
-              projectId={projectId}
-              selectedLocation={selectedLocation}
-              onLocationSelect={handleLocationSelect}
-            />
-          </div>
+          {/* Offline notice */}
+          {mapOffline && (
+            <Alert>
+              <WifiOff className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between">
+                <span>Map unavailable offline. Enter coordinates manually.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetryMap}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry map
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
-          {/* Coordinates (readonly) */}
+          {/* Map */}
+          {showMap && (
+            <div className="space-y-2">
+              <Label>
+                Location
+                <span className="text-red-600 ml-1">*</span>
+              </Label>
+              <SiteMap
+                projectId={projectId}
+                selectedLocation={selectedLocation}
+                onLocationSelect={handleLocationSelect}
+                onMapError={handleMapError}
+              />
+            </div>
+          )}
+
+          {/* Coordinates (editable when offline, readonly when map works) */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="latitude">Latitude</Label>
@@ -174,8 +224,8 @@ export function AddSiteModal({
                 {...register("latitude", { valueAsNumber: true })}
                 type="number"
                 step="any"
-                readOnly
-                className="bg-gray-50"
+                readOnly={!mapOffline}
+                className={mapOffline ? "" : "bg-gray-50"}
               />
               {errors.latitude && (
                 <p className="text-sm text-red-600">{errors.latitude.message}</p>
@@ -189,8 +239,8 @@ export function AddSiteModal({
                 {...register("longitude", { valueAsNumber: true })}
                 type="number"
                 step="any"
-                readOnly
-                className="bg-gray-50"
+                readOnly={!mapOffline}
+                className={mapOffline ? "" : "bg-gray-50"}
               />
               {errors.longitude && (
                 <p className="text-sm text-red-600">{errors.longitude.message}</p>
