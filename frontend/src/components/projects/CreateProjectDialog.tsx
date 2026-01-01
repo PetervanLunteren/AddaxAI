@@ -284,7 +284,7 @@ export function CreateProjectDialog({
                         </TooltipContent>
                       </Tooltip>
                     </FormLabel>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-stretch">
                       <Select
                         onValueChange={field.onChange}
                         defaultValue={field.value}
@@ -329,16 +329,28 @@ export function CreateProjectDialog({
                           ))}
                       </SelectContent>
                     </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setShowModelInfo(true)}
-                      disabled={!field.value}
-                      title="View model information"
-                    >
-                      <InfoIcon className="h-4 w-4" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="self-center">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="px-3"
+                            onClick={() => field.value && setShowModelInfo(true)}
+                            disabled={!field.value}
+                          >
+                            <InfoIcon className="h-4 w-4" />
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          {field.value
+                            ? "View model information"
+                            : "Select a classification model to view details"}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   <FormMessage />
                 </FormItem>

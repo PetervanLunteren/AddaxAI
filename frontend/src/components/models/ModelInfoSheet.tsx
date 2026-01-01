@@ -56,10 +56,18 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
 
   // Format classes list
   const classList = taxonomy?.all_classes || [];
-  const classesPreview =
-    classList.length > 5
-      ? `${classList.slice(0, 3).join(", ")}, ..., ${classList.slice(-2).join(", ")}`
-      : classList.join(", ");
+
+  // Normalize class names: remove underscores, all lowercase
+  const formatClassName = (className: string) => {
+    // Replace underscores with spaces and make lowercase
+    return className.replace(/_/g, " ").toLowerCase();
+  };
+
+  // Format all classes with sentence case (only first letter of entire list capitalized)
+  const formattedClassList = classList.map(formatClassName).join(", ");
+  const formattedClasses = formattedClassList.length > 0
+    ? formattedClassList.charAt(0).toUpperCase() + formattedClassList.slice(1) + "."
+    : "";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -90,7 +98,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                 <h3 className="text-sm font-semibold mb-2">
                   Classes ({classList.length})
                 </h3>
-                <p className="text-sm text-gray-700">{classesPreview}</p>
+                <p className="text-sm text-gray-700">{formattedClasses}</p>
               </div>
               <Separator />
             </>
@@ -107,6 +115,17 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             </>
           )}
 
+          {/* Owner (if different from developer) */}
+          {model.owner && (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Owner</h3>
+                <p className="text-sm text-gray-700">{model.owner}</p>
+              </div>
+              <Separator />
+            </>
+          )}
+
           {/* More Information */}
           {model.info_url && (
             <>
@@ -116,7 +135,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                   href={model.info_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                  className="text-sm text-primary hover:opacity-80 underline flex items-center gap-1"
                 >
                   {model.info_url}
                   <ExternalLink className="h-3 w-3" />
@@ -135,7 +154,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                   href={model.citation}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                  className="text-sm text-primary hover:opacity-80 underline flex items-center gap-1"
                 >
                   {model.citation}
                   <ExternalLink className="h-3 w-3" />
@@ -154,7 +173,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                   href={model.license}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                  className="text-sm text-primary hover:opacity-80 underline flex items-center gap-1"
                 >
                   {model.license}
                   <ExternalLink className="h-3 w-3" />
@@ -169,7 +188,32 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <div>
               <h3 className="text-sm font-semibold mb-2">Version requirement</h3>
               <p className="text-sm text-gray-700">
-                Minimum AddaxAI version required is {model.min_app_version}
+                {(() => {
+                  const currentVersion = "0.1.0"; // TODO: Get from API
+                  const meetsRequirement = currentVersion >= model.min_app_version;
+                  return (
+                    <>
+                      Minimum AddaxAI version required is v{model.min_app_version}, while your current version is v{currentVersion}.{" "}
+                      {meetsRequirement ? (
+                        <span>You're good to go.</span>
+                      ) : (
+                        <>
+                          Please{" "}
+                          <a
+                            href="https://addaxdatascience.com/addaxai/#install"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:opacity-80 underline inline-flex items-center gap-1"
+                          >
+                            update AddaxAI
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                          .
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </p>
             </div>
           )}

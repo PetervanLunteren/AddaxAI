@@ -212,6 +212,7 @@ export interface ModelInfo {
   description: string;
   description_short?: string | null;
   developer?: string | null;
+  owner?: string | null;
   info_url?: string | null;
   citation?: string | null;
   license?: string | null;

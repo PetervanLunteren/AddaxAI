@@ -13,10 +13,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Settings2, Check, ChevronsUpDown, ListTodo } from "lucide-react";
+import { Save, RotateCcw, Settings2, Check, ChevronsUpDown, ListTodo, InfoIcon } from "lucide-react";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
+import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
 import { Switch } from "../components/ui/switch";
@@ -81,6 +88,8 @@ export default function SettingsPage() {
   const [speciesModalOpen, setSpeciesModalOpen] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
+  const [showModelInfo, setShowModelInfo] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
   // Fetch current project
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -264,8 +273,9 @@ export default function SettingsPage() {
         </div>
 
         {/* Settings form */}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" key={project?.id}>
+        <TooltipProvider>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" key={project?.id}>
             {/* Card 1: Models */}
             <Card>
               <CardHeader>
@@ -280,7 +290,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection model</FormLabel>
                         <FormDescription className="text-sm">
@@ -288,45 +298,74 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select detection model">
-                                {field.value && (() => {
-                                  const selectedModel = detectionModels.find(
-                                    (m) => m.model_id === field.value
-                                  );
-                                  if (!selectedModel) return null;
-                                  return (
-                                    <div className="flex flex-col items-start py-1">
-                                      <div>
-                                        {selectedModel.emoji} {selectedModel.friendly_name}
-                                      </div>
-                                      {selectedModel.description_short && (
-                                        <div className="text-xs text-muted-foreground">
-                                          {selectedModel.description_short}
+                        <div className="flex gap-2 items-stretch">
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select detection model">
+                                  {field.value && (() => {
+                                    const selectedModel = detectionModels.find(
+                                      (m) => m.model_id === field.value
+                                    );
+                                    if (!selectedModel) return null;
+                                    return (
+                                      <div className="flex flex-col items-start py-1">
+                                        <div>
+                                          {selectedModel.emoji} {selectedModel.friendly_name}
                                         </div>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </SelectValue>
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {detectionModels.map((model) => (
-                              <SelectItem key={model.model_id} value={model.model_id}>
-                                {model.emoji} {model.friendly_name}
-                                {model.description_short && (
-                                  <>
-                                    <br />
-                                    <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                  </>
-                                )}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                                        {selectedModel.description_short && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {selectedModel.description_short}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </SelectValue>
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {detectionModels.map((model) => (
+                                <SelectItem key={model.model_id} value={model.model_id}>
+                                  {model.emoji} {model.friendly_name}
+                                  {model.description_short && (
+                                    <>
+                                      <br />
+                                      <span className="text-xs text-muted-foreground">{model.description_short}</span>
+                                    </>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="self-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="px-3"
+                                  onClick={() => {
+                                    if (field.value) {
+                                      setSelectedModelId(field.value);
+                                      setShowModelInfo(true);
+                                    }
+                                  }}
+                                  disabled={!field.value}
+                                >
+                                  <InfoIcon className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {field.value
+                                  ? "View model information"
+                                  : "Select a detection model to view details"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                         <FormMessage />
                       </div>
                     </div>
@@ -338,7 +377,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="classification_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
@@ -346,52 +385,81 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <Select
-                          key={field.value}
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select classification model">
-                                {field.value && (() => {
-                                  const selectedModel = classificationModels.find(
-                                    (m) => m.model_id === field.value
-                                  );
-                                  if (!selectedModel) return null;
-                                  return (
-                                    <div className="flex flex-col items-start py-1">
-                                      <div>
-                                        {selectedModel.emoji} {selectedModel.friendly_name}
-                                      </div>
-                                      {selectedModel.description_short && (
-                                        <div className="text-xs text-muted-foreground">
-                                          {selectedModel.description_short}
+                        <div className="flex gap-2 items-stretch">
+                          <Select
+                            key={field.value}
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            defaultValue={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select classification model">
+                                  {field.value && (() => {
+                                    const selectedModel = classificationModels.find(
+                                      (m) => m.model_id === field.value
+                                    );
+                                    if (!selectedModel) return null;
+                                    return (
+                                      <div className="flex flex-col items-start py-1">
+                                        <div>
+                                          {selectedModel.emoji} {selectedModel.friendly_name}
                                         </div>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </SelectValue>
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {classificationModels
-                              .filter((model) => model.model_id !== "none")
-                              .map((model) => (
-                                <SelectItem key={model.model_id} value={model.model_id}>
-                                  {model.emoji} {model.friendly_name}
-                                  {model.description_short && (
-                                    <>
-                                      <br />
-                                      <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                    </>
-                                  )}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                                        {selectedModel.description_short && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {selectedModel.description_short}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </SelectValue>
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {classificationModels
+                                .filter((model) => model.model_id !== "none")
+                                .map((model) => (
+                                  <SelectItem key={model.model_id} value={model.model_id}>
+                                    {model.emoji} {model.friendly_name}
+                                    {model.description_short && (
+                                      <>
+                                        <br />
+                                        <span className="text-xs text-muted-foreground">{model.description_short}</span>
+                                      </>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="self-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="px-3"
+                                  onClick={() => {
+                                    if (field.value) {
+                                      setSelectedModelId(field.value);
+                                      setShowModelInfo(true);
+                                    }
+                                  }}
+                                  disabled={!field.value}
+                                >
+                                  <InfoIcon className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {field.value
+                                  ? "View model information"
+                                  : "Select a classification model to view details"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                         <FormMessage />
                       </div>
                     </div>
@@ -416,7 +484,7 @@ export default function SettingsPage() {
                     control={form.control}
                     name="country_code"
                     render={({ field }) => (
-                      <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                      <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                         <div className="space-y-1">
                           <FormLabel>Country</FormLabel>
                           <FormDescription className="text-sm">
@@ -485,7 +553,7 @@ export default function SettingsPage() {
                       control={form.control}
                       name="state_code"
                       render={({ field }) => (
-                        <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                        <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                           <div className="space-y-1">
                             <FormLabel>State</FormLabel>
                             <FormDescription className="text-sm">
@@ -561,7 +629,7 @@ export default function SettingsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-[60%_1fr] gap-8">
+                  <div className="grid grid-cols-[55%_1fr] gap-8">
                     <div className="space-y-1">
                       <FormLabel>Species selection</FormLabel>
                       <FormDescription className="text-sm">
@@ -603,7 +671,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_threshold"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection confidence threshold</FormLabel>
                         <FormDescription className="text-sm">
@@ -633,7 +701,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="independence_interval"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Independence interval</FormLabel>
                         <FormDescription className="text-sm">
@@ -662,7 +730,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="event_smoothing"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Event smoothing</FormLabel>
                         <FormDescription className="text-sm">
@@ -684,7 +752,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="taxonomic_rollup"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[60%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Taxonomic rollup</FormLabel>
                         <FormDescription className="text-sm">
@@ -758,6 +826,14 @@ export default function SettingsPage() {
             </div>
           </form>
         </Form>
+        </TooltipProvider>
+
+        {/* Model Info Sheet */}
+        <ModelInfoSheet
+          modelId={selectedModelId}
+          open={showModelInfo}
+          onOpenChange={setShowModelInfo}
+        />
 
         {/* Species Selection Modal */}
         {classificationModelId && taxonomy && (

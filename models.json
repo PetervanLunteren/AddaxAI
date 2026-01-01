@@ -3,7 +3,7 @@
     "det": [
       {
         "model_id": "MD5A-0-0",
-        "friendly_name": "MegaDetector 5A",
+        "friendly_name": "MegaDetector v5A",
         "emoji": "🐅",
         "type": "base",
         "env": "addaxai-base",
@@ -16,7 +16,7 @@
       },
       {
         "model_id": "MD5B-0-0",
-        "friendly_name": "MegaDetector 5B",
+        "friendly_name": "MegaDetector v5B",
         "emoji": "🦘",
         "type": "base",
         "env": "addaxai-base",
@@ -30,7 +30,7 @@
       },
       {
         "model_id": "MD1000-REDWOOD-0-0",
-        "friendly_name": "MegaDetector 1000 Redwood",
+        "friendly_name": "MegaDetector v1000 Redwood",
         "emoji": "🌲",
         "type": "base",
         "env": "addaxai-base",
@@ -44,7 +44,7 @@
       },
       {
         "model_id": "MD1000-SPRUCE-0-0",
-        "friendly_name": "MegaDetector 1000 Spruce",
+        "friendly_name": "MegaDetector v1000 Spruce",
         "emoji": "🌱",
         "type": "base",
         "env": "addaxai-base",
@@ -58,7 +58,7 @@
       },
       {
         "model_id": "MD1000-CEDAR-0-0",
-        "friendly_name": "MegaDetector 1000 Cedar",
+        "friendly_name": "MegaDetector v1000 Cedar",
         "emoji": "🌳",
         "type": "base",
         "env": "addaxai-base",
@@ -72,7 +72,7 @@
       },
       {
         "model_id": "MD1000-LARCH-0-0",
-        "friendly_name": "MegaDetector 1000 Larch",
+        "friendly_name": "MegaDetector v1000 Larch",
         "emoji": "🍂",
         "type": "base",
         "env": "addaxai-base",
@@ -86,7 +86,7 @@
       },
       {
         "model_id": "MD1000-SORREL-0-0",
-        "friendly_name": "MegaDetector 1000 Sorrel",
+        "friendly_name": "MegaDetector v1000 Sorrel",
         "emoji": "🌿",
         "type": "base",
         "env": "addaxai-base",
@@ -107,7 +107,7 @@
         "type": "speciesnet",
         "env": "addaxai-base",
         "model_fname": "always_crop_99710272_22x8_v12_epoch_00148.pt",
-        "description": "SpeciesNet is an image classifier designed to accelerate the review of images from motion-triggered wildlife cameras ('camera traps'). This classifier was trained at Google using a large dataset of camera trap images and an EfficientNet V2 M architecture (https://arxiv.org/abs/2104.00574). It is designed to classify images into one of more than 2000 labels, covering diverse animal species, higher-level taxa (like 'mammalia' or 'felidae'), and non-animal classes ('blank', 'vehicle'). The SpeciesNet classifier is typically run in an ensemble with MegaDetector (https://github.com/agentmorris/MegaDetector), an object detector that identifies the locations and types of objects present in camera trap images, categorizing them as animals, humans, or vehicles. The SpeciesNet ensemble combines these two models using a set of heuristics and, optionally, geofencing rules and taxonomic aggregation that take into account the geographical origin of the image to improve the reliability of its species classification. This ensemble is used for image classification in the Wildlife Insights platform (https://www.wildlifeinsights.org/).",
+        "description": "SpeciesNet is an image classifier designed to accelerate the review of images from motion-triggered wildlife cameras ('camera traps'). This classifier was trained at Google using a large dataset of camera trap images and an EfficientNet V2 M architecture (https://arxiv.org/abs/2104.00574). It is designed to classify images into one of more than 2000 labels, covering diverse animal species, higher-level taxa (like 'mammalia' or 'felidae'), and non-animal classes ('blank', 'vehicle'). AddaxAI automatically combines SpeciesNet with MegaDetector (https://github.com/agentmorris/MegaDetector) using a set of heuristics, geofencing rules and taxonomic aggregation that take into account the geographical origin of the image to improve the reliability of its species classification.",
         "description_short": "SpeciesNet • 2,000+ classes • Google Research",
         "developer": "Google",
         "citation": "https://doi.org/10.1049/cvi2.12318",

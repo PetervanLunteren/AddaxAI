@@ -34,6 +34,7 @@ class ModelManifest(BaseModel):
     description: str
     description_short: str | None = None
     developer: str
+    owner: str | None = None
     citation: str | None = None
     license: str | None = None
     info_url: str

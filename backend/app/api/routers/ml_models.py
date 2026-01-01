@@ -70,7 +70,11 @@ class ModelInfo(BaseModel):
     description: str
     description_short: str | None = None
     developer: str | None = None
+    owner: str | None = None
     info_url: str | None = None
+    citation: str | None = None
+    license: str | None = None
+    min_app_version: str | None = None
 
 
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
@@ -440,7 +444,11 @@ def list_detection_models() -> list[ModelInfo]:
             description=manifest.description or "",
             description_short=getattr(manifest, "description_short", None),
             developer=manifest.developer,
+            owner=getattr(manifest, "owner", None),
             info_url=manifest.info_url,
+            citation=getattr(manifest, "citation", None),
+            license=getattr(manifest, "license", None),
+            min_app_version=manifest.min_app_version,
         )
         for manifest in models.values()
     ]
@@ -490,7 +498,11 @@ def list_classification_models() -> list[ModelInfo]:
             description=manifest.description or "",
             description_short=getattr(manifest, "description_short", None),
             developer=manifest.developer,
+            owner=getattr(manifest, "owner", None),
             info_url=manifest.info_url,
+            citation=getattr(manifest, "citation", None),
+            license=getattr(manifest, "license", None),
+            min_app_version=manifest.min_app_version,
         )
         for manifest in models.values()
     ]
