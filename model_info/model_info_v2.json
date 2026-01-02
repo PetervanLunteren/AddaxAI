@@ -1,5 +1,70 @@
 {
     "cls": {
+        "Queensland Wet Tropics - WildObs": {
+            "model_fname": "wildobs_QLD_WetTropics.pt",
+            "description": "The wildobs_QLD_WetTropics model for Australian Wet Tropics has been trained on ~30k labelled images from 15 classes. We used the Wildlife Observatory of Australia’s tagged image repository for the ‘Wet Tropics’ rainforests (n = 454 camera deployments, 2,184,664 images, 121 species), and refined this to a balanced dataset of the 15 most common species for CV training and testing. We found that fine-tuning SpeciesNet (https://github.com/google/cameratrapai) delivered the highest performance, often exceeding 95% F1-score. We are in the process of publishing our findings as part of this work.",
+            "developer": "Prakash Palanivelu Rajmohan and Renuka Sharma",
+            "owner": "WildObs Australia",
+            "type": "wildobs-qld-wettropics",
+            "env": "pytorch",
+            "download_info": [
+                [
+                    "https://huggingface.co/Addax-Data-Science/WetTropics_WildObs/resolve/main/wildobs_QLD_WetTropics.pt?download=true",
+                    "wildobs_QLD_WetTropics.pt"
+                ],
+                [
+                    "https://huggingface.co/Addax-Data-Science/WetTropics_WildObs/resolve/main/taxon-mapping.csv?download=true",
+                    "taxon-mapping.csv"
+                ]
+            ],
+            "total_download_size": "",
+            "info_url": "https://wildobs.org.au/",
+            "license": "https://huggingface.co/datasets/choosealicense/licenses/blob/main/markdown/cc-by-4.0.md",
+            "all_classes": [
+                "Alectura_lathami",
+                "Bos_taurus",
+                "Canis_familiaris",
+                "Casuarius_casuarius",
+                "Felis_catus",
+                "Heteromyias_cinereifrons",
+                "Homo_sapiens",
+                "Hypsiprymnodon_moschatus",
+                "Megapodius_reinwardt",
+                "Orthonyx_spaldingii",
+                "Perameles_nasuta",
+                "Sus_scrofa",
+                "Thylogale_stigmatica",
+                "Uromys_caudimaculatus",
+                "Wallabia_bicolor"
+            ],
+            "selected_classes": [
+                "Alectura_lathami",
+                "Bos_taurus",
+                "Canis_familiaris",
+                "Casuarius_casuarius",
+                "Felis_catus",
+                "Heteromyias_cinereifrons",
+                "Homo_sapiens",
+                "Hypsiprymnodon_moschatus",
+                "Megapodius_reinwardt",
+                "Orthonyx_spaldingii",
+                "Perameles_nasuta",
+                "Sus_scrofa",
+                "Thylogale_stigmatica",
+                "Uromys_caudimaculatus",
+                "Wallabia_bicolor"
+            ],
+            "var_cls_detec_thresh": "0.40",
+            "var_cls_detec_thresh_default": "0.40",
+            "var_cls_class_thresh": "0.60",
+            "var_cls_class_thresh_default": "0.60",
+            "var_smooth_cls_animal": true,
+            "min_version": "6.25",
+            "taxon_mapping_csv": "https://huggingface.co/Addax-Data-Science/WetTropics_WildObs/resolve/main/taxon-mapping.csv?download=true",
+            "var_tax_levels_idx": 0,
+            "var_tax_fallback": true,
+            "var_tax_fallback_default": false
+        },
         "African tropical forests - DeepForestVision": {
             "model_fname": "DFV.pt",
             "description": "One objective of the OneForestVision initiative is to develop open-source artificial intelligence models for biodiversity monitoring. DeepForestVision automatically classifies species in images and videos collected using camera-traps in African tropical forests. It is developed by an academic team from the French Mus\u00e9um National d'Histore Naturelle (MNHN), in collaboration with 6 partners involved in wildlife research, conservation and management. DeepForestVision can be run through AddaxAI without programming knowledge, or downloaded on the project Github page https://github.com/MNHN-OFVI/DeepForestVision.",
