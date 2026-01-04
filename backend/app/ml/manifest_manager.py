@@ -88,8 +88,10 @@ class ManifestManager:
                         data = json.load(f)
 
                     manifest = ModelManifest(**data)
+                    # Set model_category based on which directory it was loaded from
+                    manifest.model_category = "detection" if model_type == "det" else "classification"
                     validated_manifests[manifest.model_id] = manifest
-                    logger.debug(f"Loaded manifest for {manifest.model_id} from {model_dir.name}")
+                    logger.debug(f"Loaded manifest for {manifest.model_id} from {model_dir.name} (category: {manifest.model_category})")
 
                 except Exception as e:
                     logger.error(f"Invalid manifest in {manifest_path}: {e}")
@@ -127,20 +129,20 @@ class ManifestManager:
         return manifests[model_id]
 
     def get_detection_models(self) -> dict[str, ModelManifest]:
-        """Get all detection models (includes 'base' type models)."""
+        """Get all detection models (loaded from det/ directory)."""
         manifests = self.load_manifests()
         return {
             model_id: manifest
             for model_id, manifest in manifests.items()
-            if manifest.type in ("detection", "base")
+            if manifest.model_category == "detection"
         }
 
     def get_classification_models(self) -> dict[str, ModelManifest]:
-        """Get all classification models (excludes detection and base types)."""
+        """Get all classification models (loaded from cls/ directory)."""
         manifests = self.load_manifests()
         return {
             model_id: manifest
             for model_id, manifest in manifests.items()
-            if manifest.type not in ("detection", "base")
+            if manifest.model_category == "classification"
         }
 

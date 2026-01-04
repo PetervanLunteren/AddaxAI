@@ -296,7 +296,12 @@ class EnvironmentManager:
             # Clean up any existing temp directory from previous failed attempts
             if temp_env_path.exists():
                 logger.warning(f"Removing stale temporary environment at {temp_env_path}")
-                self._safe_rmtree(temp_env_path)
+                try:
+                    self._safe_rmtree(temp_env_path)
+                except Exception as e:
+                    logger.error(f"Failed to remove stale temp directory: {e}")
+                    # If we can't remove it, try to continue anyway - micromamba might overwrite
+                    logger.warning("Attempting to continue despite cleanup failure...")
 
             logger.info(f"Running micromamba create for {env_name} (temp: {temp_env_path})...")
             cmd = [
@@ -417,10 +422,21 @@ class EnvironmentManager:
                 progress_callback("Environment ready", 1.0)
 
         except Exception as e:
-            # Clean up failed environment
-            if env_path.exists():
+            # Clean up failed environment - only if rename hasn't happened yet
+            # If temp still exists, remove it. If rename happened, remove final location.
+            if temp_env_path.exists():
+                logger.warning(f"Cleaning up failed temporary environment at {temp_env_path}")
+                try:
+                    self._safe_rmtree(temp_env_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to clean up temp environment: {cleanup_error}")
+            elif env_path.exists():
+                # Rename happened but something failed after
                 logger.warning(f"Cleaning up failed environment at {env_path}")
-                self._safe_rmtree(env_path)
+                try:
+                    self._safe_rmtree(env_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to clean up environment: {cleanup_error}")
             raise RuntimeError(f"Failed to create environment {env_name}: {e}") from e
 
     def _validate_env(self, env_path: Path) -> bool:

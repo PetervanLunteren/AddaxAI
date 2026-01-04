@@ -49,7 +49,8 @@ class ModelStorage:
             True if weights are ready, False if download needed
         """
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
-        model_type = "det" if manifest.type == "detection" else "cls"
+        # Use model_category (set by ManifestManager based on directory) to determine path
+        model_type = "det" if manifest.model_category == "detection" else "cls"
         model_path = self.models_dir / model_type / manifest.model_id
         model_file = model_path / manifest.model_fname
 
@@ -75,7 +76,8 @@ class ModelStorage:
             RuntimeError: If download fails
         """
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
-        model_type = "det" if manifest.type == "detection" else "cls"
+        # Use model_category (set by ManifestManager based on directory) to determine path
+        model_type = "det" if manifest.model_category == "detection" else "cls"
         model_path = self.models_dir / model_type / manifest.model_id
 
         # Skip if already exists
@@ -144,7 +146,8 @@ class ModelStorage:
         Raises:
             FileNotFoundError: If model not downloaded
         """
-        model_type = "det" if manifest.type == "detection" else "cls"
+        # Use model_category (set by ManifestManager based on directory) to determine path
+        model_type = "det" if manifest.model_category == "detection" else "cls"
         model_path = self.models_dir / model_type / manifest.model_id
         if not model_path.exists():
             raise FileNotFoundError(
@@ -186,7 +189,9 @@ class ModelStorage:
         Returns:
             Size in MB or None if not downloaded
         """
-        model_path = self.models_dir / manifest.model_id
+        # Use model_category (set by ManifestManager based on directory) to determine path
+        model_type = "det" if manifest.model_category == "detection" else "cls"
+        model_path = self.models_dir / model_type / manifest.model_id
         if not model_path.exists():
             return None
 

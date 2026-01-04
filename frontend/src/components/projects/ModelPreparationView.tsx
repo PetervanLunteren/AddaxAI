@@ -65,7 +65,7 @@ export function ModelPreparationView({
       <div className="py-6 space-y-6 min-w-0">
         {/* Model Info */}
         <div className="flex flex-col items-center gap-3 text-center">
-          <span className="text-5xl">{modelEmoji}</span>
+          <span className="text-[4.5rem]">{modelEmoji}</span>
           <div>
             <h3 className="font-semibold text-lg">{modelName}</h3>
             <p className="text-sm text-muted-foreground">Downloading and installing...</p>
@@ -83,11 +83,6 @@ export function ModelPreparationView({
         {/* Current Message */}
         <div className="bg-muted/50 rounded-md px-3 py-2 min-w-0">
           <p className="text-[11px] leading-none text-muted-foreground font-mono truncate">{message || "Preparing..."}</p>
-        </div>
-
-        {/* Info note */}
-        <div className="text-xs text-muted-foreground text-center">
-          <p>You can cancel and prepare the model later if needed.</p>
         </div>
       </div>
 

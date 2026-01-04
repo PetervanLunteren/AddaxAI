@@ -18,12 +18,20 @@ import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
+import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
+import { ModelPreparationView } from "../components/projects/ModelPreparationView";
+import { ModelPreparationErrorView } from "../components/projects/ModelPreparationErrorView";
+import { useTaskProgress } from "../hooks/useTaskProgress";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+} from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
 import { Switch } from "../components/ui/switch";
@@ -91,6 +99,14 @@ export default function SettingsPage() {
   const [showModelInfo, setShowModelInfo] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
+  // Model preparation state
+  type PreparationStage = "form" | "preparing" | "error";
+  type PreparingModelType = "detection" | "classification" | null;
+  const [preparationStage, setPreparationStage] = useState<PreparationStage>("form");
+  const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
+  const [preparationError, setPreparationError] = useState<string | null>(null);
+  const [preparingModelType, setPreparingModelType] = useState<PreparingModelType>(null);
+
   // Fetch current project
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["projects", projectId],
@@ -152,7 +168,8 @@ export default function SettingsPage() {
     }
   }, [project, form]);
 
-  // Watch classification model changes
+  // Watch model changes
+  const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
   const countryCode = form.watch("country_code");
 
@@ -171,6 +188,38 @@ export default function SettingsPage() {
     queryKey: ["speciesnet-locations"],
     queryFn: () => modelsApi.getSpeciesNetLocations(),
     enabled: isSpeciesNet,
+  });
+
+  // Fetch detection model status
+  const { data: detectionModelStatus } = useQuery({
+    queryKey: ["model-status", detectionModelId],
+    queryFn: () => modelsApi.getModelStatus(detectionModelId!),
+    enabled: !!detectionModelId,
+  });
+
+  // Fetch classification model status
+  const { data: classificationModelStatus } = useQuery({
+    queryKey: ["model-status", classificationModelId],
+    queryFn: () => modelsApi.getModelStatus(classificationModelId!),
+    enabled: !!classificationModelId && classificationModelId !== "none",
+  });
+
+  // WebSocket progress tracking for model preparation
+  const { progress, message } = useTaskProgress({
+    taskId: preparingTaskId,
+    onComplete: () => {
+      // Refresh the correct model status based on which model was being prepared
+      const modelIdToRefresh = preparingModelType === "detection" ? detectionModelId : classificationModelId;
+      queryClient.invalidateQueries({ queryKey: ["model-status", modelIdToRefresh] });
+      setPreparingTaskId(null);
+      setPreparationStage("form");
+      setPreparingModelType(null);
+    },
+    onError: (error) => {
+      setPreparationError(error);
+      setPreparationStage("error");
+      setPreparingTaskId(null);
+    },
   });
 
   // Initialize excludedClasses state when project loads
@@ -204,6 +253,56 @@ export default function SettingsPage() {
       }
     }
   }, [classificationModelId, taxonomy, form]);
+
+  // Handler for detection model preparation
+  const handlePrepareDetectionModel = async () => {
+    if (!detectionModelId) return;
+
+    try {
+      setPreparationStage("preparing");
+      setPreparingModelType("detection");
+      const response = await modelsApi.prepareModel(detectionModelId);
+      setPreparingTaskId(response.task_id);
+    } catch (error: any) {
+      setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationStage("error");
+      setPreparingModelType(null);
+    }
+  };
+
+  // Handler for classification model preparation
+  const handlePrepareClassificationModel = async () => {
+    if (!classificationModelId) return;
+
+    try {
+      setPreparationStage("preparing");
+      setPreparingModelType("classification");
+      const response = await modelsApi.prepareModel(classificationModelId);
+      setPreparingTaskId(response.task_id);
+    } catch (error: any) {
+      setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationStage("error");
+      setPreparingModelType(null);
+    }
+  };
+
+  // Handler for canceling preparation
+  const handleCancelPreparation = () => {
+    setPreparingTaskId(null);
+    setPreparationStage("form");
+    setPreparingModelType(null);
+  };
+
+  // Handler for retrying after error
+  const handleRetryPreparation = () => {
+    setPreparationError(null);
+    // Retry the same model type that failed
+    if (preparingModelType === "detection") {
+      handlePrepareDetectionModel();
+    } else {
+      handlePrepareClassificationModel();
+    }
+  };
 
   // Update mutation
   const updateMutation = useMutation({
@@ -290,7 +389,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection model</FormLabel>
                         <FormDescription className="text-sm">
@@ -367,6 +466,15 @@ export default function SettingsPage() {
                           </Tooltip>
                         </div>
                         <FormMessage />
+
+                        {/* Model Status Badge */}
+                        {field.value && detectionModelStatus && (
+                          <ModelStatusBadge
+                            status={detectionModelStatus}
+                            onPrepare={handlePrepareDetectionModel}
+                            isPreparing={preparationStage === "preparing" && preparingModelType === "detection"}
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -377,7 +485,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="classification_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
@@ -461,6 +569,15 @@ export default function SettingsPage() {
                           </Tooltip>
                         </div>
                         <FormMessage />
+
+                        {/* Model Status Badge */}
+                        {field.value && classificationModelStatus && (
+                          <ModelStatusBadge
+                            status={classificationModelStatus}
+                            onPrepare={handlePrepareClassificationModel}
+                            isPreparing={preparationStage === "preparing" && preparingModelType === "classification"}
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -484,7 +601,7 @@ export default function SettingsPage() {
                     control={form.control}
                     name="country_code"
                     render={({ field }) => (
-                      <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                      <div className="grid grid-cols-2 gap-8 py-6">
                         <div className="space-y-1">
                           <FormLabel>Country</FormLabel>
                           <FormDescription className="text-sm">
@@ -553,7 +670,7 @@ export default function SettingsPage() {
                       control={form.control}
                       name="state_code"
                       render={({ field }) => (
-                        <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                        <div className="grid grid-cols-2 gap-8 py-6">
                           <div className="space-y-1">
                             <FormLabel>State</FormLabel>
                             <FormDescription className="text-sm">
@@ -629,7 +746,7 @@ export default function SettingsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-[55%_1fr] gap-8">
+                  <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-1">
                       <FormLabel>Species selection</FormLabel>
                       <FormDescription className="text-sm">
@@ -671,7 +788,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_threshold"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection confidence threshold</FormLabel>
                         <FormDescription className="text-sm">
@@ -701,7 +818,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="independence_interval"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Independence interval</FormLabel>
                         <FormDescription className="text-sm">
@@ -730,7 +847,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="event_smoothing"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Event smoothing</FormLabel>
                         <FormDescription className="text-sm">
@@ -752,7 +869,7 @@ export default function SettingsPage() {
                   control={form.control}
                   name="taxonomic_rollup"
                   render={({ field }) => (
-                    <div className="grid grid-cols-[55%_1fr] gap-8 py-6">
+                    <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Taxonomic rollup</FormLabel>
                         <FormDescription className="text-sm">
@@ -815,13 +932,29 @@ export default function SettingsPage() {
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Reset
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={!isDirty || updateMutation.isPending}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {updateMutation.isPending ? "Saving..." : "Save changes"}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        type="submit"
+                        disabled={
+                          !isDirty ||
+                          updateMutation.isPending ||
+                          detectionModelStatus?.status !== "ready" ||
+                          classificationModelStatus?.status !== "ready"
+                        }
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        {updateMutation.isPending ? "Saving..." : "Save changes"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {(detectionModelStatus?.status !== "ready" || classificationModelStatus?.status !== "ready") && (
+                    <TooltipContent>
+                      <p>Model needs preparing first</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               </div>
             </div>
           </form>
@@ -849,6 +982,41 @@ export default function SettingsPage() {
             totalSpeciesCount={taxonomy.all_classes?.length || 0}
           />
         )}
+
+        {/* Model Preparation Dialog */}
+        <Dialog open={preparationStage === "preparing"} onOpenChange={(open) => !open && handleCancelPreparation()}>
+          <DialogContent className="max-w-xl">
+            {preparingModelType === "detection" && detectionModels.find((m) => m.model_id === detectionModelId) && (
+              <ModelPreparationView
+                modelName={detectionModels.find((m) => m.model_id === detectionModelId)!.friendly_name}
+                modelEmoji={detectionModels.find((m) => m.model_id === detectionModelId)!.emoji}
+                progress={progress}
+                message={message}
+                onCancel={handleCancelPreparation}
+              />
+            )}
+            {preparingModelType === "classification" && classificationModels.find((m) => m.model_id === classificationModelId) && (
+              <ModelPreparationView
+                modelName={classificationModels.find((m) => m.model_id === classificationModelId)!.friendly_name}
+                modelEmoji={classificationModels.find((m) => m.model_id === classificationModelId)!.emoji}
+                progress={progress}
+                message={message}
+                onCancel={handleCancelPreparation}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Model Preparation Error Dialog */}
+        <Dialog open={preparationStage === "error"} onOpenChange={(open) => !open && setPreparationStage("form")}>
+          <DialogContent className="max-w-xl">
+            <ModelPreparationErrorView
+              errorMessage={preparationError || "Unknown error occurred"}
+              onRetry={handleRetryPreparation}
+              onCancel={() => setPreparationStage("form")}
+            />
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

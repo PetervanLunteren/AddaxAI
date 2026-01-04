@@ -22,21 +22,14 @@ export function ModelStatusBadge({ status, onPrepare, isPreparing }: ModelStatus
     return null;
   }
 
-  // Format size display
-  const sizeDisplay = status.weights_size_mb
-    ? status.weights_size_mb >= 1024
-      ? `${(status.weights_size_mb / 1024).toFixed(1)} GB`
-      : `${status.weights_size_mb.toFixed(0)} MB`
-    : null;
-
   return (
     <Alert variant="default" className="border-yellow-200 bg-yellow-50">
       <AlertTriangle className="h-4 w-4 text-yellow-700" />
-      <AlertTitle className="text-yellow-900">One-time setup required</AlertTitle>
+      <AlertTitle className="text-yellow-900">Setup required</AlertTitle>
       <AlertDescription className="space-y-3 mt-2">
         <div className="text-sm text-yellow-800">
           <p>This model needs a one-time setup before it can be used.</p>
-          <p>We'll download the model{sizeDisplay ? ` (${sizeDisplay})` : ''} and prepare the environment.</p>
+          <p>We'll download the model and prepare the environment.</p>
           <p className="text-xs text-yellow-600 mt-1">This may take a few minutes.</p>
         </div>
 

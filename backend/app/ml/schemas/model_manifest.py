@@ -24,6 +24,7 @@ class ModelManifest(BaseModel):
     friendly_name: str
     emoji: str
     type: str
+    model_category: str | None = None  # "detection" or "classification" - set during loading based on directory
 
     # Environment & Model Files
     env: str

@@ -598,7 +598,7 @@ def get_model_taxonomy(model_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
     # Only classification models have taxonomy
-    if manifest.type in ("detection", "base"):
+    if manifest.model_category == "detection":
         raise HTTPException(
             status_code=400,
             detail=f"Model {model_id} is a detection model and does not have taxonomy"
