@@ -10,7 +10,7 @@ dependencies:
     - streamlit
     - streamlit-extras
     - streamlit-aggrid
-    
+
     # Map and UI components
     - folium
     - streamlit-folium
@@ -18,13 +18,13 @@ dependencies:
     - streamlit-antd-components
     - st-flexible-callout-elements
     - streamlit-lottie
-    
+
     # Image processing and metadata
     - exifread
     - piexif
     - gpsphoto
     - hachoir
-    
+
     # Utility packages
     - appdirs
     - requests
@@ -34,7 +34,7 @@ dependencies:
     - anyio<4.0  # Pin to v3.x for Python 3.11 typing compatibility
     - st-modal
     - openpyxl
-    
+
     # MegaDetector and detection packages
     - megadetector==10.0.8
     - ultralytics==8.3.177

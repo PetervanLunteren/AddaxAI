@@ -184,6 +184,7 @@ class HuggingFaceRepoDownloader:
     def download_file(self, file_info: dict, local_dir: Path) -> bool:
         """
         Download a single file with progress tracking.
+        Downloads to a .tmp file first, then renames atomically on success.
 
         Args:
             file_info: File information including path, size, and URL
@@ -206,6 +207,9 @@ class HuggingFaceRepoDownloader:
                 self.update_progress(file_size)
                 return True
 
+        # Download to temporary file first
+        temp_file_path = local_file_path.with_suffix(local_file_path.suffix + ".tmp")
+
         start_time = time.time()
         downloaded = 0
 
@@ -213,7 +217,7 @@ class HuggingFaceRepoDownloader:
             with self.session.get(file_url, stream=True, timeout=self.timeout) as response:
                 response.raise_for_status()
 
-                with open(local_file_path, "wb") as f:
+                with open(temp_file_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=self.chunk_size):
                         if chunk:
                             f.write(chunk)
@@ -221,14 +225,21 @@ class HuggingFaceRepoDownloader:
                             downloaded += chunk_size
                             self.update_progress(chunk_size)
 
+            # Verify size matches expected
+            if file_size > 0 and temp_file_path.stat().st_size != file_size:
+                raise ValueError(f"Downloaded file size mismatch: expected {file_size}, got {temp_file_path.stat().st_size}")
+
+            # Atomic rename - only move to final location if download was successful
+            temp_file_path.rename(local_file_path)
+
             self.measure_download_speed(start_time, downloaded)
             return True
 
         except Exception as e:
             logger.error(f"Failed to download {file_path}: {e}")
-            # Clean up partial file
-            if local_file_path.exists():
-                local_file_path.unlink()
+            # Clean up partial temp file
+            if temp_file_path.exists():
+                temp_file_path.unlink()
             return False
 
     def download_repo(
@@ -284,6 +295,10 @@ class HuggingFaceRepoDownloader:
                     for file_info in files_info
                 }
 
+                # Send initial progress right after submitting tasks
+                if progress_callback and total_size > 0:
+                    progress_callback("Starting download...", 0.05)
+
                 # Process completed downloads
                 completed = 0
 
@@ -308,10 +323,22 @@ class HuggingFaceRepoDownloader:
 
                     # Send periodic progress updates (even while downloading)
                     current_time = time.time()
-                    if progress_callback and total_size > 0 and (
-                        current_time - last_progress_update >= progress_update_interval or
+                    time_since_last = current_time - last_progress_update
+                    should_update = (
+                        time_since_last >= progress_update_interval or
                         len(completed_futures) > 0  # Also update when files complete
-                    ):
+                    )
+
+                    # DEBUG: Log the check conditions
+                    logger.debug(
+                        f"Progress check: callback={progress_callback is not None}, "
+                        f"total_size={total_size}, downloaded={self.downloaded_bytes}, "
+                        f"time_since_last={time_since_last:.2f}s, "
+                        f"completed_futures={len(completed_futures)}, "
+                        f"should_update={should_update}"
+                    )
+
+                    if progress_callback and total_size > 0 and should_update:
                         last_progress_update = current_time
                         overall_progress = 0.05 + (self.downloaded_bytes / total_size) * 0.9
 
@@ -319,12 +346,11 @@ class HuggingFaceRepoDownloader:
                         elapsed = current_time - self.start_time
                         if elapsed > 0:
                             speed_mbps = (self.downloaded_bytes / elapsed) / (1024 * 1024)
-                            downloaded_mb = self.downloaded_bytes / (1024 * 1024)
-                            total_mb = total_size / (1024 * 1024)
-                            percentage = (self.downloaded_bytes / total_size) * 100
 
+                            # Only show download speed (progress bar already shows percentage)
+                            logger.debug(f"Sending progress: {overall_progress:.1%}, {speed_mbps:.2f} MB/s")
                             progress_callback(
-                                f"{percentage:.1f}% ({downloaded_mb:.1f}/{total_mb:.1f} MB) @ {speed_mbps:.2f} MB/s",
+                                f"Downloading model at {speed_mbps:.2f} MB/s",
                                 overall_progress,
                             )
 

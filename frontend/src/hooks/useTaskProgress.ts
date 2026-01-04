@@ -88,7 +88,8 @@ export function useTaskProgress({
         ws.close();
       }
     };
-  }, [taskId, onComplete, onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]); // Only re-run when taskId changes, not when callbacks change
 
   return {
     progress,

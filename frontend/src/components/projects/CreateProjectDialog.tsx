@@ -15,6 +15,10 @@ import * as z from "zod";
 import { Info, Check, ChevronsUpDown, InfoIcon } from "lucide-react";
 import { projectsApi, type ProjectCreate } from "../../api/projects";
 import { modelsApi } from "../../api/models";
+import { useTaskProgress } from "../../hooks/useTaskProgress";
+import { ModelStatusBadge } from "./ModelStatusBadge";
+import { ModelPreparationView } from "./ModelPreparationView";
+import { ModelPreparationErrorView } from "./ModelPreparationErrorView";
 import { Button } from "../ui/button";
 import {
   Select,
@@ -68,7 +72,12 @@ const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
   description: z.string().max(500, "Description too long").optional(),
   detection_model_id: z.literal("MD5A-0-0"),
-  classification_model_id: z.string().min(1, "Classification model is required"),
+  classification_model_id: z
+    .string()
+    .min(1, "Please select a classification model")
+    .refine((val) => val !== "none", {
+      message: "Please select a classification model",
+    }),
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
@@ -119,6 +128,12 @@ export function CreateProjectDialog({
   const [stateOpen, setStateOpen] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
 
+  // Model preparation state
+  type DialogStage = "form" | "preparing" | "error";
+  const [stage, setStage] = useState<DialogStage>("form");
+  const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
+  const [preparationError, setPreparationError] = useState<string | null>(null);
+
   // Fetch available classification models (already sorted alphabetically by backend)
   const { data: classificationModels = [] } = useQuery({
     queryKey: ["models", "classification"],
@@ -151,6 +166,29 @@ export function CreateProjectDialog({
   // Check if current model is SpeciesNet
   const isSpeciesNet = classificationModelId?.toLowerCase().includes("speciesnet");
 
+  // Fetch model status when model is selected
+  const { data: modelStatus } = useQuery({
+    queryKey: ["model-status", classificationModelId],
+    queryFn: () => modelsApi.getModelStatus(classificationModelId!),
+    enabled: !!classificationModelId && classificationModelId !== "none" && open,
+  });
+
+  // WebSocket progress tracking for model preparation
+  const { progress, message } = useTaskProgress({
+    taskId: preparingTaskId,
+    onComplete: () => {
+      // Refresh model status
+      queryClient.invalidateQueries({ queryKey: ["model-status", classificationModelId] });
+      setPreparingTaskId(null);
+      setStage("form");
+    },
+    onError: (error) => {
+      setPreparationError(error);
+      setStage("error");
+      setPreparingTaskId(null);
+    },
+  });
+
   // Fetch locations for SpeciesNet models
   const { data: locations } = useQuery({
     queryKey: ["speciesnet-locations"],
@@ -181,21 +219,53 @@ export function CreateProjectDialog({
     },
   });
 
+  // Handler for model preparation
+  const handlePrepareModel = async () => {
+    if (!classificationModelId) return;
+
+    try {
+      setStage("preparing");
+      const response = await modelsApi.prepareModel(classificationModelId);
+      setPreparingTaskId(response.task_id);
+    } catch (error: any) {
+      setPreparationError(error.message || "Failed to start model preparation");
+      setStage("error");
+    }
+  };
+
+  // Handler for canceling preparation
+  const handleCancelPreparation = () => {
+    setPreparingTaskId(null);
+    setStage("form");
+  };
+
+  // Handler for retrying after error
+  const handleRetryPreparation = () => {
+    setPreparationError(null);
+    handlePrepareModel();
+  };
+
   const onSubmit = (data: ProjectCreate) => {
     createMutation.mutate(data);
   };
 
+  // Get selected model info for preparation view
+  const selectedModel = classificationModels.find((m) => m.model_id === classificationModelId);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Create new project</DialogTitle>
-          <DialogDescription>
-            Projects organize your camera trap sites, deployments, and analysis settings
-          </DialogDescription>
-        </DialogHeader>
+        {/* Form View */}
+        {stage === "form" && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Create new project</DialogTitle>
+              <DialogDescription>
+                Projects organize your camera trap sites, deployments, and analysis settings
+              </DialogDescription>
+            </DialogHeader>
 
-        <Form {...form}>
+            <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <TooltipProvider>
               <FormField
@@ -356,6 +426,15 @@ export function CreateProjectDialog({
                 </FormItem>
               )}
             />
+
+              {/* Model Status Badge */}
+              {classificationModelId && modelStatus && (
+                <ModelStatusBadge
+                  status={modelStatus}
+                  onPrepare={handlePrepareModel}
+                  isPreparing={stage === "preparing"}
+                />
+              )}
 
               {/* Country Selection (SpeciesNet only) */}
               {isSpeciesNet && locations && (
@@ -522,13 +601,52 @@ export function CreateProjectDialog({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? "Creating..." : "Create project"}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        type="submit"
+                        disabled={
+                          createMutation.isPending ||
+                          modelStatus?.status !== "ready"
+                        }
+                      >
+                        {createMutation.isPending ? "Creating..." : "Create project"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {modelStatus?.status !== "ready" && (
+                    <TooltipContent>
+                      <p>Model needs preparing first</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               </DialogFooter>
             </TooltipProvider>
           </form>
         </Form>
+          </>
+        )}
+
+        {/* Preparing View */}
+        {stage === "preparing" && selectedModel && (
+          <ModelPreparationView
+            modelName={selectedModel.friendly_name}
+            modelEmoji={selectedModel.emoji}
+            progress={progress}
+            message={message}
+            onCancel={handleCancelPreparation}
+          />
+        )}
+
+        {/* Error View */}
+        {stage === "error" && (
+          <ModelPreparationErrorView
+            errorMessage={preparationError || "Unknown error occurred"}
+            onRetry={handleRetryPreparation}
+            onCancel={() => setStage("form")}
+          />
+        )}
       </DialogContent>
 
       {/* Model Info Sheet */}

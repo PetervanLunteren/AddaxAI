@@ -185,8 +185,9 @@ class EnvironmentManager:
         # Check if environment exists and is valid
         if env_path.exists() and self._validate_env(env_path):
             logger.info(f"Using existing environment: {env_name}")
-            if progress_callback:
-                progress_callback(f"Environment {env_name} already exists", 1.0)
+            # Don't call progress callback here - this should have been caught earlier
+            # If we reach this point, it's likely a race condition or the validation
+            # in the caller was incorrect. Just return the path silently.
             return env_path
 
         # Get environment YAML path
@@ -202,6 +203,41 @@ class EnvironmentManager:
         self._create_env(env_name, env_path, yaml_path, progress_callback)
 
         return env_path
+
+    def _parse_env_yaml(self, yaml_path: Path) -> tuple[int, int]:
+        """
+        Parse environment.yml to count conda and pip packages.
+
+        Args:
+            yaml_path: Path to environment.yml file
+
+        Returns:
+            Tuple of (conda_package_count, pip_package_count)
+        """
+        import yaml
+
+        with open(yaml_path) as f:
+            env_config = yaml.safe_load(f)
+
+        conda_count = 0
+        pip_count = 0
+
+        # Count conda packages (top-level dependencies, excluding pip itself)
+        dependencies = env_config.get("dependencies", [])
+        for dep in dependencies:
+            if isinstance(dep, str):
+                # Skip 'pip' entry itself
+                if not dep.startswith("pip"):
+                    conda_count += 1
+            elif isinstance(dep, dict) and "pip" in dep:
+                # Count pip packages
+                pip_packages = dep["pip"]
+                for pkg in pip_packages:
+                    # Skip comments and flags
+                    if isinstance(pkg, str) and not pkg.strip().startswith("#"):
+                        pip_count += 1
+
+        return conda_count, pip_count
 
     def _create_env(
         self,
@@ -223,44 +259,140 @@ class EnvironmentManager:
             RuntimeError: If environment creation fails
         """
         try:
+            # Parse YAML to count packages and allocate progress ranges
+            conda_count, pip_count = self._parse_env_yaml(yaml_path)
+            logger.info(f"Environment has {conda_count} conda packages and {pip_count} pip packages")
+
+            # Dynamically allocate progress based on package counts
+            # Each package (conda or pip) is weighted equally
+            total_packages = conda_count + pip_count
+
+            if total_packages > 0:
+                conda_progress_range = conda_count / total_packages
+                pip_progress_range = pip_count / total_packages
+            else:
+                # Fallback if no packages (shouldn't happen)
+                conda_progress_range = 0.5
+                pip_progress_range = 0.5
+
+            # Reserve 5% for initial setup, distribute rest between conda and pip
+            conda_start = 0.05
+            conda_end = 0.05 + (0.95 * conda_progress_range)
+            pip_start = conda_end
+            pip_end = 1.0
+
+            logger.info(
+                f"Progress allocation: conda {conda_start:.0%}-{conda_end:.0%}, "
+                f"pip {pip_start:.0%}-{pip_end:.0%}"
+            )
             # Create environment with micromamba
             if progress_callback:
                 progress_callback("Starting package installation...", 0.1)
 
-            logger.info(f"Running micromamba create for {env_name}...")
+            # Create environment in temporary location first for atomic operation
+            import tempfile
+            temp_env_path = env_path.parent / f".{env_name}.tmp"
+
+            # Clean up any existing temp directory from previous failed attempts
+            if temp_env_path.exists():
+                logger.warning(f"Removing stale temporary environment at {temp_env_path}")
+                self._safe_rmtree(temp_env_path)
+
+            logger.info(f"Running micromamba create for {env_name} (temp: {temp_env_path})...")
             cmd = [
                 str(self.micromamba_path),
                 "create",
                 "-f",
                 str(yaml_path),
                 "-p",
-                str(env_path),
+                str(temp_env_path),  # Create in temp location
                 "-y",
+                "-v",  # Verbose output for better progress tracking
                 "--no-rc",  # Don't use .condarc
             ]
 
             # Stream output line by line to show progress
+            import time
+
+            # Set PIP_VERBOSE to get detailed pip output during package installation
+            env = os.environ.copy()
+            env["PIP_VERBOSE"] = "1"
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                env=env,
             )
 
             last_line = ""
-            for line in process.stdout:
-                line = line.strip()
+            current_progress = 0.0
+
+            # Read output line by line
+            while True:
+                # Check if process is done
+                if process.poll() is not None:
+                    # Read any remaining output
+                    remaining = process.stdout.read()
+                    if remaining:
+                        for line in remaining.splitlines():
+                            if line.strip():
+                                last_line = line.strip()
+                                logger.debug(f"micromamba: {last_line}")
+                    break
+
+                # Try to read a line
+                line = process.stdout.readline()
                 if line:
-                    last_line = line
-                    # Send progress updates with the current line
-                    if progress_callback:
-                        progress_callback(line[:80], 0.5)
-                    logger.debug(f"micromamba: {line}")
+                    line = line.strip()
+                    if line:
+                        last_line = line
+
+                        # Simple checkpoint-based progress estimation
+                        # Initial setup phase
+                        if "using cache" in line.lower():
+                            current_progress = max(current_progress, conda_start * 0.5)
+                        elif "transaction" in line.lower() and "starting" not in line.lower():
+                            current_progress = max(current_progress, conda_start)
+
+                        # Conda linking phase
+                        elif line.startswith("Linking "):
+                            # Rough progress through conda range
+                            current_progress = max(current_progress, conda_start + (conda_end - conda_start) * 0.5)
+                        elif "transaction finished" in line.lower():
+                            current_progress = max(current_progress, conda_end)
+
+                        # Pip phase - just show we're making progress
+                        elif "installing pip packages" in line.lower():
+                            current_progress = max(current_progress, pip_start)
+                        elif line.startswith("Collecting "):
+                            # Collecting dependencies - rough estimate in first 60% of pip range
+                            pip_range = pip_end - pip_start
+                            current_progress = max(current_progress, pip_start + (pip_range * 0.3))
+                        elif "installing collected packages" in line.lower():
+                            # Installation phase - 70% through pip range
+                            pip_range = pip_end - pip_start
+                            current_progress = max(current_progress, pip_start + (pip_range * 0.7))
+                        elif line.startswith("Successfully installed"):
+                            current_progress = 0.95
+
+                        # Send progress updates - the verbose output itself shows activity
+                        if progress_callback:
+                            progress_callback(line[:80], current_progress)
+                        logger.debug(f"micromamba: {line}")
+
+                # Small sleep to avoid busy waiting
+                time.sleep(0.01)
 
             process.wait()
 
             if process.returncode != 0:
+                # Clean up failed temp environment
+                if temp_env_path.exists():
+                    logger.warning(f"Removing failed temporary environment at {temp_env_path}")
+                    self._safe_rmtree(temp_env_path)
                 raise RuntimeError(
                     f"micromamba create failed:\n"
                     f"Command: {' '.join(cmd)}\n"
@@ -268,9 +400,18 @@ class EnvironmentManager:
                 )
 
             if progress_callback:
-                progress_callback("Packages installed successfully", 0.8)
+                progress_callback("Packages installed successfully", 0.95)
 
-            logger.info(f"Environment {env_name} created successfully")
+            logger.info(f"Environment created in temporary location: {temp_env_path}")
+
+            # Atomic rename - only move to final location if creation was successful
+            if progress_callback:
+                progress_callback("Finalizing environment...", 0.98)
+
+            logger.info(f"Moving environment from {temp_env_path} to {env_path}")
+            temp_env_path.rename(env_path)
+
+            logger.info(f"Environment {env_name} created successfully at {env_path}")
 
             if progress_callback:
                 progress_callback("Environment ready", 1.0)

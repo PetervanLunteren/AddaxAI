@@ -273,46 +273,96 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
     try:
         await ws_manager.send_progress(task_id, "Starting model preparation...", 0.0)
 
-        # Step 1: Download weights from HuggingFace
         # Get the current event loop for use in thread callbacks
         loop = asyncio.get_running_loop()
 
-        await ws_manager.send_progress(
-            task_id, "Downloading model weights from HuggingFace...", 0.1
-        )
+        # Check what needs to be prepared
+        needs_weights = not model_storage.check_weights_ready(manifest)
+        env_name = f"env-{manifest.env}"
+        env_path = env_manager.envs_dir / env_name
+        needs_env = not (env_path.exists() and env_manager._validate_env(env_path))
 
-        def weights_progress(message: str, progress: float):
-            """Sync callback for weight download progress."""
-            # Map to 0.1-0.5 range
-            mapped_progress = 0.1 + (progress * 0.4)
-            # Schedule coroutine from thread using run_coroutine_threadsafe
-            asyncio.run_coroutine_threadsafe(
-                ws_manager.send_progress(task_id, message, mapped_progress), loop
+        # Dynamically allocate progress ranges based on what's needed
+        if needs_weights and needs_env:
+            # Both needed: weights 0-50%, env 50-100%
+            weights_range = (0.0, 0.5)
+            env_range = (0.5, 1.0)
+        elif needs_weights:
+            # Only weights: gets full 0-100%
+            weights_range = (0.0, 1.0)
+            env_range = None
+        elif needs_env:
+            # Only env: gets full 0-100%
+            weights_range = None
+            env_range = (0.0, 1.0)
+        else:
+            # Nothing needed (already prepared)
+            await ws_manager.send_complete(
+                task_id,
+                success=True,
+                message="Model already prepared",
+                data={"model_id": model_id},
+            )
+            return
+
+        # Step 1: Download weights from HuggingFace (if needed)
+        if needs_weights:
+            await ws_manager.send_progress(
+                task_id, "Downloading model weights from HuggingFace...", weights_range[0] + 0.05
             )
 
-        # Download weights (blocking call in thread pool)
-        # All models (detection + classification) now download from HF
-        await asyncio.to_thread(
-            model_storage.download_weights, manifest, weights_progress
-        )
+            def weights_progress(message: str, progress: float):
+                """Sync callback for weight download progress."""
+                # Map to dynamic range
+                start, end = weights_range
+                mapped_progress = start + (progress * (end - start))
 
-        await ws_manager.send_progress(task_id, "Weights downloaded", 0.5)
+                # Add step prefix for clarity
+                step_prefix = "Step 1/2 - " if needs_env else ""
+                formatted_message = f"{step_prefix}{message}"
 
-        # Step 2: Build environment
-        await ws_manager.send_progress(task_id, "Building environment...", 0.6)
+                # Schedule coroutine from thread using run_coroutine_threadsafe
+                asyncio.run_coroutine_threadsafe(
+                    ws_manager.send_progress(task_id, formatted_message, mapped_progress), loop
+                )
 
-        def env_progress(message: str, progress: float):
-            """Sync callback for environment build progress."""
-            # Map to 0.6-0.95 range
-            mapped_progress = 0.6 + (progress * 0.35)
-            logger.info(f"Environment progress: {message} ({progress:.1%} -> {mapped_progress:.1%})")
-            # Schedule coroutine from thread using run_coroutine_threadsafe
-            asyncio.run_coroutine_threadsafe(
-                ws_manager.send_progress(task_id, message, mapped_progress), loop
+            # Download weights (blocking call in thread pool)
+            await asyncio.to_thread(
+                model_storage.download_weights, manifest, weights_progress
             )
 
-        # Build environment (blocking call in thread pool)
-        await asyncio.to_thread(env_manager.get_or_create_env, manifest, env_progress)
+            await ws_manager.send_progress(task_id, "Weights downloaded", weights_range[1])
+
+        # Step 2: Build environment (if needed)
+        if needs_env:
+            # Send initial progress for env build
+            initial_msg = "Step 2/2 - Building environment..." if needs_weights else "Building environment..."
+            await ws_manager.send_progress(
+                task_id, initial_msg, env_range[0] + 0.01
+            )
+
+            def env_progress(message: str, progress: float):
+                """Sync callback for environment build progress."""
+                # Map to dynamic range
+                start, end = env_range
+                mapped_progress = start + (progress * (end - start))
+
+                # Add step prefix (CSS will handle truncation in UI)
+                if needs_weights:
+                    prefix = "Step 2/2 - Installing: "
+                else:
+                    prefix = "Installing: "
+
+                formatted_message = f"{prefix}{message}"
+                logger.info(f"Environment progress: {formatted_message} ({progress:.1%} -> {mapped_progress:.1%})")
+
+                # Schedule coroutine from thread using run_coroutine_threadsafe
+                asyncio.run_coroutine_threadsafe(
+                    ws_manager.send_progress(task_id, formatted_message, mapped_progress), loop
+                )
+
+            # Build environment (blocking call in thread pool)
+            await asyncio.to_thread(env_manager.get_or_create_env, manifest, env_progress)
 
         await ws_manager.send_complete(
             task_id,

@@ -27,13 +27,19 @@ export const modelsApi = {
     api.get<ModelStatusResponse>(`/api/ml/models/${modelId}/status`),
 
   /**
-   * Download model weights
+   * Prepare model (download weights + build environment)
+   */
+  prepareModel: (modelId: string) =>
+    api.post(`/api/ml/models/${modelId}/prepare`),
+
+  /**
+   * Download model weights only
    */
   prepareWeights: (modelId: string) =>
     api.post(`/api/ml/models/${modelId}/prepare-weights`),
 
   /**
-   * Build model environment
+   * Build model environment only
    */
   prepareEnvironment: (modelId: string) =>
     api.post(`/api/ml/models/${modelId}/prepare-env`),
