@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 export interface ProgressMessage {
   type: "progress" | "complete" | "error";
@@ -28,6 +29,8 @@ export function useTaskProgress({
   const [message, setMessage] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingUpdateRef = useRef<{ message: string; progress: number } | null>(null);
 
   useEffect(() => {
     if (!taskId) {
@@ -50,19 +53,65 @@ export function useTaskProgress({
       try {
         const data: ProgressMessage = JSON.parse(event.data);
 
+        // Log all incoming WebSocket messages for debugging with timestamp
+        const timestamp = new Date().toISOString().split('T')[1].slice(0, -1); // HH:MM:SS.mmm
+        console.log(`[${timestamp}] [WS ${taskId}] ${data.type}:`, {
+          progress: data.progress,
+          message: data.message,
+          success: data.success,
+          data: data.data,
+        });
+
         if (data.type === "progress") {
-          setMessage(data.message);
-          if (data.progress !== undefined) {
-            setProgress(data.progress);
+          // Store the pending update
+          pendingUpdateRef.current = {
+            message: data.message,
+            progress: data.progress ?? 0,
+          };
+
+          // Clear any existing timeout
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
           }
+
+          // Schedule update with a small delay to allow browser to paint
+          // This ensures visual updates are visible to the user
+          updateTimeoutRef.current = setTimeout(() => {
+            if (pendingUpdateRef.current) {
+              const { message: msg, progress: prog } = pendingUpdateRef.current;
+              flushSync(() => {
+                setMessage(msg);
+                setProgress(prog);
+              });
+              pendingUpdateRef.current = null;
+            }
+          }, 100); // 100ms delay allows browser to paint between updates
         } else if (data.type === "complete") {
-          setMessage(data.message);
-          setProgress(1.0);
+          console.log(`[WS ${taskId}] ✅ COMPLETE MESSAGE RECEIVED`);
+
+          // Clear any pending updates
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+          }
+
+          flushSync(() => {
+            setMessage(data.message);
+            setProgress(1.0);
+          });
           if (onComplete) {
             onComplete(data.data);
           }
         } else if (data.type === "error") {
-          setMessage(data.message);
+          console.error(`[WS ${taskId}] ❌ ERROR:`, data.message);
+
+          // Clear any pending updates
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+          }
+
+          flushSync(() => {
+            setMessage(data.message);
+          });
           if (onError) {
             onError(data.message);
           }
@@ -86,6 +135,9 @@ export function useTaskProgress({
     return () => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
+      }
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

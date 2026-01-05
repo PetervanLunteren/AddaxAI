@@ -2,8 +2,7 @@
  * Run Queue Modal Component
  *
  * Blocking modal that shows progress while processing queue.
- * For MVP: Mock progress with simulated stages.
- * Real implementation will be done in separate session.
+ * Connects to WebSocket for real-time progress updates.
  */
 
 import { useState, useEffect } from "react";
@@ -18,140 +17,126 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { useTaskProgress } from "@/hooks/useTaskProgress";
 
 interface RunQueueModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   queueCount: number;
+  jobIds: string[];
 }
 
-type Stage = "scanning" | "detection" | "classification" | "complete" | "error";
+export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQueueModalProps) {
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isComplete, setIsComplete] = useState(false);
 
-export function RunQueueModal({ open, onOpenChange, queueCount }: RunQueueModalProps) {
-  const [currentStage, setCurrentStage] = useState<Stage>("scanning");
-  const [currentItem, setCurrentItem] = useState(1);
-  const [progress, setProgress] = useState(0);
-
-  // Mock progress simulation
+  // Reset state when modal closes
   useEffect(() => {
     if (!open) {
-      // Reset when modal closes
-      setCurrentStage("scanning");
-      setCurrentItem(1);
-      setProgress(0);
-      return;
+      setHasError(false);
+      setErrorMessage("");
+      setIsComplete(false);
     }
+  }, [open]);
 
-    // Simulate processing stages
-    const stages: Stage[] = ["scanning", "detection", "classification", "complete"];
-    let stageIndex = 0;
-    let itemProgress = 0;
+  // Auto-close modal shortly after success
+  useEffect(() => {
+    if (open && isComplete && !hasError) {
+      const timer = setTimeout(() => {
+        onOpenChange(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [open, isComplete, hasError, onOpenChange]);
 
-    const interval = setInterval(() => {
-      itemProgress += 2; // Increment progress
-
-      if (itemProgress >= 100) {
-        // Move to next stage or next item
-        stageIndex++;
-
-        if (stageIndex >= stages.length - 1) {
-          // Completed all stages for current item
-          if (currentItem < queueCount) {
-            // Move to next item
-            setCurrentItem((prev) => prev + 1);
-            stageIndex = 0;
-            itemProgress = 0;
-          } else {
-            // All items complete
-            setCurrentStage("complete");
-            setProgress(100);
-            clearInterval(interval);
-            return;
-          }
-        }
-
-        setCurrentStage(stages[stageIndex]);
-        itemProgress = 0;
-      }
-
-      setProgress(itemProgress);
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [open, currentItem, queueCount]);
-
-  // Stage display info
-  const stageInfo: Record<Stage, { label: string; icon: React.ReactNode }> = {
-    scanning: {
-      label: `Scanning files... (${currentItem}/${queueCount})`,
-      icon: <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />,
+  // Track progress of the single job (sequential processing)
+  // The backend processes all queue entries sequentially, we just track the one job
+  const jobId = jobIds[0] || null;
+  const { progress, message, isConnected } = useTaskProgress({
+    taskId: jobId,
+    onComplete: () => {
+      setIsComplete(true);
     },
-    detection: {
-      label: `Running detection model... (${currentItem}/${queueCount})`,
-      icon: <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />,
+    onError: (msg) => {
+      setHasError(true);
+      setErrorMessage(msg);
     },
-    classification: {
-      label: `Running classification model... (${currentItem}/${queueCount})`,
-      icon: <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />,
-    },
-    complete: {
-      label: "Queue processing complete!",
-      icon: <CheckCircle2 className="h-5 w-5 text-green-600" />,
-    },
-    error: {
-      label: "Processing failed",
-      icon: <XCircle className="h-5 w-5 text-red-600" />,
-    },
-  };
+  });
 
-  const currentInfo = stageInfo[currentStage];
-  const isComplete = currentStage === "complete";
-  const isError = currentStage === "error";
+  const hasJob = Boolean(jobId);
+
+  // Calculate overall status
+  const isWaitingForJob = !hasError && !isComplete && !hasJob;
+  const isProcessing = !isComplete && !hasError && hasJob;
+  const progressPercent = progress * 100;
+
+  // Display message and icon
+  let displayMessage = message || "Initializing...";
+  let displayIcon = <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />;
+
+  if (hasError) {
+    displayMessage = errorMessage || "Processing failed";
+    displayIcon = <XCircle className="h-5 w-5 text-red-600" />;
+  } else if (isComplete) {
+    displayMessage = `Queue processing complete! Processed ${queueCount} deployment${queueCount > 1 ? 's' : ''}.`;
+    displayIcon = <CheckCircle2 className="h-5 w-5 text-green-600" />;
+  } else if (isWaitingForJob) {
+    displayMessage = "Starting queue job...";
+  } else if (isProcessing && message) {
+    displayMessage = message;
+  }
+
+  // Debug logging to see what's being rendered with timestamp
+  const timestamp = new Date().toISOString().split('T')[1].slice(0, -1); // HH:MM:SS.mmm
+  console.log(`[${timestamp}] [RunQueueModal] Render - isProcessing: ${isProcessing}, isComplete: ${isComplete}, message: "${message}", progress: ${progress}`);
+  console.log(`[${timestamp}] [RunQueueModal] Displaying: "${displayMessage}" at ${progressPercent.toFixed(1)}%`);
 
   return (
-    <Dialog open={open} onOpenChange={isComplete || isError ? onOpenChange : undefined}>
-      <DialogContent className="sm:max-w-md" hideClose={!isComplete && !isError}>
+    <Dialog open={open} onOpenChange={isComplete || hasError ? onOpenChange : undefined}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Processing queue</DialogTitle>
           <DialogDescription>
             {isComplete
               ? "All deployments have been processed successfully."
-              : "Please wait while we process your deployments..."}
+              : isWaitingForJob
+                ? "Preparing the deployment queue..."
+                : `Processing ${queueCount} deployment${queueCount > 1 ? 's' : ''} sequentially...`}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* Status */}
           <div className="flex items-center gap-3">
-            {currentInfo.icon}
-            <span className="text-sm font-medium">{currentInfo.label}</span>
+            {displayIcon}
+            <span className="text-sm font-medium">{displayMessage}</span>
           </div>
 
           {/* Progress bar */}
-          {!isComplete && !isError && (
+          {(isProcessing || isWaitingForJob) && (
             <div className="space-y-2">
-              <Progress value={progress} className="h-2" />
-              <p className="text-xs text-gray-500 text-center">{progress.toFixed(0)}%</p>
+              <Progress value={isProcessing ? progressPercent : undefined} className="h-2" />
+              <p className="text-xs text-gray-500 text-center">
+                {isProcessing ? `${progressPercent.toFixed(0)}%` : "Waiting for job to start..."}
+              </p>
             </div>
           )}
 
-          {/* Mock notice */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
-            <p className="text-xs text-yellow-800">
-              <strong>Note:</strong> This is a mock progress simulation. Real processing will be
-              implemented in a separate session.
-            </p>
-          </div>
+          {/* Connection status */}
+          {isProcessing && !isConnected && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-xs text-yellow-800">
+                <strong>Connecting to progress updates...</strong>
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
-          {isComplete || isError ? (
+          {isComplete || hasError ? (
             <Button onClick={() => onOpenChange(false)}>Close</Button>
-          ) : (
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel (mock)
-            </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

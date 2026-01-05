@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -55,6 +55,7 @@ class Detection(Base):
     # Classification results (filled by classification models)
     species: Mapped[str | None] = mapped_column(String(100), nullable=True)
     species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    classification_all_probs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
@@ -70,6 +71,8 @@ class Detection(Base):
         Index("idx_detections_job", "job_id"),
         Index("idx_detections_category", "category"),
         Index("idx_detections_confidence", "confidence"),
+        Index("idx_detections_species", "species"),
+        Index("idx_detections_species_confidence", "species_confidence"),
     )
 
     def __repr__(self) -> str:

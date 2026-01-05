@@ -60,10 +60,16 @@ class ConnectionManager:
         logger.info(f"WebSocket connected for job {job_id}")
 
         # Replay buffered messages to catch up this connection
-        if job_id in self.message_buffer:
-            buffer_count = len(self.message_buffer[job_id])
-            logger.info(f"Replaying {buffer_count} buffered messages for job {job_id}")
-            for buffered_msg in self.message_buffer[job_id]:
+        async with self._lock:
+            if job_id in self.message_buffer:
+                # Create a copy of the buffer to avoid holding the lock during replay
+                buffered_messages = list(self.message_buffer[job_id])
+            else:
+                buffered_messages = []
+
+        if buffered_messages:
+            logger.info(f"Replaying {len(buffered_messages)} buffered messages for job {job_id}")
+            for buffered_msg in buffered_messages:
                 try:
                     await websocket.send_json(buffered_msg)
                     progress_info = f", progress={buffered_msg.get('progress', 'N/A')}" if 'progress' in buffered_msg else ""
@@ -114,9 +120,10 @@ class ConnectionManager:
         }
 
         # Buffer the message for late-arriving connections
-        if job_id not in self.message_buffer:
-            self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
-        self.message_buffer[job_id].append(progress_data)
+        async with self._lock:
+            if job_id not in self.message_buffer:
+                self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
+            self.message_buffer[job_id].append(progress_data)
 
         # Send to all currently connected clients
         if job_id in self.active_connections:
@@ -125,6 +132,9 @@ class ConnectionManager:
             for connection in self.active_connections[job_id]:
                 try:
                     await connection.send_json(progress_data)
+                    # Force event loop to yield and flush WebSocket buffer
+                    # Without this, messages queue up and are sent in a burst at the end
+                    await asyncio.sleep(0)
                 except Exception as e:
                     logger.warning(f"Failed to send progress to client: {e}")
                     disconnected.append(connection)
@@ -149,6 +159,8 @@ class ConnectionManager:
             message: Completion message
             data: Optional result data
         """
+        logger.info(f"send_complete() called for job {job_id}: success={success}, message={message[:50]}")
+
         # Build completion message
         complete_data = {
             "type": "complete",
@@ -158,23 +170,37 @@ class ConnectionManager:
             "data": data or {},
         }
 
-        # Buffer the completion message for late-arriving connections
-        if job_id not in self.message_buffer:
-            self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
-        self.message_buffer[job_id].append(complete_data)
+        # Buffer the completion message AND send to connected clients atomically
+        # This prevents race condition where WebSocket connects after we check
+        # but before we buffer the message
+        async with self._lock:
+            # Buffer first
+            if job_id not in self.message_buffer:
+                self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
+            self.message_buffer[job_id].append(complete_data)
+            logger.info(f"Buffered completion message for job {job_id} (buffer size: {len(self.message_buffer[job_id])})")
 
-        # Send to all currently connected clients
-        if job_id in self.active_connections:
-            for connection in list(self.active_connections[job_id]):
-                try:
-                    await connection.send_json(complete_data)
-                except Exception as e:
-                    logger.warning(f"Failed to send completion to client: {e}")
+            # Then send to currently connected clients (if any)
+            if job_id in self.active_connections:
+                logger.info(f"Sending completion to {len(self.active_connections[job_id])} connected clients")
+                connections_to_send = list(self.active_connections[job_id])
+            else:
+                logger.info(f"No active connections for job {job_id}, completion message only buffered")
+                connections_to_send = []
 
-            # Close all connections for this job
-            async with self._lock:
-                if job_id in self.active_connections:
-                    del self.active_connections[job_id]
+        # Send outside the lock to avoid blocking other operations
+        for connection in connections_to_send:
+            try:
+                await connection.send_json(complete_data)
+                # Force event loop to yield and flush WebSocket buffer
+                await asyncio.sleep(0)
+                logger.info(f"Successfully sent completion message to client")
+            except Exception as e:
+                logger.warning(f"Failed to send completion to client: {e}")
+                # Remove failed connection
+                async with self._lock:
+                    if job_id in self.active_connections and connection in self.active_connections[job_id]:
+                        self.active_connections[job_id].remove(connection)
 
         # Clean up buffer after 60 seconds (allows late connections to still get completion)
         asyncio.create_task(self._cleanup_buffer(job_id, delay=60))

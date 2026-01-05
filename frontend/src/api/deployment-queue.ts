@@ -30,6 +30,12 @@ export interface ProcessQueueRequest {
   project_id: string;
 }
 
+export interface ProcessQueueResponse {
+  message: string;
+  jobs_started: number;
+  job_ids: string[];
+}
+
 export const deploymentQueueApi = {
   /**
    * List all queue entries for a project
@@ -63,5 +69,5 @@ export const deploymentQueueApi = {
    * Process all pending entries in queue
    */
   process: (data: ProcessQueueRequest) =>
-    api.post("/api/deployment-queue/process", data),
+    api.post<ProcessQueueResponse>("/api/deployment-queue/process", data),
 };

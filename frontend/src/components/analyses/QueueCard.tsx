@@ -22,6 +22,8 @@ interface QueueCardProps {
 export function QueueCard({ projectId }: QueueCardProps) {
   const queryClient = useQueryClient();
   const [showRunModal, setShowRunModal] = useState(false);
+  const [jobIds, setJobIds] = useState<string[]>([]);
+  const [processingCount, setProcessingCount] = useState(0);
 
   // Fetch queue entries
   const { data: entries, isLoading } = useQuery({
@@ -44,18 +46,43 @@ export function QueueCard({ projectId }: QueueCardProps) {
     },
   });
 
+  // Process queue mutation
+  const processQueueMutation = useMutation({
+    mutationFn: () => deploymentQueueApi.process({ project_id: projectId }),
+    onSuccess: (data) => {
+      // Fire-and-forget invalidation so we don't block the mutation resolve
+      void queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
+      return data;
+    },
+  });
+
   const handleDelete = async (id: string) => {
     await deleteMutation.mutateAsync(id);
   };
 
-  const handleRunQueue = () => {
+  const handleRunQueue = async () => {
     const pendingCount = entries?.filter((e) => e.status === "pending").length || 0;
     if (pendingCount === 0) {
       alert("No pending deployments to process");
       return;
     }
 
-    setShowRunModal(true);
+    try {
+      console.log("[QueueCard] Starting queue processing...");
+      setProcessingCount(pendingCount);
+
+      console.log("[QueueCard] Calling API...");
+      const result = await processQueueMutation.mutateAsync();
+      console.log("[QueueCard] API returned:", result);
+
+      setJobIds(result.job_ids);
+      setShowRunModal(true);
+      console.log("[QueueCard] Modal opened with job IDs:", result.job_ids);
+    } catch (error) {
+      console.error("[QueueCard] Failed to process queue:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Failed to start processing: ${message}`);
+    }
   };
 
   const pendingCount = entries?.filter((e) => e.status === "pending").length || 0;
@@ -124,7 +151,8 @@ export function QueueCard({ projectId }: QueueCardProps) {
       <RunQueueModal
         open={showRunModal}
         onOpenChange={setShowRunModal}
-        queueCount={pendingCount}
+        queueCount={processingCount}
+        jobIds={jobIds}
       />
     </>
   );

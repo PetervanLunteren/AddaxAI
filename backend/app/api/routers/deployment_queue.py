@@ -7,18 +7,23 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
+from app.api.crud import job as crud_job
 from app.api.schemas.deployment_queue import (
     DeploymentQueueCreate,
     DeploymentQueueResponse,
     ProcessQueueRequest,
 )
+from app.api.schemas.job import JobCreate
 from app.core.logging_config import get_logger
 from app.db.base import get_db
+from app.workers import process_deployment_analysis
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/deployment-queue", tags=["Deployment Queue"])
@@ -103,18 +108,15 @@ def delete_queue_entry(
 
 
 @router.post("/process", status_code=status.HTTP_202_ACCEPTED)
-def process_queue(
+async def process_queue(
     request: ProcessQueueRequest,
     db: Session = Depends(get_db)
-) -> dict[str, str]:
+) -> dict[str, str | int | list[str]]:
     """
     Start processing the deployment queue for a project.
 
-    Processes all pending entries sequentially.
-    Returns immediately with job_id for progress tracking.
-
-    NOTE: This endpoint creates a background job.
-    Implementation of the actual processing logic is in queue_processor service.
+    Creates ONE job that will process all queue entries sequentially.
+    Returns immediately with the job ID for progress tracking.
     """
     # Get pending entries
     pending_entries = crud_queue.get_queue_entries(db, request.project_id, status="pending")
@@ -123,16 +125,41 @@ def process_queue(
         logger.info(f"No pending queue entries for project: {request.project_id}")
         return {
             "message": "No pending queue entries to process",
-            "processed_count": 0
+            "jobs_started": 0,
+            "job_ids": []
         }
 
-    # TODO: Create background job to process queue
-    # For now, just return a placeholder response
-    logger.info(f"Starting queue processing for project {request.project_id}: {len(pending_entries)} entries")
+    logger.info(f"Starting sequential queue processing for project {request.project_id}: {len(pending_entries)} entries")
+
+    # Create ONE job for ALL queue entries
+    entry_ids = [entry.id for entry in pending_entries]
+    job_create = JobCreate(
+        type="deployment_analysis",
+        payload={
+            "project_id": request.project_id,
+            "queue_entry_ids": entry_ids,  # List of ALL entries to process sequentially
+            "is_batch_job": True
+        }
+    )
+    job = crud_job.create_job(db, job_create)
+
+    # Mark ALL entries as processing
+    for entry in pending_entries:
+        crud_queue.update_queue_status(db, entry.id, status="processing")
+
+    # Start background task to process ALL entries sequentially via ONE worker
+    # Add delay to ensure WebSocket connects before job starts
+    # This prevents the job from completing before the WebSocket is ready
+    async def delayed_start():
+        await asyncio.sleep(2.0)  # 2 second delay - ensures WebSocket connects first
+        await process_deployment_analysis(job.id)
+
+    asyncio.create_task(delayed_start())
+
+    logger.info(f"Started batch job {job.id} for {len(entry_ids)} entries")
 
     return {
-        "message": f"Processing {len(pending_entries)} queue entries",
-        "project_id": request.project_id,
-        "entry_count": len(pending_entries),
-        # "job_id": "TODO"  # Will add when background job system is integrated
+        "message": f"Queue processing started. {len(entry_ids)} deployments will be processed sequentially.",
+        "jobs_started": 1,
+        "job_ids": [job.id]
     }
