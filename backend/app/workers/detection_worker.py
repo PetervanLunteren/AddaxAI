@@ -151,14 +151,18 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             logger.info(f"Created deployment: {deployment.id}")
 
             # Define progress callback for this specific deployment
-            async def deployment_progress_callback(message: str, progress: float) -> None:
+            async def deployment_progress_callback(
+                message: str, progress: float, phase: str, phase_progress: float
+            ) -> None:
                 """Forward progress updates with deployment number prefix"""
                 # Scale progress to this deployment's range within the overall batch
                 overall_progress = progress_start + (progress * progress_range)
                 await ws_manager.send_progress(
                     job_id,
                     f"[{idx}/{total_entries}] {message}",
-                    overall_progress
+                    overall_progress,
+                    phase,
+                    phase_progress
                 )
 
             # Run pipeline for this deployment

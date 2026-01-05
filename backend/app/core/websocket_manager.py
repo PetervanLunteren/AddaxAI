@@ -98,7 +98,13 @@ class ConnectionManager:
         logger.info(f"WebSocket disconnected for job {job_id}")
 
     async def send_progress(
-        self, job_id: str, message: str, progress: float, data: dict[str, Any] | None = None
+        self,
+        job_id: str,
+        message: str,
+        progress: float,
+        phase: str | None = None,
+        phase_progress: float | None = None,
+        data: dict[str, Any] | None = None,
     ) -> None:
         """
         Send progress update to all clients subscribed to a job.
@@ -107,7 +113,9 @@ class ConnectionManager:
         Args:
             job_id: Job ID
             message: Progress message
-            progress: Progress value (0.0-1.0)
+            progress: Overall progress value (0.0-1.0) - for backward compatibility
+            phase: Current phase: "init", "detection", "classification", "finalize"
+            phase_progress: Progress within current phase (0.0-1.0)
             data: Optional additional data
         """
         # Build progress message
@@ -116,6 +124,8 @@ class ConnectionManager:
             "job_id": job_id,
             "message": message,
             "progress": progress,
+            "phase": phase,
+            "phase_progress": phase_progress,
             "data": data or {},
         }
 

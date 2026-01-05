@@ -53,7 +53,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   // Track progress of the single job (sequential processing)
   // The backend processes all queue entries sequentially, we just track the one job
   const jobId = jobIds[0] || null;
-  const { progress, message, isConnected } = useTaskProgress({
+  const { progress, message, phase, phaseProgress, isConnected } = useTaskProgress({
     taskId: jobId,
     onComplete: () => {
       setIsComplete(true);
@@ -69,28 +69,12 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   // Calculate overall status
   const isWaitingForJob = !hasError && !isComplete && !hasJob;
   const isProcessing = !isComplete && !hasError && hasJob;
-  const progressPercent = progress * 100;
+  const phaseProgressPercent = (phaseProgress ?? 0) * 100;
 
-  // Display message and icon
-  let displayMessage = message || "Initializing...";
-  let displayIcon = <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />;
-
-  if (hasError) {
-    displayMessage = errorMessage || "Processing failed";
-    displayIcon = <XCircle className="h-5 w-5 text-red-600" />;
-  } else if (isComplete) {
-    displayMessage = `Queue processing complete! Processed ${queueCount} deployment${queueCount > 1 ? 's' : ''}.`;
-    displayIcon = <CheckCircle2 className="h-5 w-5 text-green-600" />;
-  } else if (isWaitingForJob) {
-    displayMessage = "Starting queue job...";
-  } else if (isProcessing && message) {
-    displayMessage = message;
-  }
-
-  // Debug logging to see what's being rendered with timestamp
-  const timestamp = new Date().toISOString().split('T')[1].slice(0, -1); // HH:MM:SS.mmm
-  console.log(`[${timestamp}] [RunQueueModal] Render - isProcessing: ${isProcessing}, isComplete: ${isComplete}, message: "${message}", progress: ${progress}`);
-  console.log(`[${timestamp}] [RunQueueModal] Displaying: "${displayMessage}" at ${progressPercent.toFixed(1)}%`);
+  // Determine what to display based on phase
+  const showSpinner = phase === "init" || phase === "finalize" || isWaitingForJob;
+  const showDetectionBar = phase === "detection";
+  const showClassificationBar = phase === "classification";
 
   return (
     <Dialog open={open} onOpenChange={isComplete || hasError ? onOpenChange : undefined}>
@@ -107,29 +91,68 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Status */}
-          <div className="flex items-center gap-3">
-            {displayIcon}
-            <span className="text-sm font-medium">{displayMessage}</span>
-          </div>
-
-          {/* Progress bar */}
-          {(isProcessing || isWaitingForJob) && (
-            <div className="space-y-2">
-              <Progress value={isProcessing ? progressPercent : undefined} className="h-2" />
-              <p className="text-xs text-gray-500 text-center">
-                {isProcessing ? `${progressPercent.toFixed(0)}%` : "Waiting for job to start..."}
-              </p>
+          {/* Error State */}
+          {hasError && (
+            <div className="flex items-center gap-3">
+              <XCircle className="h-5 w-5 text-red-600" />
+              <span className="text-sm font-medium text-red-600">{errorMessage || "Processing failed"}</span>
             </div>
           )}
 
-          {/* Connection status */}
-          {isProcessing && !isConnected && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-xs text-yellow-800">
-                <strong>Connecting to progress updates...</strong>
-              </p>
+          {/* Complete State */}
+          {isComplete && !hasError && (
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-medium text-green-600">
+                Queue processing complete! Processed {queueCount} deployment{queueCount > 1 ? 's' : ''}.
+              </span>
             </div>
+          )}
+
+          {/* Processing States */}
+          {!isComplete && !hasError && (
+            <>
+              {/* Spinner phases (init, finalize, waiting) */}
+              {showSpinner && (
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+                  <span className="text-sm font-medium">{message || "Initializing..."}</span>
+                </div>
+              )}
+
+              {/* Detection Phase */}
+              {showDetectionBar && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700">Detection</p>
+                  <Progress value={phaseProgressPercent} className="h-2" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{message}</span>
+                    <span className="text-xs text-gray-500">{phaseProgressPercent.toFixed(0)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Classification Phase */}
+              {showClassificationBar && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700">Classification</p>
+                  <Progress value={phaseProgressPercent} className="h-2" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{message}</span>
+                    <span className="text-xs text-gray-500">{phaseProgressPercent.toFixed(0)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Connection status */}
+              {isProcessing && !isConnected && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-xs text-yellow-800">
+                    <strong>Connecting to progress updates...</strong>
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
 

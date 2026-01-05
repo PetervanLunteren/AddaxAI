@@ -71,7 +71,7 @@ class MLPipeline:
         image_paths: list[Path],
         job_id: str,
         db: Session,
-        progress_callback: Callable[[str, float], None],
+        progress_callback: Callable[[str, float, str, float], None],
     ) -> PipelineResult:
         """
         Run complete ML pipeline on a deployment.
@@ -87,7 +87,7 @@ class MLPipeline:
             image_paths: List of absolute paths to images
             job_id: Job ID for tracking
             db: Database session
-            progress_callback: Async callback(message: str, progress: float)
+            progress_callback: Async callback(message, overall_progress, phase, phase_progress)
 
         Returns:
             PipelineResult with statistics
@@ -101,8 +101,12 @@ class MLPipeline:
                 f"with {len(image_paths)} images"
             )
 
+            # Phase 0: Initialization
+            await progress_callback("Initializing ML models...", 0.0, "init", 0.0)
+            await asyncio.sleep(0.1)
+
             # Phase 1: Detection
-            await progress_callback("Running detection model...", 0.05)
+            await progress_callback("Detection: Starting...", 0.1, "detection", 0.0)
 
             # Detection runs synchronously and blocks the event loop
             # Run it in a thread pool so the event loop can continue processing WebSocket messages
@@ -112,11 +116,13 @@ class MLPipeline:
             # MegaDetector runs in thread and needs to send progress to async event loop
             def sync_progress_callback(message: str, progress: float) -> None:
                 """Thread-safe wrapper that schedules async callback on event loop"""
-                # Scale detection progress from 0.05 to 0.45
-                scaled_progress = 0.05 + (progress * 0.40)
+                # Add "Detection: " prefix to message
+                prefixed_message = f"Detection: {message}"
+                # Overall progress: 0.1 to 0.5 for detection phase
+                overall_progress = 0.1 + (progress * 0.4)
                 # Schedule callback on event loop from thread
                 asyncio.run_coroutine_threadsafe(
-                    progress_callback(message, scaled_progress),
+                    progress_callback(prefixed_message, overall_progress, "detection", progress),
                     loop
                 )
 
@@ -131,18 +137,12 @@ class MLPipeline:
 
             logger.info(f"Detection found {len(detections)} total detections")
 
-            await progress_callback("Detection complete", 0.45)
-            logger.info("Sent 'Detection complete' message at 0.45 progress")
+            await progress_callback("Detection: Complete", 0.5, "detection", 1.0)
 
-            # Small delay to ensure message is visible
+            # Phase 2: Finalization - Save detections to database
+            await progress_callback("Saving detections to database...", 0.51, "finalize", 0.1)
             await asyncio.sleep(0.1)
 
-            await progress_callback("Parsing detection results...", 0.48)
-            await asyncio.sleep(0.1)
-
-            await progress_callback("Saving detections to database...", 0.50)
-
-            # Phase 2: Save detections to database
             detection_records = self._save_detections_to_db(
                 db=db,
                 deployment_id=deployment_id,
@@ -166,7 +166,10 @@ class MLPipeline:
             classified_count = 0
             if self.classification_model and animal_count > 0:
                 await progress_callback(
-                    f"Running classification on {animal_count} animals...", 0.55
+                    f"Classification: Starting on {animal_count} animals...",
+                    0.55,
+                    "classification",
+                    0.0
                 )
 
                 # Filter animal detections
@@ -201,10 +204,13 @@ class MLPipeline:
 
                         # Update progress every 10 detections or on last
                         if (i + 1) % 10 == 0 or (i + 1) == len(animal_detections):
-                            progress_pct = 0.55 + ((i + 1) / len(animal_detections)) * 0.40
+                            phase_progress = (i + 1) / len(animal_detections)
+                            overall_progress = 0.55 + (phase_progress * 0.35)
                             await progress_callback(
-                                f"Classified {i + 1}/{len(animal_detections)} animals",
-                                progress_pct,
+                                f"Classification: Classified {i + 1}/{len(animal_detections)} animals",
+                                overall_progress,
+                                "classification",
+                                phase_progress,
                             )
 
                     except Exception as e:
@@ -217,8 +223,21 @@ class MLPipeline:
                 # Commit all classification updates
                 db.commit()
                 logger.info(f"Successfully classified {classified_count} animals")
+            elif animal_count == 0:
+                # No animals detected, skip classification
+                await progress_callback(
+                    "No animals detected - skipping classification",
+                    0.55,
+                    "classification",
+                    0.0
+                )
+                await asyncio.sleep(0.5)
 
-            await progress_callback("Pipeline complete", 1.0)
+            # Phase 4: Final finalization
+            await progress_callback("Updating deployment status...", 0.95, "finalize", 0.8)
+            await asyncio.sleep(0.1)
+
+            await progress_callback("Pipeline complete", 1.0, "finalize", 1.0)
 
             result = PipelineResult(
                 total_files=len(set(d.file_path for d in detections)),
