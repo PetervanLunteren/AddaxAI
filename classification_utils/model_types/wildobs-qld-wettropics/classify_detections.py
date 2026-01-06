@@ -6,7 +6,7 @@
 # code that is generic for all model architectures that will be run via AddaxAI.
 
 # AddaxAI integration script by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 2 Jan 2026
+# Latest edit by Peter van Lunteren on 6 Jan 2026
 
 #############################################
 ############### MODEL GENERIC ###############
@@ -24,7 +24,7 @@ cls_tax_fallback = True if sys.argv[8] == 'True' else False
 cls_tax_levels_idx = int(sys.argv[9])
 
 # lets not freak out over truncated images
-from PIL import ImageFile
+from PIL import ImageFile, Image
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 ##############################################
@@ -87,8 +87,6 @@ def get_classification(PIL_crop):
 # I've pulled this crop function from
 # https://huggingface.co/WildObs/WildObs_QLD_WetTropics/blob/main/Evaluate_WetTropics_hf.ipynb
 def get_crop(img, bbox_norm):
-    
-    # Crop to bbox
     width, height = img.size
     x, y, w, h = bbox_norm
     left = int(x * width)
@@ -96,15 +94,7 @@ def get_crop(img, bbox_norm):
     right = int((x + w) * width)
     bottom = int((y + h) * height)
     crop = img.crop((left, top, right, bottom))
-
-    # Make square by center crop
-    cw, ch = crop.size
-    side = min(cw, ch)
-    left = (cw - side) // 2
-    top = (ch - side) // 2
-    right = left + side
-    bottom = top + side
-    square_crop = crop.crop((left, top, right, bottom))
+    square_crop = crop.resize((600, 600), Image.BILINEAR)
     return square_crop
 
 #############################################
