@@ -312,3 +312,133 @@ class MegaDetectorV1000(DetectionModel):
                     continue
 
         return detections
+
+    def detect_to_json(
+        self,
+        image_paths: list[Path],
+        deployment_folder: Path,
+        confidence_threshold: float,
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> Path:
+        """
+        Run MegaDetector and save results directly to JSON file (for JSON-based pipeline).
+
+        This method saves the MegaDetector output JSON to the deployment artifacts folder
+        instead of parsing it into DetectionResult objects.
+
+        Args:
+            image_paths: List of absolute paths to image files
+            deployment_folder: Path to deployment folder (will create .addaxai subfolder)
+            confidence_threshold: Minimum confidence for detections (typically 0.1)
+            progress_callback: Optional callback(message, progress)
+
+        Returns:
+            Path to saved detection_results.json file
+
+        Raises:
+            RuntimeError: If detection fails
+            FileNotFoundError: If image files don't exist
+        """
+        if not image_paths:
+            raise ValueError("No image paths provided")
+
+        # Verify all images exist
+        for img_path in image_paths:
+            if not img_path.exists():
+                raise FileNotFoundError(f"Image not found: {img_path}")
+
+        logger.info(
+            f"Running MegaDetector on {len(image_paths)} images "
+            f"with threshold {confidence_threshold}"
+        )
+
+        if progress_callback:
+            progress_callback("Preparing MegaDetector...", 0.0)
+
+        try:
+            # Create artifacts folder
+            artifacts_folder = deployment_folder / ".addaxai"
+            artifacts_folder.mkdir(parents=True, exist_ok=True)
+            output_file = artifacts_folder / "detection_results.json"
+
+            # Create temporary directory for working files
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+
+                # Determine folder to process (common parent of all images)
+                folder_path = self._get_common_folder(image_paths)
+
+                temp_output = temp_path / "temp_detection_results.json"
+
+                # Build command exactly as before
+                cmd = [
+                    str(self.python_path),
+                    "-m",
+                    "megadetector.detection.run_detector_batch",
+                    "--recursive",
+                    "--output_relative_filenames",
+                    "--include_image_size",
+                    "--include_image_timestamp",
+                    "--include_exif_data",
+                    "--threshold",
+                    str(confidence_threshold),
+                    str(self.model_path),
+                    str(folder_path),
+                    str(temp_output),
+                ]
+
+                logger.info(f"Running command: {' '.join(cmd)}")
+
+                if progress_callback:
+                    progress_callback(f"Running detection on {len(image_paths)} images...", 0.1)
+
+                # Execute MegaDetector with streaming output
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+
+                # Monitor progress from stdout
+                for line in process.stdout:
+                    line = line.strip()
+                    if line:
+                        # Print TQDM progress directly to console for debugging
+                        print(f"[MEGADETECTOR] {line}", flush=True)
+                        logger.info(f"MegaDetector: {line}")
+                        # Parse tqdm progress if callback provided
+                        if progress_callback and ("Processing image" in line or "%" in line):
+                            progress = self._parse_progress_line(line)
+                            if progress is not None:
+                                progress_callback(line[:80], 0.1 + progress * 0.8)
+
+                process.stdout.close()
+                process.wait()
+
+                if process.returncode != 0:
+                    raise RuntimeError(
+                        f"MegaDetector failed with return code {process.returncode}"
+                    )
+
+                # Verify temp output exists
+                if not temp_output.exists():
+                    raise RuntimeError(f"Detection output file not found: {temp_output}")
+
+                # Copy to permanent artifacts location
+                import shutil
+                shutil.copy2(temp_output, output_file)
+
+                logger.info(
+                    f"Detection complete: Results saved to {output_file}"
+                )
+
+                if progress_callback:
+                    progress_callback("Detection complete", 1.0)
+
+                return output_file
+
+        except Exception as e:
+            logger.error(f"Detection failed: {e}", exc_info=True)
+            raise RuntimeError(f"MegaDetector execution failed: {e}") from e

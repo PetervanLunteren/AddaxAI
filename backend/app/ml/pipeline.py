@@ -175,50 +175,52 @@ class MLPipeline:
                 # Filter animal detections
                 animal_detections = [d for d in detection_records if d.category == "animal"]
 
-                for i, detection in enumerate(animal_detections):
-                    try:
-                        # Load image
-                        image = Image.open(detection.file.file_path)
+                # Use classification model as context manager (starts/stops worker)
+                with self.classification_model:
+                    for i, detection in enumerate(animal_detections):
+                        try:
+                            # Load image
+                            image = Image.open(detection.file.file_path)
 
-                        # Create BoundingBox
-                        bbox = BoundingBox(
-                            x=detection.bbox_x,
-                            y=detection.bbox_y,
-                            width=detection.bbox_width,
-                            height=detection.bbox_height,
-                        )
+                            # Create BoundingBox
+                            bbox = BoundingBox(
+                                x=detection.bbox_x,
+                                y=detection.bbox_y,
+                                width=detection.bbox_width,
+                                height=detection.bbox_height,
+                            )
 
-                        # Run classification
-                        result = self.classification_model.classify(
-                            image=image,
-                            bbox=bbox,
-                            progress_callback=None,
-                        )
+                            # Run classification
+                            result = self.classification_model.classify(
+                                image=image,
+                                bbox=bbox,
+                                progress_callback=None,
+                            )
 
-                        # Update detection record
-                        detection.species = result.species
-                        detection.species_confidence = result.confidence
-                        detection.classification_all_probs = result.all_probabilities
+                            # Handle skipped detections (result is None)
+                            if result is not None:
+                                # Update detection record
+                                detection.species = result.species
+                                detection.species_confidence = result.confidence
+                                detection.classification_all_probs = result.all_probabilities
+                                classified_count += 1
 
-                        classified_count += 1
-
-                        # Update progress every 10 detections or on last
-                        if (i + 1) % 10 == 0 or (i + 1) == len(animal_detections):
+                            # Update progress after EVERY detection (smooth progress bar)
                             phase_progress = (i + 1) / len(animal_detections)
                             overall_progress = 0.55 + (phase_progress * 0.35)
                             await progress_callback(
-                                f"Classification: Classified {i + 1}/{len(animal_detections)} animals",
+                                f"Classification: Classified {classified_count}/{len(animal_detections)} animals ({i + 1} processed)",
                                 overall_progress,
                                 "classification",
                                 phase_progress,
                             )
 
-                    except Exception as e:
-                        logger.error(
-                            f"Classification failed for detection {detection.id}: {e}",
-                            exc_info=True,
-                        )
-                        # Continue with next detection instead of failing entire pipeline
+                        except Exception as e:
+                            logger.error(
+                                f"Classification failed for detection {detection.id}: {e}",
+                                exc_info=True,
+                            )
+                            # Continue with next detection instead of failing entire pipeline
 
                 # Commit all classification updates
                 db.commit()

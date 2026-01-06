@@ -28,11 +28,11 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.environment_manager import EnvironmentManager
+from app.ml.inference.custom_classification_model import CustomClassificationModel
 from app.ml.inference.megadetector import MegaDetectorV1000
-from app.ml.inference.yolov8_classifier import YOLOv8Classifier
+from app.ml.json_pipeline import JSONBasedMLPipeline
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
-from app.ml.pipeline import MLPipeline
 from app.models import Deployment
 
 logger = get_logger(__name__)
@@ -88,18 +88,33 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         cls_manifest = manifest_manager.get_model(classification_model_id)
         cls_model_path = model_storage.get_model_file(cls_manifest)
         cls_model_dir = model_storage.get_model_path(cls_manifest)
-        taxonomy_path = cls_model_dir / "taxonomy.csv"
 
-        if cls_manifest.type == "addax-yolov8":
-            classification_model = YOLOv8Classifier(cls_model_path, taxonomy_path)
-        else:
-            logger.warning(
-                f"Classification model type '{cls_manifest.type}' not yet supported. "
-                f"Skipping classification."
+        # Check for custom inference.py script
+        inference_script = cls_model_dir / "inference.py"
+        if not inference_script.exists():
+            error_msg = (
+                f"Custom inference script not found: {inference_script}\n"
+                f"Model developers must provide inference.py in their HuggingFace repo."
             )
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
 
-    # Create ML pipeline
-    pipeline = MLPipeline(detection_model, classification_model)
+        # Get environment name from manifest
+        env_name = cls_manifest.env
+
+        # Use custom classification model with subprocess isolation
+        logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
+        classification_model = CustomClassificationModel(
+            cls_model_dir, cls_model_path, env_name, env_manager
+        )
+
+    # Create JSON-based ML pipeline
+    pipeline = JSONBasedMLPipeline(
+        detection_model,
+        classification_model,
+        detection_model_id,
+        classification_model_id,
+    )
 
     total_detections = 0
     total_files = 0
@@ -165,9 +180,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     phase_progress
                 )
 
-            # Run pipeline for this deployment
+            # Run JSON-based pipeline for this deployment
             result = await pipeline.process_deployment(
                 deployment_id=deployment.id,
+                deployment_folder=folder_path,
                 image_paths=image_files,
                 job_id=job_id,
                 db=db,
@@ -333,33 +349,45 @@ async def process_deployment_analysis(job_id: str) -> None:
                 cls_manifest = manifest_manager.get_model(classification_model_id)
                 cls_model_path = model_storage.get_model_file(cls_manifest)
                 cls_model_dir = model_storage.get_model_path(cls_manifest)
-                taxonomy_path = cls_model_dir / "taxonomy.csv"
 
-                logger.info(f"Loading classification model: {classification_model_id}")
-
-                # Instantiate correct classifier based on type
-                if cls_manifest.type == "addax-yolov8":
-                    classification_model = YOLOv8Classifier(cls_model_path, taxonomy_path)
-                else:
-                    # For now, only YOLOv8 is implemented
-                    # TODO: Add support for other types (speciesnet, mewc, deepfaune, etc.)
-                    logger.warning(
-                        f"Classification model type '{cls_manifest.type}' not yet supported. "
-                        f"Skipping classification."
+                # Check for custom inference.py script
+                inference_script = cls_model_dir / "inference.py"
+                if not inference_script.exists():
+                    error_msg = (
+                        f"Custom inference script not found: {inference_script}\n"
+                        f"Model developers must provide inference.py in their HuggingFace repo."
                     )
-                    classification_model = None
+                    logger.error(error_msg)
+                    raise FileNotFoundError(error_msg)
 
-            # Create ML pipeline
-            pipeline = MLPipeline(detection_model, classification_model)
+                # Get environment name from manifest
+                env_name = cls_manifest.env
+
+                # Use custom classification model with subprocess isolation
+                logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
+                classification_model = CustomClassificationModel(
+                    cls_model_dir, cls_model_path, env_name, env_manager
+                )
+
+            # Create JSON-based ML pipeline
+            pipeline = JSONBasedMLPipeline(
+                detection_model,
+                classification_model,
+                detection_model_id,
+                classification_model_id,
+            )
 
             # Define progress callback wrapper
-            async def progress_callback(message: str, progress: float) -> None:
+            async def progress_callback(
+                message: str, progress: float, phase: str, phase_progress: float
+            ) -> None:
                 """Forward progress updates to WebSocket"""
-                await ws_manager.send_progress(job_id, message, progress)
+                await ws_manager.send_progress(job_id, message, progress, phase, phase_progress)
 
-            # Run pipeline (detection → classification → database)
+            # Run JSON-based pipeline (detection → classification → database)
             result = await pipeline.process_deployment(
                 deployment_id=deployment.id,
+                deployment_folder=folder_path,  # Use folder_path from payload, not deployment record
                 image_paths=image_files,
                 job_id=job_id,
                 db=db,

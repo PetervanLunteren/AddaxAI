@@ -4,6 +4,9 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 # WHEREWASI
 - Implementing the actual ML stuff.
 
+# TODO
+- [ ] Why has the backend env PyTorch? Isnt that just for FastAPI?
+
 ## Architecture
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the comprehensive technical architecture, technology stack, and implementation roadmap.

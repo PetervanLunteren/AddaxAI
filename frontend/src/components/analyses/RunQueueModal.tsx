@@ -71,10 +71,24 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   const isProcessing = !isComplete && !hasError && hasJob;
   const phaseProgressPercent = (phaseProgress ?? 0) * 100;
 
-  // Determine what to display based on phase
+  // Calculate progress for each phase
+  const detectionProgress = phase === "detection" ? phaseProgressPercent : (phase === "classification" || phase === "finalize" ? 100 : 0);
+  const classificationProgress = phase === "classification" ? phaseProgressPercent : (phase === "finalize" ? 100 : 0);
+
+  // Determine status messages
+  const detectionStatus = phase === "init" || phase === null
+    ? "Waiting..."
+    : phase === "detection"
+      ? message.replace("Detection: ", "")
+      : "Complete";
+
+  const classificationStatus = phase === "init" || phase === null || phase === "detection"
+    ? "Waiting for detection..."
+    : phase === "classification"
+      ? message.replace("Classification: ", "")
+      : "Complete";
+
   const showSpinner = phase === "init" || phase === "finalize" || isWaitingForJob;
-  const showDetectionBar = phase === "detection";
-  const showClassificationBar = phase === "classification";
 
   return (
     <Dialog open={open} onOpenChange={isComplete || hasError ? onOpenChange : undefined}>
@@ -109,10 +123,10 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
             </div>
           )}
 
-          {/* Processing States */}
+          {/* Processing States - Show BOTH progress bars */}
           {!isComplete && !hasError && (
             <>
-              {/* Spinner phases (init, finalize, waiting) */}
+              {/* Spinner for init/finalize phases */}
               {showSpinner && (
                 <div className="flex items-center gap-3">
                   <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
@@ -120,26 +134,26 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                 </div>
               )}
 
-              {/* Detection Phase */}
-              {showDetectionBar && (
+              {/* Detection Progress Bar (Always Visible) */}
+              {!showSpinner && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-gray-700">Detection</p>
-                  <Progress value={phaseProgressPercent} className="h-2" />
+                  <Progress value={detectionProgress} className="h-2" />
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{message}</span>
-                    <span className="text-xs text-gray-500">{phaseProgressPercent.toFixed(0)}%</span>
+                    <span className="text-sm text-gray-600">{detectionStatus}</span>
+                    <span className="text-xs text-gray-500">{detectionProgress.toFixed(0)}%</span>
                   </div>
                 </div>
               )}
 
-              {/* Classification Phase */}
-              {showClassificationBar && (
+              {/* Classification Progress Bar (Always Visible) */}
+              {!showSpinner && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-gray-700">Classification</p>
-                  <Progress value={phaseProgressPercent} className="h-2" />
+                  <Progress value={classificationProgress} className="h-2" />
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{message}</span>
-                    <span className="text-xs text-gray-500">{phaseProgressPercent.toFixed(0)}%</span>
+                    <span className="text-sm text-gray-600">{classificationStatus}</span>
+                    <span className="text-xs text-gray-500">{classificationProgress.toFixed(0)}%</span>
                   </div>
                 </div>
               )}
