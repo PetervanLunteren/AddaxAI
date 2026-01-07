@@ -88,32 +88,44 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         cls_manifest = manifest_manager.get_model(classification_model_id)
         cls_model_path = model_storage.get_model_file(cls_manifest)
         cls_model_dir = model_storage.get_model_path(cls_manifest)
-
-        # Check for custom inference.py script
-        inference_script = cls_model_dir / "inference.py"
-        if not inference_script.exists():
-            error_msg = (
-                f"Custom inference script not found: {inference_script}\n"
-                f"Model developers must provide inference.py in their HuggingFace repo."
-            )
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
-
-        # Get environment name from manifest
         env_name = cls_manifest.env
 
-        # Use custom classification model with subprocess isolation
-        logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
-        classification_model = CustomClassificationModel(
-            cls_model_dir, cls_model_path, env_name, env_manager
-        )
+        # Detect SpeciesNet by model ID (future-proof, no dependency on manifest.type)
+        is_speciesnet = "SPECIESNET" in classification_model_id.upper()
 
-    # Create JSON-based ML pipeline
+        if is_speciesnet:
+            # SpeciesNet: batch processing, no inference.py needed
+            logger.info(f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})")
+            from app.ml.inference.speciesnet_model import SpeciesNetClassificationModel
+
+            classification_model = SpeciesNetClassificationModel(
+                cls_model_dir, cls_model_path, env_name, env_manager
+            )
+        else:
+            # Regular models: check for custom inference.py script
+            inference_script = cls_model_dir / "inference.py"
+            if not inference_script.exists():
+                error_msg = (
+                    f"Custom inference script not found: {inference_script}\n"
+                    f"Model developers must provide inference.py in their HuggingFace repo."
+                )
+                logger.error(error_msg)
+                raise FileNotFoundError(error_msg)
+
+            # Use custom classification model with subprocess isolation
+            logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
+            classification_model = CustomClassificationModel(
+                cls_model_dir, cls_model_path, env_name, env_manager
+            )
+
+    # Create JSON-based ML pipeline with country/state for SpeciesNet
     pipeline = JSONBasedMLPipeline(
         detection_model,
         classification_model,
         detection_model_id,
         classification_model_id,
+        country_code=project.country_code,
+        state_code=project.state_code,
     )
 
     total_detections = 0
@@ -349,32 +361,44 @@ async def process_deployment_analysis(job_id: str) -> None:
                 cls_manifest = manifest_manager.get_model(classification_model_id)
                 cls_model_path = model_storage.get_model_file(cls_manifest)
                 cls_model_dir = model_storage.get_model_path(cls_manifest)
-
-                # Check for custom inference.py script
-                inference_script = cls_model_dir / "inference.py"
-                if not inference_script.exists():
-                    error_msg = (
-                        f"Custom inference script not found: {inference_script}\n"
-                        f"Model developers must provide inference.py in their HuggingFace repo."
-                    )
-                    logger.error(error_msg)
-                    raise FileNotFoundError(error_msg)
-
-                # Get environment name from manifest
                 env_name = cls_manifest.env
 
-                # Use custom classification model with subprocess isolation
-                logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
-                classification_model = CustomClassificationModel(
-                    cls_model_dir, cls_model_path, env_name, env_manager
-                )
+                # Detect SpeciesNet by model ID (future-proof, no dependency on manifest.type)
+                is_speciesnet = "SPECIESNET" in classification_model_id.upper()
 
-            # Create JSON-based ML pipeline
+                if is_speciesnet:
+                    # SpeciesNet: batch processing, no inference.py needed
+                    logger.info(f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})")
+                    from app.ml.inference.speciesnet_model import SpeciesNetClassificationModel
+
+                    classification_model = SpeciesNetClassificationModel(
+                        cls_model_dir, cls_model_path, env_name, env_manager
+                    )
+                else:
+                    # Regular models: check for custom inference.py script
+                    inference_script = cls_model_dir / "inference.py"
+                    if not inference_script.exists():
+                        error_msg = (
+                            f"Custom inference script not found: {inference_script}\n"
+                            f"Model developers must provide inference.py in their HuggingFace repo."
+                        )
+                        logger.error(error_msg)
+                        raise FileNotFoundError(error_msg)
+
+                    # Use custom classification model with subprocess isolation
+                    logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
+                    classification_model = CustomClassificationModel(
+                        cls_model_dir, cls_model_path, env_name, env_manager
+                    )
+
+            # Create JSON-based ML pipeline with country/state for SpeciesNet
             pipeline = JSONBasedMLPipeline(
                 detection_model,
                 classification_model,
                 detection_model_id,
                 classification_model_id,
+                country_code=project.country_code,
+                state_code=project.state_code,
             )
 
             # Define progress callback wrapper

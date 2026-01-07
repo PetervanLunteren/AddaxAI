@@ -59,6 +59,8 @@ class JSONBasedMLPipeline:
         classification_model: ClassificationModel | None,
         detection_model_id: str,
         classification_model_id: str | None,
+        country_code: str | None = None,
+        state_code: str | None = None,
     ):
         """
         Initialize JSON-based ML pipeline.
@@ -68,11 +70,15 @@ class JSONBasedMLPipeline:
             classification_model: Optional classification model
             detection_model_id: Detection model ID for metadata
             classification_model_id: Classification model ID for metadata
+            country_code: Country code for SpeciesNet geofencing (e.g., "USA", "KEN")
+            state_code: State code for USA (e.g., "CA", "TX")
         """
         self.detection_model = detection_model
         self.classification_model = classification_model
         self.detection_model_id = detection_model_id
         self.classification_model_id = classification_model_id
+        self.country_code = country_code
+        self.state_code = state_code
 
         logger.info(
             f"JSON Pipeline initialized with detection={type(detection_model).__name__}, "
@@ -284,6 +290,56 @@ class JSONBasedMLPipeline:
             0.0,
         )
 
+        # Branch: SpeciesNet (batch) vs Regular (per-detection)
+        is_speciesnet = "SPECIESNET" in (self.classification_model_id or "").upper()
+
+        if is_speciesnet:
+            # SpeciesNet: Batch processing path
+            logger.info("Using SpeciesNet batch processing")
+
+            # Call classify_batch() - modifies detection JSON in-place
+            await self.classification_model.classify_batch(
+                detection_json_path=detection_json_path,
+                country_code=self.country_code,
+                state_code=self.state_code,
+                deployment_folder=deployment_folder,
+                progress_callback=progress_callback,
+            )
+
+            # Reload modified JSON
+            with open(detection_json_path) as f:
+                md_results = json.load(f)
+
+            # Count classified animals
+            classified_count = 0
+            class_names = md_results.get("classification_categories", {})
+
+            for img in md_results.get("images", []):
+                for det in img.get("detections", []):
+                    if "classifications" in det and det["classifications"]:
+                        classified_count += 1
+
+            logger.info(f"SpeciesNet classified {classified_count} animals")
+
+            # Add addaxai_metadata
+            md_results["addaxai_metadata"] = build_addaxai_metadata(
+                deployment_id=deployment_id,
+                det_model_id=self.detection_model_id,
+                cls_model_id=self.classification_model_id,
+                md_results=md_results,
+            )
+
+            # Save extended JSON
+            artifacts_folder = deployment_folder / ".addaxai"
+            artifacts_folder.mkdir(parents=True, exist_ok=True)
+            extended_json_path = artifacts_folder / "results_with_classifications.json"
+
+            with open(extended_json_path, "w") as f:
+                json.dump(md_results, f, indent=2)
+
+            return extended_json_path, classified_count
+
+        # Regular per-detection classification path
         # Start classification worker
         classified_count = 0
         class_names = None
