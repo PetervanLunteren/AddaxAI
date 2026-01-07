@@ -15,6 +15,7 @@ import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from PIL import Image
 from PIL.ExifTags import TAGS
@@ -40,7 +41,7 @@ logger = get_logger(__name__)
 # Supported image formats
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
-# Supported video formats (from MegaDetector video_utils)
+# Supported video formats (MegaDetector compatible)
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mpeg", ".mpg", ".mov", ".mkv", ".flv"}
 
 
@@ -163,49 +164,20 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 progress_start
             )
 
-            # Scan folder for images and videos
-            image_files = scan_folder_for_images(folder_path)
+            # Scan folder for images and videos (separate)
             video_files = scan_folder_for_videos(folder_path)
+            image_files = scan_folder_for_images(folder_path)
+
             logger.info(
-                f"Found {len(image_files)} images and {len(video_files)} videos in {folder_path}"
+                f"Found {len(video_files)} videos and {len(image_files)} images in {folder_path}"
             )
 
-            if not image_files and not video_files:
+            if not video_files and not image_files:
                 logger.warning(f"No images or videos found in {folder_path}, skipping")
                 queue_crud.update_queue_status(db, entry_id, status="completed")
                 continue
 
-            # Extract frames from videos if present
-            temp_frames_folder = None
-            video_frame_mapping = {}  # Maps video_path -> (frame_paths, frame_rate)
-
-            if video_files:
-                temp_frames_folder = folder_path / ".addaxai" / "temp_frames"
-                temp_frames_folder.mkdir(parents=True, exist_ok=True)
-
-                await ws_manager.send_progress(
-                    job_id,
-                    f"[{idx}/{total_entries}] Extracting frames from {len(video_files)} videos...",
-                    progress_start + 0.05 * progress_range
-                )
-
-                for video_path in video_files:
-                    try:
-                        frame_paths, frame_rate = extract_video_frames(
-                            video_path, project.video_fps, temp_frames_folder
-                        )
-                        video_frame_mapping[video_path] = (frame_paths, frame_rate)
-                        image_files.extend(frame_paths)  # Add frames to processing list
-                    except Exception as e:
-                        logger.error(f"Failed to process video {video_path}: {e}")
-                        # Continue with other videos
-
-                logger.info(
-                    f"Extracted {sum(len(paths) for paths, _ in video_frame_mapping.values())} "
-                    f"total frames from videos"
-                )
-
-            total_files += len(image_files)
+            total_files += len(video_files) + len(image_files)
 
             # Get or create "Unknown Site"
             site = site_crud.get_or_create_unknown_site(db, project_id)
@@ -214,12 +186,22 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             deployment = create_deployment(db=db, site_id=site.id, folder_path=str(folder_path))
             logger.info(f"Created deployment: {deployment.id}")
 
+            # Create artifacts folder
+            artifacts_folder = folder_path / ".addaxai"
+            artifacts_folder.mkdir(parents=True, exist_ok=True)
+
+            # JSON file paths
+            video_json_path = artifacts_folder / "detection_video.json"
+            image_json_path = artifacts_folder / "detection_image.json"
+            final_json_path = artifacts_folder / "results_with_classifications.json"
+
+            json_files_to_merge = []
+
             # Define progress callback for this specific deployment
             async def deployment_progress_callback(
                 message: str, progress: float, phase: str, phase_progress: float
             ) -> None:
                 """Forward progress updates with deployment number prefix"""
-                # Scale progress to this deployment's range within the overall batch
                 overall_progress = progress_start + (progress * progress_range)
                 await ws_manager.send_progress(
                     job_id,
@@ -229,26 +211,195 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     phase_progress
                 )
 
-            # Run JSON-based pipeline for this deployment
-            result = await pipeline.process_deployment(
-                deployment_id=deployment.id,
-                deployment_folder=folder_path,
-                image_paths=image_files,
-                job_id=job_id,
-                db=db,
-                progress_callback=deployment_progress_callback,
-            )
+            # ============================================================
+            # PHASE 1: Video Detection (if videos exist)
+            # ============================================================
+            if video_files:
+                logger.info(f"Phase 1: Running video detection on {len(video_files)} videos")
 
-            total_detections += result.total_detections
-
-            # Clean up temporary video frames
-            if temp_frames_folder and temp_frames_folder.exists():
-                import shutil
                 try:
-                    shutil.rmtree(temp_frames_folder)
-                    logger.info(f"Cleaned up temporary frames from {temp_frames_folder}")
+                    # Create video detection model
+                    from app.ml.inference.video_detector import VideoDetectionModel
+                    video_detector = VideoDetectionModel(det_model_path, env_manager)
+
+                    # Progress wrapper for video detection phase
+                    async def video_detection_progress(message: str, phase_progress: float) -> None:
+                        await deployment_progress_callback(
+                            f"Video detection: {message}",
+                            0.0,
+                            "video_detection",
+                            phase_progress
+                        )
+
+                    # Run video detection
+                    await video_detector.detect_videos_to_json(
+                        video_folder=folder_path,
+                        output_json=video_json_path,
+                        fps=project.video_fps,
+                        confidence_threshold=0.1,
+                        progress_callback=video_detection_progress,
+                    )
+
+                    json_files_to_merge.append(video_json_path)
+                    logger.info(f"Video detection complete: {video_json_path}")
+
                 except Exception as e:
-                    logger.warning(f"Failed to clean up temp frames: {e}")
+                    logger.error(f"Video detection failed: {e}", exc_info=True)
+                    # Continue with images even if video fails
+
+            # ============================================================
+            # PHASE 2: Video Classification (if videos + classifier)
+            # ============================================================
+            if video_files and classification_model and video_json_path.exists():
+                logger.info("Phase 2: Running video classification")
+
+                try:
+                    # Progress wrapper for video classification phase
+                    async def video_classification_progress(message: str, phase_progress: float) -> None:
+                        await deployment_progress_callback(
+                            f"Video classification: {message}",
+                            0.0,
+                            "video_classification",
+                            phase_progress
+                        )
+
+                    # Run classification on video detections
+                    # (This will update video_json_path in-place)
+                    await run_classification_on_json(
+                        json_path=video_json_path,
+                        classification_model=classification_model,
+                        deployment_folder=folder_path,
+                        country_code=project.country_code,
+                        state_code=project.state_code,
+                        progress_callback=video_classification_progress,
+                    )
+
+                    logger.info(f"Video classification complete")
+
+                except Exception as e:
+                    logger.error(f"Video classification failed: {e}", exc_info=True)
+                    # Continue with images
+
+            # ============================================================
+            # PHASE 3: Image Detection (if images exist)
+            # ============================================================
+            if image_files:
+                logger.info(f"Phase 3: Running image detection on {len(image_files)} images")
+
+                try:
+                    # Send initial progress update
+                    await deployment_progress_callback(
+                        f"Image detection: Starting detection on {len(image_files)} images...",
+                        0.0,
+                        "image_detection",
+                        0.0
+                    )
+
+                    # Run MegaDetector on images
+                    loop = asyncio.get_event_loop()
+                    image_json_path = await loop.run_in_executor(
+                        None,
+                        lambda: detection_model.detect_to_json(
+                            image_paths=image_files,
+                            deployment_folder=folder_path,
+                            confidence_threshold=0.1,
+                            progress_callback=None,  # Sync callback not supported here
+                        ),
+                    )
+
+                    json_files_to_merge.append(image_json_path)
+
+                    # Send completion progress update
+                    await deployment_progress_callback(
+                        f"Image detection: Completed {len(image_files)} images",
+                        0.0,
+                        "image_detection",
+                        1.0
+                    )
+
+                    logger.info(f"Image detection complete: {image_json_path}")
+
+                except Exception as e:
+                    logger.error(f"Image detection failed: {e}", exc_info=True)
+
+            # ============================================================
+            # PHASE 4: Image Classification (if images + classifier)
+            # ============================================================
+            if image_files and classification_model and image_json_path.exists():
+                logger.info("Phase 4: Running image classification")
+
+                try:
+                    # Send initial progress update
+                    await deployment_progress_callback(
+                        f"Image classification: Starting classification...",
+                        0.0,
+                        "image_classification",
+                        0.0
+                    )
+
+                    # Progress wrapper for image classification phase
+                    async def image_classification_progress(message: str, phase_progress: float) -> None:
+                        await deployment_progress_callback(
+                            f"Image classification: {message}",
+                            0.0,
+                            "image_classification",
+                            phase_progress
+                        )
+
+                    # Run classification on image detections
+                    await run_classification_on_json(
+                        json_path=image_json_path,
+                        classification_model=classification_model,
+                        deployment_folder=folder_path,
+                        country_code=project.country_code,
+                        state_code=project.state_code,
+                        progress_callback=image_classification_progress,
+                    )
+
+                    # Send completion progress update
+                    await deployment_progress_callback(
+                        f"Image classification: Complete",
+                        0.0,
+                        "image_classification",
+                        1.0
+                    )
+
+                    logger.info(f"Image classification complete")
+
+                except Exception as e:
+                    logger.error(f"Image classification failed: {e}", exc_info=True)
+
+            # ============================================================
+            # PHASE 5: Merge JSONs
+            # ============================================================
+            if json_files_to_merge:
+                logger.info(f"Phase 5: Merging {len(json_files_to_merge)} JSON files")
+                await deployment_progress_callback("Merging results...", 0.0, "finalize", 0.5)
+
+                merge_json_files(json_files_to_merge, final_json_path, deployment.id)
+
+            # ============================================================
+            # PHASE 6: Load to Database
+            # ============================================================
+            if final_json_path.exists():
+                logger.info("Phase 6: Loading results to database")
+                await deployment_progress_callback("Loading to database...", 0.0, "finalize", 0.75)
+
+                from app.ml.json_pipeline import load_json_to_database
+
+                result = load_json_to_database(
+                    json_path=final_json_path,
+                    deployment_id=deployment.id,
+                    deployment_folder=folder_path,
+                    job_id=job_id,
+                    db=db,
+                )
+
+                total_detections += result.total_detections
+                logger.info(f"Database load complete: {result.total_detections} detections")
+
+            # Send final progress update before completion
+            await deployment_progress_callback("Complete", 1.0, "finalize", 1.0)
 
             # Update queue entry with deployment ID
             queue_crud.update_queue_status(db, entry_id, status="completed", deployment_id=deployment.id)
@@ -561,6 +712,321 @@ def scan_folder_for_images(folder_path: Path) -> list[Path]:
     return image_files
 
 
+async def run_classification_on_json(
+    json_path: Path,
+    classification_model,
+    deployment_folder: Path,
+    country_code: str | None,
+    state_code: str | None,
+    progress_callback: Callable[[str, float], None] | None = None,
+) -> None:
+    """
+    Run classification on detection JSON file.
+
+    Handles both SpeciesNet (batch) and regular (per-detection) classifiers.
+    Updates JSON file in-place with classification results.
+
+    Args:
+        json_path: Path to detection JSON file
+        classification_model: Classification model instance
+        deployment_folder: Deployment folder for artifacts
+        country_code: Country code for SpeciesNet
+        state_code: State code for SpeciesNet
+        progress_callback: Optional progress callback
+
+    Raises:
+        RuntimeError: If classification fails
+    """
+    import json
+    from app.ml.json_utils import extract_animal_detections
+
+    # Check if SpeciesNet (batch processing)
+    is_speciesnet = hasattr(classification_model, "classify_batch")
+
+    if is_speciesnet:
+        # SpeciesNet: Batch processing
+        logger.info("Running SpeciesNet batch classification")
+
+        # SpeciesNet uses old 4-argument progress callback format
+        # Create adapter function to convert to new 2-argument format
+        async def speciesnet_progress_adapter(message, progress, phase, phase_progress):
+            """Adapter for SpeciesNet's old 4-argument progress callback format"""
+            if progress_callback:
+                await progress_callback(message, phase_progress)
+
+        await classification_model.classify_batch(
+            detection_json_path=json_path,
+            country_code=country_code,
+            state_code=state_code,
+            deployment_folder=deployment_folder,
+            progress_callback=speciesnet_progress_adapter,
+        )
+    else:
+        # Regular per-detection classification
+        logger.info("Running per-detection classification")
+
+        # Load detection JSON
+        with open(json_path, "r") as f:
+            md_results = json.load(f)
+
+        # Extract animal detections
+        animal_detections = extract_animal_detections(md_results)
+        total_animals = len(animal_detections)
+
+        if total_animals == 0:
+            logger.info("No animals to classify")
+            return
+
+        # Start classification worker (context manager)
+        with classification_model as cls_model:
+            # Get class names (ID -> name mapping)
+            class_names = cls_model.get_class_names()
+
+            # Create reverse mapping (name -> ID) for JSON creation
+            name_to_id = {name: class_id for class_id, name in class_names.items()}
+
+            # Group detections by file for efficient video frame caching
+            from collections import defaultdict
+            detections_by_file = defaultdict(list)
+            for img_idx, det_idx, detection in animal_detections:
+                img_info = md_results["images"][img_idx]
+                relative_file = img_info["file"]
+                img_path = (deployment_folder / relative_file).resolve()
+
+                detections_by_file[str(img_path)].append({
+                    'img_idx': img_idx,
+                    'det_idx': det_idx,
+                    'detection': detection,
+                    'img_info': img_info
+                })
+
+            # Process files in order (videos first, then images)
+            classified_count = 0
+            processed_count = 0
+            frame_cache = {}  # Cache for video frames
+
+            for file_path_str, file_detections in detections_by_file.items():
+                file_path = Path(file_path_str)
+
+                if not file_path.exists():
+                    logger.warning(f"File not found: {file_path}, skipping {len(file_detections)} detections")
+                    processed_count += len(file_detections)
+                    continue
+
+                is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
+
+                # For videos: extract all needed frames to cache first
+                if is_video:
+                    logger.debug(f"Extracting frames for video: {file_path.name}")
+
+                    # Get unique frame numbers for this video
+                    frame_numbers = set()
+                    for det_info in file_detections:
+                        frame_num = det_info['detection'].get('frame_number')
+                        if frame_num is not None:
+                            frame_numbers.add(frame_num)
+
+                    if not frame_numbers:
+                        logger.warning(f"No frame numbers found for video {file_path.name}, skipping")
+                        processed_count += len(file_detections)
+                        continue
+
+                    # Extract frames to cache
+                    from app.utils.video_utils import run_callback_on_frames, _frame_number_to_filename
+                    from PIL import Image
+
+                    def frame_callback(image_np, frame_id):
+                        """Store frame as PIL Image in cache"""
+                        frame_cache[frame_id] = Image.fromarray(image_np)
+                        return None
+
+                    try:
+                        run_callback_on_frames(
+                            str(file_path),
+                            frame_callback,
+                            frames_to_process=list(frame_numbers),
+                            verbose=False
+                        )
+                        logger.debug(f"Extracted {len(frame_cache)} frames for {file_path.name}")
+                    except Exception as e:
+                        logger.error(f"Failed to extract frames from {file_path.name}: {e}")
+                        processed_count += len(file_detections)
+                        frame_cache.clear()
+                        continue
+
+                # Classify all detections in this file
+                for det_info in file_detections:
+                    try:
+                        processed_count += 1
+
+                        # Update progress
+                        if progress_callback:
+                            phase_progress = processed_count / total_animals
+                            await progress_callback(
+                                f"Classifying {processed_count}/{total_animals} animals",
+                                phase_progress,
+                            )
+
+                        detection = det_info['detection']
+                        img_idx = det_info['img_idx']
+                        det_idx = det_info['det_idx']
+
+                        # Get frame/image for classification
+                        if is_video:
+                            # Get frame from cache
+                            frame_number = detection.get('frame_number')
+                            if frame_number is None:
+                                logger.warning(f"Detection missing frame_number, skipping")
+                                continue
+
+                            frame_key = _frame_number_to_filename(frame_number)
+                            frame_image = frame_cache.get(frame_key)
+
+                            if frame_image is None:
+                                logger.warning(f"Frame {frame_key} not in cache, skipping")
+                                continue
+                        else:
+                            # Load image from disk
+                            from PIL import Image
+                            frame_image = Image.open(file_path)
+
+                        # Create bbox object
+                        from app.ml.inference.base import BoundingBox
+                        bbox = BoundingBox(
+                            x=detection["bbox"][0],
+                            y=detection["bbox"][1],
+                            width=detection["bbox"][2],
+                            height=detection["bbox"][3],
+                        )
+
+                        # Classify using the custom classifier's classify method
+                        # Note: We need to pass the PIL Image directly, not a file path
+                        # So we'll crop the image ourselves and pass to the model
+
+                        # Get crop function from the model's inference module
+                        # For now, do basic cropping
+                        img_width, img_height = frame_image.size
+                        x1 = int(bbox.x * img_width)
+                        y1 = int(bbox.y * img_height)
+                        x2 = int((bbox.x + bbox.width) * img_width)
+                        y2 = int((bbox.y + bbox.height) * img_height)
+
+                        # Clamp to image boundaries
+                        x1 = max(0, min(x1, img_width - 1))
+                        y1 = max(0, min(y1, img_height - 1))
+                        x2 = max(0, min(x2, img_width - 1))
+                        y2 = max(0, min(y2, img_height - 1))
+
+                        crop = frame_image.crop((x1, y1, x2, y2))
+
+                        # Save crop temporarily and classify
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                            tmp_path = Path(tmp.name)
+                            crop.save(tmp_path)
+
+                        try:
+                            result = cls_model.classify(tmp_path, bbox)
+                        finally:
+                            tmp_path.unlink(missing_ok=True)
+
+                        # Check if classification succeeded
+                        if result is None:
+                            logger.warning(f"Classification returned None for detection, skipping")
+                            continue
+
+                        # Add classification to detection (update in-place in md_results)
+                        # Convert class names to IDs for JSON format consistency
+                        md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
+                            [name_to_id[class_name], prob]
+                            for class_name, prob in result.all_probabilities.items()
+                            if class_name in name_to_id
+                        ][:10]  # Top 10 results
+
+                        classified_count += 1
+
+                    except Exception as e:
+                        logger.error(f"Classification failed for detection: {e}")
+                        continue
+
+                # Clear video frame cache after processing this video
+                if is_video:
+                    frame_cache.clear()
+                    logger.debug(f"Cleared frame cache for {file_path.name}")
+
+            # Update class names in JSON
+            if class_names:
+                md_results["classification_categories"] = class_names
+
+        # Save updated JSON
+        with open(json_path, "w") as f:
+            json.dump(md_results, f, indent=2)
+
+        logger.info(f"Classified {classified_count}/{total_animals} animals")
+
+
+def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: str) -> None:
+    """
+    Merge multiple JSON files (video and image results) into single file.
+
+    Matches streamlit-AddaxAI merge logic exactly.
+
+    Args:
+        json_files: List of JSON file paths to merge
+        output_file: Output merged JSON file path
+        deployment_id: Deployment ID for metadata
+
+    Raises:
+        RuntimeError: If merge fails
+    """
+    import json
+
+    try:
+        merged_data = {
+            "images": [],
+            "detection_categories": {},
+            "classification_categories": {},
+            "info": {},
+        }
+
+        for json_file in json_files:
+            if not json_file.exists():
+                logger.warning(f"JSON file not found: {json_file}")
+                continue
+
+            with open(json_file, "r") as f:
+                data = json.load(f)
+
+            # Merge images arrays
+            merged_data["images"].extend(data.get("images", []))
+
+            # Use categories from first file
+            if not merged_data["detection_categories"]:
+                merged_data["detection_categories"] = data.get("detection_categories", {})
+            if not merged_data["classification_categories"]:
+                merged_data["classification_categories"] = data.get(
+                    "classification_categories", {}
+                )
+            if not merged_data["info"]:
+                merged_data["info"] = data.get("info", {})
+
+        # Add metadata
+        merged_data["addaxai_metadata"] = {
+            "deployment_id": deployment_id,
+            "processed_at": datetime.utcnow().isoformat(),
+        }
+
+        # Write merged JSON
+        with open(output_file, "w") as f:
+            json.dump(merged_data, f, indent=2)
+
+        logger.info(f"Merged {len(json_files)} JSON files to {output_file}")
+
+    except Exception as e:
+        logger.error(f"JSON merge failed: {e}", exc_info=True)
+        raise RuntimeError(f"Failed to merge JSON files: {e}") from e
+
+
 def scan_folder_for_videos(folder_path: Path) -> list[Path]:
     """
     Scan folder for video files.
@@ -583,62 +1049,6 @@ def scan_folder_for_videos(folder_path: Path) -> list[Path]:
     video_files.sort()
 
     return video_files
-
-
-def extract_video_frames(video_path: Path, fps: float, temp_folder: Path) -> tuple[list[Path], float]:
-    """
-    Extract frames from video at specified FPS.
-
-    Uses video_utils from streamlit-AddaxAI (proven approach).
-
-    Args:
-        video_path: Path to video file
-        fps: Frames per second to extract
-        temp_folder: Temporary folder for frame extraction
-
-    Returns:
-        Tuple of (list of frame paths, actual video frame rate)
-
-    Raises:
-        RuntimeError: If frame extraction fails
-    """
-    from app.utils.video_utils import video_to_frames
-
-    # Create unique subfolder for this video's frames
-    video_frames_folder = temp_folder / video_path.stem
-    video_frames_folder.mkdir(parents=True, exist_ok=True)
-
-    try:
-        # Extract frames using negative fps value (sampling rate in seconds)
-        # fps=2.0 means extract every 0.5 seconds → every_n_frames=-0.5
-        every_n_seconds = 1.0 / fps
-
-        logger.info(f"Extracting frames from {video_path.name} at {fps} FPS")
-
-        frame_filenames, video_frame_rate = video_to_frames(
-            input_video_file=str(video_path),
-            output_folder=str(video_frames_folder),
-            overwrite=True,
-            every_n_frames=-every_n_seconds,  # Negative = time-based sampling
-            verbose=False,
-            quality=None,  # Use OpenCV default
-            allow_empty_videos=False,
-        )
-
-        # Convert to Path objects
-        frame_paths = [Path(f) for f in frame_filenames]
-
-        logger.info(
-            f"Extracted {len(frame_paths)} frames from {video_path.name} "
-            f"(video FPS: {video_frame_rate})"
-        )
-
-        return frame_paths, video_frame_rate
-
-    except Exception as e:
-        logger.error(f"Failed to extract frames from {video_path}: {e}", exc_info=True)
-        raise RuntimeError(f"Frame extraction failed for {video_path.name}: {e}") from e
-
 
 def create_deployment(db, site_id: str, folder_path: str) -> Deployment:
     """

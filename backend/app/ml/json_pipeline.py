@@ -146,9 +146,6 @@ class JSONBasedMLPipeline:
             await progress_callback("Detection complete", 0.4, "detection", 1.0)
             logger.info(f"Detection JSON saved to: {detection_json_path}")
 
-            # Post-process: Add frame numbers for video frames
-            self._add_frame_numbers_to_json(detection_json_path)
-
             # Phase 2: Classification (updates classification progress bar)
             classified_count = 0
             if self.classification_model:
@@ -243,43 +240,6 @@ class JSONBasedMLPipeline:
         )
 
         return detection_json_path
-
-    def _add_frame_numbers_to_json(self, json_path: Path) -> None:
-        """
-        Post-process detection JSON to add frame_number field for video frames.
-
-        Parses frame numbers from filenames like "frame000123.jpg" and adds
-        frame_number field to detections. This matches streamlit-AddaxAI format.
-
-        Args:
-            json_path: Path to detection JSON file (modified in-place)
-        """
-        import re
-
-        with open(json_path, "r") as f:
-            results = json.load(f)
-
-        modified = False
-
-        for img in results.get("images", []):
-            filename = img.get("file", "")
-
-            # Check if this is a video frame filename (frame000123.jpg)
-            frame_match = re.search(r"frame(\d+)\.", filename)
-
-            if frame_match:
-                frame_number = int(frame_match.group(1))
-                modified = True
-
-                # Add frame_number to each detection in this image
-                for det in img.get("detections", []):
-                    det["frame_number"] = frame_number
-
-        # Save updated JSON if we added frame numbers
-        if modified:
-            with open(json_path, "w") as f:
-                json.dump(results, f, indent=2)
-            logger.info(f"Added frame numbers to {json_path}")
 
     async def _run_classification(
         self,
@@ -529,17 +489,23 @@ class JSONBasedMLPipeline:
             relative_file = img["file"]
             absolute_path = (deployment_folder / relative_file).resolve()
 
-            # Get or create File record using file_id from JSON
+            # Get or create File record
+            # First check by file_id if provided in JSON
             file_id = img.get("file_id")
-            if not file_id:
-                # Generate if not present (shouldn't happen but defensive)
-                file_id = str(uuid.uuid4())
+            file_record = None
 
-            # Check if File record exists
-            file_record = db.query(File).filter(File.id == file_id).first()
+            if file_id:
+                file_record = db.query(File).filter(File.id == file_id).first()
 
+            # If not found by file_id, check by file_path (handles re-analysis case)
             if not file_record:
-                # Create File record with UUID from JSON
+                file_record = db.query(File).filter(File.file_path == str(absolute_path)).first()
+
+            # Create new file record if still not found
+            if not file_record:
+                if not file_id:
+                    file_id = str(uuid.uuid4())
+
                 file_record = File(
                     id=file_id,
                     deployment_id=deployment_id,
@@ -585,13 +551,13 @@ class JSONBasedMLPipeline:
 
                     # Get classification_categories mapping
                     class_names = results.get("classification_categories", {})
-                    species = class_names.get(top_class_id)
+                    species = class_names.get(str(top_class_id))
                     species_confidence = float(top_conf)
 
                     # Build all_probabilities dict
                     classification_all_probs = {}
                     for class_id, conf in det["classifications"]:
-                        class_name = class_names.get(class_id)
+                        class_name = class_names.get(str(class_id))
                         if class_name:
                             classification_all_probs[class_name] = float(conf)
 
@@ -644,3 +610,183 @@ class JSONBasedMLPipeline:
 
 # Import BoundingBox at the end to avoid circular import
 from app.ml.inference.base import BoundingBox
+
+
+def load_json_to_database(
+    json_path: Path,
+    deployment_id: str,
+    deployment_folder: Path,
+    job_id: str,
+    db: Session,
+) -> PipelineResult:
+    """
+    Load JSON file (merged video+image results) to database.
+
+    Standalone function for use by detection_worker.py when processing
+    video+image deployments separately. Handles frame_number field for
+    video detections.
+
+    Args:
+        json_path: Path to JSON file (merged addaxai-run.json)
+        deployment_id: Deployment ID
+        deployment_folder: Deployment folder (base for relative paths)
+        job_id: Job ID
+        db: Database session
+
+    Returns:
+        PipelineResult with statistics
+
+    Raises:
+        FileNotFoundError: If JSON file doesn't exist
+        RuntimeError: If database load fails
+    """
+    if not json_path.exists():
+        raise FileNotFoundError(f"JSON file not found: {json_path}")
+
+    try:
+        # Load JSON
+        with open(json_path) as f:
+            results = json.load(f)
+
+        logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
+
+        # Track statistics
+        total_detections = 0
+        animal_count = 0
+        person_count = 0
+        vehicle_count = 0
+        classified_count = 0
+
+        # Group detections by file
+        file_detections = defaultdict(list)
+
+        for img in results.get("images", []):
+            relative_file = img["file"]
+            absolute_path = (deployment_folder / relative_file).resolve()
+
+            # Determine file type (video or image)
+            file_format = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
+            video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
+            file_type = "video" if file_format in video_extensions else "image"
+
+            # Get or create File record
+            # First check by file_id if provided in JSON
+            file_id = img.get("file_id")
+            file_record = None
+
+            if file_id:
+                file_record = db.query(File).filter(File.id == file_id).first()
+
+            # If not found by file_id, check by file_path (handles re-analysis case)
+            if not file_record:
+                file_record = db.query(File).filter(File.file_path == str(absolute_path)).first()
+
+            # Create new file record if still not found
+            if not file_record:
+                if not file_id:
+                    file_id = str(uuid.uuid4())
+
+                file_record = File(
+                    id=file_id,
+                    deployment_id=deployment_id,
+                    file_path=str(absolute_path),
+                    file_type=file_type,
+                    file_format=file_format,
+                    size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
+                    timestamp=datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow(),
+                    width_px=img.get("width"),
+                    height_px=img.get("height"),
+                )
+                db.add(file_record)
+                db.flush()  # Get file_record.id
+
+            # Create Detection records
+            for det in img.get("detections", []):
+                total_detections += 1
+
+                # Map category
+                category_num = det["category"]
+                category_map = {"1": "animal", "2": "person", "3": "vehicle"}
+                category = category_map.get(category_num, "animal")
+
+                # Count by category
+                if category == "animal":
+                    animal_count += 1
+                elif category == "person":
+                    person_count += 1
+                elif category == "vehicle":
+                    vehicle_count += 1
+
+                # Get bbox
+                bbox = det["bbox"]  # [x, y, width, height]
+
+                # Get classifications (if present)
+                species = None
+                species_confidence = None
+                classification_all_probs = None
+
+                if "classifications" in det and det["classifications"]:
+                    # Get top classification
+                    top_class_id, top_conf = det["classifications"][0]
+
+                    # Get classification_categories mapping
+                    class_names = results.get("classification_categories", {})
+                    species = class_names.get(str(top_class_id))
+                    species_confidence = float(top_conf)
+
+                    # Build all_probabilities dict
+                    classification_all_probs = {}
+                    for class_id, conf in det["classifications"]:
+                        class_name = class_names.get(str(class_id))
+                        if class_name:
+                            classification_all_probs[class_name] = float(conf)
+
+                    if species:
+                        classified_count += 1
+
+                # Create Detection record
+                detection_id = det.get("detection_id", str(uuid.uuid4()))
+
+                # Extract frame_number if present (for video detections)
+                frame_number = det.get("frame_number")
+
+                detection_data = DetectionCreate(
+                    file_id=file_record.id,
+                    job_id=job_id,
+                    category=category,
+                    confidence=float(det["conf"]),
+                    bbox_x=float(bbox[0]),
+                    bbox_y=float(bbox[1]),
+                    bbox_width=float(bbox[2]),
+                    bbox_height=float(bbox[3]),
+                    frame_number=frame_number,
+                )
+
+                detection_record = detection_crud.create_detection(db, detection_data)
+
+                # Update detection with classification data if present
+                if species:
+                    detection_record.species = species
+                    detection_record.species_confidence = species_confidence
+                    detection_record.classification_all_probs = classification_all_probs
+
+        # Commit all records
+        db.commit()
+
+        logger.info(
+            f"Database load complete: {total_detections} detections, "
+            f"{classified_count} classified"
+        )
+
+        return PipelineResult(
+            total_files=len(results.get("images", [])),
+            total_detections=total_detections,
+            animal_detections=animal_count,
+            person_detections=person_count,
+            vehicle_detections=vehicle_count,
+            classified_detections=classified_count,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to load JSON to database: {e}", exc_info=True)
+        raise RuntimeError(f"Database load failed: {e}") from e

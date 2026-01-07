@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.create_index('idx_detections_frame_number', 'detections', ['frame_number'], unique=False)
     op.create_index('idx_detections_species', 'detections', ['species'], unique=False)
     op.create_index('idx_detections_species_confidence', 'detections', ['species_confidence'], unique=False)
-    op.add_column('projects', sa.Column('video_fps', sa.Float(), nullable=False))
+    op.add_column('projects', sa.Column('video_fps', sa.Float(), nullable=False, server_default='2.0'))
     # ### end Alembic commands ###
 
 

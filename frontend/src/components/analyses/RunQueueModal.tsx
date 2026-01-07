@@ -71,22 +71,35 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   const isProcessing = !isComplete && !hasError && hasJob;
   const phaseProgressPercent = (phaseProgress ?? 0) * 100;
 
+  // Phase ordering for progress calculation
+  const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "finalize"];
+  const currentPhaseIndex = phase ? phaseOrder.indexOf(phase) : -1;
+
   // Calculate progress for each phase
-  const detectionProgress = phase === "detection" ? phaseProgressPercent : (phase === "classification" || phase === "finalize" ? 100 : 0);
-  const classificationProgress = phase === "classification" ? phaseProgressPercent : (phase === "finalize" ? 100 : 0);
+  const getPhaseProgress = (targetPhase: string): number => {
+    const targetIndex = phaseOrder.indexOf(targetPhase);
+    if (currentPhaseIndex < targetIndex) return 0; // Not started yet
+    if (currentPhaseIndex > targetIndex) return 100; // Already completed
+    return phase === targetPhase ? phaseProgressPercent : 0; // Currently active
+  };
+
+  const videoDetectionProgress = getPhaseProgress("video_detection");
+  const videoClassificationProgress = getPhaseProgress("video_classification");
+  const imageDetectionProgress = getPhaseProgress("image_detection");
+  const imageClassificationProgress = getPhaseProgress("image_classification");
 
   // Determine status messages
-  const detectionStatus = phase === "init" || phase === null
-    ? "Waiting..."
-    : phase === "detection"
-      ? (message || "").replace("Detection: ", "")
-      : "Complete";
+  const getPhaseStatus = (targetPhase: string, defaultWaiting: string, messagePrefix: string): string => {
+    const targetIndex = phaseOrder.indexOf(targetPhase);
+    if (currentPhaseIndex < targetIndex) return defaultWaiting;
+    if (currentPhaseIndex > targetIndex) return "Complete";
+    return phase === targetPhase ? (message || "").replace(`${messagePrefix}: `, "") : defaultWaiting;
+  };
 
-  const classificationStatus = phase === "init" || phase === null || phase === "detection"
-    ? "Waiting for detection..."
-    : phase === "classification"
-      ? (message || "").replace("Classification: ", "")
-      : "Complete";
+  const videoDetectionStatus = getPhaseStatus("video_detection", "Waiting...", "Video detection");
+  const videoClassificationStatus = getPhaseStatus("video_classification", "Waiting...", "Video classification");
+  const imageDetectionStatus = getPhaseStatus("image_detection", "Waiting...", "Image detection");
+  const imageClassificationStatus = getPhaseStatus("image_classification", "Waiting...", "Image classification");
 
   const showSpinner = phase === "init" || phase === "finalize" || isWaitingForJob;
 
@@ -134,26 +147,50 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                 </div>
               )}
 
-              {/* Detection Progress Bar (Always Visible) */}
+              {/* Video Detection Progress Bar */}
               {!showSpinner && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Detection</p>
-                  <Progress value={detectionProgress} className="h-2" />
+                  <p className="text-xs font-medium text-gray-700">Video Detection</p>
+                  <Progress value={videoDetectionProgress} className="h-2" />
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{detectionStatus}</span>
-                    <span className="text-xs text-gray-500">{detectionProgress.toFixed(0)}%</span>
+                    <span className="text-sm text-gray-600">{videoDetectionStatus}</span>
+                    <span className="text-xs text-gray-500">{videoDetectionProgress.toFixed(0)}%</span>
                   </div>
                 </div>
               )}
 
-              {/* Classification Progress Bar (Always Visible) */}
+              {/* Video Classification Progress Bar */}
               {!showSpinner && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Classification</p>
-                  <Progress value={classificationProgress} className="h-2" />
+                  <p className="text-xs font-medium text-gray-700">Video Classification</p>
+                  <Progress value={videoClassificationProgress} className="h-2" />
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{classificationStatus}</span>
-                    <span className="text-xs text-gray-500">{classificationProgress.toFixed(0)}%</span>
+                    <span className="text-sm text-gray-600">{videoClassificationStatus}</span>
+                    <span className="text-xs text-gray-500">{videoClassificationProgress.toFixed(0)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Image Detection Progress Bar */}
+              {!showSpinner && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700">Image Detection</p>
+                  <Progress value={imageDetectionProgress} className="h-2" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{imageDetectionStatus}</span>
+                    <span className="text-xs text-gray-500">{imageDetectionProgress.toFixed(0)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Image Classification Progress Bar */}
+              {!showSpinner && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700">Image Classification</p>
+                  <Progress value={imageClassificationProgress} className="h-2" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{imageClassificationStatus}</span>
+                    <span className="text-xs text-gray-500">{imageClassificationProgress.toFixed(0)}%</span>
                   </div>
                 </div>
               )}
