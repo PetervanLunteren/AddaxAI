@@ -6,6 +6,15 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 # TODO
 - [ ] Why has the backend env PyTorch? Isnt that just for FastAPI?
+- [ ] Make the FPS configurable in the project settings.
+- [ ] Why do we have these files? Isnt everything the model developer needs to supply taxonomy.csv, inference.py and the wetghts? Which are all inside the HF repo, so why are there model specific scripts inside the app itself? A model should be a self contained package so that model developers do not have to dig around in the actual app code. 
+     backend/app/
+     ├── ml/
+     │   ├── inference/
+     │   │   ├── megadetector.py         # Image detection (existing)
+     │   │   ├── video_detector.py       # NEW: Video detection wrapper
+     │   │   ├── yolov8_classifier.py    # Classification (existing)
+     │   │   └── speciesnet_model.py     # SpeciesNet (existing)
 
 ## Architecture
 

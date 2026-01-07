@@ -78,6 +78,11 @@ class Project(Base):
         Integer, nullable=False, default=1800  # seconds
     )
 
+    # Video processing settings
+    video_fps: Mapped[float] = mapped_column(
+        Float, nullable=False, default=2.0  # Frames per second to extract
+    )
+
     # Relationships
     sites: Mapped[list["Site"]] = relationship(
         "Site", back_populates="project", cascade="all, delete-orphan"

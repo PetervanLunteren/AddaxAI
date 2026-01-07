@@ -40,6 +40,9 @@ logger = get_logger(__name__)
 # Supported image formats
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
+# Supported video formats (from MegaDetector video_utils)
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mpeg", ".mpg", ".mov", ".mkv", ".flv"}
+
 
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
     """
@@ -160,15 +163,49 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 progress_start
             )
 
-            # Scan folder for images
+            # Scan folder for images and videos
             image_files = scan_folder_for_images(folder_path)
-            logger.info(f"Found {len(image_files)} images in {folder_path}")
-            total_files += len(image_files)
+            video_files = scan_folder_for_videos(folder_path)
+            logger.info(
+                f"Found {len(image_files)} images and {len(video_files)} videos in {folder_path}"
+            )
 
-            if not image_files:
-                logger.warning(f"No images found in {folder_path}, skipping")
+            if not image_files and not video_files:
+                logger.warning(f"No images or videos found in {folder_path}, skipping")
                 queue_crud.update_queue_status(db, entry_id, status="completed")
                 continue
+
+            # Extract frames from videos if present
+            temp_frames_folder = None
+            video_frame_mapping = {}  # Maps video_path -> (frame_paths, frame_rate)
+
+            if video_files:
+                temp_frames_folder = folder_path / ".addaxai" / "temp_frames"
+                temp_frames_folder.mkdir(parents=True, exist_ok=True)
+
+                await ws_manager.send_progress(
+                    job_id,
+                    f"[{idx}/{total_entries}] Extracting frames from {len(video_files)} videos...",
+                    progress_start + 0.05 * progress_range
+                )
+
+                for video_path in video_files:
+                    try:
+                        frame_paths, frame_rate = extract_video_frames(
+                            video_path, project.video_fps, temp_frames_folder
+                        )
+                        video_frame_mapping[video_path] = (frame_paths, frame_rate)
+                        image_files.extend(frame_paths)  # Add frames to processing list
+                    except Exception as e:
+                        logger.error(f"Failed to process video {video_path}: {e}")
+                        # Continue with other videos
+
+                logger.info(
+                    f"Extracted {sum(len(paths) for paths, _ in video_frame_mapping.values())} "
+                    f"total frames from videos"
+                )
+
+            total_files += len(image_files)
 
             # Get or create "Unknown Site"
             site = site_crud.get_or_create_unknown_site(db, project_id)
@@ -203,6 +240,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             )
 
             total_detections += result.total_detections
+
+            # Clean up temporary video frames
+            if temp_frames_folder and temp_frames_folder.exists():
+                import shutil
+                try:
+                    shutil.rmtree(temp_frames_folder)
+                    logger.info(f"Cleaned up temporary frames from {temp_frames_folder}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temp frames: {e}")
 
             # Update queue entry with deployment ID
             queue_crud.update_queue_status(db, entry_id, status="completed", deployment_id=deployment.id)
@@ -513,6 +559,85 @@ def scan_folder_for_images(folder_path: Path) -> list[Path]:
     image_files.sort()
 
     return image_files
+
+
+def scan_folder_for_videos(folder_path: Path) -> list[Path]:
+    """
+    Scan folder for video files.
+
+    Args:
+        folder_path: Path to folder
+
+    Returns:
+        List of absolute paths to video files
+    """
+    video_files: list[Path] = []
+
+    for root, _, files in os.walk(folder_path):
+        for filename in files:
+            file_path = Path(root) / filename
+            if file_path.suffix.lower() in VIDEO_EXTENSIONS:
+                video_files.append(file_path)
+
+    # Sort by filename for consistent processing
+    video_files.sort()
+
+    return video_files
+
+
+def extract_video_frames(video_path: Path, fps: float, temp_folder: Path) -> tuple[list[Path], float]:
+    """
+    Extract frames from video at specified FPS.
+
+    Uses video_utils from streamlit-AddaxAI (proven approach).
+
+    Args:
+        video_path: Path to video file
+        fps: Frames per second to extract
+        temp_folder: Temporary folder for frame extraction
+
+    Returns:
+        Tuple of (list of frame paths, actual video frame rate)
+
+    Raises:
+        RuntimeError: If frame extraction fails
+    """
+    from app.utils.video_utils import video_to_frames
+
+    # Create unique subfolder for this video's frames
+    video_frames_folder = temp_folder / video_path.stem
+    video_frames_folder.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Extract frames using negative fps value (sampling rate in seconds)
+        # fps=2.0 means extract every 0.5 seconds → every_n_frames=-0.5
+        every_n_seconds = 1.0 / fps
+
+        logger.info(f"Extracting frames from {video_path.name} at {fps} FPS")
+
+        frame_filenames, video_frame_rate = video_to_frames(
+            input_video_file=str(video_path),
+            output_folder=str(video_frames_folder),
+            overwrite=True,
+            every_n_frames=-every_n_seconds,  # Negative = time-based sampling
+            verbose=False,
+            quality=None,  # Use OpenCV default
+            allow_empty_videos=False,
+        )
+
+        # Convert to Path objects
+        frame_paths = [Path(f) for f in frame_filenames]
+
+        logger.info(
+            f"Extracted {len(frame_paths)} frames from {video_path.name} "
+            f"(video FPS: {video_frame_rate})"
+        )
+
+        return frame_paths, video_frame_rate
+
+    except Exception as e:
+        logger.error(f"Failed to extract frames from {video_path}: {e}", exc_info=True)
+        raise RuntimeError(f"Frame extraction failed for {video_path.name}: {e}") from e
 
 
 def create_deployment(db, site_id: str, folder_path: str) -> Deployment:

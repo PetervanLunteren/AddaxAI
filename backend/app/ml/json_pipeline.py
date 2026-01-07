@@ -146,6 +146,9 @@ class JSONBasedMLPipeline:
             await progress_callback("Detection complete", 0.4, "detection", 1.0)
             logger.info(f"Detection JSON saved to: {detection_json_path}")
 
+            # Post-process: Add frame numbers for video frames
+            self._add_frame_numbers_to_json(detection_json_path)
+
             # Phase 2: Classification (updates classification progress bar)
             classified_count = 0
             if self.classification_model:
@@ -240,6 +243,43 @@ class JSONBasedMLPipeline:
         )
 
         return detection_json_path
+
+    def _add_frame_numbers_to_json(self, json_path: Path) -> None:
+        """
+        Post-process detection JSON to add frame_number field for video frames.
+
+        Parses frame numbers from filenames like "frame000123.jpg" and adds
+        frame_number field to detections. This matches streamlit-AddaxAI format.
+
+        Args:
+            json_path: Path to detection JSON file (modified in-place)
+        """
+        import re
+
+        with open(json_path, "r") as f:
+            results = json.load(f)
+
+        modified = False
+
+        for img in results.get("images", []):
+            filename = img.get("file", "")
+
+            # Check if this is a video frame filename (frame000123.jpg)
+            frame_match = re.search(r"frame(\d+)\.", filename)
+
+            if frame_match:
+                frame_number = int(frame_match.group(1))
+                modified = True
+
+                # Add frame_number to each detection in this image
+                for det in img.get("detections", []):
+                    det["frame_number"] = frame_number
+
+        # Save updated JSON if we added frame numbers
+        if modified:
+            with open(json_path, "w") as f:
+                json.dump(results, f, indent=2)
+            logger.info(f"Added frame numbers to {json_path}")
 
     async def _run_classification(
         self,
@@ -561,6 +601,9 @@ class JSONBasedMLPipeline:
                 # Create Detection record
                 detection_id = det.get("detection_id", str(uuid.uuid4()))
 
+                # Extract frame_number if present (for video detections)
+                frame_number = det.get("frame_number")
+
                 detection_data = DetectionCreate(
                     file_id=file_record.id,
                     job_id=job_id,
@@ -570,6 +613,7 @@ class JSONBasedMLPipeline:
                     bbox_y=float(bbox[1]),
                     bbox_width=float(bbox[2]),
                     bbox_height=float(bbox[3]),
+                    frame_number=frame_number,
                 )
 
                 detection_record = detection_crud.create_detection(db, detection_data)

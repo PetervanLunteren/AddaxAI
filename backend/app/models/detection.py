@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -57,6 +57,9 @@ class Detection(Base):
     species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     classification_all_probs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Video-specific field (None for images, frame index for videos)
+    frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -73,6 +76,7 @@ class Detection(Base):
         Index("idx_detections_confidence", "confidence"),
         Index("idx_detections_species", "species"),
         Index("idx_detections_species_confidence", "species_confidence"),
+        Index("idx_detections_frame_number", "frame_number"),
     )
 
     def __repr__(self) -> str:
