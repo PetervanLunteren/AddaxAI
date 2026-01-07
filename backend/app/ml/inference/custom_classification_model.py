@@ -16,12 +16,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tempfile
-import time
 from pathlib import Path
 from typing import Callable
-
-from PIL import Image
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -71,7 +67,6 @@ class CustomClassificationModel(ClassificationModel):
 
         # Worker process state
         self.worker_process: subprocess.Popen | None = None
-        self.temp_dir: tempfile.TemporaryDirectory | None = None
 
         # Verify inference.py exists
         inference_script = model_dir / "inference.py"
@@ -168,9 +163,6 @@ class CustomClassificationModel(ClassificationModel):
             self._kill_worker()
             raise RuntimeError(f"Worker startup failed: {e}") from e
 
-        # Create temp directory for image files
-        self.temp_dir = tempfile.TemporaryDirectory()
-
     def stop_worker(self) -> None:
         """
         Stop the persistent worker process gracefully.
@@ -210,14 +202,6 @@ class CustomClassificationModel(ClassificationModel):
             self._kill_worker()
         finally:
             self.worker_process = None
-
-            # Clean up temp directory
-            if self.temp_dir is not None:
-                try:
-                    self.temp_dir.cleanup()
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup temp directory: {e}")
-                self.temp_dir = None
 
     def _kill_worker(self) -> None:
         """Force kill the worker process."""
@@ -278,7 +262,7 @@ class CustomClassificationModel(ClassificationModel):
 
     def classify(
         self,
-        image: Image.Image,
+        image_path: Path,
         bbox: BoundingBox,
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> ClassificationResult | None:
@@ -286,13 +270,13 @@ class CustomClassificationModel(ClassificationModel):
         Classify a detection using the persistent worker.
 
         Workflow:
-        1. Save image to temp file
-        2. Send classification request to worker via stdin
+        1. Send file path + bbox to worker via stdin
+        2. Worker loads image, crops, and classifies
         3. Read response from worker via stdout
         4. Parse into ClassificationResult
 
         Args:
-            image: PIL Image to classify
+            image_path: Path to original image file (worker will load it)
             bbox: BoundingBox for the detection (normalized coordinates)
             progress_callback: Optional progress callback (unused)
 
@@ -308,19 +292,11 @@ class CustomClassificationModel(ClassificationModel):
                 "Worker not started. Use context manager or call start_worker() first."
             )
 
-        if self.temp_dir is None:
-            raise RuntimeError("Temp directory not initialized")
-
         try:
-            # Save image to temp file (PNG for lossless preservation)
-            temp_path = Path(self.temp_dir.name)
-            image_file = temp_path / f"img_{int(time.time() * 1000000)}.png"
-            image.save(image_file, "PNG")
-
-            # Build request
+            # Build request with original image path
             request = {
                 "command": "classify",
-                "image_path": str(image_file),
+                "image_path": str(image_path),  # Send original file path
                 "bbox": [bbox.x, bbox.y, bbox.width, bbox.height],
             }
 
@@ -340,12 +316,6 @@ class CustomClassificationModel(ClassificationModel):
                 return None
 
             response = json.loads(response_line.strip())
-
-            # Clean up temp image
-            try:
-                image_file.unlink()
-            except Exception:
-                pass
 
             # Check for errors
             if not response.get("success", False):

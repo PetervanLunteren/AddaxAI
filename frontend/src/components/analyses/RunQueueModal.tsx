@@ -79,13 +79,13 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   const detectionStatus = phase === "init" || phase === null
     ? "Waiting..."
     : phase === "detection"
-      ? message.replace("Detection: ", "")
+      ? (message || "").replace("Detection: ", "")
       : "Complete";
 
   const classificationStatus = phase === "init" || phase === null || phase === "detection"
     ? "Waiting for detection..."
     : phase === "classification"
-      ? message.replace("Classification: ", "")
+      ? (message || "").replace("Classification: ", "")
       : "Complete";
 
   const showSpinner = phase === "init" || phase === "finalize" || isWaitingForJob;

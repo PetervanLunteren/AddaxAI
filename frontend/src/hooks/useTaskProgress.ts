@@ -67,6 +67,8 @@ export function useTaskProgress({
         console.log(`[${timestamp}] [WS ${taskId}] ${data.type}:`, {
           progress: data.progress,
           message: data.message,
+          phase: data.phase,
+          phase_progress: data.phase_progress,
           success: data.success,
           data: data.data,
         });
@@ -98,7 +100,7 @@ export function useTaskProgress({
               });
               pendingUpdateRef.current = null;
             }
-          }, 100); // 100ms delay allows browser to paint between updates
+          }, 16); // ~60fps (16ms) - faster updates for responsive progress bars
         } else if (data.type === "complete") {
           console.log(`[WS ${taskId}] ✅ COMPLETE MESSAGE RECEIVED`);
 

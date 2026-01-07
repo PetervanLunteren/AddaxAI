@@ -134,7 +134,7 @@ class YOLOv8Classifier(ClassificationModel):
 
     def classify(
         self,
-        image: Image.Image,
+        image_path: Path,
         bbox: BoundingBox,
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> ClassificationResult:
@@ -145,7 +145,7 @@ class YOLOv8Classifier(ClassificationModel):
         identical results.
 
         Args:
-            image: PIL Image object (full image)
+            image_path: Path to image file
             bbox: Bounding box in normalized coordinates
             progress_callback: Optional progress callback (unused for single inference)
 
@@ -155,8 +155,12 @@ class YOLOv8Classifier(ClassificationModel):
         Raises:
             ValueError: If crop fails (invalid bbox)
             RuntimeError: If classification fails
+            FileNotFoundError: If image_path does not exist
         """
         try:
+            # Load image from path
+            image = Image.open(image_path)
+
             # Apply exact cropping algorithm from streamlit
             crop = self._get_crop(image, bbox)
 

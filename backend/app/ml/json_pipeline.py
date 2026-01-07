@@ -21,7 +21,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
@@ -311,15 +310,12 @@ class JSONBasedMLPipeline:
                         logger.warning(f"Image not found: {image_path}, skipping detection")
                         continue
 
-                    # Load image
-                    image = Image.open(image_path)
-
                     # Get bbox (normalized coordinates)
                     bbox = det["bbox"]  # [x, y, width, height]
 
-                    # Classify detection
+                    # Classify detection (worker will load image from path)
                     result = cls_model.classify(
-                        image=image,
+                        image_path=image_path,
                         bbox=BoundingBox(
                             x=float(bbox[0]),
                             y=float(bbox[1]),

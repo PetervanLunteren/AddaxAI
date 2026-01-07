@@ -123,7 +123,6 @@ def main():
 
     try:
         # Load inference module
-        print(f"[Worker] Loading inference module from {model_dir}", file=sys.stderr)
         module = load_inference_module(model_dir, model_path)
 
         # Validate interface
@@ -131,18 +130,17 @@ def main():
 
         # Check GPU
         gpu_available = module.check_gpu()
-        print(f"[Worker] GPU available: {gpu_available}", file=sys.stderr)
 
         # Load model (ONCE)
-        print("[Worker] Loading model...", file=sys.stderr)
         module.load_model()
-        print("[Worker] Model loaded successfully", file=sys.stderr)
 
-        # Send ready signal
+        # Send ready signal FIRST (before any stderr logging to avoid deadlock)
         send_response({"status": "ready", "gpu_available": gpu_available})
 
-        # Enter request loop
-        print("[Worker] Entering request loop", file=sys.stderr)
+        # Now safe to log to stderr (after ready signal sent)
+        print(f"[Worker] GPU available: {gpu_available}", file=sys.stderr, flush=True)
+        print("[Worker] Model loaded and ready", file=sys.stderr, flush=True)
+        print("[Worker] Entering request loop", file=sys.stderr, flush=True)
         while True:
             try:
                 # Read command from stdin

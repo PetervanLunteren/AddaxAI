@@ -15,8 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from PIL import Image
-
 
 @dataclass(frozen=True)
 class BoundingBox:
@@ -150,7 +148,7 @@ class ClassificationModel(ABC):
     @abstractmethod
     def classify(
         self,
-        image: Image.Image,
+        image_path: Path,
         bbox: BoundingBox,
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> ClassificationResult:
@@ -158,7 +156,7 @@ class ClassificationModel(ABC):
         Classify a detection crop from an image.
 
         Args:
-            image: PIL Image object
+            image_path: Path to original image file (worker will load and crop it)
             bbox: Bounding box in normalized coordinates
             progress_callback: Optional callback(message, progress) for updates
 
@@ -168,5 +166,6 @@ class ClassificationModel(ABC):
         Raises:
             RuntimeError: If classification fails
             ValueError: If bbox is invalid
+            FileNotFoundError: If image_path does not exist
         """
         pass
