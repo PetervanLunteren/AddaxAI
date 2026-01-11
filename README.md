@@ -80,10 +80,6 @@ rm -rf frontend/node_modules
 ```bash
 cd backend
 
-# IMPORTANT: Use Python 3.13 or earlier (NOT 3.14)
-# Check your Python version first
-python3.13 --version || python3.12 --version || python3.11 --version
-
 # Create Python virtual environment with Python 3.13 (or 3.12/3.11)
 python3.13 -m venv venv
 
