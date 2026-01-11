@@ -47,3 +47,151 @@ The application includes a comprehensive logging system for debugging and diagno
     ```cmd
     tail -f ~/AddaxAI/logs/backend.log
     ```
+
+
+## Fresh installation
+
+### Prerequisites
+
+- **Python 3.11+** (check with `python3 --version`)
+- **Node.js 20+** and npm (check with `node --version`)
+- **Git**
+
+### 1. Clone repository
+
+```bash
+git clone https://github.com/PetervanLunteren/AddaxAI-WebUI.git
+cd AddaxAI-WebUI
+```
+
+### 2. Clean up any old data (if reinstalling)
+
+```bash
+# Remove old user data and database
+rm -rf ~/AddaxAI
+
+# Remove old virtual environments
+rm -rf backend/venv
+rm -rf frontend/node_modules
+```
+
+### 3. Set up backend
+
+```bash
+cd backend
+
+# Create Python virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate  # On macOS/Linux
+# or: .\venv\Scripts\activate  # On Windows
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Initialize database with migrations
+PYTHONPATH=. alembic upgrade head
+
+# Deactivate venv (optional)
+deactivate
+```
+
+### 4. Set up frontend
+
+```bash
+cd ../frontend
+
+# Use Node.js 20
+nvm use 20  # Or: nvm install 20 && nvm use 20
+
+# Install dependencies
+npm install
+```
+
+### 5. Verify installation
+
+After setup, you should have:
+- `~/AddaxAI/addaxai.db` - SQLite database with schema initialized
+- `backend/venv/` - Python virtual environment
+- `frontend/node_modules/` - Node dependencies
+
+## Running the app (development mode)
+
+### Start backend (Terminal 1)
+
+```bash
+cd backend
+source venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+Backend will be available at http://localhost:8000
+
+### Start frontend (Terminal 2)
+
+```bash
+cd frontend
+nvm use 20
+npm run dev
+```
+
+Frontend will be available at http://localhost:5173
+
+### Watch logs (Terminal 3 - optional)
+
+```bash
+tail -f ~/AddaxAI/logs/backend.log
+```
+
+## Architecture
+
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for comprehensive technical architecture, technology stack, and implementation roadmap.
+
+## Key directories
+
+- `~/AddaxAI/` - User data directory (created automatically)
+  - `addaxai.db` - SQLite database
+  - `logs/` - Application logs
+  - `models/` - ML model weights and environments
+  - `envs/` - Isolated Python environments for ML models
+- `backend/` - FastAPI Python backend
+- `frontend/` - React TypeScript frontend
+- `electron/` - Electron desktop shell
+
+## Troubleshooting
+
+### Database initialization failed
+
+```bash
+cd backend
+source venv/bin/activate
+rm ~/AddaxAI/addaxai.db
+PYTHONPATH=. alembic upgrade head
+```
+
+### Port already in use
+
+```bash
+# Kill existing backend process
+lsof -ti:8000 | xargs kill -9
+
+# Kill existing frontend process
+lsof -ti:5173 | xargs kill -9
+```
+
+### Missing Python modules
+
+```bash
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Frontend build errors
+
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+```
