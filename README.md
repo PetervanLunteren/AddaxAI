@@ -53,7 +53,7 @@ The application includes a comprehensive logging system for debugging and diagno
 
 ### Prerequisites
 
-- **Python 3.11+** (check with `python3 --version`)
+- **Python 3.11-3.13** (check with `python3 --version`) - **Python 3.14 is NOT supported yet** due to pydantic-core compatibility
 - **Node.js 20+** and npm (check with `node --version`)
 - **Git**
 
@@ -80,17 +80,23 @@ rm -rf frontend/node_modules
 ```bash
 cd backend
 
-# Create Python virtual environment
-python3 -m venv venv
+# IMPORTANT: Use Python 3.13 or earlier (NOT 3.14)
+# Check your Python version first
+python3.13 --version || python3.12 --version || python3.11 --version
+
+# Create Python virtual environment with Python 3.13 (or 3.12/3.11)
+python3.13 -m venv venv
 
 # Activate virtual environment
 source venv/bin/activate  # On macOS/Linux
 # or: .\venv\Scripts\activate  # On Windows
 
 # Install Python dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
-# Initialize database with migrations
+# Set up database
+# Apply all database migrations
 PYTHONPATH=. alembic upgrade head
 
 # Deactivate venv (optional)
@@ -161,12 +167,44 @@ See [PROJECT_PLAN.md](PROJECT_PLAN.md) for comprehensive technical architecture,
 
 ## Troubleshooting
 
+### Python 3.14 compatibility error
+
+If you see an error about Python 3.14 not being supported by PyO3/pydantic-core:
+
+```bash
+# Remove the venv created with Python 3.14
+rm -rf backend/venv
+
+# Check which Python versions you have installed
+python3.13 --version || python3.12 --version || python3.11 --version
+
+# Create venv with Python 3.13 (or 3.12/3.11)
+cd backend
+python3.13 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
 ### Database initialization failed
+
+If you get "no such table" errors or "Target database is not up to date" errors:
 
 ```bash
 cd backend
 source venv/bin/activate
+
+# Delete the corrupted database
 rm ~/AddaxAI/addaxai.db
+
+# If you have old incremental migrations that don't include an initial schema,
+# delete them and regenerate:
+rm alembic/versions/*.py  # BE CAREFUL: This deletes all migrations
+
+# Generate fresh initial migration
+PYTHONPATH=. alembic revision --autogenerate -m "initial schema"
+
+# Apply it
 PYTHONPATH=. alembic upgrade head
 ```
 
