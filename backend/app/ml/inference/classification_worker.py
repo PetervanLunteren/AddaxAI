@@ -58,15 +58,16 @@ def load_inference_module(model_dir: Path, model_path: Path):
 
     module = importlib.util.module_from_spec(spec)
 
-    # Inject required variables
-    module.MODEL_DIR = model_dir
-    module.MODEL_PATH = model_path
-
     # Add to sys.modules so imports within inference.py work
     sys.modules[module_name] = module
 
-    # Execute module
+    # Execute module (this will initialize MODEL_DIR/MODEL_PATH to None)
     spec.loader.exec_module(module)
+
+    # Inject required variables AFTER execution
+    # (must happen after exec_module which resets the module state)
+    module.MODEL_DIR = model_dir
+    module.MODEL_PATH = model_path
 
     return module
 

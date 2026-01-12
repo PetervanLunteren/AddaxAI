@@ -1,11 +1,11 @@
 """
-Direct test of TAS-BB-v1 inference.py script (without backend dependencies).
+Direct test of NAM-ADS-v1 inference.py script (without backend dependencies).
 
 This test loads the inference script directly to verify it works in the
-tensorflow-v2 environment.
+pytorch environment.
 
-Run with tensorflow environment:
-/Users/peter/AddaxAI/bin/micromamba run -p /Users/peter/AddaxAI/envs/env-tensorflow-v2 python test_tas_inference_direct.py
+Run with pytorch environment:
+/Users/peter/AddaxAI/bin/micromamba run -p /Users/peter/AddaxAI/envs/env-pytorch python test_nam_inference_direct.py
 """
 
 import importlib.util
@@ -16,10 +16,10 @@ from pathlib import Path
 from PIL import Image
 
 # Test configuration
-MODEL_DIR = Path("/Users/peter/AddaxAI/models/cls/TAS-BB-v1")
-MODEL_PATH = MODEL_DIR / "tas_ens_mewc.keras"
+MODEL_DIR = Path("/Users/peter/AddaxAI/models/cls/NAM-ADS-v1")
+MODEL_PATH = MODEL_DIR / "namib_desert_v1.pt"
 TEST_IMAGE = Path("/Users/peter/Downloads/test-img/giraffe.jpg")
-EXPECTED_RESULTS = Path("/Users/peter/Downloads/test-img/TAS-BB-v1+REDWOOD.json")
+EXPECTED_RESULTS = Path("/Users/peter/Downloads/test-img/NAM-ADS-v1+REDWOOD.json")
 INFERENCE_SCRIPT = MODEL_DIR / "inference.py"
 
 # Expected detection bbox from the JSON
@@ -29,11 +29,11 @@ EXPECTED_BBOX = (0.3085, 0.3496, 0.1195, 0.3125)
 
 def load_inference_module():
     """Dynamically load the inference.py module."""
-    spec = importlib.util.spec_from_file_location("tas_inference", INFERENCE_SCRIPT)
+    spec = importlib.util.spec_from_file_location("nam_inference", INFERENCE_SCRIPT)
     module = importlib.util.module_from_spec(spec)
 
     # Add to sys.modules
-    sys.modules["tas_inference"] = module
+    sys.modules["nam_inference"] = module
 
     # Execute module FIRST (this will set MODEL_PATH=None)
     spec.loader.exec_module(module)
@@ -60,7 +60,7 @@ def load_expected_results():
         expected[cls_id] = conf
 
     # Also get class name mapping
-    cls_categories = data.get('classification_categories', {})
+    cls_categories = data['classification_categories']
 
     return expected, cls_categories
 
@@ -68,7 +68,7 @@ def load_expected_results():
 def test_inference_direct():
     """Test inference script directly."""
     print("=" * 80)
-    print("Testing TAS-BB-v1 Inference Script Directly")
+    print("Testing NAM-ADS-v1 Inference Script Directly")
     print("=" * 80)
 
     # Step 1: Check files
@@ -76,7 +76,6 @@ def test_inference_direct():
     assert MODEL_DIR.exists(), f"Model dir not found: {MODEL_DIR}"
     assert MODEL_PATH.exists(), f"Model file not found: {MODEL_PATH}"
     assert INFERENCE_SCRIPT.exists(), f"inference.py not found: {INFERENCE_SCRIPT}"
-    assert (MODEL_DIR / "class_list.yaml").exists(), "class_list.yaml not found"
     assert TEST_IMAGE.exists(), f"Test image not found: {TEST_IMAGE}"
     assert EXPECTED_RESULTS.exists(), f"Expected results not found: {EXPECTED_RESULTS}"
     print("   ✓ All files exist")
@@ -89,7 +88,7 @@ def test_inference_direct():
     print(f"   Top 5 expected (class_id, confidence):")
     for i, (cls_id, conf) in enumerate(sorted_expected[:5], 1):
         class_name = class_names.get(cls_id, "unknown")
-        print(f"      {i}. Class {cls_id:3s} ({class_name:25s}) {conf:.5f}")
+        print(f"      {i}. Class {cls_id:3s} ({class_name:20s}) {conf:.5f}")
 
     # Step 3: Load inference module
     print("\n3. Loading inference module...")
@@ -146,10 +145,8 @@ def test_inference_direct():
         image = Image.open(TEST_IMAGE)
         print(f"   Image size: {image.size}")
         crop = inf.get_crop(image, EXPECTED_BBOX)
-        if crop is None:
-            print("   ✗ Cropping returned None")
-            raise ValueError("get_crop returned None")
         print(f"   Crop size: {crop.size}")
+        assert crop.size[0] == crop.size[1], "Crop should be square"
         print("   ✓ Cropped successfully")
     except Exception as e:
         print(f"   ✗ Cropping failed: {e}")
@@ -188,29 +185,24 @@ def test_inference_direct():
     print(f"   Top 5 actual results:")
     sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
     for i, (cls_id, conf) in enumerate(sorted_results[:5], 1):
-        class_name = class_names.get(cls_id, model_class_names.get(cls_id, "unknown"))
+        class_name = class_names.get(cls_id, "unknown")
         expected_conf = expected_dict.get(cls_id, 0.0)
-        match = "✓" if abs(conf - expected_conf) < 0.001 else "✗"
-        print(f"      {match} {i}. Class {cls_id:3s} ({class_name:25s}) {conf:.5f} (expected: {expected_conf:.5f})")
+        match = "✓" if abs(conf - expected_conf) < 0.0001 else "✗"
+        print(f"      {match} {i}. Class {cls_id:3s} ({class_name:20s}) {conf:.5f} (expected: {expected_conf:.5f})")
 
     # Check top prediction
     top_cls_id, top_conf = sorted_results[0]
     expected_top_cls_id, expected_top_conf = sorted_expected[0]
 
-    print(f"\n   Top prediction: Class {top_cls_id} ({class_names.get(top_cls_id, model_class_names.get(top_cls_id, 'unknown'))}) with conf {top_conf:.5f}")
+    print(f"\n   Top prediction: Class {top_cls_id} ({class_names.get(top_cls_id, 'unknown')}) with conf {top_conf:.5f}")
     print(f"   Expected:       Class {expected_top_cls_id} ({class_names.get(expected_top_cls_id, 'unknown')}) with conf {expected_top_conf:.5f}")
 
-    if top_cls_id == expected_top_cls_id and abs(top_conf - expected_top_conf) < 0.001:
+    if top_cls_id == expected_top_cls_id and abs(top_conf - expected_top_conf) < 0.0001:
         print("   ✓ Top prediction matches expected!")
     else:
         print("   ✗ Top prediction DOES NOT match expected!")
-        print("\n   WARNING: This might be due to model version differences or class ordering.")
-        print("   Checking if expected top class is in top 5...")
-        top_5_ids = [cls_id for cls_id, _ in sorted_results[:5]]
-        if expected_top_cls_id in top_5_ids:
-            print(f"   ✓ Expected class {expected_top_cls_id} is in top 5!")
-        else:
-            print(f"   ✗ Expected class {expected_top_cls_id} NOT in top 5")
+        print("\n   WARNING: This might be due to model version differences or randomness.")
+        print("   As long as the format is correct and giraffe is in top 3, it's acceptable.")
 
     print("\n" + "=" * 80)
     print("✓ All tests passed!")

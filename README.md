@@ -105,7 +105,7 @@ deactivate
 cd ../frontend
 
 # Use Node.js 20
-nvm use 20  # Or: nvm install 20 && nvm use 20
+nvm install 20 && nvm use 20
 
 # Install dependencies
 npm install

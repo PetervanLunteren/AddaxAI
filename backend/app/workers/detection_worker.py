@@ -295,15 +295,28 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         0.0
                     )
 
-                    # Run MegaDetector on images
+                    # Create synchronous progress wrapper for executor
                     loop = asyncio.get_event_loop()
+                    def sync_image_detection_progress(message: str, phase_progress: float) -> None:
+                        """Sync wrapper that schedules async callback"""
+                        asyncio.run_coroutine_threadsafe(
+                            deployment_progress_callback(
+                                f"Image detection: {message}",
+                                0.0,
+                                "image_detection",
+                                phase_progress
+                            ),
+                            loop
+                        )
+
+                    # Run MegaDetector on images
                     image_json_path = await loop.run_in_executor(
                         None,
                         lambda: detection_model.detect_to_json(
                             image_paths=image_files,
                             deployment_folder=folder_path,
                             confidence_threshold=0.1,
-                            progress_callback=None,  # Sync callback not supported here
+                            progress_callback=sync_image_detection_progress,
                         ),
                     )
 
