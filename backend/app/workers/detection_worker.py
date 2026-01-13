@@ -250,6 +250,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             # PHASE 2: Video Classification (if videos + classifier)
             # ============================================================
+            logger.debug(f"Phase 2 check: video_files={len(video_files) if video_files else 0}, "
+                        f"classification_model={classification_model is not None}, "
+                        f"video_json_exists={video_json_path.exists()}")
+
             if video_files and classification_model and video_json_path.exists():
                 logger.info("Phase 2: Running video classification")
 
@@ -912,36 +916,22 @@ async def run_classification_on_json(
                             height=detection["bbox"][3],
                         )
 
-                        # Classify using the custom classifier's classify method
-                        # Note: We need to pass the PIL Image directly, not a file path
-                        # So we'll crop the image ourselves and pass to the model
+                        # For videos: save full frame to temp file (worker needs a file path and will crop it)
+                        # For images: pass original file path directly (worker will load and crop it)
+                        if is_video:
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                                tmp_path = Path(tmp.name)
+                                frame_image.save(tmp_path)  # Save FULL FRAME, worker will crop
 
-                        # Get crop function from the model's inference module
-                        # For now, do basic cropping
-                        img_width, img_height = frame_image.size
-                        x1 = int(bbox.x * img_width)
-                        y1 = int(bbox.y * img_height)
-                        x2 = int((bbox.x + bbox.width) * img_width)
-                        y2 = int((bbox.y + bbox.height) * img_height)
-
-                        # Clamp to image boundaries
-                        x1 = max(0, min(x1, img_width - 1))
-                        y1 = max(0, min(y1, img_height - 1))
-                        x2 = max(0, min(x2, img_width - 1))
-                        y2 = max(0, min(y2, img_height - 1))
-
-                        crop = frame_image.crop((x1, y1, x2, y2))
-
-                        # Save crop temporarily and classify
-                        import tempfile
-                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                            tmp_path = Path(tmp.name)
-                            crop.save(tmp_path)
-
-                        try:
-                            result = cls_model.classify(tmp_path, bbox)
-                        finally:
-                            tmp_path.unlink(missing_ok=True)
+                            try:
+                                result = cls_model.classify(tmp_path, bbox)
+                            finally:
+                                tmp_path.unlink(missing_ok=True)
+                        else:
+                            # For images: pass original file path (no temp file needed)
+                            # Worker will load the full image and crop it using the bbox
+                            result = cls_model.classify(file_path, bbox)
 
                         # Check if classification succeeded
                         if result is None:

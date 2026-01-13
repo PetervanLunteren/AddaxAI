@@ -214,14 +214,49 @@ def main():
                     # Get crop
                     crop = model_inference.get_crop(image, bbox)
 
+                    # Check if crop is valid
+                    if crop is None:
+                        print(
+                            f"[Worker] Invalid crop for bbox {bbox} on image {image_path.name} "
+                            f"(too small or out of bounds)",
+                            file=sys.stderr
+                        )
+                        send_response(
+                            {
+                                "success": False,
+                                "error": f"Invalid crop for bbox {bbox} (too small or out of bounds)",
+                                "error_type": "CropError",
+                            }
+                        )
+                        continue
+
                     # Run classification
                     results = model_inference.get_classification(crop)
+
+                    # Check if results are empty
+                    if not results:
+                        print(
+                            f"[Worker] Empty classification results for bbox {bbox} on image {image_path.name}",
+                            file=sys.stderr
+                        )
+                        send_response(
+                            {
+                                "success": False,
+                                "error": f"Classification returned empty results for bbox {bbox}",
+                                "error_type": "EmptyClassification",
+                            }
+                        )
+                        continue
+
+                    # Sort by confidence descending (so parent always gets highest confidence first)
+                    # This way model developers don't need to duplicate sorting logic in each inference.py
+                    sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
 
                     # Send results
                     send_response(
                         {
                             "success": True,
-                            "classifications": results,
+                            "classifications": sorted_results,
                         }
                     )
 

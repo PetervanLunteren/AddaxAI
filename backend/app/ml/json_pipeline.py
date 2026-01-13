@@ -263,6 +263,7 @@ class JSONBasedMLPipeline:
             Tuple of (extended_json_path, classified_count)
         """
         # Load detection JSON
+        logger.info(f"Loading detection JSON from: {detection_json_path}")
         with open(detection_json_path) as f:
             md_results = json.load(f)
 
@@ -497,9 +498,15 @@ class JSONBasedMLPipeline:
             if file_id:
                 file_record = db.query(File).filter(File.id == file_id).first()
 
-            # If not found by file_id, check by file_path (handles re-analysis case)
+            # If not found by file_id, check by file_path AND deployment_id
+            # This ensures each project gets its own file records even for the same physical file
             if not file_record:
-                file_record = db.query(File).filter(File.file_path == str(absolute_path)).first()
+                file_record = (
+                    db.query(File)
+                    .filter(File.file_path == str(absolute_path))
+                    .filter(File.deployment_id == deployment_id)
+                    .first()
+                )
 
             # Create new file record if still not found
             if not file_record:
@@ -677,9 +684,15 @@ def load_json_to_database(
             if file_id:
                 file_record = db.query(File).filter(File.id == file_id).first()
 
-            # If not found by file_id, check by file_path (handles re-analysis case)
+            # If not found by file_id, check by file_path AND deployment_id
+            # This ensures each project gets its own file records even for the same physical file
             if not file_record:
-                file_record = db.query(File).filter(File.file_path == str(absolute_path)).first()
+                file_record = (
+                    db.query(File)
+                    .filter(File.file_path == str(absolute_path))
+                    .filter(File.deployment_id == deployment_id)
+                    .first()
+                )
 
             # Create new file record if still not found
             if not file_record:

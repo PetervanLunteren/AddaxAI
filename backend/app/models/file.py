@@ -46,8 +46,8 @@ class File(Base):
 
     # File metadata
     file_path: Mapped[str] = mapped_column(
-        Text, nullable=False, unique=True
-    )  # Relative to project media dir
+        Text, nullable=False
+    )  # Absolute path - same file can be analyzed by multiple projects
     file_type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'image' or 'video'
     file_format: Mapped[str | None] = mapped_column(
         String(10), nullable=True

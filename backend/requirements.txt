@@ -18,6 +18,9 @@ pydantic-settings==2.7.0
 # Image Processing
 Pillow==11.0.0
 
+# Video Processing
+opencv-python-headless==4.10.0.84  # For video frame extraction
+
 # Video Metadata
 PyExifTool==0.5.6
 
