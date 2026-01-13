@@ -972,7 +972,15 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
     """
     Merge multiple JSON files (video and image results) into single file.
 
-    Matches streamlit-AddaxAI merge logic exactly.
+    IMPORTANT: This function properly handles SpeciesNet's dynamic classification IDs
+    by creating a unified classification_categories mapping and renumbering all
+    classification IDs to be consistent across video and image detections.
+
+    Why this is necessary:
+    - SpeciesNet assigns classification IDs dynamically based on the order species appear
+    - Video and image JSONs may have different ID mappings for the same species
+    - Example: "zebra" might be ID "1" in video JSON but ID "2" in image JSON
+    - This function unifies the mappings so all IDs are consistent
 
     Args:
         json_files: List of JSON file paths to merge
@@ -992,6 +1000,10 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             "info": {},
         }
 
+        # Track unified classification mapping: species_name -> unified_id
+        unified_class_mapping = {}
+        next_class_id = 1
+
         for json_file in json_files:
             if not json_file.exists():
                 logger.warning(f"JSON file not found: {json_file}")
@@ -1000,18 +1012,64 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             with open(json_file, "r") as f:
                 data = json.load(f)
 
-            # Merge images arrays
+            # Get classification categories from this file
+            file_class_categories = data.get("classification_categories", {})
+
+            # Build mapping from old ID to new ID for this file
+            id_remapping = {}
+
+            # For each species in this file's classification_categories
+            for old_id, species_name in file_class_categories.items():
+                # Check if we've seen this species before
+                if species_name not in unified_class_mapping:
+                    # New species - assign next available ID
+                    unified_class_mapping[species_name] = str(next_class_id)
+                    next_class_id += 1
+
+                # Map old ID to unified ID
+                id_remapping[old_id] = unified_class_mapping[species_name]
+
+            # Renumber classification IDs in all detections from this file
+            for img in data.get("images", []):
+                if "detections" in img:
+                    for det in img["detections"]:
+                        if "classifications" in det and det["classifications"]:
+                            # Renumber each classification
+                            renumbered_classifications = []
+                            for class_id, confidence in det["classifications"]:
+                                old_id_str = str(class_id)
+                                if old_id_str in id_remapping:
+                                    new_id = id_remapping[old_id_str]
+                                    renumbered_classifications.append([new_id, confidence])
+                                else:
+                                    # Unknown class ID - keep original (shouldn't happen)
+                                    logger.warning(
+                                        f"Unknown classification ID '{class_id}' in {json_file.name}, "
+                                        f"keeping original"
+                                    )
+                                    renumbered_classifications.append([class_id, confidence])
+
+                            det["classifications"] = renumbered_classifications
+
+            # Merge images arrays (with renumbered IDs)
             merged_data["images"].extend(data.get("images", []))
 
-            # Use categories from first file
+            # Use detection_categories and info from first file
             if not merged_data["detection_categories"]:
                 merged_data["detection_categories"] = data.get("detection_categories", {})
-            if not merged_data["classification_categories"]:
-                merged_data["classification_categories"] = data.get(
-                    "classification_categories", {}
-                )
             if not merged_data["info"]:
                 merged_data["info"] = data.get("info", {})
+
+        # Build unified classification_categories (inverse of unified_class_mapping)
+        merged_data["classification_categories"] = {
+            class_id: species_name
+            for species_name, class_id in unified_class_mapping.items()
+        }
+
+        logger.info(
+            f"Unified classification mapping: {len(merged_data['classification_categories'])} species "
+            f"across {len(json_files)} JSON files"
+        )
 
         # Add metadata
         merged_data["addaxai_metadata"] = {
