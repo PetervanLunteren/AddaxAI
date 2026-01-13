@@ -15,6 +15,8 @@ Created by Claude Code on 2026-01-05
 from __future__ import annotations
 
 import json
+import os
+import platform
 import subprocess
 from pathlib import Path
 from typing import Callable
@@ -123,6 +125,15 @@ class CustomClassificationModel(ClassificationModel):
 
         logger.debug(f"Worker command: {' '.join(cmd)}")
 
+        # Prepare environment variables with MPS fallback for macOS
+        env = os.environ.copy()
+        if platform.system() == 'Darwin':  # macOS
+            # Enable MPS CPU fallback for PyTorch operations not yet supported on MPS
+            # This allows models using unsupported ops (like BICUBIC resize with antialiasing)
+            # to fall back to CPU instead of crashing
+            env['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+            logger.debug("Set PYTORCH_ENABLE_MPS_FALLBACK=1 for macOS compatibility")
+
         # Start worker process
         try:
             self.worker_process = subprocess.Popen(
@@ -132,6 +143,7 @@ class CustomClassificationModel(ClassificationModel):
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,  # Line buffered
+                env=env,  # Pass environment with MPS fallback
             )
         except Exception as e:
             raise RuntimeError(f"Failed to start worker process: {e}") from e
