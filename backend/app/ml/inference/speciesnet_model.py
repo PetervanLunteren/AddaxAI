@@ -127,15 +127,20 @@ class SpeciesNetClassificationModel(ClassificationModel):
             "--classification_model", str(self.model_dir),  # local model directory
             "--loader_workers", "1",  # Reduce workers to avoid multiprocessing issues
             "--classifier_batch_size", "1",  # Process one image at a time for granular progress
-            "--country", country_code,
         ]
 
-        # Add state for USA
-        if country_code.upper() == "USA" and state_code:
-            command.extend(["--admin1_region", state_code])
-            logger.info(f"SpeciesNet geofencing: USA/{state_code}")
+        # Add country code if specified (skip if None, empty, or "NONE")
+        if country_code and country_code.upper() not in ("NONE", ""):
+            command.extend(["--country", country_code])
+
+            # Add state for USA if specified (skip if None, empty, or "NONE")
+            if country_code.upper() == "USA" and state_code and state_code.upper() not in ("NONE", ""):
+                command.extend(["--admin1_region", state_code])
+                logger.info(f"SpeciesNet geofencing: USA/{state_code}")
+            else:
+                logger.info(f"SpeciesNet geofencing: {country_code}")
         else:
-            logger.info(f"SpeciesNet geofencing: {country_code}")
+            logger.info(f"SpeciesNet geofencing: DISABLED (no country specified)")
 
         # Log command for debugging
         logger.info(f"Running SpeciesNet command: {' '.join(command)}")
