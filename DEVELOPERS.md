@@ -43,3 +43,47 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 **Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days).
 
+## Creating a custom classification model
+
+To add a new classification model to AddaxAI, create an `inference.py` file in your model's directory that implements the `ModelInference` class.
+
+**Template:** See `/backend/templates/inference_template.py` for a complete template with examples.
+
+**Required interface:**
+```python
+class ModelInference:
+    def __init__(self, model_dir: Path, model_path: Path):
+        # Store paths and initialize
+        pass
+
+    def check_gpu(self) -> bool:
+        # Return True if GPU available
+        pass
+
+    def load_model(self) -> None:
+        # Load model once at startup
+        pass
+
+    def get_crop(self, image: Image.Image, bbox: tuple[float, float, float, float]) -> Image.Image:
+        # Crop and preprocess image for your model
+        pass
+
+    def get_classification(self, crop: Image.Image) -> list[tuple[str, float]]:
+        # Return [(class_name, confidence), ...] for ALL classes
+        pass
+
+    def get_class_names(self) -> dict[str, str]:
+        # Return {"1": "species1", "2": "species2", ...} (1-indexed)
+        pass
+```
+
+**Benefits of class-based approach:**
+- No global variables or `global` keyword needed
+- Clear ownership (`self.model`)
+- Framework-agnostic (works with PyTorch, Keras, JAX, TensorFlow, etc.)
+- IDE autocomplete and type checking work properly
+
+**Examples:**
+- NAM-ADS-v1: YOLOv8 (PyTorch) - `/Users/peter/AddaxAI/models/cls/NAM-ADS-v1/inference.py`
+- TAS-BB-v1: MEWC-Keras (Keras/JAX) - `/Users/peter/AddaxAI/models/cls/TAS-BB-v1/inference.py`
+

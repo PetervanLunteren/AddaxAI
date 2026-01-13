@@ -4,14 +4,18 @@ Persistent classification worker for subprocess execution.
 This worker process runs in the model's designated environment and maintains
 a loaded model in memory to process multiple classification requests efficiently.
 
+The worker loads the model's inference.py file, instantiates the ModelInference
+class, and calls its methods to perform classifications.
+
 Communication via stdin/stdout using JSON:
 - Input: {"command": "classify", "image_path": "...", "bbox": [x,y,w,h]}
 - Output: {"success": true, "classifications": [["species", conf], ...]}
 - Input: {"command": "get_class_names"}
-- Output: {"success": true, "class_names": {"0": "species1", ...}}
+- Output: {"success": true, "class_names": {"1": "species1", ...}}
 - Shutdown: {"command": "stop"} → {"status": "stopped"}
 
 Created by Claude Code on 2026-01-05
+Updated on 2026-01-13 - Migrated to class-based interface
 """
 
 from __future__ import annotations
@@ -25,19 +29,20 @@ from pathlib import Path
 from PIL import Image
 
 
-def load_inference_module(model_dir: Path, model_path: Path):
+def load_inference_class(model_dir: Path, model_path: Path):
     """
-    Dynamically load the inference.py module from model directory.
+    Dynamically load and instantiate ModelInference class from model directory.
 
     Args:
         model_dir: Path to model directory
         model_path: Path to main model file
 
     Returns:
-        Loaded inference module
+        Instantiated ModelInference object
 
     Raises:
         ImportError: If module loading fails
+        AttributeError: If ModelInference class not found
     """
     inference_script = model_dir / "inference.py"
 
@@ -61,41 +66,44 @@ def load_inference_module(model_dir: Path, model_path: Path):
     # Add to sys.modules so imports within inference.py work
     sys.modules[module_name] = module
 
-    # Execute module (this will initialize MODEL_DIR/MODEL_PATH to None)
+    # Execute module
     spec.loader.exec_module(module)
 
-    # Inject required variables AFTER execution
-    # (must happen after exec_module which resets the module state)
-    module.MODEL_DIR = model_dir
-    module.MODEL_PATH = model_path
+    # Instantiate ModelInference class
+    if not hasattr(module, 'ModelInference'):
+        raise AttributeError(
+            f"inference.py must define a 'ModelInference' class.\n"
+            f"See /backend/templates/inference_template.py for reference."
+        )
 
-    return module
+    model_inference = module.ModelInference(model_dir, model_path)
+    return model_inference
 
 
-def validate_interface(module):
+def validate_interface(model_inference):
     """
-    Validate that module provides required functions.
+    Validate that ModelInference instance provides required methods.
 
     Args:
-        module: Loaded inference module
+        model_inference: ModelInference instance
 
     Raises:
-        ValueError: If required functions are missing
+        ValueError: If required methods are missing
     """
-    required_functions = ["check_gpu", "load_model", "get_crop", "get_classification", "get_class_names"]
+    required_methods = ["check_gpu", "load_model", "get_crop", "get_classification", "get_class_names"]
 
-    missing = [f for f in required_functions if not hasattr(module, f)]
+    missing = [m for m in required_methods if not hasattr(model_inference, m)]
 
     if missing:
         raise ValueError(
-            f"Custom inference script missing required functions: {', '.join(missing)}\n"
-            f"Required: {', '.join(required_functions)}"
+            f"ModelInference class missing required methods: {', '.join(missing)}\n"
+            f"Required: {', '.join(required_methods)}"
         )
 
-    # Validate functions are callable
-    for func_name in required_functions:
-        if not callable(getattr(module, func_name)):
-            raise ValueError(f"Required attribute '{func_name}' is not callable")
+    # Validate methods are callable
+    for method_name in required_methods:
+        if not callable(getattr(model_inference, method_name)):
+            raise ValueError(f"Required attribute '{method_name}' is not callable")
 
 
 def send_response(data: dict) -> None:
@@ -123,17 +131,17 @@ def main():
     model_path = Path(sys.argv[2])
 
     try:
-        # Load inference module
-        module = load_inference_module(model_dir, model_path)
+        # Load and instantiate ModelInference class
+        model_inference = load_inference_class(model_dir, model_path)
 
         # Validate interface
-        validate_interface(module)
+        validate_interface(model_inference)
 
         # Check GPU
-        gpu_available = module.check_gpu()
+        gpu_available = model_inference.check_gpu()
 
         # Load model (ONCE)
-        module.load_model()
+        model_inference.load_model()
 
         # Send ready signal FIRST (before any stderr logging to avoid deadlock)
         send_response({"status": "ready", "gpu_available": gpu_available})
@@ -204,10 +212,10 @@ def main():
                     image = Image.open(image_path)
 
                     # Get crop
-                    crop = module.get_crop(image, bbox)
+                    crop = model_inference.get_crop(image, bbox)
 
                     # Run classification
-                    results = module.get_classification(crop)
+                    results = model_inference.get_classification(crop)
 
                     # Send results
                     send_response(
@@ -219,7 +227,7 @@ def main():
 
                 elif command == "get_class_names":
                     # Get class names from model
-                    class_names = module.get_class_names()
+                    class_names = model_inference.get_class_names()
 
                     # Send results
                     send_response(
