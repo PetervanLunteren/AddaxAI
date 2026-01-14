@@ -64,6 +64,30 @@ def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQ
     return db_entry
 
 
+def update_queue_counts(
+    db: Session,
+    entry_id: str,
+    video_count: int,
+    image_count: int
+) -> DeploymentQueue | None:
+    """
+    Update file counts for a queue entry.
+
+    Used after folder scanning to set video_count and image_count.
+    Returns None if entry doesn't exist.
+    """
+    db_entry = get_queue_entry(db, entry_id)
+    if db_entry is None:
+        return None
+
+    db_entry.video_count = video_count
+    db_entry.image_count = image_count
+
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+
 def update_queue_status(
     db: Session,
     entry_id: str,

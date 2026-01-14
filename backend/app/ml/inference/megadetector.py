@@ -162,11 +162,17 @@ class MegaDetectorV1000(DetectionModel):
                         # Print TQDM progress directly to console for debugging
                         print(f"[MEGADETECTOR] {line}", flush=True)
                         logger.info(f"MegaDetector: {line}")
-                        # Parse tqdm progress if callback provided
+                        # Parse tqdm progress and metrics if callback provided
                         if progress_callback and ("Processing image" in line or "%" in line):
                             progress = self._parse_progress_line(line)
+                            metrics = self._parse_tqdm_metrics(line)
                             if progress is not None:
-                                progress_callback(line[:80], 0.1 + progress * 0.8)
+                                # Try to send metrics if callback accepts 3 params, else fallback to 2
+                                try:
+                                    progress_callback(line if metrics else line[:80], 0.1 + progress * 0.8, metrics)
+                                except TypeError:
+                                    # Callback only accepts 2 params (backward compatibility)
+                                    progress_callback(line[:80], 0.1 + progress * 0.8)
 
                 process.stdout.close()
                 process.wait()
@@ -247,6 +253,58 @@ class MegaDetectorV1000(DetectionModel):
                     percent = float(num_str)
                     return percent / 100.0
         except (ValueError, IndexError):
+            pass
+
+        return None
+
+    def _parse_tqdm_metrics(self, line: str) -> dict | None:
+        """
+        Parse full tqdm metrics from output line.
+
+        Tqdm format examples:
+        - "Processing: 45/100 [=====>...] 45% 2.3it/s 00:24<00:30"
+        - "100%|██████████| 120/120 [00:52<00:00,  2.29it/s]"
+
+        Args:
+            line: Raw tqdm output line
+
+        Returns:
+            Dict with metrics: {current, total, elapsed, remaining, rate, unit, raw_line}
+            or None if couldn't parse
+        """
+        import re
+
+        try:
+            metrics = {"raw_line": line}
+
+            # Extract current/total: "45/100" or "120/120"
+            progress_match = re.search(r"(\d+)/(\d+)", line)
+            if progress_match:
+                metrics["current"] = int(progress_match.group(1))
+                metrics["total"] = int(progress_match.group(2))
+
+            # Extract rate and unit: "2.3it/s" or "1.5images/s"
+            rate_match = re.search(r"(\d+\.?\d*)([\w]+)/s", line)
+            if rate_match:
+                metrics["rate"] = float(rate_match.group(1))
+                metrics["unit"] = rate_match.group(2)  # "it", "images", "video", etc.
+
+            # Extract elapsed time: "00:52" or "01:23:45"
+            # Look for pattern before "<" (elapsed comes first in tqdm)
+            time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)
+            if time_match:
+                metrics["elapsed"] = time_match.group(1)
+
+            # Extract remaining time: after "<"
+            remaining_match = re.search(r"<(\d{2}:\d{2}(?::\d{2})?)", line)
+            if remaining_match:
+                metrics["remaining"] = remaining_match.group(1)
+
+            # Only return if we got meaningful data
+            if "current" in metrics and "total" in metrics:
+                return metrics
+
+        except (ValueError, IndexError, AttributeError):
             pass
 
         return None
@@ -408,11 +466,17 @@ class MegaDetectorV1000(DetectionModel):
                         # Print TQDM progress directly to console for debugging
                         print(f"[MEGADETECTOR] {line}", flush=True)
                         logger.info(f"MegaDetector: {line}")
-                        # Parse tqdm progress if callback provided
+                        # Parse tqdm progress and metrics if callback provided
                         if progress_callback and ("Processing image" in line or "%" in line):
                             progress = self._parse_progress_line(line)
+                            metrics = self._parse_tqdm_metrics(line)
                             if progress is not None:
-                                progress_callback(line[:80], 0.1 + progress * 0.8)
+                                # Try to send metrics if callback accepts 3 params, else fallback to 2
+                                try:
+                                    progress_callback(line if metrics else line[:80], 0.1 + progress * 0.8, metrics)
+                                except TypeError:
+                                    # Callback only accepts 2 params (backward compatibility)
+                                    progress_callback(line[:80], 0.1 + progress * 0.8)
 
                 process.stdout.close()
                 process.wait()

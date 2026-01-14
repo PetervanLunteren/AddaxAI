@@ -144,10 +144,22 @@ class VideoDetectionModel:
 
                     # Only update if progress changed significantly
                     if phase_progress - last_progress >= 0.01:
-                        await progress_callback(
-                            f"Processing video {current}/{total}",
-                            phase_progress,
-                        )
+                        # Parse full tqdm metrics from line
+                        metrics = self._parse_tqdm_metrics(line)
+
+                        # Send raw line and metrics
+                        try:
+                            await progress_callback(
+                                line if metrics else f"Processing video {current}/{total}",
+                                phase_progress,
+                                metrics
+                            )
+                        except TypeError:
+                            # Fallback for callbacks that don't accept metrics
+                            await progress_callback(
+                                f"Processing video {current}/{total}",
+                                phase_progress,
+                            )
                         last_progress = phase_progress
 
             process.stdout.close()
@@ -175,3 +187,42 @@ class VideoDetectionModel:
         except Exception as e:
             logger.error(f"Video detection error: {e}", exc_info=True)
             raise RuntimeError(f"Video detection failed: {e}") from e
+
+    def _parse_tqdm_metrics(self, line: str) -> dict | None:
+        """
+        Parse full tqdm metrics from output line.
+
+        Similar to MegaDetector._parse_tqdm_metrics.
+        """
+        try:
+            metrics = {"raw_line": line}
+
+            # Extract current/total
+            progress_match = re.search(r"(\d+)/(\d+)", line)
+            if progress_match:
+                metrics["current"] = int(progress_match.group(1))
+                metrics["total"] = int(progress_match.group(2))
+
+            # Extract rate and unit
+            rate_match = re.search(r"(\d+\.?\d*)([\w]+)/s", line)
+            if rate_match:
+                metrics["rate"] = float(rate_match.group(1))
+                metrics["unit"] = rate_match.group(2)
+
+            # Extract elapsed time
+            time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)
+            if time_match:
+                metrics["elapsed"] = time_match.group(1)
+
+            # Extract remaining time
+            remaining_match = re.search(r"<(\d{2}:\d{2}(?::\d{2})?)", line)
+            if remaining_match:
+                metrics["remaining"] = remaining_match.group(1)
+
+            if "current" in metrics and "total" in metrics:
+                return metrics
+
+        except (ValueError, IndexError, AttributeError):
+            pass
+
+        return None

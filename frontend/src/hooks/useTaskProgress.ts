@@ -5,6 +5,16 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+export interface TqdmMetrics {
+  raw_line: string;
+  current?: number;
+  total?: number;
+  elapsed?: string;
+  remaining?: string;
+  rate?: number;
+  unit?: string;
+}
+
 export interface ProgressMessage {
   type: "progress" | "complete" | "error";
   job_id: string;
@@ -13,7 +23,23 @@ export interface ProgressMessage {
   phase?: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "finalize";
   phase_progress?: number; // 0.0-1.0 (progress within current phase)
   success?: boolean;
-  data?: Record<string, unknown>;
+  data?: {
+    deployment_index?: number;
+    total_deployments?: number;
+    video_count?: number;
+    image_count?: number;
+    has_classifier?: boolean;
+    metrics?: TqdmMetrics;
+    [key: string]: unknown;
+  };
+}
+
+export interface DeploymentContext {
+  deploymentIndex: number;
+  totalDeployments: number;
+  videoCount: number;
+  imageCount: number;
+  hasClassifier: boolean;
 }
 
 interface UseTaskProgressOptions {
@@ -32,6 +58,8 @@ export function useTaskProgress({
   const [phase, setPhase] = useState<"init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "finalize" | null>(null);
   const [phaseProgress, setPhaseProgress] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
+  const [deploymentContext, setDeploymentContext] = useState<DeploymentContext | null>(null);
+  const [metrics, setMetrics] = useState<TqdmMetrics | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{
@@ -39,6 +67,7 @@ export function useTaskProgress({
     progress: number;
     phase: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "finalize" | null;
     phaseProgress: number;
+    metrics: TqdmMetrics | null;
   } | null>(null);
 
   useEffect(() => {
@@ -74,12 +103,24 @@ export function useTaskProgress({
         });
 
         if (data.type === "progress") {
+          // Extract deployment context from first progress message with data
+          if (data.data?.deployment_index !== undefined && !deploymentContext) {
+            setDeploymentContext({
+              deploymentIndex: data.data.deployment_index,
+              totalDeployments: data.data.total_deployments ?? 1,
+              videoCount: data.data.video_count ?? 0,
+              imageCount: data.data.image_count ?? 0,
+              hasClassifier: data.data.has_classifier ?? false,
+            });
+          }
+
           // Store the pending update
           pendingUpdateRef.current = {
             message: data.message,
             progress: data.progress ?? 0,
             phase: data.phase ?? null,
             phaseProgress: data.phase_progress ?? 0,
+            metrics: data.data?.metrics ?? null,
           };
 
           // Clear any existing timeout
@@ -91,12 +132,13 @@ export function useTaskProgress({
           // This ensures visual updates are visible to the user
           updateTimeoutRef.current = setTimeout(() => {
             if (pendingUpdateRef.current) {
-              const { message: msg, progress: prog, phase: ph, phaseProgress: phprog } = pendingUpdateRef.current;
+              const { message: msg, progress: prog, phase: ph, phaseProgress: phprog, metrics: met } = pendingUpdateRef.current;
               flushSync(() => {
                 setMessage(msg);
                 setProgress(prog);
                 setPhase(ph);
                 setPhaseProgress(phprog);
+                setMetrics(met);
               });
               pendingUpdateRef.current = null;
             }
@@ -164,5 +206,7 @@ export function useTaskProgress({
     phase,
     phaseProgress,
     isConnected,
+    deploymentContext,
+    metrics,
   };
 }

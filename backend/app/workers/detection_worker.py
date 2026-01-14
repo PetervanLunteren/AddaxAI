@@ -157,19 +157,33 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             logger.info(f"Batch job {job_id}: Processing entry {idx}/{total_entries} - {folder_path}")
 
-            # Send initial progress
-            await ws_manager.send_progress(
-                job_id,
-                f"[{idx}/{total_entries}] Scanning {folder_path.name}...",
-                progress_start
-            )
-
             # Scan folder for images and videos (separate)
             video_files = scan_folder_for_videos(folder_path)
             image_files = scan_folder_for_images(folder_path)
 
             logger.info(
                 f"Found {len(video_files)} videos and {len(image_files)} images in {folder_path}"
+            )
+
+            # Update queue entry with file counts
+            queue_crud.update_queue_counts(
+                db, entry_id, video_count=len(video_files), image_count=len(image_files)
+            )
+
+            # Send initial progress with deployment context
+            await ws_manager.send_progress(
+                job_id,
+                "",  # Empty message, deployment header will show this info
+                progress_start,
+                phase="init",
+                phase_progress=0.0,
+                data={
+                    "deployment_index": idx,
+                    "total_deployments": total_entries,
+                    "video_count": len(video_files),
+                    "image_count": len(image_files),
+                    "has_classifier": classification_model is not None,
+                },
             )
 
             if not video_files and not image_files:
@@ -199,16 +213,28 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             # Define progress callback for this specific deployment
             async def deployment_progress_callback(
-                message: str, progress: float, phase: str, phase_progress: float
+                message: str, progress: float, phase: str, phase_progress: float, metrics: dict | None = None
             ) -> None:
-                """Forward progress updates with deployment number prefix"""
+                """Forward progress updates (no prefix, header shows deployment context)"""
                 overall_progress = progress_start + (progress * progress_range)
+                data = {
+                    "deployment_index": idx,
+                    "total_deployments": total_entries,
+                    "video_count": len(video_files),
+                    "image_count": len(image_files),
+                    "has_classifier": classification_model is not None,
+                }
+                # Add metrics if provided
+                if metrics:
+                    data["metrics"] = metrics
+
                 await ws_manager.send_progress(
                     job_id,
-                    f"[{idx}/{total_entries}] {message}",
+                    message,  # No prefix - raw message from ML model
                     overall_progress,
                     phase,
-                    phase_progress
+                    phase_progress,
+                    data
                 )
 
             # ============================================================
@@ -223,12 +249,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     video_detector = VideoDetectionModel(det_model_path, env_manager)
 
                     # Progress wrapper for video detection phase
-                    async def video_detection_progress(message: str, phase_progress: float) -> None:
+                    async def video_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
                         await deployment_progress_callback(
-                            f"Video detection: {message}",
+                            message,  # Raw tqdm output
                             0.0,
                             "video_detection",
-                            phase_progress
+                            phase_progress,
+                            metrics
                         )
 
                     # Run video detection
@@ -259,12 +286,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 try:
                     # Progress wrapper for video classification phase
-                    async def video_classification_progress(message: str, phase_progress: float) -> None:
+                    async def video_classification_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
                         await deployment_progress_callback(
-                            f"Video classification: {message}",
+                            message,  # Raw tqdm output
                             0.0,
                             "video_classification",
-                            phase_progress
+                            phase_progress,
+                            metrics
                         )
 
                     # Run classification on video detections
@@ -291,24 +319,17 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info(f"Phase 3: Running image detection on {len(image_files)} images")
 
                 try:
-                    # Send initial progress update
-                    await deployment_progress_callback(
-                        f"Image detection: Starting detection on {len(image_files)} images...",
-                        0.0,
-                        "image_detection",
-                        0.0
-                    )
-
                     # Create synchronous progress wrapper for executor
                     loop = asyncio.get_event_loop()
-                    def sync_image_detection_progress(message: str, phase_progress: float) -> None:
+                    def sync_image_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
                         """Sync wrapper that schedules async callback"""
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
-                                f"Image detection: {message}",
+                                message,  # Raw tqdm output
                                 0.0,
                                 "image_detection",
-                                phase_progress
+                                phase_progress,
+                                metrics
                             ),
                             loop
                         )
@@ -326,14 +347,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     json_files_to_merge.append(image_json_path)
 
-                    # Send completion progress update
-                    await deployment_progress_callback(
-                        f"Image detection: Completed {len(image_files)} images",
-                        0.0,
-                        "image_detection",
-                        1.0
-                    )
-
                     logger.info(f"Image detection complete: {image_json_path}")
 
                 except Exception as e:
@@ -346,21 +359,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info("Phase 4: Running image classification")
 
                 try:
-                    # Send initial progress update
-                    await deployment_progress_callback(
-                        f"Image classification: Starting classification...",
-                        0.0,
-                        "image_classification",
-                        0.0
-                    )
-
                     # Progress wrapper for image classification phase
-                    async def image_classification_progress(message: str, phase_progress: float) -> None:
+                    async def image_classification_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
                         await deployment_progress_callback(
-                            f"Image classification: {message}",
+                            message,  # Raw tqdm output
                             0.0,
                             "image_classification",
-                            phase_progress
+                            phase_progress,
+                            metrics
                         )
 
                     # Run classification on image detections
@@ -371,14 +377,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         country_code=project.country_code,
                         state_code=project.state_code,
                         progress_callback=image_classification_progress,
-                    )
-
-                    # Send completion progress update
-                    await deployment_progress_callback(
-                        f"Image classification: Complete",
-                        0.0,
-                        "image_classification",
-                        1.0
                     )
 
                     logger.info(f"Image classification complete")
@@ -735,7 +733,7 @@ async def run_classification_on_json(
     deployment_folder: Path,
     country_code: str | None,
     state_code: str | None,
-    progress_callback: Callable[[str, float], None] | None = None,
+    progress_callback: Callable[[str, float, dict | None], None] | None = None,
 ) -> None:
     """
     Run classification on detection JSON file.
@@ -765,11 +763,22 @@ async def run_classification_on_json(
         logger.info("Running SpeciesNet batch classification")
 
         # SpeciesNet uses old 4-argument progress callback format
-        # Create adapter function to convert to new 2-argument format
+        # Create adapter function to convert to new 3-argument format with metrics
         async def speciesnet_progress_adapter(message, progress, phase, phase_progress):
             """Adapter for SpeciesNet's old 4-argument progress callback format"""
             if progress_callback:
-                await progress_callback(message, phase_progress)
+                # Try to extract metrics from message (e.g., "Processing 45/100")
+                import re
+                metrics = None
+                match = re.search(r"(\d+)/(\d+)", message)
+                if match:
+                    metrics = {
+                        "raw_line": message,
+                        "current": int(match.group(1)),
+                        "total": int(match.group(2)),
+                        "unit": "crops"  # SpeciesNet processes crops
+                    }
+                await progress_callback(message, phase_progress, metrics)
 
         await classification_model.classify_batch(
             detection_json_path=json_path,
@@ -821,6 +830,20 @@ async def run_classification_on_json(
             classified_count = 0
             processed_count = 0
             frame_cache = {}  # Cache for video frames
+
+            # Use tqdm for progress tracking
+            from tqdm import tqdm
+            import time
+
+            start_time = time.time()
+
+            # Create tqdm iterator (but don't actually iterate with it - just use for formatting)
+            pbar = tqdm(
+                total=total_animals,
+                desc="Classifying",
+                unit="animals",
+                disable=True  # Don't print to console
+            )
 
             for file_path_str, file_detections in detections_by_file.items():
                 file_path = Path(file_path_str)
@@ -876,13 +899,37 @@ async def run_classification_on_json(
                     try:
                         processed_count += 1
 
-                        # Update progress
+                        # Update tqdm and send progress
+                        pbar.update(1)
                         if progress_callback:
+                            # Get tqdm's formatted output
+                            elapsed = time.time() - start_time
+                            elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
+
+                            rate = processed_count / elapsed if elapsed > 0 else 0
+                            remaining = (total_animals - processed_count) / rate if rate > 0 else 0
+                            remaining_str = f"{int(remaining//60):02d}:{int(remaining%60):02d}"
+
+                            # Create tqdm-style output
+                            percent = int(100 * processed_count / total_animals)
+                            bar_length = 10
+                            filled = int(bar_length * processed_count / total_animals)
+                            bar = '█' * filled + '░' * (bar_length - filled)
+
+                            raw_line = f"{percent}%|{bar}| {processed_count}/{total_animals} [{elapsed_str}<{remaining_str}, {rate:.2f}animals/s]"
+
+                            metrics = {
+                                "raw_line": raw_line,
+                                "current": processed_count,
+                                "total": total_animals,
+                                "elapsed": elapsed_str,
+                                "remaining": remaining_str,
+                                "rate": rate,
+                                "unit": "animals"
+                            }
+
                             phase_progress = processed_count / total_animals
-                            await progress_callback(
-                                f"Classifying {processed_count}/{total_animals} animals",
-                                phase_progress,
-                            )
+                            await progress_callback(raw_line, phase_progress, metrics)
 
                         detection = det_info['detection']
                         img_idx = det_info['img_idx']
@@ -956,6 +1003,9 @@ async def run_classification_on_json(
                 if is_video:
                     frame_cache.clear()
                     logger.debug(f"Cleared frame cache for {file_path.name}")
+
+            # Close tqdm
+            pbar.close()
 
             # Update class names in JSON
             if class_names:

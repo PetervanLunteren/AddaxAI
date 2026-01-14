@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -43,6 +43,8 @@ class DeploymentQueue(Base):
 
     # Step 1: Data
     folder_path: Mapped[str] = mapped_column(Text, nullable=False)
+    video_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    image_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Step 2: Deployment
     site_id: Mapped[str | None] = mapped_column(

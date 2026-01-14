@@ -53,7 +53,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   // Track progress of the single job (sequential processing)
   // The backend processes all queue entries sequentially, we just track the one job
   const jobId = jobIds[0] || null;
-  const { progress, message, phase, phaseProgress, isConnected } = useTaskProgress({
+  const { progress, message, phase, phaseProgress, isConnected, deploymentContext, metrics } = useTaskProgress({
     taskId: jobId,
     onComplete: () => {
       setIsComplete(true);
@@ -88,18 +88,18 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   const imageDetectionProgress = getPhaseProgress("image_detection");
   const imageClassificationProgress = getPhaseProgress("image_classification");
 
-  // Determine status messages
-  const getPhaseStatus = (targetPhase: string, defaultWaiting: string, messagePrefix: string): string => {
+  // Determine status messages (raw tqdm output from backend)
+  const getPhaseStatus = (targetPhase: string, defaultWaiting: string): string => {
     const targetIndex = phaseOrder.indexOf(targetPhase);
     if (currentPhaseIndex < targetIndex) return defaultWaiting;
     if (currentPhaseIndex > targetIndex) return "Complete";
-    return phase === targetPhase ? (message || "").replace(`${messagePrefix}: `, "") : defaultWaiting;
+    return phase === targetPhase ? (message || defaultWaiting) : defaultWaiting;
   };
 
-  const videoDetectionStatus = getPhaseStatus("video_detection", "Waiting...", "Video detection");
-  const videoClassificationStatus = getPhaseStatus("video_classification", "Waiting...", "Video classification");
-  const imageDetectionStatus = getPhaseStatus("image_detection", "Waiting...", "Image detection");
-  const imageClassificationStatus = getPhaseStatus("image_classification", "Waiting...", "Image classification");
+  const videoDetectionStatus = getPhaseStatus("video_detection", "Waiting...");
+  const videoClassificationStatus = getPhaseStatus("video_classification", "Waiting...");
+  const imageDetectionStatus = getPhaseStatus("image_detection", "Waiting...");
+  const imageClassificationStatus = getPhaseStatus("image_classification", "Waiting...");
 
   const showSpinner = phase === "init" || phase === "finalize" || isWaitingForJob;
 
@@ -136,7 +136,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
             </div>
           )}
 
-          {/* Processing States - Show BOTH progress bars */}
+          {/* Processing States */}
           {!isComplete && !hasError && (
             <>
               {/* Spinner for init/finalize phases */}
@@ -147,52 +147,127 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                 </div>
               )}
 
-              {/* Video Detection Progress Bar */}
-              {!showSpinner && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Video Detection</p>
-                  <Progress value={videoDetectionProgress} className="h-2" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{videoDetectionStatus}</span>
-                    <span className="text-xs text-gray-500">{videoDetectionProgress.toFixed(0)}%</span>
+              {/* Deployment header and progress bars */}
+              {!showSpinner && deploymentContext && (
+                <>
+                  {/* Deployment header */}
+                  <div className="text-sm font-medium text-gray-700 mb-2">
+                    Processing deployment {deploymentContext.deploymentIndex} of {deploymentContext.totalDeployments}
                   </div>
-                </div>
-              )}
 
-              {/* Video Classification Progress Bar */}
-              {!showSpinner && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Video Classification</p>
-                  <Progress value={videoClassificationProgress} className="h-2" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{videoClassificationStatus}</span>
-                    <span className="text-xs text-gray-500">{videoClassificationProgress.toFixed(0)}%</span>
-                  </div>
-                </div>
-              )}
+                  {/* Progress bars card */}
+                  <div className="border rounded-lg p-4 space-y-4">
+                    {/* Video Detection - only if videos present */}
+                    {deploymentContext.videoCount > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-700">Video detection</p>
+                        <Progress value={videoDetectionProgress} className="h-2" />
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500">{videoDetectionProgress.toFixed(0)}%</span>
+                        </div>
 
-              {/* Image Detection Progress Bar */}
-              {!showSpinner && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Image Detection</p>
-                  <Progress value={imageDetectionProgress} className="h-2" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{imageDetectionStatus}</span>
-                    <span className="text-xs text-gray-500">{imageDetectionProgress.toFixed(0)}%</span>
-                  </div>
-                </div>
-              )}
+                        {/* Info card - only for active phase */}
+                        {phase === "video_detection" && metrics?.current !== undefined && metrics?.total !== undefined && (
+                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
+                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
+                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
+                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
+                            {metrics.rate && metrics.unit && (
+                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                            )}
+                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                          </div>
+                        )}
 
-              {/* Image Classification Progress Bar */}
-              {!showSpinner && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Image Classification</p>
-                  <Progress value={imageClassificationProgress} className="h-2" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{imageClassificationStatus}</span>
-                    <span className="text-xs text-gray-500">{imageClassificationProgress.toFixed(0)}%</span>
+                        {/* Status for non-active phases */}
+                        {phase !== "video_detection" && (
+                          <span className="text-sm text-gray-600">{videoDetectionStatus}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Video Classification - only if videos AND classifier */}
+                    {deploymentContext.videoCount > 0 && deploymentContext.hasClassifier && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-700">Video classification</p>
+                        <Progress value={videoClassificationProgress} className="h-2" />
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500">{videoClassificationProgress.toFixed(0)}%</span>
+                        </div>
+
+                        {/* Info card - only for active phase */}
+                        {phase === "video_classification" && metrics?.current !== undefined && metrics?.total !== undefined && (
+                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
+                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
+                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
+                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
+                            {metrics.rate && metrics.unit && (
+                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                            )}
+                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                          </div>
+                        )}
+                        {phase !== "video_classification" && (
+                          <span className="text-sm text-gray-600">{videoClassificationStatus}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Image Detection - only if images present */}
+                    {deploymentContext.imageCount > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-700">Image detection</p>
+                        <Progress value={imageDetectionProgress} className="h-2" />
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500">{imageDetectionProgress.toFixed(0)}%</span>
+                        </div>
+
+                        {/* Info card - only for active phase */}
+                        {phase === "image_detection" && metrics?.current !== undefined && metrics?.total !== undefined && (
+                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
+                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
+                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
+                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
+                            {metrics.rate && metrics.unit && (
+                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                            )}
+                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                          </div>
+                        )}
+                        {phase !== "image_detection" && (
+                          <span className="text-sm text-gray-600">{imageDetectionStatus}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Image Classification - only if images AND classifier */}
+                    {deploymentContext.imageCount > 0 && deploymentContext.hasClassifier && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-gray-700">Image classification</p>
+                        <Progress value={imageClassificationProgress} className="h-2" />
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500">{imageClassificationProgress.toFixed(0)}%</span>
+                        </div>
+
+                        {/* Info card - only for active phase */}
+                        {phase === "image_classification" && metrics?.current !== undefined && metrics?.total !== undefined && (
+                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
+                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
+                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
+                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
+                            {metrics.rate && metrics.unit && (
+                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                            )}
+                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                          </div>
+                        )}
+                        {phase !== "image_classification" && (
+                          <span className="text-sm text-gray-600">{imageClassificationStatus}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
+                </>
               )}
 
               {/* Connection status */}
