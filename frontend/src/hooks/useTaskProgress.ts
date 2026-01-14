@@ -62,6 +62,7 @@ export function useTaskProgress({
   const [metrics, setMetrics] = useState<TqdmMetrics | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasSetDeploymentContextRef = useRef<boolean>(false);
   const pendingUpdateRef = useRef<{
     message: string;
     progress: number;
@@ -74,6 +75,9 @@ export function useTaskProgress({
     if (!taskId) {
       return;
     }
+
+    // Reset deployment context ref for new task
+    hasSetDeploymentContextRef.current = false;
 
     // Determine WebSocket URL based on current location
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -104,14 +108,18 @@ export function useTaskProgress({
 
         if (data.type === "progress") {
           // Extract deployment context from first progress message with data
-          if (data.data?.deployment_index !== undefined && !deploymentContext) {
-            setDeploymentContext({
+          // Use ref to prevent multiple state updates
+          if (data.data?.deployment_index !== undefined && !hasSetDeploymentContextRef.current) {
+            const context = {
               deploymentIndex: data.data.deployment_index,
               totalDeployments: data.data.total_deployments ?? 1,
               videoCount: data.data.video_count ?? 0,
               imageCount: data.data.image_count ?? 0,
               hasClassifier: data.data.has_classifier ?? false,
-            });
+            };
+            console.log('[useTaskProgress] Setting deployment context:', context);
+            hasSetDeploymentContextRef.current = true;
+            setDeploymentContext(context);
           }
 
           // Store the pending update
