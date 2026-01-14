@@ -264,6 +264,7 @@ class MegaDetectorV1000(DetectionModel):
         Tqdm format examples:
         - "Processing: 45/100 [=====>...] 45% 2.3it/s 00:24<00:30"
         - "100%|██████████| 120/120 [00:52<00:00,  2.29it/s]"
+        - "Processing video:  50%|█████     | 10/20 [00:48<00:42,  4.25s/it]"
 
         Args:
             line: Raw tqdm output line
@@ -283,11 +284,20 @@ class MegaDetectorV1000(DetectionModel):
                 metrics["current"] = int(progress_match.group(1))
                 metrics["total"] = int(progress_match.group(2))
 
-            # Extract rate and unit: "2.3it/s" or "1.5images/s"
+            # Extract rate and unit
+            # Handle both formats: "2.3it/s" (rate) and "5.67s/it" (time per item)
             rate_match = re.search(r"(\d+\.?\d*)([\w]+)/s", line)
             if rate_match:
                 metrics["rate"] = float(rate_match.group(1))
                 metrics["unit"] = rate_match.group(2)  # "it", "images", "video", etc.
+            else:
+                # Try inverse format: "5.67s/it" -> convert to rate
+                inverse_match = re.search(r"(\d+\.?\d*)s/([\w]+)", line)
+                if inverse_match:
+                    time_per_item = float(inverse_match.group(1))
+                    if time_per_item > 0:
+                        metrics["rate"] = 1.0 / time_per_item  # Convert to items/s
+                        metrics["unit"] = inverse_match.group(2)
 
             # Extract elapsed time: "00:52" or "01:23:45"
             # Look for pattern before "<" (elapsed comes first in tqdm)

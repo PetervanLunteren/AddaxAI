@@ -147,6 +147,12 @@ class VideoDetectionModel:
                         # Parse full tqdm metrics from line
                         metrics = self._parse_tqdm_metrics(line)
 
+                        # Debug: Log what we parsed
+                        if metrics:
+                            logger.info(f"[VideoDetector] Parsed metrics: {metrics}")
+                        else:
+                            logger.info(f"[VideoDetector] No metrics parsed from: {line}")
+
                         # Send raw line and metrics
                         try:
                             await progress_callback(
@@ -204,10 +210,19 @@ class VideoDetectionModel:
                 metrics["total"] = int(progress_match.group(2))
 
             # Extract rate and unit
+            # Handle both formats: "2.3it/s" (rate) and "5.67s/it" (time per item)
             rate_match = re.search(r"(\d+\.?\d*)([\w]+)/s", line)
             if rate_match:
                 metrics["rate"] = float(rate_match.group(1))
                 metrics["unit"] = rate_match.group(2)
+            else:
+                # Try inverse format: "5.67s/it" -> convert to rate
+                inverse_match = re.search(r"(\d+\.?\d*)s/([\w]+)", line)
+                if inverse_match:
+                    time_per_item = float(inverse_match.group(1))
+                    if time_per_item > 0:
+                        metrics["rate"] = 1.0 / time_per_item  # Convert to items/s
+                        metrics["unit"] = inverse_match.group(2)
 
             # Extract elapsed time
             time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)

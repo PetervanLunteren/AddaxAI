@@ -160,28 +160,49 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {/* Video Detection - only if videos present */}
                     {deploymentContext.videoCount > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-gray-700">Video detection</p>
-                        <Progress value={videoDetectionProgress} className="h-2" />
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-gray-500">{videoDetectionProgress.toFixed(0)}%</span>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-700">Video detection</p>
+                          <span className="text-xs text-gray-500 font-mono">{videoDetectionProgress.toFixed(0)}%</span>
                         </div>
+                        <Progress value={videoDetectionProgress} className="h-2" />
 
                         {/* Info card - only for active phase */}
                         {phase === "video_detection" && metrics?.current !== undefined && metrics?.total !== undefined && (
-                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
-                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
-                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
-                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
-                            {metrics.rate && metrics.unit && (
-                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                          <div className="text-xs space-y-0.5 rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            <div className="flex justify-between">
+                              <span>Processing {metrics.unit || 'items'}:</span>
+                              <span>{metrics.current} of {metrics.total}</span>
+                            </div>
+                            {metrics.elapsed && (
+                              <div className="flex justify-between">
+                                <span>Elapsed time:</span>
+                                <span>{metrics.elapsed}</span>
+                              </div>
                             )}
-                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                            {metrics.remaining && (
+                              <div className="flex justify-between">
+                                <span>Remaining time:</span>
+                                <span>{metrics.remaining}</span>
+                              </div>
+                            )}
+                            {metrics.rate && metrics.unit && (
+                              <div className="flex justify-between">
+                                <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
+                                <span>{metrics.rate.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span>Running on:</span>
+                              <span className="text-gray-400">[detecting...]</span>
+                            </div>
                           </div>
                         )}
 
                         {/* Status for non-active phases */}
                         {phase !== "video_detection" && (
-                          <span className="text-sm text-gray-600">{videoDetectionStatus}</span>
+                          <div className="text-xs rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            {videoDetectionStatus}
+                          </div>
                         )}
                       </div>
                     )}
@@ -189,26 +210,47 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {/* Video Classification - only if videos AND classifier */}
                     {deploymentContext.videoCount > 0 && deploymentContext.hasClassifier && (
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-gray-700">Video classification</p>
-                        <Progress value={videoClassificationProgress} className="h-2" />
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-gray-500">{videoClassificationProgress.toFixed(0)}%</span>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-700">Video classification</p>
+                          <span className="text-xs text-gray-500 font-mono">{videoClassificationProgress.toFixed(0)}%</span>
                         </div>
+                        <Progress value={videoClassificationProgress} className="h-2" />
 
                         {/* Info card - only for active phase */}
                         {phase === "video_classification" && metrics?.current !== undefined && metrics?.total !== undefined && (
-                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
-                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
-                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
-                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
-                            {metrics.rate && metrics.unit && (
-                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                          <div className="text-xs space-y-0.5 rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            <div className="flex justify-between">
+                              <span>Processing {metrics.unit || 'items'}:</span>
+                              <span>{metrics.current} of {metrics.total}</span>
+                            </div>
+                            {metrics.elapsed && (
+                              <div className="flex justify-between">
+                                <span>Elapsed time:</span>
+                                <span>{metrics.elapsed}</span>
+                              </div>
                             )}
-                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                            {metrics.remaining && (
+                              <div className="flex justify-between">
+                                <span>Remaining time:</span>
+                                <span>{metrics.remaining}</span>
+                              </div>
+                            )}
+                            {metrics.rate && metrics.unit && (
+                              <div className="flex justify-between">
+                                <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
+                                <span>{metrics.rate.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span>Running on:</span>
+                              <span className="text-gray-400">[detecting...]</span>
+                            </div>
                           </div>
                         )}
                         {phase !== "video_classification" && (
-                          <span className="text-sm text-gray-600">{videoClassificationStatus}</span>
+                          <div className="text-xs rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            {videoClassificationStatus}
+                          </div>
                         )}
                       </div>
                     )}
@@ -216,26 +258,47 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {/* Image Detection - only if images present */}
                     {deploymentContext.imageCount > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-gray-700">Image detection</p>
-                        <Progress value={imageDetectionProgress} className="h-2" />
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-gray-500">{imageDetectionProgress.toFixed(0)}%</span>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-700">Image detection</p>
+                          <span className="text-xs text-gray-500 font-mono">{imageDetectionProgress.toFixed(0)}%</span>
                         </div>
+                        <Progress value={imageDetectionProgress} className="h-2" />
 
                         {/* Info card - only for active phase */}
                         {phase === "image_detection" && metrics?.current !== undefined && metrics?.total !== undefined && (
-                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
-                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
-                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
-                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
-                            {metrics.rate && metrics.unit && (
-                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                          <div className="text-xs space-y-0.5 rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            <div className="flex justify-between">
+                              <span>Processing {metrics.unit || 'items'}:</span>
+                              <span>{metrics.current} of {metrics.total}</span>
+                            </div>
+                            {metrics.elapsed && (
+                              <div className="flex justify-between">
+                                <span>Elapsed time:</span>
+                                <span>{metrics.elapsed}</span>
+                              </div>
                             )}
-                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                            {metrics.remaining && (
+                              <div className="flex justify-between">
+                                <span>Remaining time:</span>
+                                <span>{metrics.remaining}</span>
+                              </div>
+                            )}
+                            {metrics.rate && metrics.unit && (
+                              <div className="flex justify-between">
+                                <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
+                                <span>{metrics.rate.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span>Running on:</span>
+                              <span className="text-gray-400">[detecting...]</span>
+                            </div>
                           </div>
                         )}
                         {phase !== "image_detection" && (
-                          <span className="text-sm text-gray-600">{imageDetectionStatus}</span>
+                          <div className="text-xs rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            {imageDetectionStatus}
+                          </div>
                         )}
                       </div>
                     )}
@@ -243,26 +306,47 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {/* Image Classification - only if images AND classifier */}
                     {deploymentContext.imageCount > 0 && deploymentContext.hasClassifier && (
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-gray-700">Image classification</p>
-                        <Progress value={imageClassificationProgress} className="h-2" />
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-gray-500">{imageClassificationProgress.toFixed(0)}%</span>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-700">Image classification</p>
+                          <span className="text-xs text-gray-500 font-mono">{imageClassificationProgress.toFixed(0)}%</span>
                         </div>
+                        <Progress value={imageClassificationProgress} className="h-2" />
 
                         {/* Info card - only for active phase */}
                         {phase === "image_classification" && metrics?.current !== undefined && metrics?.total !== undefined && (
-                          <div className="text-xs text-gray-600 space-y-0.5 bg-gray-50 rounded p-2">
-                            <div>Processing {metrics.unit || 'items'}: {metrics.current} of {metrics.total}</div>
-                            {metrics.elapsed && <div>Elapsed time: {metrics.elapsed}</div>}
-                            {metrics.remaining && <div>Remaining time: {metrics.remaining}</div>}
-                            {metrics.rate && metrics.unit && (
-                              <div>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second: {metrics.rate.toFixed(2)}</div>
+                          <div className="text-xs space-y-0.5 rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            <div className="flex justify-between">
+                              <span>Processing {metrics.unit || 'items'}:</span>
+                              <span>{metrics.current} of {metrics.total}</span>
+                            </div>
+                            {metrics.elapsed && (
+                              <div className="flex justify-between">
+                                <span>Elapsed time:</span>
+                                <span>{metrics.elapsed}</span>
+                              </div>
                             )}
-                            <div>Running on: <span className="text-gray-400">[detecting...]</span></div>
+                            {metrics.remaining && (
+                              <div className="flex justify-between">
+                                <span>Remaining time:</span>
+                                <span>{metrics.remaining}</span>
+                              </div>
+                            )}
+                            {metrics.rate && metrics.unit && (
+                              <div className="flex justify-between">
+                                <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
+                                <span>{metrics.rate.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span>Running on:</span>
+                              <span className="text-gray-400">[detecting...]</span>
+                            </div>
                           </div>
                         )}
                         {phase !== "image_classification" && (
-                          <span className="text-sm text-gray-600">{imageClassificationStatus}</span>
+                          <div className="text-xs rounded p-2 font-mono" style={{ backgroundColor: '#f8fafe', color: '#a4aab5' }}>
+                            {imageClassificationStatus}
+                          </div>
                         )}
                       </div>
                     )}

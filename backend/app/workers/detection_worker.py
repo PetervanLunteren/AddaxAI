@@ -250,6 +250,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     # Progress wrapper for video detection phase
                     async def video_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                        # Override unit to be more descriptive
+                        if metrics:
+                            metrics["unit"] = "video"
                         await deployment_progress_callback(
                             message,  # Raw tqdm output
                             0.0,
@@ -287,6 +290,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 try:
                     # Progress wrapper for video classification phase
                     async def video_classification_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                        # Override unit to be more descriptive
+                        if metrics:
+                            metrics["unit"] = "animal"
                         await deployment_progress_callback(
                             message,  # Raw tqdm output
                             0.0,
@@ -323,6 +329,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     loop = asyncio.get_event_loop()
                     def sync_image_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
                         """Sync wrapper that schedules async callback"""
+                        # Override unit to be more descriptive
+                        if metrics:
+                            metrics["unit"] = "image"
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
                                 message,  # Raw tqdm output
@@ -841,7 +850,7 @@ async def run_classification_on_json(
             pbar = tqdm(
                 total=total_animals,
                 desc="Classifying",
-                unit="animals",
+                unit="animal",
                 disable=True  # Don't print to console
             )
 
@@ -916,7 +925,7 @@ async def run_classification_on_json(
                             filled = int(bar_length * processed_count / total_animals)
                             bar = '█' * filled + '░' * (bar_length - filled)
 
-                            raw_line = f"{percent}%|{bar}| {processed_count}/{total_animals} [{elapsed_str}<{remaining_str}, {rate:.2f}animals/s]"
+                            raw_line = f"{percent}%|{bar}| {processed_count}/{total_animals} [{elapsed_str}<{remaining_str}, {rate:.2f}animal/s]"
 
                             metrics = {
                                 "raw_line": raw_line,
@@ -925,7 +934,7 @@ async def run_classification_on_json(
                                 "elapsed": elapsed_str,
                                 "remaining": remaining_str,
                                 "rate": rate,
-                                "unit": "animals"
+                                "unit": "animal"
                             }
 
                             phase_progress = processed_count / total_animals
