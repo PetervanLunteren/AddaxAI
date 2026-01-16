@@ -9299,6 +9299,7 @@ def enable_frame(frame):
         toggle_exp_frame()
         toggle_vis_frame()
         sep_frame.configure(relief = 'solid')
+        keep_series_frame.configure(relief = 'solid')
         exp_frame.configure(relief = 'solid')
         vis_frame.configure(relief = 'solid')
 
@@ -9336,6 +9337,9 @@ def disable_frame(frame):
         disable_widgets(sep_frame)
         sep_frame.configure(fg='grey80')
         sep_frame.configure(relief = 'flat')
+        disable_widgets(keep_series_frame)
+        keep_series_frame.configure(fg='grey80')
+        keep_series_frame.configure(relief='flat')
         disable_widgets(exp_frame)
         exp_frame.configure(fg='grey80')
         exp_frame.configure(relief = 'flat')
