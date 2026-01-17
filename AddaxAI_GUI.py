@@ -7309,88 +7309,31 @@ def checkbox_frame_event():
 
 # class to list species with checkboxes
 class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
-    # Heuristic to avoid very tall single-column lists on a Canvas
-    AUTO_MAX_ROWS_PER_COLUMN = 650
-    AUTO_MAX_COLUMNS = 4  # cap columns to avoid too-wide layouts
-
-    def __init__(
-        self,
-        master,
-        all_classes=None,
-        selected_classes=None,
-        command=None,
-        dummy_spp=False,
-        n_columns=None,  # <-- None means "auto"
-        **kwargs,
-    ):
+    def __init__(self, master, all_classes=[], selected_classes=[], command=None, dummy_spp=False, **kwargs):
         super().__init__(master, **kwargs)
-
         self.dummy_spp = dummy_spp
-        self.command = command
-
-        if all_classes is None:
-            all_classes = []
-        if selected_classes is None:
-            selected_classes = []
-
-        # dummy species list for simple-mode preview
         if dummy_spp:
-            all_classes = [f"{['Species', 'Especies', 'Espèces'][lang_idx]} {i+1}" for i in range(10)]
-
-        # Decide number of columns:
-        # - If n_columns is None/"auto": compute from list length
-        # - Else: respect explicit n_columns
-        self.n_columns = self._resolve_n_columns(n_columns, len(all_classes))
-
+            all_classes = [f"{['Species', 'Especies', 'Espèces'][lang_idx]} {i + 1}" for i in range(10)]
+        self.command = command
         self.checkbox_list = []
-        self.selected_classes = set(selected_classes)
-
-        for c in range(self.n_columns):
-            self.grid_columnconfigure(c, weight=1)
-
+        self.selected_classes = selected_classes
         for item in all_classes:
             self.add_item(item)
 
-    @classmethod
-    def _resolve_n_columns(cls, n_columns, n_items: int) -> int:
-        # auto mode
-        if n_columns is None or (isinstance(n_columns, str) and n_columns.lower() == "auto"):
-            if n_items <= 0:
-                return 1
-            return max(1, min(cls.AUTO_MAX_COLUMNS, math.ceil(n_items / cls.AUTO_MAX_ROWS_PER_COLUMN)))
-
-        # explicit override
-        try:
-            return max(1, int(n_columns))
-        except Exception:
-            return 1
-
     def add_item(self, item):
-        idx = len(self.checkbox_list)
-        row = idx // self.n_columns
-        col = idx % self.n_columns
-
         checkbox = customtkinter.CTkCheckBox(self, text=item)
-
         if self.dummy_spp:
             checkbox.configure(state="disabled")
         if item in self.selected_classes:
             checkbox.select()
         if self.command is not None:
             checkbox.configure(command=self.command)
-
-        checkbox.grid(
-            row=row,
-            column=col,
-            padx=(max(1, int(PADX / 2)), max(1, int(PADX / 2))),
-            pady=(0, max(0, int(PADY / 3))),
-            sticky="w",
-        )
+        checkbox.grid(row=len(self.checkbox_list), column=0, pady=PADY, sticky="nsw")
         self.checkbox_list.append(checkbox)
 
     def get_checked_items(self):
         return [checkbox.cget("text") for checkbox in self.checkbox_list if checkbox.get() == 1]
-    
+
     def get_all_items(self):
         return [checkbox.cget("text") for checkbox in self.checkbox_list]
 
