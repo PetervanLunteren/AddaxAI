@@ -597,11 +597,21 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
 
                     labels_in_detection = set(unique_labels) if n_detections > 0 else set()
 
-                    # If user selected specific trigger species/classes: only keep series when one of them appears.
-                    if keep_series_species:
-                        should_keep_series = bool(labels_in_detection.intersection(set(keep_series_species)))
+                    # Interpret selection relative to CURRENT cls model
+                    try:
+                        cur_model_vars = load_model_vars(model_type="cls")
+                        cur_model_classes = set(cur_model_vars.get("all_classes", []) or [])
+                    except Exception:
+                        cur_model_classes = set()
+
+                    keep_series_species_effective = [c for c in keep_series_species if c in cur_model_classes]
+                    keep_series_species_effective_set = set(keep_series_species_effective)
+
+                    # If user selected trigger species *that exist in the current model*: filter by those.
+                    # Otherwise (no overlap): treat as "Any animal detection".
+                    if keep_series_species_effective:
+                        should_keep_series = bool(labels_in_detection.intersection(keep_series_species_effective_set))
                     else:
-                        # If nothing selected: default to 'any animal-like detection' (exclude people/vehicles)
                         should_keep_series = bool(labels_in_detection.difference({'person', 'vehicle'}))
 
                 if should_keep_series:
@@ -7072,71 +7082,119 @@ def open_species_selection():
 # open frame to select trigger species/classes for 'keep series images'
 def open_keep_series_species_selection():
 
-    all_classes = get_all_supported_model_classes()
-    selected_classes = global_vars.get('var_keep_series_species', []) or []
+    def t(en, es, fr):
+        return [en, es, fr][lang_idx]
 
-    # remove selections that no longer exist in the available list
-    selected_classes = [c for c in selected_classes if c in all_classes]
+    # Full universe of valid classes across all installed cls models
+    all_supported = get_all_supported_model_classes()  # sorted list :contentReference[oaicite:2]{index=2}
+
+    # Current persisted selection (can include classes from other models)
+    selected_global = global_vars.get("var_keep_series_species", []) or []
+    # Drop selections that no longer exist anywhere
+    selected_global = [c for c in selected_global if c in all_supported]
+
+    # Only show classes of the currently selected classifier model
+    model_vars = load_model_vars(model_type="cls")  # uses var_cls_model :contentReference[oaicite:3]{index=3}
+    visible_classes = model_vars.get("all_classes", []) or []
+    visible_set = set(visible_classes)
+
+    # Only pre-check boxes that are visible in this model
+    selected_visible = [c for c in selected_global if c in visible_set]
 
     def update_count_label():
-        cur = scrollable_checkbox_frame.get_checked_items()
-        if len(cur) == 0:
+        cur_visible = scrollable_checkbox_frame.get_checked_items()
+        hidden_n = sum(1 for c in selected_global if c not in visible_set)
+
+        if len(cur_visible) == 0 and hidden_n == 0:
             lbl2.configure(
-                text=[
+                text=t(
                     "Trigger: any animal detection",
                     "Activador: cualquier detección de animal",
                     "Déclencheur : toute détection d'animal",
-                ][lang_idx]
+                )
             )
-        else:
-            lbl2.configure(
-                text=f"{['Selected', 'Seleccionadas', 'Sélection de'][lang_idx]} "
-                     f"{len(cur)} {['of', 'de', 'de'][lang_idx]} {len(all_classes)}"
+            return
+
+        base = t(
+            f"Selected {len(cur_visible)} of {len(visible_classes)}",
+            f"Seleccionadas {len(cur_visible)} de {len(visible_classes)}",
+            f"Sélection de {len(cur_visible)} de {len(visible_classes)}",
+        )
+
+        if hidden_n > 0:
+            base += t(
+                f" (+{hidden_n} stored from other models)",
+                f" (+{hidden_n} guardadas de otros modelos)",
+                f" (+{hidden_n} enregistrées d'autres modèles)",
             )
+
+        lbl2.configure(text=base)
 
     def save():
-        chosen = scrollable_checkbox_frame.get_checked_items()
+        chosen_visible = scrollable_checkbox_frame.get_checked_items()
 
-        # Persist + update in-memory copy
-        global_vars['var_keep_series_species'] = chosen
-        write_global_vars({'var_keep_series_species': chosen})
+        # Keep selections from other models (not visible in the current list)
+        new_set = (set(selected_global) - visible_set) | set(chosen_visible)
+
+        # Persist in a stable order (based on all_supported order)
+        chosen_all = [c for c in all_supported if c in new_set]
+
+        global_vars["var_keep_series_species"] = chosen_all
+        write_global_vars({"var_keep_series_species": chosen_all})
 
         # update the small counter in the keep-series frame (if it exists)
         try:
-            if len(chosen) == 0:
-                dsp_keep_series_species.configure(text=["Any", "Cualquiera", "Toutes"][lang_idx])
+            if len(chosen_all) == 0:
+                dsp_keep_series_species.configure(text=t("Any", "Cualquiera", "Toutes"))
             else:
-                dsp_keep_series_species.configure(text=f"{len(chosen)}")
+                dsp_keep_series_species.configure(text=str(len(chosen_all)))
         except Exception:
             pass
 
         ss_root.withdraw()
 
+    def clear_selection():
+        nonlocal selected_global
+        selected_global = []  # clears also hidden selections from other models
+        for cb in scrollable_checkbox_frame.checkbox_list:
+            try:
+                cb.deselect()
+            except Exception:
+                pass
+        update_count_label()
+
     # create window
     ss_root = customtkinter.CTkToplevel(root)
     ss_root.title(
-        [
+        t(
             "Keep-series trigger species",
             "Especies activadoras para conservar series",
             "Espèces déclencheuses pour conserver les séries",
-        ][lang_idx]
+        )
     )
     ss_root.geometry("+10+10")
     bring_window_to_top_but_not_for_ever(ss_root)
 
     spp_frm_1 = customtkinter.CTkFrame(master=ss_root)
     spp_frm_1.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
-
     spp_frm = customtkinter.CTkFrame(master=spp_frm_1, width=1000)
     spp_frm.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
 
+    model_name = var_cls_model.get()
+
     lbl1 = customtkinter.CTkLabel(
         spp_frm,
-        text=[
-            "Keep empty images from the same trigger series when one of these species is detected.",
-            "Conservar las imágenes vacías de la misma serie cuando se detecte una de estas especies.",
-            "Conserver les images vides de la même série lorsqu'une de ces espèces est détectée.",
-        ][lang_idx],
+        text=t(
+            "Keep empty images from the same trigger series when one of these species is detected."
+            + "\n"
+            + "Shown: current classifier model classes (" + model_name + ")",
+            "Conservar las imágenes vacías de la misma serie cuando se detecte una de estas especies."
+            + "\n"
+            + "Mostradas: clases del modelo clasificador actual (" + model_name + ")",
+            "Conserver les images vides de la même série lorsqu'une de ces espèces est détectée."
+            + "\n"
+            + "Affichées : classes du modèle classificateur actuel (" + model_name + ")",
+        ),
         font=main_label_font,
     )
     lbl1.grid(row=0, column=0, padx=2 * PADX, pady=PADY, columnspan=2, sticky="nsw")
@@ -7144,22 +7202,30 @@ def open_keep_series_species_selection():
     lbl2 = customtkinter.CTkLabel(spp_frm, text="")
     lbl2.grid(row=1, column=0, padx=2 * PADX, pady=0, columnspan=2, sticky="nsw")
 
-    # NOTE: SpeciesSelectionFrame now auto-picks a safe number of columns internally
     scrollable_checkbox_frame = SpeciesSelectionFrame(
         master=spp_frm,
         command=update_count_label,
         height=400,
         width=500,
-        all_classes=all_classes,
-        selected_classes=selected_classes,
+        all_classes=visible_classes,
+        selected_classes=selected_visible,
     )
     scrollable_checkbox_frame._scrollbar.configure(height=0)
     scrollable_checkbox_frame.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="ew")
 
     update_count_label()
 
-    close_button = customtkinter.CTkButton(ss_root, text="OK", command=save)
-    close_button.grid(row=3, column=0, padx=PADX, pady=(0, PADY), columnspan=2, sticky="nswe")
+    btn_row = customtkinter.CTkFrame(ss_root)
+    btn_row.grid(row=3, column=0, padx=PADX, pady=(0, PADY), sticky="ew")
+    btn_row.grid_columnconfigure(0, weight=1)
+    btn_row.grid_columnconfigure(1, weight=1)
+
+    clear_button = customtkinter.CTkButton(btn_row, text=t("Clear", "Borrar", "Effacer"), command=clear_selection)
+    clear_button.grid(row=0, column=0, padx=(0, PADX), sticky="ew")
+
+    close_button = customtkinter.CTkButton(btn_row, text="OK", command=save)
+    close_button.grid(row=0, column=1, sticky="ew")
+
     ss_root.protocol("WM_DELETE_WINDOW", save)
 
 class MyMainFrame(customtkinter.CTkFrame):
