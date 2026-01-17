@@ -9124,7 +9124,17 @@ def toggle_sep_frame():
         sep_frame.grid(row=sep_frame_row, column=0, columnspan=2, sticky = 'ew')
         enable_widgets(sep_frame)
         sep_frame.configure(fg='black')
+        # ensure nested keep-series options reflect current checkbox state
+        try:
+            toggle_keep_series_frame()
+        except Exception:
+            pass
     else:
+        # hide nested keep-series options too
+        try:
+            keep_series_frame.grid_forget()
+        except Exception:
+            pass
         disable_widgets(sep_frame)
         sep_frame.configure(fg='grey80')
         sep_frame.grid_forget()
@@ -9132,7 +9142,8 @@ def toggle_sep_frame():
 
 # toggle keep series subframe
 def toggle_keep_series_frame():
-    if var_keep_series.get():
+    # only relevant when separation is enabled
+    if var_separate_files.get() and var_keep_series.get():
         keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
         enable_widgets(keep_series_frame)
         keep_series_frame.configure(fg='black')
@@ -10170,25 +10181,23 @@ var_sep_conf.set(global_vars['var_sep_conf'])
 chb_sep_conf = Checkbutton(sep_frame, variable=var_sep_conf, anchor="w")
 chb_sep_conf.grid(row=row_sep_conf, column=1, sticky='nesw', padx=5)
 
-# keep series files
-# todo: There is a one row gap after var_keep_series which dispersers when it is checked and the keep_series_frame is
-#  shown, how to fix that? The same logic for the sep_frame works without gaps.
+
+# keep series files (only affects separation)
 lbl_keep_series_txt = ["Keep series (if animal detected in one image)", "Conservar series (si se detecta un animal en una imagen)", "Conserver les séries (si un animal est détecté dans une image)"]
-row_keep_series = 3
-lbl_keep_series = Label(fth_step, text=lbl_keep_series_txt[lang_idx], width=1, anchor="w")
+row_keep_series = 2
+lbl_keep_series = Label(sep_frame, text="     " + lbl_keep_series_txt[lang_idx], width=1, anchor="w")
 lbl_keep_series.grid(row=row_keep_series, sticky='nesw', pady=2)
 var_keep_series = BooleanVar()
 var_keep_series.set(global_vars['var_keep_series'])
-chb_keep_series = Checkbutton(fth_step, variable=var_keep_series, command=toggle_keep_series_frame, anchor="w")
+chb_keep_series = Checkbutton(sep_frame, variable=var_keep_series, command=toggle_keep_series_frame, anchor="w")
 chb_keep_series.grid(row=row_keep_series, column=1, sticky='nesw', padx=5)
 
-## keep_series frame
+## keep_series frame (nested under separation options)
 keep_series_frame_txt = ["Keep series options", "Opciones de conservación de series", "Options de conservation des séries"]
-keep_series_frame_row = 4
-keep_series_frame = LabelFrame(fth_step, text=" ↳ " + keep_series_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+keep_series_frame_row = 3
+keep_series_frame = LabelFrame(sep_frame, text="        ↳ " + keep_series_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 keep_series_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
-keep_series_frame.grid_rowconfigure(keep_series_frame_row, minsize=0)
 keep_series_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
 keep_series_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correction_factor)
 keep_series_frame.grid_forget()
@@ -10226,7 +10235,7 @@ btn_keep_series_species.grid(row=row_keep_series_species, column=1, sticky='w', 
 
 ## visualize images
 lbl_vis_files_txt = ["Visualise detections and blur people", "Mostrar detecciones y difuminar personas", "Visualiser les détections et anonymiser les personnes"]
-row_vis_files = 5
+row_vis_files = 3
 lbl_vis_files = Label(fth_step, text=lbl_vis_files_txt[lang_idx], width=1, anchor="w")
 lbl_vis_files.grid(row=row_vis_files, sticky='nesw', pady=2)
 var_vis_files = BooleanVar()
@@ -10236,7 +10245,7 @@ chb_vis_files.grid(row=row_vis_files, column=1, sticky='nesw', padx=5)
 
 ## visualization options
 vis_frame_txt = ["Visualization options", "Opciones de visualización", "Options de visualisation"]
-vis_frame_row = 6
+vis_frame_row = 4
 vis_frame = LabelFrame(fth_step, text=" ↳ " + vis_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 vis_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 vis_frame.grid(row=vis_frame_row, column=0, columnspan=2, sticky = 'ew')
@@ -10280,7 +10289,7 @@ chb_vis_blur.grid(row=row_vis_blur, column=1, sticky='nesw', padx=5)
 
 ## crop images
 lbl_crp_files_txt = ["Crop detections", "Recortar detecciones", "Rogner les détection"]
-row_crp_files = 7
+row_crp_files = 5
 lbl_crp_files = Label(fth_step, text=lbl_crp_files_txt[lang_idx], width=1, anchor="w")
 lbl_crp_files.grid(row=row_crp_files, sticky='nesw', pady=2)
 var_crp_files = BooleanVar()
@@ -10290,7 +10299,7 @@ chb_crp_files.grid(row=row_crp_files, column=1, sticky='nesw', padx=5)
 
 # plot
 lbl_plt_txt = ["Create maps and graphs", "Crear mapas y gráficos", "Créer les cartes et graphiques"]
-row_plt = 8
+row_plt = 6
 lbl_plt = Label(fth_step, text=lbl_plt_txt[lang_idx], width=1, anchor="w")
 lbl_plt.grid(row=row_plt, sticky='nesw', pady=2)
 var_plt = BooleanVar()
@@ -10300,7 +10309,7 @@ chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
 
 # export results
 lbl_exp_txt = ["Export results and retrieve metadata", "Exportar resultados y recuperar metadatos", "Exporter les résultats and récupérer les métadonnées"]
-row_exp = 9
+row_exp = 7
 lbl_exp = Label(fth_step, text=lbl_exp_txt[lang_idx], width=1, anchor="w")
 lbl_exp.grid(row=row_exp, sticky='nesw', pady=2)
 var_exp = BooleanVar()
@@ -10310,7 +10319,7 @@ chb_exp.grid(row=row_exp, column=1, sticky='nesw', padx=5)
 
 ## exportation options
 exp_frame_txt = ["Export options", "Opciones de exportación", "Options d'exportation"]
-exp_frame_row = 10
+exp_frame_row = 8
 exp_frame = LabelFrame(fth_step, text=" ↳ " + exp_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 exp_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 exp_frame.grid(row=exp_frame_row, column=0, columnspan=2, sticky = 'ew')
@@ -10332,7 +10341,7 @@ dpd_exp_format.grid(row=row_exp_format, column=1, sticky='nesw', padx=5)
 
 # threshold
 lbl_thresh_txt = ["Confidence threshold", "Umbral de confianza", "Seuil de confiance"]
-row_lbl_thresh = 11
+row_lbl_thresh = 9
 lbl_thresh = Label(fth_step, text=lbl_thresh_txt[lang_idx], width=1, anchor="w")
 lbl_thresh.grid(row=row_lbl_thresh, sticky='nesw', pady=2)
 var_thresh = DoubleVar()
@@ -10345,7 +10354,7 @@ dsp_thresh.grid(row=row_lbl_thresh, column=0, sticky='e', padx=0)
 
 # postprocessing button
 btn_start_postprocess_txt = ["Start post-processing", "Iniciar el postprocesamiento", "Démarrer le post-traitement"]
-row_start_postprocess = 12
+row_start_postprocess = 10
 btn_start_postprocess = Button(fth_step, text=btn_start_postprocess_txt[lang_idx], command=start_postprocess)
 btn_start_postprocess.grid(row=row_start_postprocess, column=0, columnspan = 2, sticky='ew')
 
@@ -10362,7 +10371,7 @@ snd_step.grid_rowconfigure(vid_frame_row, minsize=0) # video options
 cls_frame.grid_rowconfigure(row_cls_detec_thresh, minsize=0) # cls animal thresh
 # cls_frame.grid_rowconfigure(row_smooth_cls_animal, minsize=0) # cls animal smooth
 fth_step.grid_rowconfigure(sep_frame_row, minsize=0) # sep options
-fth_step.grid_rowconfigure(keep_series_frame_row, minsize=0) # keep series options
+sep_frame.grid_rowconfigure(keep_series_frame_row, minsize=0) # keep series options (inside sep_frame)
 fth_step.grid_rowconfigure(exp_frame_row, minsize=0) # exp options
 fth_step.grid_rowconfigure(vis_frame_row, minsize=0) # vis options
 
