@@ -189,11 +189,15 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
                     # Only update if progress changed significantly (reduce spam)
                     if phase_progress - last_progress >= 0.01:
+                        # Parse full TQDM metrics from the line
+                        metrics = self._parse_tqdm_metrics(line)
+
                         await progress_callback(
-                            f"Classification: {current}/{total} images processed",
+                            line,  # Send full TQDM line
                             0.0,
                             "classification",
                             phase_progress,
+                            metrics,  # Send parsed metrics
                         )
                         last_progress = phase_progress
 
@@ -248,6 +252,56 @@ class SpeciesNetClassificationModel(ClassificationModel):
         except Exception as e:
             logger.error(f"SpeciesNet classification error: {e}", exc_info=True)
             raise RuntimeError(f"SpeciesNet classification failed: {e}") from e
+
+    def _parse_tqdm_metrics(self, line: str) -> dict | None:
+        """
+        Parse full tqdm metrics from output line.
+
+        Similar to MegaDetector._parse_tqdm_metrics.
+        """
+        import re
+
+        try:
+            metrics = {"raw_line": line}
+
+            # Extract current/total: "45/100"
+            progress_match = re.search(r"(\d+)/(\d+)", line)
+            if progress_match:
+                metrics["current"] = int(progress_match.group(1))
+                metrics["total"] = int(progress_match.group(2))
+
+            # Extract rate and unit
+            # Handle both formats: "2.3it/s" (rate) and "5.67s/it" (time per item)
+            rate_match = re.search(r"(\d+\.?\d*)([\w]+)/s", line)
+            if rate_match:
+                metrics["rate"] = float(rate_match.group(1))
+                metrics["unit"] = rate_match.group(2)
+            else:
+                # Try inverse format: "5.67s/it" -> convert to rate
+                inverse_match = re.search(r"(\d+\.?\d*)s/([\w]+)", line)
+                if inverse_match:
+                    time_per_item = float(inverse_match.group(1))
+                    if time_per_item > 0:
+                        metrics["rate"] = 1.0 / time_per_item
+                        metrics["unit"] = inverse_match.group(2)
+
+            # Extract elapsed time
+            time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)
+            if time_match:
+                metrics["elapsed"] = time_match.group(1)
+
+            # Extract remaining time
+            remaining_match = re.search(r"<(\d{2}:\d{2}(?::\d{2})?)", line)
+            if remaining_match:
+                metrics["remaining"] = remaining_match.group(1)
+
+            if "current" in metrics and "total" in metrics:
+                return metrics
+
+        except (ValueError, IndexError, AttributeError):
+            pass
+
+        return None
 
     def classify(
         self,

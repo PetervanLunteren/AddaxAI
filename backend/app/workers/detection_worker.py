@@ -773,20 +773,12 @@ async def run_classification_on_json(
 
         # SpeciesNet uses old 4-argument progress callback format
         # Create adapter function to convert to new 3-argument format with metrics
-        async def speciesnet_progress_adapter(message, progress, phase, phase_progress):
-            """Adapter for SpeciesNet's old 4-argument progress callback format"""
+        async def speciesnet_progress_adapter(message, progress, phase, phase_progress, metrics=None):
+            """Adapter for SpeciesNet's 5-argument (with metrics) progress callback format"""
             if progress_callback:
-                # Try to extract metrics from message (e.g., "Processing 45/100")
-                import re
-                metrics = None
-                match = re.search(r"(\d+)/(\d+)", message)
-                if match:
-                    metrics = {
-                        "raw_line": message,
-                        "current": int(match.group(1)),
-                        "total": int(match.group(2)),
-                        "unit": "crops"  # SpeciesNet processes crops
-                    }
+                # Override unit to "video" since SpeciesNet iterates per video file
+                if metrics and "unit" in metrics:
+                    metrics["unit"] = "video"
                 await progress_callback(message, phase_progress, metrics)
 
         await classification_model.classify_batch(
