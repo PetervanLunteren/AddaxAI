@@ -190,15 +190,15 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
     <Dialog open={open} onOpenChange={isComplete || hasError ? onOpenChange : undefined}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Processing queue</DialogTitle>
+          <DialogTitle>
+            {isComplete ? "Processing complete" : "Processing"}
+          </DialogTitle>
           <DialogDescription>
             {isComplete
               ? "All deployments have been processed successfully."
               : isWaitingForJob
                 ? "Preparing the deployment queue..."
-                : deploymentContext && !showSpinner
-                  ? `Processing deployment ${deploymentContext.deploymentIndex} of ${deploymentContext.totalDeployments}...`
-                  : `Processing ${queueCount} deployment${queueCount > 1 ? 's' : ''} sequentially...`}
+                : "This analysis is resource intensive. Please avoid other heavy tasks while it runs."}
           </DialogDescription>
         </DialogHeader>
 
@@ -237,6 +237,14 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                 <>
                   {/* Progress bars card */}
                   <div className="border rounded-lg p-4 space-y-4">
+                    {/* Deployment count badge */}
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                      <span className="text-xs font-medium text-gray-600">Deployment</span>
+                      <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
+                        {deploymentContext.deploymentIndex} of {deploymentContext.totalDeployments}
+                      </span>
+                    </div>
+
                     {/* Video Detection - only if videos present */}
                     {deploymentContext.videoCount > 0 && (
                       <div className="space-y-2">

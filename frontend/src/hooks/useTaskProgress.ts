@@ -107,19 +107,23 @@ export function useTaskProgress({
         });
 
         if (data.type === "progress") {
-          // Extract deployment context from first progress message with data
-          // Use ref to prevent multiple state updates
-          if (data.data?.deployment_index !== undefined && !hasSetDeploymentContextRef.current) {
-            const context = {
+          // Extract deployment context and update when deployment_index changes
+          if (data.data?.deployment_index !== undefined) {
+            const newContext = {
               deploymentIndex: data.data.deployment_index,
               totalDeployments: data.data.total_deployments ?? 1,
               videoCount: data.data.video_count ?? 0,
               imageCount: data.data.image_count ?? 0,
               hasClassifier: data.data.has_classifier ?? false,
             };
-            console.log(`[useTaskProgress ${new Date().toISOString()}] Setting deployment context:`, context);
-            hasSetDeploymentContextRef.current = true;
-            setDeploymentContext(context);
+
+            // Update context if it's the first time OR if deployment_index changed
+            if (!hasSetDeploymentContextRef.current ||
+                deploymentContext?.deploymentIndex !== newContext.deploymentIndex) {
+              console.log(`[useTaskProgress ${new Date().toISOString()}] Setting deployment context:`, newContext);
+              hasSetDeploymentContextRef.current = true;
+              setDeploymentContext(newContext);
+            }
           }
 
           // Store the pending update
