@@ -12,6 +12,8 @@ export interface DeploymentQueueEntry {
   id: string;
   project_id: string;
   folder_path: string;
+  video_count: number;
+  image_count: number;
   site_id: string | null;
   status: "pending" | "processing" | "completed" | "failed";
   created_at: string;
@@ -24,6 +26,8 @@ export interface DeploymentQueueCreate {
   project_id: string;
   folder_path: string;
   site_id?: string | null;
+  video_count?: number;
+  image_count?: number;
 }
 
 export interface ProcessQueueRequest {

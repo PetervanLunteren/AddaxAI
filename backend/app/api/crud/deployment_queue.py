@@ -56,6 +56,8 @@ def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQ
         project_id=entry.project_id,
         folder_path=entry.folder_path,
         site_id=entry.site_id,
+        video_count=entry.video_count,
+        image_count=entry.image_count,
         status="pending",
     )
     db.add(db_entry)

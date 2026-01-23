@@ -53,11 +53,13 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
 
   // Add to queue mutation
   const addToQueue = useMutation({
-    mutationFn: (data: { folder_path: string; site_id: string }) =>
+    mutationFn: (data: { folder_path: string; site_id: string; video_count: number; image_count: number }) =>
       deploymentQueueApi.create({
         project_id: projectId,
         folder_path: data.folder_path,
         site_id: data.site_id,
+        video_count: data.video_count,
+        image_count: data.image_count,
       }),
     onSuccess: () => {
       // Refresh queue
@@ -95,11 +97,13 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   }
 
   const handleSubmit = () => {
-    if (!folderPath || !siteId) return;
+    if (!folderPath || !siteId || !scanResult) return;
 
     addToQueue.mutate({
       folder_path: folderPath,
       site_id: siteId,
+      video_count: scanResult.video_count,
+      image_count: scanResult.image_count,
     });
   };
 

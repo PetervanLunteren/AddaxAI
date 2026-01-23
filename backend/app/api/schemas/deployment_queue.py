@@ -27,6 +27,8 @@ class DeploymentQueueCreate(DeploymentQueueBase):
     """
 
     project_id: str = Field(..., description="Project ID")
+    video_count: int = Field(default=0, description="Number of videos in deployment folder")
+    image_count: int = Field(default=0, description="Number of images in deployment folder")
 
 
 class DeploymentQueueResponse(DeploymentQueueBase):

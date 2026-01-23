@@ -8,6 +8,7 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -151,12 +152,14 @@ async def process_queue(
     # Add delay to ensure WebSocket connects before job starts
     # This prevents the job from completing before the WebSocket is ready
     async def delayed_start():
-        await asyncio.sleep(2.0)  # 2 second delay - ensures WebSocket connects first
+        logger.info(f"[{time.time()}] API: Job {job.id} created, starting 100ms delay for WebSocket connection")
+        await asyncio.sleep(0.1)  # 100ms delay - ensures WebSocket connects first (localhost is ~10-50ms)
+        logger.info(f"[{time.time()}] API: 100ms delay complete, starting worker")
         await process_deployment_analysis(job.id)
 
     asyncio.create_task(delayed_start())
 
-    logger.info(f"Started batch job {job.id} for {len(entry_ids)} entries")
+    logger.info(f"[{time.time()}] API: Scheduled batch job {job.id} for {len(entry_ids)} entries")
 
     return {
         "message": f"Queue processing started. {len(entry_ids)} deployments will be processed sequentially.",

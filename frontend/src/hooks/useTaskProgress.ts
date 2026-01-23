@@ -87,7 +87,7 @@ export function useTaskProgress({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log(`WebSocket connected for task ${taskId}`);
+      console.log(`[useTaskProgress ${new Date().toISOString()}] WebSocket connected for task ${taskId}`);
       setIsConnected(true);
     };
 
@@ -117,7 +117,7 @@ export function useTaskProgress({
               imageCount: data.data.image_count ?? 0,
               hasClassifier: data.data.has_classifier ?? false,
             };
-            console.log('[useTaskProgress] Setting deployment context:', context);
+            console.log(`[useTaskProgress ${new Date().toISOString()}] Setting deployment context:`, context);
             hasSetDeploymentContextRef.current = true;
             setDeploymentContext(context);
           }

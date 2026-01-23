@@ -31,14 +31,34 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   const [errorMessage, setErrorMessage] = useState("");
   const [isComplete, setIsComplete] = useState(false);
 
-  // Reset state when modal closes
+  // Reset state when modal opens or closes
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      console.log(`[RunQueueModal ${new Date().toISOString()}] Modal opened`);
+      // Reset when opening (clears stale state from previous run)
+      setHasError(false);
+      setErrorMessage("");
+      setIsComplete(false);
+    } else {
+      // Also reset when closing (cleanup)
       setHasError(false);
       setErrorMessage("");
       setIsComplete(false);
     }
   }, [open]);
+
+  // Track progress of the single job (sequential processing)
+  // The backend processes all queue entries sequentially, we just track the one job
+  const jobId = jobIds[0] || null;
+
+  // Reset state when a new job starts (fixes stale completion message issue)
+  useEffect(() => {
+    if (jobId) {
+      setIsComplete(false);
+      setHasError(false);
+      setErrorMessage("");
+    }
+  }, [jobId]);
 
   // Auto-close modal shortly after success
   useEffect(() => {
@@ -49,10 +69,6 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
       return () => clearTimeout(timer);
     }
   }, [open, isComplete, hasError, onOpenChange]);
-
-  // Track progress of the single job (sequential processing)
-  // The backend processes all queue entries sequentially, we just track the one job
-  const jobId = jobIds[0] || null;
   const { progress, message, phase, phaseProgress, isConnected, deploymentContext, metrics } = useTaskProgress({
     taskId: jobId,
     onComplete: () => {
@@ -65,6 +81,13 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
   });
 
   const hasJob = Boolean(jobId);
+
+  // Debug: Log when deployment context is received (triggers progress bars to show)
+  useEffect(() => {
+    if (deploymentContext) {
+      console.log(`[RunQueueModal ${new Date().toISOString()}] Deployment context received, progress bars should now be visible:`, deploymentContext);
+    }
+  }, [deploymentContext]);
 
   // Calculate overall status
   const isWaitingForJob = !hasError && !isComplete && !hasJob;

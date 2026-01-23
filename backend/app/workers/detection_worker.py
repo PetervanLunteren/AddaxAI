@@ -51,12 +51,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
     Sends progress updates for the overall batch and each individual deployment.
     """
+    logger.info(f"[{datetime.now().isoformat()}] WORKER START: Batch job {job_id} starting")
+
     # SEND IMMEDIATE PROGRESS MESSAGE BEFORE ANY WORK
     # This ensures late-connecting WebSockets receive at least one early message
     await ws_manager.send_progress(job_id, "Job started, preparing...", 0.0)
 
     total_entries = len(queue_entry_ids)
-    logger.info(f"Batch job {job_id}: Processing {total_entries} queue entries sequentially")
+    logger.info(f"[{datetime.now().isoformat()}] Batch job {job_id}: Processing {total_entries} queue entries sequentially")
 
     # Update job status to running
     job_crud.update_job_status(db, job_id, "running")
@@ -157,33 +159,66 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             logger.info(f"Batch job {job_id}: Processing entry {idx}/{total_entries} - {folder_path}")
 
-            # Scan folder for images and videos (separate)
-            video_files = scan_folder_for_videos(folder_path)
-            image_files = scan_folder_for_images(folder_path)
+            # Use pre-scanned counts from database if available
+            # This allows us to send initial progress immediately without scanning
+            if entry.video_count > 0 or entry.image_count > 0:
+                logger.info(
+                    f"[{datetime.now().isoformat()}] Using pre-scanned counts: {entry.video_count} videos, {entry.image_count} images"
+                )
+
+                # Send initial progress IMMEDIATELY with pre-scanned counts
+                logger.info(f"[{datetime.now().isoformat()}] SENDING FIRST PROGRESS with deployment context")
+                await ws_manager.send_progress(
+                    job_id,
+                    "",  # Empty message, deployment header will show this info
+                    progress_start,
+                    phase="init",
+                    phase_progress=0.0,
+                    data={
+                        "deployment_index": idx,
+                        "total_deployments": total_entries,
+                        "video_count": entry.video_count,
+                        "image_count": entry.image_count,
+                        "has_classifier": classification_model is not None,
+                    },
+                )
+                logger.info(f"[{datetime.now().isoformat()}] First progress sent, now scanning for file paths")
+
+                # Now scan folder for actual file paths (needed for processing)
+                video_files = scan_folder_for_videos(folder_path)
+                image_files = scan_folder_for_images(folder_path)
+            else:
+                # Legacy path: no counts in database, scan first
+                logger.info(f"[{datetime.now().isoformat()}] No counts in database, scanning folder (legacy entry)")
+                video_files = scan_folder_for_videos(folder_path)
+                image_files = scan_folder_for_images(folder_path)
+                logger.info(f"[{datetime.now().isoformat()}] Folder scan complete")
+
+                # Update database with scanned counts
+                queue_crud.update_queue_counts(
+                    db, entry_id, video_count=len(video_files), image_count=len(image_files)
+                )
+
+                # Send initial progress with scanned counts
+                logger.info(f"[{datetime.now().isoformat()}] SENDING FIRST PROGRESS with deployment context (legacy path)")
+                await ws_manager.send_progress(
+                    job_id,
+                    "",  # Empty message, deployment header will show this info
+                    progress_start,
+                    phase="init",
+                    phase_progress=0.0,
+                    data={
+                        "deployment_index": idx,
+                        "total_deployments": total_entries,
+                        "video_count": len(video_files),
+                        "image_count": len(image_files),
+                        "has_classifier": classification_model is not None,
+                    },
+                )
+                logger.info(f"[{datetime.now().isoformat()}] First progress sent")
 
             logger.info(
                 f"Found {len(video_files)} videos and {len(image_files)} images in {folder_path}"
-            )
-
-            # Update queue entry with file counts
-            queue_crud.update_queue_counts(
-                db, entry_id, video_count=len(video_files), image_count=len(image_files)
-            )
-
-            # Send initial progress with deployment context
-            await ws_manager.send_progress(
-                job_id,
-                "",  # Empty message, deployment header will show this info
-                progress_start,
-                phase="init",
-                phase_progress=0.0,
-                data={
-                    "deployment_index": idx,
-                    "total_deployments": total_entries,
-                    "video_count": len(video_files),
-                    "image_count": len(image_files),
-                    "has_classifier": classification_model is not None,
-                },
             )
 
             if not video_files and not image_files:
