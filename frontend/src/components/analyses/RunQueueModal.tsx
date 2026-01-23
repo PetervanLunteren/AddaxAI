@@ -106,6 +106,11 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
 
     // Currently active phase - use TQDM metrics if available
     if (phase === targetPhase) {
+      // If phase is complete (phaseProgress >= 1.0), show 100%
+      if (phaseProgress !== undefined && phaseProgress >= 1.0) {
+        return 100;
+      }
+      // Otherwise use TQDM metrics if available
       if (metrics?.current !== undefined && metrics?.total !== undefined && metrics.total > 0) {
         return (metrics.current / metrics.total) * 100;
       }
