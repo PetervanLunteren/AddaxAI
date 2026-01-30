@@ -2,3 +2,4 @@
 .vscode/settings.json
 global_vars.json
 **/__pycache__/
+.idea
