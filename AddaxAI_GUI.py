@@ -6085,7 +6085,10 @@ def distribute_individual_model_jsons(model_info_fpath):
     # log
     print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
 
-    model_info = json.load(open(model_info_fpath))
+    # model_info = json.load(open(model_info_fpath))
+    with open(model_info_fpath, "r", encoding="utf-8") as f:
+        model_info = json.load(f)
+        
     for typ in ["det", "cls"]:
         model_dicts = model_info[typ] 
         all_models = list(model_dicts.keys())
@@ -6128,7 +6131,10 @@ def fetch_latest_model_info():
                 print(f"Updated model_info.json successfully.")
 
                 # check if there is a new model available
-                model_info = json.load(open(model_info_fpath))
+                # model_info = json.load(open(model_info_fpath))
+                with open(model_info_fpath, "r", encoding="utf-8") as f:
+                    model_info = json.load(f)
+                    
                 for typ in ["det", "cls"]:
                     model_dicts = model_info[typ] 
                     all_models = list(model_dicts.keys())
@@ -10644,6 +10650,7 @@ def main():
 # executable as script
 if __name__ == "__main__":
     main()
+
 
 
 
