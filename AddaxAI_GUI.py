@@ -219,7 +219,7 @@ suffixes_for_sim_none = [" - just show me where the animals are",
 #############################################
 
 # post-process files
-def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type):
+def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type, keep_series_species=None):
     # log
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
@@ -289,6 +289,16 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
     with open(recognition_file) as image_recognition_file_content:
         data = json.load(image_recognition_file_content)
     n_images = len(data['images'])
+
+    # --- series support: build timestamp index once for efficiency ----
+    if keep_series:
+        try:
+            _file_list_for_index = [img['file'] for img in data.get('images', [])]
+            timestamp_index = build_image_timestamp_index(src_dir, _file_list_for_index)
+        except Exception:
+            timestamp_index = {}
+    # used to avoid moving the same original file multiple times
+    already_moved_files = set()
 
     # initialise the csv files
     # csv files are always created, no matter what the user specified as export format
@@ -565,19 +575,65 @@ def postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, cr
                 rows.append(row)
             rows = pd.DataFrame(rows)
             rows.to_csv(csv_for_detections, encoding='utf-8', mode='a', index=False, header=False)
-    
-        # separate files
-        if sep:
-            if n_detections == 0:
-                file = move_files(file, "empty", file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
-            else:
-                if len(unique_labels) > 1:
-                    labels_str = "_".join(unique_labels)
-                    file = move_files(file, labels_str, file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
-                elif len(unique_labels) == 0:
-                    file = move_files(file, "empty", file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
+
+            # separate files (with optional "keep whole series" feature)
+            if sep:
+                if n_detections == 0:
+                    detection_type = "empty"
                 else:
-                    file = move_files(file, label, file_placement, max_detection_conf, sep_conf, dst_dir, src_dir, manually_checked)
+                    if len(unique_labels) > 1:
+                        detection_type = "_".join(unique_labels)
+                    elif len(unique_labels) == 0:
+                        detection_type = "empty"
+                    else:
+                        detection_type = label
+
+                # keep-series configuration
+                should_keep_series = False
+                if keep_series:
+                    # allow caller to pass the list; otherwise fall back to persisted GUI setting
+                    if keep_series_species is None:
+                        keep_series_species = global_vars.get('var_keep_series_species', [])
+
+                    labels_in_detection = set(unique_labels) if n_detections > 0 else set()
+
+                    # Interpret selection relative to CURRENT cls model
+                    try:
+                        cur_model_vars = load_model_vars(model_type="cls")
+                        cur_model_classes = set(cur_model_vars.get("all_classes", []) or [])
+                    except Exception:
+                        cur_model_classes = set()
+
+                    keep_series_species_effective = [c for c in keep_series_species if c in cur_model_classes]
+                    keep_series_species_effective_set = set(keep_series_species_effective)
+
+                    # If user selected trigger species *that exist in the current model*: filter by those.
+                    # Otherwise (no overlap): treat as "Any animal detection".
+                    if keep_series_species_effective:
+                        should_keep_series = bool(labels_in_detection.intersection(keep_series_species_effective_set))
+                    else:
+                        should_keep_series = bool(labels_in_detection.difference({'person', 'vehicle'}))
+
+                if should_keep_series:
+                    # move/copy the whole series (files within +/- window_seconds)
+                    series_files = find_series_images(file, timestamp_index, window_seconds=keep_series_seconds)
+                    for sf in series_files:
+                        if sf in already_moved_files:
+                            continue
+                        moved_rel = move_files(sf, detection_type, file_placement, max_detection_conf, sep_conf,
+                                               dst_dir, src_dir, manually_checked)
+                        # record original relative path as moved so we don't try to move it again
+                        already_moved_files.add(sf)
+                        # if this is the current loop item, update the 'file' variable used later for visualization
+                        if sf == file:
+                            file = moved_rel
+                else:
+                    # default behaviour: move/copy single file
+                    if file not in already_moved_files:
+                        orig_file_for_move = file
+                        file = move_files(orig_file_for_move, detection_type, file_placement, max_detection_conf,
+                                          sep_conf, dst_dir, src_dir, manually_checked)
+                        already_moved_files.add(orig_file_for_move)
     
         # visualize images
         if vis and len(bbox_info) > 0:
@@ -1245,6 +1301,9 @@ def start_postprocess():
     write_global_vars({
         "lang_idx": lang_idx,
         "var_separate_files": var_separate_files.get(),
+        "var_keep_series": var_keep_series.get(),
+        "var_keep_series_seconds": var_keep_series_seconds.get(),
+        "var_keep_series_species": global_vars.get('var_keep_series_species', []),
         "var_file_placement": var_file_placement.get(),
         "var_sep_conf": var_sep_conf.get(),
         "var_vis_files": var_vis_files.get(),
@@ -1263,6 +1322,9 @@ def start_postprocess():
     dst_dir = var_output_dir.get()
     thresh = var_thresh.get()
     sep = var_separate_files.get()
+    keep_series = var_keep_series.get()
+    keep_series_seconds = var_keep_series_seconds.get()
+    keep_series_species = global_vars.get('var_keep_series_species', [])
     file_placement = var_file_placement.get()
     sep_conf = var_sep_conf.get()
     vis = var_vis_files.get()
@@ -1338,11 +1400,11 @@ def start_postprocess():
     try:
         # postprocess images
         if img_json:
-            postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img")
+            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img", keep_series_species=keep_series_species)
 
         # postprocess videos
         if vid_json and not cancel_var:
-            postprocess(src_dir, dst_dir, thresh, sep, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid")
+            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid", keep_series_species=keep_series_species)
             
         # complete
         complete_frame(fth_step)
@@ -5591,6 +5653,130 @@ conf_dirs = {0.0 : "conf_0.0",
              0.9 : "conf_0.8-0.9",
              1.0 : "conf_0.9-1.0"}
 
+def _parse_timestamp_from_filename(filename):
+    """
+    Try common filename timestamp patterns (YYYYMMDDHHMMSS, YYYYMMDD_HHMMSS, etc.)
+    Return a datetime or None.
+    """
+    patterns = [
+        r'(?P<ts>\d{14})',                # 20220101123045
+        r'(?P<ts>\d{8}[_-]\d{6})',        # 20220101_123045 or 20220101-123045
+        r'(?P<ts>\d{4}-\d{2}-\d{2}[_-]\d{6})'
+    ]
+    for pat in patterns:
+        m = re.search(pat, filename)
+        if not m:
+            continue
+        ts = re.sub(r'[_-]', '', m.group('ts'))
+        try:
+            return datetime.datetime.strptime(ts, '%Y%m%d%H%M%S')
+        except Exception:
+            continue
+    return None
+
+def get_image_timestamp(src_dir, rel_path):
+    """
+    Return datetime for given file (src_dir + rel_path).
+    1) Try EXIF DateTimeOriginal / DateTime
+    2) Try filename patterns
+    3) Fallback to filesystem mtime
+    """
+    abs_path = os.path.join(src_dir, rel_path)
+    # (1) EXIF
+    try:
+        img = Image.open(abs_path)
+        exif = img.getexif()
+        if exif:
+            # map tag name -> id
+            tag_map = {v:k for k,v in PIL.ExifTags.TAGS.items()}
+            for tag_name in ("DateTimeOriginal", "DateTime"):
+                if tag_name in tag_map:
+                    tid = tag_map[tag_name]
+                    if tid in exif:
+                        val = exif.get(tid)
+                        if isinstance(val, bytes):
+                            val = val.decode(errors="ignore")
+                        if val:
+                            val = val.replace('\x00','').strip()
+                            try:
+                                return datetime.datetime.strptime(val, "%Y:%m:%d %H:%M:%S")
+                            except Exception:
+                                try:
+                                    return datetime.datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+                                except Exception:
+                                    pass
+    except Exception:
+        # ignore EXIF-read errors and fall back
+        pass
+
+    # (2) filename
+    try:
+        ts = _parse_timestamp_from_filename(os.path.basename(rel_path))
+        if ts:
+            return ts
+    except Exception:
+        pass
+
+    # (3) filesystem mtime
+    try:
+        return datetime.datetime.fromtimestamp(os.path.getmtime(abs_path))
+    except Exception:
+        return None
+
+def build_image_timestamp_index(src_dir, file_list):
+    """
+    Build dict {rel_path: datetime or None} for the given files.
+    Call this once before the main loop (expensive to open images; we cache).
+    """
+    idx = {}
+    for rel in file_list:
+        try:
+            idx[rel] = get_image_timestamp(src_dir, rel)
+        except Exception:
+            idx[rel] = None
+    return idx
+
+def _camera_prefix_of_filename(filename):
+    """
+    Heuristic: return the filename part before the first timestamp pattern.
+    If no timestamp found, return None.
+    """
+    m = re.search(r'\d{14}', filename)
+    if m:
+        return filename[:m.start()]
+    m = re.search(r'\d{8}[_-]\d{6}', filename)
+    if m:
+        return filename[:m.start()]
+    return None
+
+def find_series_images(target_rel_path, timestamp_index, window_seconds=10, require_same_camera=True):
+    """
+    Return list of rel_paths that belong to same 'burst' as target_rel_path.
+    - Uses timestamp_index (dict from build_image_timestamp_index).
+    - window_seconds: include files within +/- window_seconds of the target timestamp.
+    - require_same_camera: only include files with same filename prefix (heuristic).
+    """
+    if target_rel_path not in timestamp_index:
+        return [target_rel_path]
+    t0 = timestamp_index.get(target_rel_path)
+    if t0 is None:
+        return [target_rel_path]
+
+    prefix0 = _camera_prefix_of_filename(os.path.basename(target_rel_path)) if require_same_camera else None
+    candidates = []
+    for rel, t in timestamp_index.items():
+        if t is None:
+            continue
+        if require_same_camera:
+            prefix = _camera_prefix_of_filename(os.path.basename(rel))
+            if prefix0 is not None and prefix is not None and prefix0 != prefix:
+                continue
+        if abs((t - t0).total_seconds()) <= window_seconds:
+            candidates.append((rel, t))
+    # sort ascending (optional — we keep chronological)
+    candidates.sort(key=lambda x: x[1] or datetime.datetime.max)
+    return [c[0] for c in candidates]
+
 # move files into subdirectories
 def move_files(file, detection_type, var_file_placement, max_detection_conf, var_sep_conf, dst_root, src_dir, manually_checked):
     # log
@@ -5970,7 +6156,44 @@ def load_model_vars(model_type = "cls"):
         print("DEBUG – load_model_vars failed:", e)
         return {}
 
-# write global variables to file 
+# read variables.json for an arbitrary model (without touching the UI dropdowns)
+def load_model_vars_for(model_type: str, model_dir: str) -> dict:
+    var_file = os.path.join(AddaxAI_files, "models", model_type, model_dir, "variables.json")
+    try:
+        with open(var_file, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except Exception:
+        return {}
+
+# union of all classes across all supported models (det + cls)
+_ALL_SUPPORTED_MODEL_CLASSES_CACHE = None
+def get_all_supported_model_classes(force_refresh: bool = False):
+    global _ALL_SUPPORTED_MODEL_CLASSES_CACHE
+    if _ALL_SUPPORTED_MODEL_CLASSES_CACHE is not None and not force_refresh:
+        return _ALL_SUPPORTED_MODEL_CLASSES_CACHE
+
+    all_classes = set()
+    for model_type in ["cls"]:
+        root_dir = os.path.join(AddaxAI_files, "models", model_type)
+        if not os.path.isdir(root_dir):
+            continue
+        for model_dir in fetch_known_models(root_dir):
+            mv = load_model_vars_for(model_type, model_dir)
+            for c in mv.get("all_classes", []) or []:
+                if c is None:
+                    continue
+
+                c = str(c).strip()
+
+                if "SpeciesNet" in c:
+                    continue
+                if c:
+                    all_classes.add(c)
+
+    _ALL_SUPPORTED_MODEL_CLASSES_CACHE = sorted(all_classes, key=lambda s: s.lower())
+    return _ALL_SUPPORTED_MODEL_CLASSES_CACHE
+
+# write global variables to file
 def write_global_vars(new_values = None):
     # adjust
     variables = load_global_vars()
@@ -6088,7 +6311,7 @@ def distribute_individual_model_jsons(model_info_fpath):
     # model_info = json.load(open(model_info_fpath))
     with open(model_info_fpath, "r", encoding="utf-8") as f:
         model_info = json.load(f)
-        
+
     for typ in ["det", "cls"]:
         model_dicts = model_info[typ] 
         all_models = list(model_dicts.keys())
@@ -6134,7 +6357,7 @@ def fetch_latest_model_info():
                 # model_info = json.load(open(model_info_fpath))
                 with open(model_info_fpath, "r", encoding="utf-8") as f:
                     model_info = json.load(f)
-                    
+
                 for typ in ["det", "cls"]:
                     model_dicts = model_info[typ] 
                     all_models = list(model_dicts.keys())
@@ -6856,6 +7079,155 @@ def open_species_selection():
     close_button.grid(row=3, column=0, padx=PADX, pady=(0, PADY), columnspan = 2, sticky="nswe")
     ss_root.protocol("WM_DELETE_WINDOW", save)
 
+# open frame to select trigger species/classes for 'keep series images'
+def open_keep_series_species_selection():
+
+    def t(en, es, fr):
+        return [en, es, fr][lang_idx]
+
+    # Full universe of valid classes across all installed cls models
+    all_supported = get_all_supported_model_classes()  # sorted list :contentReference[oaicite:2]{index=2}
+
+    # Current persisted selection (can include classes from other models)
+    selected_global = global_vars.get("var_keep_series_species", []) or []
+    # Drop selections that no longer exist anywhere
+    selected_global = [c for c in selected_global if c in all_supported]
+
+    # Only show classes of the currently selected classifier model
+    model_vars = load_model_vars(model_type="cls")  # uses var_cls_model :contentReference[oaicite:3]{index=3}
+    visible_classes = model_vars.get("all_classes", []) or []
+    visible_set = set(visible_classes)
+
+    # Only pre-check boxes that are visible in this model
+    selected_visible = [c for c in selected_global if c in visible_set]
+
+    def update_count_label():
+        cur_visible = scrollable_checkbox_frame.get_checked_items()
+        hidden_n = sum(1 for c in selected_global if c not in visible_set)
+
+        if len(cur_visible) == 0 and hidden_n == 0:
+            lbl2.configure(
+                text=t(
+                    "Trigger: any animal detection",
+                    "Activador: cualquier detección de animal",
+                    "Déclencheur : toute détection d'animal",
+                )
+            )
+            return
+
+        base = t(
+            f"Selected {len(cur_visible)} of {len(visible_classes)}",
+            f"Seleccionadas {len(cur_visible)} de {len(visible_classes)}",
+            f"Sélection de {len(cur_visible)} de {len(visible_classes)}",
+        )
+
+        if hidden_n > 0:
+            base += t(
+                f" (+{hidden_n} stored from other models)",
+                f" (+{hidden_n} guardadas de otros modelos)",
+                f" (+{hidden_n} enregistrées d'autres modèles)",
+            )
+
+        lbl2.configure(text=base)
+
+    def save():
+        chosen_visible = scrollable_checkbox_frame.get_checked_items()
+
+        # Keep selections from other models (not visible in the current list)
+        new_set = (set(selected_global) - visible_set) | set(chosen_visible)
+
+        # Persist in a stable order (based on all_supported order)
+        chosen_all = [c for c in all_supported if c in new_set]
+
+        global_vars["var_keep_series_species"] = chosen_all
+        write_global_vars({"var_keep_series_species": chosen_all})
+
+        # update the small counter in the keep-series frame (if it exists)
+        try:
+            if len(chosen_all) == 0:
+                dsp_keep_series_species.configure(text=t("Any", "Cualquiera", "Toutes"))
+            else:
+                dsp_keep_series_species.configure(text=str(len(chosen_all)))
+        except Exception:
+            pass
+
+        ss_root.withdraw()
+
+    def clear_selection():
+        nonlocal selected_global
+        selected_global = []  # clears also hidden selections from other models
+        for cb in scrollable_checkbox_frame.checkbox_list:
+            try:
+                cb.deselect()
+            except Exception:
+                pass
+        update_count_label()
+
+    # create window
+    ss_root = customtkinter.CTkToplevel(root)
+    ss_root.title(
+        t(
+            "Keep-series trigger species",
+            "Especies activadoras para conservar series",
+            "Espèces déclencheuses pour conserver les séries",
+        )
+    )
+    ss_root.geometry("+10+10")
+    bring_window_to_top_but_not_for_ever(ss_root)
+
+    spp_frm_1 = customtkinter.CTkFrame(master=ss_root)
+    spp_frm_1.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
+    spp_frm = customtkinter.CTkFrame(master=spp_frm_1, width=1000)
+    spp_frm.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
+
+    model_name = var_cls_model.get()
+
+    lbl1 = customtkinter.CTkLabel(
+        spp_frm,
+        text=t(
+            "Keep empty images from the same trigger series when one of these species is detected."
+            + "\n"
+            + "Shown: current classifier model classes (" + model_name + ")",
+            "Conservar las imágenes vacías de la misma serie cuando se detecte una de estas especies."
+            + "\n"
+            + "Mostradas: clases del modelo clasificador actual (" + model_name + ")",
+            "Conserver les images vides de la même série lorsqu'une de ces espèces est détectée."
+            + "\n"
+            + "Affichées : classes du modèle classificateur actuel (" + model_name + ")",
+        ),
+        font=main_label_font,
+    )
+    lbl1.grid(row=0, column=0, padx=2 * PADX, pady=PADY, columnspan=2, sticky="nsw")
+
+    lbl2 = customtkinter.CTkLabel(spp_frm, text="")
+    lbl2.grid(row=1, column=0, padx=2 * PADX, pady=0, columnspan=2, sticky="nsw")
+
+    scrollable_checkbox_frame = SpeciesSelectionFrame(
+        master=spp_frm,
+        command=update_count_label,
+        height=400,
+        width=500,
+        all_classes=visible_classes,
+        selected_classes=selected_visible,
+    )
+    scrollable_checkbox_frame._scrollbar.configure(height=0)
+    scrollable_checkbox_frame.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="ew")
+
+    update_count_label()
+
+    btn_row = customtkinter.CTkFrame(ss_root)
+    btn_row.grid(row=3, column=0, padx=PADX, pady=(0, PADY), sticky="ew")
+    btn_row.grid_columnconfigure(0, weight=1)
+    btn_row.grid_columnconfigure(1, weight=1)
+
+    clear_button = customtkinter.CTkButton(btn_row, text=t("Clear", "Borrar", "Effacer"), command=clear_selection)
+    clear_button.grid(row=0, column=0, padx=(0, PADX), sticky="ew")
+
+    close_button = customtkinter.CTkButton(btn_row, text="OK", command=save)
+    close_button.grid(row=0, column=1, sticky="ew")
+
+    ss_root.protocol("WM_DELETE_WINDOW", save)
+
 class MyMainFrame(customtkinter.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
@@ -6937,11 +7309,11 @@ def checkbox_frame_event():
 
 # class to list species with checkboxes
 class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
-    def __init__(self, master, all_classes = [], selected_classes = [], command=None, dummy_spp = False, **kwargs):
+    def __init__(self, master, all_classes=[], selected_classes=[], command=None, dummy_spp=False, **kwargs):
         super().__init__(master, **kwargs)
         self.dummy_spp = dummy_spp
         if dummy_spp:
-            all_classes = [f"{['Species', 'Especies', 'Espèces'][lang_idx]} {i+1}" for i in range(10)]
+            all_classes = [f"{['Species', 'Especies', 'Espèces'][lang_idx]} {i + 1}" for i in range(10)]
         self.command = command
         self.checkbox_list = []
         self.selected_classes = selected_classes
@@ -6961,7 +7333,7 @@ class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
 
     def get_checked_items(self):
         return [checkbox.cget("text") for checkbox in self.checkbox_list if checkbox.get() == 1]
-    
+
     def get_all_items(self):
         return [checkbox.cget("text") for checkbox in self.checkbox_list]
 
@@ -8518,6 +8890,18 @@ def set_language():
     rad_file_placement_move.configure(text=["Copy", "Copiar", "Copier"][lang_idx])
     rad_file_placement_copy.configure(text=["Move", "Mover", "Déplacer"][lang_idx])
     lbl_sep_conf.configure(text="     " + lbl_sep_conf_txt[lang_idx])
+    lbl_keep_series.configure(text=lbl_keep_series_txt[lang_idx])
+    keep_series_frame.configure(text=" ↳ " + keep_series_frame_txt[lang_idx] + " ")
+    lbl_keep_series_seconds.configure(text="     " + lbl_keep_series_seconds_txt[lang_idx])
+    lbl_keep_series_species.configure(text="     " + lbl_keep_series_species_txt[lang_idx])
+    btn_keep_series_species.configure(text=select_txt[lang_idx])
+    try:
+        if len(global_vars.get('var_keep_series_species', []) or []) == 0:
+            dsp_keep_series_species.configure(text=["Any", "Cualquiera", "Toutes"][lang_idx])
+        else:
+            dsp_keep_series_species.configure(text=str(len(global_vars.get('var_keep_series_species', []))))
+    except Exception:
+        pass
     lbl_vis_files.configure(text=lbl_vis_files_txt[lang_idx])
     lbl_crp_files.configure(text=lbl_crp_files_txt[lang_idx])
     lbl_exp.configure(text=lbl_exp_txt[lang_idx])
@@ -8740,10 +9124,33 @@ def toggle_sep_frame():
         sep_frame.grid(row=sep_frame_row, column=0, columnspan=2, sticky = 'ew')
         enable_widgets(sep_frame)
         sep_frame.configure(fg='black')
+        # ensure nested keep-series options reflect current checkbox state
+        try:
+            toggle_keep_series_frame()
+        except Exception:
+            pass
     else:
+        # hide nested keep-series options too
+        try:
+            keep_series_frame.grid_forget()
+        except Exception:
+            pass
         disable_widgets(sep_frame)
         sep_frame.configure(fg='grey80')
         sep_frame.grid_forget()
+    resize_canvas_to_content()
+
+# toggle keep series subframe
+def toggle_keep_series_frame():
+    # only relevant when separation is enabled
+    if var_separate_files.get() and var_keep_series.get():
+        keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
+        enable_widgets(keep_series_frame)
+        keep_series_frame.configure(fg='black')
+    else:
+        disable_widgets(keep_series_frame)
+        keep_series_frame.configure(fg='grey80')
+        keep_series_frame.grid_forget()
     resize_canvas_to_content()
 
 # toggle export subframe
@@ -8908,9 +9315,11 @@ def enable_frame(frame):
         toggle_image_size_for_deploy()
     if fth_step:
         toggle_sep_frame()
+        toggle_keep_series_frame()
         toggle_exp_frame()
         toggle_vis_frame()
         sep_frame.configure(relief = 'solid')
+        keep_series_frame.configure(relief = 'solid')
         exp_frame.configure(relief = 'solid')
         vis_frame.configure(relief = 'solid')
 
@@ -8948,6 +9357,9 @@ def disable_frame(frame):
         disable_widgets(sep_frame)
         sep_frame.configure(fg='grey80')
         sep_frame.configure(relief = 'flat')
+        disable_widgets(keep_series_frame)
+        keep_series_frame.configure(fg='grey80')
+        keep_series_frame.configure(relief='flat')
         disable_widgets(exp_frame)
         exp_frame.configure(fg='grey80')
         exp_frame.configure(relief = 'flat')
@@ -9084,6 +9496,9 @@ def reset_values():
     var_not_all_frames.set(True)
     var_nth_frame.set("1")
     var_separate_files.set(False)
+    var_keep_series.set(False)
+    var_keep_series_seconds.set(5)
+    global_vars['var_keep_series_species'] = []
     var_file_placement.set(2)
     var_sep_conf.set(False)
     var_vis_files.set(False)
@@ -9111,6 +9526,9 @@ def reset_values():
         "var_not_all_frames": var_not_all_frames.get(),
         "var_nth_frame": var_nth_frame.get() if var_nth_frame.get().isdecimal() else "",
         "var_separate_files": var_separate_files.get(),
+        "var_keep_series": var_keep_series.get(),
+        "var_keep_series_seconds": var_keep_series_seconds.get(),
+        "var_keep_series_species": [],
         "var_file_placement": var_file_placement.get(),
         "var_sep_conf": var_sep_conf.get(),
         "var_vis_files": var_vis_files.get(),
@@ -9121,6 +9539,12 @@ def reset_values():
         "var_exp": var_exp.get(),
         "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get())
     })
+
+    # update keep-series trigger display
+    try:
+        dsp_keep_series_species.configure(text=["Any", "Cualquiera", "Toutes"][lang_idx])
+    except Exception:
+        pass
 
     # reset model specific variables
     model_vars = load_model_vars()
@@ -9145,6 +9569,7 @@ def reset_values():
     toggle_exp_frame()
     toggle_vis_frame()
     toggle_sep_frame()
+    toggle_keep_series_frame()
     toggle_image_size_for_deploy()
     resize_canvas_to_content()
 
@@ -9756,6 +10181,58 @@ var_sep_conf.set(global_vars['var_sep_conf'])
 chb_sep_conf = Checkbutton(sep_frame, variable=var_sep_conf, anchor="w")
 chb_sep_conf.grid(row=row_sep_conf, column=1, sticky='nesw', padx=5)
 
+
+# keep series files (only affects separation)
+lbl_keep_series_txt = ["Keep series (if animal detected in one image)", "Conservar series (si se detecta un animal en una imagen)", "Conserver les séries (si un animal est détecté dans une image)"]
+row_keep_series = 2
+lbl_keep_series = Label(sep_frame, text="     " + lbl_keep_series_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series.grid(row=row_keep_series, sticky='nesw', pady=2)
+var_keep_series = BooleanVar()
+var_keep_series.set(global_vars['var_keep_series'])
+chb_keep_series = Checkbutton(sep_frame, variable=var_keep_series, command=toggle_keep_series_frame, anchor="w")
+chb_keep_series.grid(row=row_keep_series, column=1, sticky='nesw', padx=5)
+
+## keep_series frame (nested under separation options)
+keep_series_frame_txt = ["Keep series options", "Opciones de conservación de series", "Options de conservation des séries"]
+keep_series_frame_row = 3
+keep_series_frame = LabelFrame(sep_frame, text="        ↳ " + keep_series_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+keep_series_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
+keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
+keep_series_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
+keep_series_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correction_factor)
+keep_series_frame.grid_forget()
+
+# keep series seconds - only visible if keep series is checked
+lbl_keep_series_seconds_txt = ["Seconds", "Segundos", "Secondes"]
+row_keep_series_seconds = 0
+lbl_keep_series_seconds = Label(keep_series_frame, text="     " + lbl_keep_series_seconds_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series_seconds.grid(row=row_keep_series_seconds, sticky='nesw', pady=2)
+var_keep_series_seconds = DoubleVar()
+var_keep_series_seconds.set(global_vars['var_keep_series_seconds'])
+chb_keep_series_seconds = Scale(keep_series_frame, from_=0.1, to=10, resolution=0.1, orient=HORIZONTAL, variable=var_keep_series_seconds, showvalue=0, width=10, length=1)
+chb_keep_series_seconds.grid(row=row_keep_series_seconds, column=1, sticky='ew', padx=10)
+dsp_keep_series_seconds = Label(keep_series_frame, textvariable=var_keep_series_seconds)
+dsp_keep_series_seconds.configure(fg=green_primary)
+dsp_keep_series_seconds.grid(row=row_keep_series_seconds, column=0, sticky='e', padx=0)
+
+# keep series species - optional trigger filter
+lbl_keep_series_species_txt = ["Select species", "Seleccionar especies", "Sélectionner des espèces"]
+row_keep_series_species = 1
+lbl_keep_series_species = Label(keep_series_frame, text="     " + lbl_keep_series_species_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series_species.grid(row=row_keep_series_species, sticky='nesw', pady=2)
+
+# display: show how many triggers are selected (empty = any)
+dsp_keep_series_species = Label(keep_series_frame, fg=green_primary)
+if len(global_vars.get('var_keep_series_species', []) or []) == 0:
+    dsp_keep_series_species.configure(text=["Any", "Cualquiera", "Toutes"][lang_idx])
+else:
+    dsp_keep_series_species.configure(text=str(len(global_vars.get('var_keep_series_species', []))))
+dsp_keep_series_species.grid(row=row_keep_series_species, column=0, sticky='e', padx=0)
+
+btn_keep_series_species = Button(keep_series_frame, text=select_txt[lang_idx], command=open_keep_series_species_selection)
+btn_keep_series_species.grid(row=row_keep_series_species, column=1, sticky='w', padx=10)
+
+
 ## visualize images
 lbl_vis_files_txt = ["Visualise detections and blur people", "Mostrar detecciones y difuminar personas", "Visualiser les détections et anonymiser les personnes"]
 row_vis_files = 3
@@ -9882,7 +10359,7 @@ btn_start_postprocess = Button(fth_step, text=btn_start_postprocess_txt[lang_idx
 btn_start_postprocess.grid(row=row_start_postprocess, column=0, columnspan = 2, sticky='ew')
 
 # set minsize for all rows inside labelframes...
-for frame in [fst_step, snd_step, cls_frame, img_frame, vid_frame, fth_step, sep_frame, exp_frame, vis_frame]:
+for frame in [fst_step, snd_step, cls_frame, img_frame, vid_frame, fth_step, sep_frame, keep_series_frame, exp_frame, vis_frame]:
     set_minsize_rows(frame)
 
 # ... but not for the hidden rows
@@ -9894,6 +10371,7 @@ snd_step.grid_rowconfigure(vid_frame_row, minsize=0) # video options
 cls_frame.grid_rowconfigure(row_cls_detec_thresh, minsize=0) # cls animal thresh
 # cls_frame.grid_rowconfigure(row_smooth_cls_animal, minsize=0) # cls animal smooth
 fth_step.grid_rowconfigure(sep_frame_row, minsize=0) # sep options
+sep_frame.grid_rowconfigure(keep_series_frame_row, minsize=0) # keep series options (inside sep_frame)
 fth_step.grid_rowconfigure(exp_frame_row, minsize=0) # exp options
 fth_step.grid_rowconfigure(vis_frame_row, minsize=0) # vis options
 
