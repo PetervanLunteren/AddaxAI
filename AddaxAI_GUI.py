@@ -6002,54 +6002,65 @@ def model_cls_animal_options(self):
     resize_canvas_to_content()
 
 def fetch_taxon_dpd_options():
-    # read model vars
+     # read model vars
     model_vars = load_model_vars("cls")
-        
+    
     # read taxon options from csv
     if taxon_mapping_csv_present():
         taxon_mapping_df = fetch_taxon_mapping_df()
         level_cols = [col.replace('level_', '') for col in taxon_mapping_df.columns if col.startswith('level_')]
         only_above_cols = [col.replace('only_above_', '') for col in taxon_mapping_df.columns if col.startswith('only_above_')]
         
-        # set the options for the dropdown
-        dpd_options_tax_levels_en = []
-        dpd_options_tax_levels_es = []
+        # set the options for the dropdown (EN / ES / FR)
+        en, es, fr = [], [], []
         for level_col in level_cols:
-            dpd_options_tax_levels_en.append("Fix predictions at the " + level_col + " level (if available)")
-            dpd_options_tax_levels_es.append("Fijar predicciones en el nivel " + level_col + " (si está disponible)")
+            en.append(f"Fix predictions at the {level_col} level (if available)")
+            es.append(f"Fijar predicciones en el nivel {level_col} (si está disponible)")
+            fr.append(f"Fixer les prédictions au niveau {level_col} (si disponible)")
         for only_above_col in only_above_cols:
-            dpd_options_tax_levels_en.append(f"Only predict categories with ≥ {int(only_above_col):,} training samples")
-            dpd_options_tax_levels_es.append(f"Predecir sólo categorías con ≥ {int(only_above_col):,} muestras de entrenamiento")
-        dpd_options_tax_levels = [["Let the model decide the best prediction level (recommended)"] + dpd_options_tax_levels_en,
-                                ["Dejar que el modelo decida el mejor nivel de predicción (recomendado)"] + dpd_options_tax_levels_es]
+            n = int(only_above_col)
+            en.append(f"Only predict categories with ≥ {n:,} training samples")
+            es.append(f"Predecir sólo categorías con ≥ {n:,} muestras de entrenamiento")
+            fr.append(f"Prédire uniquement les catégories avec ≥ {n:,} échantillons d'entraînement")
+        dpd_options_tax_levels = [
+            ["Let the model decide the best prediction level (recommended)"] + en,
+            ["Dejar que el modelo decida el mejor nivel de predicción (recomendado)"] + es,
+            ["Laisser le modèle décider du meilleur niveau de prédiction (recommandé)"] + fr,
+        ]
     else:
-        dpd_options_tax_levels = [['dummy'], ['dummy']] # set dummy value to avoid error
+        # 3 lists to match the number of UI languages (EN, ES, FR) and avoid index errors
+        dpd_options_tax_levels = [['dummy'], ['dummy'], ['dummy']]
 
     return dpd_options_tax_levels
 
 # function to update the dropdown options for taxonomic levels
 def toggle_tax_levels_dpd_options():
-    
-    # fetch the taxon options
+        # fetch the taxon options
     dpd_options_tax_levels = fetch_taxon_dpd_options()
 
-    # delte the old options
+    # language safety: fold back to 0 if index not present in returned options
+    safe_lang_idx = lang_idx if lang_idx < len(dpd_options_tax_levels) else 0
+
+    # delete the old options
     menu = dpd_tax_levels["menu"]
     menu.delete(0, "end")
 
     # Add new options
-    for option in dpd_options_tax_levels[lang_idx]:
+    for option in dpd_options_tax_levels[safe_lang_idx]:
         menu.add_command(
             label=option,
             command=lambda value=option: (
                 var_tax_levels.set(value),
-                write_model_vars(new_values = {"var_tax_levels_idx": dpd_options_tax_levels[lang_idx].index(value)})
+                write_model_vars(new_values={"var_tax_levels_idx": dpd_options_tax_levels[safe_lang_idx].index(value)})
             )
         )
 
-    # set to the previously chosen value
+    # set to the previously chosen value (with bounds check)
     model_vars = load_model_vars("cls")
-    var_tax_levels.set(dpd_options_tax_levels[lang_idx][model_vars["var_tax_levels_idx"]]) # take idx instead of string
+    prev_idx = model_vars.get("var_tax_levels_idx", 0)
+    if prev_idx >= len(dpd_options_tax_levels[safe_lang_idx]):
+        prev_idx = 0
+    var_tax_levels.set(dpd_options_tax_levels[safe_lang_idx][prev_idx])
 
 # load a custom yolov5 model
 def model_options(self):
