@@ -51,10 +51,10 @@ All AddaxAI files are located in one folder, called `AddaxAI_files`. Please be a
 </details>
 
 ### III - Prepare a new model folder
-1. Navigate to `/AddaxAI_files/models/cls`. If you don't see the subfolder `Namibian Desert - Addax Data Science`, you might need to open and close the AddaxAI application in order to create the necessary file structure.
+1. Navigate to `/AddaxAI_files/models/cls`. If you don't see any subfolders, you need to open and close the AddaxAI application in order to create the necessary file structure.
 2. Create a folder inside `cls` with a descriptive name for your model. For example: `Arctic fauna`.
-3. Copy-paste the `variables.json` from `Namibian Desert - Addax Data Science` to your model folder.
-4. Place your model file (`.h5` - make sure to take the 'best.h5' and not the 'last.h5') and classes list (`.yaml`) inside your model folder. Always make sure you have a backup - just in case. If you ever need to update AddaxAI, it will remove the entire folder and you'll have to do this again. 
+3. Copy-paste the `variables.json` from `Tasmanian vertebrates` to your model folder.
+4. Place your model file (`.keras` - make sure to take the 'best.keras' and not the 'last.keras') and classes list (`.yaml`) inside your model folder. Always make sure you have a backup - just in case. If you ever need to update AddaxAI, it will remove the entire folder and you'll have to do this again. 
 5. The model file can have a custom filename, but make sure your classes list is called `class_list.yaml`. 
 6. After completing this section, the folder structure should look something like this:
 
@@ -65,7 +65,7 @@ All AddaxAI files are located in one folder, called `AddaxAI_files`. Please be a
             |── 📁 Arctic fauna
             |   |── variables.json
             |   |── class_list.yaml
-            |   └── model_file.h5
+            |   └── model_file.keras
             |── 📁 Namibian Desert - Addax Data Science
             |   └── variables.json
             |── 📁 ...
@@ -75,11 +75,11 @@ All AddaxAI files are located in one folder, called `AddaxAI_files`. Please be a
 
 ### IV - Adjust JSON values
 1. Open your `variables.json` in any text editor (Notepad, TextEdit, VSCode, etc.) and replace the existing values. Please note that not all fields are required at this time. If you decide to publish your model open-source, you will need to fill in the remaining fields. More about that later in this tutorial. 
-    * `model_fname`  - The filename of your model. Make sure you check if you have the right extension. E.g.: `"model_file.h5"`.
+    * `model_fname`  - The filename of your model. Make sure you check if you have the right extension. E.g.: `"model_file.keras"`.
     * `description`  - Leave blank. I.e., `""`.
     * `developer`  - Leave blank. I.e., `""`.
     * `env`  - The virtual environment inside which the model should run. I.e., `"tensorflow-v2"`.
-    * `type`  - The type of model inferencing. I.e., `"mewc"`.
+    * `type`  - The type of model inferencing. I.e., `"mewc-keras"`.
     * `download_info`  - Leave blank. I.e., `[["", ""]]`.
     * `citation`  - Leave blank. I.e., `""`.
     * `license`  - Leave blank. I.e., `""`.
@@ -97,11 +97,11 @@ All AddaxAI files are located in one folder, called `AddaxAI_files`. Please be a
 2. After adjusting the JSON values, your `variables.json` should look something like this:
 ```json
 {
-  "model_fname": "model_file.pt",
+  "model_fname": "model_file.keras",
   "description": "",
   "developer": "",
   "env": "tensorflow-v2",
-  "type": "mewc",
+  "type": "mewc-keras",
   "download_info": [
     [
       "",
@@ -161,7 +161,7 @@ Addax Data Science supports open-source principles, aiming to facilitate the dis
 
 <img width="1402" alt="Screenshot 2024-03-14 at 13 12 45" src="https://github.com/PetervanLunteren/AddaxAI/assets/85185478/6307e954-0668-4d6d-9e90-e4fdd3fe47ba">
 
-8. Drag and drop your model file (`.h5`) and classes list (`class_list.yaml`) and click "Commit to changes to `main`".
+8. Drag and drop your model file (`.keras`) and classes list (`class_list.yaml`) and click "Commit to changes to `main`".
 
 <img width="1153" alt="Screenshot 2024-03-14 at 13 16 00" src="https://github.com/PetervanLunteren/AddaxAI/assets/85185478/84585b4d-c4cf-4529-8d44-d5d96c2a86d8">
 
@@ -178,15 +178,15 @@ Addax Data Science supports open-source principles, aiming to facilitate the dis
 10. After adjusting the JSON values, your `variables.json` should look something like this:
 ```json
 {
-  "model_fname": "model_file.pt",
+  "model_fname": "model_file.keras",
   "description": "The model was trained on X images taken from database Y and is meant for Z.",
   "developer": "Addax Data Science",
   "env": "tensorflow-v2",
-  "type": "mewc",
+  "type": "mewc-keras",
   "download_info": [
     [
-      "https://huggingface.co/Addax-Data-Science/arctic-fauna/resolve/main/model_file.h5?download=true",
-      "model_file.h5"
+      "https://huggingface.co/Addax-Data-Science/arctic-fauna/resolve/main/model_file.keras?download=true",
+      "model_file.keras"
     ],
     [
       "https://huggingface.co/Addax-Data-Science/arctic-fauna/resolve/main/class_list.yaml?download=true",
