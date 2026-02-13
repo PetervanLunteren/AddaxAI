@@ -36,6 +36,6 @@ dependencies:
     - openpyxl
     
     # MegaDetector and detection packages
-    - megadetector==10.0.8
+    - megadetector==10.0.17
     - ultralytics==8.3.177
     # Note: speciesnet must be installed separately with --use-pep517 flag

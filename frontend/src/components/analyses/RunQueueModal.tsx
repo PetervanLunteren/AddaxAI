@@ -191,7 +191,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {isComplete ? "Processing complete" : "Processing"}
+            {isComplete ? "Analysis complete" : "Analyzing"}
           </DialogTitle>
           <DialogDescription>
             {isComplete
@@ -227,7 +227,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
               {/* Spinner for finalize phase */}
               {showSpinner && (
                 <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />
                   <span className="text-sm font-medium">{message || "Initializing..."}</span>
                 </div>
               )}
@@ -249,14 +249,14 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {deploymentContext.videoCount > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-700">Video detection</p>
-                          <span className="text-sm text-gray-500 font-mono">{videoDetectionProgress.toFixed(0)}%</span>
+                          <p className="text-xs font-medium text-gray-700">Video detection</p>
+                          <span className="text-xs text-gray-500 font-mono">{videoDetectionProgress.toFixed(0)}%</span>
                         </div>
                         <Progress value={videoDetectionProgress} className="h-2" />
 
                         {/* Info card - only for active phase and not at 100% */}
                         {phase === "video_detection" && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total && (
-                          <div className="text-xs space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             <div className="flex justify-between">
                               <span>Processing {metrics.unit || 'items'}:</span>
                               <span>{metrics.current} of {metrics.total}</span>
@@ -288,7 +288,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
 
                         {/* Status for non-active phases OR active phase without metrics yet OR at 100% */}
                         {(phase !== "video_detection" || !(metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total)) && (
-                          <div className="text-xs rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             {renderStatusWithIcon(videoDetectionStatus)}
                           </div>
                         )}
@@ -299,14 +299,14 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {deploymentContext.videoCount > 0 && deploymentContext.hasClassifier && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-700">Video classification</p>
-                          <span className="text-sm text-gray-500 font-mono">{videoClassificationProgress.toFixed(0)}%</span>
+                          <p className="text-xs font-medium text-gray-700">Video classification</p>
+                          <span className="text-xs text-gray-500 font-mono">{videoClassificationProgress.toFixed(0)}%</span>
                         </div>
                         <Progress value={videoClassificationProgress} className="h-2" />
 
                         {/* Info card - only for active phase and not at 100% */}
                         {phase === "video_classification" && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total && (
-                          <div className="text-xs space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             <div className="flex justify-between">
                               <span>Processing {metrics.unit || 'items'}:</span>
                               <span>{metrics.current} of {metrics.total}</span>
@@ -336,7 +336,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                           </div>
                         )}
                         {(phase !== "video_classification" || !(metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total)) && (
-                          <div className="text-xs rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             {renderStatusWithIcon(videoClassificationStatus)}
                           </div>
                         )}
@@ -347,14 +347,14 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {deploymentContext.imageCount > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-700">Image detection</p>
-                          <span className="text-sm text-gray-500 font-mono">{imageDetectionProgress.toFixed(0)}%</span>
+                          <p className="text-xs font-medium text-gray-700">Image detection</p>
+                          <span className="text-xs text-gray-500 font-mono">{imageDetectionProgress.toFixed(0)}%</span>
                         </div>
                         <Progress value={imageDetectionProgress} className="h-2" />
 
                         {/* Info card - only for active phase and not at 100% */}
                         {phase === "image_detection" && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total && (
-                          <div className="text-xs space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             <div className="flex justify-between">
                               <span>Processing {metrics.unit || 'items'}:</span>
                               <span>{metrics.current} of {metrics.total}</span>
@@ -384,7 +384,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                           </div>
                         )}
                         {(phase !== "image_detection" || !(metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total)) && (
-                          <div className="text-xs rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             {renderStatusWithIcon(imageDetectionStatus)}
                           </div>
                         )}
@@ -395,14 +395,14 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                     {deploymentContext.imageCount > 0 && deploymentContext.hasClassifier && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-700">Image classification</p>
-                          <span className="text-sm text-gray-500 font-mono">{imageClassificationProgress.toFixed(0)}%</span>
+                          <p className="text-xs font-medium text-gray-700">Image classification</p>
+                          <span className="text-xs text-gray-500 font-mono">{imageClassificationProgress.toFixed(0)}%</span>
                         </div>
                         <Progress value={imageClassificationProgress} className="h-2" />
 
                         {/* Info card - only for active phase and not at 100% */}
                         {phase === "image_classification" && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total && (
-                          <div className="text-xs space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             <div className="flex justify-between">
                               <span>Processing {metrics.unit || 'items'}:</span>
                               <span>{metrics.current} of {metrics.total}</span>
@@ -432,7 +432,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                           </div>
                         )}
                         {(phase !== "image_classification" || !(metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total)) && (
-                          <div className="text-xs rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                          <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             {renderStatusWithIcon(imageClassificationStatus)}
                           </div>
                         )}

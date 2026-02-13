@@ -103,6 +103,36 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
     ? "..." + entry.folder_path.slice(-50)
     : entry.folder_path;
 
+  // Status badge styling
+  const getStatusBadge = () => {
+    const baseClasses = "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium";
+
+    switch (entry.status) {
+      case "pending":
+        return {
+          classes: `${baseClasses} bg-gray-100 text-gray-700`,
+          label: "Pending"
+        };
+      case "processing":
+        return {
+          classes: `${baseClasses} bg-teal-50 text-teal-700`,
+          label: "Processing"
+        };
+      case "failed":
+        return {
+          classes: `${baseClasses} bg-red-100 text-red-700`,
+          label: "Failed"
+        };
+      default:
+        return {
+          classes: `${baseClasses} bg-gray-100 text-gray-700`,
+          label: entry.status
+        };
+    }
+  };
+
+  const statusBadge = getStatusBadge();
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-sm transition-shadow">
       <div className="flex items-center justify-between gap-3">
@@ -114,6 +144,9 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             <h3 className="font-medium text-sm truncate" title={deploymentName}>
               {deploymentName}
             </h3>
+            <span className={statusBadge.classes}>
+              {statusBadge.label}
+            </span>
           </div>
 
           {/* Path */}

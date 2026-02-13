@@ -119,11 +119,13 @@ export function QueueCard({ projectId }: QueueCardProps) {
         </CardHeader>
 
         <CardContent>
-          {entries && entries.length > 0 ? (
+          {entries && entries.filter((e) => e.status !== "completed").length > 0 ? (
             <div className="space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
-              {entries.map((entry) => (
-                <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
-              ))}
+              {entries
+                .filter((entry) => entry.status !== "completed")
+                .map((entry) => (
+                  <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
+                ))}
             </div>
           ) : (
             <div className="text-center py-12 text-gray-500">
