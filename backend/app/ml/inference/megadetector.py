@@ -162,6 +162,16 @@ class MegaDetectorV1000(DetectionModel):
                         # Print TQDM progress directly to console for debugging
                         print(f"[MEGADETECTOR] {line}", flush=True)
                         logger.info(f"MegaDetector: {line}")
+
+                        # Parse device from PTDetector output (appears once during init)
+                        if "PTDetector using device" in line and progress_callback:
+                            raw = line.split("PTDetector using device")[-1].strip()
+                            device_name = self._format_device_name(raw)
+                            try:
+                                progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                            except TypeError:
+                                pass
+
                         # Parse tqdm progress and metrics if callback provided
                         if progress_callback and ("Processing image" in line or "%" in line):
                             progress = self._parse_progress_line(line)
@@ -232,6 +242,16 @@ class MegaDetectorV1000(DetectionModel):
                     raise ValueError("Images have no common parent directory")
 
         return common
+
+    @staticmethod
+    def _format_device_name(raw: str) -> str:
+        """Convert raw device string to user-friendly name."""
+        r = raw.lower()
+        if "mps" in r:
+            return "MPS (Apple Silicon)"
+        if "cuda" in r:
+            return "CUDA (NVIDIA)"
+        return "CPU"
 
     def _parse_progress_line(self, line: str) -> float | None:
         """
@@ -476,6 +496,16 @@ class MegaDetectorV1000(DetectionModel):
                         # Print TQDM progress directly to console for debugging
                         print(f"[MEGADETECTOR] {line}", flush=True)
                         logger.info(f"MegaDetector: {line}")
+
+                        # Parse device from PTDetector output (appears once during init)
+                        if "PTDetector using device" in line and progress_callback:
+                            raw = line.split("PTDetector using device")[-1].strip()
+                            device_name = self._format_device_name(raw)
+                            try:
+                                progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                            except TypeError:
+                                pass
+
                         # Parse tqdm progress and metrics if callback provided
                         if progress_callback and ("Processing image" in line or "%" in line):
                             progress = self._parse_progress_line(line)

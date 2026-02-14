@@ -69,7 +69,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
       return () => clearTimeout(timer);
     }
   }, [open, isComplete, hasError, onOpenChange]);
-  const { progress, message, phase, phaseProgress, isConnected, deploymentContext, metrics } = useTaskProgress({
+  const { progress, message, phase, phaseProgress, isConnected, deploymentContext, metrics, computeDevice } = useTaskProgress({
     taskId: jobId,
     onComplete: () => {
       setIsComplete(true);
@@ -281,7 +281,9 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                             )}
                             <div className="flex justify-between">
                               <span>Running on:</span>
-                              <span className="text-gray-400">[detecting...]</span>
+                              <span className={computeDevice ? "" : "text-gray-400"}>
+                                {computeDevice ?? "detecting..."}
+                              </span>
                             </div>
                           </div>
                         )}
@@ -331,7 +333,9 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                             )}
                             <div className="flex justify-between">
                               <span>Running on:</span>
-                              <span className="text-gray-400">[detecting...]</span>
+                              <span className={computeDevice ? "" : "text-gray-400"}>
+                                {computeDevice ?? "detecting..."}
+                              </span>
                             </div>
                           </div>
                         )}
@@ -379,7 +383,9 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                             )}
                             <div className="flex justify-between">
                               <span>Running on:</span>
-                              <span className="text-gray-400">[detecting...]</span>
+                              <span className={computeDevice ? "" : "text-gray-400"}>
+                                {computeDevice ?? "detecting..."}
+                              </span>
                             </div>
                           </div>
                         )}
@@ -427,7 +433,9 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
                             )}
                             <div className="flex justify-between">
                               <span>Running on:</span>
-                              <span className="text-gray-400">[detecting...]</span>
+                              <span className={computeDevice ? "" : "text-gray-400"}>
+                                {computeDevice ?? "detecting..."}
+                              </span>
                             </div>
                           </div>
                         )}

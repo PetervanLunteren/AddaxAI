@@ -259,7 +259,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     "image_count": len(image_files),
                     "has_classifier": classification_model is not None,
                 }
-                # Add metrics if provided
+                # Extract compute_device from metrics to data level
+                if metrics and "compute_device" in metrics:
+                    data["compute_device"] = metrics.pop("compute_device")
+                # Add remaining metrics if present
                 if metrics:
                     data["metrics"] = metrics
 
@@ -841,6 +844,10 @@ async def run_classification_on_json(
 
         # Start classification worker (context manager)
         with classification_model as cls_model:
+            # Send compute device info if available
+            if progress_callback and hasattr(cls_model, 'compute_device') and cls_model.compute_device:
+                await progress_callback("Classifying...", 0.0, {"compute_device": cls_model.compute_device})
+
             # Get class names (ID -> name mapping)
             class_names = cls_model.get_class_names()
 

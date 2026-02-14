@@ -135,6 +135,15 @@ class VideoDetectionModel:
                 # Log output
                 logger.debug(f"[VideoDetector] {line}")
 
+                # Parse device from PTDetector output (appears once during init)
+                if "PTDetector using device" in line and progress_callback:
+                    raw = line.split("PTDetector using device")[-1].strip()
+                    device_name = self._format_device_name(raw)
+                    try:
+                        await progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                    except TypeError:
+                        pass
+
                 # Parse progress from tqdm output
                 # Look for patterns like: "45/100" or "Processing video 5/10"
                 progress_match = re.search(r"(\d+)/(\d+)", line)
@@ -193,6 +202,16 @@ class VideoDetectionModel:
         except Exception as e:
             logger.error(f"Video detection error: {e}", exc_info=True)
             raise RuntimeError(f"Video detection failed: {e}") from e
+
+    @staticmethod
+    def _format_device_name(raw: str) -> str:
+        """Convert raw device string to user-friendly name."""
+        r = raw.lower()
+        if "mps" in r:
+            return "MPS (Apple Silicon)"
+        if "cuda" in r:
+            return "CUDA (NVIDIA)"
+        return "CPU"
 
     def _parse_tqdm_metrics(self, line: str) -> dict | None:
         """

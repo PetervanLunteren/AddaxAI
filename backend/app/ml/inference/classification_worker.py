@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import platform
 import sys
 import traceback
 from pathlib import Path
@@ -118,6 +119,32 @@ def send_response(data: dict) -> None:
     sys.stdout.flush()
 
 
+def detect_device_name(gpu_available: bool) -> str:
+    """Detect friendly device name from ML frameworks loaded in this process."""
+    if not gpu_available:
+        return "CPU"
+    # Check PyTorch
+    try:
+        import torch
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            return "MPS (Apple Silicon)"
+        if torch.cuda.is_available():
+            return "CUDA (NVIDIA)"
+    except ImportError:
+        pass
+    # Check TensorFlow
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            if platform.system() == 'Darwin':
+                return "Metal (Apple Silicon)"
+            return "CUDA (NVIDIA)"
+    except ImportError:
+        pass
+    return "GPU"
+
+
 def main():
     """Main worker loop."""
     if len(sys.argv) != 3:
@@ -143,11 +170,14 @@ def main():
         # Load model (ONCE)
         model_inference.load_model()
 
+        # Detect device name from loaded framework
+        device_name = detect_device_name(gpu_available)
+
         # Send ready signal FIRST (before any stderr logging to avoid deadlock)
-        send_response({"status": "ready", "gpu_available": gpu_available})
+        send_response({"status": "ready", "gpu_available": gpu_available, "compute_device": device_name})
 
         # Now safe to log to stderr (after ready signal sent)
-        print(f"[Worker] GPU available: {gpu_available}", file=sys.stderr, flush=True)
+        print(f"[Worker] GPU available: {gpu_available}, Device: {device_name}", file=sys.stderr, flush=True)
         print("[Worker] Model loaded and ready", file=sys.stderr, flush=True)
         print("[Worker] Entering request loop", file=sys.stderr, flush=True)
         while True:

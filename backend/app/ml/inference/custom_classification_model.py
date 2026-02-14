@@ -69,6 +69,7 @@ class CustomClassificationModel(ClassificationModel):
 
         # Worker process state
         self.worker_process: subprocess.Popen | None = None
+        self.compute_device: str | None = None
 
         # Verify inference.py exists
         inference_script = model_dir / "inference.py"
@@ -162,8 +163,9 @@ class CustomClassificationModel(ClassificationModel):
                 raise RuntimeError(f"Worker sent unexpected response: {ready_response}")
 
             gpu_available = ready_response.get("gpu_available", False)
+            self.compute_device = ready_response.get("compute_device", "GPU" if gpu_available else "CPU")
             logger.info(
-                f"Worker ready (GPU: {gpu_available}) for {self.model_dir.name}"
+                f"Worker ready (GPU: {gpu_available}, Device: {self.compute_device}) for {self.model_dir.name}"
             )
 
         except json.JSONDecodeError as e:

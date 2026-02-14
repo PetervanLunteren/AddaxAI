@@ -170,6 +170,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
             last_current = 0
             last_total = 0
             output_lines = []  # Capture all output for error reporting
+            device_detected = False
 
             for line in process.stdout:
                 line = line.strip()
@@ -177,6 +178,31 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
                 # Log output
                 logger.debug(f"[SpeciesNet] {line}")
+
+                # Parse device info from stdout (appears once during init)
+                if not device_detected:
+                    if "PTDetector using device" in line:
+                        raw = line.split("PTDetector using device")[-1].strip()
+                        device_name = self._format_device_name(raw)
+                        device_detected = True
+                        if progress_callback:
+                            await progress_callback(
+                                "Initializing classifier...", 0.0, "classification", 0.0,
+                                {"compute_device": device_name},
+                            )
+                    elif "GPU available" in line:
+                        import platform
+                        has_gpu = "True" in line
+                        if has_gpu:
+                            device_name = "Metal (Apple Silicon)" if platform.system() == 'Darwin' else "CUDA (NVIDIA)"
+                        else:
+                            device_name = "CPU"
+                        device_detected = True
+                        if progress_callback:
+                            await progress_callback(
+                                "Initializing classifier...", 0.0, "classification", 0.0,
+                                {"compute_device": device_name},
+                            )
 
                 # Parse progress from tqdm or similar output
                 # Look for patterns like: "45/100" or "45%"
@@ -252,6 +278,16 @@ class SpeciesNetClassificationModel(ClassificationModel):
         except Exception as e:
             logger.error(f"SpeciesNet classification error: {e}", exc_info=True)
             raise RuntimeError(f"SpeciesNet classification failed: {e}") from e
+
+    @staticmethod
+    def _format_device_name(raw: str) -> str:
+        """Convert raw device string to user-friendly name."""
+        r = raw.lower()
+        if "mps" in r:
+            return "MPS (Apple Silicon)"
+        if "cuda" in r:
+            return "CUDA (NVIDIA)"
+        return "CPU"
 
     def _parse_tqdm_metrics(self, line: str) -> dict | None:
         """

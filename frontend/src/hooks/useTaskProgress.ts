@@ -60,6 +60,7 @@ export function useTaskProgress({
   const [isConnected, setIsConnected] = useState(false);
   const [deploymentContext, setDeploymentContext] = useState<DeploymentContext | null>(null);
   const [metrics, setMetrics] = useState<TqdmMetrics | null>(null);
+  const [computeDevice, setComputeDevice] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasSetDeploymentContextRef = useRef<boolean>(false);
@@ -124,6 +125,11 @@ export function useTaskProgress({
               hasSetDeploymentContextRef.current = true;
               setDeploymentContext(newContext);
             }
+          }
+
+          // Extract compute device (persists across messages)
+          if (data.data?.compute_device) {
+            setComputeDevice(data.data.compute_device as string);
           }
 
           // Store the pending update
@@ -220,5 +226,6 @@ export function useTaskProgress({
     isConnected,
     deploymentContext,
     metrics,
+    computeDevice,
   };
 }
