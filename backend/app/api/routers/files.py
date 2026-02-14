@@ -17,10 +17,25 @@ from app.db.base import get_db
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 
+@router.get("/stats/observation-types")
+def get_observation_type_stats(
+    project_id: str = Query(..., description="Project ID"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get observation type counts for a project.
+
+    Returns:
+        Dict mapping observation_type -> count
+    """
+    return file_crud.get_observation_type_stats(db, project_id)
+
+
 @router.get("", response_model=list[FileResponse])
 def list_files(
     deployment_id: str | None = Query(None, description="Filter by deployment ID"),
     project_id: str | None = Query(None, description="Filter by project ID"),
+    observation_type: str | None = Query(None, description="Filter by observation type"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
     db: Session = Depends(get_db),
@@ -31,6 +46,7 @@ def list_files(
     Args:
         deployment_id: Optional deployment ID filter
         project_id: Optional project ID filter
+        observation_type: Optional observation type filter
         skip: Number of records to skip
         limit: Number of records to return
         db: Database session
@@ -39,11 +55,15 @@ def list_files(
         List of files
     """
     if project_id:
-        files = file_crud.get_files_by_project(db, project_id, skip=skip, limit=limit)
+        files = file_crud.get_files_by_project(
+            db, project_id, skip=skip, limit=limit, observation_type=observation_type
+        )
     elif deployment_id:
-        files = file_crud.get_files_by_deployment(db, deployment_id, skip=skip, limit=limit)
+        files = file_crud.get_files_by_deployment(
+            db, deployment_id, skip=skip, limit=limit, observation_type=observation_type
+        )
     else:
-        files = file_crud.get_files(db, skip=skip, limit=limit)
+        files = file_crud.get_files(db, skip=skip, limit=limit, observation_type=observation_type)
 
     return files
 

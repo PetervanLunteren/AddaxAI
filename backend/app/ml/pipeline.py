@@ -148,6 +148,7 @@ class MLPipeline:
                 deployment_id=deployment_id,
                 job_id=job_id,
                 detections=detections,
+                all_image_paths=image_paths,
             )
 
             logger.info(f"Saved {len(detection_records)} detection records to database")
@@ -203,6 +204,7 @@ class MLPipeline:
                                 detection.species = result.species
                                 detection.species_confidence = result.confidence
                                 detection.classification_all_probs = result.all_probabilities
+                                detection.classification_method = "machine"
                                 classified_count += 1
 
                             # Update progress after EVERY detection (smooth progress bar)
@@ -268,17 +270,20 @@ class MLPipeline:
         deployment_id: str,
         job_id: str,
         detections: list,
+        all_image_paths: list[Path] | None = None,
     ) -> list[Detection]:
         """
         Save detection results to database.
 
         Creates File records (if they don't exist) and Detection records.
+        Also creates blank File records for images with no detections.
 
         Args:
             db: Database session
             deployment_id: Deployment ID
             job_id: Job ID
             detections: List of DetectionResult objects
+            all_image_paths: All scanned image paths (for creating blank File records)
 
         Returns:
             List of created Detection database records (with relationships loaded)
@@ -319,6 +324,15 @@ class MLPipeline:
                 db.add(file_record)
                 db.flush()  # Get file_record.id
 
+            # Set observation_type based on detection categories (priority: animal > human > vehicle)
+            categories = {det.category for det in file_dets}
+            if "animal" in categories:
+                file_record.observation_type = "animal"
+            elif "person" in categories:
+                file_record.observation_type = "human"
+            elif "vehicle" in categories:
+                file_record.observation_type = "vehicle"
+
             # Create Detection records for this file
             for det in file_dets:
                 detection_data = DetectionCreate(
@@ -339,6 +353,31 @@ class MLPipeline:
                 detection_record.file = file_record
 
                 detection_records.append(detection_record)
+
+        # Create blank File records for images with no detections
+        if all_image_paths:
+            files_with_detections = {str(p) for p in file_detections.keys()}
+            for image_path in all_image_paths:
+                if str(image_path) not in files_with_detections:
+                    # Check if File record already exists
+                    existing = db.query(File).filter(File.file_path == str(image_path)).first()
+                    if not existing:
+                        blank_file = File(
+                            deployment_id=deployment_id,
+                            file_path=str(image_path),
+                            file_type="image",
+                            file_format=image_path.suffix.lstrip(".").lower(),
+                            size_bytes=image_path.stat().st_size if image_path.exists() else None,
+                            timestamp=datetime.fromtimestamp(image_path.stat().st_mtime),
+                            observation_type="blank",
+                        )
+                        try:
+                            with Image.open(image_path) as img:
+                                blank_file.width_px = img.width
+                                blank_file.height_px = img.height
+                        except Exception as e:
+                            logger.warning(f"Failed to read image dimensions for {image_path}: {e}")
+                        db.add(blank_file)
 
         db.commit()
 

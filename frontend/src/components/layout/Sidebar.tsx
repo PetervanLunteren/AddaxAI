@@ -4,7 +4,7 @@
 
 import { NavLink, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Camera, Play, BarChart3, Image, Settings } from "lucide-react";
+import { Camera, Play, CheckCircle, BarChart3, Image, Download, Settings } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
 
@@ -24,9 +24,11 @@ export function Sidebar() {
   });
 
   const navItems: NavItem[] = [
-    { to: `/projects/${projectId}/analyses`, icon: Play, label: "New Analysis" },
-    { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
+    { to: `/projects/${projectId}/analyses`, icon: Play, label: "Analyses" },
+    { to: `/projects/${projectId}/review`, icon: CheckCircle, label: "Review" },
     { to: `/projects/${projectId}/images`, icon: Image, label: "Images" },
+    { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
+    { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
     { to: `/projects/${projectId}/settings`, icon: Settings, label: "Settings" },
   ];
 

@@ -16,6 +16,8 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
 import ImagesPage from "./pages/ImagesPage";
 import DashboardPage from "./pages/DashboardPage";
+import ReviewPage from "./pages/ReviewPage";
+import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import { Button } from "./components/ui/button";
 import { api } from "./lib/api-client";
@@ -99,8 +101,10 @@ function App() {
           <Route path="/projects/:projectId" element={<AppLayout />}>
             <Route index element={<Navigate to="analyses" replace />} />
             <Route path="analyses" element={<AnalysesPage />} />
-            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="review" element={<ReviewPage />} />
             <Route path="images" element={<ImagesPage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="export" element={<ExportPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

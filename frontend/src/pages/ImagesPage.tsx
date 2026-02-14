@@ -7,8 +7,55 @@ import { useParams } from "react-router-dom";
 import { useState } from "react";
 import { filesApi } from "../api/files";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import type { FileResponse, FileWithDetections, DetectionResponse } from "../api/types";
+
+// Category colors
+const getCategoryColor = (category: string) => {
+  switch (category) {
+    case "animal":
+      return "rgb(34, 197, 94)"; // green
+    case "person":
+      return "rgb(239, 68, 68)"; // red
+    case "vehicle":
+      return "rgb(59, 130, 246)"; // blue
+    default:
+      return "rgb(156, 163, 175)"; // gray
+  }
+};
+
+// Observation type badge variant
+const getObservationBadge = (type: string): { label: string; className: string } => {
+  switch (type) {
+    case "animal":
+      return { label: "Animal", className: "bg-green-100 text-green-800 border-green-200" };
+    case "human":
+      return { label: "Human", className: "bg-red-100 text-red-800 border-red-200" };
+    case "vehicle":
+      return { label: "Vehicle", className: "bg-blue-100 text-blue-800 border-blue-200" };
+    case "blank":
+      return { label: "Blank", className: "bg-gray-100 text-gray-600 border-gray-200" };
+    case "unknown":
+      return { label: "Unknown", className: "bg-yellow-100 text-yellow-800 border-yellow-200" };
+    default:
+      return { label: "Unclassified", className: "bg-gray-50 text-gray-500 border-gray-200" };
+  }
+};
+
+// Format detection label for bounding box overlay
+function getDetectionLabel(detection: DetectionResponse): string {
+  const categoryLabel = detection.category.charAt(0).toUpperCase() + detection.category.slice(1);
+  const confPct = `${(detection.confidence * 100).toFixed(0)}%`;
+
+  if (detection.species && detection.species_confidence != null) {
+    const speciesLabel = detection.species.charAt(0).toUpperCase() + detection.species.slice(1);
+    const speciesConfPct = `${(detection.species_confidence * 100).toFixed(0)}%`;
+    return `${speciesLabel} ${speciesConfPct} · ${categoryLabel} ${confPct}`;
+  }
+
+  return `${categoryLabel} ${confPct}`;
+}
 
 export default function ImagesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -86,6 +133,7 @@ export default function ImagesPage() {
 function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void }) {
   const timestamp = new Date(file.timestamp).toLocaleString();
   const imageUrl = `http://localhost:8000/api/files/${file.id}/image`;
+  const badge = getObservationBadge(file.observation_type);
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer" onClick={onClick}>
@@ -99,6 +147,13 @@ function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void 
             (e.target as HTMLImageElement).style.display = "none";
           }}
         />
+        {/* Observation type badge */}
+        <Badge
+          variant="outline"
+          className={`absolute top-2 right-2 text-xs ${badge.className}`}
+        >
+          {badge.label}
+        </Badge>
       </div>
       <CardHeader className="p-4">
         <CardTitle className="text-sm truncate" title={file.file_path}>
@@ -109,7 +164,7 @@ function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void 
         <div>{timestamp}</div>
         {file.width_px && file.height_px && (
           <div>
-            {file.width_px} × {file.height_px}
+            {file.width_px} x {file.height_px}
           </div>
         )}
         {file.size_bytes && (
@@ -123,20 +178,6 @@ function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void 
 function ImageViewer({ file }: { file: FileWithDetections }) {
   const imageUrl = `http://localhost:8000/api/files/${file.id}/image`;
   const timestamp = new Date(file.timestamp).toLocaleString();
-
-  // Category colors
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case "animal":
-        return "rgb(34, 197, 94)"; // green
-      case "person":
-        return "rgb(239, 68, 68)"; // red
-      case "vehicle":
-        return "rgb(59, 130, 246)"; // blue
-      default:
-        return "rgb(156, 163, 175)"; // gray
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -165,6 +206,7 @@ function ImageViewer({ file }: { file: FileWithDetections }) {
             const width = detection.bbox_width * (file.width_px || 1);
             const height = detection.bbox_height * (file.height_px || 1);
             const color = getCategoryColor(detection.category);
+            const label = getDetectionLabel(detection);
 
             return (
               <g key={idx}>
@@ -195,7 +237,7 @@ function ImageViewer({ file }: { file: FileWithDetections }) {
                   fontSize="14"
                   fontWeight="bold"
                 >
-                  {detection.category} {(detection.confidence * 100).toFixed(0)}%
+                  {label}
                 </text>
               </g>
             );
@@ -220,18 +262,22 @@ function ImageViewer({ file }: { file: FileWithDetections }) {
                   className="w-3 h-3 rounded-full"
                   style={{ backgroundColor: getCategoryColor(detection.category) }}
                 />
-                <span className="font-medium capitalize">{detection.category}</span>
-                {detection.species && (
-                  <span className="text-muted-foreground">
-                    - {detection.species}
-                  </span>
+                {detection.species ? (
+                  <>
+                    <span className="font-medium capitalize">{detection.species}</span>
+                    <span className="text-muted-foreground capitalize">
+                      ({detection.category})
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-medium capitalize">{detection.category}</span>
                 )}
               </div>
               <div className="flex gap-2 text-muted-foreground">
-                <span>{(detection.confidence * 100).toFixed(1)}%</span>
-                {detection.species_confidence && (
-                  <span>({(detection.species_confidence * 100).toFixed(1)}%)</span>
+                {detection.species_confidence != null && (
+                  <span>{(detection.species_confidence * 100).toFixed(1)}%</span>
                 )}
+                <span>{(detection.confidence * 100).toFixed(1)}%</span>
               </div>
             </div>
           ))}

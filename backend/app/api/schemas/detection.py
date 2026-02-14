@@ -39,6 +39,9 @@ class DetectionBase(BaseModel):
     species_confidence: float | None = Field(
         None, ge=0.0, le=1.0, description="Species classification confidence"
     )
+    classification_method: str | None = Field(
+        None, description="Classification method: 'machine' or 'human'"
+    )
     frame_number: int | None = Field(
         None, ge=0, description="Frame number for video detections (None for images)"
     )

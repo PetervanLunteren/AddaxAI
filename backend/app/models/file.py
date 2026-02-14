@@ -64,6 +64,12 @@ class File(Base):
         JSON, nullable=True
     )  # Full EXIF as JSON blob
 
+    # Observation type (Camtrap DP observationType) - summary for filtering/browsing
+    # Priority derived from detections: animal > human > vehicle > blank > unclassified
+    observation_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="unclassified"
+    )
+
     # Video-specific
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 

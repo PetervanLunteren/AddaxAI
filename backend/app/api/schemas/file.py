@@ -19,6 +19,7 @@ class DetectionResponse(BaseModel):
     bbox_height: float
     species: str | None
     species_confidence: float | None
+    classification_method: str | None = None
 
     class Config:
         from_attributes = True
@@ -39,6 +40,7 @@ class FileResponse(BaseModel):
     created_at: datetime
     best_frame_number: int | None = None
     best_frame_path: str | None = None
+    observation_type: str = "unclassified"
 
     class Config:
         from_attributes = True

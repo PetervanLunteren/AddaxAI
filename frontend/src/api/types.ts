@@ -165,6 +165,9 @@ export interface RunQueueResponse {
   job_ids: string[];
 }
 
+// Observation type (Camtrap DP observationType vocabulary)
+export type ObservationType = "animal" | "human" | "vehicle" | "blank" | "unknown" | "unclassified";
+
 // File types
 export interface DetectionResponse {
   id: string;
@@ -176,6 +179,7 @@ export interface DetectionResponse {
   bbox_height: number;
   species: string | null;
   species_confidence: number | null;
+  classification_method: string | null;
 }
 
 export interface FileResponse {
@@ -191,6 +195,7 @@ export interface FileResponse {
   created_at: string;
   best_frame_number: number | null;
   best_frame_path: string | null;
+  observation_type: ObservationType;
 }
 
 export interface FileWithDetections extends FileResponse {

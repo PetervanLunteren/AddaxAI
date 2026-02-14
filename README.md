@@ -2,8 +2,6 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 # TODO
-- [ ] fix the minor details in the workflow. The location selection map for example. 
-- [ ] investigate how the menu works in other platforms. How are they called for example. What is good camtrap UX UI?
 - [ ] https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/classification_postprocessing.py
 - [ ] https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 

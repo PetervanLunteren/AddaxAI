@@ -539,6 +539,9 @@ class JSONBasedMLPipeline:
                 db.add(file_record)
                 db.flush()  # Get file_record.id
 
+            # Track categories for this file (to determine observation_type)
+            file_categories: set[str] = set()
+
             # Create Detection records
             for det in img.get("detections", []):
                 total_detections += 1
@@ -547,6 +550,8 @@ class JSONBasedMLPipeline:
                 category_num = det["category"]
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
+
+                file_categories.add(category)
 
                 # Count by category
                 if category == "animal":
@@ -608,6 +613,18 @@ class JSONBasedMLPipeline:
                     detection_record.species = species
                     detection_record.species_confidence = species_confidence
                     detection_record.classification_all_probs = classification_all_probs
+                    detection_record.classification_method = "machine"
+
+            # Set observation_type based on detection categories (priority: animal > human > vehicle)
+            if file_categories:
+                if "animal" in file_categories:
+                    file_record.observation_type = "animal"
+                elif "person" in file_categories:
+                    file_record.observation_type = "human"
+                elif "vehicle" in file_categories:
+                    file_record.observation_type = "vehicle"
+            else:
+                file_record.observation_type = "blank"
 
         # Commit all records
         db.commit()
@@ -746,6 +763,9 @@ def load_json_to_database(
                 db.add(file_record)
                 db.flush()  # Get file_record.id
 
+            # Track categories for this file (to determine observation_type)
+            file_categories: set[str] = set()
+
             # Create Detection records
             for det in img.get("detections", []):
                 total_detections += 1
@@ -754,6 +774,8 @@ def load_json_to_database(
                 category_num = det["category"]
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
+
+                file_categories.add(category)
 
                 # Count by category
                 if category == "animal":
@@ -815,6 +837,18 @@ def load_json_to_database(
                     detection_record.species = species
                     detection_record.species_confidence = species_confidence
                     detection_record.classification_all_probs = classification_all_probs
+                    detection_record.classification_method = "machine"
+
+            # Set observation_type based on detection categories (priority: animal > human > vehicle)
+            if file_categories:
+                if "animal" in file_categories:
+                    file_record.observation_type = "animal"
+                elif "person" in file_categories:
+                    file_record.observation_type = "human"
+                elif "vehicle" in file_categories:
+                    file_record.observation_type = "vehicle"
+            else:
+                file_record.observation_type = "blank"
 
         # Commit all records
         db.commit()

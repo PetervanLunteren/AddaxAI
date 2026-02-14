@@ -57,6 +57,9 @@ class Detection(Base):
     species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     classification_all_probs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Classification method (Camtrap DP classificationMethod) - "machine" or "human"
+    classification_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Video-specific field (None for images, frame index for videos)
     frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
