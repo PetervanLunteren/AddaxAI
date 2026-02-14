@@ -315,6 +315,16 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     logger.error(f"Video detection failed: {e}", exc_info=True)
                     # Continue with images even if video fails
 
+            # Best frame selection (between Phase 1 and Phase 2)
+            if video_files and video_json_path.exists():
+                try:
+                    from app.ml.best_frame import select_best_frames
+                    select_best_frames(video_json_path, folder_path)
+                    logger.info("Best frame selection complete")
+                except Exception as e:
+                    logger.error(f"Best frame selection failed: {e}", exc_info=True)
+                    # Non-fatal — continue pipeline
+
             # ============================================================
             # PHASE 2: Video Classification (if videos + classifier)
             # ============================================================

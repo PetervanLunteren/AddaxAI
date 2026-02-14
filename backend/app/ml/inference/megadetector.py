@@ -35,8 +35,7 @@ class MegaDetectorV1000(DetectionModel):
         --recursive \\
         --output_relative_filenames \\
         --include_image_size \\
-        --include_image_timestamp \\
-        --include_exif_data \\
+        --include_exif_tags "datetimeoriginal,gpsinfo" \\
         --threshold 0.1 \\
         model.pt folder/ output.json
     """
@@ -132,8 +131,8 @@ class MegaDetectorV1000(DetectionModel):
                     "--recursive",
                     "--output_relative_filenames",
                     "--include_image_size",
-                    "--include_image_timestamp",
-                    "--include_exif_data",
+                    "--include_exif_tags",
+                    "datetimeoriginal,gpsinfo",
                     "--threshold",
                     str(confidence_threshold),
                     str(self.model_path),
@@ -466,8 +465,8 @@ class MegaDetectorV1000(DetectionModel):
                     "--recursive",
                     "--output_relative_filenames",
                     "--include_image_size",
-                    "--include_image_timestamp",
-                    "--include_exif_data",
+                    "--include_exif_tags",
+                    "datetimeoriginal,gpsinfo",
                     "--threshold",
                     str(confidence_threshold),
                     str(self.model_path),

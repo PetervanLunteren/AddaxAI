@@ -513,6 +513,17 @@ class JSONBasedMLPipeline:
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
+                # Extract timestamp from EXIF, fall back to file mtime
+                exif_metadata = img.get("exif_metadata")
+                timestamp = None
+                if exif_metadata and "DateTimeOriginal" in exif_metadata:
+                    try:
+                        timestamp = datetime.strptime(exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S")
+                    except (ValueError, TypeError):
+                        pass
+                if timestamp is None:
+                    timestamp = datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow()
+
                 file_record = File(
                     id=file_id,
                     deployment_id=deployment_id,
@@ -520,9 +531,10 @@ class JSONBasedMLPipeline:
                     file_type="image",
                     file_format=absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else "jpg",
                     size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
-                    timestamp=datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow(),
+                    timestamp=timestamp,
                     width_px=img.get("width"),
                     height_px=img.get("height"),
+                    exif_data=exif_metadata,
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id
@@ -699,6 +711,24 @@ def load_json_to_database(
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
+                # Extract timestamp from EXIF, fall back to file mtime
+                exif_metadata = img.get("exif_metadata")
+                timestamp = None
+                if exif_metadata and "DateTimeOriginal" in exif_metadata:
+                    try:
+                        timestamp = datetime.strptime(exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S")
+                    except (ValueError, TypeError):
+                        pass
+                if timestamp is None:
+                    timestamp = datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow()
+
+                # Best frame fields (video only)
+                best_frame_number = img.get("best_frame_number")
+                best_frame_path = None
+                if best_frame_number is not None:
+                    video_stem = absolute_path.stem
+                    best_frame_path = str(deployment_folder / ".addaxai" / "frames" / f"{video_stem}.jpg")
+
                 file_record = File(
                     id=file_id,
                     deployment_id=deployment_id,
@@ -706,9 +736,12 @@ def load_json_to_database(
                     file_type=file_type,
                     file_format=file_format,
                     size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
-                    timestamp=datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow(),
+                    timestamp=timestamp,
                     width_px=img.get("width"),
                     height_px=img.get("height"),
+                    exif_data=exif_metadata,
+                    best_frame_number=best_frame_number,
+                    best_frame_path=best_frame_path,
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id

@@ -37,6 +37,8 @@ class FileResponse(BaseModel):
     height_px: int | None
     timestamp: datetime
     created_at: datetime
+    best_frame_number: int | None = None
+    best_frame_path: str | None = None
 
     class Config:
         from_attributes = True

@@ -67,6 +67,10 @@ class File(Base):
     # Video-specific
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Best frame (video only)
+    best_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    best_frame_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
