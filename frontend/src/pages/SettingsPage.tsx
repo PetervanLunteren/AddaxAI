@@ -80,12 +80,23 @@ const settingsSchema = z.object({
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
+  video_fps: z.number().min(0.1).max(10),
   detection_threshold: z.number().min(0).max(1),
   event_smoothing: z.boolean(),
   taxonomic_rollup: z.boolean(),
   taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
 });
+
+const VIDEO_FPS_OPTIONS = [
+  { value: "0.1", label: "1 frame every 10 seconds" },
+  { value: "0.25", label: "1 frame every 4 seconds" },
+  { value: "0.5", label: "1 frame every 2 seconds" },
+  { value: "1", label: "1 frame per second" },
+  { value: "2", label: "2 frames per second" },
+  { value: "4", label: "4 frames per second" },
+  { value: "10", label: "10 frames per second" },
+];
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
 
@@ -133,6 +144,7 @@ export default function SettingsPage() {
       excluded_classes: [],
       country_code: null,
       state_code: null,
+      video_fps: 2.0,
       detection_threshold: 0.5,
       event_smoothing: true,
       taxonomic_rollup: true,
@@ -150,6 +162,7 @@ export default function SettingsPage() {
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
+        video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
         taxonomic_rollup: project.taxonomic_rollup,
@@ -332,6 +345,7 @@ export default function SettingsPage() {
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
+        video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
         taxonomic_rollup: project.taxonomic_rollup,
@@ -783,6 +797,42 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y">
+                {/* Video Frame Rate */}
+                <FormField
+                  control={form.control}
+                  name="video_fps"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Video frame rate</FormLabel>
+                        <FormDescription className="text-sm">
+                          How many frames per second to extract from videos for detection. Higher values find more but take longer. Applies to new analyses only.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <Select
+                          value={String(field.value)}
+                          onValueChange={(val) => field.onChange(parseFloat(val))}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="max-w-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {VIDEO_FPS_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
                 {/* Detection Threshold */}
                 <FormField
                   control={form.control}

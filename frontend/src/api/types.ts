@@ -15,6 +15,7 @@ export interface ProjectCreate {
   excluded_classes: string[];
   country_code?: string | null;
   state_code?: string | null;
+  video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
   taxonomic_rollup: boolean;
@@ -30,6 +31,7 @@ export interface ProjectUpdate {
   excluded_classes?: string[] | null;
   country_code?: string | null;
   state_code?: string | null;
+  video_fps?: number | null;
   detection_threshold?: number | null;
   event_smoothing?: boolean | null;
   taxonomic_rollup?: boolean | null;
@@ -46,6 +48,7 @@ export interface ProjectResponse {
   excluded_classes: string[];
   country_code: string | null;
   state_code: string | null;
+  video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
   taxonomic_rollup: boolean;

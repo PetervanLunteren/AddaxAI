@@ -112,6 +112,12 @@ export function ProjectSettingsModal({
               <p className="text-sm text-gray-900">{selectedCount}</p>
             </div>
           )}
+
+          {/* Video frame rate */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-1">Video frame rate</p>
+            <p className="text-sm text-gray-900">{project.video_fps} FPS</p>
+          </div>
         </div>
 
         <DialogFooter>

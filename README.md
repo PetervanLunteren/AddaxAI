@@ -5,11 +5,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - Implementing the actual ML stuff.
 
 # TODO
-- [ ] Why has the backend env PyTorch? Isnt that just for FastAPI?
-- [ ] Make the FPS configurable in the project settings.
 - [ ] update to the newset MD version and make sure to adjust the way you get exif data: --include_exif_tags "datetimeoriginal,gpsinfo" (see https://github.com/agentmorris/MegaDetector/pull/193#issuecomment-3347432732)
 - [ ] make sure to check how I run SpeciesNet now: https://github.com/agentmorris/MegaDetector/pull/193#issuecomment-3347432732
-- [ ] the way the pbars get GPU / CPU / MPS info. (see https://github.com/agentmorris/MegaDetector/pull/187)
 - [ ] https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/classification_postprocessing.py
 - [ ] https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 

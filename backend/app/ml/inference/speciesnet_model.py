@@ -194,7 +194,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
                         import platform
                         has_gpu = "True" in line
                         if has_gpu:
-                            device_name = "Metal (Apple Silicon)" if platform.system() == 'Darwin' else "CUDA (NVIDIA)"
+                            device_name = "GPU (Apple Silicon)" if platform.system() == 'Darwin' else "GPU (NVIDIA)"
                         else:
                             device_name = "CPU"
                         device_detected = True
@@ -284,9 +284,9 @@ class SpeciesNetClassificationModel(ClassificationModel):
         """Convert raw device string to user-friendly name."""
         r = raw.lower()
         if "mps" in r:
-            return "MPS (Apple Silicon)"
+            return "GPU (Apple Silicon)"
         if "cuda" in r:
-            return "CUDA (NVIDIA)"
+            return "GPU (NVIDIA)"
         return "CPU"
 
     def _parse_tqdm_metrics(self, line: str) -> dict | None:

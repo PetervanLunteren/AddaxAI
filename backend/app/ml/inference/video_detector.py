@@ -208,9 +208,9 @@ class VideoDetectionModel:
         """Convert raw device string to user-friendly name."""
         r = raw.lower()
         if "mps" in r:
-            return "MPS (Apple Silicon)"
+            return "GPU (Apple Silicon)"
         if "cuda" in r:
-            return "CUDA (NVIDIA)"
+            return "GPU (NVIDIA)"
         return "CPU"
 
     def _parse_tqdm_metrics(self, line: str) -> dict | None:

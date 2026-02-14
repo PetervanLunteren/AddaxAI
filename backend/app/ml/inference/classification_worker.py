@@ -127,9 +127,9 @@ def detect_device_name(gpu_available: bool) -> str:
     try:
         import torch
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return "MPS (Apple Silicon)"
+            return "GPU (Apple Silicon)"
         if torch.cuda.is_available():
-            return "CUDA (NVIDIA)"
+            return "GPU (NVIDIA)"
     except ImportError:
         pass
     # Check TensorFlow
@@ -138,8 +138,8 @@ def detect_device_name(gpu_available: bool) -> str:
         gpus = tf.config.list_physical_devices('GPU')
         if gpus:
             if platform.system() == 'Darwin':
-                return "Metal (Apple Silicon)"
-            return "CUDA (NVIDIA)"
+                return "GPU (Apple Silicon)"
+            return "GPU (NVIDIA)"
     except ImportError:
         pass
     return "GPU"
