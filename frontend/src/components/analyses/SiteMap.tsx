@@ -8,7 +8,7 @@
  * - Displays lat/lon coordinates
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
 import { MapPin, MapIcon, Satellite } from "lucide-react";
@@ -78,17 +78,20 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
   // Map viewport state
   const [viewState, setViewState] = useState({
     longitude: 0,
-    latitude: 20,
-    zoom: 1.5,
+    latitude: 0,
+    zoom: 0,
   });
 
-  // Auto-zoom to fit sites on load
-  useEffect(() => {
-    if (!sites || sites.length === 0) return;
+  // Track map readiness to avoid race with onMove during initialization
+  const mapReady = useRef(false);
+  const hasAutoZoomed = useRef(false);
 
-    // Calculate bounds to fit all sites
+  // Compute the target viewport from sites
+  const computeSitesViewState = useCallback(() => {
+    if (!sites || sites.length === 0) return null;
+
     const validSites = sites.filter((s) => s.latitude != null && s.longitude != null);
-    if (validSites.length === 0) return;
+    if (validSites.length === 0) return null;
 
     const lats = validSites.map((s) => s.latitude!);
     const lons = validSites.map((s) => s.longitude!);
@@ -98,18 +101,13 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
     const minLon = Math.min(...lons);
     const maxLon = Math.max(...lons);
 
-    // Add padding to bounds (20% on each side)
     const latDiff = maxLat - minLat;
     const lonDiff = maxLon - minLon;
-    const latPadding = Math.max(latDiff * 0.3, 0.01); // At least 0.01 degrees padding
+    const latPadding = Math.max(latDiff * 0.3, 0.01);
     const lonPadding = Math.max(lonDiff * 0.3, 0.01);
 
-    const centerLat = (minLat + maxLat) / 2;
-    const centerLon = (minLon + maxLon) / 2;
-
-    // Calculate zoom level based on padded bounds
-    const paddedLatDiff = latDiff + (latPadding * 2);
-    const paddedLonDiff = lonDiff + (lonPadding * 2);
+    const paddedLatDiff = latDiff + latPadding * 2;
+    const paddedLonDiff = lonDiff + lonPadding * 2;
     const maxDiff = Math.max(paddedLatDiff, paddedLonDiff);
 
     let zoom = 1.5;
@@ -119,12 +117,34 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
     else if (maxDiff < 20) zoom = 3;
     else zoom = 2;
 
-    setViewState({
-      longitude: centerLon,
-      latitude: centerLat,
+    return {
+      longitude: (minLon + maxLon) / 2,
+      latitude: (minLat + maxLat) / 2,
       zoom,
-    });
+    };
   }, [sites]);
+
+  // Auto-zoom to fit sites once the map is loaded
+  const handleMapLoad = useCallback(() => {
+    mapReady.current = true;
+
+    const target = computeSitesViewState();
+    if (target) {
+      setViewState(target);
+      hasAutoZoomed.current = true;
+    }
+  }, [computeSitesViewState]);
+
+  // If sites arrive after the map has already loaded, auto-zoom then
+  useEffect(() => {
+    if (!mapReady.current || hasAutoZoomed.current) return;
+
+    const target = computeSitesViewState();
+    if (target) {
+      setViewState(target);
+      hasAutoZoomed.current = true;
+    }
+  }, [computeSitesViewState]);
 
   // Handle map click
   const handleMapClick = useCallback(
@@ -139,7 +159,10 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
     <div className="relative h-[400px] w-full rounded-lg overflow-hidden border border-gray-200">
       <Map
         {...viewState}
-        onMove={(evt) => setViewState(evt.viewState)}
+        onMove={(evt) => {
+          if (mapReady.current) setViewState(evt.viewState);
+        }}
+        onLoad={handleMapLoad}
         onClick={handleMapClick}
         mapStyle={MAP_STYLES[mapStyle].url}
         onError={onMapError}
@@ -214,17 +237,17 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
         )}
       </Map>
 
+      {/* Help text */}
+      <div className="absolute bottom-2 left-2 bg-white px-3 py-1.5 rounded shadow-md text-xs text-gray-600 max-w-[200px]">
+        Click anywhere on the map to place your site marker
+      </div>
+
       {/* Coordinates display */}
       {selectedLocation && (
-        <div className="absolute bottom-2 left-2 bg-white px-3 py-1.5 rounded shadow-md text-xs font-mono">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 rounded shadow-md text-xs font-mono">
           {selectedLocation.lat.toFixed(6)}, {selectedLocation.lon.toFixed(6)}
         </div>
       )}
-
-      {/* Help text */}
-      <div className="absolute bottom-14 left-2 bg-white px-3 py-1.5 rounded shadow-md text-xs text-gray-600 max-w-[200px]">
-        Click anywhere on the map to place your site marker
-      </div>
     </div>
   );
 }

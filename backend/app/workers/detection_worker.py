@@ -24,7 +24,6 @@ from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
-from app.api.crud import site as site_crud
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -228,11 +227,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             total_files += len(video_files) + len(image_files)
 
-            # Get or create "Unknown Site"
-            site = site_crud.get_or_create_unknown_site(db, project_id)
+            # Validate site selection from queue entry
+            if not entry.site_id:
+                error_msg = f"Queue entry {entry_id} has no site selected"
+                logger.error(error_msg)
+                queue_crud.update_queue_status(db, entry_id, status="failed", error=error_msg)
+                continue
 
             # Create deployment
-            deployment = create_deployment(db=db, site_id=site.id, folder_path=str(folder_path))
+            deployment = create_deployment(db=db, site_id=entry.site_id, folder_path=str(folder_path))
             logger.info(f"Created deployment: {deployment.id}")
 
             # Create artifacts folder
@@ -598,14 +601,16 @@ async def process_deployment_analysis(job_id: str) -> None:
             if not image_files:
                 raise ValueError(f"No images found in {folder_path}")
 
-            # Get or create "Unknown Site"
+            # Validate site selection
             await ws_manager.send_progress(job_id, "Creating deployment...", 0.04)
-            site = site_crud.get_or_create_unknown_site(db, project_id)
+            site_id = payload.get("site_id")
+            if not site_id:
+                raise ValueError("No site selected — site_id is required in job payload")
 
             # Create deployment
             deployment = create_deployment(
                 db=db,
-                site_id=site.id,
+                site_id=site_id,
                 folder_path=str(folder_path),
             )
             logger.info(f"Created deployment: {deployment.id}")

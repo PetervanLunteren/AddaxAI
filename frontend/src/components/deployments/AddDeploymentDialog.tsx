@@ -2,7 +2,6 @@
  * Add Deployment Dialog.
  *
  * Allows users to queue a deployment for ML analysis.
- * Site is automatically set to "Unknown Site" for MVP simplicity.
  */
 
 import { useState } from "react";
@@ -325,7 +324,6 @@ export function AddDeploymentDialog({
           <DialogTitle>Add Deployment to Queue</DialogTitle>
           <DialogDescription>
             Select a folder and configure ML models for camera trap analysis.
-            Site will be automatically set to "Unknown Site".
           </DialogDescription>
         </DialogHeader>
 

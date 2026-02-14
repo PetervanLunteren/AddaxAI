@@ -43,6 +43,26 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 **Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days).
 
+## Best frame selection (videos)
+
+After video detection (phase 1), a single representative frame is selected per video and saved to `.addaxai/frames/{video_stem}.jpg`. The algorithm:
+
+1. Score each frame by summing animal detection confidences (>= 0.3)
+2. Among top candidates (within 10% of best score), pick the sharpest (Laplacian variance)
+3. Blank videos (no detections): sample ~10 evenly-spaced frames, pick the sharpest
+
+See `backend/app/ml/best_frame.py`.
+
+**Storage:** The frame JPEG is at `{deployment_folder}/.addaxai/frames/{video_stem}.jpg`. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images.
+
+**Usage:** The best frame is the canonical image representation of a video. Use it anywhere you'd use a photo for an image file:
+- Thumbnails in the UI
+- Human verification workflows
+- Depth estimation
+- Any future per-file visual feature
+
+If you're building a feature that works on images, check `file.best_frame_path` for videos instead of extracting frames yourself.
+
 ## Creating a custom classification model
 
 To add a new classification model to AddaxAI, create an `inference.py` file in your model's directory that implements the `ModelInference` class.

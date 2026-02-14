@@ -95,6 +95,16 @@ def get_file_image(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # For videos, serve the best frame JPEG instead of the video file
+    if file.file_type == "video" and file.best_frame_path:
+        frame_path = Path(file.best_frame_path)
+        if frame_path.exists():
+            return FastAPIFileResponse(
+                path=str(frame_path),
+                media_type="image/jpeg",
+                filename=frame_path.name,
+            )
+
     file_path = Path(file.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image file not found on disk")

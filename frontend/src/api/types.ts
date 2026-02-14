@@ -189,6 +189,8 @@ export interface FileResponse {
   height_px: number | null;
   timestamp: string;
   created_at: string;
+  best_frame_number: number | null;
+  best_frame_path: string | null;
 }
 
 export interface FileWithDetections extends FileResponse {
