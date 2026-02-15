@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Settings2, Check, ChevronsUpDown, ListTodo, InfoIcon } from "lucide-react";
+import { Save, RotateCcw, Settings2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, Loader2 } from "lucide-react";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
@@ -317,12 +317,44 @@ export default function SettingsPage() {
     }
   };
 
+  // Postprocessing status
+  const { data: postprocessingStatus } = useQuery({
+    queryKey: ["postprocessing-status", projectId],
+    queryFn: () => projectsApi.getPostprocessingStatus(projectId!),
+    enabled: !!projectId,
+    refetchInterval: 5000,
+  });
+
+  // Reprocess state
+  const [reprocessJobId, setReprocessJobId] = useState<string | null>(null);
+
+  const reprocessProgress = useTaskProgress({
+    taskId: reprocessJobId,
+    onComplete: () => {
+      setReprocessJobId(null);
+      queryClient.invalidateQueries({ queryKey: ["postprocessing-status", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: () => {
+      setReprocessJobId(null);
+    },
+  });
+
+  // Reprocess mutation
+  const reprocessMutation = useMutation({
+    mutationFn: () => projectsApi.reprocess(projectId!),
+    onSuccess: (data) => {
+      setReprocessJobId(data.job_id);
+    },
+  });
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (data: ProjectUpdate) => projectsApi.update(projectId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["postprocessing-status", projectId] });
       // Reset form dirty state
       form.reset(form.getValues());
     },
@@ -1009,6 +1041,46 @@ export default function SettingsPage() {
             </div>
           </form>
         </Form>
+
+        {/* Postprocessing card — shown when classifications exist */}
+        {postprocessingStatus?.has_classifications && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Classification postprocessing</CardTitle>
+              <CardDescription>
+                Apply event smoothing and taxonomic rollup to existing classification results. These settings modify how raw AI predictions are interpreted.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  {postprocessingStatus.needs_reprocessing ? (
+                    <p className="text-sm text-amber-600">
+                      Settings have changed since last processing. Reprocess to apply.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Classifications are up to date with current settings.
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant={postprocessingStatus.needs_reprocessing ? "default" : "outline"}
+                  onClick={() => reprocessMutation.mutate()}
+                  disabled={isDirty || reprocessMutation.isPending || !!reprocessJobId}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reprocess classifications
+                </Button>
+              </div>
+              {isDirty && postprocessingStatus.needs_reprocessing && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Save your changes before reprocessing.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
         </TooltipProvider>
 
         {/* Model Info Sheet */}
@@ -1054,6 +1126,36 @@ export default function SettingsPage() {
                 onCancel={handleCancelPreparation}
               />
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Reprocessing Progress Dialog */}
+        <Dialog open={!!reprocessJobId}>
+          <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="rounded-full bg-primary/10 p-3">
+                <RefreshCw className="h-6 w-6 text-primary animate-spin" />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="font-semibold text-lg">Reprocessing classifications</h3>
+                <p className="text-sm text-muted-foreground">
+                  {reprocessProgress.message || "Starting..."}
+                </p>
+              </div>
+              {reprocessProgress.progress > 0 && reprocessProgress.progress < 1 && (
+                <div className="w-full space-y-1">
+                  <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-300"
+                      style={{ width: `${Math.round(reprocessProgress.progress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    {Math.round(reprocessProgress.progress * 100)}%
+                  </p>
+                </div>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
 

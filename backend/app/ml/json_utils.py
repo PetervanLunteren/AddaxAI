@@ -9,6 +9,7 @@ Following DEVELOPERS.md principles:
 Created by Claude Code on 2026-01-05
 """
 
+import csv
 import uuid
 from pathlib import Path
 from typing import Any
@@ -115,6 +116,68 @@ def format_class_names_for_json(class_names: dict[str, str]) -> dict[str, str]:
         Dict with string keys
     """
     return {str(k): v for k, v in class_names.items()}
+
+
+def build_classification_category_descriptions(
+    classification_categories: dict[str, str],
+    taxonomy_csv_path: Path,
+) -> dict[str, str]:
+    """
+    Build classification_category_descriptions from taxonomy.csv.
+
+    Maps each classification category ID to a 7-token taxonomy string:
+    ``common_name;class;order;family;genus;species;common_name`` (all lowercase).
+
+    MegaDetector's smoothing code expects 7-token strings where token 0 is an
+    identifier, tokens 1-5 are the taxonomy (class through species), and
+    token 6 is the display name.
+
+    Args:
+        classification_categories: Dict mapping class_id -> class_name
+            (e.g. {"0": "fox", "1": "deer"})
+        taxonomy_csv_path: Path to taxonomy.csv with columns:
+            model_class,class,order,family,genus,species
+
+    Returns:
+        Dict mapping class_id -> 7-token taxonomy string
+        (e.g. {"0": "fox;mammalia;carnivora;canidae;vulpes;vulpes;fox"})
+    """
+    # Load taxonomy CSV into lookup by model_class name
+    taxonomy_lookup: dict[str, dict[str, str]] = {}
+
+    with open(taxonomy_csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            model_class = row.get("model_class", "").strip().lower()
+            if not model_class:
+                continue
+            taxonomy_lookup[model_class] = {
+                "class": row.get("class", "").strip().lower(),
+                "order": row.get("order", "").strip().lower(),
+                "family": row.get("family", "").strip().lower(),
+                "genus": row.get("genus", "").strip().lower(),
+                "species": row.get("species", "").strip().lower(),
+            }
+
+    # Map each classification category to its 7-token taxonomy string
+    descriptions: dict[str, str] = {}
+    for class_id, class_name in classification_categories.items():
+        name_lower = class_name.strip().lower()
+        if name_lower in taxonomy_lookup:
+            tax = taxonomy_lookup[name_lower]
+            # 7-token format: name;class;order;family;genus;species;name
+            tokens = [
+                name_lower,
+                tax["class"],
+                tax["order"],
+                tax["family"],
+                tax["genus"],
+                tax["species"],
+                name_lower,
+            ]
+            descriptions[str(class_id)] = ";".join(tokens)
+
+    return descriptions
 
 
 def get_relative_path(absolute_path: Path, base_folder: Path) -> str:

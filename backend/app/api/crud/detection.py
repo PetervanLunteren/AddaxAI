@@ -74,6 +74,7 @@ def create_detection(db: Session, detection: DetectionCreate) -> Detection:
         bbox_height=detection.bbox_height,
         species=detection.species,
         species_confidence=detection.species_confidence,
+        frame_number=detection.frame_number,
     )
     db.add(db_detection)
     db.commit()
@@ -108,6 +109,7 @@ def create_detections_bulk(
             bbox_height=detection.bbox_height,
             species=detection.species,
             species_confidence=detection.species_confidence,
+            frame_number=detection.frame_number,
         )
         for detection in detections
     ]

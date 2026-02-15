@@ -55,4 +55,28 @@ export const projectsApi = {
    */
   getWithStats: (id: string) =>
     api.get<ProjectWithStats>(`/api/projects/${id}/stats`),
+
+  /**
+   * Reprocess classifications (apply/revert smoothing)
+   */
+  reprocess: (id: string) =>
+    api.post<{ message: string; job_id: string }>(
+      `/api/projects/${id}/reprocess`
+    ),
+
+  /**
+   * Get postprocessing status (needs reprocessing?)
+   */
+  getPostprocessingStatus: (id: string) =>
+    api.get<{ needs_reprocessing: boolean; has_classifications: boolean }>(
+      `/api/projects/${id}/postprocessing-status`
+    ),
+
+  /**
+   * Get top species counts
+   */
+  getSpeciesStats: (id: string) =>
+    api.get<{ species: string; count: number }[]>(
+      `/api/projects/${id}/species-stats`
+    ),
 };

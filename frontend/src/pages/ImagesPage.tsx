@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useState } from "react";
 import { filesApi } from "../api/files";
+import { projectsApi } from "../api/projects";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent } from "../components/ui/dialog";
@@ -61,6 +62,20 @@ export default function ImagesPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
+  // Fetch project for detection threshold
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId!),
+    enabled: !!projectId,
+  });
+
+  // Fetch species stats for bar chart
+  const { data: speciesStats } = useQuery({
+    queryKey: ["species-stats", projectId],
+    queryFn: () => projectsApi.getSpeciesStats(projectId!),
+    enabled: !!projectId,
+  });
+
   // Fetch files
   const { data: files, isLoading } = useQuery({
     queryKey: ["files", projectId],
@@ -88,6 +103,41 @@ export default function ImagesPage() {
             Browse camera trap images and detections
           </p>
         </div>
+
+        {/* Species bar chart */}
+        {speciesStats && speciesStats.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Top Species
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <div className="space-y-1.5">
+                {speciesStats.map(({ species, count }) => {
+                  const maxCount = speciesStats[0].count;
+                  const pct = (count / maxCount) * 100;
+                  return (
+                    <div key={species} className="flex items-center gap-3 text-sm">
+                      <span className="w-28 truncate text-right capitalize text-muted-foreground">
+                        {species}
+                      </span>
+                      <div className="flex-1 h-5 bg-muted rounded overflow-hidden">
+                        <div
+                          className="h-full bg-green-500 rounded"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="w-10 text-right text-muted-foreground tabular-nums">
+                        {count}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Content card */}
         <Card>
@@ -121,7 +171,7 @@ export default function ImagesPage() {
         <Dialog open={!!selectedFileId} onOpenChange={() => setSelectedFileId(null)}>
           <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto">
             {selectedFile && (
-              <ImageViewer file={selectedFile} />
+              <ImageViewer file={selectedFile} detectionThreshold={project?.detection_threshold ?? 0} />
             )}
           </DialogContent>
         </Dialog>
@@ -175,9 +225,12 @@ function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void 
   );
 }
 
-function ImageViewer({ file }: { file: FileWithDetections }) {
+function ImageViewer({ file, detectionThreshold }: { file: FileWithDetections; detectionThreshold: number }) {
   const imageUrl = `http://localhost:8000/api/files/${file.id}/image`;
   const timestamp = new Date(file.timestamp).toLocaleString();
+  const filteredDetections = file.detections.filter(
+    (d) => d.confidence >= detectionThreshold
+  );
 
   return (
     <div className="space-y-4">
@@ -200,7 +253,7 @@ function ImageViewer({ file }: { file: FileWithDetections }) {
           viewBox={`0 0 ${file.width_px || 1} ${file.height_px || 1}`}
           preserveAspectRatio="none"
         >
-          {file.detections.map((detection, idx) => {
+          {filteredDetections.map((detection, idx) => {
             const x = detection.bbox_x * (file.width_px || 1);
             const y = detection.bbox_y * (file.height_px || 1);
             const width = detection.bbox_width * (file.width_px || 1);
@@ -248,10 +301,10 @@ function ImageViewer({ file }: { file: FileWithDetections }) {
       {/* Detection list */}
       <div className="space-y-2">
         <h3 className="font-semibold">
-          Detections ({file.detections.length})
+          Detections ({filteredDetections.length})
         </h3>
         <div className="space-y-1">
-          {file.detections.map((detection, idx) => (
+          {filteredDetections.map((detection, idx) => (
             <div
               key={idx}
               className="flex items-center justify-between text-sm p-2 rounded border"

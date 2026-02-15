@@ -78,6 +78,7 @@ class ProjectResponse(ProjectBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    postprocessing_settings_hash: str | None = None
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
 

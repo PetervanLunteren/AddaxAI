@@ -61,6 +61,7 @@ class JSONBasedMLPipeline:
         classification_model_id: str | None,
         country_code: str | None = None,
         state_code: str | None = None,
+        classification_model_dir: Path | None = None,
     ):
         """
         Initialize JSON-based ML pipeline.
@@ -72,6 +73,7 @@ class JSONBasedMLPipeline:
             classification_model_id: Classification model ID for metadata
             country_code: Country code for SpeciesNet geofencing (e.g., "USA", "KEN")
             state_code: State code for USA (e.g., "CA", "TX")
+            classification_model_dir: Path to classification model directory (for taxonomy.csv)
         """
         self.detection_model = detection_model
         self.classification_model = classification_model
@@ -79,6 +81,7 @@ class JSONBasedMLPipeline:
         self.classification_model_id = classification_model_id
         self.country_code = country_code
         self.state_code = state_code
+        self.classification_model_dir = classification_model_dir
 
         logger.info(
             f"JSON Pipeline initialized with detection={type(detection_model).__name__}, "
@@ -427,6 +430,22 @@ class JSONBasedMLPipeline:
         # Add classification_categories to JSON
         md_results["classification_categories"] = class_names
 
+        # Add classification_category_descriptions from taxonomy.csv (enables taxonomic rollup)
+        if self.classification_model_dir:
+            taxonomy_csv = self.classification_model_dir / "taxonomy.csv"
+            if taxonomy_csv.exists():
+                from app.ml.json_utils import build_classification_category_descriptions
+
+                descriptions = build_classification_category_descriptions(
+                    class_names, taxonomy_csv
+                )
+                if descriptions:
+                    md_results["classification_category_descriptions"] = descriptions
+                    logger.info(
+                        f"Added classification_category_descriptions for "
+                        f"{len(descriptions)} classes from taxonomy.csv"
+                    )
+
         # Add addaxai_metadata
         md_results["addaxai_metadata"] = build_addaxai_metadata(
             deployment_id=deployment_id,
@@ -567,7 +586,6 @@ class JSONBasedMLPipeline:
                 # Get classifications (if present)
                 species = None
                 species_confidence = None
-                classification_all_probs = None
 
                 if "classifications" in det and det["classifications"]:
                     # Get top classification
@@ -577,13 +595,6 @@ class JSONBasedMLPipeline:
                     class_names = results.get("classification_categories", {})
                     species = class_names.get(str(top_class_id))
                     species_confidence = float(top_conf)
-
-                    # Build all_probabilities dict
-                    classification_all_probs = {}
-                    for class_id, conf in det["classifications"]:
-                        class_name = class_names.get(str(class_id))
-                        if class_name:
-                            classification_all_probs[class_name] = float(conf)
 
                     if species:
                         classified_count += 1
@@ -612,7 +623,6 @@ class JSONBasedMLPipeline:
                 if species:
                     detection_record.species = species
                     detection_record.species_confidence = species_confidence
-                    detection_record.classification_all_probs = classification_all_probs
                     detection_record.classification_method = "machine"
 
             # Set observation_type based on detection categories (priority: animal > human > vehicle)
@@ -791,7 +801,6 @@ def load_json_to_database(
                 # Get classifications (if present)
                 species = None
                 species_confidence = None
-                classification_all_probs = None
 
                 if "classifications" in det and det["classifications"]:
                     # Get top classification
@@ -801,13 +810,6 @@ def load_json_to_database(
                     class_names = results.get("classification_categories", {})
                     species = class_names.get(str(top_class_id))
                     species_confidence = float(top_conf)
-
-                    # Build all_probabilities dict
-                    classification_all_probs = {}
-                    for class_id, conf in det["classifications"]:
-                        class_name = class_names.get(str(class_id))
-                        if class_name:
-                            classification_all_probs[class_name] = float(conf)
 
                     if species:
                         classified_count += 1
@@ -836,7 +838,6 @@ def load_json_to_database(
                 if species:
                     detection_record.species = species
                     detection_record.species_confidence = species_confidence
-                    detection_record.classification_all_probs = classification_all_probs
                     detection_record.classification_method = "machine"
 
             # Set observation_type based on detection categories (priority: animal > human > vehicle)

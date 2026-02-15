@@ -7,6 +7,8 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -209,3 +211,110 @@ def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
     result = {category: count for category, count in stats}
 
     return result
+
+
+@router.get("/{project_id}/species-stats")
+def get_species_stats(project_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    """
+    Get top species counts for a project.
+
+    Returns list of {species, count} sorted by count descending, top 10.
+    Only includes detections with a species classification.
+    """
+    stats = (
+        db.query(Detection.species, func.count(Detection.id).label("count"))
+        .join(File)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .filter(Detection.species.isnot(None))
+        .group_by(Detection.species)
+        .order_by(func.count(Detection.id).desc())
+        .all()
+    )
+
+    return [{"species": species, "count": count} for species, count in stats]
+
+
+@router.post(
+    "/{project_id}/reprocess",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def reprocess_classifications(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Reprocess classifications for a project.
+
+    Launches an async task that sends WebSocket progress updates.
+    Returns immediately with a job_id for progress tracking.
+    """
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    from app.api.crud import job as crud_job
+    from app.api.schemas.job import JobCreate
+
+    job_data = JobCreate(
+        type="postprocessing",
+        payload={"project_id": project_id},
+    )
+    job = crud_job.create_job(db, job_data)
+    logger.info(f"Created postprocessing job {job.id} for project {project_id}")
+
+    from app.workers.postprocessing_worker import process_postprocessing_job
+
+    asyncio.create_task(process_postprocessing_job(job.id))
+
+    return {"message": "Postprocessing started", "job_id": job.id}
+
+
+@router.get("/{project_id}/postprocessing-status")
+def get_postprocessing_status(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Check whether postprocessing needs to be re-run.
+
+    Compares current smoothing settings hash with stored hash.
+
+    Returns:
+        {needs_reprocessing: bool, has_classifications: bool}
+    """
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    # Check if any classifications exist for this project
+    has_cls = (
+        db.query(Detection.id)
+        .join(File)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .filter(Detection.species.isnot(None))
+        .limit(1)
+        .first()
+    ) is not None
+
+    # Compute current hash and compare
+    from app.ml.postprocessing import compute_postprocessing_settings_hash
+
+    current_hash = compute_postprocessing_settings_hash(db_project)
+    stored_hash = db_project.postprocessing_settings_hash
+
+    needs_reprocessing = has_cls and (current_hash != stored_hash)
+
+    return {
+        "needs_reprocessing": needs_reprocessing,
+        "has_classifications": has_cls,
+    }

@@ -54,6 +54,7 @@ export interface ProjectResponse {
   taxonomic_rollup: boolean;
   taxonomic_rollup_threshold: number;
   independence_interval: number;
+  postprocessing_settings_hash: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -103,7 +104,8 @@ export type JobType =
   | "import"
   | "ml_inference"
   | "export"
-  | "event_computation";
+  | "event_computation"
+  | "postprocessing";
 
 export type JobStatus =
   | "pending"

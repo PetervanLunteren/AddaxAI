@@ -83,6 +83,11 @@ class Project(Base):
         Float, nullable=False, default=2.0  # Frames per second to extract
     )
 
+    # Postprocessing state — SHA-256 hash of last-applied smoothing settings
+    postprocessing_settings_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+
     # Relationships
     sites: Mapped[list["Site"]] = relationship(
         "Site", back_populates="project", cascade="all, delete-orphan"

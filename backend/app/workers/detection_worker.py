@@ -131,6 +131,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         classification_model_id,
         country_code=project.country_code,
         state_code=project.state_code,
+        classification_model_dir=cls_model_dir if classification_model_id else None,
     )
 
     total_detections = 0
@@ -361,6 +362,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         country_code=project.country_code,
                         state_code=project.state_code,
                         progress_callback=video_classification_progress,
+                        classification_model_dir=cls_model_dir if classification_model_id else None,
                     )
 
                     logger.info(f"Video classification complete")
@@ -437,6 +439,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         country_code=project.country_code,
                         state_code=project.state_code,
                         progress_callback=image_classification_progress,
+                        classification_model_dir=cls_model_dir if classification_model_id else None,
                     )
 
                     logger.info(f"Image classification complete")
@@ -473,6 +476,29 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
+            # ============================================================
+            # PHASE 7: Postprocessing (smoothing) — non-fatal
+            # ============================================================
+            if final_json_path.exists() and (project.event_smoothing or project.taxonomic_rollup):
+                try:
+                    logger.info("Phase 7: Running postprocessing (smoothing)")
+                    from app.ml.postprocessing import (
+                        run_postprocessing_for_deployment,
+                        update_database_from_smoothed_results,
+                    )
+
+                    smoothed = run_postprocessing_for_deployment(
+                        deployment.id, final_json_path, folder_path, project, db
+                    )
+                    pp_result = update_database_from_smoothed_results(
+                        deployment.id, smoothed, folder_path, db
+                    )
+                    logger.info(
+                        f"Postprocessing complete: {pp_result.get('updated', 0)} updated"
+                    )
+                except Exception as e:
+                    logger.error(f"Postprocessing failed (non-fatal): {e}", exc_info=True)
+
             # Send final progress update before completion
             await deployment_progress_callback("Complete", 1.0, "finalize", 1.0)
 
@@ -483,6 +509,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 f"Batch job {job_id}: Completed entry {idx}/{total_entries} - "
                 f"{result.total_detections} detections"
             )
+
+        # Update postprocessing settings hash
+        from app.ml.postprocessing import compute_postprocessing_settings_hash
+
+        project.postprocessing_settings_hash = compute_postprocessing_settings_hash(project)
+        db.commit()
 
         # Mark job as completed
         job_crud.update_job_status(db, job_id, "completed")
@@ -673,6 +705,7 @@ async def process_deployment_analysis(job_id: str) -> None:
                 classification_model_id,
                 country_code=project.country_code,
                 state_code=project.state_code,
+                classification_model_dir=cls_model_dir if classification_model_id else None,
             )
 
             # Define progress callback wrapper
@@ -796,6 +829,7 @@ async def run_classification_on_json(
     country_code: str | None,
     state_code: str | None,
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
+    classification_model_dir: Path | None = None,
 ) -> None:
     """
     Run classification on detection JSON file.
@@ -810,6 +844,7 @@ async def run_classification_on_json(
         country_code: Country code for SpeciesNet
         state_code: State code for SpeciesNet
         progress_callback: Optional progress callback
+        classification_model_dir: Path to classification model directory (for taxonomy.csv)
 
     Raises:
         RuntimeError: If classification fails
@@ -1069,6 +1104,18 @@ async def run_classification_on_json(
             if class_names:
                 md_results["classification_categories"] = class_names
 
+                # Add taxonomy descriptions if taxonomy.csv exists
+                if classification_model_dir:
+                    taxonomy_csv = classification_model_dir / "taxonomy.csv"
+                    if taxonomy_csv.exists():
+                        from app.ml.json_utils import build_classification_category_descriptions
+
+                        descriptions = build_classification_category_descriptions(
+                            class_names, taxonomy_csv
+                        )
+                        if descriptions:
+                            md_results["classification_category_descriptions"] = descriptions
+
         # Save updated JSON
         with open(json_path, "w") as f:
             json.dump(md_results, f, indent=2)
@@ -1105,6 +1152,7 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             "images": [],
             "detection_categories": {},
             "classification_categories": {},
+            "classification_category_descriptions": {},
             "info": {},
         }
 
@@ -1136,6 +1184,12 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
 
                 # Map old ID to unified ID
                 id_remapping[old_id] = unified_class_mapping[species_name]
+
+            # Remap classification_category_descriptions using the same ID remapping
+            file_descriptions = data.get("classification_category_descriptions", {})
+            for old_id, desc_str in file_descriptions.items():
+                new_id = id_remapping.get(old_id, old_id)
+                merged_data["classification_category_descriptions"][new_id] = desc_str
 
             # Renumber classification IDs in all detections from this file
             for img in data.get("images", []):
@@ -1173,6 +1227,10 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             class_id: species_name
             for species_name, class_id in unified_class_mapping.items()
         }
+
+        # Remove empty descriptions dict
+        if not merged_data["classification_category_descriptions"]:
+            del merged_data["classification_category_descriptions"]
 
         logger.info(
             f"Unified classification mapping: {len(merged_data['classification_categories'])} species "

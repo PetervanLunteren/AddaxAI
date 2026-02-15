@@ -1,0 +1,431 @@
+"""
+Classification postprocessing service.
+
+Applies event smoothing and taxonomic rollup to classification results
+using MegaDetector's classification_postprocessing module. Reads raw
+predictions from JSON files and writes smoothed results back to the DB.
+
+The actual smoothing runs as a subprocess in the ML environment because
+megadetector is only installed there, not in the backend environment.
+
+Created by Claude Code on 2026-02-14
+"""
+
+import hashlib
+import json
+import subprocess
+import tempfile
+import uuid
+from pathlib import Path
+
+from sqlalchemy.orm import Session
+
+from app.core.logging_config import get_logger
+from app.models import Detection, Deployment, File
+
+logger = get_logger(__name__)
+
+
+def compute_postprocessing_settings_hash(project) -> str:
+    """
+    Compute SHA-256 hash of the project's postprocessing-relevant settings.
+
+    Used to detect when settings have changed and reprocessing is needed.
+
+    Args:
+        project: Project ORM object
+
+    Returns:
+        64-character hex SHA-256 hash string
+    """
+    canonical = json.dumps(
+        {
+            "event_smoothing": project.event_smoothing,
+            "taxonomic_rollup": project.taxonomic_rollup,
+            "taxonomic_rollup_threshold": project.taxonomic_rollup_threshold,
+            "independence_interval": project.independence_interval,
+            "excluded_classes": sorted(project.excluded_classes or []),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def build_sequence_information(
+    deployment_id: str,
+    independence_interval: int,
+    db: Session,
+) -> list[dict]:
+    """
+    Build COCO Camera Traps sequence information from file timestamps.
+
+    Groups files into sequences: a new sequence starts when the time gap
+    between consecutive files exceeds ``independence_interval`` seconds.
+
+    Args:
+        deployment_id: Deployment UUID
+        independence_interval: Gap in seconds to start a new sequence
+        db: Database session
+
+    Returns:
+        List of dicts with keys: file_name, seq_id, datetime
+        (COCO Camera Traps "images" format expected by
+        ``smooth_classification_results_sequence_level``)
+    """
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == deployment_id)
+        .order_by(File.timestamp.asc())
+        .all()
+    )
+
+    if not files:
+        return []
+
+    sequence_images: list[dict] = []
+    current_seq_id = str(uuid.uuid4())
+    prev_timestamp = files[0].timestamp
+
+    for file_record in files:
+        gap = (file_record.timestamp - prev_timestamp).total_seconds()
+        if gap > independence_interval:
+            current_seq_id = str(uuid.uuid4())
+
+        # Compute relative path from deployment folder
+        deployment = db.query(Deployment).filter(Deployment.id == deployment_id).first()
+        if deployment and deployment.folder_path:
+            try:
+                rel_path = str(Path(file_record.file_path).relative_to(deployment.folder_path))
+            except ValueError:
+                rel_path = file_record.file_path
+        else:
+            rel_path = file_record.file_path
+
+        sequence_images.append(
+            {
+                "file_name": rel_path,
+                "seq_id": current_seq_id,
+                "datetime": file_record.timestamp.isoformat(),
+            }
+        )
+        prev_timestamp = file_record.timestamp
+
+    return sequence_images
+
+
+def _find_classification_model_dir(project, db: Session) -> Path | None:
+    """
+    Find the classification model directory for taxonomy.csv lookup.
+
+    Args:
+        project: Project ORM object
+        db: Database session
+
+    Returns:
+        Path to classification model directory, or None
+    """
+    if not project.classification_model_id:
+        return None
+
+    try:
+        from app.ml.manifest_manager import ManifestManager
+        from app.ml.model_storage import ModelStorage
+
+        manifest_manager = ManifestManager()
+        model_storage = ModelStorage()
+        cls_manifest = manifest_manager.get_model(project.classification_model_id)
+        return model_storage.get_model_path(cls_manifest)
+    except Exception as e:
+        logger.warning(f"Could not find classification model dir: {e}")
+        return None
+
+
+def _get_ml_python_path() -> Path:
+    """
+    Get the Python executable path for the ML environment.
+
+    Returns:
+        Path to the ML environment's Python executable
+    """
+    from app.ml.environment_manager import EnvironmentManager
+
+    env_manager = EnvironmentManager()
+    return env_manager.get_python("env-addaxai-base")
+
+
+def _ensure_7_token_descriptions(md_results: dict, project, db: Session) -> bool:
+    """
+    Ensure classification_category_descriptions are in 7-token format.
+
+    Modifies md_results in-place if rebuild is needed.
+
+    Returns:
+        True if descriptions were rebuilt (JSON file should be updated)
+    """
+    descriptions = md_results.get("classification_category_descriptions", {})
+    needs_rebuild = not descriptions
+    if not needs_rebuild and descriptions:
+        sample = next(iter(descriptions.values()), "")
+        if len(sample.split(";")) != 7:
+            needs_rebuild = True
+
+    if not needs_rebuild:
+        return False
+
+    cls_model_dir = _find_classification_model_dir(project, db)
+    if cls_model_dir:
+        taxonomy_csv = cls_model_dir / "taxonomy.csv"
+        if taxonomy_csv.exists():
+            from app.ml.json_utils import build_classification_category_descriptions
+
+            class_cats = md_results.get("classification_categories", {})
+            new_descriptions = build_classification_category_descriptions(
+                class_cats, taxonomy_csv
+            )
+            if new_descriptions:
+                md_results["classification_category_descriptions"] = new_descriptions
+                return True
+
+    return False
+
+
+def run_postprocessing_for_deployment(
+    deployment_id: str,
+    json_path: Path,
+    deployment_folder: Path,
+    project,
+    db: Session,
+) -> dict:
+    """
+    Run classification postprocessing (smoothing + taxonomic rollup) on a deployment.
+
+    Loads the raw JSON, applies MegaDetector's smoothing via a subprocess
+    (since megadetector is only installed in the ML environment), and returns
+    the smoothed results dict.
+
+    Args:
+        deployment_id: Deployment UUID
+        json_path: Path to results_with_classifications.json
+        deployment_folder: Path to deployment folder
+        project: Project ORM object
+        db: Database session
+
+    Returns:
+        Smoothed MegaDetector-format results dict
+    """
+    # Load raw JSON
+    with open(json_path) as f:
+        md_results = json.load(f)
+
+    # Ensure 7-token descriptions exist; update JSON file if rebuilt
+    if _ensure_7_token_descriptions(md_results, project, db):
+        with open(json_path, "w") as f:
+            json.dump(md_results, f, indent=2)
+        logger.info("Rebuilt classification_category_descriptions to 7-token format")
+
+    # If neither smoothing nor rollup is enabled, return raw results
+    if not project.event_smoothing and not project.taxonomic_rollup:
+        return md_results
+
+    # Build sequence info for event smoothing
+    sequence_info = None
+    if project.event_smoothing:
+        sequence_info = build_sequence_information(
+            deployment_id, project.independence_interval, db
+        )
+        if sequence_info:
+            logger.info(
+                f"Running sequence-level smoothing with {len(sequence_info)} images "
+                f"(interval={project.independence_interval}s)"
+            )
+
+    # Build options for the subprocess script
+    smoothing_options = {
+        "taxonomic_rollup": project.taxonomic_rollup,
+        "event_smoothing": project.event_smoothing,
+        "excluded_classes": project.excluded_classes or [],
+        "detection_threshold": project.detection_threshold,
+        "sequence_info": sequence_info,
+    }
+
+    # Run smoothing as subprocess in the ML environment
+    python_path = _get_ml_python_path()
+    script_path = Path(__file__).parent / "smoothing_script.py"
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as opts_f:
+        json.dump(smoothing_options, opts_f)
+        opts_path = opts_f.name
+
+    output_path = tempfile.mktemp(suffix=".json")
+
+    try:
+        logger.info(f"Running smoothing subprocess for deployment {deployment_id}")
+        result = subprocess.run(
+            [str(python_path), str(script_path), str(json_path), opts_path, output_path],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Smoothing script failed: {result.stderr}")
+
+        with open(output_path) as f:
+            smoothed = json.load(f)
+
+        return smoothed
+
+    finally:
+        Path(opts_path).unlink(missing_ok=True)
+        Path(output_path).unlink(missing_ok=True)
+
+
+def update_database_from_smoothed_results(
+    deployment_id: str,
+    smoothed_results: dict,
+    deployment_folder: Path,
+    db: Session,
+) -> dict:
+    """
+    Update Detection records in the database from smoothed JSON results.
+
+    Matches JSON detections to DB records using file_path + bbox coordinates
+    (rounded to 4 decimal places) + frame_number.
+
+    Args:
+        deployment_id: Deployment UUID
+        smoothed_results: Smoothed MegaDetector-format dict
+        deployment_folder: Path to deployment folder
+        db: Database session
+
+    Returns:
+        Dict with counts: {updated, unchanged, errors}
+    """
+    class_names = smoothed_results.get("classification_categories", {})
+
+    # Build lookup: (file_path, bbox_key, frame_number) -> Detection record
+    detections = (
+        db.query(Detection)
+        .join(File)
+        .filter(File.deployment_id == deployment_id)
+        .all()
+    )
+
+    detection_lookup: dict[tuple, Detection] = {}
+    for det in detections:
+        bbox_key = (
+            round(det.bbox_x, 4),
+            round(det.bbox_y, 4),
+            round(det.bbox_width, 4),
+            round(det.bbox_height, 4),
+        )
+        file_path = det.file.file_path
+        key = (file_path, bbox_key, det.frame_number)
+        detection_lookup[key] = det
+
+    updated = 0
+    unchanged = 0
+    errors = 0
+
+    # Track which files had species changes (for observation_type recomputation)
+    changed_file_ids: set[str] = set()
+
+    for img in smoothed_results.get("images", []):
+        relative_file = img["file"]
+        absolute_path = str((deployment_folder / relative_file).resolve())
+
+        for det in img.get("detections", []):
+            try:
+                bbox = det["bbox"]
+                bbox_key = (
+                    round(float(bbox[0]), 4),
+                    round(float(bbox[1]), 4),
+                    round(float(bbox[2]), 4),
+                    round(float(bbox[3]), 4),
+                )
+                frame_number = det.get("frame_number")
+                key = (absolute_path, bbox_key, frame_number)
+
+                db_det = detection_lookup.get(key)
+                if db_det is None:
+                    errors += 1
+                    continue
+
+                # Get smoothed top-1 classification
+                classifications = det.get("classifications", [])
+                if classifications:
+                    top_class_id, top_conf = classifications[0]
+                    new_species = class_names.get(str(top_class_id))
+                    new_confidence = float(top_conf)
+                else:
+                    new_species = None
+                    new_confidence = None
+
+                if db_det.species != new_species or db_det.species_confidence != new_confidence:
+                    db_det.species = new_species
+                    db_det.species_confidence = new_confidence
+                    updated += 1
+                    changed_file_ids.add(db_det.file_id)
+                else:
+                    unchanged += 1
+
+            except Exception as e:
+                logger.warning(f"Error updating detection: {e}")
+                errors += 1
+
+    # Recompute observation_type for files with changed detections
+    for file_id in changed_file_ids:
+        file_record = db.query(File).filter(File.id == file_id).first()
+        if not file_record:
+            continue
+
+        file_detections = (
+            db.query(Detection).filter(Detection.file_id == file_id).all()
+        )
+        categories = {d.category for d in file_detections}
+
+        if "animal" in categories:
+            file_record.observation_type = "animal"
+        elif "person" in categories:
+            file_record.observation_type = "human"
+        elif "vehicle" in categories:
+            file_record.observation_type = "vehicle"
+        else:
+            file_record.observation_type = "blank"
+
+    db.commit()
+
+    logger.info(
+        f"Database update complete: {updated} updated, {unchanged} unchanged, {errors} errors"
+    )
+
+    return {"updated": updated, "unchanged": unchanged, "errors": errors}
+
+
+def reload_raw_classifications_from_json(
+    deployment_id: str,
+    json_path: Path,
+    deployment_folder: Path,
+    db: Session,
+) -> dict:
+    """
+    Reload raw (unsmoothed) classifications from JSON back to database.
+
+    Effectively reverts to the original predictions by reading the raw JSON
+    and updating DB records.
+
+    Args:
+        deployment_id: Deployment UUID
+        json_path: Path to results_with_classifications.json
+        deployment_folder: Path to deployment folder
+        db: Database session
+
+    Returns:
+        Dict with counts: {updated, unchanged, errors}
+    """
+    with open(json_path) as f:
+        raw_results = json.load(f)
+
+    return update_database_from_smoothed_results(
+        deployment_id, raw_results, deployment_folder, db
+    )
