@@ -4,6 +4,39 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 # TODO
 - [ ] NO PRIORITY https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 
+## verification task
+
+I want to add a method for verification. This is my plan. 
+
+Remove the page /review, and leave /images for what it is. We will work on a new page, called "browse and verify". Here we will have cards per event which will show a few images of the event (with a certain max and then something like "+ X"). Then, if we click the event card, it opens a near full screen modal which shows the reproesentative file (investigate, i think we defined the "best" frame for videos somewhere - lets use the same centralised logic), and the other files below it for context. See /Users/peter/Desktop/home-annotate-9864e9322bae026ca866230bc055b925.png as inspiration. If we click a file in the bar below, it opens in the big view. This is the "normal" modal view. There should be a "Verify mode" toggle, where it opens verification options, like edit box, draw box, edit label of box, etc. It should be a full fledged annotation service. 
+
+Please read VERIFICATION_PLAN_v1.md and VERIFICATION_PLAN_v2.md fro context. These are documents written before by me and a friend. Pay more attention to v2, as it is more recent. 
+
+Take your time with this task. It is a considerable task, so dont rush. I have all the time in the world. Please make it thorrough. 
+
+You're in plan mode. 
+
+Instructions:
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+
+Workflow:
+* Ask at least 3 clarifying questions before beginning.
+* Based on my answers, suggest a few general approaches. These should range from simple solutions to more sophisticated alternatives, with clear trade-offs for each. For every approach, explain:
+   - Complexity (difficulty, dependencies, maintainability)
+   - Readability (clarity for collaborators)
+   - Effect (impact on performance, usability, flexibility)
+* Give your recommendation regarding the alternatives discribed earlier, with a short reasoning. 
+* After I select an approach, draft a detailed plan for implementation.
+* Only start working if I agree with the proposed plan.
+
+
+
+
+
+
 ## Architecture
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the comprehensive technical architecture, technology stack, and implementation roadmap.
