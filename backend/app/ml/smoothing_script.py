@@ -11,9 +11,11 @@ Where options_json contains:
     {
         "taxonomic_rollup": bool,
         "event_smoothing": bool,
-        "excluded_classes": list[str],
         "sequence_info": list[dict] | null
     }
+
+Species exclusion is handled upstream before this script runs.
+The input JSON already has excluded species zeroed out and renormalized.
 """
 
 import json
@@ -43,7 +45,6 @@ def main() -> None:
 
     taxonomic_rollup = opts.get("taxonomic_rollup", False)
     event_smoothing = opts.get("event_smoothing", False)
-    excluded_classes = opts.get("excluded_classes", [])
     detection_threshold = opts.get("detection_threshold", 0.15)
     sequence_info = opts.get("sequence_info")
 
@@ -53,9 +54,12 @@ def main() -> None:
     options.detection_confidence_threshold = detection_threshold
     options.detection_category_names_to_smooth = ["animal"]
 
-    base_other = ["other", "unknown", "no cv result", "animal", "blank", "mammal"]
-    excluded = [c.lower() for c in excluded_classes]
-    options.other_category_names = list(set(base_other + excluded))
+    # Base other categories (case-insensitive matching handled by lowercasing)
+    base_other = [
+        "other", "unknown", "no cv result", "animal",
+        "blank", "mammal", "false detection", "vide",
+    ]
+    options.other_category_names = [name.lower() for name in base_other]
 
     options.modify_in_place = True
 

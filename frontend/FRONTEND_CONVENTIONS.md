@@ -39,6 +39,27 @@ We use a HSL-based color system defined in `src/index.css`:
 - **Destructive**: Delete, danger actions
 - **Muted**: Disabled states, subtle text
 
+## Color palettes
+
+### good / bad situations 
+Use these colors for any good / bad / middle situations like warnings/errors, active/incative, fail/pass, good/bad etc. 
+Bad / inactive  = #882000
+Middle          = #71b7ba
+Good / active   = #0f6064
+
+### color palette for four distinct values
+1 = #0f6064
+2 = #ff8945
+3 = #71b7ba
+4 = #882000
+
+### Use this gradient if you need a gradient somewhere
+For example for gradients in heatmaps or other multi level color scales
+from (dark, first alphabetically) = #0f6064
+to (light, last alphabetically)   = #f9f871
+For example, species specific colors are calculated based on the number of species and mapped using this gradient (see `src/utils/species-colors.ts`). 
+
+
 ### Typography
 
 - Font: System font stack (default Tailwind)

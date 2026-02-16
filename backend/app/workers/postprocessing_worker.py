@@ -9,6 +9,9 @@ Created by Claude Code on 2026-02-14
 
 from pathlib import Path
 
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
@@ -23,6 +26,36 @@ from app.ml.postprocessing import (
 from app.models import Deployment, Detection, File, Site
 
 logger = get_logger(__name__)
+
+
+def _get_species_counts(db: Session, project_id: str) -> dict[str, int]:
+    """Query species detection counts for a project."""
+    rows = (
+        db.query(Detection.species, func.count(Detection.id))
+        .join(File)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .filter(Detection.species.isnot(None))
+        .group_by(Detection.species)
+        .all()
+    )
+    return {species: count for species, count in rows}
+
+
+def _build_species_diff(
+    before: dict[str, int], after: dict[str, int]
+) -> list[dict]:
+    """Build list of species where counts changed, sorted by absolute change."""
+    all_species = set(before) | set(after)
+    diff = []
+    for sp in all_species:
+        b = before.get(sp, 0)
+        a = after.get(sp, 0)
+        if b != a:
+            diff.append({"species": sp, "before": b, "after": a})
+    diff.sort(key=lambda d: abs(d["after"] - d["before"]), reverse=True)
+    return diff
 
 
 async def process_postprocessing_job(job_id: str) -> None:
@@ -85,6 +118,9 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         logger.info(f"Processing {total} deployments for project {project.name}")
 
+        # Snapshot species counts before processing
+        before_counts = _get_species_counts(db, project_id)
+
         total_updated = 0
         total_errors = 0
 
@@ -115,7 +151,8 @@ async def process_postprocessing_job(job_id: str) -> None:
                     )
                 else:
                     result = reload_raw_classifications_from_json(
-                        deployment.id, json_path, folder_path, db
+                        deployment.id, json_path, folder_path, db,
+                        excluded_classes=project.excluded_classes,
                     )
 
                 total_updated += result.get("updated", 0)
@@ -139,6 +176,13 @@ async def process_postprocessing_job(job_id: str) -> None:
         )
         db.commit()
 
+        # Expire cached state so the count query hits the DB fresh
+        db.expire_all()
+
+        # Snapshot species counts after processing and compute diff
+        after_counts = _get_species_counts(db, project_id)
+        species_diff = _build_species_diff(before_counts, after_counts)
+
         # Report completion
         action = "Smoothing applied" if smoothing_enabled else "Raw predictions restored"
         message = f"{action} across {total} deployments ({total_updated} detections updated)"
@@ -153,6 +197,7 @@ async def process_postprocessing_job(job_id: str) -> None:
                 "deployments_processed": total,
                 "detections_updated": total_updated,
                 "errors": total_errors,
+                "species_diff": species_diff,
             },
         )
 

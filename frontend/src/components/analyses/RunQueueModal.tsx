@@ -24,9 +24,10 @@ interface RunQueueModalProps {
   onOpenChange: (open: boolean) => void;
   queueCount: number;
   jobIds: string[];
+  onAnalysisComplete?: () => void;
 }
 
-export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQueueModalProps) {
+export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalysisComplete }: RunQueueModalProps) {
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isComplete, setIsComplete] = useState(false);
@@ -73,6 +74,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds }: RunQue
     taskId: jobId,
     onComplete: () => {
       setIsComplete(true);
+      onAnalysisComplete?.();
     },
     onError: (msg) => {
       setHasError(true);

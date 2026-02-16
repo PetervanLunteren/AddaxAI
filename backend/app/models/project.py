@@ -80,7 +80,7 @@ class Project(Base):
 
     # Video processing settings
     video_fps: Mapped[float] = mapped_column(
-        Float, nullable=False, default=2.0  # Frames per second to extract
+        Float, nullable=False, default=1.0  # Frames per second to extract
     )
 
     # Postprocessing state — SHA-256 hash of last-applied smoothing settings

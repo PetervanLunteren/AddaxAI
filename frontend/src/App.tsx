@@ -20,6 +20,7 @@ import ReviewPage from "./pages/ReviewPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import { Button } from "./components/ui/button";
+import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 
 interface ModelUpdate {
@@ -109,8 +110,9 @@ function App() {
           </Route>
         </Routes>
 
-        {/* Global toast notification */}
+        {/* Global toast notifications */}
         <ModelUpdateToast />
+        <Toaster />
       </BrowserRouter>
     </QueryClientProvider>
   );

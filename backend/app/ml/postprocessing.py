@@ -223,6 +223,12 @@ def run_postprocessing_for_deployment(
             json.dump(md_results, f, indent=2)
         logger.info("Rebuilt classification_category_descriptions to 7-token format")
 
+    # Apply species exclusion in memory (JSON on disk stays as ground truth)
+    if project.excluded_classes:
+        from app.ml.species_exclusion import apply_species_exclusion_to_results
+
+        apply_species_exclusion_to_results(md_results, project.excluded_classes)
+
     # If neither smoothing nor rollup is enabled, return raw results
     if not project.event_smoothing and not project.taxonomic_rollup:
         return md_results
@@ -243,7 +249,6 @@ def run_postprocessing_for_deployment(
     smoothing_options = {
         "taxonomic_rollup": project.taxonomic_rollup,
         "event_smoothing": project.event_smoothing,
-        "excluded_classes": project.excluded_classes or [],
         "detection_threshold": project.detection_threshold,
         "sequence_info": sequence_info,
     }
@@ -256,12 +261,19 @@ def run_postprocessing_for_deployment(
         json.dump(smoothing_options, opts_f)
         opts_path = opts_f.name
 
+    # Write exclusion-modified JSON to a temp file (don't pass the on-disk raw file)
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as input_f:
+        json.dump(md_results, input_f)
+        input_path = input_f.name
+
     output_path = tempfile.mktemp(suffix=".json")
 
     try:
         logger.info(f"Running smoothing subprocess for deployment {deployment_id}")
         result = subprocess.run(
-            [str(python_path), str(script_path), str(json_path), opts_path, output_path],
+            [str(python_path), str(script_path), input_path, opts_path, output_path],
             capture_output=True,
             text=True,
             timeout=300,
@@ -276,6 +288,7 @@ def run_postprocessing_for_deployment(
         return smoothed
 
     finally:
+        Path(input_path).unlink(missing_ok=True)
         Path(opts_path).unlink(missing_ok=True)
         Path(output_path).unlink(missing_ok=True)
 
@@ -407,24 +420,32 @@ def reload_raw_classifications_from_json(
     json_path: Path,
     deployment_folder: Path,
     db: Session,
+    excluded_classes: list[str] | None = None,
 ) -> dict:
     """
     Reload raw (unsmoothed) classifications from JSON back to database.
 
     Effectively reverts to the original predictions by reading the raw JSON
-    and updating DB records.
+    and updating DB records. If excluded_classes is provided, applies species
+    exclusion (zero-out + renormalize) before writing to DB.
 
     Args:
         deployment_id: Deployment UUID
         json_path: Path to results_with_classifications.json
         deployment_folder: Path to deployment folder
         db: Database session
+        excluded_classes: Optional list of species names to exclude
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
     """
     with open(json_path) as f:
         raw_results = json.load(f)
+
+    if excluded_classes:
+        from app.ml.species_exclusion import apply_species_exclusion_to_results
+
+        apply_species_exclusion_to_results(raw_results, excluded_classes)
 
     return update_database_from_smoothed_results(
         deployment_id, raw_results, deployment_folder, db

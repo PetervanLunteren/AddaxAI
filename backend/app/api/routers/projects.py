@@ -10,7 +10,7 @@ Following DEVELOPERS.md principles:
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -119,9 +119,36 @@ def update_project(
     """
     Update an existing project.
 
+    Returns 400 if all species are excluded.
     Returns 404 if project doesn't exist.
     Returns 409 if new name conflicts with existing project.
     """
+    # Validate that not all species are excluded
+    if project.excluded_classes is not None and len(project.excluded_classes) > 0:
+        db_existing = crud_project.get_project(db, project_id)
+        if db_existing and db_existing.classification_model_id:
+            try:
+                from app.core.config import get_settings
+                from app.ml.taxonomy_parser import parse_taxonomy_csv, get_all_leaf_classes
+
+                settings = get_settings()
+                taxonomy_path = (
+                    settings.user_data_dir / "models" / "cls"
+                    / db_existing.classification_model_id / "taxonomy.csv"
+                )
+                if taxonomy_path.exists():
+                    tree = parse_taxonomy_csv(taxonomy_path)
+                    all_classes = get_all_leaf_classes(tree)
+                    if len(project.excluded_classes) >= len(all_classes):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Cannot exclude all species. At least one must remain included.",
+                        )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Could not validate excluded_classes: {e}")
+
     try:
         db_project = crud_project.update_project(db, project_id, project)
         if db_project is None:
@@ -213,27 +240,117 @@ def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
     return result
 
 
+@router.get("/{project_id}/detection-count")
+def get_detection_count(
+    project_id: str,
+    threshold: float = 0.0,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Get count of detections at or above a confidence threshold.
+
+    Used by the frontend to show the impact of threshold changes.
+    """
+    count = (
+        db.query(func.count(Detection.id))
+        .join(File)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .filter(Detection.confidence >= threshold)
+        .scalar()
+    ) or 0
+    return {"count": count}
+
+
 @router.get("/{project_id}/species-stats")
-def get_species_stats(project_id: str, db: Session = Depends(get_db)) -> list[dict]:
+def get_species_stats(
+    project_id: str,
+    threshold: float = 0.0,
+    db: Session = Depends(get_db),
+) -> list[dict]:
     """
     Get top species counts for a project.
 
-    Returns list of {species, count} sorted by count descending, top 10.
+    Returns list of {species, count} sorted by count descending.
     Only includes detections with a species classification.
+    Optionally filters by confidence threshold.
     """
-    stats = (
+    query = (
         db.query(Detection.species, func.count(Detection.id).label("count"))
         .join(File)
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
         .filter(Detection.species.isnot(None))
+    )
+    if threshold > 0:
+        query = query.filter(Detection.confidence >= threshold)
+    stats = (
+        query
         .group_by(Detection.species)
         .order_by(func.count(Detection.id).desc())
         .all()
     )
 
     return [{"species": species, "count": count} for species, count in stats]
+
+
+@router.get("/{project_id}/independent-event-stats")
+def get_independent_event_stats(
+    project_id: str,
+    interval: float = 1800,
+    threshold: float = 0.0,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Count independent events per species for a project.
+
+    Groups consecutive detections of the same species within a deployment
+    that are within `interval` seconds of each other as a single event.
+    Optionally filters by detection confidence threshold.
+
+    Returns {total: int, species: [{species, count}]}.
+    """
+    sql = text("""
+        WITH ordered AS (
+            SELECT
+                d.species,
+                dep.id AS deployment_id,
+                f.timestamp,
+                LAG(f.timestamp) OVER (
+                    PARTITION BY dep.id, d.species
+                    ORDER BY f.timestamp
+                ) AS prev_timestamp
+            FROM detections d
+            JOIN files f ON d.file_id = f.id
+            JOIN deployments dep ON f.deployment_id = dep.id
+            JOIN sites s ON dep.site_id = s.id
+            WHERE s.project_id = :project_id
+              AND d.species IS NOT NULL
+              AND (:threshold <= 0 OR d.confidence >= :threshold)
+        ),
+        events AS (
+            SELECT species
+            FROM ordered
+            WHERE prev_timestamp IS NULL
+               OR (julianday(timestamp) - julianday(prev_timestamp)) * 86400 > :interval
+        )
+        SELECT species, COUNT(*) AS event_count
+        FROM events
+        GROUP BY species
+        ORDER BY event_count DESC
+    """)
+
+    rows = db.execute(
+        sql,
+        {"project_id": project_id, "interval": interval, "threshold": threshold},
+    ).fetchall()
+
+    total = sum(row[1] for row in rows)
+    species = [{"species": row[0], "count": row[1]} for row in rows]
+
+    return {"total": total, "species": species}
 
 
 @router.post(

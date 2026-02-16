@@ -26,7 +26,7 @@ class ProjectBase(BaseModel):
     state_code: str | None = Field(None, description="US state code for SpeciesNet models (e.g., 'CA', 'TX')")
 
     # Video processing settings
-    video_fps: float = Field(default=2.0, ge=0.1, le=10.0, description="Frames per second to extract from videos (0.1-10.0)")
+    video_fps: float = Field(default=1.0, ge=0.1, le=10.0, description="Frames per second to extract from videos (0.1-10.0)")
 
     # Detection and processing settings
     detection_threshold: float = Field(default=0.5, ge=0.0, le=1.0, description="Confidence threshold for detections (0.0-1.0)")

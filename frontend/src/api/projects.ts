@@ -73,10 +73,30 @@ export const projectsApi = {
     ),
 
   /**
-   * Get top species counts
+   * Get count of detections at or above a confidence threshold
    */
-  getSpeciesStats: (id: string) =>
+  getDetectionCount: (id: string, threshold: number) =>
+    api.get<{ count: number }>(
+      `/api/projects/${id}/detection-count?threshold=${threshold}`
+    ),
+
+  /**
+   * Get top species counts, optionally filtered by confidence threshold
+   */
+  getSpeciesStats: (id: string, threshold?: number) =>
     api.get<{ species: string; count: number }[]>(
-      `/api/projects/${id}/species-stats`
+      `/api/projects/${id}/species-stats${threshold ? `?threshold=${threshold}` : ""}`
+    ),
+
+  /**
+   * Get independent event counts per species for a given interval
+   */
+  getIndependentEventStats: (
+    id: string,
+    interval: number,
+    threshold?: number,
+  ) =>
+    api.get<{ total: number; species: { species: string; count: number }[] }>(
+      `/api/projects/${id}/independent-event-stats?interval=${interval}${threshold ? `&threshold=${threshold}` : ""}`
     ),
 };

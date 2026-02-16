@@ -471,6 +471,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     deployment_folder=folder_path,
                     job_id=job_id,
                     db=db,
+                    excluded_classes=project.excluded_classes,
                 )
 
                 total_detections += result.total_detections
@@ -1080,11 +1081,13 @@ async def run_classification_on_json(
 
                         # Add classification to detection (update in-place in md_results)
                         # Convert class names to IDs for JSON format consistency
+                        # Store all results (not truncated) so species exclusion
+                        # can find included species even if they rank low.
                         md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
                             [name_to_id[class_name], prob]
                             for class_name, prob in result.all_probabilities.items()
                             if class_name in name_to_id
-                        ][:10]  # Top 10 results
+                        ]
 
                         classified_count += 1
 

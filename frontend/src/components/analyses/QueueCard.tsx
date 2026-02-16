@@ -155,6 +155,18 @@ export function QueueCard({ projectId }: QueueCardProps) {
         onOpenChange={setShowRunModal}
         queueCount={processingCount}
         jobIds={jobIds}
+        onAnalysisComplete={() => {
+          // Invalidate all project-related caches so Images, Dashboard,
+          // Review pages show fresh data without a hard reload.
+          queryClient.invalidateQueries({ queryKey: ["files", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["file"] });
+          queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["species-stats", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["observation-type-stats", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
+        }}
       />
     </>
   );

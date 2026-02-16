@@ -664,6 +664,7 @@ def load_json_to_database(
     deployment_folder: Path,
     job_id: str,
     db: Session,
+    excluded_classes: list[str] | None = None,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -678,6 +679,9 @@ def load_json_to_database(
         deployment_folder: Deployment folder (base for relative paths)
         job_id: Job ID
         db: Database session
+        excluded_classes: Optional list of species names to exclude from
+            classification results. Excluded species are zeroed out and
+            remaining confidences renormalized before writing to DB.
 
     Returns:
         PipelineResult with statistics
@@ -695,6 +699,17 @@ def load_json_to_database(
             results = json.load(f)
 
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
+
+        # Build excluded class ID set for species filtering
+        excluded_class_ids: set[str] = set()
+        if excluded_classes:
+            class_categories = results.get("classification_categories", {})
+            name_to_ids: dict[str, list[str]] = {}
+            for cls_id, name in class_categories.items():
+                name_to_ids.setdefault(name, []).append(cls_id)
+            for species_name in excluded_classes:
+                for cls_id in name_to_ids.get(species_name, []):
+                    excluded_class_ids.add(str(cls_id))
 
         # Track statistics
         total_detections = 0
@@ -803,13 +818,24 @@ def load_json_to_database(
                 species_confidence = None
 
                 if "classifications" in det and det["classifications"]:
-                    # Get top classification
-                    top_class_id, top_conf = det["classifications"][0]
+                    classifications = det["classifications"]
 
-                    # Get classification_categories mapping
-                    class_names = results.get("classification_categories", {})
-                    species = class_names.get(str(top_class_id))
-                    species_confidence = float(top_conf)
+                    # Apply species exclusion if configured
+                    if excluded_class_ids:
+                        from app.ml.species_exclusion import filter_classifications
+
+                        classifications = filter_classifications(
+                            classifications, excluded_class_ids
+                        )
+
+                    if classifications:
+                        # Get top classification
+                        top_class_id, top_conf = classifications[0]
+
+                        # Get classification_categories mapping
+                        class_names = results.get("classification_categories", {})
+                        species = class_names.get(str(top_class_id))
+                        species_confidence = float(top_conf)
 
                     if species:
                         classified_count += 1

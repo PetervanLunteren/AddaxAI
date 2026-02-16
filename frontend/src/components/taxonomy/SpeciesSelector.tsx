@@ -30,7 +30,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, Square, ChevronDown, ChevronRight } from "lucide-react";
+import { CheckSquare, Square, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
 import { modelsApi } from "../../api/models";
 import type { TaxonomyNode } from "../../api/types";
 import { TreeNode } from "./TreeNode";
@@ -102,6 +102,10 @@ export function SpeciesSelector({
 
   // Update parent when internal exclusion changes
   const updateExclusion = (newSet: Set<string>) => {
+    // Prevent excluding all species — at least one must remain included
+    if (allClasses.length > 0 && newSet.size >= allClasses.length) {
+      return;
+    }
     setExcludedSet(newSet);
     onExclusionChange(Array.from(newSet));
   };
@@ -154,7 +158,9 @@ export function SpeciesSelector({
   };
 
   const handleExcludeAll = () => {
-    updateExclusion(new Set(allClasses)); // All excluded
+    // Exclude all except the first species (at least one must remain)
+    const allExceptFirst = allClasses.slice(1);
+    updateExclusion(new Set(allExceptFirst));
   };
 
   const handleExpandAll = () => {
@@ -204,6 +210,8 @@ export function SpeciesSelector({
           variant="outline"
           size="sm"
           onClick={handleExcludeAll}
+          disabled={allClasses.length <= 1}
+          title="At least one species must remain included"
           className="flex-1 min-w-[100px]"
         >
           <Square className="h-4 w-4 mr-1.5" />
@@ -236,6 +244,12 @@ export function SpeciesSelector({
         Currently included {allClasses.length - excludedSet.size} of {allClasses.length}
         {excludedSet.size > 0 && <span className="ml-1">({excludedSet.size} excluded)</span>}
       </p>
+      {allClasses.length > 0 && allClasses.length - excludedSet.size <= 1 && excludedSet.size > 0 && (
+        <p className="text-sm text-amber-600 flex items-center gap-1">
+          <AlertCircle className="h-3.5 w-3.5" />
+          At least one species must remain included
+        </p>
+      )}
 
       {/* Taxonomy tree */}
       {isLoading ? (
