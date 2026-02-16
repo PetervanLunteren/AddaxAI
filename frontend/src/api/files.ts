@@ -44,4 +44,14 @@ export const filesApi = {
       `/api/files/stats/observation-types?project_id=${projectId}`
     );
   },
+
+  /**
+   * Update file verification status and/or notes
+   */
+  update: async (
+    id: string,
+    data: { verified?: boolean; notes?: string }
+  ): Promise<FileResponse> => {
+    return api.patch<FileResponse>(`/api/files/${id}`, data);
+  },
 };

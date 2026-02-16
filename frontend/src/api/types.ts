@@ -198,10 +198,66 @@ export interface FileResponse {
   best_frame_number: number | null;
   best_frame_path: string | null;
   observation_type: ObservationType;
+  verified: boolean;
+  verified_at: string | null;
+  notes: string | null;
 }
 
 export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
+}
+
+// Event types
+export interface EventSummary {
+  id: string;
+  deployment_id: string;
+  start_time: string;
+  end_time: string;
+  file_count: number;
+  representative_file_id: string | null;
+  species: string[];
+  observation_type: string;
+  verified_count: number;
+  total_count: number;
+}
+
+export interface EventWithFiles {
+  id: string;
+  deployment_id: string;
+  start_time: string;
+  end_time: string;
+  file_count: number;
+  created_at: string;
+  files: FileWithDetections[];
+}
+
+export interface AdjacentEventsResponse {
+  previous_id: string | null;
+  next_id: string | null;
+  next_unverified_id: string | null;
+  current_index: number;
+  total_count: number;
+}
+
+// Detection create/update types
+export interface DetectionCreate {
+  file_id: string;
+  category: string;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+  species?: string | null;
+}
+
+export interface DetectionUpdate {
+  category?: string;
+  bbox_x?: number;
+  bbox_y?: number;
+  bbox_width?: number;
+  bbox_height?: number;
+  species?: string | null;
+  species_confidence?: number | null;
 }
 
 // Model options for deployment analysis

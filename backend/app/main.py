@@ -20,6 +20,8 @@ from starlette.responses import FileResponse
 from app.api.routers import (
     deployment_queue_router,
     deployments_router,
+    detections_router,
+    events_router,
     files_router,
     jobs_router,
     logs_router,
@@ -140,6 +142,8 @@ def create_app() -> FastAPI:
     app.include_router(sites_router)
     app.include_router(deployments_router)
     app.include_router(deployment_queue_router)
+    app.include_router(detections_router)
+    app.include_router(events_router)
     app.include_router(files_router)
     app.include_router(jobs_router)
     app.include_router(logs_router)

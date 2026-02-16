@@ -41,6 +41,9 @@ class FileResponse(BaseModel):
     best_frame_number: int | None = None
     best_frame_path: str | None = None
     observation_type: str = "unclassified"
+    verified: bool = False
+    verified_at: datetime | None = None
+    notes: str | None = None
 
     class Config:
         from_attributes = True
@@ -53,3 +56,10 @@ class FileWithDetections(FileResponse):
 
     class Config:
         from_attributes = True
+
+
+class FileUpdate(BaseModel):
+    """Schema for updating a file (verification, notes)."""
+
+    verified: bool | None = None
+    notes: str | None = None

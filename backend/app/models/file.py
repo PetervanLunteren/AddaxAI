@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import DateTime, Float, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import ColumnElement
 from sqlalchemy.sql.schema import ForeignKey
@@ -77,6 +77,13 @@ class File(Base):
     best_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     best_frame_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Verification fields
+    verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -94,6 +101,7 @@ class File(Base):
     __table_args__ = (
         Index("idx_files_deployment", "deployment_id"),
         Index("idx_files_timestamp", "timestamp"),
+        Index("idx_files_verified", "verified"),
     )
 
     def __repr__(self) -> str:

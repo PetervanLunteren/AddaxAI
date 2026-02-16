@@ -2,10 +2,13 @@
 CRUD operations for files.
 """
 
+from datetime import datetime
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Deployment, File
+from app.api.schemas.file import FileUpdate
+from app.models import Deployment, Detection, File
 
 
 def get_files(
@@ -108,6 +111,33 @@ def get_file_with_detections(db: Session, file_id: str) -> File | None:
     )
 
 
+def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
+    """
+    Update a file's verification status and/or notes.
+
+    Sets verified_at to current time when verified changes to True,
+    clears it when verified changes to False.
+    """
+    file = db.query(File).filter(File.id == file_id).first()
+    if not file:
+        return None
+
+    if update.verified is not None:
+        if update.verified and not file.verified:
+            file.verified = True
+            file.verified_at = datetime.utcnow()
+        elif not update.verified and file.verified:
+            file.verified = False
+            file.verified_at = None
+
+    if update.notes is not None:
+        file.notes = update.notes
+
+    db.commit()
+    db.refresh(file)
+    return file
+
+
 def get_observation_type_stats(
     db: Session, project_id: str
 ) -> dict[str, int]:
@@ -130,3 +160,41 @@ def get_observation_type_stats(
         .all()
     )
     return {obs_type: count for obs_type, count in rows}
+
+
+def recalculate_observation_type(db: Session, file_id: str) -> None:
+    """
+    Re-derive observation_type from current detections.
+
+    Priority: animal > human > vehicle > blank.
+    Called after detection create/update/delete.
+    """
+    file = db.query(File).filter(File.id == file_id).first()
+    if not file:
+        return
+
+    detections = (
+        db.query(Detection)
+        .filter(Detection.file_id == file_id)
+        .all()
+    )
+
+    if not detections:
+        file.observation_type = "blank"
+    else:
+        # Map detection categories to observation types
+        category_map = {"animal": "animal", "person": "human", "vehicle": "vehicle"}
+        priority = {"animal": 4, "human": 3, "vehicle": 2}
+
+        best_type = "blank"
+        best_priority = 0
+        for d in detections:
+            obs = category_map.get(d.category, "unknown")
+            p = priority.get(obs, 0)
+            if p > best_priority:
+                best_priority = p
+                best_type = obs
+
+        file.observation_type = best_type
+
+    db.commit()

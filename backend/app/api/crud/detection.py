@@ -10,7 +10,7 @@ Following DEVELOPERS.md principles:
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas.detection import DetectionCreate
+from app.api.schemas.detection import DetectionCreate, DetectionCreateHuman, DetectionUpdate
 from app.models import Detection
 
 
@@ -168,6 +168,62 @@ def get_detection_stats_by_file(db: Session, file_id: str) -> dict[str, int]:
             stats[category] += 1
 
     return stats
+
+
+def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection:
+    """
+    Create a human-drawn detection.
+
+    Sets job_id=None, classification_method="human", confidence=1.0.
+    """
+    db_detection = Detection(
+        file_id=data.file_id,
+        job_id=None,
+        category=data.category,
+        confidence=1.0,
+        bbox_x=data.bbox_x,
+        bbox_y=data.bbox_y,
+        bbox_width=data.bbox_width,
+        bbox_height=data.bbox_height,
+        species=data.species,
+        species_confidence=1.0 if data.species else None,
+        classification_method="human",
+    )
+    db.add(db_detection)
+    db.commit()
+    db.refresh(db_detection)
+    return db_detection
+
+
+def update_detection(db: Session, detection_id: str, update: DetectionUpdate) -> Detection | None:
+    """
+    Partial update of a detection.
+
+    Sets classification_method to "human" when species is edited.
+    """
+    detection = get_detection(db, detection_id)
+    if detection is None:
+        return None
+
+    if update.category is not None:
+        detection.category = update.category
+    if update.bbox_x is not None:
+        detection.bbox_x = update.bbox_x
+    if update.bbox_y is not None:
+        detection.bbox_y = update.bbox_y
+    if update.bbox_width is not None:
+        detection.bbox_width = update.bbox_width
+    if update.bbox_height is not None:
+        detection.bbox_height = update.bbox_height
+    if update.species is not None:
+        detection.species = update.species
+        detection.classification_method = "human"
+    if update.species_confidence is not None:
+        detection.species_confidence = update.species_confidence
+
+    db.commit()
+    db.refresh(detection)
+    return detection
 
 
 def delete_detection(db: Session, detection_id: str) -> bool:

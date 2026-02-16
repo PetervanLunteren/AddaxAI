@@ -66,6 +66,30 @@ class DetectionCreate(DetectionBase):
     job_id: str = Field(..., description="ID of the job that created this detection")
 
 
+class DetectionCreateHuman(BaseModel):
+    """Schema for creating a human-drawn detection (no job_id required)."""
+
+    file_id: str = Field(..., description="ID of the file")
+    category: DetectionCategory = Field(..., description="Detection category")
+    bbox_x: float = Field(..., ge=0.0, le=1.0)
+    bbox_y: float = Field(..., ge=0.0, le=1.0)
+    bbox_width: float = Field(..., ge=0.0, le=1.0)
+    bbox_height: float = Field(..., ge=0.0, le=1.0)
+    species: str | None = Field(None, max_length=100)
+
+
+class DetectionUpdate(BaseModel):
+    """Schema for updating a detection (all fields optional)."""
+
+    category: DetectionCategory | None = None
+    bbox_x: float | None = Field(None, ge=0.0, le=1.0)
+    bbox_y: float | None = Field(None, ge=0.0, le=1.0)
+    bbox_width: float | None = Field(None, ge=0.0, le=1.0)
+    bbox_height: float | None = Field(None, ge=0.0, le=1.0)
+    species: str | None = None
+    species_confidence: float | None = Field(None, ge=0.0, le=1.0)
+
+
 class DetectionResponse(DetectionBase):
     """
     Schema for detection responses.
@@ -75,7 +99,7 @@ class DetectionResponse(DetectionBase):
 
     id: str
     file_id: str
-    job_id: str
+    job_id: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models

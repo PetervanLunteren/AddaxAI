@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
-from app.api.schemas.file import FileResponse, FileWithDetections
+from app.api.schemas.file import FileResponse, FileUpdate, FileWithDetections
 from app.db.base import get_db
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -66,6 +66,21 @@ def list_files(
         files = file_crud.get_files(db, skip=skip, limit=limit, observation_type=observation_type)
 
     return files
+
+
+@router.patch("/{file_id}", response_model=FileResponse)
+def update_file(
+    file_id: str,
+    update: FileUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update file verification status and/or notes.
+    """
+    file = file_crud.update_file(db, file_id, update)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    return file
 
 
 @router.get("/{file_id}", response_model=FileWithDetections)

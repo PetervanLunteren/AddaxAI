@@ -38,8 +38,8 @@ class Detection(Base):
     file_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("files.id", ondelete="CASCADE"), nullable=False
     )
-    job_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("jobs.id"), nullable=False
+    job_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("jobs.id"), nullable=True
     )
 
     # Detection bounding box (normalized coordinates 0-1)
@@ -68,7 +68,7 @@ class Detection(Base):
 
     # Relationships
     file: Mapped["File"] = relationship("File", back_populates="detections")
-    job: Mapped["Job"] = relationship("Job")
+    job: Mapped["Job | None"] = relationship("Job")
 
     # Indexes for common queries
     __table_args__ = (

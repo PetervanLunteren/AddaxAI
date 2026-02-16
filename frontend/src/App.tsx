@@ -16,7 +16,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
 import ImagesPage from "./pages/ImagesPage";
 import DashboardPage from "./pages/DashboardPage";
-import ReviewPage from "./pages/ReviewPage";
+import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import { Button } from "./components/ui/button";
@@ -102,7 +102,8 @@ function App() {
           <Route path="/projects/:projectId" element={<AppLayout />}>
             <Route index element={<Navigate to="analyses" replace />} />
             <Route path="analyses" element={<AnalysesPage />} />
-            <Route path="review" element={<ReviewPage />} />
+            <Route path="verify" element={<VerifyPage />} />
+            <Route path="review" element={<Navigate to="../verify" replace />} />
             <Route path="images" element={<ImagesPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="export" element={<ExportPage />} />
