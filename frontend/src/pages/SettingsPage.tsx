@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
@@ -467,6 +467,17 @@ export default function SettingsPage() {
 
   const onSubmit = async (data: SettingsFormData) => {
     if (!projectId) return;
+
+    // Validate that at least one species remains included
+    if (taxonomy && !isSpeciesNet) {
+      const allCount = taxonomy.all_classes?.length || 0;
+      if (allCount > 0 && data.excluded_classes.length >= allCount) {
+        form.setError("excluded_classes", {
+          message: "At least one species must remain included",
+        });
+        return;
+      }
+    }
 
     try {
       const currentValues = form.formState.defaultValues as SettingsFormData;
@@ -1142,63 +1153,69 @@ export default function SettingsPage() {
                 {form.formState.errors.root.message}
               </p>
             )}
+            {form.formState.errors.excluded_classes && (
+              <p className="text-sm font-medium text-destructive">
+                {form.formState.errors.excluded_classes.message}
+              </p>
+            )}
 
             {/* Action buttons */}
             <div className="flex items-center justify-between">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  // Use setValue (not reset) so the saved project values stay as the
-                  // dirty-check baseline. This way isDirty becomes true and the user
-                  // must press "Save changes" to persist the defaults.
-                  form.setValue("detection_model_id", "MD5A-0-0", { shouldDirty: true });
-                  form.setValue("video_fps", 1.0, { shouldDirty: true });
-                  form.setValue("detection_threshold", 0.5, { shouldDirty: true });
-                  form.setValue("event_smoothing", true, { shouldDirty: true });
-                  form.setValue("taxonomic_rollup", true, { shouldDirty: true });
-                  form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
-                  form.setValue("independence_interval", 1800, { shouldDirty: true });
-                }}
-                disabled={updateMutation.isPending}
-              >
-                Restore defaults
-              </Button>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    // Use setValue (not reset) so the saved project values stay as the
+                    // dirty-check baseline. This way isDirty becomes true and the user
+                    // must press "Save changes" to persist the defaults.
+                    form.setValue("detection_model_id", "MD5A-0-0", { shouldDirty: true });
+                    form.setValue("video_fps", 1.0, { shouldDirty: true });
+                    form.setValue("detection_threshold", 0.5, { shouldDirty: true });
+                    form.setValue("event_smoothing", true, { shouldDirty: true });
+                    form.setValue("taxonomic_rollup", true, { shouldDirty: true });
+                    form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
+                    form.setValue("independence_interval", 1800, { shouldDirty: true });
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Restore defaults
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={handleReset}
                   disabled={!isDirty || updateMutation.isPending}
                 >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset
+                  <Undo2 className="h-4 w-4 mr-2" />
+                  Reset changes
                 </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <Button
-                        type="submit"
-                        disabled={
-                          !isDirty ||
-                          updateMutation.isPending ||
-                          !!saveJobId ||
-                          detectionModelStatus?.status !== "ready" ||
-                          classificationModelStatus?.status !== "ready"
-                        }
-                      >
-                        <Save className="h-4 w-4 mr-2" />
-                        {updateMutation.isPending ? "Saving..." : "Save changes"}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {(detectionModelStatus?.status !== "ready" || classificationModelStatus?.status !== "ready") && (
-                    <TooltipContent>
-                      <p>Model needs preparing first</p>
-                    </TooltipContent>
-                  )}
-                </Tooltip>
               </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      type="submit"
+                      disabled={
+                        !isDirty ||
+                        updateMutation.isPending ||
+                        !!saveJobId ||
+                        detectionModelStatus?.status !== "ready" ||
+                        classificationModelStatus?.status !== "ready"
+                      }
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {updateMutation.isPending ? "Saving..." : "Save changes"}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {(detectionModelStatus?.status !== "ready" || classificationModelStatus?.status !== "ready") && (
+                  <TooltipContent>
+                    <p>Model needs preparing first</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
             </div>
           </form>
         </Form>

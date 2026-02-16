@@ -2,13 +2,6 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 # TODO
-- [ ] update the buttons below the settings page to the Connect format. So left and with icons. 
-
-- [ ] Now we have a validation "At least one species must remain included" directly in the sepces selection modal. That is bad UX because users might want to click the "exclude all" and then start selecting form there. So would it make more sense to have the validation happen at the "Save settings" button? If no species are selected, show "At least one species must remain included". That makes sure the user can select none temporarily. Makes sense?
-
-- [ ] in the "Show effect" modal after saving settings, remove the percentages for the species breakdowns. There are many 0's where percentages do not make sense. Also remove the percentages in the overall count changes ("158 → 158(+0%)"). Just no percentages in the effect modal. 
-
-
 - [ ] NO PRIORITY https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 
 ## Architecture

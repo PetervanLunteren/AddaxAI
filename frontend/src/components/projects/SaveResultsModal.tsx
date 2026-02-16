@@ -45,12 +45,6 @@ function normalizeLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
-function formatPercent(before: number, after: number): string | null {
-  if (before === 0) return null;
-  const pct = Math.round(((after - before) / before) * 100);
-  return `${pct >= 0 ? "+" : ""}${pct}%`;
-}
-
 function Code({ children }: { children: React.ReactNode }) {
   return (
     <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{children}</code>
@@ -97,7 +91,6 @@ function StatCard({
   onToggle: () => void;
 }) {
   const diff = computeSpeciesDiff(before.species, after.species);
-  const pct = formatPercent(before.total, after.total);
 
   return (
     <Card>
@@ -108,9 +101,6 @@ function StatCard({
           <Code>{before.total.toLocaleString()}</Code>
           {" \u2192 "}
           <Code>{after.total.toLocaleString()}</Code>
-          {pct && (
-            <span className="text-xs ml-1 text-muted-foreground">({pct})</span>
-          )}
         </p>
 
         {diff.length > 0 && (
@@ -141,11 +131,6 @@ function StatCard({
                       <SmallCode>{b}</SmallCode>
                       {" \u2192 "}
                       <SmallCode>{a}</SmallCode>
-                      {formatPercent(b, a) && (
-                        <span className="ml-2 text-muted-foreground">
-                          ({formatPercent(b, a)})
-                        </span>
-                      )}
                     </span>
                   </div>
                 ))}
