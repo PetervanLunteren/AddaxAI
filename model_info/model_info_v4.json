@@ -3875,7 +3875,7 @@
             "description": "MegaDetector 5b differs from 5a only in its training data and is also an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
             "developer": "Dan Morris",
             "type": "base",
-            "download_info": [
+            "download_info": [ 
                 [
                     "https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5b.0.0.pt",
                     "md_v5b.0.0.pt"
