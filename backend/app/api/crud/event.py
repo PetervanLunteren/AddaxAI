@@ -233,52 +233,97 @@ def get_adjacent_events(
 
     Returns previous_id, next_id, next_unverified_id, current_index, total_count.
     Events ordered by start_time DESC (newest first).
+
+    Uses targeted SQL queries instead of loading all events into memory.
     """
-    # Get all event IDs for the project, ordered by start_time DESC
-    all_events = (
+    # 1. Get current event's start_time
+    current = (
         db.query(Event.id, Event.start_time)
-        .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
-        .order_by(Event.start_time.desc())
-        .all()
+        .filter(Event.id == event_id)
+        .first()
     )
-
-    event_ids = [e.id for e in all_events]
-    total_count = len(event_ids)
-
-    if event_id not in event_ids:
+    if not current:
         return {
             "previous_id": None,
             "next_id": None,
             "next_unverified_id": None,
             "current_index": 0,
-            "total_count": total_count,
+            "total_count": 0,
         }
 
-    current_index = event_ids.index(event_id)
-    previous_id = event_ids[current_index - 1] if current_index > 0 else None
-    next_id = event_ids[current_index + 1] if current_index < total_count - 1 else None
+    ct = current.start_time
+    cid = current.id
 
-    # Find next unverified event (after current, then wrap)
-    next_unverified_id = None
-    for i in range(current_index + 1, total_count):
-        eid = event_ids[i]
-        unverified_count = (
-            db.query(func.count(File.id))
-            .join(event_files, File.id == event_files.c.file_id)
-            .filter(event_files.c.event_id == eid)
-            .filter(File.verified == False)  # noqa: E712
-            .scalar()
+    def base():
+        return (
+            db.query(Event.id)
+            .join(Deployment)
+            .join(Site)
+            .filter(Site.project_id == project_id)
         )
-        if unverified_count and unverified_count > 0:
-            next_unverified_id = eid
-            break
+
+    # 2. Previous (newer in DESC order): start_time > current, or same time + higher id
+    prev = (
+        base()
+        .filter(
+            (Event.start_time > ct)
+            | ((Event.start_time == ct) & (Event.id > cid))
+        )
+        .order_by(Event.start_time.asc(), Event.id.asc())
+        .first()
+    )
+
+    # 3. Next (older in DESC order): start_time < current, or same time + lower id
+    nxt = (
+        base()
+        .filter(
+            (Event.start_time < ct)
+            | ((Event.start_time == ct) & (Event.id < cid))
+        )
+        .order_by(Event.start_time.desc(), Event.id.desc())
+        .first()
+    )
+
+    # 4. Next unverified (older, with at least one unverified file)
+    nxt_unv = (
+        base()
+        .join(event_files, Event.id == event_files.c.event_id)
+        .join(File, File.id == event_files.c.file_id)
+        .filter(
+            (Event.start_time < ct)
+            | ((Event.start_time == ct) & (Event.id < cid))
+        )
+        .filter(File.verified == False)  # noqa: E712
+        .order_by(Event.start_time.desc(), Event.id.desc())
+        .first()
+    )
+
+    # 5a. Total count
+    total = (
+        db.query(func.count(Event.id))
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .scalar()
+    ) or 0
+
+    # 5b. Current index (number of events newer than current = position in DESC list)
+    idx = (
+        db.query(func.count(Event.id))
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .filter(
+            (Event.start_time > ct)
+            | ((Event.start_time == ct) & (Event.id > cid))
+        )
+        .scalar()
+    ) or 0
 
     return {
-        "previous_id": previous_id,
-        "next_id": next_id,
-        "next_unverified_id": next_unverified_id,
-        "current_index": current_index,
-        "total_count": total_count,
+        "previous_id": prev[0] if prev else None,
+        "next_id": nxt[0] if nxt else None,
+        "next_unverified_id": nxt_unv[0] if nxt_unv else None,
+        "current_index": idx,
+        "total_count": total,
     }

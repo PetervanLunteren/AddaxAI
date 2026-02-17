@@ -7,6 +7,7 @@
 import { useEffect, useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { API_BASE_URL } from "../../lib/api-client";
 import type { FileWithDetections } from "../../api/types";
 
 interface EventFilmstripProps {
@@ -39,7 +40,7 @@ export function EventFilmstrip({
         className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto"
       >
         {files.map((file, index) => {
-          const thumbnailUrl = `http://localhost:8000/api/files/${file.id}/image`;
+          const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
           const isSelected = index === selectedIndex;
 
           return (

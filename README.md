@@ -9,6 +9,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] how does videos work?
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
 
+## crop verification option
+
 ## Architecture
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the comprehensive technical architecture, technology stack, and implementation roadmap.

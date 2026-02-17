@@ -10,6 +10,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Layers } from "lucide-react";
 import { eventsApi } from "../api/events";
+import { API_BASE_URL } from "../lib/api-client";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -171,7 +172,7 @@ function EventCard({
       : 0;
 
   const thumbnailUrl = event.representative_file_id
-    ? `http://localhost:8000/api/files/${event.representative_file_id}/image`
+    ? `${API_BASE_URL}/api/files/${event.representative_file_id}/image`
     : undefined;
 
   return (

@@ -631,6 +631,7 @@ export function EventDetailModal({
                 selectedIndex={selectedFileIndex}
                 onSelectIndex={(i) => {
                   setSelectedFileIndex(i);
+                  setSelectedDetectionId(null);
                   setNavScope("file");
                 }}
               />
@@ -653,12 +654,15 @@ export function EventDetailModal({
             {/* Verification panel */}
             {currentFile && (
               <FileVerificationPanel
+                key={currentFile.id}
                 file={currentFile}
                 projectId={projectId}
                 eventId={eventId!}
                 detectionThreshold={detectionThreshold}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
+                selectedDetectionId={selectedDetectionId}
+                onSelectDetection={setSelectedDetectionId}
               />
             )}
           </div>

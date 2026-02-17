@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useState } from "react";
 import { filesApi } from "../api/files";
+import { API_BASE_URL } from "../lib/api-client";
 import { projectsApi } from "../api/projects";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -137,7 +138,7 @@ export default function ImagesPage() {
 
 function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void }) {
   const timestamp = new Date(file.timestamp).toLocaleString();
-  const imageUrl = `http://localhost:8000/api/files/${file.id}/image`;
+  const imageUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
   const badge = getObservationBadge(file.observation_type);
 
   return (
@@ -181,7 +182,7 @@ function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void 
 }
 
 function ImageViewer({ file, detectionThreshold }: { file: FileWithDetections; detectionThreshold: number }) {
-  const imageUrl = `http://localhost:8000/api/files/${file.id}/image`;
+  const imageUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
   const timestamp = new Date(file.timestamp).toLocaleString();
   const filteredDetections = file.detections.filter(
     (d) => d.confidence >= detectionThreshold

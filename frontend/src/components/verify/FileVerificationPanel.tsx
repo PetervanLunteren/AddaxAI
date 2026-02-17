@@ -25,6 +25,8 @@ interface FileVerificationPanelProps {
   detectionThreshold: number;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
+  selectedDetectionId: string | null;
+  onSelectDetection: (id: string | null) => void;
 }
 
 export function FileVerificationPanel({
@@ -34,13 +36,12 @@ export function FileVerificationPanel({
   detectionThreshold,
   labelOptions,
   labelOptionsLoading,
+  selectedDetectionId,
+  onSelectDetection,
 }: FileVerificationPanelProps) {
   const queryClient = useQueryClient();
   const [notes, setNotes] = useState(file.notes ?? "");
   const [showNotes, setShowNotes] = useState(!!file.notes);
-  const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
-    null
-  );
 
   // Verify mutation
   const verifyMutation = useMutation({
@@ -65,7 +66,7 @@ export function FileVerificationPanel({
     mutationFn: (detectionId: string) => detectionsApi.delete(detectionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      setSelectedDetectionId(null);
+      onSelectDetection(null);
     },
   });
 
@@ -105,7 +106,7 @@ export function FileVerificationPanel({
             detection={detection}
             isSelected={selectedDetectionId === detection.id}
             onSelect={() =>
-              setSelectedDetectionId(
+              onSelectDetection(
                 selectedDetectionId === detection.id ? null : detection.id
               )
             }

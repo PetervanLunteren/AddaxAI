@@ -3,15 +3,14 @@
  */
 
 import type { ModelStatusResponse, ModelPrepareResponse } from "./types";
-
-const API_BASE = "http://localhost:8000";
+import { API_BASE_URL } from "../lib/api-client";
 
 export const mlModelsApi = {
   /**
    * Check model status (weights + environment ready)
    */
   getStatus: async (modelId: string): Promise<ModelStatusResponse> => {
-    const response = await fetch(`${API_BASE}/api/ml/models/${modelId}/status`);
+    const response = await fetch(`${API_BASE_URL}/api/ml/models/${modelId}/status`);
     if (!response.ok) {
       throw new Error(`Failed to get model status: ${response.statusText}`);
     }
@@ -22,7 +21,7 @@ export const mlModelsApi = {
    * Prepare model (download weights + build environment)
    */
   prepare: async (modelId: string): Promise<ModelPrepareResponse> => {
-    const response = await fetch(`${API_BASE}/api/ml/models/${modelId}/prepare`, {
+    const response = await fetch(`${API_BASE_URL}/api/ml/models/${modelId}/prepare`, {
       method: "POST",
     });
     if (!response.ok) {
@@ -35,7 +34,7 @@ export const mlModelsApi = {
    * Download model weights only
    */
   prepareWeights: async (modelId: string): Promise<ModelPrepareResponse> => {
-    const response = await fetch(`${API_BASE}/api/ml/models/${modelId}/prepare-weights`, {
+    const response = await fetch(`${API_BASE_URL}/api/ml/models/${modelId}/prepare-weights`, {
       method: "POST",
     });
     if (!response.ok) {
@@ -48,7 +47,7 @@ export const mlModelsApi = {
    * Build model environment only
    */
   prepareEnv: async (modelId: string): Promise<ModelPrepareResponse> => {
-    const response = await fetch(`${API_BASE}/api/ml/models/${modelId}/prepare-env`, {
+    const response = await fetch(`${API_BASE_URL}/api/ml/models/${modelId}/prepare-env`, {
       method: "POST",
     });
     if (!response.ok) {
