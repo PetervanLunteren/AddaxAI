@@ -22,6 +22,7 @@ from PIL.ExifTags import TAGS
 
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
+from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
@@ -517,6 +518,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         project.postprocessing_settings_hash = compute_postprocessing_settings_hash(project)
         db.commit()
 
+        # Auto-generate events for the project
+        event_count = event_crud.generate_events_for_project(db, project_id)
+        logger.info(f"Batch job {job_id}: Auto-generated {event_count} events")
+
         # Mark job as completed
         job_crud.update_job_status(db, job_id, "completed")
 
@@ -725,6 +730,10 @@ async def process_deployment_analysis(job_id: str) -> None:
                 db=db,
                 progress_callback=progress_callback,
             )
+
+            # Auto-generate events for the project
+            event_count = event_crud.generate_events_for_project(db, project_id)
+            logger.info(f"Job {job_id}: Auto-generated {event_count} events")
 
             # Update job status
             job_crud.update_job_status(db, job_id, "completed")

@@ -7,35 +7,37 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Trash2, Plus, Pencil } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Textarea } from "../ui/textarea";
 import { cn } from "../../lib/utils";
-import { getCategoryColor } from "../../lib/detection-utils";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
+import type { LabelOption } from "../../hooks/useLabelOptions";
+import { LabelPicker } from "./LabelPicker";
 
 interface FileVerificationPanelProps {
   file: FileWithDetections;
   projectId: string;
   eventId: string;
-  drawMode: boolean;
-  onDrawModeChange: (active: boolean) => void;
   detectionThreshold: number;
+  labelOptions: LabelOption[];
+  labelOptionsLoading: boolean;
 }
 
 export function FileVerificationPanel({
   file,
   projectId,
   eventId,
-  drawMode,
-  onDrawModeChange,
   detectionThreshold,
+  labelOptions,
+  labelOptionsLoading,
 }: FileVerificationPanelProps) {
   const queryClient = useQueryClient();
   const [notes, setNotes] = useState(file.notes ?? "");
+  const [showNotes, setShowNotes] = useState(!!file.notes);
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
     null
   );
@@ -67,65 +69,32 @@ export function FileVerificationPanel({
     },
   });
 
-  // Update species mutation
-  const updateSpeciesMutation = useMutation({
-    mutationFn: ({
-      detectionId,
-      species,
-    }: {
-      detectionId: string;
-      species: string;
-    }) => detectionsApi.update(detectionId, { species }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-    },
-  });
-
-  // Update category mutation
-  const updateCategoryMutation = useMutation({
+  // Update label mutation (sets both category and species in one call)
+  const updateLabelMutation = useMutation({
     mutationFn: ({
       detectionId,
       category,
+      species,
     }: {
       detectionId: string;
       category: string;
-    }) => detectionsApi.update(detectionId, { category }),
+      species: string | null;
+    }) => detectionsApi.update(detectionId, { category, species }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
     },
   });
 
   return (
-    <div className="w-80 border-l bg-white flex flex-col shrink-0 overflow-y-auto">
-      {/* Header with draw button */}
-      <div className="p-3 border-b">
-        <div className="flex items-center justify-between mb-2">
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+      {/* Header */}
+      <div className="p-3">
+        <div className="flex items-center gap-1.5">
           <h3 className="text-sm font-semibold">Detections</h3>
           <Badge variant="outline" className="text-xs">
             {file.detections.filter((d) => d.confidence >= detectionThreshold).length}
           </Badge>
         </div>
-        <Button
-          variant={drawMode ? "default" : "outline"}
-          size="sm"
-          className="w-full"
-          onClick={() => onDrawModeChange(!drawMode)}
-        >
-          {drawMode ? (
-            <>
-              <Pencil className="h-3.5 w-3.5 mr-1.5" />
-              Drawing... (click to stop)
-            </>
-          ) : (
-            <>
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Draw new box
-            </>
-          )}
-        </Button>
-        <p className="text-xs text-center text-muted-foreground mt-1">
-          Press D to toggle
-        </p>
       </div>
 
       {/* Detection list */}
@@ -141,18 +110,15 @@ export function FileVerificationPanel({
               )
             }
             onDelete={() => deleteMutation.mutate(detection.id)}
-            onUpdateSpecies={(species) =>
-              updateSpeciesMutation.mutate({
+            onUpdateLabel={(option) =>
+              updateLabelMutation.mutate({
                 detectionId: detection.id,
-                species,
+                category: option.category,
+                species: option.species,
               })
             }
-            onUpdateCategory={(category) =>
-              updateCategoryMutation.mutate({
-                detectionId: detection.id,
-                category,
-              })
-            }
+            labelOptions={labelOptions}
+            labelOptionsLoading={labelOptionsLoading}
           />
         ))}
 
@@ -164,25 +130,50 @@ export function FileVerificationPanel({
       </div>
 
       {/* Notes */}
-      <div className="p-3 border-t space-y-2">
-        <label className="text-xs font-medium text-muted-foreground">
-          Notes
-        </label>
-        <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Add notes..."
-          className="text-sm resize-none h-20"
-          onBlur={() => {
-            if (notes !== (file.notes ?? "")) {
-              notesMutation.mutate();
-            }
-          }}
-        />
+      <div className="px-3 pb-2">
+        {showNotes ? (
+          <div className="space-y-1.5">
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add notes about this image..."
+              className="text-sm resize-none h-24"
+              autoFocus
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  if (notes !== (file.notes ?? "")) {
+                    notesMutation.mutate();
+                  }
+                  setShowNotes(false);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : notes ? (
+          <button
+            onClick={() => setShowNotes(true)}
+            className="text-left w-full"
+          >
+            <span className="text-xs text-muted-foreground">Notes</span>
+            <p className="text-sm truncate">{notes}</p>
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowNotes(true)}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            + Add notes
+          </button>
+        )}
       </div>
 
       {/* Verify button */}
-      <div className="p-3 border-t">
+      <div className="p-3">
         <Button
           onClick={() => verifyMutation.mutate()}
           disabled={verifyMutation.isPending}
@@ -201,26 +192,24 @@ export function FileVerificationPanel({
   );
 }
 
-const CATEGORIES = ["animal", "person", "vehicle"] as const;
-
 function DetectionItem({
   detection,
   isSelected,
   onSelect,
   onDelete,
-  onUpdateSpecies,
-  onUpdateCategory,
+  onUpdateLabel,
+  labelOptions,
+  labelOptionsLoading,
 }: {
   detection: DetectionResponse;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  onUpdateSpecies: (species: string) => void;
-  onUpdateCategory: (category: string) => void;
+  onUpdateLabel: (option: LabelOption) => void;
+  labelOptions: LabelOption[];
+  labelOptionsLoading: boolean;
 }) {
-  const [editingSpecies, setEditingSpecies] = useState(false);
-  const [speciesValue, setSpeciesValue] = useState(detection.species ?? "");
-  const color = getCategoryColor(detection.category);
+  const currentLabel = detection.species || detection.category;
 
   return (
     <div
@@ -231,27 +220,13 @@ function DetectionItem({
       onClick={onSelect}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: color }}
+        <div className="flex items-center gap-1">
+          <LabelPicker
+            value={currentLabel}
+            onSelect={onUpdateLabel}
+            options={labelOptions}
+            isLoading={labelOptionsLoading}
           />
-          {/* Category selector */}
-          <select
-            value={detection.category}
-            onChange={(e) => {
-              e.stopPropagation();
-              onUpdateCategory(e.target.value);
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="text-sm font-medium capitalize bg-transparent border-none p-0 cursor-pointer focus:ring-0 focus:outline-none"
-          >
-            {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat} className="capitalize">
-                {cat}
-              </option>
-            ))}
-          </select>
           <span className="text-muted-foreground text-xs">
             {(detection.confidence * 100).toFixed(0)}%
           </span>
@@ -266,57 +241,6 @@ function DetectionItem({
         >
           <Trash2 className="h-3 w-3" />
         </button>
-      </div>
-
-      {/* Species */}
-      <div className="mt-1">
-        {editingSpecies ? (
-          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="text"
-              value={speciesValue}
-              onChange={(e) => setSpeciesValue(e.target.value)}
-              className="flex-1 text-xs border rounded px-1.5 py-0.5"
-              placeholder="Species name"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  onUpdateSpecies(speciesValue);
-                  setEditingSpecies(false);
-                }
-                if (e.key === "Escape") {
-                  setEditingSpecies(false);
-                  setSpeciesValue(detection.species ?? "");
-                }
-              }}
-              onBlur={() => {
-                if (speciesValue !== (detection.species ?? "")) {
-                  onUpdateSpecies(speciesValue);
-                }
-                setEditingSpecies(false);
-              }}
-            />
-          </div>
-        ) : (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingSpecies(true);
-            }}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            {detection.species ? (
-              <span className="capitalize">{detection.species}</span>
-            ) : (
-              <span className="italic">+ Add species</span>
-            )}
-            {detection.species_confidence != null && (
-              <span className="ml-1">
-                ({(detection.species_confidence * 100).toFixed(0)}%)
-              </span>
-            )}
-          </button>
-        )}
       </div>
     </div>
   );

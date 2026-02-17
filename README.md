@@ -1,19 +1,13 @@
 # AddaxAI-WebUI
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
-# TODO
-- [ ] NO PRIORITY https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
-
 ## verification task
-- [ ] make best frame selection
-- [ ] how does videos work?
-- [ ] make add box add the next AI detection if > 0.3. Else just box in the middle so the user can move and edit. 
-- [ ] add buttons for new box, etc. Check how streamlit does this, and how Labelme does this. 
 - [ ] add shortcuts
-- [ ] fix the grid view, so chips in the images like Connect, etc. 
+- [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
+- [ ] make best frame selection
 - [ ] add chip for "representative" and auto select. 
- 
-
+- [ ] how does videos work?
+- [ ] fix the grid view, so chips in the images like Connect, etc. 
 
 ## Architecture
 

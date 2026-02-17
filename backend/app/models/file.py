@@ -83,6 +83,9 @@ class File(Base):
     )
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    favorited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow

@@ -166,6 +166,8 @@ export function QueueCard({ projectId }: QueueCardProps) {
           queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
           queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
           queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["events"] });
+          queryClient.invalidateQueries({ queryKey: ["event-count"] });
         }}
       />
     </>

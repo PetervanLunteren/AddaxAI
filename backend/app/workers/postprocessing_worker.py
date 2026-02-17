@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
@@ -186,6 +187,10 @@ async def process_postprocessing_job(job_id: str) -> None:
         # Report completion
         action = "Smoothing applied" if smoothing_enabled else "Raw predictions restored"
         message = f"{action} across {total} deployments ({total_updated} detections updated)"
+
+        # Auto-regenerate events (independence_interval may have changed)
+        event_count = event_crud.generate_events_for_project(db, project_id)
+        logger.info(f"Postprocessing job {job_id}: Regenerated {event_count} events")
 
         job_crud.update_job_status(db, job_id, "completed")
         await ws_manager.send_progress(job_id, message, 1.0)

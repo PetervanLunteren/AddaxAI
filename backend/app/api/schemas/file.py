@@ -44,6 +44,7 @@ class FileResponse(BaseModel):
     verified: bool = False
     verified_at: datetime | None = None
     notes: str | None = None
+    favorited: bool = False
 
     class Config:
         from_attributes = True
@@ -59,7 +60,8 @@ class FileWithDetections(FileResponse):
 
 
 class FileUpdate(BaseModel):
-    """Schema for updating a file (verification, notes)."""
+    """Schema for updating a file (verification, notes, favorited)."""
 
     verified: bool | None = None
     notes: str | None = None
+    favorited: bool | None = None

@@ -7,8 +7,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw, Layers } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2, Layers } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -21,7 +21,6 @@ const PAGE_SIZE = 50;
 
 export default function VerifyPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
@@ -58,15 +57,6 @@ export default function VerifyPage() {
     enabled: !!projectId,
   });
 
-  // Generate events mutation
-  const generateMutation = useMutation({
-    mutationFn: () => eventsApi.generate(projectId!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["events", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["event-count", projectId] });
-    },
-  });
-
   const totalEvents = countData?.count ?? 0;
   const hasMore = events && events.length === PAGE_SIZE;
 
@@ -74,30 +64,15 @@ export default function VerifyPage() {
     <div className="p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Browse and verify
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {totalEvents > 0
-                ? `${totalEvents} events`
-                : "Generate events to get started"}
-            </p>
-          </div>
-          <Button
-            onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending}
-            variant={totalEvents === 0 ? "default" : "outline"}
-            size="sm"
-          >
-            {generateMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            {totalEvents === 0 ? "Generate events" : "Regenerate events"}
-          </Button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Browse and verify
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {totalEvents > 0
+              ? `${totalEvents} events`
+              : "Run a deployment analysis to get started"}
+          </p>
         </div>
 
         {/* Event cards */}
@@ -113,9 +88,9 @@ export default function VerifyPage() {
                 No events yet
               </p>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Events group your camera trap images by time. Click "Generate
-                events" to cluster files based on your project's independence
-                interval.
+                Events are generated automatically when you run a deployment
+                analysis. They group your camera trap images by time based on
+                the project's independence interval.
               </p>
             </CardContent>
           </Card>

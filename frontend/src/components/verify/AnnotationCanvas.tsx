@@ -21,6 +21,14 @@ interface AnnotationCanvasProps {
   drawMode: boolean;
   onDrawModeChange: (active: boolean) => void;
   imageFilter?: string;
+  defaultCategory?: string;
+  defaultSpecies?: string;
+  exportFnRef?: React.MutableRefObject<(() => void) | null>;
+  zoomFnRef?: React.MutableRefObject<{
+    zoomIn: () => void;
+    zoomOut: () => void;
+    getZoom: () => number;
+  } | null>;
 }
 
 interface DrawingBox {
@@ -39,6 +47,10 @@ export function AnnotationCanvas({
   drawMode,
   onDrawModeChange,
   imageFilter,
+  defaultCategory,
+  defaultSpecies,
+  exportFnRef,
+  zoomFnRef,
 }: AnnotationCanvasProps) {
   const queryClient = useQueryClient();
   const stageRef = useRef<any>(null);
@@ -48,8 +60,12 @@ export function AnnotationCanvas({
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const lastPanPosRef = useRef({ x: 0, y: 0 });
 
-  const imageUrl = `http://localhost:8000/api/files/${file.id}/image`;
+  const imageUrl = `/api/files/${file.id}/image`;
   const imgWidth = file.width_px || 1;
   const imgHeight = file.height_px || 1;
 
@@ -60,6 +76,7 @@ export function AnnotationCanvas({
   // Load image
   useEffect(() => {
     const img = new window.Image();
+    img.crossOrigin = "anonymous";
     img.src = imageUrl;
     img.onload = () => {
       setImage(img);
@@ -96,6 +113,12 @@ export function AnnotationCanvas({
     return () => observer.disconnect();
   }, [image, updateStageSize]);
 
+  // Reset zoom when file changes
+  useEffect(() => {
+    setZoom(1);
+    setStagePos({ x: 0, y: 0 });
+  }, [file.id]);
+
   // Update transformer when selection changes
   useEffect(() => {
     if (!transformerRef.current || !stageRef.current) return;
@@ -112,6 +135,80 @@ export function AnnotationCanvas({
     transformerRef.current.nodes([]);
     transformerRef.current.getLayer()?.batchDraw();
   }, [selectedDetectionId, filteredDetections]);
+
+  // Register export function for download button
+  useEffect(() => {
+    if (!exportFnRef) return;
+    exportFnRef.current = () => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      // Save current transform and reset for clean export
+      const savedScale = { x: stage.scaleX(), y: stage.scaleY() };
+      const savedPos = { x: stage.x(), y: stage.y() };
+      stage.scale({ x: 1, y: 1 });
+      stage.position({ x: 0, y: 0 });
+
+      const transformer = transformerRef.current;
+      const wasVisible = transformer?.visible();
+      transformer?.visible(false);
+      stage.batchDraw();
+
+      const pixelRatio = Math.max(1, imgWidth / stage.width());
+      const dataUrl = stage.toDataURL({ pixelRatio });
+
+      // Restore transform and transformer
+      transformer?.visible(wasVisible ?? true);
+      stage.scale(savedScale);
+      stage.position(savedPos);
+      stage.batchDraw();
+
+      // Trigger download
+      const fileName =
+        file.file_path.split("/").pop()?.replace(/\.[^.]+$/, "") || "image";
+      const link = document.createElement("a");
+      link.download = `${fileName}_annotated.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+  }, [exportFnRef, image, file.file_path, imgWidth]);
+
+  // Register zoom functions for external buttons
+  useEffect(() => {
+    if (!zoomFnRef) return;
+    const zoomBy = (direction: 1 | -1) => {
+      const factor = 1.3;
+      const oldScale = zoom;
+      const newScale = Math.min(
+        5,
+        Math.max(1, oldScale * (direction > 0 ? factor : 1 / factor))
+      );
+      if (newScale === 1) {
+        setZoom(1);
+        setStagePos({ x: 0, y: 0 });
+        return;
+      }
+      // Zoom toward center of stage
+      const cx = stageSize.width / 2;
+      const cy = stageSize.height / 2;
+      const mousePointTo = {
+        x: (cx - stagePos.x) / oldScale,
+        y: (cy - stagePos.y) / oldScale,
+      };
+      const newPos = clampPos(
+        { x: cx - mousePointTo.x * newScale, y: cy - mousePointTo.y * newScale },
+        newScale
+      );
+      setZoom(newScale);
+      setStagePos(newPos);
+    };
+    zoomFnRef.current = {
+      zoomIn: () => zoomBy(1),
+      zoomOut: () => zoomBy(-1),
+      getZoom: () => zoom,
+    };
+  });
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -173,11 +270,12 @@ export function AnnotationCanvas({
       const normH = pixelToNorm(box.height, imgHeight);
       return detectionsApi.create({
         file_id: file.id,
-        category: "animal",
+        category: defaultCategory || "animal",
         bbox_x: Math.max(0, Math.min(1, normX)),
         bbox_y: Math.max(0, Math.min(1, normY)),
         bbox_width: Math.max(0, Math.min(1, normW)),
         bbox_height: Math.max(0, Math.min(1, normH)),
+        species: defaultSpecies,
       });
     },
     onSuccess: () => {
@@ -222,32 +320,97 @@ export function AnnotationCanvas({
     },
   });
 
-  // Mouse handlers for drawing
-  const handleMouseDown = (e: any) => {
-    if (!drawMode) {
-      // Check if clicking empty area
-      const target = e.target;
-      if (target === stageRef.current || target.className === "Image") {
-        onSelectDetection(null);
-      }
+  // Convert screen pointer position to stage coordinates (accounting for zoom/pan)
+  const getStagePointerPos = () => {
+    const pointer = stageRef.current?.getPointerPosition();
+    if (!pointer) return null;
+    return {
+      x: (pointer.x - stagePos.x) / zoom,
+      y: (pointer.y - stagePos.y) / zoom,
+    };
+  };
+
+  // Clamp pan position so image stays visible
+  const clampPos = (pos: { x: number; y: number }, z: number) => ({
+    x: Math.min(0, Math.max(pos.x, stageSize.width * (1 - z))),
+    y: Math.min(0, Math.max(pos.y, stageSize.height * (1 - z))),
+  });
+
+  // Zoom via scroll wheel / trackpad pinch
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const oldScale = zoom;
+    const mousePointTo = {
+      x: (pointer.x - stagePos.x) / oldScale,
+      y: (pointer.y - stagePos.y) / oldScale,
+    };
+
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const factor = 1.1;
+    const newScale = Math.min(
+      5,
+      Math.max(1, oldScale * (direction > 0 ? factor : 1 / factor))
+    );
+
+    if (newScale === 1) {
+      setZoom(1);
+      setStagePos({ x: 0, y: 0 });
       return;
     }
 
-    const stage = stageRef.current;
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
-
-    setIsDrawing(true);
-    setDrawingBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+    const newPos = clampPos(
+      {
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      },
+      newScale
+    );
+    setZoom(newScale);
+    setStagePos(newPos);
   };
 
-  const handleMouseMove = (e: any) => {
+  // Mouse handlers for drawing and panning
+  const handleMouseDown = (e: any) => {
+    const target = e.target;
+    const isEmptyArea =
+      target === stageRef.current || target.className === "Image";
+
+    if (drawMode) {
+      const pos = getStagePointerPos();
+      if (!pos) return;
+      setIsDrawing(true);
+      setDrawingBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+      return;
+    }
+
+    if (isEmptyArea) {
+      onSelectDetection(null);
+      if (zoom > 1) {
+        setIsPanning(true);
+        const pointer = stageRef.current.getPointerPosition();
+        if (pointer) lastPanPosRef.current = { x: pointer.x, y: pointer.y };
+      }
+    }
+  };
+
+  const handleMouseMove = () => {
+    if (isPanning) {
+      const pointer = stageRef.current?.getPointerPosition();
+      if (!pointer) return;
+      const dx = pointer.x - lastPanPosRef.current.x;
+      const dy = pointer.y - lastPanPosRef.current.y;
+      lastPanPosRef.current = { x: pointer.x, y: pointer.y };
+      setStagePos((prev) => clampPos({ x: prev.x + dx, y: prev.y + dy }, zoom));
+      return;
+    }
+
     if (!isDrawing || !drawingBox) return;
-
-    const stage = stageRef.current;
-    const pos = stage.getPointerPosition();
+    const pos = getStagePointerPos();
     if (!pos) return;
-
     setDrawingBox({
       ...drawingBox,
       width: pos.x - drawingBox.x,
@@ -256,8 +419,12 @@ export function AnnotationCanvas({
   };
 
   const handleMouseUp = () => {
-    if (!isDrawing || !drawingBox) return;
+    if (isPanning) {
+      setIsPanning(false);
+      return;
+    }
 
+    if (!isDrawing || !drawingBox) return;
     setIsDrawing(false);
 
     // Normalize negative dimensions
@@ -271,7 +438,7 @@ export function AnnotationCanvas({
       height: Math.abs(drawingBox.height),
     };
 
-    // Minimum size check (at least 10px)
+    // Minimum size check (at least 10px in stage coords)
     if (box.width > 10 && box.height > 10) {
       createMutation.mutate(box);
     }
@@ -313,7 +480,13 @@ export function AnnotationCanvas({
       ref={containerRef}
       className="relative w-full h-full flex items-center justify-center"
       style={{
-        cursor: drawMode ? "crosshair" : "default",
+        cursor: drawMode
+          ? "crosshair"
+          : isPanning
+            ? "grabbing"
+            : zoom > 1
+              ? "grab"
+              : "default",
         filter: imageFilter,
       }}
     >
@@ -328,6 +501,11 @@ export function AnnotationCanvas({
         ref={stageRef}
         width={stageSize.width}
         height={stageSize.height}
+        scaleX={zoom}
+        scaleY={zoom}
+        x={stagePos.x}
+        y={stagePos.y}
+        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -353,18 +531,20 @@ export function AnnotationCanvas({
             const color = getCategoryColor(detection.category);
             const isSelected = selectedDetectionId === detection.id;
 
-            const label = detection.species
-              ? `${detection.species} (${(detection.confidence * 100).toFixed(0)}%)`
-              : `${detection.category} (${(detection.confidence * 100).toFixed(0)}%)`;
+            const hasSpecies = !!detection.species;
+            const labelHeight = hasSpecies ? 32 : 18;
+            const label = hasSpecies
+              ? `${detection.category} ${(detection.confidence * 100).toFixed(0)}%\n${detection.species} ${((detection.species_confidence ?? detection.confidence) * 100).toFixed(0)}%`
+              : `${detection.category} ${(detection.confidence * 100).toFixed(0)}%`;
 
             return (
               <React.Fragment key={detection.id}>
                 {/* Label background */}
                 <Rect
                   x={x}
-                  y={y - 18}
+                  y={y - labelHeight}
                   width={Math.max(w, 60)}
-                  height={18}
+                  height={labelHeight}
                   fill={color}
                   opacity={0.8}
                   listening={false}
@@ -372,11 +552,12 @@ export function AnnotationCanvas({
                 {/* Label text */}
                 <Text
                   x={x + 3}
-                  y={y - 16}
+                  y={y - labelHeight + 2}
                   text={label}
                   fill="white"
                   fontSize={12}
                   fontStyle="bold"
+                  lineHeight={1.2}
                   listening={false}
                 />
                 {/* Bounding box */}

@@ -133,6 +133,9 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
     if update.notes is not None:
         file.notes = update.notes
 
+    if update.favorited is not None:
+        file.favorited = update.favorited
+
     db.commit()
     db.refresh(file)
     return file

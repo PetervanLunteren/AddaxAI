@@ -416,6 +416,9 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["files", projectId] });
       // Invalidate individual file detail queries (species annotations)
       queryClient.invalidateQueries({ queryKey: ["file"] });
+      // Invalidate events (auto-regenerated after postprocessing)
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["event-count"] });
 
       // Fetch after-stats now that reprocessing is done
       const pending = pendingBeforeStats.current;

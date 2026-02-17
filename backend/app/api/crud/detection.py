@@ -215,9 +215,11 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
         detection.bbox_width = update.bbox_width
     if update.bbox_height is not None:
         detection.bbox_height = update.bbox_height
-    if update.species is not None:
+    if "species" in update.model_fields_set:
         detection.species = update.species
         detection.classification_method = "human"
+        if update.species is None:
+            detection.species_confidence = None
     if update.species_confidence is not None:
         detection.species_confidence = update.species_confidence
 

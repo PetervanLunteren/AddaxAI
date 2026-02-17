@@ -201,6 +201,7 @@ export interface FileResponse {
   verified: boolean;
   verified_at: string | null;
   notes: string | null;
+  favorited: boolean;
 }
 
 export interface FileWithDetections extends FileResponse {

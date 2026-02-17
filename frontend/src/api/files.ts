@@ -50,7 +50,7 @@ export const filesApi = {
    */
   update: async (
     id: string,
-    data: { verified?: boolean; notes?: string }
+    data: { verified?: boolean; notes?: string; favorited?: boolean }
   ): Promise<FileResponse> => {
     return api.patch<FileResponse>(`/api/files/${id}`, data);
   },
