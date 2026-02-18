@@ -8,18 +8,24 @@ import { useEffect, useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { API_BASE_URL } from "../../lib/api-client";
+import { getCategoryColor } from "../../lib/detection-utils";
 import type { FileWithDetections } from "../../api/types";
+
+const THUMB_W = 96;
+const THUMB_H = 64;
 
 interface EventFilmstripProps {
   files: FileWithDetections[];
   selectedIndex: number;
   onSelectIndex: (index: number) => void;
+  detectionThreshold: number;
 }
 
 export function EventFilmstrip({
   files,
   selectedIndex,
   onSelectIndex,
+  detectionThreshold,
 }: EventFilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -63,6 +69,58 @@ export function EventFilmstrip({
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
+              {/* Detection overlay */}
+              {(() => {
+                const dets = file.detections.filter(
+                  (d) => d.confidence >= detectionThreshold
+                );
+                if (dets.length === 0) return null;
+                const imgW = file.width_px || 1;
+                const imgH = file.height_px || 1;
+                // Compute object-cover transform
+                const scale = Math.max(THUMB_W / imgW, THUMB_H / imgH);
+                const dw = imgW * scale;
+                const dh = imgH * scale;
+                const ox = (THUMB_W - dw) / 2;
+                const oy = (THUMB_H - dh) / 2;
+                // Build evenodd path: outer rect + hole per detection
+                let d = `M0,0H${THUMB_W}V${THUMB_H}H0Z`;
+                const boxes = dets.map((det) => {
+                  const bx = ox + det.bbox_x * dw;
+                  const by = oy + det.bbox_y * dh;
+                  const bw = det.bbox_width * dw;
+                  const bh = det.bbox_height * dh;
+                  const color = getCategoryColor(det.category);
+                  d += `M${bx},${by}h${bw}v${bh}h${-bw}Z`;
+                  return { bx, by, bw, bh, color };
+                });
+                return (
+                  <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    viewBox={`0 0 ${THUMB_W} ${THUMB_H}`}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d={d}
+                      fill="rgba(0,0,0,0.35)"
+                    />
+                    {boxes.map((b, i) => (
+                      <rect
+                        key={i}
+                        x={b.bx}
+                        y={b.by}
+                        width={b.bw}
+                        height={b.bh}
+                        rx={2}
+                        fill="none"
+                        stroke={b.color}
+                        strokeWidth={1}
+                        opacity={0.5}
+                      />
+                    ))}
+                  </svg>
+                );
+              })()}
               {/* Verified checkmark */}
               {file.verified && (
                 <div className="absolute top-0.5 right-0.5 bg-primary rounded-full p-0.5">

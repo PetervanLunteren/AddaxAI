@@ -753,7 +753,7 @@ export function EventDetailModal({
                 <Heart
                   className={cn(
                     "h-4 w-4",
-                    currentFile.favorited && "fill-red-500 text-red-500"
+                    currentFile.favorited && "fill-[#882000] text-[#882000]"
                   )}
                 />
               </Button>
@@ -808,6 +808,7 @@ export function EventDetailModal({
               <EventFilmstrip
                 files={files}
                 selectedIndex={selectedFileIndex}
+                detectionThreshold={detectionThreshold}
                 onSelectIndex={(i) => {
                   setSelectedFileIndex(i);
                   setSelectedDetectionId(null);

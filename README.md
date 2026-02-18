@@ -1,16 +1,21 @@
 # AddaxAI-WebUI
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
-## verification task
-- [ ] improve the UI for the bboxes. 
-- [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
+## TODO verification task
 - [ ] make best frame selection
 - [ ] add chip for "representative" and auto select. 
+- [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] how does videos work?
 - [ ] how does it work for SpeciesNet?
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
 
-## Priority 3
+## TODO priority 1
+- [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
+
+## TODO priority 2
+- [ ] 
+
+## TODO priority 3
 - [ ] crop verification option
 
 ## Architecture

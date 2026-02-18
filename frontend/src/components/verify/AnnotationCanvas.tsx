@@ -618,6 +618,7 @@ export function AnnotationCanvas({
                   height={h}
                   stroke={color}
                   strokeWidth={isSelected ? 3 : 2}
+                  opacity={0.5}
                   fill="transparent"
                   cornerRadius={4}
                   draggable={!drawMode}
@@ -631,7 +632,7 @@ export function AnnotationCanvas({
                   <Rect
                     width={pillWidth}
                     height={pillHeight}
-                    fill="rgba(0,0,0,0.75)"
+                    fill="rgba(0,0,0,0.5)"
                     cornerRadius={4}
                   />
                   <Circle

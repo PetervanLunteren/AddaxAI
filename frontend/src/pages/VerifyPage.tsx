@@ -10,11 +10,13 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Layers } from "lucide-react";
 import { eventsApi } from "../api/events";
+import { filesApi } from "../api/files";
+import { projectsApi } from "../api/projects";
 import { API_BASE_URL } from "../lib/api-client";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { getObservationBadge } from "../lib/detection-utils";
+import { getCategoryColor, getObservationBadge } from "../lib/detection-utils";
 import type { EventSummary } from "../api/types";
 import { EventDetailModal } from "../components/verify/EventDetailModal";
 
@@ -34,6 +36,14 @@ export default function VerifyPage() {
     window.addEventListener("navigate-event", handler);
     return () => window.removeEventListener("navigate-event", handler);
   }, []);
+
+  // Get project detection threshold
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId!),
+    enabled: !!projectId,
+  });
+  const detectionThreshold = project?.detection_threshold ?? 0;
 
   // Get event count
   const { data: countData } = useQuery({
@@ -102,6 +112,7 @@ export default function VerifyPage() {
                 <EventCard
                   key={event.id}
                   event={event}
+                  detectionThreshold={detectionThreshold}
                   onClick={() => setSelectedEventId(event.id)}
                 />
               ))}
@@ -147,9 +158,11 @@ export default function VerifyPage() {
 
 function EventCard({
   event,
+  detectionThreshold,
   onClick,
 }: {
   event: EventSummary;
+  detectionThreshold: number;
   onClick: () => void;
 }) {
   const startTime = new Date(event.start_time);
@@ -175,6 +188,14 @@ function EventCard({
     ? `${API_BASE_URL}/api/files/${event.representative_file_id}/image`
     : undefined;
 
+  // Fetch representative file detections for overlay
+  const { data: repFile } = useQuery({
+    queryKey: ["file", event.representative_file_id],
+    queryFn: () => filesApi.get(event.representative_file_id!),
+    enabled: !!event.representative_file_id,
+    staleTime: Infinity,
+  });
+
   return (
     <Card
       className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
@@ -196,6 +217,55 @@ function EventCard({
             <Layers className="h-8 w-8 text-muted-foreground/30" />
           </div>
         )}
+        {/* Detection overlay */}
+        {repFile && (() => {
+          const dets = repFile.detections.filter(
+            (d) => d.confidence >= detectionThreshold
+          );
+          if (dets.length === 0) return null;
+          const imgW = repFile.width_px || 1;
+          const imgH = repFile.height_px || 1;
+          // Use a fixed reference size for 16:9 viewBox
+          const VW = 320;
+          const VH = 180;
+          const scale = Math.max(VW / imgW, VH / imgH);
+          const dw = imgW * scale;
+          const dh = imgH * scale;
+          const ox = (VW - dw) / 2;
+          const oy = (VH - dh) / 2;
+          let d = `M0,0H${VW}V${VH}H0Z`;
+          const boxes = dets.map((det) => {
+            const bx = ox + det.bbox_x * dw;
+            const by = oy + det.bbox_y * dh;
+            const bw = det.bbox_width * dw;
+            const bh = det.bbox_height * dh;
+            const color = getCategoryColor(det.category);
+            d += `M${bx},${by}h${bw}v${bh}h${-bw}Z`;
+            return { bx, by, bw, bh, color };
+          });
+          return (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox={`0 0 ${VW} ${VH}`}
+            >
+              <path fillRule="evenodd" d={d} fill="rgba(0,0,0,0.35)" />
+              {boxes.map((b, i) => (
+                <rect
+                  key={i}
+                  x={b.bx}
+                  y={b.by}
+                  width={b.bw}
+                  height={b.bh}
+                  rx={2}
+                  fill="none"
+                  stroke={b.color}
+                  strokeWidth={1.5}
+                  opacity={0.5}
+                />
+              ))}
+            </svg>
+          );
+        })()}
         {/* Observation badge */}
         <Badge
           variant="outline"
