@@ -2,14 +2,16 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## verification task
-- [ ] add shortcuts
+- [ ] improve the UI for the bboxes. 
 - [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] make best frame selection
 - [ ] add chip for "representative" and auto select. 
 - [ ] how does videos work?
+- [ ] how does it work for SpeciesNet?
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
 
-## crop verification option
+## Priority 3
+- [ ] crop verification option
 
 ## Architecture
 

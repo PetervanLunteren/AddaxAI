@@ -22,6 +22,8 @@ import {
   Heart,
   ZoomIn,
   ZoomOut,
+  RotateCcw,
+  FolderOpen,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -31,12 +33,20 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { Slider } from "../ui/slider";
 import type { FileWithDetections } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
-import { useLabelOptions } from "../../hooks/useLabelOptions";
+import { LabelPicker } from "./LabelPicker";
+import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 
 interface EventDetailModalProps {
   eventId: string | null;
@@ -58,6 +68,10 @@ export function EventDetailModal({
     null
   );
   const [drawMode, setDrawMode] = useState(false);
+  const [boxesHidden, setBoxesHidden] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
+  const [openLabelPickerFor, setOpenLabelPickerFor] = useState<string | null>(null);
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
@@ -65,6 +79,7 @@ export function EventDetailModal({
   const zoomFnRef = useRef<{
     zoomIn: () => void;
     zoomOut: () => void;
+    resetZoom: () => void;
     getZoom: () => number;
   } | null>(null);
   const [viewport, setViewport] = useState({
@@ -106,11 +121,33 @@ export function EventDetailModal({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Reset file index and nav scope when event changes
+  // Load shortcut label mappings from project data
+  useEffect(() => {
+    if (project?.shortcut_labels) {
+      const parsed: Record<number, LabelOption> = {};
+      for (const [k, v] of Object.entries(project.shortcut_labels)) {
+        parsed[Number(k)] = v as LabelOption;
+      }
+      setShortcutLabels(parsed);
+    }
+  }, [project?.shortcut_labels]);
+
+  // Update shortcut labels in state and persist to backend
+  const updateShortcutLabels = useCallback(
+    (updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>) => {
+      setShortcutLabels((prev) => {
+        const next = updater(prev);
+        projectsApi.update(projectId, { shortcut_labels: next });
+        return next;
+      });
+    },
+    [projectId]
+  );
+
+  // Reset file index when event changes (nav scope is persistent)
   useEffect(() => {
     setSelectedFileIndex(0);
     setSelectedDetectionId(null);
-    setNavScope("event");
   }, [eventId]);
 
   const files = event?.files ?? [];
@@ -164,7 +201,9 @@ export function EventDetailModal({
     return best;
   }, [event?.files, detectionThreshold]);
 
-  // Calculate modal dimensions to tightly fit the image + UI panels
+  // Calculate modal dimensions to tightly fit the image + UI panels.
+  // Keep previous size while loading to avoid a resize flash between images.
+  const lastModalStyle = useRef<{ width: number; height: number } | null>(null);
   const modalStyle = useMemo(() => {
     const TOOLBAR_W = 44;
     const PANEL_W = 320;
@@ -175,7 +214,7 @@ export function EventDetailModal({
     const maxH = viewport.height * 0.95;
 
     if (!currentFile?.width_px || !currentFile?.height_px) {
-      return { width: maxW, height: maxH };
+      return lastModalStyle.current ?? { width: maxW, height: maxH };
     }
 
     const maxImgW = maxW - TOOLBAR_W - PANEL_W;
@@ -190,10 +229,12 @@ export function EventDetailModal({
     const imgDisplayW = currentFile.width_px * scale;
     const imgDisplayH = currentFile.height_px * scale;
 
-    return {
+    const style = {
       width: Math.round(imgDisplayW + TOOLBAR_W + PANEL_W),
       height: Math.round(imgDisplayH + FILMSTRIP_H + IMAGE_PAD),
     };
+    lastModalStyle.current = style;
+    return style;
   }, [currentFile?.width_px, currentFile?.height_px, files.length, viewport]);
 
   // Verify current file mutation
@@ -248,6 +289,42 @@ export function EventDetailModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
+  });
+
+  // Filtered detections for the current file (for Tab cycling)
+  const filteredDetections = useMemo(() => {
+    if (!currentFile) return [];
+    return currentFile.detections.filter(
+      (d) => d.confidence >= detectionThreshold
+    );
+  }, [currentFile, detectionThreshold]);
+
+  // Mark blank mutation: delete all detections + verify + advance
+  const markBlankMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentFile) return;
+      await detectionsApi.deleteByFile(currentFile.id);
+      await filesApi.update(currentFile.id, { verified: true });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
+  });
+
+  // Delete selected detection mutation
+  const deleteDetectionMutation = useMutation({
+    mutationFn: (id: string) => {
+      // Capture the next detection before deleting
+      const idx = filteredDetections.findIndex((d) => d.id === id);
+      const next =
+        filteredDetections[idx + 1] ?? filteredDetections[idx - 1] ?? null;
+      return detectionsApi.delete(id).then(() => next);
+    },
+    onSuccess: (next) => {
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      setSelectedDetectionId(next?.id ?? null);
     },
   });
 
@@ -336,6 +413,34 @@ export function EventDetailModal({
       }
 
       switch (e.key) {
+        case "ArrowUp":
+          e.preventDefault();
+          if (filteredDetections.length === 0) break;
+          setSelectedDetectionId((prev) => {
+            const currentIdx = prev
+              ? filteredDetections.findIndex((d) => d.id === prev)
+              : -1;
+            const nextIdx =
+              currentIdx <= 0
+                ? filteredDetections.length - 1
+                : currentIdx - 1;
+            return filteredDetections[nextIdx].id;
+          });
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          if (filteredDetections.length === 0) break;
+          setSelectedDetectionId((prev) => {
+            const currentIdx = prev
+              ? filteredDetections.findIndex((d) => d.id === prev)
+              : -1;
+            const nextIdx =
+              currentIdx < 0 || currentIdx >= filteredDetections.length - 1
+                ? 0
+                : currentIdx + 1;
+            return filteredDetections[nextIdx].id;
+          });
+          break;
         case "ArrowLeft":
           e.preventDefault();
           handlePrev();
@@ -344,30 +449,76 @@ export function EventDetailModal({
           e.preventDefault();
           handleNext();
           break;
-        case "ArrowUp":
+        case "Enter":
           e.preventDefault();
-          setSelectedFileIndex((i) => Math.max(0, i - 1));
-          setNavScope("file");
+          if (currentFile && !currentFile.verified) {
+            verifyMutation.mutateAsync().then(() => handleNextUnverified());
+          } else {
+            handleNextUnverified();
+          }
           break;
-        case "ArrowDown":
+        case "e":
+        case "E":
           e.preventDefault();
-          setSelectedFileIndex((i) => Math.min(files.length - 1, i + 1));
-          setNavScope("file");
+          if (currentFile) {
+            markBlankMutation.mutateAsync().then(() => handleNextUnverified());
+          }
           break;
-        case "n":
-        case "N":
+        case "1": case "2": case "3": case "4": case "5": {
+          const slot = parseInt(e.key);
+          const label = shortcutLabels[slot];
+          if (!label || !currentFile) break;
           e.preventDefault();
-          handleNextUnverified();
+          Promise.all(
+            filteredDetections.map((d) =>
+              detectionsApi.update(d.id, {
+                category: label.category,
+                species: label.species,
+              })
+            )
+          ).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+          });
+          break;
+        }
+        case "Tab":
+          if (selectedDetectionId) {
+            e.preventDefault();
+            setOpenLabelPickerFor(selectedDetectionId);
+          }
           break;
         case "v":
         case "V":
           e.preventDefault();
           verifyMutation.mutate();
           break;
+        case "a":
+        case "A":
+          e.preventDefault();
+          if (hiddenDetections.length > 0) {
+            addBoxMutation.mutate();
+          }
+          break;
+        case "x":
+        case "X":
+          if (selectedDetectionId) {
+            e.preventDefault();
+            deleteDetectionMutation.mutate(selectedDetectionId);
+          }
+          break;
+        case "Delete":
+        case "Backspace":
+          if (selectedDetectionId) {
+            e.preventDefault();
+            deleteDetectionMutation.mutate(selectedDetectionId);
+          }
+          break;
         case "Escape":
           e.preventDefault();
           if (selectedDetectionId) {
             setSelectedDetectionId(null);
+          } else if (drawMode) {
+            setDrawMode(false);
           } else {
             onClose();
           }
@@ -379,14 +530,52 @@ export function EventDetailModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isOpen,
-    files.length,
+    currentFile,
+    drawMode,
+    filteredDetections,
     handlePrev,
     handleNext,
     handleNextUnverified,
     onClose,
     selectedDetectionId,
     verifyMutation,
+    markBlankMutation,
+    addBoxMutation,
+    hiddenDetections,
+    deleteDetectionMutation,
+    shortcutLabels,
+    eventId,
+    queryClient,
   ]);
+
+  // B key hold: momentarily hide boxes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if ((e.key === "b" || e.key === "B") && !e.repeat) {
+        setBoxesHidden(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "b" || e.key === "B") {
+        setBoxesHidden(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -394,6 +583,7 @@ export function EventDetailModal({
     <Dialog open={isOpen} onOpenChange={() => onClose()}>
       <DialogContent
         className="flex flex-col p-0 pt-3 gap-0 overflow-hidden [&>button.absolute]:hidden"
+        onOpenAutoFocus={(e) => e.preventDefault()}
         style={{
           width: modalStyle.width,
           height: modalStyle.height,
@@ -432,30 +622,6 @@ export function EventDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => exportFnRef.current?.()}
-                title="Download image with annotations"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => favoriteMutation.mutate()}
-                disabled={favoriteMutation.isPending}
-                title={currentFile.favorited ? "Remove from favorites" : "Add to favorites"}
-              >
-                <Heart
-                  className={cn(
-                    "h-4 w-4",
-                    currentFile.favorited && "fill-red-500 text-red-500"
-                  )}
-                />
-              </Button>
               <div className="w-6 border-t my-0.5" />
               <Button
                 variant="ghost"
@@ -475,6 +641,15 @@ export function EventDetailModal({
               >
                 <ZoomOut className="h-4 w-4" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => zoomFnRef.current?.resetZoom()}
+                title="Reset zoom"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
               <div className="w-6 border-t my-0.5" />
               {/* Detection threshold popover */}
               <Popover>
@@ -491,7 +666,7 @@ export function EventDetailModal({
                 <PopoverContent side="right" className="w-48 p-3">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">Threshold</span>
+                      <span className="text-xs font-medium">Detection threshold</span>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {(detectionThreshold * 100).toFixed(0)}%
                       </span>
@@ -571,31 +746,34 @@ export function EventDetailModal({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                disabled={prevDisabled}
-                onClick={handlePrev}
-                title="Previous (←)"
+                onClick={() => favoriteMutation.mutate()}
+                disabled={favoriteMutation.isPending}
+                title={currentFile.favorited ? "Remove from favorites" : "Add to favorites"}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <Heart
+                  className={cn(
+                    "h-4 w-4",
+                    currentFile.favorited && "fill-red-500 text-red-500"
+                  )}
+                />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                disabled={nextDisabled}
-                onClick={handleNext}
-                title="Next (→)"
+                onClick={() => exportFnRef.current?.()}
+                title="Download image with annotations"
               >
-                <ChevronRight className="h-4 w-4" />
+                <Download className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                disabled={nextUnverifiedDisabled}
-                onClick={handleNextUnverified}
-                title="Next unverified (N)"
+                onClick={() => window.electronAPI?.showItemInFolder(currentFile.file_path)}
+                title="Open in file explorer"
               >
-                <ChevronsRight className="h-4 w-4" />
+                <FolderOpen className="h-4 w-4" />
               </Button>
             </div>
           )}
@@ -616,6 +794,7 @@ export function EventDetailModal({
                   imageFilter={imageFilter}
                   defaultCategory={defaultLabel.category}
                   defaultSpecies={defaultLabel.species}
+                  boxesHidden={boxesHidden}
                   exportFnRef={exportFnRef}
                   zoomFnRef={zoomFnRef}
                 />
@@ -632,7 +811,6 @@ export function EventDetailModal({
                 onSelectIndex={(i) => {
                   setSelectedFileIndex(i);
                   setSelectedDetectionId(null);
-                  setNavScope("file");
                 }}
               />
             )}
@@ -640,7 +818,52 @@ export function EventDetailModal({
 
           {/* Right sidebar: navigation + verification panel */}
           <div className="w-80 bg-white flex flex-col shrink-0">
-            <div className="flex items-center justify-end px-3 py-1.5 shrink-0">
+            <div className="flex items-center justify-between px-3 py-1.5 shrink-0">
+              <div className="flex items-center gap-0.5">
+                {/* Nav scope selector */}
+                <Select
+                  value={navScope}
+                  onValueChange={(v) => setNavScope(v as "event" | "file")}
+                >
+                  <SelectTrigger className="h-7 min-h-0 w-auto text-xs gap-1 px-2 py-0 mr-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="event">Navigate by event</SelectItem>
+                    <SelectItem value="file">Navigate by file</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={prevDisabled}
+                  onClick={handlePrev}
+                  title="Previous (←)"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={nextDisabled}
+                  onClick={handleNext}
+                  title="Next (→)"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={nextUnverifiedDisabled}
+                  onClick={handleNextUnverified}
+                  title="Next unverified (Enter)"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
@@ -663,8 +886,68 @@ export function EventDetailModal({
                 labelOptionsLoading={labelOptionsLoading}
                 selectedDetectionId={selectedDetectionId}
                 onSelectDetection={setSelectedDetectionId}
+                openLabelPickerFor={openLabelPickerFor}
+                onLabelPickerOpenChange={(open) => {
+                  if (!open) setOpenLabelPickerFor(null);
+                }}
+                pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
+                  key: Number(k),
+                  option: v,
+                }))}
               />
             )}
+
+            {/* Keyboard shortcuts */}
+            <div className="mt-auto shrink-0 px-3 pb-2 relative">
+              {showShortcuts && (
+                <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowShortcuts(false)} />
+                <div className="absolute bottom-10 right-6 w-[400px] mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50">
+                  {[
+                    ["Enter", "Verify + next"],
+                    ["E", "Empty + next"],
+                    ["← →", "Navigate"],
+                    ["↑ ↓", "Select detection"],
+                    ["Tab", "Change label"],
+                    ["A", "Add box"],
+                    ["D", "Toggle draw mode"],
+                    ["X", "Delete detection"],
+                    ["Scroll", "Zoom in / out"],
+                    ["B (hold)", "Hide boxes"],
+                    ["Esc", "Deselect / close"],
+                  ].map(([key, action]) => (
+                    <div key={key} className="flex items-center text-xs gap-3 h-7">
+                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key}</code>
+                      <span>{action}</span>
+                    </div>
+                  ))}
+
+                  <div className="border-t my-2" />
+
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <div key={n} className="flex items-center text-xs gap-3 h-7">
+                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
+                      <span>Change all to</span>
+                      <LabelPicker
+                        value={shortcutLabels[n]?.value ?? null}
+                        onSelect={(option) =>
+                          updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
+                        }
+                        options={labelOptions}
+                        isLoading={labelOptionsLoading}
+                      />
+                    </div>
+                  ))}
+                </div>
+                </>
+              )}
+              <button
+                onClick={() => setShowShortcuts((s) => !s)}
+                className="w-full py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showShortcuts ? "Hide" : "Show"} keyboard shortcuts
+              </button>
+            </div>
           </div>
         </div>
       </DialogContent>

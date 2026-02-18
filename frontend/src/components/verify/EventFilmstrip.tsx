@@ -51,7 +51,7 @@ export function EventFilmstrip({
               className={cn(
                 "relative shrink-0 w-24 h-16 rounded overflow-hidden border-2 transition-all",
                 isSelected
-                  ? "border-blue-500 ring-2 ring-blue-200"
+                  ? "border-primary ring-2 ring-primary/30"
                   : "border-transparent hover:border-gray-300"
               )}
             >
@@ -65,7 +65,7 @@ export function EventFilmstrip({
               />
               {/* Verified checkmark */}
               {file.verified && (
-                <div className="absolute top-0.5 right-0.5 bg-green-500 rounded-full p-0.5">
+                <div className="absolute top-0.5 right-0.5 bg-primary rounded-full p-0.5">
                   <Check className="h-2.5 w-2.5 text-white" />
                 </div>
               )}

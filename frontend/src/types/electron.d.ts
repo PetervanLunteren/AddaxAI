@@ -4,6 +4,7 @@
 
 export interface ElectronAPI {
   selectFolder: () => Promise<string | null>;
+  showItemInFolder: (filePath: string) => Promise<void>;
   isElectron: () => boolean;
 }
 

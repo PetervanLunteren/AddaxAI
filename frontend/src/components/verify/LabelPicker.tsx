@@ -6,7 +6,7 @@
  * taxonomy plus "person" and "vehicle".
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -22,11 +22,19 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 
+interface PinnedOption {
+  key: number;
+  option: LabelOption;
+}
+
 interface LabelPickerProps {
   value: string | null;
   onSelect: (option: LabelOption) => void;
   options: LabelOption[];
   isLoading?: boolean;
+  forceOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  pinnedOptions?: PinnedOption[];
 }
 
 export function LabelPicker({
@@ -34,8 +42,20 @@ export function LabelPicker({
   onSelect,
   options,
   isLoading,
+  forceOpen,
+  onOpenChange,
+  pinnedOptions,
 }: LabelPickerProps) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
 
   const generalOptions = options.filter((o) => o.species === null);
   const speciesOptions = options.filter((o) => o.species !== null);
@@ -47,7 +67,7 @@ export function LabelPicker({
     : undefined;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -79,6 +99,34 @@ export function LabelPicker({
             <CommandEmpty>
               {isLoading ? "Loading..." : "No label found."}
             </CommandEmpty>
+            {pinnedOptions && pinnedOptions.length > 0 && (
+              <CommandGroup heading="Quick labels">
+                {pinnedOptions.map(({ key, option: opt }) => (
+                  <CommandItem
+                    key={`pinned-${key}`}
+                    value={`${key}-${opt.value}`}
+                    onSelect={() => {
+                      onSelect(opt);
+                      handleOpenChange(false);
+                    }}
+                    className="text-xs capitalize"
+                  >
+                    <code className="bg-zinc-100 text-zinc-500 px-1 rounded text-[10px] mr-1.5">{key}</code>
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0 mr-1.5"
+                      style={{ backgroundColor: getCategoryColor(opt.category) }}
+                    />
+                    {opt.value}
+                    <Check
+                      className={cn(
+                        "ml-auto h-3 w-3",
+                        value === opt.value ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
             <CommandGroup heading="General">
               {generalOptions.map((opt) => (
                 <CommandItem
@@ -86,7 +134,7 @@ export function LabelPicker({
                   value={opt.value}
                   onSelect={() => {
                     onSelect(opt);
-                    setOpen(false);
+                    handleOpenChange(false);
                   }}
                   className="text-xs capitalize"
                 >

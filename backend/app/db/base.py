@@ -10,7 +10,7 @@ Following DEVELOPERS.md principles:
 from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -104,7 +104,24 @@ def init_db() -> None:
     try:
         logger.info("Creating database tables...")
         Base.metadata.create_all(bind=engine)
+        _migrate_missing_columns(engine)
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize database: {e}") from e
+
+
+def _migrate_missing_columns(engine: Engine) -> None:
+    """Add any missing columns to existing tables (lightweight migration)."""
+    migrations: list[tuple[str, str, str]] = [
+        # (table, column, SQL type + default)
+        ("projects", "shortcut_labels", "JSON NOT NULL DEFAULT '{}'"),
+    ]
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, column, col_type in migrations:
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            if column not in existing:
+                logger.info(f"Migrating: adding {table}.{column}")
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+

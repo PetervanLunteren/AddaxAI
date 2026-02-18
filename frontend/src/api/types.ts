@@ -13,6 +13,7 @@ export interface ProjectCreate {
   detection_model_id: string;
   classification_model_id: string | null;
   excluded_classes: string[];
+  shortcut_labels: Record<string, { value: string; category: string; species: string | null }>;
   country_code?: string | null;
   state_code?: string | null;
   video_fps: number;
@@ -29,6 +30,7 @@ export interface ProjectUpdate {
   detection_model_id?: string | null;
   classification_model_id?: string | null;
   excluded_classes?: string[] | null;
+  shortcut_labels?: Record<string, { value: string; category: string; species: string | null }> | null;
   country_code?: string | null;
   state_code?: string | null;
   video_fps?: number | null;
@@ -46,6 +48,7 @@ export interface ProjectResponse {
   detection_model_id: string;
   classification_model_id: string | null;
   excluded_classes: string[];
+  shortcut_labels: Record<string, { value: string; category: string; species: string | null }>;
   country_code: string | null;
   state_code: string | null;
   video_fps: number;

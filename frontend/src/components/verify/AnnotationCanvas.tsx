@@ -23,10 +23,12 @@ interface AnnotationCanvasProps {
   imageFilter?: string;
   defaultCategory?: string;
   defaultSpecies?: string;
+  boxesHidden?: boolean;
   exportFnRef?: React.MutableRefObject<(() => void) | null>;
   zoomFnRef?: React.MutableRefObject<{
     zoomIn: () => void;
     zoomOut: () => void;
+    resetZoom: () => void;
     getZoom: () => number;
   } | null>;
 }
@@ -49,6 +51,7 @@ export function AnnotationCanvas({
   imageFilter,
   defaultCategory,
   defaultSpecies,
+  boxesHidden,
   exportFnRef,
   zoomFnRef,
 }: AnnotationCanvasProps) {
@@ -206,11 +209,12 @@ export function AnnotationCanvas({
     zoomFnRef.current = {
       zoomIn: () => zoomBy(1),
       zoomOut: () => zoomBy(-1),
+      resetZoom: () => { setZoom(1); setStagePos({ x: 0, y: 0 }); },
       getZoom: () => zoom,
     };
   });
 
-  // Keyboard shortcuts
+  // Keyboard shortcut: D to toggle draw mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -224,24 +228,11 @@ export function AnnotationCanvas({
         e.preventDefault();
         onDrawModeChange(!drawMode);
       }
-
-      if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        selectedDetectionId
-      ) {
-        e.preventDefault();
-        deleteMutation.mutate(selectedDetectionId);
-      }
-
-      if (e.key === "Escape") {
-        onDrawModeChange(false);
-        onSelectDetection(null);
-      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedDetectionId, onSelectDetection, drawMode, onDrawModeChange]);
+  }, [drawMode, onDrawModeChange]);
 
   // Scale factor from stage to normalized coordinates
   const scaleX = stageSize.width > 0 ? imgWidth / stageSize.width : 1;
@@ -492,7 +483,7 @@ export function AnnotationCanvas({
     >
       {/* Draw mode indicator */}
       {drawMode && (
-        <div className="absolute top-2 left-2 z-10 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+        <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-1 rounded">
           Drawing mode - click and drag to draw a box (Esc to cancel)
         </div>
       )}
@@ -523,7 +514,7 @@ export function AnnotationCanvas({
 
         {/* Detections layer */}
         <Layer>
-          {filteredDetections.map((detection) => {
+          {!boxesHidden && filteredDetections.map((detection) => {
             const x = normToPixel(detection.bbox_x, imgWidth);
             const y = normToPixel(detection.bbox_y, imgHeight);
             const w = normToPixel(detection.bbox_width, imgWidth);
@@ -588,7 +579,7 @@ export function AnnotationCanvas({
               y={drawingBox.y}
               width={drawingBox.width}
               height={drawingBox.height}
-              stroke="rgb(34, 197, 94)"
+              stroke="#0f6064"
               strokeWidth={2}
               dash={[5, 5]}
               listening={false}
@@ -598,6 +589,7 @@ export function AnnotationCanvas({
           {/* Transformer for selected box */}
           <Transformer
             ref={transformerRef}
+            visible={!boxesHidden}
             rotateEnabled={false}
             keepRatio={false}
             enabledAnchors={[
@@ -610,8 +602,8 @@ export function AnnotationCanvas({
               "top-center",
               "bottom-center",
             ]}
-            borderStroke="#3b82f6"
-            anchorFill="#3b82f6"
+            borderStroke="#0f6064"
+            anchorFill="#0f6064"
             anchorSize={8}
           />
         </Layer>

@@ -47,6 +47,7 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
         detection_model_id=project.detection_model_id,
         classification_model_id=project.classification_model_id,
         excluded_classes=project.excluded_classes if project.excluded_classes else [],
+        shortcut_labels=project.shortcut_labels if project.shortcut_labels else {},
         country_code=project.country_code,
         state_code=project.state_code,
         detection_threshold=project.detection_threshold,

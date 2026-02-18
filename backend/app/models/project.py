@@ -78,6 +78,11 @@ class Project(Base):
         Integer, nullable=False, default=1800  # seconds
     )
 
+    # Verification shortcut labels (keys 1-5 → label options)
+    shortcut_labels: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+
     # Video processing settings
     video_fps: Mapped[float] = mapped_column(
         Float, nullable=False, default=1.0  # Frames per second to extract

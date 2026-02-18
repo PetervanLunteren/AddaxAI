@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Reveal a file in the native file explorer (Finder / Explorer)
+   */
+  showItemInFolder: async (filePath: string): Promise<void> => {
+    return await ipcRenderer.invoke('shell:showItemInFolder', filePath);
+  },
+
+  /**
    * Check if running in Electron (vs browser)
    */
   isElectron: (): boolean => {

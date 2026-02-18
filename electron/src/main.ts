@@ -228,6 +228,11 @@ ipcMain.handle('dialog:selectFolder', async () => {
   return result.filePaths[0] || null;
 });
 
+// Reveal a file in the native file explorer
+ipcMain.handle('shell:showItemInFolder', async (_event, filePath: string) => {
+  shell.showItemInFolder(filePath);
+});
+
 /**
  * Application lifecycle handlers
  */

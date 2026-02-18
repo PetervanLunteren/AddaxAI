@@ -23,4 +23,9 @@ export const detectionsApi = {
   delete: async (id: string): Promise<void> => {
     return api.delete(`/api/detections/${id}`);
   },
+
+  /** Delete all detections for a file. */
+  deleteByFile: async (fileId: string): Promise<{ deleted_count: number }> => {
+    return api.delete(`/api/detections/by-file/${fileId}`);
+  },
 };

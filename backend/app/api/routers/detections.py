@@ -57,6 +57,17 @@ def update_detection(
     return detection
 
 
+@router.delete("/by-file/{file_id}")
+def delete_detections_by_file(
+    file_id: str,
+    db: Session = Depends(get_db),
+):
+    """Delete all detections for a file."""
+    count = detection_crud.delete_detections_by_file(db, file_id)
+    file_crud.recalculate_observation_type(db, file_id)
+    return {"deleted_count": count}
+
+
 @router.delete("/{detection_id}", status_code=204)
 def delete_detection(
     detection_id: str,
