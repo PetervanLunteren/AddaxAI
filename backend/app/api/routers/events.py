@@ -83,6 +83,7 @@ def get_event(
         start_time=event.start_time,
         end_time=event.end_time,
         file_count=event.file_count,
+        representative_file_id=event.representative_file_id,
         created_at=event.created_at,
         files=[
             FileWithDetections.model_validate(f, from_attributes=True)

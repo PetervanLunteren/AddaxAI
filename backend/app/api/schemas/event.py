@@ -32,6 +32,7 @@ class EventWithFiles(BaseModel):
     start_time: datetime
     end_time: datetime
     file_count: int
+    representative_file_id: str | None = None
     created_at: datetime
     files: list[FileWithDetections]
 

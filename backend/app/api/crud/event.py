@@ -5,13 +5,85 @@ Events are time-clustered groups of files within a deployment.
 """
 
 import uuid
-from datetime import datetime
 
-from sqlalchemy import delete, func, insert, select
-from sqlalchemy.orm import Session, joinedload
+import cv2
+from sqlalchemy import delete, func, insert
+from sqlalchemy.orm import Session, joinedload, subqueryload
 
+from app.core.logging_config import get_logger
+from app.ml.scoring import compute_sharpness, pick_best_candidate, score_detections
 from app.models import Deployment, Event, File, Site
 from app.models.event import event_files
+
+logger = get_logger(__name__)
+
+
+def _select_representative_file(files: list[File]) -> str | None:
+    """
+    Pick the best representative file from an event's files using shared scoring.
+
+    Uses detection confidence as primary signal and image sharpness as tiebreaker.
+    """
+    if not files:
+        return None
+
+    # Build detection tuples: (file_id, confidence) for animal detections
+    det_tuples = [
+        (file.id, det.confidence)
+        for file in files
+        for det in file.detections
+        if det.category == "animal"
+    ]
+
+    scores = score_detections(det_tuples)
+
+    total_dets = sum(len(f.detections) for f in files)
+    logger.debug(
+        f"Representative selection: {len(files)} files, "
+        f"{total_dets} total detections, {len(det_tuples)} animal, "
+        f"{len(scores)} scored above threshold"
+    )
+
+    # Build sharpness callback that reads images from disk
+    def get_sharpest(keys: list[str]) -> str:
+        file_map = {f.id: f for f in files}
+        best_key = keys[0]
+        best_sharpness = -1.0
+
+        for key in keys:
+            f = file_map.get(key)
+            if not f:
+                continue
+
+            # For video files, use the extracted best frame; for images, use the file itself
+            image_path = f.best_frame_path if f.file_type == "video" else f.file_path
+            if not image_path:
+                continue
+
+            try:
+                img = cv2.imread(image_path)
+                if img is None:
+                    continue
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                sharpness = compute_sharpness(img_rgb)
+                if sharpness > best_sharpness:
+                    best_sharpness = sharpness
+                    best_key = key
+            except Exception:
+                continue
+
+        return best_key
+
+    fallback_keys = [f.id for f in files]
+
+    result = pick_best_candidate(
+        scores,
+        get_sharpest=get_sharpest,
+        fallback_keys=fallback_keys,
+    )
+
+    # Ultimate fallback
+    return result if result is not None else files[0].id
 
 
 def generate_events_for_project(db: Session, project_id: str) -> int:
@@ -57,6 +129,7 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     for deployment in deployments:
         files = (
             db.query(File)
+            .options(subqueryload(File.detections))
             .filter(File.deployment_id == deployment.id)
             .order_by(File.timestamp.asc())
             .all()
@@ -90,12 +163,15 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
 
 def _create_event(db: Session, deployment_id: str, files: list[File]) -> Event:
     """Create an event with its junction table entries."""
+    representative_file_id = _select_representative_file(files)
+
     event = Event(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
         start_time=files[0].timestamp,
         end_time=files[-1].timestamp,
         file_count=len(files),
+        representative_file_id=representative_file_id,
     )
     db.add(event)
     db.flush()  # Get event.id assigned
@@ -153,17 +229,6 @@ def get_events_by_project(
             key=lambda f: f.timestamp,
         )
 
-        # Find representative file: file with highest sum of animal detection confidences
-        representative_file = sorted_files[0] if sorted_files else None
-        best_score = -1.0
-        for f in sorted_files:
-            score = sum(
-                d.confidence for d in f.detections if d.category == "animal"
-            )
-            if score > best_score:
-                best_score = score
-                representative_file = f
-
         # Collect unique species across all files
         species_set: set[str] = set()
         for f in sorted_files:
@@ -190,7 +255,7 @@ def get_events_by_project(
             "start_time": event.start_time,
             "end_time": event.end_time,
             "file_count": event.file_count,
-            "representative_file_id": representative_file.id if representative_file else None,
+            "representative_file_id": event.representative_file_id,
             "species": sorted(species_set),
             "observation_type": dominant_type,
             "verified_count": verified_count,

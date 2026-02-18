@@ -58,7 +58,7 @@ export function EventFilmstrip({
                 "relative shrink-0 w-24 h-16 rounded overflow-hidden border-2 transition-all",
                 isSelected
                   ? "border-primary ring-2 ring-primary/30"
-                  : "border-transparent hover:border-gray-300"
+                  : "border-transparent hover:border-gray-300 opacity-75"
               )}
             >
               <img

@@ -14,57 +14,22 @@ import json
 from pathlib import Path
 
 import cv2
-import numpy as np
 from numpy import ndarray
 from PIL import Image
 
 from app.core.logging_config import get_logger
+from app.ml.scoring import compute_sharpness, pick_best_candidate, score_detections
 from app.utils.video_utils import run_callback_on_frames
 
 logger = get_logger(__name__)
 
 
-def _score_frames(detections: list[dict]) -> dict[int, float]:
-    """
-    Score frames by summing animal detection confidences >= 0.3.
-
-    Args:
-        detections: List of detection dicts with 'frame_number', 'category', 'conf'
-
-    Returns:
-        Dict mapping frame_number -> summed confidence score
-    """
-    scores: dict[int, float] = {}
-    for det in detections:
-        frame_num = det.get("frame_number")
-        if frame_num is None:
-            continue
-        # Only count animal detections (category "1") with confidence >= 0.3
-        if str(det.get("category")) != "1":
-            continue
-        if float(det.get("conf", 0)) < 0.3:
-            continue
-        scores[frame_num] = scores.get(frame_num, 0.0) + float(det["conf"])
-    return scores
-
-
-def _compute_sharpness(image_np: ndarray) -> float:
-    """
-    Compute image sharpness using Laplacian variance.
-
-    Args:
-        image_np: Image as numpy array (RGB)
-
-    Returns:
-        Sharpness score (higher = sharper)
-    """
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
-
-
 def _pick_sharpest(video_path: str, candidate_frames: list[int]) -> int:
     """
     Pick the sharpest frame from a list of candidates.
+
+    Uses batch frame extraction via run_callback_on_frames for efficiency
+    (single sequential pass through the video file).
 
     Args:
         video_path: Path to video file
@@ -76,10 +41,9 @@ def _pick_sharpest(video_path: str, candidate_frames: list[int]) -> int:
     sharpness_scores: dict[int, float] = {}
 
     def sharpness_callback(image_np: ndarray, frame_filename: str) -> None:
-        # Extract frame number from the synthetic filename
         from app.utils.video_utils import _filename_to_frame_number
         frame_num = _filename_to_frame_number(frame_filename)
-        sharpness_scores[frame_num] = _compute_sharpness(image_np)
+        sharpness_scores[frame_num] = compute_sharpness(image_np)
 
     run_callback_on_frames(
         video_path,
@@ -88,7 +52,6 @@ def _pick_sharpest(video_path: str, candidate_frames: list[int]) -> int:
         verbose=False,
     )
 
-    # Return the frame with the highest sharpness
     return max(sharpness_scores, key=sharpness_scores.get)  # type: ignore[arg-type]
 
 
@@ -115,6 +78,30 @@ def _extract_and_save_frame(video_path: str, frame_number: int, output_path: Pat
     )
 
 
+def _blank_video_sample_frames(video_path: str) -> list[int]:
+    """
+    Sample ~10 evenly-spaced frame numbers from a video.
+
+    Args:
+        video_path: Path to video file
+
+    Returns:
+        List of frame numbers to evaluate
+    """
+    cap = cv2.VideoCapture(video_path)
+    try:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    finally:
+        cap.release()
+
+    if total_frames <= 0:
+        return [0]
+
+    num_samples = min(10, total_frames)
+    step = max(1, total_frames // num_samples)
+    return list(range(0, total_frames, step))[:num_samples]
+
+
 def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
     """
     Select the best frame for each video in the detection JSON.
@@ -139,21 +126,30 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
         video_stem = Path(relative_file).stem
 
         detections = img_entry.get("detections", [])
-        frame_scores = _score_frames(detections)
+
+        # Build detection tuples: (frame_number_str, confidence)
+        det_tuples = [
+            (str(det["frame_number"]), float(det.get("conf", 0)))
+            for det in detections
+            if det.get("frame_number") is not None and str(det.get("category")) == "1"
+        ]
+
+        frame_scores = score_detections(det_tuples)
+
+        # Sharpness tiebreaker wrapper: converts str keys <-> int frame numbers
+        def get_sharpest(keys: list[str], _vp: str = video_path) -> str:
+            frame_nums = [int(k) for k in keys]
+            return str(_pick_sharpest(_vp, frame_nums))
+
+        fallback_keys = [str(f) for f in _blank_video_sample_frames(video_path)]
 
         try:
-            if not frame_scores:
-                # Blank video: sample ~10 evenly-spaced frames, pick sharpest
-                best_frame = _best_frame_for_blank_video(video_path)
-            else:
-                best_score = max(frame_scores.values())
-                threshold = best_score * 0.9  # Within 10% of best
-                candidates = [f for f, s in frame_scores.items() if s >= threshold]
-
-                if len(candidates) == 1:
-                    best_frame = candidates[0]
-                else:
-                    best_frame = _pick_sharpest(video_path, candidates)
+            best_key = pick_best_candidate(
+                frame_scores,
+                get_sharpest=get_sharpest,
+                fallback_keys=fallback_keys,
+            )
+            best_frame = int(best_key) if best_key is not None else 0
 
             # Save frame as JPEG
             output_path = frames_dir / f"{video_stem}.jpg"
@@ -171,31 +167,3 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
     # Write updated JSON back
     with open(video_json_path, "w") as f:
         json.dump(data, f, indent=2)
-
-
-def _best_frame_for_blank_video(video_path: str) -> int:
-    """
-    For a blank video (no animal detections), sample ~10 evenly-spaced frames
-    and return the sharpest one.
-
-    Args:
-        video_path: Path to video file
-
-    Returns:
-        Frame number of the sharpest sampled frame
-    """
-    cap = cv2.VideoCapture(video_path)
-    try:
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    finally:
-        cap.release()
-
-    if total_frames <= 0:
-        return 0
-
-    # Sample ~10 evenly-spaced frames
-    num_samples = min(10, total_frames)
-    step = max(1, total_frames // num_samples)
-    sample_frames = list(range(0, total_frames, step))[:num_samples]
-
-    return _pick_sharpest(video_path, sample_frames)

@@ -10,13 +10,17 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
 
 ## TODO priority 1
+- [ ] I have a hunch that the websockets of the analysis lose connection If i switch windwows or do something else. Could that be true? 
 - [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
+- [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 
 ## TODO priority 2
 - [ ] 
 
 ## TODO priority 3
 - [ ] crop verification option
+- [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
+- [ ] make the backgrounds of all modals not only overlay dark, bot also vague. 
 
 ## Architecture
 

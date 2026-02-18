@@ -86,6 +86,7 @@ export function EventDetailModal({
     width: window.innerWidth,
     height: window.innerHeight,
   });
+  const fileNavRef = useRef<"forward" | "backward" | null>(null);
 
   // Fetch event data
   const { data: event } = useQuery({
@@ -144,11 +145,26 @@ export function EventDetailModal({
     [projectId]
   );
 
-  // Reset file index when event changes (nav scope is persistent)
+  // When event changes, open to the representative file — unless we got
+  // here by stepping through files (file-level nav), in which case start
+  // at the first file to continue the sequential flow.
   useEffect(() => {
-    setSelectedFileIndex(0);
+    if (fileNavRef.current) {
+      const dir = fileNavRef.current;
+      fileNavRef.current = null;
+      setSelectedFileIndex(
+        dir === "backward" && event?.files.length ? event.files.length - 1 : 0
+      );
+    } else if (!event) {
+      setSelectedFileIndex(0);
+    } else {
+      const repIdx = event.representative_file_id
+        ? event.files.findIndex((f) => f.id === event.representative_file_id)
+        : -1;
+      setSelectedFileIndex(repIdx >= 0 ? repIdx : 0);
+    }
     setSelectedDetectionId(null);
-  }, [eventId]);
+  }, [eventId, event?.id]);
 
   const files = event?.files ?? [];
   const currentFile = files[selectedFileIndex] as
@@ -352,7 +368,8 @@ export function EventDetailModal({
       if (selectedFileIndex > 0) {
         setSelectedFileIndex((i) => i - 1);
       } else if (adjacent?.previous_id) {
-        // At first file — advance to previous event, back to event scope
+        // At first file — advance to previous event
+        fileNavRef.current = "backward";
         navigateEvent(adjacent.previous_id);
       }
     } else {
@@ -365,7 +382,8 @@ export function EventDetailModal({
       if (selectedFileIndex < files.length - 1) {
         setSelectedFileIndex((i) => i + 1);
       } else if (adjacent?.next_id) {
-        // At last file — advance to next event, back to event scope
+        // At last file — advance to next event
+        fileNavRef.current = "forward";
         navigateEvent(adjacent.next_id);
       }
     } else {
@@ -379,6 +397,7 @@ export function EventDetailModal({
         setSelectedFileIndex(nextUnverifiedFileIndex);
       } else if (adjacent?.next_unverified_id) {
         // No more unverified files in event — jump to next unverified event
+        fileNavRef.current = "forward";
         navigateEvent(adjacent.next_unverified_id);
       }
     } else {

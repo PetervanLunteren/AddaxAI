@@ -231,6 +231,7 @@ export interface EventWithFiles {
   start_time: string;
   end_time: string;
   file_count: number;
+  representative_file_id: string | null;
   created_at: string;
   files: FileWithDetections[];
 }
