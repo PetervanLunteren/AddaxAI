@@ -10,11 +10,11 @@ import type { DetectionResponse } from "../api/types";
 export function getCategoryColor(category: string): string {
   switch (category) {
     case "animal":
-      return "rgb(34, 197, 94)"; // green
+      return "rgb(16, 185, 129)"; // emerald
     case "person":
-      return "rgb(239, 68, 68)"; // red
+      return "rgb(244, 63, 94)"; // rose
     case "vehicle":
-      return "rgb(59, 130, 246)"; // blue
+      return "rgb(99, 102, 241)"; // indigo
     default:
       return "rgb(156, 163, 175)"; // gray
   }

@@ -6,11 +6,45 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circle, Group } from "react-konva";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
 import { getCategoryColor } from "../../lib/detection-utils";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
+
+/** Draw a rounded rect sub-path (for use in composite canvas paths). */
+function roundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** Measure text width using an offscreen canvas. */
+let _measureCtx: CanvasRenderingContext2D | null = null;
+function measureTextWidth(text: string, fontSize: number, bold: boolean): number {
+  if (!_measureCtx) {
+    _measureCtx = document.createElement("canvas").getContext("2d")!;
+  }
+  _measureCtx.font = `${bold ? "bold " : ""}${fontSize}px Arial, sans-serif`;
+  return _measureCtx.measureText(text).width;
+}
+
+// Label pill layout constants
+const PILL_PAD_X = 6;
+const PILL_PAD_Y = 4;
+const DOT_R = 4;
+const DOT_GAP = 5;
+const LINE_GAP = 2;
+const FONT_SM = 10;
+const FONT_LG = 12;
+const TEXT_START_X = PILL_PAD_X + DOT_R * 2 + DOT_GAP; // 19
 
 interface AnnotationCanvasProps {
   file: FileWithDetections;
@@ -514,6 +548,36 @@ export function AnnotationCanvas({
 
         {/* Detections layer */}
         <Layer>
+          {/* Spotlight dim overlay — darkens everything outside bounding boxes */}
+          {!boxesHidden && filteredDetections.length > 0 && (
+            <Shape
+              sceneFunc={(context) => {
+                const ctx = (context as any)._context as CanvasRenderingContext2D;
+                ctx.beginPath();
+                // Outer rect (full stage)
+                ctx.moveTo(0, 0);
+                ctx.lineTo(stageSize.width, 0);
+                ctx.lineTo(stageSize.width, stageSize.height);
+                ctx.lineTo(0, stageSize.height);
+                ctx.closePath();
+                // Cut holes for each detection
+                for (const det of filteredDetections) {
+                  roundedRectPath(
+                    ctx,
+                    normToPixel(det.bbox_x, imgWidth),
+                    normToPixel(det.bbox_y, imgHeight),
+                    normToPixel(det.bbox_width, imgWidth),
+                    normToPixel(det.bbox_height, imgHeight),
+                    4,
+                  );
+                }
+                ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+                ctx.fill("evenodd");
+              }}
+              listening={false}
+            />
+          )}
+
           {!boxesHidden && filteredDetections.map((detection) => {
             const x = normToPixel(detection.bbox_x, imgWidth);
             const y = normToPixel(detection.bbox_y, imgHeight);
@@ -522,36 +586,30 @@ export function AnnotationCanvas({
             const color = getCategoryColor(detection.category);
             const isSelected = selectedDetectionId === detection.id;
 
+            // Label content
             const hasSpecies = !!detection.species;
-            const labelHeight = hasSpecies ? 32 : 18;
-            const label = hasSpecies
-              ? `${detection.category} ${(detection.confidence * 100).toFixed(0)}%\n${detection.species} ${((detection.species_confidence ?? detection.confidence) * 100).toFixed(0)}%`
-              : `${detection.category} ${(detection.confidence * 100).toFixed(0)}%`;
+            const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;
+            const speciesText = hasSpecies
+              ? `${detection.species!.charAt(0).toUpperCase() + detection.species!.slice(1)} ${((detection.species_confidence ?? detection.confidence) * 100).toFixed(0)}%`
+              : "";
+
+            // Pill dimensions
+            let pillHeight: number;
+            let pillWidth: number;
+            if (hasSpecies) {
+              pillHeight = PILL_PAD_Y + FONT_SM + LINE_GAP + FONT_LG + PILL_PAD_Y;
+              const w1 = measureTextWidth(categoryText, FONT_SM, false);
+              const w2 = measureTextWidth(speciesText, FONT_LG, true);
+              pillWidth = TEXT_START_X + Math.max(w1, w2) + PILL_PAD_X;
+            } else {
+              pillHeight = PILL_PAD_Y + FONT_LG + PILL_PAD_Y;
+              const tw = measureTextWidth(categoryText, FONT_LG, true);
+              pillWidth = TEXT_START_X + tw + PILL_PAD_X;
+            }
 
             return (
               <React.Fragment key={detection.id}>
-                {/* Label background */}
-                <Rect
-                  x={x}
-                  y={y - labelHeight}
-                  width={Math.max(w, 60)}
-                  height={labelHeight}
-                  fill={color}
-                  opacity={0.8}
-                  listening={false}
-                />
-                {/* Label text */}
-                <Text
-                  x={x + 3}
-                  y={y - labelHeight + 2}
-                  text={label}
-                  fill="white"
-                  fontSize={12}
-                  fontStyle="bold"
-                  lineHeight={1.2}
-                  listening={false}
-                />
-                {/* Bounding box */}
+                {/* Bounding box (stroke only, rounded) */}
                 <Rect
                   id={`det-${detection.id}`}
                   x={x}
@@ -560,14 +618,57 @@ export function AnnotationCanvas({
                   height={h}
                   stroke={color}
                   strokeWidth={isSelected ? 3 : 2}
-                  fill={color}
-                  opacity={0.2}
+                  fill="transparent"
+                  cornerRadius={4}
                   draggable={!drawMode}
                   onClick={() => onSelectDetection(detection.id)}
                   onTap={() => onSelectDetection(detection.id)}
                   onDragEnd={(e) => handleDragEnd(detection, e)}
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
+                {/* Label pill */}
+                <Group x={x} y={y - pillHeight} listening={false}>
+                  <Rect
+                    width={pillWidth}
+                    height={pillHeight}
+                    fill="rgba(0,0,0,0.75)"
+                    cornerRadius={4}
+                  />
+                  <Circle
+                    x={PILL_PAD_X + DOT_R}
+                    y={pillHeight / 2}
+                    radius={DOT_R}
+                    fill={color}
+                  />
+                  {hasSpecies ? (
+                    <>
+                      <Text
+                        x={TEXT_START_X}
+                        y={PILL_PAD_Y}
+                        text={categoryText}
+                        fill="rgba(255,255,255,0.7)"
+                        fontSize={FONT_SM}
+                      />
+                      <Text
+                        x={TEXT_START_X}
+                        y={PILL_PAD_Y + FONT_SM + LINE_GAP}
+                        text={speciesText}
+                        fill="white"
+                        fontSize={FONT_LG}
+                        fontStyle="bold"
+                      />
+                    </>
+                  ) : (
+                    <Text
+                      x={TEXT_START_X}
+                      y={PILL_PAD_Y}
+                      text={categoryText}
+                      fill="white"
+                      fontSize={FONT_LG}
+                      fontStyle="bold"
+                    />
+                  )}
+                </Group>
               </React.Fragment>
             );
           })}
