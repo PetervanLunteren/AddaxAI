@@ -531,13 +531,6 @@ export function EventDetailModal({
             addBoxMutation.mutate();
           }
           break;
-        case "x":
-        case "X":
-          if (selectedDetectionId) {
-            e.preventDefault();
-            deleteDetectionMutation.mutate(selectedDetectionId);
-          }
-          break;
         case "Delete":
         case "Backspace":
           if (selectedDetectionId) {
@@ -951,14 +944,14 @@ export function EventDetailModal({
                 <div className="fixed inset-0 z-40" onClick={() => setShowShortcuts(false)} />
                 <div className="absolute bottom-10 right-6 w-[400px] mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50">
                   {[
-                    ["Enter", "Verify + next"],
-                    ["E", "Empty + next"],
+                    ["Enter", "Verify + next unverified"],
+                    ["E", "Empty + next unverified"],
                     ["← →", "Navigate"],
                     ["↑ ↓", "Select detection"],
                     ["Tab", "Change label"],
                     ["A", "Add box"],
                     ["D", "Toggle draw mode"],
-                    ["X", "Delete detection"],
+                    ["Del", "Delete detection"],
                     ["Scroll", "Zoom in / out"],
                     ["B (hold)", "Hide boxes"],
                     ["Esc", "Deselect / close"],

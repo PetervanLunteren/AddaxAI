@@ -635,7 +635,7 @@ export function AnnotationCanvas({
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
                 {/* Label pill */}
-                <Group x={x} y={y - pillHeight} listening={false}>
+                <Group x={x} y={y - pillHeight < 0 ? y : y - pillHeight} listening={false}>
                   <Rect
                     width={pillWidth}
                     height={pillHeight}

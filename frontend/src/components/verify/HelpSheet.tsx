@@ -81,7 +81,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 the most individuals. You don't need to verify every image,
                 verifying the representative image is generally enough to get
                 accurate statistics. If you wish to verify all images, you can
-                by setting the navigation dropdown to file.
+                by setting the navigation dropdown to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">file</code>.
               </p>
               <p>
                 You can add missing detections
@@ -120,8 +120,8 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 Draw a new detection box manually.
               </ToolRow>
               <ToolRow icon={<SquarePlus className="h-4 w-4" />}>
-                Promote the next below-threshold AI detection into a visible
-                box.
+                Promote the next below-threshold AI detection into a new
+                detection.
               </ToolRow>
               <ToolRow icon={<ZoomIn className="h-4 w-4" />}>
                 Zoom in.
