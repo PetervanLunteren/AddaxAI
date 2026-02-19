@@ -2,17 +2,11 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] maybe we should add to the best frame selection to "the biggest combined bbox area (overlap not counted double)", what do you think?
-- [ ] double check the shortcuts with codex
+- [ ] for the best frame selection, which confidence are you taking? the detection of the classifcation confidence?
 - [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] how does videos work?
 - [ ] how does it work for SpeciesNet?
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
-
-
-Or use the time.sleep(45) simulation and confirm the WebSocket reconnects and catches up
-
-
 
 ## TODO priority 1
 - [ ] I have a hunch that the websockets of the analysis lose connection If i switch windwows or do something else. Could that be true? 

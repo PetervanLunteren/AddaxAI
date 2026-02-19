@@ -17,9 +17,10 @@ const THUMB_H = 64;
 interface EventFilmstripProps {
   files: FileWithDetections[];
   selectedIndex: number;
-  onSelectIndex: (index: number) => void;
+  onSelectIndex: (index: number, shiftKey: boolean) => void;
   detectionThreshold: number;
   representativeFileId: string | null;
+  bulkSelection?: Set<number>;
 }
 
 export function EventFilmstrip({
@@ -28,6 +29,7 @@ export function EventFilmstrip({
   onSelectIndex,
   detectionThreshold,
   representativeFileId,
+  bulkSelection,
 }: EventFilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -56,12 +58,14 @@ export function EventFilmstrip({
             <button
               key={file.id}
               ref={isSelected ? selectedRef : undefined}
-              onClick={() => onSelectIndex(index)}
+              onClick={(e) => onSelectIndex(index, e.shiftKey)}
               className={cn(
                 "relative shrink-0 w-24 h-16 rounded border-2 transition-all",
                 isSelected
                   ? "border-primary ring-2 ring-primary/30"
-                  : "border-transparent hover:border-gray-300 opacity-75"
+                  : bulkSelection?.has(index)
+                    ? "border-primary/60 ring-1 ring-primary/20"
+                    : "border-transparent hover:border-gray-300 opacity-75"
               )}
             >
               <img
@@ -136,12 +140,18 @@ export function EventFilmstrip({
                   Representative
                 </span>
               )}
+              {/* Bulk selection overlay */}
+              {bulkSelection?.has(index) && !isSelected && (
+                <div className="absolute inset-0 bg-primary/15 rounded-sm pointer-events-none" />
+              )}
             </button>
           );
         })}
       </div>
       <div className="text-center text-xs text-muted-foreground pb-1">
-        Image {selectedIndex + 1} of {files.length}
+        {bulkSelection && bulkSelection.size > 1
+          ? `${bulkSelection.size} files selected`
+          : `Image ${selectedIndex + 1} of ${files.length}`}
       </div>
     </div>
   );

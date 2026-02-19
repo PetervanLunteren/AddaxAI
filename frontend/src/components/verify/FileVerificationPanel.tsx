@@ -160,6 +160,11 @@ export function FileVerificationPanel({
                   {new Date(file.verified_at).toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",
+                  })}{" "}
+                  at{" "}
+                  {new Date(file.verified_at).toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
                   })}
                 </p>
               )}
@@ -311,7 +316,7 @@ function DetectionItem({
 
   useEffect(() => {
     if (isSelected && itemRef.current) {
-      itemRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      itemRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [isSelected]);
 

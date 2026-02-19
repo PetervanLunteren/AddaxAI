@@ -35,6 +35,8 @@ interface LabelPickerProps {
   forceOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   pinnedOptions?: PinnedOption[];
+  hideDot?: boolean;
+  hideLabel?: boolean;
 }
 
 export function LabelPicker({
@@ -45,6 +47,8 @@ export function LabelPicker({
   forceOpen,
   onOpenChange,
   pinnedOptions,
+  hideDot,
+  hideLabel,
 }: LabelPickerProps) {
   const [open, setOpen] = useState(false);
 
@@ -75,13 +79,13 @@ export function LabelPicker({
           className="h-6 px-1.5 gap-1 text-xs font-medium justify-start"
           onClick={(e) => e.stopPropagation()}
         >
-          {dotColor && (
+          {dotColor && !hideDot && (
             <div
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: dotColor }}
             />
           )}
-          <span className="truncate max-w-[120px]">{displayLabel}</span>
+          {!hideLabel && <span className="truncate max-w-[120px]">{displayLabel}</span>}
           <ChevronsUpDown className="h-3 w-3 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>

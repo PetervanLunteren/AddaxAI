@@ -180,6 +180,16 @@ export function AnnotationCanvas({
     transformerRef.current.getLayer()?.batchDraw();
   }, [selectedDetectionId, filteredDetections]);
 
+  // Pulse selected detection bbox on selection change
+  useEffect(() => {
+    if (!selectedDetectionId || !stageRef.current) return;
+    const node = stageRef.current.findOne(`#det-${selectedDetectionId}`);
+    if (!node) return;
+    node.to({ opacity: 1, duration: 0.15, onFinish: () => {
+      node.to({ opacity: 0.5, duration: 0.25 });
+    }});
+  }, [selectedDetectionId]);
+
   // Register export function for download button
   useEffect(() => {
     if (!exportFnRef) return;
@@ -312,7 +322,6 @@ export function AnnotationCanvas({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      onDrawModeChange(false);
     },
   });
 

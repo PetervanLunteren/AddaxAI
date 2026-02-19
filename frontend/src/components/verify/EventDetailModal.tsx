@@ -71,6 +71,8 @@ export function EventDetailModal({
     null
   );
   const [drawMode, setDrawMode] = useState(false);
+  const [drawLabel, setDrawLabel] = useState<{ category: string; species: string | undefined } | null>(null);
+  const [bulkSelection, setBulkSelection] = useState<Set<number>>(new Set());
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
@@ -228,6 +230,14 @@ export function EventDetailModal({
 
     return best;
   }, [event?.files, detectionThreshold]);
+
+  // Effective draw label: user override or auto-detected default
+  const effectiveDrawLabel = drawLabel ?? defaultLabel;
+
+  // Reset draw label when draw mode is toggled off
+  useEffect(() => {
+    if (!drawMode) setDrawLabel(null);
+  }, [drawMode]);
 
   // Calculate modal dimensions to tightly fit the image + UI panels.
   // Keep previous size while loading to avoid a resize flash between images.
@@ -417,6 +427,20 @@ export function EventDetailModal({
     }
   }, [navScope, nextUnverifiedFileIndex, adjacent, navigateEvent]);
 
+  const handleFilmstripSelect = useCallback((index: number, shiftKey: boolean) => {
+    if (shiftKey && files.length > 1) {
+      const start = Math.min(selectedFileIndex, index);
+      const end = Math.max(selectedFileIndex, index);
+      const range = new Set<number>();
+      for (let i = start; i <= end; i++) range.add(i);
+      setBulkSelection(range);
+    } else {
+      setBulkSelection(new Set());
+    }
+    setSelectedFileIndex(index);
+    setSelectedDetectionId(null);
+  }, [selectedFileIndex, files.length]);
+
   const prevDisabled =
     navScope === "file"
       ? selectedFileIndex === 0 && !adjacent?.previous_id
@@ -475,18 +499,54 @@ export function EventDetailModal({
           break;
         case "ArrowLeft":
           e.preventDefault();
-          handlePrev();
+          setBulkSelection(new Set());
+          if (e.shiftKey) {
+            // Navigate files within event, stop at boundary
+            if (selectedFileIndex > 0) {
+              setSelectedFileIndex((i) => i - 1);
+              setSelectedDetectionId(null);
+            }
+          } else {
+            handlePrev();
+          }
           break;
         case "ArrowRight":
           e.preventDefault();
-          handleNext();
+          setBulkSelection(new Set());
+          if (e.shiftKey) {
+            // Navigate files within event, stop at boundary
+            if (selectedFileIndex < files.length - 1) {
+              setSelectedFileIndex((i) => i + 1);
+              setSelectedDetectionId(null);
+            }
+          } else {
+            handleNext();
+          }
           break;
         case "Enter":
           e.preventDefault();
-          if (currentFile && !currentFile.verified) {
-            verifyMutation.mutateAsync().then(() => handleNextUnverified());
+          if (bulkSelection.size > 1) {
+            // Bulk verify all selected files
+            const toVerify = [...bulkSelection].map(i => files[i]).filter(f => f && !f.verified);
+            if (toVerify.length > 0) {
+              Promise.all(toVerify.map(f => filesApi.update(f.id, { verified: true })))
+                .then(() => {
+                  queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+                  queryClient.invalidateQueries({ queryKey: ["events"] });
+                  setBulkSelection(new Set());
+                  handleNextUnverified();
+                });
+            } else {
+              setBulkSelection(new Set());
+              handleNextUnverified();
+            }
           } else {
-            handleNextUnverified();
+            // Verify + advance
+            if (currentFile && !currentFile.verified) {
+              verifyMutation.mutateAsync().then(() => handleNextUnverified());
+            } else {
+              handleNextUnverified();
+            }
           }
           break;
         case "e":
@@ -540,7 +600,9 @@ export function EventDetailModal({
           break;
         case "Escape":
           e.preventDefault();
-          if (selectedDetectionId) {
+          if (bulkSelection.size > 0) {
+            setBulkSelection(new Set());
+          } else if (selectedDetectionId) {
             setSelectedDetectionId(null);
           } else if (drawMode) {
             setDrawMode(false);
@@ -564,6 +626,8 @@ export function EventDetailModal({
     handleNextUnverified,
     onClose,
     selectedDetectionId,
+    selectedFileIndex,
+    files.length,
     verifyMutation,
     markBlankMutation,
     addBoxMutation,
@@ -572,6 +636,8 @@ export function EventDetailModal({
     shortcutLabels,
     eventId,
     queryClient,
+    bulkSelection,
+    files,
   ]);
 
   // B key hold: momentarily hide boxes
@@ -646,6 +712,24 @@ export function EventDetailModal({
               >
                 <Pencil className="h-4 w-4" />
               </Button>
+              {drawMode && (
+                <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100">
+                  <LabelPicker
+                    value={effectiveDrawLabel.species || effectiveDrawLabel.category}
+                    onSelect={(option) =>
+                      setDrawLabel({ category: option.category, species: option.species ?? undefined })
+                    }
+                    options={labelOptions}
+                    isLoading={labelOptionsLoading}
+                    pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
+                      key: Number(k),
+                      option: v,
+                    }))}
+                    hideDot
+                    hideLabel
+                  />
+                </div>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -830,8 +914,8 @@ export function EventDetailModal({
                   drawMode={drawMode}
                   onDrawModeChange={setDrawMode}
                   imageFilter={imageFilter}
-                  defaultCategory={defaultLabel.category}
-                  defaultSpecies={defaultLabel.species}
+                  defaultCategory={effectiveDrawLabel.category}
+                  defaultSpecies={effectiveDrawLabel.species}
                   boxesHidden={boxesHidden}
                   exportFnRef={exportFnRef}
                   zoomFnRef={zoomFnRef}
@@ -848,10 +932,8 @@ export function EventDetailModal({
                 selectedIndex={selectedFileIndex}
                 detectionThreshold={detectionThreshold}
                 representativeFileId={event?.representative_file_id ?? null}
-                onSelectIndex={(i) => {
-                  setSelectedFileIndex(i);
-                  setSelectedDetectionId(null);
-                }}
+                onSelectIndex={handleFilmstripSelect}
+                bulkSelection={bulkSelection}
               />
             )}
           </div>
@@ -947,12 +1029,14 @@ export function EventDetailModal({
                     ["Enter", "Verify + next unverified"],
                     ["E", "Empty + next unverified"],
                     ["← →", "Navigate"],
+                    ["Shift + ← →", "Navigate files within event"],
                     ["↑ ↓", "Select detection"],
                     ["Tab", "Change label"],
                     ["A", "Add box"],
                     ["D", "Toggle draw mode"],
                     ["Del", "Delete detection"],
                     ["Scroll", "Zoom in / out"],
+                    ["Shift + Click", "Select file range"],
                     ["B (hold)", "Hide boxes"],
                     ["Esc", "Deselect / close"],
                   ].map(([key, action]) => (

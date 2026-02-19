@@ -100,6 +100,11 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 remove false positives, then
                 hit <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
                 verify and move to the next event.
+                Use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + ← / →</code> to
+                flip through files within an event without changing scope.
+                To verify multiple files at once, <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + Click</code> thumbnails
+                in the filmstrip to select a range, then press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
+                verify them all.
               </p>
               <p>
                 Click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Show keyboard shortcuts</code> at
