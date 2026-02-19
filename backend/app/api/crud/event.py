@@ -27,9 +27,9 @@ def _select_representative_file(files: list[File]) -> str | None:
     if not files:
         return None
 
-    # Build detection tuples: (file_id, confidence) for animal detections
+    # Build detection tuples: (file_id, confidence, bbox) for animal detections
     det_tuples = [
-        (file.id, det.confidence)
+        (file.id, det.confidence, (det.bbox_x, det.bbox_y, det.bbox_width, det.bbox_height))
         for file in files
         for det in file.detections
         if det.category == "animal"

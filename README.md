@@ -2,7 +2,7 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] maybe we should chnage the best frame selection to "highest shared conf, but also biggest combined bbox area (overlap not counted double)", what do you think?
+- [ ] maybe we should add to the best frame selection to "the biggest combined bbox area (overlap not counted double)", what do you think?
 - [ ] double check the shortcuts with codex
 - [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] how does videos work?

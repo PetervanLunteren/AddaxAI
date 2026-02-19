@@ -36,16 +36,25 @@ from tests.conftest import (
 # ---------------------------------------------------------------------------
 
 
-def _add_detection(db, file_id: str, category: str, confidence: float) -> Detection:
+def _add_detection(
+    db,
+    file_id: str,
+    category: str,
+    confidence: float,
+    bbox_x: float = 0.0,
+    bbox_y: float = 0.0,
+    bbox_width: float = 0.1,
+    bbox_height: float = 0.1,
+) -> Detection:
     det = Detection(
         id=str(uuid.uuid4()),
         file_id=file_id,
         category=category,
         confidence=confidence,
-        bbox_x=0.0,
-        bbox_y=0.0,
-        bbox_width=0.1,
-        bbox_height=0.1,
+        bbox_x=bbox_x,
+        bbox_y=bbox_y,
+        bbox_width=bbox_width,
+        bbox_height=bbox_height,
     )
     db.add(det)
     db.flush()

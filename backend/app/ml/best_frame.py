@@ -127,9 +127,9 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
 
         detections = img_entry.get("detections", [])
 
-        # Build detection tuples: (frame_number_str, confidence)
+        # Build detection tuples: (frame_number_str, confidence, bbox)
         det_tuples = [
-            (str(det["frame_number"]), float(det.get("conf", 0)))
+            (str(det["frame_number"]), float(det.get("conf", 0)), tuple(det["bbox"]))
             for det in detections
             if det.get("frame_number") is not None and str(det.get("category")) == "1"
         ]
