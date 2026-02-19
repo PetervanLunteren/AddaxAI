@@ -5,7 +5,7 @@
  * and verification controls.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
@@ -97,68 +97,144 @@ export function FileVerificationPanel({
     },
   });
 
+  const filteredDetections = useMemo(
+    () => file.detections.filter((d) => d.confidence >= detectionThreshold),
+    [file.detections, detectionThreshold]
+  );
+
+  const groupedDetections = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of filteredDetections) {
+      const label = d.species || d.category;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return counts;
+  }, [filteredDetections]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
       {/* Detections card */}
-      <div className="mx-3 mt-3 rounded-lg border bg-muted/40 flex flex-col min-h-0 flex-1">
-        {/* Header */}
-        <div className="px-3 pt-3 pb-2">
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-semibold">Detections</h3>
-            <Badge variant="outline" className="text-xs">
-              {file.detections.filter((d) => d.confidence >= detectionThreshold).length}
-            </Badge>
-          </div>
-        </div>
-
-        {/* Detection list */}
-        <div className="flex-1 overflow-y-auto px-3 space-y-1">
-          {file.detections.filter((d) => d.confidence >= detectionThreshold).map((detection) => (
-            <DetectionItem
-              key={detection.id}
-              detection={detection}
-              isSelected={selectedDetectionId === detection.id}
-              onSelect={() =>
-                onSelectDetection(
-                  selectedDetectionId === detection.id ? null : detection.id
-                )
-              }
-              onDelete={() => deleteMutation.mutate(detection.id)}
-              onUpdateLabel={(option) =>
-                updateLabelMutation.mutate({
-                  detectionId: detection.id,
-                  category: option.category,
-                  species: option.species,
-                })
-              }
-              labelOptions={labelOptions}
-              labelOptionsLoading={labelOptionsLoading}
-              forceOpenPicker={openLabelPickerFor === detection.id}
-              onPickerOpenChange={onLabelPickerOpenChange}
-              pinnedOptions={pinnedOptions}
-            />
-          ))}
-
-          {file.detections.length === 0 && (
-            <div className="text-center text-xs text-muted-foreground py-4">
-              No detections. Draw a box to add one.
+      <div className="relative mx-3 mt-3 rounded-lg border bg-muted/40 flex flex-col min-h-0 flex-1">
+        {file.verified ? (
+          <>
+            {/* Verified badge */}
+            <div className="absolute -top-1.5 -right-1.5 bg-primary rounded-full p-0.5">
+              <Check className="h-3 w-3 text-primary-foreground" />
             </div>
-          )}
-        </div>
 
-        {/* Verify button */}
-        <div className="px-3 py-3">
-          <Button
-            onClick={() => verifyMutation.mutate()}
-            disabled={verifyMutation.isPending}
-            variant={file.verified ? "outline" : "default"}
-            className="w-full"
-            size="sm"
-          >
-            <Check className="h-4 w-4 mr-2" />
-            {file.verified ? "Mark unverified" : "Mark verified"}
-          </Button>
-        </div>
+            {/* Header */}
+            <div className="px-3 pt-3 pb-2">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold">Detections</h3>
+                <Badge variant="outline" className="text-xs">
+                  {filteredDetections.length}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Grouped summary */}
+            <div className="flex-1 overflow-y-auto px-3 space-y-1">
+              {[...groupedDetections.entries()].map(([label, count]) => (
+                <div
+                  key={label}
+                  className="flex items-center justify-between rounded border p-2 text-sm"
+                  style={{ backgroundColor: "#e7efef" }}
+                >
+                  <span>{label}</span>
+                  <span className="text-muted-foreground">&times; {count}</span>
+                </div>
+              ))}
+
+              {filteredDetections.length === 0 && (
+                <div className="text-center text-xs text-muted-foreground py-4">
+                  No detections
+                </div>
+              )}
+            </div>
+
+            {/* Verified date + Edit button */}
+            <div className="px-3 py-3 space-y-2">
+              {file.verified_at && (
+                <p className="text-xs text-muted-foreground">
+                  Verified on{" "}
+                  {new Date(file.verified_at).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </p>
+              )}
+              <Button
+                onClick={() => verifyMutation.mutate()}
+                disabled={verifyMutation.isPending}
+                variant="outline"
+                className="w-full"
+                size="sm"
+              >
+                Edit
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="px-3 pt-3 pb-2">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold">Detections</h3>
+                <Badge variant="outline" className="text-xs">
+                  {filteredDetections.length}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Detection list */}
+            <div className="flex-1 overflow-y-auto px-3 space-y-1">
+              {filteredDetections.map((detection) => (
+                <DetectionItem
+                  key={detection.id}
+                  detection={detection}
+                  isSelected={selectedDetectionId === detection.id}
+                  onSelect={() =>
+                    onSelectDetection(
+                      selectedDetectionId === detection.id ? null : detection.id
+                    )
+                  }
+                  onDelete={() => deleteMutation.mutate(detection.id)}
+                  onUpdateLabel={(option) =>
+                    updateLabelMutation.mutate({
+                      detectionId: detection.id,
+                      category: option.category,
+                      species: option.species,
+                    })
+                  }
+                  labelOptions={labelOptions}
+                  labelOptionsLoading={labelOptionsLoading}
+                  forceOpenPicker={openLabelPickerFor === detection.id}
+                  onPickerOpenChange={onLabelPickerOpenChange}
+                  pinnedOptions={pinnedOptions}
+                />
+              ))}
+
+              {file.detections.length === 0 && (
+                <div className="text-center text-xs text-muted-foreground py-4">
+                  No detections. Draw a box to add one.
+                </div>
+              )}
+            </div>
+
+            {/* Verify button */}
+            <div className="px-3 py-3">
+              <Button
+                onClick={() => verifyMutation.mutate()}
+                disabled={verifyMutation.isPending}
+                className="w-full"
+                size="sm"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Mark verified
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Notes */}

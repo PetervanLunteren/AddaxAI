@@ -2,9 +2,8 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] make best frame selection
-- [ ] add a help tab, popover, or something like that to the verification window. Lots to explain. 
-- [ ] add chip for "representative" and auto select. 
+- [ ] sometimes the label falls off the image if the bbox is large. How to avoid?
+- [ ] double check the shortcuts with codex
 - [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] how does videos work?
 - [ ] how does it work for SpeciesNet?

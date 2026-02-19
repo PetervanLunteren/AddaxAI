@@ -72,7 +72,7 @@ export function LabelPicker({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 px-1.5 gap-1 text-xs font-medium capitalize justify-start"
+          className="h-6 px-1.5 gap-1 text-xs font-medium justify-start"
           onClick={(e) => e.stopPropagation()}
         >
           {dotColor && (
@@ -109,7 +109,7 @@ export function LabelPicker({
                       onSelect(opt);
                       handleOpenChange(false);
                     }}
-                    className="text-xs capitalize"
+                    className="text-xs"
                   >
                     <code className="bg-zinc-100 text-zinc-500 px-1 rounded text-[10px] mr-1.5">{key}</code>
                     <div
@@ -136,7 +136,7 @@ export function LabelPicker({
                     onSelect(opt);
                     handleOpenChange(false);
                   }}
-                  className="text-xs capitalize"
+                  className="text-xs"
                 >
                   <div
                     className="w-2 h-2 rounded-full shrink-0 mr-1.5"
@@ -162,7 +162,7 @@ export function LabelPicker({
                       onSelect(opt);
                       setOpen(false);
                     }}
-                    className="text-xs capitalize"
+                    className="text-xs"
                   >
                     <div
                       className="w-2 h-2 rounded-full shrink-0 mr-1.5"

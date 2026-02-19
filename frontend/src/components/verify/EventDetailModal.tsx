@@ -24,6 +24,7 @@ import {
   ZoomOut,
   RotateCcw,
   FolderOpen,
+  CircleHelp,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -46,6 +47,8 @@ import { EventFilmstrip } from "./EventFilmstrip";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
+import { WelcomePopover } from "./WelcomePopover";
+import { HelpSheet } from "./HelpSheet";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 
 interface EventDetailModalProps {
@@ -72,6 +75,10 @@ export function EventDetailModal({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
   const [openLabelPickerFor, setOpenLabelPickerFor] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    return !localStorage.getItem("addaxai:verifyWelcomeDismissed");
+  });
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
@@ -120,6 +127,11 @@ export function EventDetailModal({
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const handleDismissWelcome = useCallback(() => {
+    localStorage.setItem("addaxai:verifyWelcomeDismissed", "1");
+    setShowWelcome(false);
   }, []);
 
   // Load shortcut label mappings from project data
@@ -430,6 +442,7 @@ export function EventDetailModal({
       ) {
         return;
       }
+      if (helpOpen) return;
 
       switch (e.key) {
         case "ArrowUp":
@@ -549,6 +562,7 @@ export function EventDetailModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isOpen,
+    helpOpen,
     currentFile,
     drawMode,
     filteredDetections,
@@ -578,6 +592,7 @@ export function EventDetailModal({
       ) {
         return;
       }
+      if (helpOpen) return;
       if ((e.key === "b" || e.key === "B") && !e.repeat) {
         setBoxesHidden(true);
       }
@@ -594,7 +609,7 @@ export function EventDetailModal({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [isOpen]);
+  }, [isOpen, helpOpen]);
 
   if (!isOpen) return null;
 
@@ -612,12 +627,23 @@ export function EventDetailModal({
         aria-describedby={undefined}
       >
         <DialogTitle className="sr-only">Event detail viewer</DialogTitle>
+        <WelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
 
         {/* Main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left toolbar */}
           {currentFile && (
             <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setHelpOpen(true)}
+                title="Help"
+              >
+                <CircleHelp className="h-4 w-4" />
+              </Button>
+              <div className="w-6 border-t my-0.5" />
               <Button
                 variant={drawMode ? "default" : "ghost"}
                 size="icon"
@@ -828,6 +854,7 @@ export function EventDetailModal({
                 files={files}
                 selectedIndex={selectedFileIndex}
                 detectionThreshold={detectionThreshold}
+                representativeFileId={event?.representative_file_id ?? null}
                 onSelectIndex={(i) => {
                   setSelectedFileIndex(i);
                   setSelectedDetectionId(null);
@@ -971,6 +998,7 @@ export function EventDetailModal({
           </div>
         </div>
       </DialogContent>
+      <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
     </Dialog>
   );
 }

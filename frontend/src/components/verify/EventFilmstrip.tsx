@@ -19,6 +19,7 @@ interface EventFilmstripProps {
   selectedIndex: number;
   onSelectIndex: (index: number) => void;
   detectionThreshold: number;
+  representativeFileId: string | null;
 }
 
 export function EventFilmstrip({
@@ -26,6 +27,7 @@ export function EventFilmstrip({
   selectedIndex,
   onSelectIndex,
   detectionThreshold,
+  representativeFileId,
 }: EventFilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -48,6 +50,7 @@ export function EventFilmstrip({
         {files.map((file, index) => {
           const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
           const isSelected = index === selectedIndex;
+          const isRepresentative = file.id === representativeFileId;
 
           return (
             <button
@@ -55,7 +58,7 @@ export function EventFilmstrip({
               ref={isSelected ? selectedRef : undefined}
               onClick={() => onSelectIndex(index)}
               className={cn(
-                "relative shrink-0 w-24 h-16 rounded overflow-hidden border-2 transition-all",
+                "relative shrink-0 w-24 h-16 rounded border-2 transition-all",
                 isSelected
                   ? "border-primary ring-2 ring-primary/30"
                   : "border-transparent hover:border-gray-300 opacity-75"
@@ -64,7 +67,7 @@ export function EventFilmstrip({
               <img
                 src={thumbnailUrl}
                 alt={`File ${index + 1}`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover rounded-sm"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
@@ -121,11 +124,17 @@ export function EventFilmstrip({
                   </svg>
                 );
               })()}
-              {/* Verified checkmark */}
+              {/* Verified badge */}
               {file.verified && (
-                <div className="absolute top-0.5 right-0.5 bg-primary rounded-full p-0.5">
+                <div className="absolute -top-1.5 -right-1.5 bg-primary rounded-full p-0.5">
                   <Check className="h-2.5 w-2.5 text-white" />
                 </div>
+              )}
+              {/* Representative chip */}
+              {isRepresentative && (
+                <span className="absolute top-0.5 left-0.5 bg-primary text-white text-[10px] leading-none font-medium px-1 py-0.5 rounded-sm">
+                  Representative
+                </span>
               )}
             </button>
           );
