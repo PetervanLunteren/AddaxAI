@@ -15,7 +15,6 @@ interface StepSpeciesProps {
 export function StepSpecies({ speciesList, onSpeciesChange }: StepSpeciesProps) {
   const handleOpenSpeciesSelector = () => {
     // TODO: Open species selection modal
-    console.log("Species selector not implemented yet");
   };
 
   return (

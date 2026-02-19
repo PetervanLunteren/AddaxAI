@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { API_BASE_URL } from "../lib/api-client";
 
 export interface TqdmMetrics {
   raw_line: string;
@@ -64,6 +65,11 @@ export function useTaskProgress({
   const wsRef = useRef<WebSocket | null>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasSetDeploymentContextRef = useRef<boolean>(false);
+  const deploymentIndexRef = useRef<number | undefined>(undefined);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const taskCompletedRef = useRef(false);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{
     message: string;
     progress: number;
@@ -77,139 +83,170 @@ export function useTaskProgress({
       return;
     }
 
-    // Reset deployment context ref for new task
+    // Reset refs for new task
     hasSetDeploymentContextRef.current = false;
+    deploymentIndexRef.current = undefined;
+    taskCompletedRef.current = false;
+    reconnectAttemptRef.current = 0;
 
-    // Determine WebSocket URL based on current location
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/jobs/${taskId}`;
+    // Derive WebSocket URL from API_BASE_URL (stays in sync with VITE_API_URL)
+    const apiUrl = new URL(API_BASE_URL);
+    const wsProtocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${apiUrl.host}/ws/jobs/${taskId}`;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    function connect() {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      console.log(`[useTaskProgress ${new Date().toISOString()}] WebSocket connected for task ${taskId}`);
-      setIsConnected(true);
-    };
+      ws.onopen = () => {
+        console.debug(`[useTaskProgress] WebSocket connected for task ${taskId}`);
+        setIsConnected(true);
+        reconnectAttemptRef.current = 0;
 
-    ws.onmessage = (event) => {
-      try {
-        const data: ProgressMessage = JSON.parse(event.data);
+        // Start heartbeat ping to keep connection alive through proxies
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send("ping");
+          }
+        }, 30000);
+      };
 
-        // Log all incoming WebSocket messages for debugging with timestamp
-        const timestamp = new Date().toISOString().split('T')[1].slice(0, -1); // HH:MM:SS.mmm
-        console.log(`[${timestamp}] [WS ${taskId}] ${data.type}:`, {
-          progress: data.progress,
-          message: data.message,
-          phase: data.phase,
-          phase_progress: data.phase_progress,
-          success: data.success,
-          data: data.data,
-        });
+      ws.onmessage = (event) => {
+        try {
+          const data: ProgressMessage = JSON.parse(event.data);
 
-        if (data.type === "progress") {
-          // Extract deployment context and update when deployment_index changes
-          if (data.data?.deployment_index !== undefined) {
-            const newContext = {
-              deploymentIndex: data.data.deployment_index,
-              totalDeployments: data.data.total_deployments ?? 1,
-              videoCount: data.data.video_count ?? 0,
-              imageCount: data.data.image_count ?? 0,
-              hasClassifier: data.data.has_classifier ?? false,
+          if (data.type === "progress") {
+            // Extract deployment context and update when deployment_index changes
+            if (data.data?.deployment_index !== undefined) {
+              const newContext = {
+                deploymentIndex: data.data.deployment_index,
+                totalDeployments: data.data.total_deployments ?? 1,
+                videoCount: data.data.video_count ?? 0,
+                imageCount: data.data.image_count ?? 0,
+                hasClassifier: data.data.has_classifier ?? false,
+              };
+
+              // Update context only on first receipt or when deployment_index actually changes
+              if (!hasSetDeploymentContextRef.current ||
+                  deploymentIndexRef.current !== newContext.deploymentIndex) {
+                hasSetDeploymentContextRef.current = true;
+                deploymentIndexRef.current = newContext.deploymentIndex;
+                setDeploymentContext(newContext);
+              }
+            }
+
+            // Extract compute device (persists across messages)
+            if (data.data?.compute_device) {
+              setComputeDevice(data.data.compute_device as string);
+            }
+
+            // Store the pending update
+            pendingUpdateRef.current = {
+              message: data.message,
+              progress: data.progress ?? 0,
+              phase: data.phase ?? null,
+              phaseProgress: data.phase_progress ?? 0,
+              metrics: data.data?.metrics ?? null,
             };
 
-            // Update context if it's the first time OR if deployment_index changed
-            if (!hasSetDeploymentContextRef.current ||
-                deploymentContext?.deploymentIndex !== newContext.deploymentIndex) {
-              console.log(`[useTaskProgress ${new Date().toISOString()}] Setting deployment context:`, newContext);
-              hasSetDeploymentContextRef.current = true;
-              setDeploymentContext(newContext);
+            // Clear any existing timeout
+            if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+            }
+
+            // Schedule update with a small delay to allow browser to paint
+            // This ensures visual updates are visible to the user
+            updateTimeoutRef.current = setTimeout(() => {
+              if (pendingUpdateRef.current) {
+                const { message: msg, progress: prog, phase: ph, phaseProgress: phprog, metrics: met } = pendingUpdateRef.current;
+                flushSync(() => {
+                  setMessage(msg);
+                  setProgress(prog);
+                  setPhase(ph);
+                  setPhaseProgress(phprog);
+                  setMetrics(met);
+                });
+                pendingUpdateRef.current = null;
+              }
+            }, 16); // ~60fps (16ms) - faster updates for responsive progress bars
+          } else if (data.type === "complete") {
+            taskCompletedRef.current = true;
+
+            // Clear any pending updates
+            if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+            }
+
+            flushSync(() => {
+              setMessage(data.message);
+              setProgress(1.0);
+            });
+            if (onComplete) {
+              onComplete(data.data);
+            }
+          } else if (data.type === "error") {
+            console.error(`[WS ${taskId}] ERROR:`, data.message);
+            taskCompletedRef.current = true;
+
+            // Clear any pending updates
+            if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+            }
+
+            flushSync(() => {
+              setMessage(data.message);
+            });
+            if (onError) {
+              onError(data.message);
             }
           }
-
-          // Extract compute device (persists across messages)
-          if (data.data?.compute_device) {
-            setComputeDevice(data.data.compute_device as string);
-          }
-
-          // Store the pending update
-          pendingUpdateRef.current = {
-            message: data.message,
-            progress: data.progress ?? 0,
-            phase: data.phase ?? null,
-            phaseProgress: data.phase_progress ?? 0,
-            metrics: data.data?.metrics ?? null,
-          };
-
-          // Clear any existing timeout
-          if (updateTimeoutRef.current) {
-            clearTimeout(updateTimeoutRef.current);
-          }
-
-          // Schedule update with a small delay to allow browser to paint
-          // This ensures visual updates are visible to the user
-          updateTimeoutRef.current = setTimeout(() => {
-            if (pendingUpdateRef.current) {
-              const { message: msg, progress: prog, phase: ph, phaseProgress: phprog, metrics: met } = pendingUpdateRef.current;
-              flushSync(() => {
-                setMessage(msg);
-                setProgress(prog);
-                setPhase(ph);
-                setPhaseProgress(phprog);
-                setMetrics(met);
-              });
-              pendingUpdateRef.current = null;
-            }
-          }, 16); // ~60fps (16ms) - faster updates for responsive progress bars
-        } else if (data.type === "complete") {
-          console.log(`[WS ${taskId}] ✅ COMPLETE MESSAGE RECEIVED`);
-
-          // Clear any pending updates
-          if (updateTimeoutRef.current) {
-            clearTimeout(updateTimeoutRef.current);
-          }
-
-          flushSync(() => {
-            setMessage(data.message);
-            setProgress(1.0);
-          });
-          if (onComplete) {
-            onComplete(data.data);
-          }
-        } else if (data.type === "error") {
-          console.error(`[WS ${taskId}] ❌ ERROR:`, data.message);
-
-          // Clear any pending updates
-          if (updateTimeoutRef.current) {
-            clearTimeout(updateTimeoutRef.current);
-          }
-
-          flushSync(() => {
-            setMessage(data.message);
-          });
-          if (onError) {
-            onError(data.message);
-          }
+        } catch (error) {
+          console.error("Failed to parse WebSocket message:", error);
         }
-      } catch (error) {
-        console.error("Failed to parse WebSocket message:", error);
-      }
-    };
+      };
 
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setIsConnected(false);
-    };
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setIsConnected(false);
+      };
 
-    ws.onclose = () => {
-      console.log(`WebSocket closed for task ${taskId}`);
-      setIsConnected(false);
-    };
+      ws.onclose = () => {
+        console.debug(`[useTaskProgress] WebSocket closed for task ${taskId}`);
+        setIsConnected(false);
+
+        // Clear heartbeat
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = null;
+        }
+
+        // Reconnect if the task hasn't completed or errored
+        if (!taskCompletedRef.current) {
+          const attempt = reconnectAttemptRef.current;
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // 1s, 2s, 4s, 8s, cap 10s
+          console.debug(`[useTaskProgress] Reconnecting in ${delay}ms (attempt ${attempt + 1})...`);
+          reconnectAttemptRef.current = attempt + 1;
+          reconnectTimerRef.current = setTimeout(connect, delay);
+        }
+      };
+    }
+
+    connect();
 
     // Cleanup on unmount or taskId change
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+      taskCompletedRef.current = true; // Prevent reconnection during cleanup
+
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
       }
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);

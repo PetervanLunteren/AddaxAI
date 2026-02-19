@@ -78,15 +78,11 @@ export function StepDeployment({
         habitat_type: null,
       };
 
-      console.log("Creating site with payload:", payload);
-
       const response = await fetch("/api/sites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      console.log("Response status:", response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -101,7 +97,6 @@ export function StepDeployment({
       }
 
       const newSite = await response.json();
-      console.log("Created site:", newSite);
 
       // Reset form
       setNewSiteName("");

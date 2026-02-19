@@ -53,9 +53,8 @@ export function StepModel({
     setCanGoNext(allModelsReady && detectionModelId !== null);
   }, [allModelsReady, detectionModelId, setCanGoNext]);
 
-  const handleShowInfo = (modelId: string) => {
+  const handleShowInfo = (_modelId: string) => {
     // TODO: Open modal with model details
-    console.log("Show info for model:", modelId);
   };
 
   return (

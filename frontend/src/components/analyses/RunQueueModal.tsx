@@ -34,18 +34,9 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
 
   // Reset state when modal opens or closes
   useEffect(() => {
-    if (open) {
-      console.log(`[RunQueueModal ${new Date().toISOString()}] Modal opened`);
-      // Reset when opening (clears stale state from previous run)
-      setHasError(false);
-      setErrorMessage("");
-      setIsComplete(false);
-    } else {
-      // Also reset when closing (cleanup)
-      setHasError(false);
-      setErrorMessage("");
-      setIsComplete(false);
-    }
+    setHasError(false);
+    setErrorMessage("");
+    setIsComplete(false);
   }, [open]);
 
   // Track progress of the single job (sequential processing)
@@ -83,13 +74,6 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
   });
 
   const hasJob = Boolean(jobId);
-
-  // Debug: Log when deployment context is received (triggers progress bars to show)
-  useEffect(() => {
-    if (deploymentContext) {
-      console.log(`[RunQueueModal ${new Date().toISOString()}] Deployment context received, progress bars should now be visible:`, deploymentContext);
-    }
-  }, [deploymentContext]);
 
   // Calculate overall status
   const isWaitingForJob = !hasError && !isComplete && !hasJob;

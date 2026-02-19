@@ -59,7 +59,7 @@ class Logger {
   info(message: string, context?: Record<string, unknown>) {
     const entry = this.createEntry("info", message, context);
     this.buffer.push(entry);
-    console.log(`[INFO] ${message}`, context || "");
+    console.debug(`[INFO] ${message}`, context || "");
 
     if (this.buffer.length >= this.maxBufferSize) {
       this.flush();

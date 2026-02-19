@@ -11,7 +11,6 @@ Uses MegaDetector's built-in process_video module (matches streamlit-AddaxAI exa
 Created by Claude Code on 2026-01-07
 """
 
-import asyncio
 import re
 import subprocess
 from pathlib import Path
@@ -59,7 +58,7 @@ class VideoDetectionModel:
         except Exception as e:
             raise RuntimeError(f"Failed to get Python environment: {e}") from e
 
-    async def detect_videos_to_json(
+    def detect_videos_to_json(
         self,
         video_folder: Path,
         output_json: Path,
@@ -114,7 +113,7 @@ class VideoDetectionModel:
         logger.info(f"Running command: {' '.join(command)}")
 
         if progress_callback:
-            await progress_callback("Starting video detection...", 0.0)
+            progress_callback("Starting video detection...", 0.0)
 
         try:
             # Run subprocess with progress streaming
@@ -140,7 +139,7 @@ class VideoDetectionModel:
                     raw = line.split("PTDetector using device")[-1].strip()
                     device_name = self._format_device_name(raw)
                     try:
-                        await progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                        progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
                     except TypeError:
                         pass
 
@@ -164,14 +163,14 @@ class VideoDetectionModel:
 
                         # Send raw line and metrics
                         try:
-                            await progress_callback(
+                            progress_callback(
                                 line if metrics else f"Processing video {current}/{total}",
                                 phase_progress,
                                 metrics
                             )
                         except TypeError:
                             # Fallback for callbacks that don't accept metrics
-                            await progress_callback(
+                            progress_callback(
                                 f"Processing video {current}/{total}",
                                 phase_progress,
                             )
@@ -182,7 +181,7 @@ class VideoDetectionModel:
 
             # Send final 100% update
             if progress_callback and last_progress < 1.0:
-                await progress_callback("Video detection complete", 1.0)
+                progress_callback("Video detection complete", 1.0)
 
             if return_code != 0:
                 error_msg = f"Video detection failed with exit code {return_code}"

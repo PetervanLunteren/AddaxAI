@@ -68,16 +68,10 @@ export function QueueCard({ projectId }: QueueCardProps) {
     }
 
     try {
-      console.log(`[QueueCard ${new Date().toISOString()}] Starting queue processing...`);
       setProcessingCount(pendingCount);
-
-      console.log(`[QueueCard ${new Date().toISOString()}] Calling API...`);
       const result = await processQueueMutation.mutateAsync();
-      console.log(`[QueueCard ${new Date().toISOString()}] API returned:`, result);
-
       setJobIds(result.job_ids);
       setShowRunModal(true);
-      console.log(`[QueueCard ${new Date().toISOString()}] Modal opened with job IDs:`, result.job_ids);
     } catch (error) {
       console.error("[QueueCard] Failed to process queue:", error);
       const message = error instanceof Error ? error.message : String(error);

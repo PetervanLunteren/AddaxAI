@@ -110,15 +110,22 @@ export function AnnotationCanvas({
     (d) => d.confidence >= detectionThreshold
   );
 
-  // Load image
+  // Load image — clear immediately to avoid showing old image with new detections,
+  // and ignore stale loads from rapid navigation (A → B → C where B's onload
+  // fires after C has started loading).
   useEffect(() => {
+    setImage(null);
+    let cancelled = false;
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     img.src = imageUrl;
     img.onload = () => {
-      setImage(img);
-      updateStageSize(img.naturalWidth, img.naturalHeight);
+      if (!cancelled) {
+        setImage(img);
+        updateStageSize(img.naturalWidth, img.naturalHeight);
+      }
     };
+    return () => { cancelled = true; };
   }, [imageUrl]);
 
   // Update stage size based on container

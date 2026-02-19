@@ -218,27 +218,49 @@ class ConnectionManager:
     async def send_error(self, job_id: str, error: str) -> None:
         """
         Send error message to all clients subscribed to a job.
+        Buffers the error message and cleans up after a delay.
 
         Args:
             job_id: Job ID
             error: Error message
         """
-        if job_id not in self.active_connections:
-            return
+        logger.info(f"send_error() called for job {job_id}: error={error[:50]}")
 
-        # Build error message
+        # Build error message — use "message" key so frontend data.message works
         error_data = {
             "type": "error",
             "job_id": job_id,
-            "error": error,
+            "message": error,
         }
 
-        # Send to all connected clients
-        for connection in list(self.active_connections[job_id]):
+        # Buffer the error message AND send to connected clients atomically
+        async with self._lock:
+            if job_id not in self.message_buffer:
+                self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
+            self.message_buffer[job_id].append(error_data)
+            logger.info(f"Buffered error message for job {job_id} (buffer size: {len(self.message_buffer[job_id])})")
+
+            if job_id in self.active_connections:
+                logger.info(f"Sending error to {len(self.active_connections[job_id])} connected clients")
+                connections_to_send = list(self.active_connections[job_id])
+            else:
+                logger.info(f"No active connections for job {job_id}, error message only buffered")
+                connections_to_send = []
+
+        # Send outside the lock to avoid blocking other operations
+        for connection in connections_to_send:
             try:
                 await connection.send_json(error_data)
+                await asyncio.sleep(0)
+                logger.info(f"Successfully sent error message to client")
             except Exception as e:
                 logger.warning(f"Failed to send error to client: {e}")
+                async with self._lock:
+                    if job_id in self.active_connections and connection in self.active_connections[job_id]:
+                        self.active_connections[job_id].remove(connection)
+
+        # Clean up buffer after 60 seconds (allows late connections to still get error)
+        asyncio.create_task(self._cleanup_buffer(job_id, delay=60))
 
     def get_connection_count(self, job_id: str) -> int:
         """

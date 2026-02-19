@@ -291,26 +291,34 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     from app.ml.inference.video_detector import VideoDetectionModel
                     video_detector = VideoDetectionModel(det_model_path, env_manager)
 
-                    # Progress wrapper for video detection phase
-                    async def video_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
-                        # Override unit to be more descriptive
+                    # Create sync progress wrapper for executor thread
+                    loop = asyncio.get_event_loop()
+
+                    def sync_video_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                        """Sync wrapper that schedules async callback from executor thread"""
                         if metrics:
                             metrics["unit"] = "video"
-                        await deployment_progress_callback(
-                            message,  # Raw tqdm output
-                            0.0,
-                            "video_detection",
-                            phase_progress,
-                            metrics
+                        asyncio.run_coroutine_threadsafe(
+                            deployment_progress_callback(
+                                message,
+                                0.0,
+                                "video_detection",
+                                phase_progress,
+                                metrics
+                            ),
+                            loop
                         )
 
-                    # Run video detection
-                    await video_detector.detect_videos_to_json(
-                        video_folder=folder_path,
-                        output_json=video_json_path,
-                        fps=project.video_fps,
-                        confidence_threshold=0.1,
-                        progress_callback=video_detection_progress,
+                    # Run video detection in executor (blocking subprocess I/O)
+                    await loop.run_in_executor(
+                        None,
+                        lambda: video_detector.detect_videos_to_json(
+                            video_folder=folder_path,
+                            output_json=video_json_path,
+                            fps=project.video_fps,
+                            confidence_threshold=0.1,
+                            progress_callback=sync_video_detection_progress,
+                        ),
                     )
 
                     json_files_to_merge.append(video_json_path)
@@ -869,22 +877,29 @@ async def run_classification_on_json(
         # SpeciesNet: Batch processing
         logger.info("Running SpeciesNet batch classification")
 
-        # SpeciesNet uses old 4-argument progress callback format
-        # Create adapter function to convert to new 3-argument format with metrics
-        async def speciesnet_progress_adapter(message, progress, phase, phase_progress, metrics=None):
-            """Adapter for SpeciesNet's 5-argument (with metrics) progress callback format"""
+        # Create sync progress adapter for executor thread
+        # classify_batch is now synchronous (blocking subprocess I/O)
+        loop = asyncio.get_event_loop()
+
+        def sync_speciesnet_progress(message, progress, phase, phase_progress, metrics=None):
+            """Sync adapter that schedules async callback from executor thread"""
             if progress_callback:
-                # Override unit to "video" since SpeciesNet iterates per video file
                 if metrics and "unit" in metrics:
                     metrics["unit"] = "video"
-                await progress_callback(message, phase_progress, metrics)
+                asyncio.run_coroutine_threadsafe(
+                    progress_callback(message, phase_progress, metrics),
+                    loop
+                )
 
-        await classification_model.classify_batch(
-            detection_json_path=json_path,
-            country_code=country_code,
-            state_code=state_code,
-            deployment_folder=deployment_folder,
-            progress_callback=speciesnet_progress_adapter,
+        await loop.run_in_executor(
+            None,
+            lambda: classification_model.classify_batch(
+                detection_json_path=json_path,
+                country_code=country_code,
+                state_code=state_code,
+                deployment_folder=deployment_folder,
+                progress_callback=sync_speciesnet_progress,
+            ),
         )
     else:
         # Regular per-detection classification
@@ -902,237 +917,253 @@ async def run_classification_on_json(
             logger.info("No animals to classify")
             return
 
-        # Start classification worker (context manager)
-        with classification_model as cls_model:
-            # Send compute device info if available
-            if progress_callback and hasattr(cls_model, 'compute_device') and cls_model.compute_device:
-                await progress_callback("Classifying...", 0.0, {"compute_device": cls_model.compute_device})
+        # Create sync progress wrapper for executor thread
+        loop = asyncio.get_event_loop()
 
-            # Get class names (ID -> name mapping)
-            class_names = cls_model.get_class_names()
+        def sync_cls_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+            """Sync wrapper that schedules async callback from executor thread"""
+            if progress_callback:
+                asyncio.run_coroutine_threadsafe(
+                    progress_callback(message, phase_progress, metrics),
+                    loop
+                )
 
-            # Create reverse mapping (name -> ID) for JSON creation
-            name_to_id = {name: class_id for class_id, name in class_names.items()}
+        def _run_per_detection_classification():
+            """Synchronous per-detection classification loop (runs in executor)."""
+            # Start classification worker (context manager)
+            with classification_model as cls_model:
+                # Send compute device info if available
+                if progress_callback and hasattr(cls_model, 'compute_device') and cls_model.compute_device:
+                    sync_cls_progress("Classifying...", 0.0, {"compute_device": cls_model.compute_device})
 
-            # Group detections by file for efficient video frame caching
-            from collections import defaultdict
-            detections_by_file = defaultdict(list)
-            for img_idx, det_idx, detection in animal_detections:
-                img_info = md_results["images"][img_idx]
-                relative_file = img_info["file"]
-                img_path = (deployment_folder / relative_file).resolve()
+                # Get class names (ID -> name mapping)
+                class_names = cls_model.get_class_names()
 
-                detections_by_file[str(img_path)].append({
-                    'img_idx': img_idx,
-                    'det_idx': det_idx,
-                    'detection': detection,
-                    'img_info': img_info
-                })
+                # Create reverse mapping (name -> ID) for JSON creation
+                name_to_id = {name: class_id for class_id, name in class_names.items()}
 
-            # Process files in order (videos first, then images)
-            classified_count = 0
-            processed_count = 0
-            frame_cache = {}  # Cache for video frames
+                # Group detections by file for efficient video frame caching
+                from collections import defaultdict
+                detections_by_file = defaultdict(list)
+                for img_idx, det_idx, detection in animal_detections:
+                    img_info = md_results["images"][img_idx]
+                    relative_file = img_info["file"]
+                    img_path = (deployment_folder / relative_file).resolve()
 
-            # Use tqdm for progress tracking
-            from tqdm import tqdm
-            import time
+                    detections_by_file[str(img_path)].append({
+                        'img_idx': img_idx,
+                        'det_idx': det_idx,
+                        'detection': detection,
+                        'img_info': img_info
+                    })
 
-            start_time = time.time()
+                # Process files in order (videos first, then images)
+                classified_count = 0
+                processed_count = 0
+                frame_cache = {}  # Cache for video frames
 
-            # Create tqdm iterator (but don't actually iterate with it - just use for formatting)
-            pbar = tqdm(
-                total=total_animals,
-                desc="Classifying",
-                unit="animal",
-                disable=True  # Don't print to console
-            )
+                # Use tqdm for progress tracking
+                from tqdm import tqdm
+                import time
 
-            for file_path_str, file_detections in detections_by_file.items():
-                file_path = Path(file_path_str)
+                start_time = time.time()
 
-                if not file_path.exists():
-                    logger.warning(f"File not found: {file_path}, skipping {len(file_detections)} detections")
-                    processed_count += len(file_detections)
-                    continue
+                # Create tqdm iterator (but don't actually iterate with it - just use for formatting)
+                pbar = tqdm(
+                    total=total_animals,
+                    desc="Classifying",
+                    unit="animal",
+                    disable=True  # Don't print to console
+                )
 
-                is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
+                for file_path_str, file_detections in detections_by_file.items():
+                    file_path = Path(file_path_str)
 
-                # For videos: extract all needed frames to cache first
-                if is_video:
-                    logger.debug(f"Extracting frames for video: {file_path.name}")
-
-                    # Get unique frame numbers for this video
-                    frame_numbers = set()
-                    for det_info in file_detections:
-                        frame_num = det_info['detection'].get('frame_number')
-                        if frame_num is not None:
-                            frame_numbers.add(frame_num)
-
-                    if not frame_numbers:
-                        logger.warning(f"No frame numbers found for video {file_path.name}, skipping")
+                    if not file_path.exists():
+                        logger.warning(f"File not found: {file_path}, skipping {len(file_detections)} detections")
                         processed_count += len(file_detections)
                         continue
 
-                    # Extract frames to cache
-                    from app.utils.video_utils import run_callback_on_frames, _frame_number_to_filename
-                    from PIL import Image
+                    is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
 
-                    def frame_callback(image_np, frame_id):
-                        """Store frame as PIL Image in cache"""
-                        frame_cache[frame_id] = Image.fromarray(image_np)
-                        return None
+                    # For videos: extract all needed frames to cache first
+                    if is_video:
+                        logger.debug(f"Extracting frames for video: {file_path.name}")
 
-                    try:
-                        run_callback_on_frames(
-                            str(file_path),
-                            frame_callback,
-                            frames_to_process=list(frame_numbers),
-                            verbose=False
-                        )
-                        logger.debug(f"Extracted {len(frame_cache)} frames for {file_path.name}")
-                    except Exception as e:
-                        logger.error(f"Failed to extract frames from {file_path.name}: {e}")
-                        processed_count += len(file_detections)
-                        frame_cache.clear()
-                        continue
+                        # Get unique frame numbers for this video
+                        frame_numbers = set()
+                        for det_info in file_detections:
+                            frame_num = det_info['detection'].get('frame_number')
+                            if frame_num is not None:
+                                frame_numbers.add(frame_num)
 
-                # Classify all detections in this file
-                for det_info in file_detections:
-                    try:
-                        processed_count += 1
-
-                        # Update tqdm and send progress
-                        pbar.update(1)
-                        if progress_callback:
-                            # Get tqdm's formatted output
-                            elapsed = time.time() - start_time
-                            elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
-
-                            rate = processed_count / elapsed if elapsed > 0 else 0
-                            remaining = (total_animals - processed_count) / rate if rate > 0 else 0
-                            remaining_str = f"{int(remaining//60):02d}:{int(remaining%60):02d}"
-
-                            # Create tqdm-style output
-                            percent = int(100 * processed_count / total_animals)
-                            bar_length = 10
-                            filled = int(bar_length * processed_count / total_animals)
-                            bar = '█' * filled + '░' * (bar_length - filled)
-
-                            raw_line = f"{percent}%|{bar}| {processed_count}/{total_animals} [{elapsed_str}<{remaining_str}, {rate:.2f}animal/s]"
-
-                            metrics = {
-                                "raw_line": raw_line,
-                                "current": processed_count,
-                                "total": total_animals,
-                                "elapsed": elapsed_str,
-                                "remaining": remaining_str,
-                                "rate": rate,
-                                "unit": "animal"
-                            }
-
-                            phase_progress = processed_count / total_animals
-                            await progress_callback(raw_line, phase_progress, metrics)
-
-                        detection = det_info['detection']
-                        img_idx = det_info['img_idx']
-                        det_idx = det_info['det_idx']
-
-                        # Get frame/image for classification
-                        if is_video:
-                            # Get frame from cache
-                            frame_number = detection.get('frame_number')
-                            if frame_number is None:
-                                logger.warning(f"Detection missing frame_number, skipping")
-                                continue
-
-                            frame_key = _frame_number_to_filename(frame_number)
-                            frame_image = frame_cache.get(frame_key)
-
-                            if frame_image is None:
-                                logger.warning(f"Frame {frame_key} not in cache, skipping")
-                                continue
-                        else:
-                            # Load image from disk
-                            from PIL import Image
-                            frame_image = Image.open(file_path)
-
-                        # Create bbox object
-                        from app.ml.inference.base import BoundingBox
-                        bbox = BoundingBox(
-                            x=detection["bbox"][0],
-                            y=detection["bbox"][1],
-                            width=detection["bbox"][2],
-                            height=detection["bbox"][3],
-                        )
-
-                        # For videos: save full frame to temp file (worker needs a file path and will crop it)
-                        # For images: pass original file path directly (worker will load and crop it)
-                        if is_video:
-                            import tempfile
-                            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                                tmp_path = Path(tmp.name)
-                                frame_image.save(tmp_path)  # Save FULL FRAME, worker will crop
-
-                            try:
-                                result = cls_model.classify(tmp_path, bbox)
-                            finally:
-                                tmp_path.unlink(missing_ok=True)
-                        else:
-                            # For images: pass original file path (no temp file needed)
-                            # Worker will load the full image and crop it using the bbox
-                            result = cls_model.classify(file_path, bbox)
-
-                        # Check if classification succeeded
-                        if result is None:
-                            logger.warning(f"Classification returned None for detection, skipping")
+                        if not frame_numbers:
+                            logger.warning(f"No frame numbers found for video {file_path.name}, skipping")
+                            processed_count += len(file_detections)
                             continue
 
-                        # Add classification to detection (update in-place in md_results)
-                        # Convert class names to IDs for JSON format consistency
-                        # Store all results (not truncated) so species exclusion
-                        # can find included species even if they rank low.
-                        md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
-                            [name_to_id[class_name], prob]
-                            for class_name, prob in result.all_probabilities.items()
-                            if class_name in name_to_id
-                        ]
+                        # Extract frames to cache
+                        from app.utils.video_utils import run_callback_on_frames, _frame_number_to_filename
+                        from PIL import Image
 
-                        classified_count += 1
+                        def frame_callback(image_np, frame_id):
+                            """Store frame as PIL Image in cache"""
+                            frame_cache[frame_id] = Image.fromarray(image_np)
+                            return None
 
-                    except Exception as e:
-                        logger.error(f"Classification failed for detection: {e}")
-                        continue
+                        try:
+                            run_callback_on_frames(
+                                str(file_path),
+                                frame_callback,
+                                frames_to_process=list(frame_numbers),
+                                verbose=False
+                            )
+                            logger.debug(f"Extracted {len(frame_cache)} frames for {file_path.name}")
+                        except Exception as e:
+                            logger.error(f"Failed to extract frames from {file_path.name}: {e}")
+                            processed_count += len(file_detections)
+                            frame_cache.clear()
+                            continue
 
-                # Clear video frame cache after processing this video
-                if is_video:
-                    frame_cache.clear()
-                    logger.debug(f"Cleared frame cache for {file_path.name}")
+                    # Classify all detections in this file
+                    for det_info in file_detections:
+                        try:
+                            processed_count += 1
 
-            # Close tqdm
-            pbar.close()
+                            # Update tqdm and send progress
+                            pbar.update(1)
+                            if progress_callback:
+                                # Get tqdm's formatted output
+                                elapsed = time.time() - start_time
+                                elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
 
-            # Update class names in JSON
-            if class_names:
-                md_results["classification_categories"] = class_names
+                                rate = processed_count / elapsed if elapsed > 0 else 0
+                                remaining = (total_animals - processed_count) / rate if rate > 0 else 0
+                                remaining_str = f"{int(remaining//60):02d}:{int(remaining%60):02d}"
 
-                # Add taxonomy descriptions if taxonomy.csv exists
-                if classification_model_dir:
-                    taxonomy_csv = classification_model_dir / "taxonomy.csv"
-                    if taxonomy_csv.exists():
-                        from app.ml.json_utils import build_classification_category_descriptions
+                                # Create tqdm-style output
+                                percent = int(100 * processed_count / total_animals)
+                                bar_length = 10
+                                filled = int(bar_length * processed_count / total_animals)
+                                bar = '█' * filled + '░' * (bar_length - filled)
 
-                        descriptions = build_classification_category_descriptions(
-                            class_names, taxonomy_csv
-                        )
-                        if descriptions:
-                            md_results["classification_category_descriptions"] = descriptions
+                                raw_line = f"{percent}%|{bar}| {processed_count}/{total_animals} [{elapsed_str}<{remaining_str}, {rate:.2f}animal/s]"
 
-        # Save updated JSON
-        with open(json_path, "w") as f:
-            json.dump(md_results, f, indent=2)
+                                metrics = {
+                                    "raw_line": raw_line,
+                                    "current": processed_count,
+                                    "total": total_animals,
+                                    "elapsed": elapsed_str,
+                                    "remaining": remaining_str,
+                                    "rate": rate,
+                                    "unit": "animal"
+                                }
 
-        logger.info(f"Classified {classified_count}/{total_animals} animals")
+                                phase_progress = processed_count / total_animals
+                                sync_cls_progress(raw_line, phase_progress, metrics)
+
+                            detection = det_info['detection']
+                            img_idx = det_info['img_idx']
+                            det_idx = det_info['det_idx']
+
+                            # Get frame/image for classification
+                            if is_video:
+                                # Get frame from cache
+                                frame_number = detection.get('frame_number')
+                                if frame_number is None:
+                                    logger.warning(f"Detection missing frame_number, skipping")
+                                    continue
+
+                                frame_key = _frame_number_to_filename(frame_number)
+                                frame_image = frame_cache.get(frame_key)
+
+                                if frame_image is None:
+                                    logger.warning(f"Frame {frame_key} not in cache, skipping")
+                                    continue
+                            else:
+                                # Load image from disk
+                                from PIL import Image
+                                frame_image = Image.open(file_path)
+
+                            # Create bbox object
+                            from app.ml.inference.base import BoundingBox
+                            bbox = BoundingBox(
+                                x=detection["bbox"][0],
+                                y=detection["bbox"][1],
+                                width=detection["bbox"][2],
+                                height=detection["bbox"][3],
+                            )
+
+                            # For videos: save full frame to temp file (worker needs a file path and will crop it)
+                            # For images: pass original file path directly (worker will load and crop it)
+                            if is_video:
+                                import tempfile
+                                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                                    tmp_path = Path(tmp.name)
+                                    frame_image.save(tmp_path)  # Save FULL FRAME, worker will crop
+
+                                try:
+                                    result = cls_model.classify(tmp_path, bbox)
+                                finally:
+                                    tmp_path.unlink(missing_ok=True)
+                            else:
+                                # For images: pass original file path (no temp file needed)
+                                # Worker will load the full image and crop it using the bbox
+                                result = cls_model.classify(file_path, bbox)
+
+                            # Check if classification succeeded
+                            if result is None:
+                                logger.warning(f"Classification returned None for detection, skipping")
+                                continue
+
+                            # Add classification to detection (update in-place in md_results)
+                            # Convert class names to IDs for JSON format consistency
+                            # Store all results (not truncated) so species exclusion
+                            # can find included species even if they rank low.
+                            md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
+                                [name_to_id[class_name], prob]
+                                for class_name, prob in result.all_probabilities.items()
+                                if class_name in name_to_id
+                            ]
+
+                            classified_count += 1
+
+                        except Exception as e:
+                            logger.error(f"Classification failed for detection: {e}")
+                            continue
+
+                    # Clear video frame cache after processing this video
+                    if is_video:
+                        frame_cache.clear()
+                        logger.debug(f"Cleared frame cache for {file_path.name}")
+
+                # Close tqdm
+                pbar.close()
+
+                # Update class names in JSON
+                if class_names:
+                    md_results["classification_categories"] = class_names
+
+                    # Add taxonomy descriptions if taxonomy.csv exists
+                    if classification_model_dir:
+                        taxonomy_csv = classification_model_dir / "taxonomy.csv"
+                        if taxonomy_csv.exists():
+                            from app.ml.json_utils import build_classification_category_descriptions
+
+                            descriptions = build_classification_category_descriptions(
+                                class_names, taxonomy_csv
+                            )
+                            if descriptions:
+                                md_results["classification_category_descriptions"] = descriptions
+
+            # Save updated JSON
+            with open(json_path, "w") as f:
+                json.dump(md_results, f, indent=2)
+
+            logger.info(f"Classified {classified_count}/{total_animals} animals")
+
+        # Run the entire classification loop in executor to avoid blocking event loop
+        await loop.run_in_executor(None, _run_per_detection_classification)
 
 
 def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: str) -> None:

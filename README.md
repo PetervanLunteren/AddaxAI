@@ -3,11 +3,17 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO verification task
 - [ ] make best frame selection
+- [ ] add a help tab, popover, or something like that to the verification window. Lots to explain. 
 - [ ] add chip for "representative" and auto select. 
 - [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] how does videos work?
 - [ ] how does it work for SpeciesNet?
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
+
+
+Or use the time.sleep(45) simulation and confirm the WebSocket reconnects and catches up
+
+
 
 ## TODO priority 1
 - [ ] I have a hunch that the websockets of the analysis lose connection If i switch windwows or do something else. Could that be true? 
@@ -15,7 +21,7 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 
 ## TODO priority 2
-- [ ] 
+
 
 ## TODO priority 3
 - [ ] crop verification option

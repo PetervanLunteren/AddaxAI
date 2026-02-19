@@ -14,7 +14,6 @@ Created by Claude Code on 2026-01-07
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 import subprocess
@@ -77,7 +76,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
         logger.info(f"SpeciesNet model ready: {model_dir.name}")
 
-    async def classify_batch(
+    def classify_batch(
         self,
         detection_json_path: Path,
         country_code: str,
@@ -147,7 +146,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
         # Initial progress update
         if progress_callback:
-            await progress_callback(
+            progress_callback(
                 "Classification: Starting SpeciesNet...",
                 0.0,
                 "classification",
@@ -186,7 +185,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
                         device_name = self._format_device_name(raw)
                         device_detected = True
                         if progress_callback:
-                            await progress_callback(
+                            progress_callback(
                                 "Initializing classifier...", 0.0, "classification", 0.0,
                                 {"compute_device": device_name},
                             )
@@ -199,7 +198,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
                             device_name = "CPU"
                         device_detected = True
                         if progress_callback:
-                            await progress_callback(
+                            progress_callback(
                                 "Initializing classifier...", 0.0, "classification", 0.0,
                                 {"compute_device": device_name},
                             )
@@ -218,7 +217,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
                         # Parse full TQDM metrics from the line
                         metrics = self._parse_tqdm_metrics(line)
 
-                        await progress_callback(
+                        progress_callback(
                             line,  # Send full TQDM line
                             0.0,
                             "classification",
@@ -232,7 +231,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
             # Send final 100% update if we didn't already (handles case where last update was <1% change)
             if progress_callback and last_total > 0 and last_progress < 1.0:
-                await progress_callback(
+                progress_callback(
                     f"Classification: {last_total}/{last_total} images processed",
                     0.0,
                     "classification",
@@ -265,7 +264,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
             # Final progress update
             if progress_callback:
-                await progress_callback(
+                progress_callback(
                     "Classification: SpeciesNet complete",
                     0.0,
                     "classification",
