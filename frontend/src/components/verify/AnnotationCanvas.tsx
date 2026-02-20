@@ -106,9 +106,16 @@ export function AnnotationCanvas({
   const imgWidth = file.width_px || 1;
   const imgHeight = file.height_px || 1;
 
-  const filteredDetections = file.detections.filter(
+  let filteredDetections = file.detections.filter(
     (d) => d.confidence >= detectionThreshold
   );
+
+  // For videos, only show detections from the best frame to avoid spatial mismatch
+  if (file.file_type === "video" && file.best_frame_number != null) {
+    filteredDetections = filteredDetections.filter(
+      (d) => d.frame_number === file.best_frame_number
+    );
+  }
 
   // Load image — clear immediately to avoid showing old image with new detections,
   // and ignore stale loads from rapid navigation (A → B → C where B's onload

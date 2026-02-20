@@ -76,6 +76,7 @@ class File(Base):
     # Best frame (video only)
     best_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     best_frame_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    frame_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Verification fields
     verified: Mapped[bool] = mapped_column(

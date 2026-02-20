@@ -79,7 +79,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const hasFiles = scanResult && scanResult.total_count > 0;
   const isDuplicate =
     folderPath && queueEntries?.some((e) => e.folder_path === folderPath);
-  const isValid = folderPath && hasFiles && siteId && !isDuplicate && !isScanning;
+  const isValid = folderPath && hasFiles && siteId && !isDuplicate && !isScanning && !scanResult?.missing_datetime;
 
   // Validation messages (for button tooltip)
   const validationMessages: string[] = [];
@@ -91,6 +91,9 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     validationMessages.push("Selected folder contains no images");
   } else if (isDuplicate) {
     validationMessages.push("This folder is already in the queue");
+  }
+  if (scanResult?.missing_datetime) {
+    validationMessages.push("DateTime metadata is required but not found in files");
   }
   if (!siteId) {
     validationMessages.push("Select a camera site");

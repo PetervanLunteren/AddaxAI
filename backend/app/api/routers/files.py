@@ -108,6 +108,54 @@ def get_file(
     return file
 
 
+VIDEO_MEDIA_TYPES = {
+    "mp4": "video/mp4",
+    "m4v": "video/mp4",
+    "mov": "video/quicktime",
+    "avi": "video/x-msvideo",
+    "webm": "video/webm",
+    "mkv": "video/x-matroska",
+    "wmv": "video/x-ms-wmv",
+    "flv": "video/x-flv",
+}
+
+
+@router.get("/{file_id}/video")
+def get_file_video(
+    file_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Serve the raw video file.
+
+    Returns:
+        Video file with appropriate Content-Type
+
+    Raises:
+        HTTPException: If file not found, not a video, or video file missing on disk
+    """
+    file = file_crud.get_file_with_detections(db, file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if file.file_type != "video":
+        raise HTTPException(status_code=400, detail="File is not a video")
+
+    file_path = Path(file.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Video file not found on disk")
+
+    media_type = VIDEO_MEDIA_TYPES.get(
+        (file.file_format or "").lower(), "video/mp4"
+    )
+
+    return FastAPIFileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=file_path.name,
+    )
+
+
 @router.get("/{file_id}/image")
 def get_file_image(
     file_id: str,

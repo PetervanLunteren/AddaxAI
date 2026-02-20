@@ -22,6 +22,7 @@ from PIL import Image
 from PIL.ExifTags import GPSTAGS, TAGS
 
 from app.core.logging_config import get_logger
+from app.utils.media_dates import extract_video_dates as _shared_extract_video_dates
 
 logger = get_logger(__name__)
 
@@ -401,68 +402,10 @@ def _extract_video_dates(sample: list[Path]) -> list[datetime]:
     """
     Extract dates from video metadata using exiftool.
 
-    Tries metadata fields in order of preference:
-    1. CreateDate - most common for camera traps
-    2. DateTimeOriginal - some cameras use this
-    3. MediaCreateDate - MP4 container metadata
-    4. TrackCreateDate - video track metadata
+    Delegates to the shared utility in app.utils.media_dates.
 
     Returns:
         List of datetime objects extracted from videos
     """
-    dates: list[datetime] = []
-
-    try:
-        with exiftool.ExifToolHelper() as et:
-            for video_path in sample:
-                try:
-                    # Extract metadata from video
-                    metadata_list = et.get_metadata([str(video_path)])
-                    if not metadata_list:
-                        continue
-
-                    metadata = metadata_list[0]
-
-                    # Try date fields in order of preference
-                    date_str = None
-                    for field in [
-                        "QuickTime:CreateDate",
-                        "EXIF:DateTimeOriginal",
-                        "QuickTime:MediaCreateDate",
-                        "QuickTime:TrackCreateDate",
-                    ]:
-                        if field in metadata:
-                            date_str = metadata[field]
-                            break
-
-                    if date_str:
-                        # Parse various datetime formats
-                        # ExifTool typically returns: "YYYY:MM:DD HH:MM:SS" or ISO format
-                        try:
-                            # Try EXIF format first
-                            date_obj = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-                            dates.append(date_obj)
-                        except ValueError:
-                            try:
-                                # Try ISO format with timezone
-                                # Remove timezone info if present (e.g., "+00:00")
-                                date_str_clean = date_str.split("+")[0].split("-")[0].strip()
-                                date_obj = datetime.fromisoformat(date_str_clean)
-                                dates.append(date_obj)
-                            except ValueError:
-                                logger.debug(
-                                    f"Invalid date format in {video_path.name}: {date_str}"
-                                )
-                                continue
-
-                except Exception as e:
-                    logger.debug(
-                        f"Cannot read metadata from {video_path.name}: {type(e).__name__}: {e}"
-                    )
-                    continue
-
-    except Exception as e:
-        logger.warning(f"ExifTool error: {type(e).__name__}: {e}")
-        return []
-
-    return dates
+    date_map = _shared_extract_video_dates(sample)
+    return list(date_map.values())

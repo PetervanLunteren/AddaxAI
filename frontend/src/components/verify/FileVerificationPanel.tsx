@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Film, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { Button } from "../ui/button";
@@ -97,10 +97,25 @@ export function FileVerificationPanel({
     },
   });
 
-  const filteredDetections = useMemo(
-    () => file.detections.filter((d) => d.confidence >= detectionThreshold),
-    [file.detections, detectionThreshold]
-  );
+  const isVideo = file.file_type === "video";
+
+  const filteredDetections = useMemo(() => {
+    let dets = file.detections.filter((d) => d.confidence >= detectionThreshold);
+    // For videos, only show detections from the best frame
+    if (isVideo && file.best_frame_number != null) {
+      dets = dets.filter((d) => d.frame_number === file.best_frame_number);
+    }
+    return dets;
+  }, [file.detections, detectionThreshold, isVideo, file.best_frame_number]);
+
+  const otherFrameDetectionCount = useMemo(() => {
+    if (!isVideo || file.best_frame_number == null) return 0;
+    return file.detections.filter(
+      (d) =>
+        d.confidence >= detectionThreshold &&
+        d.frame_number !== file.best_frame_number
+    ).length;
+  }, [file.detections, detectionThreshold, isVideo, file.best_frame_number]);
 
   const groupedDetections = useMemo(() => {
     const counts = new Map<string, number>();
@@ -129,7 +144,21 @@ export function FileVerificationPanel({
                 <Badge variant="outline" className="text-xs">
                   {filteredDetections.length}
                 </Badge>
+                {isVideo && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Film className="h-3 w-3" />
+                    Video
+                  </Badge>
+                )}
               </div>
+              {isVideo && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Showing best frame only
+                  {otherFrameDetectionCount > 0 && (
+                    <span> &middot; {otherFrameDetectionCount} more on other frames</span>
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Grouped summary */}
@@ -188,7 +217,21 @@ export function FileVerificationPanel({
                 <Badge variant="outline" className="text-xs">
                   {filteredDetections.length}
                 </Badge>
+                {isVideo && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Film className="h-3 w-3" />
+                    Video
+                  </Badge>
+                )}
               </div>
+              {isVideo && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Showing best frame only
+                  {otherFrameDetectionCount > 0 && (
+                    <span> &middot; {otherFrameDetectionCount} more on other frames</span>
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Detection list */}

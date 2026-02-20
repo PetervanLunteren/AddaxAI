@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Check } from "lucide-react";
+import { Check, Film } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -76,11 +76,21 @@ export function EventFilmstrip({
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
+              {/* Video badge */}
+              {file.file_type === "video" && (
+                <div className="absolute bottom-0.5 left-0.5 bg-black/60 rounded-sm p-0.5">
+                  <Film className="h-2.5 w-2.5 text-white" />
+                </div>
+              )}
               {/* Detection overlay */}
               {(() => {
-                const dets = file.detections.filter(
+                let dets = file.detections.filter(
                   (d) => d.confidence >= detectionThreshold
                 );
+                // For videos, only show detections from the best frame
+                if (file.file_type === "video" && file.best_frame_number != null) {
+                  dets = dets.filter((d) => d.frame_number === file.best_frame_number);
+                }
                 if (dets.length === 0) return null;
                 const imgW = file.width_px || 1;
                 const imgH = file.height_px || 1;

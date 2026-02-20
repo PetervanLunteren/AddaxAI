@@ -20,6 +20,7 @@ class DetectionResponse(BaseModel):
     species: str | None
     species_confidence: float | None
     classification_method: str | None = None
+    frame_number: int | None = None
 
     class Config:
         from_attributes = True
@@ -40,6 +41,7 @@ class FileResponse(BaseModel):
     created_at: datetime
     best_frame_number: int | None = None
     best_frame_path: str | None = None
+    frame_rate: float | None = None
     observation_type: str = "unclassified"
     verified: bool = False
     verified_at: datetime | None = None

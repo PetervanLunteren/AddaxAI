@@ -25,6 +25,8 @@ import {
   RotateCcw,
   FolderOpen,
   CircleHelp,
+  Play,
+  Image as ImageIcon,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -49,6 +51,7 @@ import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
 import { WelcomePopover } from "./WelcomePopover";
 import { HelpSheet } from "./HelpSheet";
+import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 
 interface EventDetailModalProps {
@@ -75,6 +78,7 @@ export function EventDetailModal({
   const [drawMode, setDrawMode] = useState(false);
   const [drawLabel, setDrawLabel] = useState<{ category: string; species: string | undefined } | null>(null);
   const [bulkSelection, setBulkSelection] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
@@ -180,6 +184,7 @@ export function EventDetailModal({
       setSelectedFileIndex(repIdx >= 0 ? repIdx : 0);
     }
     setSelectedDetectionId(null);
+    setViewMode("frame");
   }, [eventId, event?.id]);
 
   const files = event?.files ?? [];
@@ -335,10 +340,19 @@ export function EventDetailModal({
   // Filtered detections for the current file (for Tab cycling)
   const filteredDetections = useMemo(() => {
     if (!currentFile) return [];
-    return currentFile.detections.filter(
+    let dets = currentFile.detections.filter(
       (d) => d.confidence >= detectionThreshold
     );
-  }, [currentFile, detectionThreshold]);
+    // For videos in frame view, only include best-frame detections
+    if (
+      currentFile.file_type === "video" &&
+      currentFile.best_frame_number != null &&
+      viewMode === "frame"
+    ) {
+      dets = dets.filter((d) => d.frame_number === currentFile.best_frame_number);
+    }
+    return dets;
+  }, [currentFile, detectionThreshold, viewMode]);
 
   // Mark blank mutation: delete all detections + verify + advance
   const markBlankMutation = useMutation({
@@ -753,6 +767,29 @@ export function EventDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
+              {/* Video toggle */}
+              {currentFile.file_type === "video" && (
+                <Button
+                  variant={viewMode === "video" ? "default" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setViewMode(viewMode === "video" ? "frame" : "video")}
+                  disabled={!isPlayableVideo(currentFile)}
+                  title={
+                    !isPlayableVideo(currentFile)
+                      ? "Video format not supported for browser playback"
+                      : viewMode === "video"
+                        ? "View best frame"
+                        : "Play video"
+                  }
+                >
+                  {viewMode === "video" ? (
+                    <ImageIcon className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
               <div className="w-6 border-t my-0.5" />
               <Button
                 variant="ghost"
@@ -944,24 +981,31 @@ export function EventDetailModal({
 
           {/* Image area */}
           <div className="flex-1 flex flex-col min-w-0">
-            {/* Main image with detections */}
+            {/* Main image/video with detections */}
             <div className="flex-1 flex items-center justify-center bg-black/95 min-h-0 p-2 rounded-lg">
               {currentFile ? (
-                <AnnotationCanvas
-                  file={currentFile}
-                  detectionThreshold={detectionThreshold}
-                  eventId={eventId!}
-                  selectedDetectionId={selectedDetectionId}
-                  onSelectDetection={setSelectedDetectionId}
-                  drawMode={drawMode}
-                  onDrawModeChange={setDrawMode}
-                  imageFilter={imageFilter}
-                  defaultCategory={effectiveDrawLabel.category}
-                  defaultSpecies={effectiveDrawLabel.species}
-                  boxesHidden={boxesHidden}
-                  exportFnRef={exportFnRef}
-                  zoomFnRef={zoomFnRef}
-                />
+                viewMode === "video" && isPlayableVideo(currentFile) ? (
+                  <VideoPlayer
+                    file={currentFile}
+                    detectionThreshold={detectionThreshold}
+                  />
+                ) : (
+                  <AnnotationCanvas
+                    file={currentFile}
+                    detectionThreshold={detectionThreshold}
+                    eventId={eventId!}
+                    selectedDetectionId={selectedDetectionId}
+                    onSelectDetection={setSelectedDetectionId}
+                    drawMode={drawMode}
+                    onDrawModeChange={setDrawMode}
+                    imageFilter={imageFilter}
+                    defaultCategory={effectiveDrawLabel.category}
+                    defaultSpecies={effectiveDrawLabel.species}
+                    boxesHidden={boxesHidden}
+                    exportFnRef={exportFnRef}
+                    zoomFnRef={zoomFnRef}
+                  />
+                )
               ) : (
                 <div className="text-white/50">Loading...</div>
               )}

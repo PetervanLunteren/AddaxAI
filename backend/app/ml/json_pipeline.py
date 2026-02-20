@@ -24,6 +24,7 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
+from app.utils.media_dates import extract_video_dates
 from app.api.schemas.detection import DetectionCreate
 from app.core.logging_config import get_logger
 from app.ml.inference.base import ClassificationModel, DetectionModel, PipelineResult
@@ -718,6 +719,16 @@ def load_json_to_database(
         vehicle_count = 0
         classified_count = 0
 
+        # Pre-extract video dates using exiftool (single process for all videos)
+        video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
+        video_paths: list[Path] = []
+        for img in results.get("images", []):
+            abs_path = (deployment_folder / img["file"]).resolve()
+            fmt = abs_path.suffix.lstrip(".").lower() if abs_path.exists() else ""
+            if fmt in video_extensions:
+                video_paths.append(abs_path)
+        video_dates = extract_video_dates(video_paths) if video_paths else {}
+
         # Group detections by file
         file_detections = defaultdict(list)
 
@@ -727,7 +738,6 @@ def load_json_to_database(
 
             # Determine file type (video or image)
             file_format = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
-            video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
             file_type = "video" if file_format in video_extensions else "image"
 
             # Get or create File record
@@ -753,14 +763,17 @@ def load_json_to_database(
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
-                # Extract timestamp from EXIF, fall back to file mtime
+                # Extract timestamp: exiftool for videos, EXIF for images, mtime fallback
                 exif_metadata = img.get("exif_metadata")
                 timestamp = None
-                if exif_metadata and "DateTimeOriginal" in exif_metadata:
-                    try:
-                        timestamp = datetime.strptime(exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S")
-                    except (ValueError, TypeError):
-                        pass
+                if file_type == "video":
+                    timestamp = video_dates.get(absolute_path)
+                if timestamp is None:
+                    if exif_metadata and "DateTimeOriginal" in exif_metadata:
+                        try:
+                            timestamp = datetime.strptime(exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S")
+                        except (ValueError, TypeError):
+                            pass
                 if timestamp is None:
                     timestamp = datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow()
 
@@ -770,6 +783,9 @@ def load_json_to_database(
                 if best_frame_number is not None:
                     video_stem = absolute_path.stem
                     best_frame_path = str(deployment_folder / ".addaxai" / "frames" / f"{video_stem}.jpg")
+
+                # Frame rate (video only) - output by MegaDetector's process_video
+                frame_rate = img.get("frame_rate")
 
                 file_record = File(
                     id=file_id,
@@ -784,6 +800,7 @@ def load_json_to_database(
                     exif_data=exif_metadata,
                     best_frame_number=best_frame_number,
                     best_frame_path=best_frame_path,
+                    frame_rate=frame_rate,
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id

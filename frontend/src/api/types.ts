@@ -185,6 +185,7 @@ export interface DetectionResponse {
   species: string | null;
   species_confidence: number | null;
   classification_method: string | null;
+  frame_number: number | null;
 }
 
 export interface FileResponse {
@@ -200,6 +201,7 @@ export interface FileResponse {
   created_at: string;
   best_frame_number: number | null;
   best_frame_path: string | null;
+  frame_rate: number | null;
   observation_type: ObservationType;
   verified: boolean;
   verified_at: string | null;
