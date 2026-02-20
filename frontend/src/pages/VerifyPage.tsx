@@ -3,13 +3,16 @@
  *
  * Displays events as cards with thumbnails, species tags, and verification progress.
  * Clicking a card opens the event detail modal (Phase 2).
+ * Supports filtering by site, date range, species, verification status, and confidence.
+ * Filter state is persisted in URL search params.
  */
 
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Layers } from "lucide-react";
+import { Filter, Loader2, Layers } from "lucide-react";
 import { eventsApi } from "../api/events";
+import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
 import { projectsApi } from "../api/projects";
 import { API_BASE_URL } from "../lib/api-client";
@@ -17,15 +20,107 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { getCategoryColor, getObservationBadge } from "../lib/detection-utils";
-import type { EventSummary } from "../api/types";
+import type { EventSummary, EventFilterParams, VerificationFilter } from "../api/types";
+
 import { EventDetailModal } from "../components/verify/EventDetailModal";
+import { FilterPanel } from "../components/verify/FilterPanel";
+import { FilterChips } from "../components/verify/FilterChips";
 
 const PAGE_SIZE = 50;
+const FILTER_DEBOUNCE_MS = 300;
+
+/** Debounce a value by `delay` ms. Compares by JSON serialization. */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  const serialized = JSON.stringify(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(JSON.parse(serialized)), delay);
+    return () => clearTimeout(timer);
+  }, [serialized, delay]);
+  return debounced;
+}
+
+/** Parse filter state from URL search params. */
+function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
+  const filters: EventFilterParams = {};
+  const sites = sp.get("sites");
+  if (sites) filters.site_ids = sites.split(",");
+  const from = sp.get("from");
+  if (from) filters.date_from = from;
+  const to = sp.get("to");
+  if (to) filters.date_to = to;
+  const species = sp.get("species");
+  if (species) filters.species = species.split(",");
+  const verification = sp.get("verification") as VerificationFilter | null;
+  if (verification && verification !== "all") filters.verification = verification;
+  const confMin = sp.get("conf_min");
+  if (confMin) filters.min_confidence = parseFloat(confMin);
+  const confMax = sp.get("conf_max");
+  if (confMax) filters.max_confidence = parseFloat(confMax);
+  return filters;
+}
+
+/** Serialize filter state to URL search params. */
+function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
+  const sp = new URLSearchParams();
+  if (filters.site_ids?.length) sp.set("sites", filters.site_ids.join(","));
+  if (filters.date_from) sp.set("from", filters.date_from);
+  if (filters.date_to) sp.set("to", filters.date_to);
+  if (filters.species?.length) sp.set("species", filters.species.join(","));
+  if (filters.verification && filters.verification !== "all")
+    sp.set("verification", filters.verification);
+  if (filters.min_confidence !== undefined)
+    sp.set("conf_min", filters.min_confidence.toString());
+  if (filters.max_confidence !== undefined)
+    sp.set("conf_max", filters.max_confidence.toString());
+  return sp;
+}
+
+/** Check if any filter is active. */
+function hasActiveFilters(filters: EventFilterParams): boolean {
+  return (
+    (filters.site_ids?.length ?? 0) > 0 ||
+    !!filters.date_from ||
+    !!filters.date_to ||
+    (filters.species?.length ?? 0) > 0 ||
+    (!!filters.verification && filters.verification !== "all") ||
+    filters.min_confidence !== undefined ||
+    filters.max_confidence !== undefined
+  );
+}
 
 export default function VerifyPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+
+  // Parse filters from URL
+  const filters = useMemo(
+    () => filtersFromSearchParams(searchParams),
+    [searchParams]
+  );
+
+  // Track previous filters to reset page on change
+  const prevFiltersRef = useRef(filters);
+  useEffect(() => {
+    const prev = prevFiltersRef.current;
+    if (JSON.stringify(prev) !== JSON.stringify(filters)) {
+      setPage(0);
+      prevFiltersRef.current = filters;
+    }
+  }, [filters]);
+
+  // Debounced filters for API queries — prevents rapid-fire requests
+  const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
+
+  const setFilters = useCallback(
+    (next: EventFilterParams) => {
+      setSearchParams(filtersToSearchParams(next), { replace: true });
+    },
+    [setSearchParams]
+  );
 
   // Listen for navigation events from the modal
   useEffect(() => {
@@ -45,46 +140,121 @@ export default function VerifyPage() {
   });
   const detectionThreshold = project?.detection_threshold ?? 0;
 
-  // Get event count
-  const { data: countData } = useQuery({
+  // Get total event count (unfiltered)
+  const { data: totalCountData } = useQuery({
     queryKey: ["event-count", projectId],
     queryFn: () => eventsApi.count(projectId!),
     enabled: !!projectId,
   });
 
-  // Get events
+  // Get filtered event count
+  const isFiltered = hasActiveFilters(filters);
+  const isDebouncedFiltered = hasActiveFilters(debouncedFilters);
+  const { data: filteredCountData } = useQuery({
+    queryKey: ["event-count-filtered", projectId, debouncedFilters],
+    queryFn: () => eventsApi.count(projectId!, debouncedFilters),
+    enabled: !!projectId && isDebouncedFiltered,
+  });
+
+  // Get events with debounced filters
   const {
     data: events,
     isLoading,
     isFetching,
+    isPlaceholderData,
   } = useQuery({
-    queryKey: ["events", projectId, page],
+    queryKey: ["events", projectId, page, debouncedFilters],
     queryFn: () =>
       eventsApi.list({
         project_id: projectId!,
         skip: page * PAGE_SIZE,
         limit: PAGE_SIZE,
+        filters: debouncedFilters,
       }),
     enabled: !!projectId,
+    placeholderData: (prev) => prev,
   });
 
-  const totalEvents = countData?.count ?? 0;
+  // Fetch sites for name mapping in filter chips
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId!),
+    enabled: !!projectId && (filters.site_ids?.length ?? 0) > 0,
+  });
+  const siteNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of sites ?? []) map[s.id] = s.name;
+    return map;
+  }, [sites]);
+
+  const totalEvents = totalCountData?.count ?? 0;
+  const filteredEvents = isFiltered
+    ? (filteredCountData?.count ?? totalEvents)
+    : totalEvents;
   const hasMore = events && events.length === PAGE_SIZE;
 
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Browse and verify
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {totalEvents > 0
-              ? `${totalEvents} events`
-              : "Run a deployment analysis to get started"}
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Browse and verify
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {totalEvents > 0
+                ? isFiltered
+                  ? `${filteredEvents} of ${totalEvents} events`
+                  : `${totalEvents} events`
+                : "Run a deployment analysis to get started"}
+            </p>
+          </div>
+          {totalEvents > 0 && (
+            <Button
+              variant={filterPanelOpen ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterPanelOpen((v) => !v)}
+              className="gap-1.5"
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+              {isFiltered && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {[
+                    filters.site_ids?.length,
+                    filters.date_from ? 1 : 0,
+                    filters.date_to ? 1 : 0,
+                    filters.species?.length,
+                    filters.verification && filters.verification !== "all" ? 1 : 0,
+                    filters.min_confidence !== undefined || filters.max_confidence !== undefined ? 1 : 0,
+                  ].reduce((a: number, b) => a + (b || 0), 0)}
+                </Badge>
+              )}
+            </Button>
+          )}
         </div>
+
+        {/* Filter panel */}
+        <FilterPanel
+          filters={filters}
+          onChange={setFilters}
+          projectId={projectId!}
+          isOpen={filterPanelOpen}
+          onToggle={() => setFilterPanelOpen((v) => !v)}
+          classificationModelId={project?.classification_model_id}
+        />
+
+        {/* Filter chips */}
+        {isFiltered && (
+          <FilterChips
+            filters={filters}
+            onChange={setFilters}
+            filteredCount={filteredEvents}
+            totalCount={totalEvents}
+            siteNames={siteNames}
+          />
+        )}
 
         {/* Event cards */}
         {isLoading ? (
@@ -96,18 +266,28 @@ export default function VerifyPage() {
             <CardContent className="flex flex-col items-center justify-center py-16 text-center">
               <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">
-                No events yet
+                {isFiltered ? "No events match your filters" : "No events yet"}
               </p>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Events are generated automatically when you run a deployment
-                analysis. They group your camera trap images by time based on
-                the project's independence interval.
+                {isFiltered
+                  ? "Try adjusting or clearing your filters to see more events."
+                  : "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."}
               </p>
+              {isFiltered && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setFilters({})}
+                >
+                  Clear all filters
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
               {events.map((event) => (
                 <EventCard
                   key={event.id}
@@ -150,6 +330,7 @@ export default function VerifyPage() {
           projectId={projectId!}
           isOpen={!!selectedEventId}
           onClose={() => setSelectedEventId(null)}
+          filters={debouncedFilters}
         />
       </div>
     </div>

@@ -39,7 +39,7 @@ export function SpeciesSelectionModal({
         <DialogHeader>
           <DialogTitle>Configure species selection</DialogTitle>
           <DialogDescription>
-            Select which species to include in classifications.
+            Select which species to include in classifications
           </DialogDescription>
         </DialogHeader>
 

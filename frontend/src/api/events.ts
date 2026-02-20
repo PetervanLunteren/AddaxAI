@@ -7,7 +7,29 @@ import type {
   EventSummary,
   EventWithFiles,
   AdjacentEventsResponse,
+  EventFilterParams,
+  EventFilterOptions,
 } from "./types";
+
+/** Append filter params to a URLSearchParams instance. */
+function appendFilterParams(
+  searchParams: URLSearchParams,
+  filters?: EventFilterParams
+) {
+  if (!filters) return;
+  if (filters.site_ids?.length)
+    searchParams.set("site_ids", filters.site_ids.join(","));
+  if (filters.date_from) searchParams.set("date_from", filters.date_from);
+  if (filters.date_to) searchParams.set("date_to", filters.date_to);
+  if (filters.species?.length)
+    searchParams.set("species", filters.species.join(","));
+  if (filters.verification && filters.verification !== "all")
+    searchParams.set("verification", filters.verification);
+  if (filters.min_confidence !== undefined)
+    searchParams.set("min_confidence", filters.min_confidence.toString());
+  if (filters.max_confidence !== undefined)
+    searchParams.set("max_confidence", filters.max_confidence.toString());
+}
 
 export const eventsApi = {
   /** Generate or regenerate events for a project. */
@@ -17,11 +39,12 @@ export const eventsApi = {
     return api.post("/api/events/generate", { project_id: projectId });
   },
 
-  /** List event summaries for a project. */
+  /** List event summaries for a project with optional filters. */
   list: async (params: {
     project_id: string;
     skip?: number;
     limit?: number;
+    filters?: EventFilterParams;
   }): Promise<EventSummary[]> => {
     const searchParams = new URLSearchParams();
     searchParams.set("project_id", params.project_id);
@@ -29,13 +52,20 @@ export const eventsApi = {
       searchParams.set("skip", params.skip.toString());
     if (params.limit !== undefined)
       searchParams.set("limit", params.limit.toString());
+    appendFilterParams(searchParams, params.filters);
     return api.get<EventSummary[]>(`/api/events?${searchParams.toString()}`);
   },
 
-  /** Get total event count for a project. */
-  count: async (projectId: string): Promise<{ count: number }> => {
+  /** Get total event count for a project with optional filters. */
+  count: async (
+    projectId: string,
+    filters?: EventFilterParams
+  ): Promise<{ count: number }> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("project_id", projectId);
+    appendFilterParams(searchParams, filters);
     return api.get<{ count: number }>(
-      `/api/events/count?project_id=${projectId}`
+      `/api/events/count?${searchParams.toString()}`
     );
   },
 
@@ -44,13 +74,26 @@ export const eventsApi = {
     return api.get<EventWithFiles>(`/api/events/${eventId}`);
   },
 
-  /** Get adjacent event IDs for navigation. */
+  /** Get adjacent event IDs for navigation with optional filters. */
   getAdjacent: async (
     eventId: string,
-    projectId: string
+    projectId: string,
+    filters?: EventFilterParams
   ): Promise<AdjacentEventsResponse> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("project_id", projectId);
+    appendFilterParams(searchParams, filters);
     return api.get<AdjacentEventsResponse>(
-      `/api/events/${eventId}/adjacent?project_id=${projectId}`
+      `/api/events/${eventId}/adjacent?${searchParams.toString()}`
+    );
+  },
+
+  /** Get available filter options for a project. */
+  getFilterOptions: async (
+    projectId: string
+  ): Promise<EventFilterOptions> => {
+    return api.get<EventFilterOptions>(
+      `/api/events/filter-options?project_id=${projectId}`
     );
   },
 };

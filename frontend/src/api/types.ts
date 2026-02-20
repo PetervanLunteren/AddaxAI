@@ -211,6 +211,30 @@ export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
 }
 
+// Event filter types
+export type VerificationFilter =
+  | "all"
+  | "fully_verified"
+  | "not_fully_verified"
+  | "unverified_representative"
+  | "verified_representative"
+  | "none_verified";
+
+export interface EventFilterParams {
+  site_ids?: string[];
+  date_from?: string;
+  date_to?: string;
+  species?: string[];
+  verification?: VerificationFilter;
+  min_confidence?: number;
+  max_confidence?: number;
+}
+
+export interface EventFilterOptions {
+  species: string[];
+  date_range: { min: string; max: string } | null;
+}
+
 // Event types
 export interface EventSummary {
   id: string;

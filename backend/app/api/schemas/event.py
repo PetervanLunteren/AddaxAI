@@ -61,3 +61,17 @@ class AdjacentEventsResponse(BaseModel):
     next_unverified_id: str | None
     current_index: int
     total_count: int
+
+
+class DateRange(BaseModel):
+    """Date range with min and max."""
+
+    min: datetime
+    max: datetime
+
+
+class EventFilterOptions(BaseModel):
+    """Available filter options for a project's events."""
+
+    species: list[str]
+    date_range: DateRange | None

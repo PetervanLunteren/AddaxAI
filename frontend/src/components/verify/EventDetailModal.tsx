@@ -42,7 +42,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Slider } from "../ui/slider";
-import type { FileWithDetections } from "../../api/types";
+import type { EventFilterParams, FileWithDetections } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
@@ -56,6 +56,7 @@ interface EventDetailModalProps {
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
+  filters?: EventFilterParams;
 }
 
 export function EventDetailModal({
@@ -63,6 +64,7 @@ export function EventDetailModal({
   projectId,
   isOpen,
   onClose,
+  filters,
 }: EventDetailModalProps) {
   const queryClient = useQueryClient();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
@@ -104,10 +106,10 @@ export function EventDetailModal({
     enabled: !!eventId && isOpen,
   });
 
-  // Fetch adjacent events for navigation
+  // Fetch adjacent events for navigation (scoped to filtered set)
   const { data: adjacent } = useQuery({
-    queryKey: ["event-adjacent", eventId, projectId],
-    queryFn: () => eventsApi.getAdjacent(eventId!, projectId),
+    queryKey: ["event-adjacent", eventId, projectId, filters],
+    queryFn: () => eventsApi.getAdjacent(eventId!, projectId, filters),
     enabled: !!eventId && isOpen,
   });
 
@@ -587,7 +589,14 @@ export function EventDetailModal({
         case "a":
         case "A":
           e.preventDefault();
-          if (hiddenDetections.length > 0) {
+          if (e.metaKey || e.ctrlKey) {
+            // Cmd+A / Ctrl+A: select all files
+            if (files.length > 1) {
+              const all = new Set<number>();
+              for (let i = 0; i < files.length; i++) all.add(i);
+              setBulkSelection(all);
+            }
+          } else if (hiddenDetections.length > 0) {
             addBoxMutation.mutate();
           }
           break;
@@ -789,9 +798,20 @@ export function EventDetailModal({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium">Detection threshold</span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {(detectionThreshold * 100).toFixed(0)}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {(detectionThreshold * 100).toFixed(0)}%
+                        </span>
+                        {localThreshold !== null && (
+                          <button
+                            onClick={() => setLocalThreshold(null)}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                            title={`Reset to project default (${(projectThreshold * 100).toFixed(0)}%)`}
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <Slider
                       value={[detectionThreshold]}
@@ -819,9 +839,20 @@ export function EventDetailModal({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium">Brightness</span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {brightness}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {brightness}%
+                        </span>
+                        {brightness !== 50 && (
+                          <button
+                            onClick={() => setBrightness(50)}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                            title="Reset to 50%"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <Slider
                       value={[brightness]}
@@ -849,9 +880,20 @@ export function EventDetailModal({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium">Contrast</span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {contrast}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {contrast}%
+                        </span>
+                        {contrast !== 50 && (
+                          <button
+                            onClick={() => setContrast(50)}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                            title="Reset to 50%"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <Slider
                       value={[contrast]}
@@ -1037,6 +1079,7 @@ export function EventDetailModal({
                     ["Del", "Delete detection"],
                     ["Scroll", "Zoom in / out"],
                     ["Shift + Click", "Select file range"],
+                    [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all files"],
                     ["B (hold)", "Hide boxes"],
                     ["Esc", "Deselect / close"],
                   ].map(([key, action]) => (

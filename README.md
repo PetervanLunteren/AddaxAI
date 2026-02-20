@@ -2,14 +2,14 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] for the best frame selection, which confidence are you taking? the detection of the classifcation confidence?
-- [ ] Add filters to the browsing and make sure the verification does the selection, not all. 
 - [ ] how does videos work?
 - [ ] how does it work for SpeciesNet?
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
 
+## TODO crop verification
+- [ ] add a crop verifiction page that verifies instances, just like the mothbox tool. That means a DB migration to add verification status to instances, and add an enbedding step in the AI analysis that runs DINOv2 ViT-S/14 (vits14) on all crops (from all images and from the best frames of videos). Investigate its potential and how it would work for this project. This is a major task. 
+
 ## TODO priority 1
-- [ ] I have a hunch that the websockets of the analysis lose connection If i switch windwows or do something else. Could that be true? 
 - [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 
@@ -17,7 +17,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 ## TODO priority 3
-- [ ] crop verification option
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [ ] make the backgrounds of all modals not only overlay dark, bot also vague. 
 
