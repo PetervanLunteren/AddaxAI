@@ -431,6 +431,7 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
           src={videoUrl}
           crossOrigin="anonymous"
           controls
+          controlsList="nodownload"
           className="w-full h-full object-contain"
           onPlay={handlePlay}
           onPause={handlePause}

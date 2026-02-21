@@ -6,6 +6,7 @@
 import {
   Pencil,
   SquarePlus,
+  Play,
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -50,9 +51,9 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Verification guide</SheetTitle>
+          <SheetTitle>Event verification guide</SheetTitle>
           <SheetDescription>
-            How to review and verify detections
+            How to review and verify detections event by event
           </SheetDescription>
         </SheetHeader>
 
@@ -63,9 +64,9 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                The AI detects and labels animals automatically. You can browse
-                your events here, or verify them by confirming or correcting
-                the detections in each image.
+                The AI detects and labels animals, people, and vehicles
+                automatically. You can browse your events here and optionally
+                verify them by confirming or correcting the detections.
               </p>
             </div>
           </section>
@@ -76,34 +77,47 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Each event groups images captured close together in time. The
-                event opens to its representative image: the clearest image with
-                the most individuals. You don't need to verify every image,
-                verifying the representative image is generally enough to get
-                accurate statistics. If you wish to verify all images, you can
-                by setting the navigation dropdown to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">file</code>.
+                Each event groups images and videos captured close together in
+                time. The event opens to its representative image or frame,
+                scored by number of detections, how much of the frame they
+                fill, and image sharpness. You don't need to verify every file;
+                verifying the representative is generally enough to get accurate
+                statistics. If you wish to verify all files, you can by setting
+                the navigation dropdown
+                to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">file</code>.
+              </p>
+              <p>
+                For video files, verification works at the frame level defined
+                by the project setting "Video frame rate" (default 1 frame per
+                second). It works the same as images: the representative frame
+                is shown first, but you can view and verify all analyzed frames.
+                Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">P</code> to
+                toggle between frame view and video playback.
               </p>
               <p>
                 You can add missing detections
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code> or
                 draw them manually
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">D</code>.
-                If the labels look right, press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
-                verify and advance to the next unverified event. You only need to
+                If all detections are correctly labelled,
+                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
+                verify and move to the next unverified item. You only need to
                 correct what the AI got wrong.
               </p>
               <p>
                 A quick workflow is to review the labels,
                 use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">↓</code> and <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Tab</code> to
                 correct any mistakes,
-                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">X</code> to
+                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Del</code> to
                 remove false positives, then
                 hit <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
-                verify and move to the next event.
+                verify and move on.
                 Use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + ← / →</code> to
                 flip through files within an event without changing scope.
                 To verify multiple files at once, <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + Click</code> thumbnails
-                in the filmstrip to select a range, then press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
+                in the filmstrip to select a range,
+                or <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"} + A</code> to
+                select all, then press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
                 verify them all.
               </p>
               <p>
@@ -111,7 +125,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 the bottom of the sidebar to see all shortcuts. You can assign
                 species to
                 keys <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code>,
-                so you can relabel every detection in an image with one key.
+                so you can relabel every detection in a file with one key.
               </p>
             </div>
           </section>
@@ -127,6 +141,9 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               <ToolRow icon={<SquarePlus className="h-4 w-4" />}>
                 Promote the next below-threshold AI detection into a new
                 detection.
+              </ToolRow>
+              <ToolRow icon={<Play className="h-4 w-4" />}>
+                Toggle between frame view and video playback (for video files).
               </ToolRow>
               <ToolRow icon={<ZoomIn className="h-4 w-4" />}>
                 Zoom in.
@@ -151,13 +168,14 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 Mark as favorite.
               </ToolRow>
               <ToolRow icon={<Download className="h-4 w-4" />}>
-                Download the image with annotations.
+                Download the current view with annotations.
               </ToolRow>
               <ToolRow icon={<FolderOpen className="h-4 w-4" />}>
                 Open the source file in your file explorer.
               </ToolRow>
             </div>
           </section>
+
 
         </div>
       </SheetContent>

@@ -72,7 +72,6 @@ def score_detections(
     Args:
         detections: list of (candidate_key, confidence, bbox) tuples.
             bbox is (x, y, width, height).
-            Caller pre-filters to animal-only detections.
     Returns:
         Dict mapping candidate_key -> score.
         Keys with no qualifying detections are omitted.

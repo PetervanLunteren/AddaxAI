@@ -5,7 +5,7 @@ After video detection (Phase 1) produces per-frame detections with confidence
 scores, selects the "best" frame using detection confidence as the primary
 signal and image sharpness (Laplacian variance) as a tiebreaker.
 
-Blank videos (no animal detections) get the sharpest sampled frame.
+Blank videos (no detections) get the sharpest sampled frame.
 
 Created by Claude Code on 2026-02-13
 """
@@ -97,7 +97,7 @@ def _blank_video_sample_frames(video_path: str) -> list[int]:
     if total_frames <= 0:
         return [0]
 
-    num_samples = min(10, total_frames)
+    num_samples = min(3, total_frames)
     step = max(1, total_frames // num_samples)
     return list(range(0, total_frames, step))[:num_samples]
 
@@ -129,7 +129,7 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
         det_tuples = [
             (str(det["frame_number"]), float(det.get("conf", 0)), tuple(det["bbox"]))
             for det in detections
-            if det.get("frame_number") is not None and str(det.get("category")) == "1"
+            if det.get("frame_number") is not None
         ]
 
         frame_scores = score_detections(det_tuples)

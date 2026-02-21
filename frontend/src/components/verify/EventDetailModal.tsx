@@ -611,6 +611,13 @@ export function EventDetailModal({
             setOpenLabelPickerFor(selectedDetectionId);
           }
           break;
+        case "p":
+        case "P":
+          if (currentFile && isPlayableVideo(currentFile)) {
+            e.preventDefault();
+            setViewMode(viewMode === "video" ? "frame" : "video");
+          }
+          break;
         case "v":
         case "V":
           e.preventDefault();
@@ -677,6 +684,7 @@ export function EventDetailModal({
     queryClient,
     bulkSelection,
     files,
+    viewMode,
   ]);
 
   // B key hold: momentarily hide boxes
@@ -1129,45 +1137,62 @@ export function EventDetailModal({
               {showShortcuts && (
                 <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowShortcuts(false)} />
-                <div className="absolute bottom-10 right-6 w-[400px] mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50">
-                  {[
-                    ["Enter", "Verify + next unverified"],
-                    ["E", "Empty + next unverified"],
-                    ["← →", "Navigate"],
-                    ["Shift + ← →", "Navigate files within event"],
-                    ["↑ ↓", "Select detection"],
-                    ["Tab", "Change label"],
-                    ["A", "Add box"],
-                    ["D", "Toggle draw mode"],
-                    ["Del", "Delete detection"],
-                    ["Scroll", "Zoom in / out"],
-                    ["Shift + Click", "Select file range"],
-                    [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all files"],
-                    ["B (hold)", "Hide boxes"],
-                    ["Esc", "Deselect / close"],
-                  ].map(([key, action]) => (
-                    <div key={key} className="flex items-center text-xs gap-3 h-7">
-                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key}</code>
-                      <span>{action}</span>
+                <div className="absolute bottom-10 right-6 mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50 whitespace-nowrap">
+                  <div className="flex gap-8">
+                    {/* Left column: navigation & selection */}
+                    <div>
+                      {[
+                        ["← →", "Navigate"],
+                        ["Shift + ← →", "Files within event"],
+                        ["↑ ↓", "Select detection"],
+                        ["Shift + Click", "Select file range"],
+                        [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all files"],
+                        ["Scroll", "Zoom in / out"],
+                        ["P", "Toggle video / frame"],
+                        ["B (hold)", "Hide boxes"],
+                        ["Esc", "Deselect / close"],
+                      ].map(([key, action]) => (
+                        <div key={key} className="flex items-center text-xs gap-3 h-7">
+                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                          <span>{action}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
 
-                  <div className="border-t my-2" />
+                    {/* Right column: actions & label shortcuts */}
+                    <div>
+                      {[
+                        ["Enter", "Verify + next unverified"],
+                        ["E", "Empty + next unverified"],
+                        ["Tab", "Change label"],
+                        ["A", "Add box"],
+                        ["D", "Toggle draw mode"],
+                        ["Del", "Delete detection"],
+                      ].map(([key, action]) => (
+                        <div key={key} className="flex items-center text-xs gap-3 h-7">
+                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                          <span>{action}</span>
+                        </div>
+                      ))}
 
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <div key={n} className="flex items-center text-xs gap-3 h-7">
-                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
-                      <span>Change all to</span>
-                      <LabelPicker
-                        value={shortcutLabels[n]?.value ?? null}
-                        onSelect={(option) =>
-                          updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
-                        }
-                        options={labelOptions}
-                        isLoading={labelOptionsLoading}
-                      />
+                      <div className="border-t my-2" />
+
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <div key={n} className="flex items-center text-xs gap-3 h-7">
+                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
+                          <span>Change all to</span>
+                          <LabelPicker
+                            value={shortcutLabels[n]?.value ?? null}
+                            onSelect={(option) =>
+                              updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
+                            }
+                            options={labelOptions}
+                            isLoading={labelOptionsLoading}
+                          />
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
                 </>
               )}

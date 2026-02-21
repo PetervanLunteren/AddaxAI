@@ -133,12 +133,11 @@ def _select_representative_file(files: list[File]) -> str | None:
     if not files:
         return None
 
-    # Build detection tuples: (file_id, confidence, bbox) for animal detections
+    # Build detection tuples: (file_id, confidence, bbox)
     det_tuples = [
         (file.id, det.confidence, (det.bbox_x, det.bbox_y, det.bbox_width, det.bbox_height))
         for file in files
         for det in file.detections
-        if det.category == "animal"
     ]
 
     scores = score_detections(det_tuples)
@@ -146,7 +145,7 @@ def _select_representative_file(files: list[File]) -> str | None:
     total_dets = sum(len(f.detections) for f in files)
     logger.debug(
         f"Representative selection: {len(files)} files, "
-        f"{total_dets} total detections, {len(det_tuples)} animal, "
+        f"{total_dets} total detections, {len(det_tuples)} with bbox, "
         f"{len(scores)} scored above threshold"
     )
 

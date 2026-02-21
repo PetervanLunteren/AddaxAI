@@ -3,10 +3,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 ## TODO save all frames
-- [x] save all frames 
-- [ ] there are a bunch of todo's below
 - [ ] make sure the whole ML pipeline is efficient with the new frame saving etc. Can we see any improvements?
-
+- [ ] What happens when multiple videos are merged into one event? SO if the project settings are independence duration 30 min, and the videos are 5 min apart, what happens when we toggle video playback?
 
 ## TODO verification task
 - [ ] how does videos work?
@@ -17,17 +15,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
-- [ ] there should be a shotcut keystroke for playing the video (toggle video / frame). Make sure to add that to the keystroke help.
-- [ ] Update the help text to add the new workflow of videos. 
 
 
-- [ ] Is the union of the boxes not takin into account? Is the selection for best frame not the same as best image of event?
-    - For videos with animal detections: Groups detections by frame, scores each frame by sum(confidence * bbox_area), picks the highest-scoring frame
-
-- [ ] should we do less?
-    - For blank videos: Samples ~10 evenly-spaced frames, picks the sharpest (Laplacian variance)
-
-- [ ] It seems like another class than animal is not taking into the account of representative image / frame. Why? If a person is detected, its still an observation. Same with vehicle. 
 
 ## TODO crop verification
 - [ ] add a crop verifiction page that verifies instances, just like the mothbox tool. That means a DB migration to add verification status to instances, and add an enbedding step in the AI analysis that runs DINOv2 ViT-S/14 (vits14) on all crops (from all images and from the best frames of videos). Investigate its potential and how it would work for this project. This is a major task. 
@@ -38,6 +27,7 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 - [ ] if another project has already run a deployment with videos, it saves files to the /.addaxai/ folder. Those frames are then picked up as being images if we process them again. Hoe to avoid? We could of course say that the folder scanner should read the files inside .addaxai, but the real problem would be MegaDetector, as it will just search for everything recusively. Would it make sense to save the frames with an obscure extention like so that MD and the folder scanner doesnt see them as files, and then just edit the extentsion during runtime if we need to read in the frames later?
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
+- [ ] do not use instances of "blank", "false detection", "vide", "no cv result", (case insensitive) into the smoothing function and do not load into the DB. They should remain in the JSON as raw data, but should otherwise be ignored. 
 
 ## TODO priority 2
 

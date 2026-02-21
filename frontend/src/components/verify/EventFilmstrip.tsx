@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Check, Film } from "lucide-react";
+import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -76,12 +76,6 @@ export function EventFilmstrip({
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
-              {/* Video badge */}
-              {(file.file_type === "video" || (file.file_type === "frame" && file.source_video_id)) && (
-                <div className="absolute bottom-0.5 left-0.5 bg-black/60 rounded-sm p-0.5">
-                  <Film className="h-2.5 w-2.5 text-white" />
-                </div>
-              )}
               {/* Detection overlay */}
               {(() => {
                 let dets = file.detections.filter(
@@ -146,8 +140,8 @@ export function EventFilmstrip({
               )}
               {/* Representative chip */}
               {isRepresentative && (
-                <span className="absolute top-0.5 left-0.5 bg-primary text-white text-[10px] leading-none font-medium px-1 py-0.5 rounded-sm">
-                  Representative
+                <span className="absolute top-0.5 left-0.5 bg-primary text-white text-[11px] leading-none font-medium px-1.5 py-1 rounded-sm">
+                  Rep.
                 </span>
               )}
               {/* Bulk selection overlay */}
