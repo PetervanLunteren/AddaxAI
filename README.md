@@ -4,7 +4,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO save all frames
 - [ ] make sure the whole ML pipeline is efficient with the new frame saving etc. Can we see any improvements?
-- [ ] What happens when multiple videos are merged into one event? SO if the project settings are independence duration 30 min, and the videos are 5 min apart, what happens when we toggle video playback?
 
 ## TODO verification task
 - [ ] how does videos work?
@@ -12,6 +11,35 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] fix the grid view, so chips in the images like Connect, etc. 
 
 
+
+
+
+
+
+❯ Lets make a plan for this                                                                                                                 
+                                                                                                                                            
+  Efficiency issues identified
+
+  1. Triple/quadruple frame extraction from videos (the big one)
+
+  The same video file is decoded up to 4 times:
+
+  ┌──────────────────────────┬─────────────────────────────────────────────────┬─────────────────────────────────────────────────────────┐
+  │           Step           │               Who extracts frames               │                         Method                          │
+  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Phase 1 (detection)      │ process_video (MegaDetector internal)           │ Decodes video, extracts at FPS, runs detection          │
+  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Phase 1b (save to disk)  │ extract_frames_from_video (MegaDetector CLI)    │ Decodes video again, saves JPEGs to disk                │
+  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Phase 1c (best frame)    │ run_callback_on_frames() in best_frame.py       │ Decodes video again, reads candidate frames             │
+  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Phase 2 (classification) │ run_callback_on_frames() in detection_worker.py │ Decodes video again, extracts frames for classification │
+  └──────────────────────────┴─────────────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
+
+  After Phase 1b completes, frames are on disk at .addaxai/video_frames/{video_name}/frame{N:06d}.jpg. But Phases 1c and 2 don't read from
+  disk — they re-decode the video.                                                                                                              
+                                                                                                                                          
+  decode twice, but improve steps 1 c and 2.                                                                                                
 
 
 
@@ -30,11 +58,14 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] do not use instances of "blank", "false detection", "vide", "no cv result", (case insensitive) into the smoothing function and do not load into the DB. They should remain in the JSON as raw data, but should otherwise be ignored. 
 
 ## TODO priority 2
-
+- [ ] add a feature to 
 
 ## TODO priority 3
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [ ] make the backgrounds of all modals not only overlay dark, bot also vague. 
+
+## TODO after beta version
+- [ ] add a feature that allows datetime offset. This should happen at the "new deployment" options. Perhaps something that says "your data spans X days/weeks, etc. " Click here to see the burned in pixel dates (show a few images / frames) and show the extracted datetime next to it. Then users can add an offset to all data in the deployment. Add fast options to switch from AM to PM etc. +12:00 and -12:00. 
 
 ## Architecture
 

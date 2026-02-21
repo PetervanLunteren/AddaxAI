@@ -100,6 +100,8 @@ const INDEPENDENCE_INTERVAL_OPTIONS = [
   { value: "900", label: "15 minutes" },
   { value: "1800", label: "30 minutes" },
   { value: "3600", label: "60 minutes" },
+  // Debugging option: large interval to group many videos into one event
+  { value: "2592000", label: "1 month (for debugging)" },
 ];
 
 const VIDEO_FPS_OPTIONS = [

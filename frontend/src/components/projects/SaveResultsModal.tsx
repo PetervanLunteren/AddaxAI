@@ -51,6 +51,12 @@ function Code({ children }: { children: React.ReactNode }) {
   );
 }
 
+function formatDelta(before: number, after: number): string {
+  const delta = after - before;
+  const sign = delta >= 0 ? "+" : "";
+  return `${sign}${delta}`;
+}
+
 function SmallCode({ children }: { children: React.ReactNode }) {
   return (
     <code className="bg-muted px-1 py-0.5 rounded">{children}</code>
@@ -101,6 +107,7 @@ function StatCard({
           <Code>{before.total.toLocaleString()}</Code>
           {" \u2192 "}
           <Code>{after.total.toLocaleString()}</Code>
+          {" "}<Code>({formatDelta(before.total, after.total)})</Code>
         </p>
 
         {diff.length > 0 && (
@@ -131,6 +138,7 @@ function StatCard({
                       <SmallCode>{b}</SmallCode>
                       {" \u2192 "}
                       <SmallCode>{a}</SmallCode>
+                      {" "}<SmallCode>({formatDelta(b, a)})</SmallCode>
                     </span>
                   </div>
                 ))}

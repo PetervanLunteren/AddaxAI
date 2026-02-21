@@ -79,6 +79,8 @@ export function EventDetailModal({
   const [drawLabel, setDrawLabel] = useState<{ category: string; species: string | undefined } | null>(null);
   const [bulkSelection, setBulkSelection] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
+  const [videoPopoverOpen, setVideoPopoverOpen] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
@@ -185,6 +187,8 @@ export function EventDetailModal({
     }
     setSelectedDetectionId(null);
     setViewMode("frame");
+    setSelectedVideoId(null);
+    setVideoPopoverOpen(false);
   }, [eventId, event?.id]);
 
   const files = event?.files ?? [];
@@ -198,21 +202,33 @@ export function EventDetailModal({
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
       : undefined;
 
+  // Derive list of unique source videos from the event's files
+  const sourceVideos = useMemo(() => {
+    const videoMap = new Map<string, { id: string; frameCount: number }>();
+    for (const f of files) {
+      if (f.source_video_id && !videoMap.has(f.source_video_id)) {
+        const frameCount = files.filter(
+          (ff) => ff.source_video_id === f.source_video_id
+        ).length;
+        videoMap.set(f.source_video_id, { id: f.source_video_id, frameCount });
+      }
+    }
+    return [...videoMap.values()];
+  }, [files]);
+
   // For frame files: aggregate detections from all sibling frames (same source video)
   // so the VideoPlayer can show boxes across all frames during playback
   const videoPlaybackProps = useMemo(() => {
-    if (!currentFile) return undefined;
-    if (currentFile.file_type === "frame" && currentFile.source_video_id) {
-      const siblingDetections = files
-        .filter((f) => f.source_video_id === currentFile.source_video_id)
-        .flatMap((f) => f.detections);
-      return {
-        sourceVideoId: currentFile.source_video_id,
-        allDetections: siblingDetections,
-      };
-    }
-    return undefined;
-  }, [currentFile, files]);
+    const videoId = selectedVideoId ?? currentFile?.source_video_id;
+    if (!videoId) return undefined;
+    const siblingDetections = files
+      .filter((f) => f.source_video_id === videoId)
+      .flatMap((f) => f.detections);
+    return {
+      sourceVideoId: videoId,
+      allDetections: siblingDetections,
+    };
+  }, [currentFile, files, selectedVideoId]);
 
   // Compute most common detection label for smart draw defaults
   const defaultLabel = useMemo(() => {
@@ -615,7 +631,17 @@ export function EventDetailModal({
         case "P":
           if (currentFile && isPlayableVideo(currentFile)) {
             e.preventDefault();
-            setViewMode(viewMode === "video" ? "frame" : "video");
+            if (viewMode === "video") {
+              // Toggling OFF — just switch back to frame mode
+              setViewMode("frame");
+              setVideoPopoverOpen(false);
+            } else if (sourceVideos.length > 1) {
+              // Multiple videos — open selector popover
+              setVideoPopoverOpen(true);
+            } else {
+              // Single video — toggle directly
+              setViewMode("video");
+            }
           }
           break;
         case "v":
@@ -685,6 +711,7 @@ export function EventDetailModal({
     bulkSelection,
     files,
     viewMode,
+    sourceVideos,
   ]);
 
   // B key hold: momentarily hide boxes
@@ -793,26 +820,87 @@ export function EventDetailModal({
               </Button>
               {/* Video toggle (for video files and frame files from a video) */}
               {(currentFile.file_type === "video" || (currentFile.file_type === "frame" && currentFile.source_video_id)) && (
-                <Button
-                  variant={viewMode === "video" ? "default" : "ghost"}
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setViewMode(viewMode === "video" ? "frame" : "video")}
-                  disabled={!isPlayableVideo(currentFile)}
-                  title={
-                    !isPlayableVideo(currentFile)
-                      ? "Video format not supported for browser playback"
-                      : viewMode === "video"
-                        ? "View frame"
-                        : "Play video"
-                  }
-                >
-                  {viewMode === "video" ? (
-                    <ImageIcon className="h-4 w-4" />
-                  ) : (
-                    <Play className="h-4 w-4" />
-                  )}
-                </Button>
+                sourceVideos.length > 1 ? (
+                  <Popover open={videoPopoverOpen} onOpenChange={setVideoPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={viewMode === "video" ? "default" : "ghost"}
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          if (viewMode === "video") {
+                            setViewMode("frame");
+                            setVideoPopoverOpen(false);
+                          }
+                          // Opening is handled by Popover onOpenChange
+                        }}
+                        disabled={!isPlayableVideo(currentFile)}
+                        title={
+                          !isPlayableVideo(currentFile)
+                            ? "Video format not supported for browser playback"
+                            : viewMode === "video"
+                              ? "View frame"
+                              : "Play video"
+                        }
+                      >
+                        {viewMode === "video" ? (
+                          <ImageIcon className="h-4 w-4" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent side="right" className="w-48 p-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
+                          Select video
+                        </p>
+                        {sourceVideos.map((sv, i) => (
+                          <button
+                            key={sv.id}
+                            className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
+                            onClick={() => {
+                              setSelectedVideoId(sv.id);
+                              const firstFrameIndex = files.findIndex(
+                                (f) => f.source_video_id === sv.id
+                              );
+                              if (firstFrameIndex >= 0)
+                                setSelectedFileIndex(firstFrameIndex);
+                              setVideoPopoverOpen(false);
+                              setViewMode("video");
+                            }}
+                          >
+                            Video {i + 1}{" "}
+                            <span className="text-muted-foreground">
+                              ({sv.frameCount} frame{sv.frameCount !== 1 ? "s" : ""})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <Button
+                    variant={viewMode === "video" ? "default" : "ghost"}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode(viewMode === "video" ? "frame" : "video")}
+                    disabled={!isPlayableVideo(currentFile)}
+                    title={
+                      !isPlayableVideo(currentFile)
+                        ? "Video format not supported for browser playback"
+                        : viewMode === "video"
+                          ? "View frame"
+                          : "Play video"
+                    }
+                  >
+                    {viewMode === "video" ? (
+                      <ImageIcon className="h-4 w-4" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
+                  </Button>
+                )
               )}
               <div className="w-6 border-t my-0.5" />
               <Button

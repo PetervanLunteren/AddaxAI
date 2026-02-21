@@ -4,7 +4,7 @@
  * Shows small thumbnails with selection highlight and verified status.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { API_BASE_URL } from "../../lib/api-client";
@@ -33,6 +33,15 @@ export function EventFilmstrip({
 }: EventFilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
+
+  // Count unique source videos in this event
+  const videoCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const f of files) {
+      if (f.source_video_id) ids.add(f.source_video_id);
+    }
+    return ids.size;
+  }, [files]);
 
   // Scroll selected thumbnail into view
   useEffect(() => {
@@ -155,7 +164,9 @@ export function EventFilmstrip({
       <div className="text-center text-xs text-muted-foreground pb-1">
         {bulkSelection && bulkSelection.size > 1
           ? `${bulkSelection.size} files selected`
-          : `Image ${selectedIndex + 1} of ${files.length}`}
+          : videoCount === 0
+            ? `Image ${selectedIndex + 1} of ${files.length}`
+            : `Frame ${selectedIndex + 1} of ${files.length} · ${videoCount} video${videoCount !== 1 ? "s" : ""}`}
       </div>
     </div>
   );
