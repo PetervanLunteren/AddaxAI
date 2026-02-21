@@ -17,7 +17,7 @@ import asyncio
 import json
 import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -34,6 +34,7 @@ from app.ml.json_utils import (
     extract_animal_detections,
 )
 from app.models import Detection, File
+from app.utils.video_utils import _filename_to_frame_number
 
 logger = get_logger(__name__)
 
@@ -732,13 +733,18 @@ def load_json_to_database(
         # Group detections by file
         file_detections = defaultdict(list)
 
+        # Check for extracted video frames directory
+        video_frames_dir = deployment_folder / ".addaxai" / "video_frames"
+        has_extracted_frames = video_frames_dir.exists()
+
         for img in results.get("images", []):
             relative_file = img["file"]
             absolute_path = (deployment_folder / relative_file).resolve()
 
             # Determine file type (video or image)
             file_format = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
-            file_type = "video" if file_format in video_extensions else "image"
+            is_video = file_format in video_extensions
+            file_type = "video" if is_video else "image"
 
             # Get or create File record
             # First check by file_id if provided in JSON
@@ -781,8 +787,8 @@ def load_json_to_database(
                 best_frame_number = img.get("best_frame_number")
                 best_frame_path = None
                 if best_frame_number is not None:
-                    video_stem = absolute_path.stem
-                    best_frame_path = str(deployment_folder / ".addaxai" / "frames" / f"{video_stem}.jpg")
+                    video_name = absolute_path.name
+                    best_frame_path = str(deployment_folder / ".addaxai" / "video_frames" / video_name / f"frame{best_frame_number:06d}.jpg")
 
                 # Frame rate (video only) - output by MegaDetector's process_video
                 frame_rate = img.get("frame_rate")
@@ -805,8 +811,66 @@ def load_json_to_database(
                 db.add(file_record)
                 db.flush()  # Get file_record.id
 
-            # Track categories for this file (to determine observation_type)
-            file_categories: set[str] = set()
+            # For video files with extracted frames: create frame File rows
+            # and build a mapping from frame_number -> frame File record
+            frame_file_map: dict[int, File] = {}
+            if is_video and has_extracted_frames:
+                # MegaDetector's extract_frames_from_video uses the full
+                # filename (including extension) as the subdirectory name
+                video_name = absolute_path.name
+                frames_subdir = video_frames_dir / video_name
+
+                if frames_subdir.exists():
+                    video_timestamp = file_record.timestamp
+                    native_frame_rate = img.get("frame_rate") or 30.0
+
+                    # Find all extracted frame JPEGs
+                    frame_jpgs = sorted(frames_subdir.glob("frame*.jpg"))
+
+                    # Read dimensions from the first frame JPEG (all frames
+                    # from the same video share the same resolution)
+                    frame_width = img.get("width")
+                    frame_height = img.get("height")
+                    if (not frame_width or not frame_height) and frame_jpgs:
+                        from PIL import Image as PILImage
+                        with PILImage.open(frame_jpgs[0]) as pil_img:
+                            frame_width, frame_height = pil_img.size
+
+                    for frame_jpg in frame_jpgs:
+                        try:
+                            frame_num = _filename_to_frame_number(frame_jpg.name)
+                        except ValueError:
+                            continue
+
+                        # Compute timestamp offset from video start
+                        frame_offset_seconds = frame_num / native_frame_rate
+                        frame_timestamp = video_timestamp + timedelta(seconds=frame_offset_seconds)
+
+                        frame_file = File(
+                            id=str(uuid.uuid4()),
+                            deployment_id=deployment_id,
+                            file_path=str(frame_jpg),
+                            file_type="frame",
+                            file_format="jpg",
+                            size_bytes=frame_jpg.stat().st_size if frame_jpg.exists() else None,
+                            timestamp=frame_timestamp,
+                            width_px=frame_width,
+                            height_px=frame_height,
+                            frame_rate=native_frame_rate,
+                            source_video_id=file_record.id,
+                            source_frame_number=frame_num,
+                        )
+                        db.add(frame_file)
+                        frame_file_map[frame_num] = frame_file
+
+                    db.flush()
+                    logger.debug(
+                        f"Created {len(frame_file_map)} frame records for video {video_name}"
+                    )
+
+            # Track categories per-frame (for frame observation_type) and per-video
+            frame_categories: dict[int, set[str]] = defaultdict(set)
+            video_categories: set[str] = set()
 
             # Create Detection records
             for det in img.get("detections", []):
@@ -817,7 +881,7 @@ def load_json_to_database(
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
 
-                file_categories.add(category)
+                video_categories.add(category)
 
                 # Count by category
                 if category == "animal":
@@ -863,8 +927,14 @@ def load_json_to_database(
                 # Extract frame_number if present (for video detections)
                 frame_number = det.get("frame_number")
 
+                # Map detection to frame File if available, otherwise to video/image File
+                detection_file_id = file_record.id
+                if frame_number is not None and frame_number in frame_file_map:
+                    detection_file_id = frame_file_map[frame_number].id
+                    frame_categories[frame_number].add(category)
+
                 detection_data = DetectionCreate(
-                    file_id=file_record.id,
+                    file_id=detection_file_id,
                     job_id=job_id,
                     category=category,
                     confidence=float(det["conf"]),
@@ -883,16 +953,28 @@ def load_json_to_database(
                     detection_record.species_confidence = species_confidence
                     detection_record.classification_method = "machine"
 
-            # Set observation_type based on detection categories (priority: animal > human > vehicle)
-            if file_categories:
-                if "animal" in file_categories:
+            # Set observation_type on the video/image File record
+            if video_categories:
+                if "animal" in video_categories:
                     file_record.observation_type = "animal"
-                elif "person" in file_categories:
+                elif "person" in video_categories:
                     file_record.observation_type = "human"
-                elif "vehicle" in file_categories:
+                elif "vehicle" in video_categories:
                     file_record.observation_type = "vehicle"
             else:
                 file_record.observation_type = "blank"
+
+            # Set observation_type on each frame File record
+            for frame_num, frame_file in frame_file_map.items():
+                cats = frame_categories.get(frame_num, set())
+                if "animal" in cats:
+                    frame_file.observation_type = "animal"
+                elif "person" in cats:
+                    frame_file.observation_type = "human"
+                elif "vehicle" in cats:
+                    frame_file.observation_type = "vehicle"
+                else:
+                    frame_file.observation_type = "blank"
 
         # Commit all records
         db.commit()

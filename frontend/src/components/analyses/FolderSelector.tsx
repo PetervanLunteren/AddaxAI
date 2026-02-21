@@ -32,41 +32,43 @@ import {
 // Dev-only: Test deployment folders for quick selection
 const TEST_DEPLOYMENTS = [
   // Ukraine
-  "/Users/peter/Downloads/example-projects-small/project_Ukraine/loc_SIMON03/dep001",
-  "/Users/peter/Downloads/example-projects-small/project_Ukraine/loc_SIMON03/dep002",
+  "/Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001",
+  "/Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep002",
   // Kenya
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Chui River/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Chui River/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_003",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_004",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_005",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_006",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_007",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Kifaru Plains/deployment_008",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Loita Hills/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Loita Hills/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_Kenya/Loita Hills/deployment_003",
+  "/Users/peter/Downloads/example-data/project_Kenya/Chui River/deployment_001",
+  "/Users/peter/Downloads/example-data/project_Kenya/Chui River/deployment_002",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_001",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_002",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_003",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_004",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_005",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_006",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_007",
+  "/Users/peter/Downloads/example-data/project_Kenya/Kifaru Plains/deployment_008",
+  "/Users/peter/Downloads/example-data/project_Kenya/Loita Hills/deployment_001",
+  "/Users/peter/Downloads/example-data/project_Kenya/Loita Hills/deployment_002",
+  "/Users/peter/Downloads/example-data/project_Kenya/Loita Hills/deployment_003",
   // New Zealand
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/NI-TAR03/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/NI-TAR03/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/NI-TAR03/deployment_003",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/NI-TAR03/deployment_004",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/NI-TAR03/deployment_005",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/OT-FJI02/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/OT-FJI02/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/OT-FJI02/deployment_003",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/OT-FJI02/deployment_004",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/OT-FJI02/deployment_005",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/SI-MTK04/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/SI-MTK04/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/SI-MTK04/deployment_003",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/SI-MTK04/deployment_004",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/SI-MTK04/deployment_005",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/WK-WAI01/deployment_001",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/WK-WAI01/deployment_002",
-  "/Users/peter/Downloads/example-projects-small/project_NewZealand/WK-WAI01/deployment_003",
+  "/Users/peter/Downloads/example-data/project_NewZealand/NI-TAR03/deployment_001",
+  "/Users/peter/Downloads/example-data/project_NewZealand/NI-TAR03/deployment_002",
+  "/Users/peter/Downloads/example-data/project_NewZealand/NI-TAR03/deployment_003",
+  "/Users/peter/Downloads/example-data/project_NewZealand/NI-TAR03/deployment_004",
+  "/Users/peter/Downloads/example-data/project_NewZealand/NI-TAR03/deployment_005",
+  "/Users/peter/Downloads/example-data/project_NewZealand/OT-FJI02/deployment_001",
+  "/Users/peter/Downloads/example-data/project_NewZealand/OT-FJI02/deployment_002",
+  "/Users/peter/Downloads/example-data/project_NewZealand/OT-FJI02/deployment_003",
+  "/Users/peter/Downloads/example-data/project_NewZealand/OT-FJI02/deployment_004",
+  "/Users/peter/Downloads/example-data/project_NewZealand/OT-FJI02/deployment_005",
+  "/Users/peter/Downloads/example-data/project_NewZealand/SI-MTK04/deployment_001",
+  "/Users/peter/Downloads/example-data/project_NewZealand/SI-MTK04/deployment_002",
+  "/Users/peter/Downloads/example-data/project_NewZealand/SI-MTK04/deployment_003",
+  "/Users/peter/Downloads/example-data/project_NewZealand/SI-MTK04/deployment_004",
+  "/Users/peter/Downloads/example-data/project_NewZealand/SI-MTK04/deployment_005",
+  "/Users/peter/Downloads/example-data/project_NewZealand/WK-WAI01/deployment_001",
+  "/Users/peter/Downloads/example-data/project_NewZealand/WK-WAI01/deployment_002",
+  "/Users/peter/Downloads/example-data/project_NewZealand/WK-WAI01/deployment_003",
+  // Seattle
+  "/Users/peter/Downloads/example-data/project_Seattle/dans_backyard",
 ];
 
 interface FolderSelectorProps {
@@ -155,7 +157,7 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
               type="text"
               value={value || ""}
               onChange={(e) => onChange(e.target.value)}
-              placeholder="/Users/peter/Downloads/example-projects-small/project_Kenya/..."
+              placeholder="/Users/peter/Downloads/example-data/project_Kenya/..."
               className={`flex-1 font-mono text-sm ${error ? "border-red-500" : ""}`}
             />
             <DropdownMenu>

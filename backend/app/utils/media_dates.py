@@ -20,6 +20,8 @@ _DATE_FIELDS = [
     "EXIF:DateTimeOriginal",
     "QuickTime:MediaCreateDate",
     "QuickTime:TrackCreateDate",
+    "RIFF:DateTimeOriginal",
+    "RIFF:DateCreated",
 ]
 
 

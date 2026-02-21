@@ -107,8 +107,9 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
     Select the best frame for each video in the detection JSON.
 
     Reads the detection JSON (output of Phase 1), computes the best frame
-    number for each video, extracts and saves the frame as JPEG, and updates
-    the JSON in-place with best_frame_number.
+    number for each video, and updates the JSON in-place with
+    best_frame_number. No frames are saved — the corresponding JPEG already
+    exists in video_frames/.
 
     Args:
         video_json_path: Path to detection_video.json
@@ -116,9 +117,6 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
     """
     with open(video_json_path) as f:
         data = json.load(f)
-
-    frames_dir = deployment_folder / ".addaxai" / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
 
     for img_entry in data.get("images", []):
         relative_file = img_entry["file"]
@@ -151,11 +149,7 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
             )
             best_frame = int(best_key) if best_key is not None else 0
 
-            # Save frame as JPEG
-            output_path = frames_dir / f"{video_stem}.jpg"
-            _extract_and_save_frame(video_path, best_frame, output_path)
-
-            # Update JSON entry
+            # Update JSON entry (frame already exists in video_frames/)
             img_entry["best_frame_number"] = best_frame
 
             logger.info(f"Best frame for {video_stem}: frame {best_frame}")

@@ -258,6 +258,8 @@ def _extract_date_range(
     2. DateTimeOriginal - some cameras use this
     3. MediaCreateDate - MP4 container metadata
     4. TrackCreateDate - video track metadata
+    5. RIFF:DateTimeOriginal - AVI camera trap metadata
+    6. RIFF:DateCreated - AVI container metadata
 
     Validates that date range is at least 3 hours (filters out invalid/corrupt timestamps).
 
@@ -321,7 +323,7 @@ def _extract_date_range(
 
     # Extract dates from videos
     if video_sample:
-        validation_log.append("Videos: Trying CreateDate → DateTimeOriginal → MediaCreateDate → TrackCreateDate")
+        validation_log.append("Videos: Trying CreateDate → DateTimeOriginal → MediaCreateDate → TrackCreateDate → RIFF:DateTimeOriginal → RIFF:DateCreated")
         video_dates = _extract_video_dates(video_sample)
     else:
         video_dates = []

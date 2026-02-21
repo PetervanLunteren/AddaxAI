@@ -97,7 +97,7 @@ export function FileVerificationPanel({
     },
   });
 
-  const isVideo = file.file_type === "video";
+  const isVideo = file.file_type === "video" || (file.file_type === "frame" && file.source_video_id != null);
 
   const filteredDetections = useMemo(() => {
     let dets = file.detections.filter((d) => d.confidence >= detectionThreshold);

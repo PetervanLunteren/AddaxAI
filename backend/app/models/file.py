@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from .event import Event
 
 
-FileType = Literal["image", "video"]
+FileType = Literal["image", "video", "frame"]
 
 
 class File(Base):
@@ -78,6 +78,12 @@ class File(Base):
     best_frame_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     frame_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Frame-specific (file_type="frame" only)
+    source_video_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("files.id", ondelete="CASCADE"), nullable=True
+    )
+    source_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Verification fields
     verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
@@ -100,12 +106,16 @@ class File(Base):
     detections: Mapped[list["Detection"]] = relationship(
         "Detection", back_populates="file", cascade="all, delete-orphan"
     )
+    source_video: Mapped["File | None"] = relationship(
+        "File", remote_side="File.id", foreign_keys=[source_video_id]
+    )
 
     # Indexes for common queries
     __table_args__ = (
         Index("idx_files_deployment", "deployment_id"),
         Index("idx_files_timestamp", "timestamp"),
         Index("idx_files_verified", "verified"),
+        Index("idx_files_source_video", "source_video_id"),
     )
 
     def __repr__(self) -> str:

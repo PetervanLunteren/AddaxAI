@@ -47,6 +47,8 @@ class FileResponse(BaseModel):
     verified_at: datetime | None = None
     notes: str | None = None
     favorited: bool = False
+    source_video_id: str | None = None
+    source_frame_number: int | None = None
 
     class Config:
         from_attributes = True

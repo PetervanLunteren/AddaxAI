@@ -159,6 +159,7 @@ def get_observation_type_stats(
         .join(Deployment)
         .join(Deployment.site)
         .filter(Deployment.site.has(project_id=project_id))
+        .filter(File.file_type.in_(["image", "frame"]))
         .group_by(File.observation_type)
         .all()
     )

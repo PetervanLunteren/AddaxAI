@@ -10,41 +10,22 @@ import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circ
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
 import { getCategoryColor } from "../../lib/detection-utils";
+import {
+  roundedRectPath,
+  computePillLayout,
+  PILL_PAD_X,
+  PILL_PAD_Y,
+  DOT_R,
+  LINE_GAP,
+  FONT_SM,
+  FONT_LG,
+  TEXT_START_X,
+  BBOX_CORNER_RADIUS,
+  BBOX_OPACITY,
+  DIM_FILL,
+  PILL_BG,
+} from "../../lib/detection-overlay";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
-
-/** Draw a rounded rect sub-path (for use in composite canvas paths). */
-function roundedRectPath(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
-) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-/** Measure text width using an offscreen canvas. */
-let _measureCtx: CanvasRenderingContext2D | null = null;
-function measureTextWidth(text: string, fontSize: number, bold: boolean): number {
-  if (!_measureCtx) {
-    _measureCtx = document.createElement("canvas").getContext("2d")!;
-  }
-  _measureCtx.font = `${bold ? "bold " : ""}${fontSize}px Arial, sans-serif`;
-  return _measureCtx.measureText(text).width;
-}
-
-// Label pill layout constants
-const PILL_PAD_X = 6;
-const PILL_PAD_Y = 4;
-const DOT_R = 4;
-const DOT_GAP = 5;
-const LINE_GAP = 2;
-const FONT_SM = 10;
-const FONT_LG = 12;
-const TEXT_START_X = PILL_PAD_X + DOT_R * 2 + DOT_GAP; // 19
 
 interface AnnotationCanvasProps {
   file: FileWithDetections;
@@ -591,10 +572,10 @@ export function AnnotationCanvas({
                     normToPixel(det.bbox_y, imgHeight),
                     normToPixel(det.bbox_width, imgWidth),
                     normToPixel(det.bbox_height, imgHeight),
-                    4,
+                    BBOX_CORNER_RADIUS,
                   );
                 }
-                ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+                ctx.fillStyle = DIM_FILL;
                 ctx.fill("evenodd");
               }}
               listening={false}
@@ -608,27 +589,7 @@ export function AnnotationCanvas({
             const h = normToPixel(detection.bbox_height, imgHeight);
             const color = getCategoryColor(detection.category);
             const isSelected = selectedDetectionId === detection.id;
-
-            // Label content
-            const hasSpecies = !!detection.species;
-            const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;
-            const speciesText = hasSpecies
-              ? `${detection.species!.charAt(0).toUpperCase() + detection.species!.slice(1)} ${((detection.species_confidence ?? detection.confidence) * 100).toFixed(0)}%`
-              : "";
-
-            // Pill dimensions
-            let pillHeight: number;
-            let pillWidth: number;
-            if (hasSpecies) {
-              pillHeight = PILL_PAD_Y + FONT_SM + LINE_GAP + FONT_LG + PILL_PAD_Y;
-              const w1 = measureTextWidth(categoryText, FONT_SM, false);
-              const w2 = measureTextWidth(speciesText, FONT_LG, true);
-              pillWidth = TEXT_START_X + Math.max(w1, w2) + PILL_PAD_X;
-            } else {
-              pillHeight = PILL_PAD_Y + FONT_LG + PILL_PAD_Y;
-              const tw = measureTextWidth(categoryText, FONT_LG, true);
-              pillWidth = TEXT_START_X + tw + PILL_PAD_X;
-            }
+            const pill = computePillLayout(detection);
 
             return (
               <React.Fragment key={detection.id}>
@@ -641,9 +602,9 @@ export function AnnotationCanvas({
                   height={h}
                   stroke={color}
                   strokeWidth={isSelected ? 3 : 2}
-                  opacity={0.5}
+                  opacity={BBOX_OPACITY}
                   fill="transparent"
-                  cornerRadius={4}
+                  cornerRadius={BBOX_CORNER_RADIUS}
                   draggable={!drawMode}
                   onClick={() => onSelectDetection(detection.id)}
                   onTap={() => onSelectDetection(detection.id)}
@@ -651,32 +612,32 @@ export function AnnotationCanvas({
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
                 {/* Label pill */}
-                <Group x={x} y={y - pillHeight < 0 ? y : y - pillHeight} listening={false}>
+                <Group x={x} y={y - pill.pillHeight < 0 ? y : y - pill.pillHeight} listening={false}>
                   <Rect
-                    width={pillWidth}
-                    height={pillHeight}
-                    fill="rgba(0,0,0,0.5)"
-                    cornerRadius={4}
+                    width={pill.pillWidth}
+                    height={pill.pillHeight}
+                    fill={PILL_BG}
+                    cornerRadius={BBOX_CORNER_RADIUS}
                   />
                   <Circle
                     x={PILL_PAD_X + DOT_R}
-                    y={pillHeight / 2}
+                    y={pill.pillHeight / 2}
                     radius={DOT_R}
-                    fill={color}
+                    fill={pill.color}
                   />
-                  {hasSpecies ? (
+                  {pill.hasSpecies ? (
                     <>
                       <Text
                         x={TEXT_START_X}
                         y={PILL_PAD_Y}
-                        text={categoryText}
+                        text={pill.categoryText}
                         fill="rgba(255,255,255,0.7)"
                         fontSize={FONT_SM}
                       />
                       <Text
                         x={TEXT_START_X}
                         y={PILL_PAD_Y + FONT_SM + LINE_GAP}
-                        text={speciesText}
+                        text={pill.speciesText}
                         fill="white"
                         fontSize={FONT_LG}
                         fontStyle="bold"
@@ -686,7 +647,7 @@ export function AnnotationCanvas({
                     <Text
                       x={TEXT_START_X}
                       y={PILL_PAD_Y}
-                      text={categoryText}
+                      text={pill.categoryText}
                       fill="white"
                       fontSize={FONT_LG}
                       fontStyle="bold"

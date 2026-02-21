@@ -72,9 +72,13 @@ def build_sequence_information(
         (COCO Camera Traps "images" format expected by
         ``smooth_classification_results_sequence_level``)
     """
+    # Use image + video (not frame) for smoothing sequence info because
+    # the smoothing script matches file_name against the raw JSON which
+    # has video-level entries, not frame-level JPEG paths.
     files = (
         db.query(File)
         .filter(File.deployment_id == deployment_id)
+        .filter(File.file_type.in_(["image", "video"]))
         .order_by(File.timestamp.asc())
         .all()
     )
@@ -317,12 +321,24 @@ def update_database_from_smoothed_results(
     class_names = smoothed_results.get("classification_categories", {})
 
     # Build lookup: (file_path, bbox_key, frame_number) -> Detection record
+    # For frame files, use the source video's file_path for matching since
+    # the JSON references the original video path, not the extracted frame path.
     detections = (
         db.query(Detection)
         .join(File)
         .filter(File.deployment_id == deployment_id)
         .all()
     )
+
+    # Build source_video_id -> video file_path mapping for frame files
+    source_video_ids = {
+        det.file.source_video_id for det in detections
+        if det.file.file_type == "frame" and det.file.source_video_id
+    }
+    video_id_to_path: dict[str, str] = {}
+    if source_video_ids:
+        for vid in db.query(File).filter(File.id.in_(source_video_ids)).all():
+            video_id_to_path[vid.id] = vid.file_path
 
     detection_lookup: dict[tuple, Detection] = {}
     for det in detections:
@@ -332,7 +348,11 @@ def update_database_from_smoothed_results(
             round(det.bbox_width, 4),
             round(det.bbox_height, 4),
         )
-        file_path = det.file.file_path
+        # Use source video path for frame files, direct file_path otherwise
+        if det.file.file_type == "frame" and det.file.source_video_id:
+            file_path = video_id_to_path.get(det.file.source_video_id, det.file.file_path)
+        else:
+            file_path = det.file.file_path
         key = (file_path, bbox_key, det.frame_number)
         detection_lookup[key] = det
 

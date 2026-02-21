@@ -237,6 +237,7 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
             db.query(File)
             .options(subqueryload(File.detections))
             .filter(File.deployment_id == deployment.id)
+            .filter(File.file_type.in_(["image", "frame"]))
             .order_by(File.timestamp.asc())
             .all()
         )

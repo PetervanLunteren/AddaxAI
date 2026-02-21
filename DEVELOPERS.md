@@ -29,7 +29,7 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 ## Best frame selection (videos)
 
-After video detection (phase 1), a single representative frame is selected per video and saved to `.addaxai/frames/{video_stem}.jpg`. The algorithm:
+After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:
 
 1. Score each frame by summing animal detection confidences (>= 0.3)
 2. Among top candidates (within 10% of best score), pick the sharpest (Laplacian variance)
@@ -37,7 +37,7 @@ After video detection (phase 1), a single representative frame is selected per v
 
 See `backend/app/ml/best_frame.py`.
 
-**Storage:** The frame JPEG is at `{deployment_folder}/.addaxai/frames/{video_stem}.jpg`. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images.
+**Storage:** No separate frame JPEG is saved — `best_frame_path` points to the frame inside `video_frames/`: `{deployment_folder}/.addaxai/video_frames/{video_name}/frame{N:06d}.jpg`. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images.
 
 **Usage:** The best frame is the canonical image representation of a video. Use it anywhere you'd use a photo for an image file:
 - Thumbnails in the UI

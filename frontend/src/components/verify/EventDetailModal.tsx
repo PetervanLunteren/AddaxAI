@@ -198,6 +198,22 @@ export function EventDetailModal({
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
       : undefined;
 
+  // For frame files: aggregate detections from all sibling frames (same source video)
+  // so the VideoPlayer can show boxes across all frames during playback
+  const videoPlaybackProps = useMemo(() => {
+    if (!currentFile) return undefined;
+    if (currentFile.file_type === "frame" && currentFile.source_video_id) {
+      const siblingDetections = files
+        .filter((f) => f.source_video_id === currentFile.source_video_id)
+        .flatMap((f) => f.detections);
+      return {
+        sourceVideoId: currentFile.source_video_id,
+        allDetections: siblingDetections,
+      };
+    }
+    return undefined;
+  }, [currentFile, files]);
+
   // Compute most common detection label for smart draw defaults
   const defaultLabel = useMemo(() => {
     if (!event?.files)
@@ -767,8 +783,8 @@ export function EventDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
-              {/* Video toggle */}
-              {currentFile.file_type === "video" && (
+              {/* Video toggle (for video files and frame files from a video) */}
+              {(currentFile.file_type === "video" || (currentFile.file_type === "frame" && currentFile.source_video_id)) && (
                 <Button
                   variant={viewMode === "video" ? "default" : "ghost"}
                   size="icon"
@@ -779,7 +795,7 @@ export function EventDetailModal({
                     !isPlayableVideo(currentFile)
                       ? "Video format not supported for browser playback"
                       : viewMode === "video"
-                        ? "View best frame"
+                        ? "View frame"
                         : "Play video"
                   }
                 >
@@ -988,6 +1004,9 @@ export function EventDetailModal({
                   <VideoPlayer
                     file={currentFile}
                     detectionThreshold={detectionThreshold}
+                    sourceVideoId={videoPlaybackProps?.sourceVideoId}
+                    allDetections={videoPlaybackProps?.allDetections}
+                    exportFnRef={exportFnRef}
                   />
                 ) : (
                   <AnnotationCanvas

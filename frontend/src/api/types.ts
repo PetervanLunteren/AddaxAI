@@ -207,6 +207,8 @@ export interface FileResponse {
   verified_at: string | null;
   notes: string | null;
   favorited: boolean;
+  source_video_id: string | null;
+  source_frame_number: number | null;
 }
 
 export interface FileWithDetections extends FileResponse {
