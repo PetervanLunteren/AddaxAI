@@ -1,64 +1,21 @@
 # AddaxAI-WebUI
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
-
-## TODO save all frames
-- [ ] make sure the whole ML pipeline is efficient with the new frame saving etc. Can we see any improvements?
-
 ## TODO verification task
-- [ ] how does videos work?
-- [ ] how does it work for SpeciesNet?
-- [ ] fix the grid view, so chips in the images like Connect, etc. 
-
-
-
-
-
-
-
-❯ Lets make a plan for this                                                                                                                 
-                                                                                                                                            
-  Efficiency issues identified
-
-  1. Triple/quadruple frame extraction from videos (the big one)
-
-  The same video file is decoded up to 4 times:
-
-  ┌──────────────────────────┬─────────────────────────────────────────────────┬─────────────────────────────────────────────────────────┐
-  │           Step           │               Who extracts frames               │                         Method                          │
-  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
-  │ Phase 1 (detection)      │ process_video (MegaDetector internal)           │ Decodes video, extracts at FPS, runs detection          │
-  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
-  │ Phase 1b (save to disk)  │ extract_frames_from_video (MegaDetector CLI)    │ Decodes video again, saves JPEGs to disk                │
-  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
-  │ Phase 1c (best frame)    │ run_callback_on_frames() in best_frame.py       │ Decodes video again, reads candidate frames             │
-  ├──────────────────────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
-  │ Phase 2 (classification) │ run_callback_on_frames() in detection_worker.py │ Decodes video again, extracts frames for classification │
-  └──────────────────────────┴─────────────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
-
-  After Phase 1b completes, frames are on disk at .addaxai/video_frames/{video_name}/frame{N:06d}.jpg. But Phases 1c and 2 don't read from
-  disk — they re-decode the video.                                                                                                              
-                                                                                                                                          
-  decode twice, but improve steps 1 c and 2.                                                                                                
-
-
-
-
-
+- [ ] fix the grid view, so chips in the images like Connect, etc.
+- [ ] if another project has already run a deployment with videos, it saves files to the /.addaxai/ folder. Those frames are then picked up as being images if we process them again. Hoe to avoid? We could of course say that the folder scanner should read the files inside .addaxai, but the real problem would be MegaDetector, as it will just search for everything recusively. Would it make sense to save the frames with an obscure extention like so that MD and the folder scanner doesnt see them as files, and then just edit the extentsion during runtime if we need to read in the frames later?
 
 ## TODO crop verification
 - [ ] add a crop verifiction page that verifies instances, just like the mothbox tool. That means a DB migration to add verification status to instances, and add an enbedding step in the AI analysis that runs DINOv2 ViT-S/14 (vits14) on all crops (from all images and from the best frames of videos). Investigate its potential and how it would work for this project. This is a major task. 
 
 ## TODO priority 1
 - [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
-- [ ] in the event verification modal, we might want to add a card that shows some metadata, like format (image/frame), filename (+framenumber for videos), siteID, datetime, etc. Make it non obtrusive. 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
-- [ ] if another project has already run a deployment with videos, it saves files to the /.addaxai/ folder. Those frames are then picked up as being images if we process them again. Hoe to avoid? We could of course say that the folder scanner should read the files inside .addaxai, but the real problem would be MegaDetector, as it will just search for everything recusively. Would it make sense to save the frames with an obscure extention like so that MD and the folder scanner doesnt see them as files, and then just edit the extentsion during runtime if we need to read in the frames later?
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
 - [ ] do not use instances of "blank", "false detection", "vide", "no cv result", (case insensitive) into the smoothing function and do not load into the DB. They should remain in the JSON as raw data, but should otherwise be ignored. 
 
 ## TODO priority 2
-- [ ] add a feature to 
+- [ ] make the pbars for processing more compact. Take the information that is now below it and put that in the pbar description with icons. SO it would be something like "Running... (file-icon) 18 of 46 - (elapsed time icon) 00:06 - etc. Then make the modal wider so it feels less cramped. 
 
 ## TODO priority 3
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 

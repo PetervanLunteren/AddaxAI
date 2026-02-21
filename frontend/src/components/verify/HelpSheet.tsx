@@ -5,6 +5,7 @@
 
 import {
   Pencil,
+  ChevronsUpDown,
   SquarePlus,
   Play,
   ZoomIn,
@@ -80,7 +81,9 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 Each event groups images and videos captured close together in
                 time. The event opens to its representative image or frame,
                 scored by number of detections, how much of the frame they
-                fill, and image sharpness. You don't need to verify every file;
+                fill, and image sharpness. The representative is tagged with
+                a <code className="bg-primary text-white px-1 py-0.5 rounded-sm text-xs">Rep.</code> chip
+                in the filmstrip. You don't need to verify every file;
                 verifying the representative is generally enough to get accurate
                 statistics. If you wish to verify all files, you can by setting
                 the navigation dropdown
@@ -137,6 +140,10 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <div className="space-y-3">
               <ToolRow icon={<Pencil className="h-4 w-4" />}>
                 Draw a new detection box manually.
+              </ToolRow>
+              <ToolRow icon={<ChevronsUpDown className="h-4 w-4" />}>
+                Choose the label for drawn boxes. Appears in the toolbar when
+                draw mode is active.
               </ToolRow>
               <ToolRow icon={<SquarePlus className="h-4 w-4" />}>
                 Promote the next below-threshold AI detection into a new

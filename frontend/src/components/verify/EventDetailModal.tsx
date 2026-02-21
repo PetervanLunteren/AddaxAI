@@ -27,6 +27,10 @@ import {
   CircleHelp,
   Play,
   Image as ImageIcon,
+  Video,
+  Calendar,
+  MapPin,
+  FileText,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -787,7 +791,7 @@ export function EventDetailModal({
                 <Pencil className="h-4 w-4" />
               </Button>
               {drawMode && (
-                <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100">
+                <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100" title="Label for new boxes">
                   <LabelPicker
                     value={effectiveDrawLabel.species || effectiveDrawLabel.category}
                     onSelect={(option) =>
@@ -1197,6 +1201,41 @@ export function EventDetailModal({
               </Button>
             </div>
 
+            {/* File metadata card */}
+            {currentFile && (
+              <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
+                <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
+                  {currentFile.file_type === "frame" ? "Video" : "Image"}
+                </h3>
+                <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {currentFile.file_type === "frame"
+                        ? currentFile.file_path.split("/").slice(-2, -1)[0]
+                        : currentFile.file_path.split("/").pop()}
+                    </span>
+                    {currentFile.file_type === "frame" && currentFile.source_frame_number != null && (
+                      <span className="shrink-0">· frame {currentFile.source_frame_number}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {new Date(currentFile.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{" "}
+                      {new Date(currentFile.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    {event?.site_name && (
+                      <>
+                        <MapPin className="h-3.5 w-3.5 shrink-0 ml-1" />
+                        <span>{event.site_name}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Verification panel */}
             {currentFile && (
               <FileVerificationPanel
@@ -1217,6 +1256,9 @@ export function EventDetailModal({
                   key: Number(k),
                   option: v,
                 }))}
+                onDraw={() => setDrawMode(true)}
+                onAddBox={() => addBoxMutation.mutate()}
+                canAddBox={hiddenDetections.length > 0 && !addBoxMutation.isPending}
               />
             )}
 

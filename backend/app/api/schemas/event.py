@@ -34,6 +34,7 @@ class EventWithFiles(BaseModel):
     file_count: int
     representative_file_id: str | None = None
     created_at: datetime
+    site_name: str | None = None
     files: list[FileWithDetections]
 
     class Config:

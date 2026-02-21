@@ -126,6 +126,10 @@ def get_event(
     # Sort files by timestamp (sequence order)
     sorted_files = sorted(event.files, key=lambda f: f.timestamp)
 
+    site_name = None
+    if event.deployment and event.deployment.site:
+        site_name = event.deployment.site.name
+
     return EventWithFiles(
         id=event.id,
         deployment_id=event.deployment_id,
@@ -134,6 +138,7 @@ def get_event(
         file_count=event.file_count,
         representative_file_id=event.representative_file_id,
         created_at=event.created_at,
+        site_name=site_name,
         files=[
             FileWithDetections.model_validate(f, from_attributes=True)
             for f in sorted_files

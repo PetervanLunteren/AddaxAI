@@ -261,6 +261,7 @@ export interface EventWithFiles {
   file_count: number;
   representative_file_id: string | null;
   created_at: string;
+  site_name: string | null;
   files: FileWithDetections[];
 }
 

@@ -13,26 +13,21 @@ Created by Claude Code on 2026-02-13
 import json
 from pathlib import Path
 
-import cv2
-from numpy import ndarray
+import numpy as np
 from PIL import Image
 
 from app.core.logging_config import get_logger
 from app.ml.scoring import compute_sharpness, pick_best_candidate, score_detections
-from app.utils.video_utils import run_callback_on_frames
 
 logger = get_logger(__name__)
 
 
-def _pick_sharpest(video_path: str, candidate_frames: list[int]) -> int:
+def _pick_sharpest(frames_dir: Path, candidate_frames: list[int]) -> int:
     """
-    Pick the sharpest frame from a list of candidates.
-
-    Uses batch frame extraction via run_callback_on_frames for efficiency
-    (single sequential pass through the video file).
+    Pick the sharpest frame from a list of candidates by reading JPEGs from disk.
 
     Args:
-        video_path: Path to video file
+        frames_dir: Directory containing extracted frame JPEGs
         candidate_frames: List of frame numbers to evaluate
 
     Returns:
@@ -40,66 +35,49 @@ def _pick_sharpest(video_path: str, candidate_frames: list[int]) -> int:
     """
     sharpness_scores: dict[int, float] = {}
 
-    def sharpness_callback(image_np: ndarray, frame_filename: str) -> None:
-        from app.utils.video_utils import _filename_to_frame_number
-        frame_num = _filename_to_frame_number(frame_filename)
+    for frame_num in candidate_frames:
+        frame_path = frames_dir / f"frame{frame_num:06d}.jpg"
+        if not frame_path.exists():
+            logger.debug(f"Frame {frame_path.name} not found, skipping")
+            continue
+        image_np = np.array(Image.open(frame_path))
         sharpness_scores[frame_num] = compute_sharpness(image_np)
 
-    run_callback_on_frames(
-        video_path,
-        sharpness_callback,
-        frames_to_process=candidate_frames,
-        verbose=False,
-    )
+    if not sharpness_scores:
+        # Fall back to first candidate if no frames found on disk
+        return candidate_frames[0] if candidate_frames else 0
 
     return max(sharpness_scores, key=sharpness_scores.get)  # type: ignore[arg-type]
 
 
-def _extract_and_save_frame(video_path: str, frame_number: int, output_path: Path) -> None:
+def _blank_video_sample_frames(frames_dir: Path) -> list[int]:
     """
-    Extract a single frame from a video and save as JPEG.
+    Sample ~3 evenly-spaced frame numbers from available extracted frames.
 
     Args:
-        video_path: Path to video file
-        frame_number: 0-based frame index to extract
-        output_path: Path to save the JPEG
-    """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def save_callback(image_np: ndarray, frame_filename: str) -> None:
-        img = Image.fromarray(image_np)
-        img.save(str(output_path), "JPEG", quality=90)
-
-    run_callback_on_frames(
-        video_path,
-        save_callback,
-        frames_to_process=[frame_number],
-        verbose=False,
-    )
-
-
-def _blank_video_sample_frames(video_path: str) -> list[int]:
-    """
-    Sample ~10 evenly-spaced frame numbers from a video.
-
-    Args:
-        video_path: Path to video file
+        frames_dir: Directory containing extracted frame JPEGs
 
     Returns:
         List of frame numbers to evaluate
     """
-    cap = cv2.VideoCapture(video_path)
-    try:
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    finally:
-        cap.release()
-
-    if total_frames <= 0:
+    import re
+    frame_files = sorted(frames_dir.glob("frame*.jpg"))
+    if not frame_files:
         return [0]
 
-    num_samples = min(3, total_frames)
-    step = max(1, total_frames // num_samples)
-    return list(range(0, total_frames, step))[:num_samples]
+    # Extract frame numbers from filenames
+    frame_numbers = []
+    for f in frame_files:
+        m = re.match(r"frame(\d+)\.jpg", f.name)
+        if m:
+            frame_numbers.append(int(m.group(1)))
+
+    if not frame_numbers:
+        return [0]
+
+    num_samples = min(3, len(frame_numbers))
+    step = max(1, len(frame_numbers) // num_samples)
+    return [frame_numbers[i] for i in range(0, len(frame_numbers), step)][:num_samples]
 
 
 def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
@@ -120,8 +98,15 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
 
     for img_entry in data.get("images", []):
         relative_file = img_entry["file"]
-        video_path = str((deployment_folder / relative_file).resolve())
+        video_name = Path(relative_file).name
         video_stem = Path(relative_file).stem
+
+        # Frames directory: .addaxai/video_frames/{video_filename}/
+        frames_dir = deployment_folder / ".addaxai" / "video_frames" / video_name
+
+        if not frames_dir.exists():
+            logger.warning(f"Frames directory not found for {video_name}, skipping best frame selection")
+            continue
 
         detections = img_entry.get("detections", [])
 
@@ -135,11 +120,11 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
         frame_scores = score_detections(det_tuples)
 
         # Sharpness tiebreaker wrapper: converts str keys <-> int frame numbers
-        def get_sharpest(keys: list[str], _vp: str = video_path) -> str:
+        def get_sharpest(keys: list[str], _fd: Path = frames_dir) -> str:
             frame_nums = [int(k) for k in keys]
-            return str(_pick_sharpest(_vp, frame_nums))
+            return str(_pick_sharpest(_fd, frame_nums))
 
-        fallback_keys = [str(f) for f in _blank_video_sample_frames(video_path)]
+        fallback_keys = [str(f) for f in _blank_video_sample_frames(frames_dir)]
 
         try:
             best_key = pick_best_candidate(

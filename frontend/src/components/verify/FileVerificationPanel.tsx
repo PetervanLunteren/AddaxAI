@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Pencil, SquarePlus, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { Button } from "../ui/button";
@@ -35,6 +35,9 @@ interface FileVerificationPanelProps {
   openLabelPickerFor?: string | null;
   onLabelPickerOpenChange?: (open: boolean) => void;
   pinnedOptions?: PinnedOption[];
+  onDraw?: () => void;
+  onAddBox?: () => void;
+  canAddBox?: boolean;
 }
 
 export function FileVerificationPanel({
@@ -49,6 +52,9 @@ export function FileVerificationPanel({
   openLabelPickerFor,
   onLabelPickerOpenChange,
   pinnedOptions,
+  onDraw,
+  onAddBox,
+  canAddBox,
 }: FileVerificationPanelProps) {
   const queryClient = useQueryClient();
   const [notes, setNotes] = useState(file.notes ?? "");
@@ -225,9 +231,25 @@ export function FileVerificationPanel({
                 />
               ))}
 
-              {file.detections.length === 0 && (
-                <div className="text-center text-xs text-muted-foreground py-4">
-                  No detections. Draw a box to add one.
+              {filteredDetections.length === 0 && (
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-xs text-muted-foreground">No detections found.</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <Button variant="outline" size="sm" onClick={onDraw}>
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      Draw
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAddBox}
+                      disabled={!canAddBox}
+                      title={canAddBox ? "Promote a hidden AI detection" : "No hidden detections available"}
+                    >
+                      <SquarePlus className="h-3.5 w-3.5 mr-1.5" />
+                      Add
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

@@ -970,7 +970,6 @@ async def run_classification_on_json(
                 # Process files in order (videos first, then images)
                 classified_count = 0
                 processed_count = 0
-                frame_cache = {}  # Cache for video frames
 
                 # Use tqdm for progress tracking
                 from tqdm import tqdm
@@ -996,43 +995,12 @@ async def run_classification_on_json(
 
                     is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
 
-                    # For videos: extract all needed frames to cache first
+                    # For videos: resolve frames directory (JPEGs already on disk)
                     if is_video:
-                        logger.debug(f"Extracting frames for video: {file_path.name}")
-
-                        # Get unique frame numbers for this video
-                        frame_numbers = set()
-                        for det_info in file_detections:
-                            frame_num = det_info['detection'].get('frame_number')
-                            if frame_num is not None:
-                                frame_numbers.add(frame_num)
-
-                        if not frame_numbers:
-                            logger.warning(f"No frame numbers found for video {file_path.name}, skipping")
+                        video_frames_dir = deployment_folder / ".addaxai" / "video_frames" / file_path.name
+                        if not video_frames_dir.exists():
+                            logger.warning(f"Frames directory not found for {file_path.name}, skipping {len(file_detections)} detections")
                             processed_count += len(file_detections)
-                            continue
-
-                        # Extract frames to cache
-                        from app.utils.video_utils import run_callback_on_frames, _frame_number_to_filename
-                        from PIL import Image
-
-                        def frame_callback(image_np, frame_id):
-                            """Store frame as PIL Image in cache"""
-                            frame_cache[frame_id] = Image.fromarray(image_np)
-                            return None
-
-                        try:
-                            run_callback_on_frames(
-                                str(file_path),
-                                frame_callback,
-                                frames_to_process=list(frame_numbers),
-                                verbose=False
-                            )
-                            logger.debug(f"Extracted {len(frame_cache)} frames for {file_path.name}")
-                        except Exception as e:
-                            logger.error(f"Failed to extract frames from {file_path.name}: {e}")
-                            processed_count += len(file_detections)
-                            frame_cache.clear()
                             continue
 
                     # Classify all detections in this file
@@ -1076,25 +1044,6 @@ async def run_classification_on_json(
                             img_idx = det_info['img_idx']
                             det_idx = det_info['det_idx']
 
-                            # Get frame/image for classification
-                            if is_video:
-                                # Get frame from cache
-                                frame_number = detection.get('frame_number')
-                                if frame_number is None:
-                                    logger.warning(f"Detection missing frame_number, skipping")
-                                    continue
-
-                                frame_key = _frame_number_to_filename(frame_number)
-                                frame_image = frame_cache.get(frame_key)
-
-                                if frame_image is None:
-                                    logger.warning(f"Frame {frame_key} not in cache, skipping")
-                                    continue
-                            else:
-                                # Load image from disk
-                                from PIL import Image
-                                frame_image = Image.open(file_path)
-
                             # Create bbox object
                             from app.ml.inference.base import BoundingBox
                             bbox = BoundingBox(
@@ -1104,21 +1053,20 @@ async def run_classification_on_json(
                                 height=detection["bbox"][3],
                             )
 
-                            # For videos: save full frame to temp file (worker needs a file path and will crop it)
-                            # For images: pass original file path directly (worker will load and crop it)
+                            # Get frame/image path for classification
                             if is_video:
-                                import tempfile
-                                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                                    tmp_path = Path(tmp.name)
-                                    frame_image.save(tmp_path)  # Save FULL FRAME, worker will crop
+                                frame_number = detection.get('frame_number')
+                                if frame_number is None:
+                                    logger.warning(f"Detection missing frame_number, skipping")
+                                    continue
 
-                                try:
-                                    result = cls_model.classify(tmp_path, bbox)
-                                finally:
-                                    tmp_path.unlink(missing_ok=True)
+                                frame_path = video_frames_dir / f"frame{frame_number:06d}.jpg"
+                                if not frame_path.exists():
+                                    logger.warning(f"Frame {frame_path.name} not found on disk, skipping")
+                                    continue
+
+                                result = cls_model.classify(frame_path, bbox)
                             else:
-                                # For images: pass original file path (no temp file needed)
-                                # Worker will load the full image and crop it using the bbox
                                 result = cls_model.classify(file_path, bbox)
 
                             # Check if classification succeeded
@@ -1142,10 +1090,6 @@ async def run_classification_on_json(
                             logger.error(f"Classification failed for detection: {e}")
                             continue
 
-                    # Clear video frame cache after processing this video
-                    if is_video:
-                        frame_cache.clear()
-                        logger.debug(f"Cleared frame cache for {file_path.name}")
 
                 # Close tqdm
                 pbar.close()
