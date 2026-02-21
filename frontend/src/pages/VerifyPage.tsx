@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Filter, Loader2, Layers } from "lucide-react";
+import { Filter, Loader2, Layers, Check, Circle } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
@@ -19,12 +19,13 @@ import { API_BASE_URL } from "../lib/api-client";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { getCategoryColor, getObservationBadge } from "../lib/detection-utils";
+import { getCategoryColor } from "../lib/detection-utils";
 import type { EventSummary, EventFilterParams, VerificationFilter } from "../api/types";
 
 import { EventDetailModal } from "../components/verify/EventDetailModal";
 import { FilterPanel } from "../components/verify/FilterPanel";
 import { FilterChips } from "../components/verify/FilterChips";
+import { HelpSheet } from "../components/verify/HelpSheet";
 
 const PAGE_SIZE = 50;
 const FILTER_DEBOUNCE_MS = 300;
@@ -95,6 +96,7 @@ export default function VerifyPage() {
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Parse filters from URL
   const filters = useMemo(
@@ -200,7 +202,7 @@ export default function VerifyPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Browse and verify
+              Verify
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {totalEvents > 0
@@ -208,6 +210,17 @@ export default function VerifyPage() {
                   ? `${filteredEvents} of ${totalEvents} events`
                   : `${totalEvents} events`
                 : "Run a deployment analysis to get started"}
+              {totalEvents > 0 && (
+                <>
+                  {" · "}Review and correct AI detections.{" "}
+                  <button
+                    className="underline hover:text-foreground"
+                    onClick={() => setHelpOpen(true)}
+                  >
+                    Learn more
+                  </button>
+                </>
+              )}
             </p>
           </div>
           {totalEvents > 0 && (
@@ -332,6 +345,7 @@ export default function VerifyPage() {
           onClose={() => setSelectedEventId(null)}
           filters={debouncedFilters}
         />
+        <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
       </div>
     </div>
   );
@@ -349,21 +363,16 @@ function EventCard({
   const startTime = new Date(event.start_time);
   const endTime = new Date(event.end_time);
   const sameTime = event.start_time === event.end_time;
-  const badge = getObservationBadge(event.observation_type);
+  const sameDay = startTime.toDateString() === endTime.toDateString();
 
-  const timeRange = sameTime
-    ? startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : `${startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${endTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  const fmtDate = (d: Date) => d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-  const dateStr = startTime.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-
-  const verifiedPct =
-    event.total_count > 0
-      ? Math.round((event.verified_count / event.total_count) * 100)
-      : 0;
+  const dateTimeStr = sameTime
+    ? `${fmtDate(startTime)} · ${fmtTime(startTime)}`
+    : sameDay
+      ? `${fmtDate(startTime)} · ${fmtTime(startTime)} – ${fmtTime(endTime)}`
+      : `${fmtDate(startTime)} ${fmtTime(startTime)} – ${fmtDate(endTime)} ${fmtTime(endTime)}`;
 
   const thumbnailUrl = event.representative_file_id
     ? `${API_BASE_URL}/api/files/${event.representative_file_id}/image`
@@ -447,59 +456,55 @@ function EventCard({
             </svg>
           );
         })()}
-        {/* Observation badge */}
-        <Badge
-          variant="outline"
-          className={`absolute top-2 right-2 text-xs ${badge.className}`}
-        >
-          {badge.label}
-        </Badge>
-      </div>
-
-      <CardContent className="p-3 space-y-2">
-        {/* File count and time */}
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">
-            {event.file_count} {event.file_count === 1 ? "file" : "files"}
-          </span>
-          <span className="text-muted-foreground text-xs">{dateStr}</span>
-        </div>
-        <div className="text-xs text-muted-foreground">{timeRange}</div>
-
-        {/* Species tags */}
+        {/* Species chips */}
         {event.species.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {event.species.slice(0, 3).map((sp) => (
+          <div className="absolute bottom-2 left-2 flex gap-1">
+            {event.species.slice(0, 2).map((sp) => (
               <Badge
                 key={sp}
-                variant="secondary"
-                className="text-xs capitalize"
+                variant="default"
+                className="text-[10px] px-1.5 py-0.5 capitalize shadow-sm max-w-[100px]"
               >
-                {sp}
+                <span className="truncate">{sp}</span>
               </Badge>
             ))}
-            {event.species.length > 3 && (
-              <Badge variant="secondary" className="text-xs">
-                +{event.species.length - 3}
+            {event.species.length > 2 && (
+              <Badge
+                variant="default"
+                className="text-[10px] px-1.5 py-0.5 shadow-sm"
+              >
+                +{event.species.length - 2}
               </Badge>
             )}
           </div>
         )}
+      </div>
 
-        {/* Verification progress bar */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {event.verified_count}/{event.total_count} verified
-            </span>
-            <span>{verifiedPct}%</span>
-          </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-green-500 rounded-full transition-all"
-              style={{ width: `${verifiedPct}%` }}
-            />
-          </div>
+      <CardContent className="p-3 space-y-1">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-medium">
+            {[
+              event.image_count > 0 && `${event.image_count} ${event.image_count === 1 ? "image" : "images"}`,
+              event.frame_count > 0 && `${event.frame_count} ${event.frame_count === 1 ? "frame" : "frames"}`,
+            ].filter(Boolean).join(", ")}
+          </span>
+          {event.site_name && (
+            <span className="text-xs text-muted-foreground truncate ml-2 max-w-[120px]">{event.site_name}</span>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground">{dateTimeStr}</div>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            Rep.
+            {repFile?.verified ? (
+              <div className="bg-primary rounded-full p-0.5">
+                <Check className="h-2.5 w-2.5 text-primary-foreground" />
+              </div>
+            ) : (
+              <Circle className="h-3 w-3" />
+            )}
+          </span>
+          <span>Files {event.verified_count}/{event.total_count} verified</span>
         </div>
       </CardContent>
     </Card>

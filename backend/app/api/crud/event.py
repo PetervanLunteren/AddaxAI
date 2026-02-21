@@ -372,7 +372,9 @@ def get_events_by_project(
                 dominant_priority = p
                 dominant_type = f.observation_type
 
-        # Count verified files
+        # Count files by type and verification
+        image_count = sum(1 for f in sorted_files if f.file_type == "image")
+        frame_count = sum(1 for f in sorted_files if f.file_type == "frame")
         verified_count = sum(1 for f in sorted_files if f.verified)
 
         summaries.append({
@@ -382,8 +384,11 @@ def get_events_by_project(
             "end_time": event.end_time,
             "file_count": event.file_count,
             "representative_file_id": event.representative_file_id,
+            "site_name": event.deployment.site.name if event.deployment and event.deployment.site else None,
             "species": sorted(species_set),
             "observation_type": dominant_type,
+            "image_count": image_count,
+            "frame_count": frame_count,
             "verified_count": verified_count,
             "total_count": len(sorted_files),
         })

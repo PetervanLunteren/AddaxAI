@@ -247,8 +247,11 @@ export interface EventSummary {
   end_time: string;
   file_count: number;
   representative_file_id: string | null;
+  site_name: string | null;
   species: string[];
   observation_type: string;
+  image_count: number;
+  frame_count: number;
   verified_count: number;
   total_count: number;
 }

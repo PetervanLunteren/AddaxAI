@@ -18,8 +18,11 @@ class EventSummary(BaseModel):
     end_time: datetime
     file_count: int
     representative_file_id: str | None
+    site_name: str | None
     species: list[str]
     observation_type: str
+    image_count: int
+    frame_count: int
     verified_count: int
     total_count: int
 

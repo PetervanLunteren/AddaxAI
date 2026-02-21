@@ -28,9 +28,6 @@ import {
   Play,
   Image as ImageIcon,
   Video,
-  Calendar,
-  MapPin,
-  FileText,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -1208,29 +1205,18 @@ export function EventDetailModal({
                   {currentFile.file_type === "frame" ? "Video" : "Image"}
                 </h3>
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                    <FileText className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">
-                      {currentFile.file_type === "frame"
-                        ? currentFile.file_path.split("/").slice(-2, -1)[0]
-                        : currentFile.file_path.split("/").pop()}
-                    </span>
+                  <div className="truncate">
+                    {currentFile.file_type === "frame"
+                      ? currentFile.file_path.split("/").slice(-2, -1)[0]
+                      : currentFile.file_path.split("/").pop()}
                     {currentFile.file_type === "frame" && currentFile.source_frame_number != null && (
-                      <span className="shrink-0">· frame {currentFile.source_frame_number}</span>
+                      <span> · frame {currentFile.source_frame_number}</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      {new Date(currentFile.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{" "}
-                      {new Date(currentFile.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                    {event?.site_name && (
-                      <>
-                        <MapPin className="h-3.5 w-3.5 shrink-0 ml-1" />
-                        <span>{event.site_name}</span>
-                      </>
-                    )}
+                  <div>
+                    {new Date(currentFile.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{" "}
+                    {new Date(currentFile.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    {event?.site_name && ` · ${event.site_name}`}
                   </div>
                 </div>
               </div>

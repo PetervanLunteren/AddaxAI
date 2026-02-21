@@ -2,8 +2,9 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] fix the grid view, so chips in the images like Connect, etc.
-- [ ] if another project has already run a deployment with videos, it saves files to the /.addaxai/ folder. Those frames are then picked up as being images if we process them again. Hoe to avoid? We could of course say that the folder scanner should read the files inside .addaxai, but the real problem would be MegaDetector, as it will just search for everything recusively. Would it make sense to save the frames with an obscure extention like so that MD and the folder scanner doesnt see them as files, and then just edit the extentsion during runtime if we need to read in the frames later?
+- [ ] if another project has already run a deployment with videos, it saves files to the /.addaxai/ folder. Those frames are then picked up as being images if we process them again. How to avoid? We could of course say that the folder scanner should read the files inside .addaxai, but the real problem would be MegaDetector, as it will just search for everything recusively. Would it make sense to save the frames with an obscure extention like so that MD and the folder scanner doesnt see them as files, and then just edit the extentsion during runtime if we need to read in the frames later?
+
+
 
 ## TODO crop verification
 - [ ] add a crop verifiction page that verifies instances, just like the mothbox tool. That means a DB migration to add verification status to instances, and add an enbedding step in the AI analysis that runs DINOv2 ViT-S/14 (vits14) on all crops (from all images and from the best frames of videos). Investigate its potential and how it would work for this project. This is a major task. 
