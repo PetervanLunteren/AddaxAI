@@ -252,6 +252,7 @@ export interface EventSummary {
   observation_type: string;
   image_count: number;
   frame_count: number;
+  video_count: number;
   verified_count: number;
   total_count: number;
 }

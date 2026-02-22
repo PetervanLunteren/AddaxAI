@@ -2,7 +2,7 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] Update grid view for event cards. I want the representative verified maybe written out full (to avoid confusion), and a little bit more vertical spacing in the text below. The it will look less cramped and more modern. 
+- [ ] Update the caption text of the verify page. Any suggestions? Explain the representative (Rep.) and what it does. Also, remove the event count, its not needed. exlain a bit better what the user can do and how it works. Keep the link to the elaborate info. 
 
 
 

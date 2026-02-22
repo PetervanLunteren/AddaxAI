@@ -23,6 +23,7 @@ class EventSummary(BaseModel):
     observation_type: str
     image_count: int
     frame_count: int
+    video_count: int
     verified_count: int
     total_count: int
 

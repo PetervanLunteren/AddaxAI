@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Filter, Loader2, Layers, Check, Circle } from "lucide-react";
+import { Filter, Loader2, Layers, Check } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
@@ -480,12 +480,12 @@ function EventCard({
         )}
       </div>
 
-      <CardContent className="p-3 space-y-1">
+      <CardContent className="p-3 space-y-2">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">
             {[
               event.image_count > 0 && `${event.image_count} ${event.image_count === 1 ? "image" : "images"}`,
-              event.frame_count > 0 && `${event.frame_count} ${event.frame_count === 1 ? "frame" : "frames"}`,
+              event.video_count > 0 && `${event.video_count} ${event.video_count === 1 ? "video" : "videos"}`,
             ].filter(Boolean).join(", ")}
           </span>
           {event.site_name && (
@@ -495,13 +495,11 @@ function EventCard({
         <div className="text-xs text-muted-foreground">{dateTimeStr}</div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            Rep.
-            {repFile?.verified ? (
+            Rep. {repFile?.verified ? "verified" : "unverified"}
+            {repFile?.verified && (
               <div className="bg-primary rounded-full p-0.5">
                 <Check className="h-2.5 w-2.5 text-primary-foreground" />
               </div>
-            ) : (
-              <Circle className="h-3 w-3" />
             )}
           </span>
           <span>Files {event.verified_count}/{event.total_count} verified</span>

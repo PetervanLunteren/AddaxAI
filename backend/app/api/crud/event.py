@@ -375,6 +375,7 @@ def get_events_by_project(
         # Count files by type and verification
         image_count = sum(1 for f in sorted_files if f.file_type == "image")
         frame_count = sum(1 for f in sorted_files if f.file_type == "frame")
+        video_count = len({f.source_video_id for f in sorted_files if f.file_type == "frame" and f.source_video_id})
         verified_count = sum(1 for f in sorted_files if f.verified)
 
         summaries.append({
@@ -389,6 +390,7 @@ def get_events_by_project(
             "observation_type": dominant_type,
             "image_count": image_count,
             "frame_count": frame_count,
+            "video_count": video_count,
             "verified_count": verified_count,
             "total_count": len(sorted_files),
         })
