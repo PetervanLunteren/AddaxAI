@@ -235,14 +235,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             deployment = create_deployment(db=db, site_id=entry.site_id, folder_path=str(folder_path))
             logger.info(f"Created deployment: {deployment.id}")
 
-            # Create artifacts folder
-            artifacts_folder = folder_path / ".addaxai"
+            # Create project-scoped artifacts folder
+            artifacts_folder = folder_path / ".addaxai" / "projects" / project_id
             artifacts_folder.mkdir(parents=True, exist_ok=True)
 
             # JSON file paths
             video_json_path = artifacts_folder / "detection_video.json"
             image_json_path = artifacts_folder / "detection_image.json"
-            final_json_path = artifacts_folder / "results_with_classifications.json"
+            final_json_path = artifacts_folder / "results.json"
 
             json_files_to_merge = []
 
@@ -327,7 +327,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if video_files and video_json_path.exists():
                 try:
                     from app.ml.frame_extraction import extract_all_video_frames
-                    extract_all_video_frames(folder_path, project.video_fps, env_manager)
+                    extract_all_video_frames(folder_path, project.video_fps, env_manager,
+                                            output_dir=artifacts_folder / "video_frames")
                     logger.info("Video frame extraction complete")
                 except Exception as e:
                     logger.error(f"Video frame extraction failed: {e}", exc_info=True)
@@ -337,7 +338,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if video_files and video_json_path.exists():
                 try:
                     from app.ml.best_frame import select_best_frames
-                    select_best_frames(video_json_path, folder_path)
+                    select_best_frames(video_json_path, artifacts_folder / "video_frames")
                     logger.info("Best frame selection complete")
                 except Exception as e:
                     logger.error(f"Best frame selection failed: {e}", exc_info=True)
@@ -377,6 +378,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         state_code=project.state_code,
                         progress_callback=video_classification_progress,
                         classification_model_dir=cls_model_dir if classification_model_id else None,
+                        video_frames_base_dir=artifacts_folder / "video_frames",
                     )
 
                     logger.info(f"Video classification complete")
@@ -418,6 +420,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             deployment_folder=folder_path,
                             confidence_threshold=0.1,
                             progress_callback=sync_image_detection_progress,
+                            output_path=image_json_path,
                         ),
                     )
 
@@ -454,6 +457,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         state_code=project.state_code,
                         progress_callback=image_classification_progress,
                         classification_model_dir=cls_model_dir if classification_model_id else None,
+                        video_frames_base_dir=artifacts_folder / "video_frames",
                     )
 
                     logger.info(f"Image classification complete")
@@ -486,6 +490,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     job_id=job_id,
                     db=db,
                     excluded_classes=project.excluded_classes,
+                    artifacts_folder=artifacts_folder,
                 )
 
                 total_detections += result.total_detections
@@ -513,6 +518,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     )
                 except Exception as e:
                     logger.error(f"Postprocessing failed (non-fatal): {e}", exc_info=True)
+
+            # Clean up intermediate JSONs (only results.json is needed at runtime)
+            for intermediate in [video_json_path, image_json_path]:
+                if intermediate != final_json_path and intermediate.exists():
+                    intermediate.unlink()
+                    logger.debug(f"Cleaned up intermediate: {intermediate.name}")
 
             # Send final progress update before completion
             await deployment_progress_callback("Complete", 1.0, "finalize", 1.0)
@@ -734,6 +745,10 @@ async def process_deployment_analysis(job_id: str) -> None:
                 """Forward progress updates to WebSocket"""
                 await ws_manager.send_progress(job_id, message, progress, phase, phase_progress)
 
+            # Create project-scoped artifacts folder
+            artifacts_folder = folder_path / ".addaxai" / "projects" / project_id
+            artifacts_folder.mkdir(parents=True, exist_ok=True)
+
             # Run JSON-based pipeline (detection → classification → database)
             result = await pipeline.process_deployment(
                 deployment_id=deployment.id,
@@ -742,6 +757,7 @@ async def process_deployment_analysis(job_id: str) -> None:
                 job_id=job_id,
                 db=db,
                 progress_callback=progress_callback,
+                artifacts_folder=artifacts_folder,
             )
 
             # Auto-generate events for the project
@@ -854,6 +870,7 @@ async def run_classification_on_json(
     state_code: str | None,
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
     classification_model_dir: Path | None = None,
+    video_frames_base_dir: Path | None = None,
 ) -> None:
     """
     Run classification on detection JSON file.
@@ -869,6 +886,8 @@ async def run_classification_on_json(
         state_code: State code for SpeciesNet
         progress_callback: Optional progress callback
         classification_model_dir: Path to classification model directory (for taxonomy.csv)
+        video_frames_base_dir: Path to video_frames directory. If None, falls back to
+            deployment_folder / ".addaxai" / "video_frames".
 
     Raises:
         RuntimeError: If classification fails
@@ -993,7 +1012,8 @@ async def run_classification_on_json(
 
                     # For videos: resolve frames directory (JPEGs already on disk)
                     if is_video:
-                        video_frames_dir = deployment_folder / ".addaxai" / "video_frames" / file_path.name
+                        _frames_base = video_frames_base_dir or (deployment_folder / ".addaxai" / "video_frames")
+                        video_frames_dir = _frames_base / file_path.name
                         if not video_frames_dir.exists():
                             logger.warning(f"Frames directory not found for {file_path.name}, skipping {len(file_detections)} detections")
                             processed_count += len(file_detections)

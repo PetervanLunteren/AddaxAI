@@ -3,7 +3,7 @@ Test JSON-based pipeline with NAM-ADS-v1 and TAS-BB-v1 models.
 
 Tests the complete JSON pipeline workflow:
 1. MegaDetector → detection_results.json
-2. Classification → results_with_classifications.json
+2. Classification → results.json
 3. Validate JSON format matches expected structure
 
 Run from backend directory:

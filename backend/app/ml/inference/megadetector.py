@@ -406,6 +406,7 @@ class MegaDetectorV1000(DetectionModel):
         deployment_folder: Path,
         confidence_threshold: float,
         progress_callback: Callable[[str, float], None] | None = None,
+        output_path: Path | None = None,
     ) -> Path:
         """
         Run MegaDetector and save results directly to JSON file (for JSON-based pipeline).
@@ -418,6 +419,8 @@ class MegaDetectorV1000(DetectionModel):
             deployment_folder: Path to deployment folder (will create .addaxai subfolder)
             confidence_threshold: Minimum confidence for detections (typically 0.1)
             progress_callback: Optional callback(message, progress)
+            output_path: Optional explicit output path. If provided, results are written
+                here instead of the default .addaxai/detection_results.json.
 
         Returns:
             Path to saved detection_results.json file
@@ -443,10 +446,14 @@ class MegaDetectorV1000(DetectionModel):
             progress_callback("Preparing MegaDetector...", 0.0)
 
         try:
-            # Create artifacts folder
-            artifacts_folder = deployment_folder / ".addaxai"
-            artifacts_folder.mkdir(parents=True, exist_ok=True)
-            output_file = artifacts_folder / "detection_results.json"
+            # Determine output file location
+            if output_path:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_file = output_path
+            else:
+                artifacts_folder = deployment_folder / ".addaxai"
+                artifacts_folder.mkdir(parents=True, exist_ok=True)
+                output_file = artifacts_folder / "detection_results.json"
 
             # Create temporary directory for working files
             with tempfile.TemporaryDirectory() as temp_dir:

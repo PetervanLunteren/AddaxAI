@@ -209,7 +209,7 @@ def run_postprocessing_for_deployment(
 
     Args:
         deployment_id: Deployment UUID
-        json_path: Path to results_with_classifications.json
+        json_path: Path to results.json
         deployment_folder: Path to deployment folder
         project: Project ORM object
         db: Database session
@@ -451,7 +451,7 @@ def reload_raw_classifications_from_json(
 
     Args:
         deployment_id: Deployment UUID
-        json_path: Path to results_with_classifications.json
+        json_path: Path to results.json
         deployment_folder: Path to deployment folder
         db: Database session
         excluded_classes: Optional list of species names to exclude

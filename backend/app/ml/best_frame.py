@@ -80,7 +80,7 @@ def _blank_video_sample_frames(frames_dir: Path) -> list[int]:
     return [frame_numbers[i] for i in range(0, len(frame_numbers), step)][:num_samples]
 
 
-def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
+def select_best_frames(video_json_path: Path, frames_base_dir: Path) -> None:
     """
     Select the best frame for each video in the detection JSON.
 
@@ -91,7 +91,7 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
 
     Args:
         video_json_path: Path to detection_video.json
-        deployment_folder: Path to deployment folder
+        frames_base_dir: Path to video_frames directory (e.g. .addaxai/projects/{id}/video_frames)
     """
     with open(video_json_path) as f:
         data = json.load(f)
@@ -101,8 +101,8 @@ def select_best_frames(video_json_path: Path, deployment_folder: Path) -> None:
         video_name = Path(relative_file).name
         video_stem = Path(relative_file).stem
 
-        # Frames directory: .addaxai/video_frames/{video_filename}/
-        frames_dir = deployment_folder / ".addaxai" / "video_frames" / video_name
+        # Frames directory: {frames_base_dir}/{video_filename}/
+        frames_dir = frames_base_dir / video_name
 
         if not frames_dir.exists():
             logger.warning(f"Frames directory not found for {video_name}, skipping best frame selection")

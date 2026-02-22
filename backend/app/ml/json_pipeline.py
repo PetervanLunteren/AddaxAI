@@ -45,7 +45,7 @@ class JSONBasedMLPipeline:
 
     Architecture:
     1. MegaDetector → detection_results.json (pure MD format)
-    2. Load JSON → Classify detections → results_with_classifications.json (extended)
+    2. Load JSON → Classify detections → results.json (extended)
     3. Parse extended JSON → Bulk insert to database
     4. Save JSON artifacts in .addaxai folder
 
@@ -98,6 +98,7 @@ class JSONBasedMLPipeline:
         job_id: str,
         db: Session,
         progress_callback: Callable[[str, float, str, float], None],
+        artifacts_folder: Path | None = None,
     ) -> PipelineResult:
         """
         Run complete JSON-based ML pipeline on a deployment.
@@ -105,7 +106,7 @@ class JSONBasedMLPipeline:
         Workflow:
         1. Initialize progress bars (both at 0%)
         2. Run MegaDetector → save detection_results.json
-        3. Load JSON → Classify animals → save results_with_classifications.json
+        3. Load JSON → Classify animals → save results.json
         4. Parse extended JSON → Bulk insert to database
         5. Return statistics
 
@@ -124,6 +125,10 @@ class JSONBasedMLPipeline:
             RuntimeError: If pipeline fails
         """
         try:
+            # Resolve artifacts folder (project-scoped if provided, legacy fallback otherwise)
+            if artifacts_folder is None:
+                artifacts_folder = deployment_folder / ".addaxai"
+
             logger.info(
                 f"Starting JSON pipeline for deployment {deployment_id} "
                 f"with {len(image_paths)} images"
@@ -145,6 +150,7 @@ class JSONBasedMLPipeline:
                 image_paths=image_paths,
                 deployment_folder=deployment_folder,
                 progress_callback=progress_callback,
+                artifacts_folder=artifacts_folder,
             )
 
             # Detection complete - update progress bars
@@ -160,6 +166,7 @@ class JSONBasedMLPipeline:
                     deployment_id=deployment_id,
                     deployment_folder=deployment_folder,
                     progress_callback=progress_callback,
+                    artifacts_folder=artifacts_folder,
                 )
 
                 await progress_callback("Classification complete", 0.8, "classification", 1.0)
@@ -181,7 +188,13 @@ class JSONBasedMLPipeline:
                 deployment_folder=deployment_folder,
                 job_id=job_id,
                 db=db,
+                artifacts_folder=artifacts_folder,
             )
+
+            # Clean up intermediate detection JSON if classification produced a separate result
+            if self.classification_model and detection_json_path != extended_json_path and detection_json_path.exists():
+                detection_json_path.unlink()
+                logger.debug(f"Cleaned up intermediate: {detection_json_path.name}")
 
             await progress_callback("Pipeline complete", 1.0, "finalize", 1.0)
 
@@ -202,6 +215,7 @@ class JSONBasedMLPipeline:
         image_paths: list[Path],
         deployment_folder: Path,
         progress_callback: Callable,
+        artifacts_folder: Path | None = None,
     ) -> Path:
         """
         Run MegaDetector and save results to JSON.
@@ -212,6 +226,7 @@ class JSONBasedMLPipeline:
             image_paths: List of image paths
             deployment_folder: Deployment folder for artifacts
             progress_callback: Progress callback
+            artifacts_folder: Project-scoped artifacts folder for output
 
         Returns:
             Path to detection_results.json
@@ -233,6 +248,9 @@ class JSONBasedMLPipeline:
                 loop,
             )
 
+        # Determine output path for detection results
+        output_path = (artifacts_folder / "detection_results.json") if artifacts_folder else None
+
         # Run MegaDetector in thread pool
         detection_json_path = await loop.run_in_executor(
             None,  # Use default ThreadPoolExecutor
@@ -241,6 +259,7 @@ class JSONBasedMLPipeline:
                 deployment_folder=deployment_folder,
                 confidence_threshold=0.1,
                 progress_callback=detection_progress,
+                output_path=output_path,
             ),
         )
 
@@ -252,6 +271,7 @@ class JSONBasedMLPipeline:
         deployment_id: str,
         deployment_folder: Path,
         progress_callback: Callable,
+        artifacts_folder: Path | None = None,
     ) -> tuple[Path, int]:
         """
         Load detection JSON, classify animals, save extended JSON.
@@ -263,6 +283,7 @@ class JSONBasedMLPipeline:
             deployment_id: Deployment ID
             deployment_folder: Deployment folder for artifacts
             progress_callback: Progress callback
+            artifacts_folder: Project-scoped artifacts folder for output
 
         Returns:
             Tuple of (extended_json_path, classified_count)
@@ -336,9 +357,9 @@ class JSONBasedMLPipeline:
             )
 
             # Save extended JSON
-            artifacts_folder = deployment_folder / ".addaxai"
-            artifacts_folder.mkdir(parents=True, exist_ok=True)
-            extended_json_path = artifacts_folder / "results_with_classifications.json"
+            _af = artifacts_folder or (deployment_folder / ".addaxai")
+            _af.mkdir(parents=True, exist_ok=True)
+            extended_json_path = _af / "results.json"
 
             with open(extended_json_path, "w") as f:
                 json.dump(md_results, f, indent=2)
@@ -457,9 +478,9 @@ class JSONBasedMLPipeline:
         )
 
         # Save extended JSON
-        artifacts_folder = deployment_folder / ".addaxai"
-        artifacts_folder.mkdir(parents=True, exist_ok=True)
-        extended_json_path = artifacts_folder / "results_with_classifications.json"
+        _af = artifacts_folder or (deployment_folder / ".addaxai")
+        _af.mkdir(parents=True, exist_ok=True)
+        extended_json_path = _af / "results.json"
 
         with open(extended_json_path, "w") as f:
             json.dump(md_results, f, indent=2)
@@ -475,6 +496,7 @@ class JSONBasedMLPipeline:
         deployment_folder: Path,
         job_id: str,
         db: Session,
+        artifacts_folder: Path | None = None,
     ) -> PipelineResult:
         """
         Parse extended JSON and bulk insert to database.
@@ -482,7 +504,7 @@ class JSONBasedMLPipeline:
         Creates File and Detection records from JSON data.
 
         Args:
-            extended_json_path: Path to results_with_classifications.json
+            extended_json_path: Path to results.json
             deployment_id: Deployment ID
             deployment_folder: Deployment folder (base for relative paths)
             job_id: Job ID
@@ -667,6 +689,7 @@ def load_json_to_database(
     job_id: str,
     db: Session,
     excluded_classes: list[str] | None = None,
+    artifacts_folder: Path | None = None,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -684,6 +707,8 @@ def load_json_to_database(
         excluded_classes: Optional list of species names to exclude from
             classification results. Excluded species are zeroed out and
             remaining confidences renormalized before writing to DB.
+        artifacts_folder: Project-scoped artifacts folder. If provided,
+            video_frames are read from artifacts_folder/video_frames/.
 
     Returns:
         PipelineResult with statistics
@@ -734,7 +759,8 @@ def load_json_to_database(
         file_detections = defaultdict(list)
 
         # Check for extracted video frames directory
-        video_frames_dir = deployment_folder / ".addaxai" / "video_frames"
+        _af = artifacts_folder or (deployment_folder / ".addaxai")
+        video_frames_dir = _af / "video_frames"
         has_extracted_frames = video_frames_dir.exists()
 
         for img in results.get("images", []):
@@ -788,7 +814,7 @@ def load_json_to_database(
                 best_frame_path = None
                 if best_frame_number is not None:
                     video_name = absolute_path.name
-                    best_frame_path = str(deployment_folder / ".addaxai" / "video_frames" / video_name / f"frame{best_frame_number:06d}.jpg")
+                    best_frame_path = str(_af / "video_frames" / video_name / f"frame{best_frame_number:06d}.jpg")
 
                 # Frame rate (video only) - output by MegaDetector's process_video
                 frame_rate = img.get("frame_rate")

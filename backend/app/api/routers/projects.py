@@ -8,6 +8,8 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
+import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, text
@@ -23,7 +25,7 @@ from app.api.schemas.project import (
 )
 from app.core.logging_config import get_logger
 from app.db.base import get_db
-from app.models import Detection, Deployment, File, Site
+from app.models import Detection, Deployment, File, Job, Site
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -174,7 +176,18 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
 
     Returns 404 if project doesn't exist.
     Cascades deletion to all sites, deployments, files, etc.
+    Also cleans up project-scoped artifacts from deployment folders.
     """
+    # Collect deployment folder paths before cascade deletes them
+    deployments = (
+        db.query(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .all()
+    )
+    folder_paths = [Path(d.folder_path) for d in deployments]
+
+    # Delete project from DB (cascades to sites, deployments, files, detections)
     deleted = crud_project.delete_project(db, project_id)
     if not deleted:
         logger.warning(f"Cannot delete project: {project_id} not found")
@@ -182,6 +195,26 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with id '{project_id}' not found",
         )
+
+    # Delete jobs associated with this project (after cascade removes detections
+    # that have a FK to jobs)
+    job_count = (
+        db.query(Job)
+        .filter(text("json_extract(payload, '$.project_id') = :pid"))
+        .params(pid=project_id)
+        .delete(synchronize_session=False)
+    )
+    if job_count:
+        db.commit()
+        logger.info(f"Deleted {job_count} jobs for project {project_id}")
+
+    # Clean up project artifacts from each deployment folder
+    for folder_path in folder_paths:
+        project_artifacts = folder_path / ".addaxai" / "projects" / project_id
+        if project_artifacts.exists():
+            shutil.rmtree(project_artifacts)
+            logger.info(f"Cleaned up artifacts: {project_artifacts}")
+
     logger.info(f"Deleted project: {project_id} (cascaded to all related data)")
 
 

@@ -24,26 +24,27 @@ def extract_all_video_frames(
     deployment_folder: Path,
     video_fps: float,
     env_manager: EnvironmentManager,
+    output_dir: Path,
 ) -> Path:
     """
     Extract all analyzed frames from videos in a deployment folder.
 
     Uses MegaDetector's extract_frames_from_video CLI tool which recursively
     finds videos and extracts frames at the configured FPS. Output goes to
-    .addaxai/video_frames/{video_stem}/ with frame naming like frame000000.jpg.
+    output_dir/{video_stem}/ with frame naming like frame000000.jpg.
 
     Args:
         deployment_folder: Path to the deployment folder containing videos
         video_fps: Frames per second used during detection (e.g., 1.0)
         env_manager: Environment manager for accessing the conda env
+        output_dir: Path to write extracted frames to
 
     Returns:
-        Path to the output directory (.addaxai/video_frames/)
+        Path to the output directory
 
     Raises:
         RuntimeError: If frame extraction fails
     """
-    output_dir = deployment_folder / ".addaxai" / VIDEO_FRAMES_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     python_path = env_manager.get_python("env-addaxai-base")

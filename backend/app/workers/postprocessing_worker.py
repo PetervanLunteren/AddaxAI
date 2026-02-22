@@ -127,7 +127,7 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         for idx, deployment in enumerate(deployments_with_cls, start=1):
             folder_path = Path(deployment.folder_path)
-            json_path = folder_path / ".addaxai" / "results_with_classifications.json"
+            json_path = folder_path / ".addaxai" / "projects" / project_id / "results.json"
 
             progress = (idx - 1) / total
             await ws_manager.send_progress(
