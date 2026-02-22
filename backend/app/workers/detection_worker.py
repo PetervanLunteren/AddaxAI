@@ -26,6 +26,7 @@ from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
+from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.environment_manager import EnvironmentManager
@@ -37,12 +38,6 @@ from app.ml.model_storage import ModelStorage
 from app.models import Deployment
 
 logger = get_logger(__name__)
-
-# Supported image formats
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
-
-# Supported video formats (MegaDetector compatible)
-VIDEO_EXTENSIONS = {".mp4", ".avi", ".mpeg", ".mpg", ".mov", ".mkv", ".flv"}
 
 
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
@@ -838,7 +833,8 @@ def scan_folder_for_images(folder_path: Path) -> list[Path]:
     """
     image_files: list[Path] = []
 
-    for root, _, files in os.walk(folder_path):
+    for root, dirs, files in os.walk(folder_path):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip .addaxai etc.
         for filename in files:
             file_path = Path(root) / filename
             if file_path.suffix.lower() in IMAGE_EXTENSIONS:
@@ -1263,7 +1259,8 @@ def scan_folder_for_videos(folder_path: Path) -> list[Path]:
     """
     video_files: list[Path] = []
 
-    for root, _, files in os.walk(folder_path):
+    for root, dirs, files in os.walk(folder_path):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip .addaxai etc.
         for filename in files:
             file_path = Path(root) / filename
             if file_path.suffix.lower() in VIDEO_EXTENSIONS:

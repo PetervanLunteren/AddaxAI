@@ -452,25 +452,26 @@ class MegaDetectorV1000(DetectionModel):
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
 
-                # Determine folder to process (common parent of all images)
-                folder_path = self._get_common_folder(image_paths)
-
                 temp_output = temp_path / "temp_detection_results.json"
 
-                # Build command exactly as before
+                # Write file list JSON so MegaDetector processes only these
+                # files (avoids its own recursive scan picking up .addaxai frames)
+                file_list_json = temp_path / "image_file_list.json"
+                with open(file_list_json, "w") as f:
+                    json.dump([str(p) for p in image_paths], f)
+
+                # Build command — pass file list instead of folder
                 cmd = [
                     str(self.python_path),
                     "-m",
                     "megadetector.detection.run_detector_batch",
-                    "--recursive",
-                    "--output_relative_filenames",
                     "--include_image_size",
                     "--include_exif_tags",
                     "datetimeoriginal,gpsinfo",
                     "--threshold",
                     str(confidence_threshold),
                     str(self.model_path),
-                    str(folder_path),
+                    str(file_list_json),
                     str(temp_output),
                 ]
 
@@ -529,9 +530,22 @@ class MegaDetectorV1000(DetectionModel):
                 if not temp_output.exists():
                     raise RuntimeError(f"Detection output file not found: {temp_output}")
 
-                # Copy to permanent artifacts location
-                import shutil
-                shutil.copy2(temp_output, output_file)
+                # Post-process: convert absolute paths in output to relative paths
+                # MegaDetector outputs absolute paths when given a file list,
+                # but downstream consumers expect relative paths
+                with open(temp_output) as f:
+                    md_results = json.load(f)
+
+                for img in md_results.get("images", []):
+                    abs_path = Path(img["file"])
+                    try:
+                        img["file"] = str(abs_path.relative_to(deployment_folder))
+                    except ValueError:
+                        # Path not relative to deployment folder — keep as-is
+                        pass
+
+                with open(output_file, "w") as f:
+                    json.dump(md_results, f, indent=2)
 
                 logger.info(
                     f"Detection complete: Results saved to {output_file}"

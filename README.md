@@ -2,8 +2,11 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO verification task
-- [ ] if another project has already run a deployment with videos, it saves files to the /.addaxai/ folder. Those frames are then picked up as being images if we process them again. How to avoid? We could of course say that the folder scanner should read the files inside .addaxai, but the real problem would be MegaDetector, as it will just search for everything recusively. Would it make sense to save the frames with an obscure extention like so that MD and the folder scanner doesnt see them as files, and then just edit the extentsion during runtime if we need to read in the frames later?
-
+- [ ] what happens if a folder with vodeos is processed by different projects with different FPS? Will the different numbers of frames just be written to the same folder and just import the relevent ones to the DB, and if there is overlap in frames, it will just overwrite with the same one, so nothing going on there. Is that true? Or will there be trouble? What if we have a deployment with images that is run by two projects with different models? What can go wrong if we analyse deployments with different formats (video, image, vid+img) and settings (FPS, det models, cls models, country, state, etc)? Investigate. If there are problems, any idea how we can solve this? Is this done easily (like appending the projectID to the JSON filename or somehting like that)? If too complex, it might not be worth it. But definately worth figuring out what can go wrong, and how to solve it. Instructions:
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details.  
 
 
 ## TODO crop verification

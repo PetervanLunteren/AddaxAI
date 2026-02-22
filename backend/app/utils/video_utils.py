@@ -18,11 +18,9 @@ import cv2
 from typing import Callable, Optional, Union
 
 from app.core.logging_config import get_logger
+from app.core.media_types import VIDEO_EXTENSIONS
 
 logger = get_logger(__name__)
-
-# Video file extensions
-VIDEO_EXTENSIONS = ('.mp4', '.avi', '.mpeg', '.mpg', '.mov', '.mkv', '.flv', '.m4v', '.wmv')
 
 # OpenCV backend constants
 DEFAULT_BACKEND = -1

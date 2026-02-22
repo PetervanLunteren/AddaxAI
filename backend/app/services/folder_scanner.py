@@ -12,6 +12,7 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
+import os
 import random
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from PIL import Image
 from PIL.ExifTags import GPSTAGS, TAGS
 
 from app.core.logging_config import get_logger
+from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.utils.media_dates import extract_video_dates as _shared_extract_video_dates
 
 logger = get_logger(__name__)
@@ -48,9 +50,6 @@ class FolderPreview(TypedDict):
     datetime_validation_log: list[str]  # Log of what was tried and why rejected
 
 
-# Supported file extensions
-IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".gif", ".png", ".tif", ".tiff", ".bmp")
-VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv")
 
 
 def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
@@ -80,15 +79,15 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
     image_files: list[Path] = []
     video_files: list[Path] = []
 
-    for file_path in folder.rglob("*"):
-        if not file_path.is_file():
-            continue
-
-        ext = file_path.suffix.lower()
-        if ext in IMAGE_EXTENSIONS:
-            image_files.append(file_path)
-        elif ext in VIDEO_EXTENSIONS:
-            video_files.append(file_path)
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip .addaxai etc.
+        for filename in files:
+            file_path = Path(root) / filename
+            ext = file_path.suffix.lower()
+            if ext in IMAGE_EXTENSIONS:
+                image_files.append(file_path)
+            elif ext in VIDEO_EXTENSIONS:
+                video_files.append(file_path)
 
     # Get relative paths for sample
     sample_files = [
