@@ -81,3 +81,4 @@ class EventFilterOptions(BaseModel):
 
     species: list[str]
     date_range: DateRange | None
+    species_event_counts: dict[str, int]

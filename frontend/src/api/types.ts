@@ -237,6 +237,7 @@ export interface EventFilterParams {
 export interface EventFilterOptions {
   species: string[];
   date_range: { min: string; max: string } | null;
+  species_event_counts: Record<string, number>;
 }
 
 // Event types

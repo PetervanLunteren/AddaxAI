@@ -3,13 +3,17 @@
  *
  * Modal dialog containing the SpeciesSelector tree for excluding species.
  * Keeps the settings page clean by hiding the complex tree UI until needed.
+ * Uses a working-copy pattern: changes are only applied on "Apply".
  */
 
+import { useState, useCallback, useEffect } from "react";
 import { SpeciesSelector } from "./SpeciesSelector";
+import { Button } from "../ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
@@ -31,11 +35,27 @@ export function SpeciesSelectionModal({
   onOpenChange,
   totalSpeciesCount,
 }: SpeciesSelectionModalProps) {
-  const includedCount = totalSpeciesCount - excludedClasses.length;
+  const [workingExcluded, setWorkingExcluded] = useState<string[]>([]);
+
+  // Re-initialize working copy each time the modal opens
+  useEffect(() => {
+    if (open) {
+      setWorkingExcluded(excludedClasses);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleApply = useCallback(() => {
+    onExclusionChange(workingExcluded);
+    onOpenChange(false);
+  }, [workingExcluded, onExclusionChange, onOpenChange]);
+
+  const handleCancel = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Configure species selection</DialogTitle>
           <DialogDescription>
@@ -43,14 +63,21 @@ export function SpeciesSelectionModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0">
           <SpeciesSelector
             modelId={modelId}
-            excludedClasses={excludedClasses}
-            onExclusionChange={onExclusionChange}
-            treeHeight="500px"
+            excludedClasses={workingExcluded}
+            onExclusionChange={setWorkingExcluded}
+            fillHeight
           />
         </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>
+            Cancel
+          </Button>
+          <Button onClick={handleApply}>Apply</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

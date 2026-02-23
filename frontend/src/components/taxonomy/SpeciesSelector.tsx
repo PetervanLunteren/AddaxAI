@@ -29,8 +29,10 @@ interface SpeciesSelectorProps {
   excludedClasses: string[];
   /** Callback when exclusion changes. */
   onExclusionChange: (classes: string[]) => void;
-  /** Optional height for the scrollable tree area (default: 300px). */
+  /** Optional height for the scrollable tree area (default: 300px). Ignored if fillHeight is set. */
   treeHeight?: string;
+  /** If true, stretch to fill parent instead of using a fixed height. */
+  fillHeight?: boolean;
 }
 
 export function SpeciesSelector({
@@ -38,6 +40,7 @@ export function SpeciesSelector({
   excludedClasses,
   onExclusionChange,
   treeHeight = "300px",
+  fillHeight = false,
 }: SpeciesSelectorProps) {
   const [excludedSet, setExcludedSet] = useState<Set<string>>(new Set(excludedClasses));
 
@@ -65,7 +68,7 @@ export function SpeciesSelector({
   );
 
   return (
-    <div>
+    <div className={fillHeight ? "h-full" : ""}>
       {isLoading ? (
         <div className="text-sm text-muted-foreground py-4">
           Loading taxonomy...
@@ -77,6 +80,7 @@ export function SpeciesSelector({
           mode="exclusion"
           onSelectionChange={handleSelectionChange}
           height={treeHeight}
+          fillHeight={fillHeight}
           emptyMessage="No taxonomy available for this model"
           counterText={`Currently included ${allClasses.length - excludedSet.size} of ${allClasses.length}${excludedSet.size > 0 ? ` (${excludedSet.size} excluded)` : ""}`}
         />

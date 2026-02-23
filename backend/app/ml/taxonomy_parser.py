@@ -274,7 +274,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             if "_children" in node and node["_children"]:
                 child_total = annotate_counts(node["_children"])
                 # Format count with code styling and teal color (#086164)
-                node["_label"] = f"{node['_label']} `({child_total})`"
+                node["_label"] = f"{node['_label']} `({child_total} species)`"
                 total += child_total
             else:
                 total += 1

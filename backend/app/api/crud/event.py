@@ -590,6 +590,21 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     )
     species_list = sorted([row[0] for row in species_rows])
 
+    # Count distinct events per species
+    species_count_rows = (
+        db.query(Detection.species, func.count(func.distinct(Event.id)))
+        .join(File, File.id == Detection.file_id)
+        .join(event_files, event_files.c.file_id == File.id)
+        .join(Event, Event.id == event_files.c.event_id)
+        .join(Deployment, Deployment.id == Event.deployment_id)
+        .join(Site, Site.id == Deployment.site_id)
+        .filter(Site.project_id == project_id)
+        .filter(Detection.species.isnot(None))
+        .group_by(Detection.species)
+        .all()
+    )
+    species_event_counts = {name: count for name, count in species_count_rows}
+
     # Date range from events
     date_row = (
         db.query(
@@ -606,4 +621,8 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     if date_row and date_row[0] and date_row[1]:
         date_range = {"min": date_row[0], "max": date_row[1]}
 
-    return {"species": species_list, "date_range": date_range}
+    return {
+        "species": species_list,
+        "date_range": date_range,
+        "species_event_counts": species_event_counts,
+    }

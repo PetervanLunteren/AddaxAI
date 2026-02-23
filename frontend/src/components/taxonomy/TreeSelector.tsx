@@ -27,8 +27,10 @@ interface TreeSelectorProps {
   mode: "inclusion" | "exclusion";
   /** Callback when selection changes. */
   onSelectionChange: (ids: Set<string>) => void;
-  /** ScrollArea height (default "300px"). */
+  /** ScrollArea height (default "300px"). Ignored if fillHeight is set. */
   height?: string;
+  /** If true, the component stretches to fill its parent instead of using a fixed height. */
+  fillHeight?: boolean;
   /** Shown when tree is empty. */
   emptyMessage?: string;
   /** Optional counter text displayed above the search bar (e.g. "3 of 6 species selected"). */
@@ -74,6 +76,7 @@ export function TreeSelector({
   mode,
   onSelectionChange,
   height = "300px",
+  fillHeight = false,
   emptyMessage = "No species available",
   counterText,
 }: TreeSelectorProps) {
@@ -174,7 +177,7 @@ export function TreeSelector({
   const clearLabel = mode === "exclusion" ? "Exclude all" : "Clear all";
 
   return (
-    <div className="space-y-2 border rounded-md p-3">
+    <div className={`space-y-2 border rounded-md p-3${fillHeight ? " h-full flex flex-col overflow-hidden" : ""}`}>
       {counterText && (
         <p className="text-sm text-muted-foreground">{counterText}</p>
       )}
@@ -236,7 +239,7 @@ export function TreeSelector({
 
       {/* Tree */}
       {filteredTree.length > 0 ? (
-        <ScrollArea className="border rounded-md p-4 bg-background" style={{ height }}>
+        <ScrollArea className={`border rounded-md p-4 bg-background${fillHeight ? " h-0 flex-grow" : ""}`} style={fillHeight ? undefined : { height }}>
           <div className="space-y-1">
             {filteredTree.map((node) => (
               <TreeNode

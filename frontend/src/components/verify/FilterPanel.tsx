@@ -177,6 +177,7 @@ export function FilterPanel({
               <SpeciesFilterModal
                 fullTree={taxonomy!.tree}
                 detectedSpecies={filterOptions?.species ?? []}
+                speciesEventCounts={filterOptions?.species_event_counts}
                 selectedSpecies={filters.species ?? []}
                 onApply={(species) => {
                   const allDetected = filterOptions?.species ?? [];

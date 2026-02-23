@@ -12,12 +12,13 @@ import type { TaxonomyNode } from "../api/types";
  *
  * - Leaf nodes are kept only if their `id` is in `keepSet`
  * - Parent nodes are kept only if they have surviving children
- * - Parent name annotations like ` (N)` are updated to reflect the pruned count
+ * - Parent name count annotations like ` (N)` are stripped
  * - Returns a new tree (no mutation)
  */
 export function pruneTaxonomyTree(
   tree: TaxonomyNode[],
-  keepSet: Set<string>
+  keepSet: Set<string>,
+  eventCounts?: Map<string, number>
 ): TaxonomyNode[] {
   const prune = (nodes: TaxonomyNode[]): TaxonomyNode[] => {
     const result: TaxonomyNode[] = [];
@@ -25,19 +26,17 @@ export function pruneTaxonomyTree(
       if (!node.children || node.children.length === 0) {
         // Leaf: keep only if in the set
         if (keepSet.has(node.id)) {
-          result.push({ ...node });
+          const count = eventCounts?.get(node.id);
+          const name = count != null ? `${node.name} \`(${count} ${count === 1 ? "event" : "events"})\`` : node.name;
+          result.push({ ...node, name });
         }
       } else {
         // Parent: recurse, keep if any children survive
         const prunedChildren = prune(node.children);
         if (prunedChildren.length > 0) {
-          // Update the descendant count annotation in the name
-          const leafCount = countLeaves(prunedChildren);
-          const updatedName = node.name.replace(/\s*`\(\d+\)`\s*$/, "")
-            + ` \`(${leafCount})\``;
           result.push({
             ...node,
-            name: updatedName,
+            name: node.name.replace(/\s*`\(\d+[^)]*\)`\s*$/, ""),
             children: prunedChildren,
           });
         }
@@ -46,19 +45,6 @@ export function pruneTaxonomyTree(
     return result;
   };
   return prune(tree);
-}
-
-/** Count leaf nodes in a subtree. */
-function countLeaves(nodes: TaxonomyNode[]): number {
-  let count = 0;
-  for (const node of nodes) {
-    if (!node.children || node.children.length === 0) {
-      count++;
-    } else {
-      count += countLeaves(node.children);
-    }
-  }
-  return count;
 }
 
 /**

@@ -25,6 +25,8 @@ interface SpeciesFilterModalProps {
   fullTree: TaxonomyNode[];
   /** Species IDs that have detections (from filter-options endpoint). */
   detectedSpecies: string[];
+  /** Event counts per species (from filter-options endpoint). */
+  speciesEventCounts?: Record<string, number>;
   /** Currently active species filter values. */
   selectedSpecies: string[];
   /** Called with the new species list when the user clicks Apply. */
@@ -36,6 +38,7 @@ interface SpeciesFilterModalProps {
 export function SpeciesFilterModal({
   fullTree,
   detectedSpecies,
+  speciesEventCounts,
   selectedSpecies,
   onApply,
   open,
@@ -46,9 +49,13 @@ export function SpeciesFilterModal({
 
   // Prune tree to only branches leading to detected species
   const detectedSet = useMemo(() => new Set(detectedSpecies), [detectedSpecies]);
+  const eventCountsMap = useMemo(
+    () => speciesEventCounts ? new Map(Object.entries(speciesEventCounts)) : undefined,
+    [speciesEventCounts]
+  );
   const prunedTree = useMemo(
-    () => pruneTaxonomyTree(fullTree, detectedSet),
-    [fullTree, detectedSet]
+    () => pruneTaxonomyTree(fullTree, detectedSet, eventCountsMap),
+    [fullTree, detectedSet, eventCountsMap]
   );
   const allPrunedLeafIds = useMemo(() => collectLeafIds(prunedTree), [prunedTree]);
 
@@ -75,7 +82,7 @@ export function SpeciesFilterModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Filter by species</DialogTitle>
           <DialogDescription>
@@ -83,13 +90,13 @@ export function SpeciesFilterModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0">
           <TreeSelector
             tree={prunedTree}
             selectedIds={workingSet}
             mode="inclusion"
             onSelectionChange={setWorkingSet}
-            height="500px"
+            fillHeight
             emptyMessage="No species with detections"
             counterText={`${workingSet.size} of ${allPrunedLeafIds.size} species selected`}
           />
