@@ -326,6 +326,7 @@ export function EventDetailModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["file"] });
     },
   });
 
@@ -367,6 +368,7 @@ export function EventDetailModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["file"] });
     },
   });
 
@@ -397,6 +399,7 @@ export function EventDetailModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["file"] });
     },
   });
 
@@ -582,6 +585,7 @@ export function EventDetailModal({
                 .then(() => {
                   queryClient.invalidateQueries({ queryKey: ["event", eventId] });
                   queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["file"] });
                   setBulkSelection(new Set());
                   handleNextUnverified();
                 });

@@ -250,6 +250,7 @@ export interface EventSummary {
   site_name: string | null;
   species: string[];
   observation_type: string;
+  observation_types: string[];
   image_count: number;
   frame_count: number;
   video_count: number;

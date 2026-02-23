@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Filter, Loader2, Layers, Check } from "lucide-react";
+import { Loader2, Layers, Check, Circle } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
@@ -19,7 +19,7 @@ import { API_BASE_URL } from "../lib/api-client";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { getCategoryColor } from "../lib/detection-utils";
+import { getCategoryColor, getObservationBadge } from "../lib/detection-utils";
 import type { EventSummary, EventFilterParams, VerificationFilter } from "../api/types";
 
 import { EventDetailModal } from "../components/verify/EventDetailModal";
@@ -54,10 +54,6 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (species) filters.species = species.split(",");
   const verification = sp.get("verification") as VerificationFilter | null;
   if (verification && verification !== "all") filters.verification = verification;
-  const confMin = sp.get("conf_min");
-  if (confMin) filters.min_confidence = parseFloat(confMin);
-  const confMax = sp.get("conf_max");
-  if (confMax) filters.max_confidence = parseFloat(confMax);
   return filters;
 }
 
@@ -70,10 +66,6 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
   if (filters.species?.length) sp.set("species", filters.species.join(","));
   if (filters.verification && filters.verification !== "all")
     sp.set("verification", filters.verification);
-  if (filters.min_confidence !== undefined)
-    sp.set("conf_min", filters.min_confidence.toString());
-  if (filters.max_confidence !== undefined)
-    sp.set("conf_max", filters.max_confidence.toString());
   return sp;
 }
 
@@ -84,9 +76,7 @@ function hasActiveFilters(filters: EventFilterParams): boolean {
     !!filters.date_from ||
     !!filters.date_to ||
     (filters.species?.length ?? 0) > 0 ||
-    (!!filters.verification && filters.verification !== "all") ||
-    filters.min_confidence !== undefined ||
-    filters.max_confidence !== undefined
+    (!!filters.verification && filters.verification !== "all")
   );
 }
 
@@ -95,7 +85,6 @@ export default function VerifyPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
   // Parse filters from URL
@@ -206,46 +195,19 @@ export default function VerifyPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {totalEvents > 0
-                ? isFiltered
-                  ? `${filteredEvents} of ${totalEvents} events`
-                  : `${totalEvents} events`
+                ? <>
+                    Verify detections at the event level. Each card is one event, a group of files captured within the independence interval. The Rep. is the single image representing the event. Verifying it confirms the event's label at a glance. Open a card to review individual files, correct species, or mark blanks. Instance-level verification is coming soon.{" "}
+                    <button
+                      className="underline hover:text-foreground"
+                      onClick={() => setHelpOpen(true)}
+                    >
+                      See full event verification guide here.
+                    </button>
+                  </>
                 : "Run a deployment analysis to get started"}
-              {totalEvents > 0 && (
-                <>
-                  {" · "}Review and correct AI detections.{" "}
-                  <button
-                    className="underline hover:text-foreground"
-                    onClick={() => setHelpOpen(true)}
-                  >
-                    Learn more
-                  </button>
-                </>
-              )}
             </p>
           </div>
-          {totalEvents > 0 && (
-            <Button
-              variant={filterPanelOpen ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilterPanelOpen((v) => !v)}
-              className="gap-1.5"
-            >
-              <Filter className="h-4 w-4" />
-              Filters
-              {isFiltered && (
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {[
-                    filters.site_ids?.length,
-                    filters.date_from ? 1 : 0,
-                    filters.date_to ? 1 : 0,
-                    filters.species?.length,
-                    filters.verification && filters.verification !== "all" ? 1 : 0,
-                    filters.min_confidence !== undefined || filters.max_confidence !== undefined ? 1 : 0,
-                  ].reduce((a: number, b) => a + (b || 0), 0)}
-                </Badge>
-              )}
-            </Button>
-          )}
+          {/* Filters are always visible below */}
         </div>
 
         {/* Filter panel */}
@@ -253,21 +215,20 @@ export default function VerifyPage() {
           filters={filters}
           onChange={setFilters}
           projectId={projectId!}
-          isOpen={filterPanelOpen}
-          onToggle={() => setFilterPanelOpen((v) => !v)}
+          isOpen={true}
+          onToggle={() => {}}
           classificationModelId={project?.classification_model_id}
-        />
-
-        {/* Filter chips */}
-        {isFiltered && (
-          <FilterChips
-            filters={filters}
-            onChange={setFilters}
-            filteredCount={filteredEvents}
-            totalCount={totalEvents}
-            siteNames={siteNames}
-          />
-        )}
+        >
+          {isFiltered && (
+            <FilterChips
+              filters={filters}
+              onChange={setFilters}
+              filteredCount={filteredEvents}
+              totalCount={totalEvents}
+              siteNames={siteNames}
+            />
+          )}
+        </FilterPanel>
 
         {/* Event cards */}
         {isLoading ? (
@@ -322,7 +283,10 @@ export default function VerifyPage() {
                 Previous
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {page + 1}
+                {isFiltered
+                  ? `${filteredEvents} of ${totalEvents} events`
+                  : `${totalEvents} events`}
+                {" · "}Page {page + 1}
                 {isFetching && " (loading...)"}
               </span>
               <Button
@@ -383,7 +347,6 @@ function EventCard({
     queryKey: ["file", event.representative_file_id],
     queryFn: () => filesApi.get(event.representative_file_id!),
     enabled: !!event.representative_file_id,
-    staleTime: Infinity,
   });
 
   return (
@@ -457,27 +420,51 @@ function EventCard({
           );
         })()}
         {/* Species chips */}
-        {event.species.length > 0 && (
-          <div className="absolute bottom-2 left-2 flex gap-1">
-            {event.species.slice(0, 2).map((sp) => (
-              <Badge
-                key={sp}
-                variant="default"
-                className="text-[10px] px-1.5 py-0.5 capitalize shadow-sm max-w-[100px]"
-              >
-                <span className="truncate">{sp}</span>
-              </Badge>
-            ))}
-            {event.species.length > 2 && (
-              <Badge
-                variant="default"
-                className="text-[10px] px-1.5 py-0.5 shadow-sm"
-              >
-                +{event.species.length - 2}
-              </Badge>
-            )}
-          </div>
-        )}
+        <div className="absolute bottom-2 left-2 flex gap-1">
+          {event.observation_types
+            .filter((t) => t === "human" || t === "vehicle")
+            .map((t) => {
+              const badge = getObservationBadge(t);
+              return (
+                <Badge
+                  key={t}
+                  variant="outline"
+                  className={`text-[10px] px-1.5 py-0.5 shadow-sm ${badge.className}`}
+                  style={badge.style}
+                >
+                  {badge.label}
+                </Badge>
+              );
+            })}
+          {event.species.length > 0 ? (
+            <>
+              {event.species.slice(0, 2).map((sp) => (
+                <Badge
+                  key={sp}
+                  variant="default"
+                  className="text-[10px] px-1.5 py-0.5 capitalize shadow-sm max-w-[100px]"
+                >
+                  <span className="truncate">{sp}</span>
+                </Badge>
+              ))}
+              {event.species.length > 2 && (
+                <Badge
+                  variant="default"
+                  className="text-[10px] px-1.5 py-0.5 shadow-sm"
+                >
+                  +{event.species.length - 2}
+                </Badge>
+              )}
+            </>
+          ) : (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0.5 shadow-sm"
+            >
+              Empty
+            </Badge>
+          )}
+        </div>
       </div>
 
       <CardContent className="p-3 space-y-2">
@@ -496,13 +483,24 @@ function EventCard({
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             Rep. {repFile?.verified ? "verified" : "unverified"}
-            {repFile?.verified && (
+            {repFile?.verified ? (
               <div className="bg-primary rounded-full p-0.5">
                 <Check className="h-2.5 w-2.5 text-primary-foreground" />
               </div>
+            ) : (
+              <Circle className="h-3 w-3" />
             )}
           </span>
-          <span>Files {event.verified_count}/{event.total_count} verified</span>
+          <span className="flex items-center gap-1">
+            Files {event.verified_count}/{event.total_count} verified
+            {event.verified_count === event.total_count && event.total_count > 0 ? (
+              <div className="bg-primary rounded-full p-0.5">
+                <Check className="h-2.5 w-2.5 text-primary-foreground" />
+              </div>
+            ) : (
+              <Circle className="h-3 w-3" />
+            )}
+          </span>
         </div>
       </CardContent>
     </Card>

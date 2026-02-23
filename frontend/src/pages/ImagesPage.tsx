@@ -157,6 +157,7 @@ function ImageCard({ file, onClick }: { file: FileResponse; onClick: () => void 
         <Badge
           variant="outline"
           className={`absolute top-2 right-2 text-xs ${badge.className}`}
+          style={badge.style}
         >
           {badge.label}
         </Badge>

@@ -21,6 +21,7 @@ class EventSummary(BaseModel):
     site_name: str | None
     species: list[str]
     observation_type: str
+    observation_types: list[str]
     image_count: int
     frame_count: int
     video_count: int

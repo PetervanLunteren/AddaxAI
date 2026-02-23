@@ -4,6 +4,7 @@
  * Extracted from ImagesPage for reuse across verify and images pages.
  */
 
+import type React from "react";
 import type { DetectionResponse } from "../api/types";
 
 /** Get color for a detection category. */
@@ -24,6 +25,7 @@ export function getCategoryColor(category: string): string {
 export function getObservationBadge(type: string): {
   label: string;
   className: string;
+  style?: React.CSSProperties;
 } {
   switch (type) {
     case "animal":
@@ -33,8 +35,9 @@ export function getObservationBadge(type: string): {
       };
     case "human":
       return {
-        label: "Human",
-        className: "bg-red-100 text-red-800 border-red-200",
+        label: "Person",
+        className: "text-white border-transparent",
+        style: { backgroundColor: "#ff8236" },
       };
     case "vehicle":
       return {

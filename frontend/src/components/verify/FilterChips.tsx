@@ -103,16 +103,6 @@ export function FilterChips({
     });
   }
 
-  // Confidence chip
-  if (filters.min_confidence !== undefined || filters.max_confidence !== undefined) {
-    const lo = ((filters.min_confidence ?? 0) * 100).toFixed(0);
-    const hi = ((filters.max_confidence ?? 1) * 100).toFixed(0);
-    chips.push({
-      key: "confidence",
-      label: `Confidence ${lo}–${hi}%`,
-      onRemove: () => onChange({ ...filters, min_confidence: undefined, max_confidence: undefined }),
-    });
-  }
 
   if (chips.length === 0) return null;
 
@@ -120,11 +110,6 @@ export function FilterChips({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-sm text-muted-foreground shrink-0">
-        {isFiltered
-          ? `${filteredCount} of ${totalCount} events`
-          : `${totalCount} events`}
-      </span>
       {chips.map((chip) => (
         <Badge
           key={chip.key}

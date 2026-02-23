@@ -6,8 +6,8 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { X, ListTodo } from "lucide-react";
+import { useState } from "react";
+import { ListTodo } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { modelsApi } from "../../api/models";
 import { sitesApi } from "../../api/sites";
@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Slider } from "../ui/slider";
 import { SpeciesFilterModal } from "./SpeciesFilterModal";
 
 interface FilterPanelProps {
@@ -31,6 +30,7 @@ interface FilterPanelProps {
   isOpen: boolean;
   onToggle: () => void;
   classificationModelId?: string | null;
+  children?: React.ReactNode;
 }
 
 const VERIFICATION_OPTIONS: { value: VerificationFilter | "all"; label: string }[] = [
@@ -48,6 +48,7 @@ export function FilterPanel({
   projectId,
   isOpen,
   classificationModelId,
+  children,
 }: FilterPanelProps) {
   // Fetch sites for multiselect
   const { data: sites } = useQuery({
@@ -82,31 +83,11 @@ export function FilterPanel({
   const speciesOptions: MultiSelectOption[] =
     filterOptions?.species.map((sp) => ({ value: sp, label: sp })) ?? [];
 
-  // Local slider state for visual feedback during drag
-  const [sliderValue, setSliderValue] = useState<[number, number]>([
-    filters.min_confidence ?? 0,
-    filters.max_confidence ?? 1,
-  ]);
-
-  // Sync local slider state when filters change externally (e.g. clear all)
-  useEffect(() => {
-    setSliderValue([filters.min_confidence ?? 0, filters.max_confidence ?? 1]);
-  }, [filters.min_confidence, filters.max_confidence]);
-
-  const hasAnyFilter =
-    (filters.site_ids?.length ?? 0) > 0 ||
-    !!filters.date_from ||
-    !!filters.date_to ||
-    (filters.species?.length ?? 0) > 0 ||
-    (!!filters.verification && filters.verification !== "all") ||
-    filters.min_confidence !== undefined ||
-    filters.max_confidence !== undefined;
-
   if (!isOpen) return null;
 
   return (
     <div className="rounded-lg border bg-white p-4 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Sites multiselect */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
@@ -132,7 +113,7 @@ export function FilterPanel({
           </label>
           <input
             type="date"
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 relative"
             value={filters.date_from ?? ""}
             min={
               filterOptions?.date_range
@@ -156,7 +137,7 @@ export function FilterPanel({
           </label>
           <input
             type="date"
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 relative"
             value={filters.date_to ?? ""}
             min={filters.date_from ?? undefined}
             max={
@@ -255,53 +236,9 @@ export function FilterPanel({
           </Select>
         </div>
 
-        {/* Confidence range slider */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-muted-foreground">
-              Confidence
-            </label>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {sliderValue[0] !== 0 || sliderValue[1] !== 1
-                ? `${(sliderValue[0] * 100).toFixed(0)}–${(sliderValue[1] * 100).toFixed(0)}%`
-                : "All"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 h-9 pt-1">
-            <Slider
-              value={sliderValue}
-              onValueChange={([lo, hi]) => setSliderValue([lo, hi])}
-              onValueCommit={([lo, hi]) => {
-                const isDefault = lo === 0 && hi === 1;
-                onChange({
-                  ...filters,
-                  min_confidence: isDefault ? undefined : lo > 0 ? lo : undefined,
-                  max_confidence: isDefault ? undefined : hi < 1 ? hi : undefined,
-                });
-              }}
-              min={0}
-              max={1}
-              step={0.05}
-              minStepsBetweenThumbs={1}
-            />
-          </div>
-        </div>
       </div>
 
-      {/* Clear all */}
-      {hasAnyFilter && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs h-7"
-            onClick={() => onChange({})}
-          >
-            <X className="h-3 w-3 mr-1" />
-            Clear all filters
-          </Button>
-        </div>
-      )}
+      {children}
     </div>
   );
 }

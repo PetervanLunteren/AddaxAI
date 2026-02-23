@@ -366,7 +366,10 @@ def get_events_by_project(
         obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
         dominant_type = "blank"
         dominant_priority = 0
+        observation_types_set: set[str] = set()
         for f in sorted_files:
+            if f.observation_type:
+                observation_types_set.add(f.observation_type)
             p = obs_priority.get(f.observation_type, 0)
             if p > dominant_priority:
                 dominant_priority = p
@@ -388,6 +391,7 @@ def get_events_by_project(
             "site_name": event.deployment.site.name if event.deployment and event.deployment.site else None,
             "species": sorted(species_set),
             "observation_type": dominant_type,
+            "observation_types": sorted(observation_types_set),
             "image_count": image_count,
             "frame_count": frame_count,
             "video_count": video_count,
