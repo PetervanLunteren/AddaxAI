@@ -278,6 +278,59 @@
         "info_url": "https://github.com/gifu-wildlife/TrainingMdetClassifire",
         "min_app_version": "0.1.0"
       }
+    ],
+    "emb": [
+      {
+        "model_id": "DINOV2-VITS14",
+        "friendly_name": "DINOv2 ViT-S/14",
+        "emoji": "🧬",
+        "type": "embedding",
+        "env": "addaxai-base",
+        "model_fname": "dinov2_vits14_pretrain.pth",
+        "description": "DINOv2 small vision transformer (ViT-S/14) trained with self-supervised learning by Meta AI. Produces 384-dimensional feature vectors for detection crops. Fastest model, suitable for large datasets.",
+        "description_short": "Fast • 384-dim • 21M params",
+        "developer": "Meta AI (FAIR)",
+        "license": "https://github.com/facebookresearch/dinov2/blob/main/LICENSE",
+        "info_url": "https://github.com/facebookresearch/dinov2",
+        "min_app_version": "0.1.0",
+        "embedding_dim": 384,
+        "input_size": 224,
+        "torch_hub_model": "dinov2_vits14"
+      },
+      {
+        "model_id": "DINOV2-VITB14",
+        "friendly_name": "DINOv2 ViT-B/14",
+        "emoji": "🧬",
+        "type": "embedding",
+        "env": "addaxai-base",
+        "model_fname": "dinov2_vitb14_pretrain.pth",
+        "description": "DINOv2 base vision transformer (ViT-B/14) trained with self-supervised learning by Meta AI. Produces 768-dimensional feature vectors for detection crops. Good balance of speed and quality.",
+        "description_short": "Balanced • 768-dim • 86M params",
+        "developer": "Meta AI (FAIR)",
+        "license": "https://github.com/facebookresearch/dinov2/blob/main/LICENSE",
+        "info_url": "https://github.com/facebookresearch/dinov2",
+        "min_app_version": "0.1.0",
+        "embedding_dim": 768,
+        "input_size": 224,
+        "torch_hub_model": "dinov2_vitb14"
+      },
+      {
+        "model_id": "DINOV2-VITL14",
+        "friendly_name": "DINOv2 ViT-L/14",
+        "emoji": "🧬",
+        "type": "embedding",
+        "env": "addaxai-base",
+        "model_fname": "dinov2_vitl14_pretrain.pth",
+        "description": "DINOv2 large vision transformer (ViT-L/14) trained with self-supervised learning by Meta AI. Produces 1024-dimensional feature vectors for detection crops. Highest quality embeddings, slower processing.",
+        "description_short": "Best quality • 1024-dim • 300M params",
+        "developer": "Meta AI (FAIR)",
+        "license": "https://github.com/facebookresearch/dinov2/blob/main/LICENSE",
+        "info_url": "https://github.com/facebookresearch/dinov2",
+        "min_app_version": "0.1.0",
+        "embedding_dim": 1024,
+        "input_size": 224,
+        "torch_hub_model": "dinov2_vitl14"
+      }
     ]
   }
 }
