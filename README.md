@@ -1,15 +1,11 @@
 # AddaxAI-WebUI
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
-## TODO verification task
-- [ ] Update the caption text of the verify page. Any suggestions? Explain the representative (Rep.) and what it does. Also, remove the event count, its not needed. exlain a bit better what the user can do and how it works. Keep the link to the elaborate info. 
-
-
-
 ## TODO crop verification
 - [ ] add a crop verifiction page that verifies instances, just like the mothbox tool. That means a DB migration to add verification status to instances, and add an enbedding step in the AI analysis that runs DINOv2 ViT-S/14 (vits14) on all crops (from all images and from the best frames of videos). Investigate its potential and how it would work for this project. This is a major task. 
 
 ## TODO priority 1
+- [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
 - [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
