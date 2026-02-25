@@ -225,7 +225,7 @@
                 ]
             ],
             "citation": "",
-            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "license": "https://huggingface.co/Addax-Data-Science/VIC-ADS-v1/blob/main/LICENSE.txt",
             "total_download_size": "500 MB",
             "info_url": "https://www.parks.vic.gov.au/get-into-nature/conservation-and-science/science-and-research",
             "all_classes": [
