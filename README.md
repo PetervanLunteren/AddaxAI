@@ -2,7 +2,8 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO crop verification
-- [ ] add a crop verifiction page that verifies instances, just like the mothbox tool. That means a DB migration to add verification status to instances, and add an enbedding step in the AI analysis that runs DINOv2 ViT-S/14 (vits14) on all crops (from all images and from the best frames of videos). Investigate its potential and how it would work for this project. This is a major task. 
+- [ ] perform embedding plan. 
+- [ ] add UI interface to cluster similarity. 
 
 ## TODO priority 1
 - [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
@@ -17,6 +18,7 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 ## TODO priority 3
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [ ] make the backgrounds of all modals not only overlay dark, bot also vague. 
+- [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
 
 ## TODO after beta version
 - [ ] add a feature that allows datetime offset. This should happen at the "new deployment" options. Perhaps something that says "your data spans X days/weeks, etc. " Click here to see the burned in pixel dates (show a few images / frames) and show the extracted datetime next to it. Then users can add an offset to all data in the deployment. Add fast options to switch from AM to PM etc. +12:00 and -12:00. 

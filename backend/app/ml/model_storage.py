@@ -50,7 +50,7 @@ class ModelStorage:
         """
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
         # Use model_category (set by ManifestManager based on directory) to determine path
-        model_type = "det" if manifest.model_category == "detection" else "cls"
+        model_type = {"detection": "det", "classification": "cls", "embedding": "emb"}[manifest.model_category]
         model_path = self.models_dir / model_type / manifest.model_id
         model_file = model_path / manifest.model_fname
 
@@ -77,7 +77,7 @@ class ModelStorage:
         """
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
         # Use model_category (set by ManifestManager based on directory) to determine path
-        model_type = "det" if manifest.model_category == "detection" else "cls"
+        model_type = {"detection": "det", "classification": "cls", "embedding": "emb"}[manifest.model_category]
         model_path = self.models_dir / model_type / manifest.model_id
 
         # Skip if already exists
@@ -147,7 +147,7 @@ class ModelStorage:
             FileNotFoundError: If model not downloaded
         """
         # Use model_category (set by ManifestManager based on directory) to determine path
-        model_type = "det" if manifest.model_category == "detection" else "cls"
+        model_type = {"detection": "det", "classification": "cls", "embedding": "emb"}[manifest.model_category]
         model_path = self.models_dir / model_type / manifest.model_id
         if not model_path.exists():
             raise FileNotFoundError(
@@ -190,7 +190,7 @@ class ModelStorage:
             Size in MB or None if not downloaded
         """
         # Use model_category (set by ManifestManager based on directory) to determine path
-        model_type = "det" if manifest.model_category == "detection" else "cls"
+        model_type = {"detection": "det", "classification": "cls", "embedding": "emb"}[manifest.model_category]
         model_path = self.models_dir / model_type / manifest.model_id
         if not model_path.exists():
             return None

@@ -21,6 +21,11 @@ export const modelsApi = {
   listClassificationModels: () => api.get<ModelInfo[]>("/api/ml/models/classification"),
 
   /**
+   * List all embedding models (includes "No embeddings" option)
+   */
+  listEmbeddingModels: () => api.get<ModelInfo[]>("/api/ml/models/embedding"),
+
+  /**
    * Check if model weights and environment are ready
    */
   getModelStatus: (modelId: string) =>

@@ -12,6 +12,7 @@ export interface ProjectCreate {
   description?: string | null;
   detection_model_id: string;
   classification_model_id: string | null;
+  embedding_model_id: string | null;
   excluded_classes: string[];
   shortcut_labels: Record<string, { value: string; category: string; species: string | null }>;
   country_code?: string | null;
@@ -29,6 +30,7 @@ export interface ProjectUpdate {
   description?: string | null;
   detection_model_id?: string | null;
   classification_model_id?: string | null;
+  embedding_model_id?: string | null;
   excluded_classes?: string[] | null;
   shortcut_labels?: Record<string, { value: string; category: string; species: string | null }> | null;
   country_code?: string | null;
@@ -47,6 +49,7 @@ export interface ProjectResponse {
   description: string | null;
   detection_model_id: string;
   classification_model_id: string | null;
+  embedding_model_id: string | null;
   excluded_classes: string[];
   shortcut_labels: Record<string, { value: string; category: string; species: string | null }>;
   country_code: string | null;
@@ -316,7 +319,7 @@ export interface ModelInfo {
   model_id: string;
   friendly_name: string;
   emoji: string;
-  type: "detection" | "classification";
+  type: "detection" | "classification" | "embedding";
   description: string;
   description_short?: string | null;
   developer?: string | null;
@@ -325,6 +328,7 @@ export interface ModelInfo {
   citation?: string | null;
   license?: string | null;
   min_app_version?: string | null;
+  embedding_dim?: number | null;
 }
 
 // Taxonomy types

@@ -19,6 +19,7 @@ class ProjectBase(BaseModel):
     description: str | None = Field(None, description="Optional project description")
     detection_model_id: str = Field(default="MD5A-0-0", description="Detection model ID")
     classification_model_id: str | None = Field(None, description="Classification model ID or null for detection-only")
+    embedding_model_id: str | None = Field(None, description="Embedding model ID or null to skip embeddings")
     excluded_classes: list[str] = Field(default_factory=list, description="Species classes to exclude from classification")
 
     # SpeciesNet geographic location (alternative to excluded_classes)
@@ -60,6 +61,7 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     detection_model_id: str | None = None
     classification_model_id: str | None = None
+    embedding_model_id: str | None = None
     excluded_classes: list[str] | None = None
     country_code: str | None = None
     state_code: str | None = None

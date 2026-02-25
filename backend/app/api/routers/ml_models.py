@@ -66,7 +66,7 @@ class ModelInfo(BaseModel):
     model_id: str
     friendly_name: str
     emoji: str
-    type: Literal["detection", "classification"]
+    type: Literal["detection", "classification", "embedding"]
     description: str
     description_short: str | None = None
     developer: str | None = None
@@ -75,6 +75,7 @@ class ModelInfo(BaseModel):
     citation: str | None = None
     license: str | None = None
     min_app_version: str | None = None
+    embedding_dim: int | None = None
 
 
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
@@ -364,6 +365,27 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
             # Build environment (blocking call in thread pool)
             await asyncio.to_thread(env_manager.get_or_create_env, manifest, env_progress)
 
+        # Step 3: Pre-cache torch.hub repo for embedding models (if needed)
+        if manifest.torch_hub_model:
+            await ws_manager.send_progress(task_id, "Caching model architecture...", 0.95)
+
+            python_path = env_manager.get_python(f"env-{manifest.env}")
+            cache_cmd = [
+                str(python_path), "-c",
+                f"import torch; torch.hub.load('facebookresearch/dinov2', '{manifest.torch_hub_model}', pretrained=False)",
+            ]
+
+            import subprocess
+            result = await asyncio.to_thread(
+                subprocess.run, cache_cmd,
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                logger.warning(f"torch.hub cache warming failed: {result.stderr}")
+                # Non-fatal — inference will still work if user has internet
+            else:
+                logger.info(f"Cached torch.hub architecture for {manifest.torch_hub_model}")
+
         await ws_manager.send_complete(
             task_id,
             success=True,
@@ -559,6 +581,53 @@ def list_classification_models() -> list[ModelInfo]:
 
     # Sort alphabetically by friendly_name
     result.extend(sorted(model_list, key=lambda m: m.friendly_name))
+
+    return result
+
+
+@router.get("/models/embedding", response_model=list[ModelInfo])
+def list_embedding_models() -> list[ModelInfo]:
+    """
+    List all available embedding models.
+
+    Returns model metadata for UI dropdowns, sorted by embedding_dim (smallest first).
+    Includes a "No embeddings" option as first item.
+    """
+    manifest_mgr, _, _ = _get_managers()
+    models = manifest_mgr.get_embedding_models()
+
+    # Add "None" option first
+    result = [
+        ModelInfo(
+            model_id="none",
+            friendly_name="No embeddings",
+            emoji="⊘",
+            type="embedding",
+            description="Skip embedding computation",
+        )
+    ]
+
+    # Add actual embedding models, sorted by embedding_dim (smallest first)
+    model_list = [
+        ModelInfo(
+            model_id=manifest.model_id,
+            friendly_name=manifest.friendly_name,
+            emoji=manifest.emoji,
+            type="embedding",
+            description=manifest.description or "",
+            description_short=getattr(manifest, "description_short", None),
+            developer=manifest.developer,
+            owner=getattr(manifest, "owner", None),
+            info_url=manifest.info_url,
+            citation=getattr(manifest, "citation", None),
+            license=getattr(manifest, "license", None),
+            min_app_version=manifest.min_app_version,
+            embedding_dim=manifest.embedding_dim,
+        )
+        for manifest in models.values()
+    ]
+
+    result.extend(sorted(model_list, key=lambda m: m.embedding_dim or 0))
 
     return result
 

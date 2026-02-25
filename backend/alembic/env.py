@@ -19,6 +19,7 @@ from app.models import (  # noqa: F401
     AuditLog,
     Deployment,
     Detection,
+    DetectionEmbedding,
     Event,
     File,
     Job,

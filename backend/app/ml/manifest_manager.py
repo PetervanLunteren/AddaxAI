@@ -67,7 +67,8 @@ class ManifestManager:
         # Scan det/ and cls/ subdirectories for model directories
         validated_manifests: dict[str, ModelManifest] = {}
 
-        for model_type in ["det", "cls"]:
+        category_map = {"det": "detection", "cls": "classification", "emb": "embedding"}
+        for model_type in ["det", "cls", "emb"]:
             type_dir = self.models_dir / model_type
             if not type_dir.exists():
                 logger.warning(f"Model type directory not found: {type_dir}")
@@ -89,7 +90,7 @@ class ManifestManager:
 
                     manifest = ModelManifest(**data)
                     # Set model_category based on which directory it was loaded from
-                    manifest.model_category = "detection" if model_type == "det" else "classification"
+                    manifest.model_category = category_map[model_type]
                     validated_manifests[manifest.model_id] = manifest
                     logger.debug(f"Loaded manifest for {manifest.model_id} from {model_dir.name} (category: {manifest.model_category})")
 
@@ -144,5 +145,14 @@ class ManifestManager:
             model_id: manifest
             for model_id, manifest in manifests.items()
             if manifest.model_category == "classification"
+        }
+
+    def get_embedding_models(self) -> dict[str, ModelManifest]:
+        """Get all embedding models (loaded from emb/ directory)."""
+        manifests = self.load_manifests()
+        return {
+            model_id: manifest
+            for model_id, manifest in manifests.items()
+            if manifest.model_category == "embedding"
         }
 

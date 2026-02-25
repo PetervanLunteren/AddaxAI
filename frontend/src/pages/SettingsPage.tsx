@@ -82,6 +82,7 @@ import { cn } from "../lib/utils";
 const settingsSchema = z.object({
   detection_model_id: z.string().min(1, "Detection model is required"),
   classification_model_id: z.string().min(1, "Classification model is required"),
+  embedding_model_id: z.string().optional().nullable(),
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
@@ -171,7 +172,7 @@ export default function SettingsPage() {
 
   // Model preparation state
   type PreparationStage = "form" | "preparing" | "error";
-  type PreparingModelType = "detection" | "classification" | null;
+  type PreparingModelType = "detection" | "classification" | "embedding" | null;
   const [preparationStage, setPreparationStage] = useState<PreparationStage>("form");
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
@@ -220,11 +221,17 @@ export default function SettingsPage() {
     queryFn: () => modelsApi.listClassificationModels(),
   });
 
+  const { data: embeddingModels = [] } = useQuery({
+    queryKey: ["models", "embedding"],
+    queryFn: () => modelsApi.listEmbeddingModels(),
+  });
+
   const form = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       detection_model_id: "MD5A-0-0",
       classification_model_id: "",
+      embedding_model_id: "none",
       excluded_classes: [],
       country_code: null,
       state_code: null,
@@ -243,6 +250,7 @@ export default function SettingsPage() {
       const values: SettingsFormData = {
         detection_model_id: project.detection_model_id,
         classification_model_id: project.classification_model_id || "",
+        embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
@@ -269,6 +277,7 @@ export default function SettingsPage() {
   // Watch model changes
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
+  const embeddingModelId = form.watch("embedding_model_id");
   const countryCode = form.watch("country_code");
 
   // Check if current model is SpeciesNet
@@ -302,12 +311,21 @@ export default function SettingsPage() {
     enabled: !!classificationModelId && classificationModelId !== "none",
   });
 
+  // Fetch embedding model status
+  const { data: embeddingModelStatus } = useQuery({
+    queryKey: ["model-status", embeddingModelId],
+    queryFn: () => modelsApi.getModelStatus(embeddingModelId!),
+    enabled: !!embeddingModelId && embeddingModelId !== "none",
+  });
+
   // WebSocket progress tracking for model preparation
   const { progress, message } = useTaskProgress({
     taskId: preparingTaskId,
     onComplete: () => {
       // Refresh the correct model status based on which model was being prepared
-      const modelIdToRefresh = preparingModelType === "detection" ? detectionModelId : classificationModelId;
+      const modelIdToRefresh = preparingModelType === "detection" ? detectionModelId
+        : preparingModelType === "embedding" ? embeddingModelId
+        : classificationModelId;
       queryClient.invalidateQueries({ queryKey: ["model-status", modelIdToRefresh] });
       setPreparingTaskId(null);
       setPreparationStage("form");
@@ -384,6 +402,22 @@ export default function SettingsPage() {
     }
   };
 
+  // Handler for embedding model preparation
+  const handlePrepareEmbeddingModel = async () => {
+    if (!embeddingModelId) return;
+
+    try {
+      setPreparationStage("preparing");
+      setPreparingModelType("embedding");
+      const response = await modelsApi.prepareModel(embeddingModelId);
+      setPreparingTaskId(response.task_id);
+    } catch (error: any) {
+      setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationStage("error");
+      setPreparingModelType(null);
+    }
+  };
+
   // Handler for canceling preparation
   const handleCancelPreparation = () => {
     setPreparingTaskId(null);
@@ -397,6 +431,8 @@ export default function SettingsPage() {
     // Retry the same model type that failed
     if (preparingModelType === "detection") {
       handlePrepareDetectionModel();
+    } else if (preparingModelType === "embedding") {
+      handlePrepareEmbeddingModel();
     } else {
       handlePrepareClassificationModel();
     }
@@ -547,6 +583,7 @@ export default function SettingsPage() {
       form.reset({
         detection_model_id: project.detection_model_id,
         classification_model_id: project.classification_model_id || "",
+        embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
@@ -795,6 +832,101 @@ export default function SettingsPage() {
                             status={classificationModelStatus}
                             onPrepare={handlePrepareClassificationModel}
                             isPreparing={preparationStage === "preparing" && preparingModelType === "classification"}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Embedding Model */}
+                <FormField
+                  control={form.control}
+                  name="embedding_model_id"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Embedding model</FormLabel>
+                        <FormDescription className="text-sm">
+                          Computes feature vectors for each detection crop. Used for similarity search and clustering.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-stretch">
+                          <Select
+                            key={field.value ?? "none"}
+                            onValueChange={field.onChange}
+                            value={field.value ?? "none"}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select embedding model">
+                                  {field.value && (() => {
+                                    const selectedModel = embeddingModels.find(
+                                      (m) => m.model_id === field.value
+                                    );
+                                    if (!selectedModel) return null;
+                                    return (
+                                      <div className="flex flex-col items-start py-1">
+                                        <div>
+                                          {selectedModel.emoji} {selectedModel.friendly_name}
+                                        </div>
+                                        {selectedModel.description_short && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {selectedModel.description_short}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </SelectValue>
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {embeddingModels.map((model) => (
+                                <SelectItem key={model.model_id} value={model.model_id}>
+                                  {model.emoji} {model.friendly_name}
+                                  {model.description_short && (
+                                    <>
+                                      <br />
+                                      <span className="text-xs text-muted-foreground">{model.description_short}</span>
+                                    </>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {field.value && field.value !== "none" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="self-center">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3"
+                                    onClick={() => {
+                                      setSelectedModelId(field.value!);
+                                      setShowModelInfo(true);
+                                    }}
+                                  >
+                                    <InfoIcon className="h-4 w-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>View model information</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                        <FormMessage />
+
+                        {/* Model Status Badge */}
+                        {field.value && field.value !== "none" && embeddingModelStatus && (
+                          <ModelStatusBadge
+                            status={embeddingModelStatus}
+                            onPrepare={handlePrepareEmbeddingModel}
+                            isPreparing={preparationStage === "preparing" && preparingModelType === "embedding"}
                           />
                         )}
                       </div>
@@ -1207,7 +1339,8 @@ export default function SettingsPage() {
                         updateMutation.isPending ||
                         !!saveJobId ||
                         detectionModelStatus?.status !== "ready" ||
-                        classificationModelStatus?.status !== "ready"
+                        classificationModelStatus?.status !== "ready" ||
+                        (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
                       }
                     >
                       <Save className="h-4 w-4 mr-2" />
@@ -1215,7 +1348,7 @@ export default function SettingsPage() {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {(detectionModelStatus?.status !== "ready" || classificationModelStatus?.status !== "ready") && (
+                {(detectionModelStatus?.status !== "ready" || classificationModelStatus?.status !== "ready" || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
                   <TooltipContent>
                     <p>Model needs preparing first</p>
                   </TooltipContent>
@@ -1265,6 +1398,15 @@ export default function SettingsPage() {
               <ModelPreparationView
                 modelName={classificationModels.find((m) => m.model_id === classificationModelId)!.friendly_name}
                 modelEmoji={classificationModels.find((m) => m.model_id === classificationModelId)!.emoji}
+                progress={progress}
+                message={message}
+                onCancel={handleCancelPreparation}
+              />
+            )}
+            {preparingModelType === "embedding" && embeddingModels.find((m) => m.model_id === embeddingModelId) && (
+              <ModelPreparationView
+                modelName={embeddingModels.find((m) => m.model_id === embeddingModelId)!.friendly_name}
+                modelEmoji={embeddingModels.find((m) => m.model_id === embeddingModelId)!.emoji}
                 progress={progress}
                 message={message}
                 onCancel={handleCancelPreparation}

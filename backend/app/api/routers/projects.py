@@ -85,6 +85,19 @@ def create_project(
                 detail=f"Classification model '{project.classification_model_id}' not found",
             )
 
+    # Normalize "none" to NULL and validate embedding model
+    if project.embedding_model_id == "none":
+        project.embedding_model_id = None
+    elif project.embedding_model_id is not None:
+        try:
+            manifest_mgr.get_model(project.embedding_model_id)
+        except ValueError:
+            logger.warning(f"Invalid embedding model: {project.embedding_model_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Embedding model '{project.embedding_model_id}' not found",
+            )
+
     try:
         db_project = crud_project.create_project(db, project)
         logger.info(f"Created project: {project.name} (ID: {db_project.id})")
@@ -125,6 +138,24 @@ def update_project(
     Returns 404 if project doesn't exist.
     Returns 409 if new name conflicts with existing project.
     """
+    # Normalize "none" to NULL and validate embedding model
+    if project.embedding_model_id == "none":
+        project.embedding_model_id = None
+    elif project.embedding_model_id is not None:
+        from app.core.config import get_settings
+        from app.ml.manifest_manager import ManifestManager
+
+        settings = get_settings()
+        manifest_mgr = ManifestManager(settings.user_data_dir / "models")
+        try:
+            manifest_mgr.get_model(project.embedding_model_id)
+        except ValueError:
+            logger.warning(f"Invalid embedding model: {project.embedding_model_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Embedding model '{project.embedding_model_id}' not found",
+            )
+
     # Validate that not all species are excluded
     if project.excluded_classes is not None and len(project.excluded_classes) > 0:
         db_existing = crud_project.get_project(db, project_id)

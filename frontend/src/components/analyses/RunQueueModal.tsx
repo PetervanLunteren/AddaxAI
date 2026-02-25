@@ -81,7 +81,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
   const phaseProgressPercent = (phaseProgress ?? 0) * 100;
 
   // Phase ordering for progress calculation
-  const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "finalize"];
+  const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "embedding", "finalize"];
   const currentPhaseIndex = phase ? phaseOrder.indexOf(phase) : -1;
 
   // Calculate progress for each phase based on TQDM metrics
@@ -109,6 +109,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
   const videoClassificationProgress = getPhaseProgress("video_classification");
   const imageDetectionProgress = getPhaseProgress("image_detection");
   const imageClassificationProgress = getPhaseProgress("image_classification");
+  const embeddingProgress = getPhaseProgress("embedding");
 
   // Determine status messages (raw tqdm output from backend)
   const getPhaseStatus = (targetPhase: string, defaultWaiting: string): string => {
@@ -142,6 +143,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
   const videoClassificationStatus = getPhaseStatus("video_classification", "Waiting...");
   const imageDetectionStatus = getPhaseStatus("image_detection", "Waiting...");
   const imageClassificationStatus = getPhaseStatus("image_classification", "Waiting...");
+  const embeddingStatus = getPhaseStatus("embedding", "Waiting...");
 
   // Helper function to render status with icon
   const renderStatusWithIcon = (status: string) => {
@@ -428,6 +430,55 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
                         {(phase !== "image_classification" || !(metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total)) && (
                           <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                             {renderStatusWithIcon(imageClassificationStatus)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Embedding - only shown when embedding phase is active or completed */}
+                    {(phase === "embedding" || (currentPhaseIndex > phaseOrder.indexOf("embedding"))) && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-700">Embedding</p>
+                          <span className="text-xs text-gray-500 font-mono">{embeddingProgress.toFixed(0)}%</span>
+                        </div>
+                        <Progress value={embeddingProgress} className="h-2" />
+
+                        {phase === "embedding" && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total && (
+                          <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                            <div className="flex justify-between">
+                              <span>Processing {metrics.unit || 'crops'}:</span>
+                              <span>{metrics.current} of {metrics.total}</span>
+                            </div>
+                            {metrics.elapsed && (
+                              <div className="flex justify-between">
+                                <span>Elapsed time:</span>
+                                <span>{metrics.elapsed}</span>
+                              </div>
+                            )}
+                            {metrics.remaining && (
+                              <div className="flex justify-between">
+                                <span>Remaining time:</span>
+                                <span>{metrics.remaining}</span>
+                              </div>
+                            )}
+                            {metrics.rate && metrics.unit && (
+                              <div className="flex justify-between">
+                                <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
+                                <span>{metrics.rate.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span>Running on:</span>
+                              <span className={computeDevice ? "" : "text-gray-400"}>
+                                {computeDevice ?? "detecting..."}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {(phase !== "embedding" || !(metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total)) && (
+                          <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                            {renderStatusWithIcon(embeddingStatus)}
                           </div>
                         )}
                       </div>

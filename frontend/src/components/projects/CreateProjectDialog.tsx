@@ -148,6 +148,7 @@ export function CreateProjectDialog({
       description: "",
       detection_model_id: "MD5A-0-0",
       classification_model_id: "",
+      embedding_model_id: null,
       excluded_classes: [],
       country_code: null,
       state_code: null,

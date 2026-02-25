@@ -73,9 +73,10 @@ class ModelCatalogUpdater:
                 logger.error("Invalid catalog structure: missing 'det' or 'cls' in models")
                 return None
 
+            emb_count = len(catalog["models"].get("emb", []))
             logger.info(
                 f"Fetched catalog: "
-                f"{len(catalog['models']['det'])} det, {len(catalog['models']['cls'])} cls models"
+                f"{len(catalog['models']['det'])} det, {len(catalog['models']['cls'])} cls, {emb_count} emb models"
             )
             return catalog
 
@@ -96,9 +97,9 @@ class ModelCatalogUpdater:
         Returns:
             Dict with 'det' and 'cls' keys, values are sets of model_ids
         """
-        local_models: dict[str, set[str]] = {"det": set(), "cls": set()}
+        local_models: dict[str, set[str]] = {"det": set(), "cls": set(), "emb": set()}
 
-        for model_type in ["det", "cls"]:
+        for model_type in ["det", "cls", "emb"]:
             type_dir = self.models_dir / model_type
             if not type_dir.exists():
                 continue
@@ -109,7 +110,8 @@ class ModelCatalogUpdater:
 
         logger.debug(
             f"Found {len(local_models['det'])} local det models, "
-            f"{len(local_models['cls'])} local cls models"
+            f"{len(local_models['cls'])} local cls models, "
+            f"{len(local_models['emb'])} local emb models"
         )
         return local_models
 
@@ -126,8 +128,8 @@ class ModelCatalogUpdater:
         """
         new_models: list[dict[str, Any]] = []
 
-        for model_type in ["det", "cls"]:
-            remote_model_list = remote_catalog["models"][model_type]
+        for model_type in ["det", "cls", "emb"]:
+            remote_model_list = remote_catalog["models"].get(model_type, [])
 
             for manifest_data in remote_model_list:
                 model_id = manifest_data["model_id"]
@@ -252,7 +254,7 @@ class ModelCatalogUpdater:
             local_models = self.get_local_models()
 
             # Check if this is a fresh install (no models at all)
-            total_local = len(local_models["det"]) + len(local_models["cls"])
+            total_local = len(local_models["det"]) + len(local_models["cls"]) + len(local_models["emb"])
             is_fresh_install = total_local == 0
 
             # Compare and find new models

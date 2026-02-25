@@ -21,7 +21,7 @@ export interface ProgressMessage {
   job_id: string;
   message: string;
   progress?: number; // 0.0-1.0 (overall progress, for backward compatibility)
-  phase?: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "finalize";
+  phase?: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "embedding" | "finalize";
   phase_progress?: number; // 0.0-1.0 (progress within current phase)
   success?: boolean;
   data?: {
@@ -56,7 +56,7 @@ export function useTaskProgress({
 }: UseTaskProgressOptions) {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
-  const [phase, setPhase] = useState<"init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "finalize" | null>(null);
+  const [phase, setPhase] = useState<"init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "embedding" | "finalize" | null>(null);
   const [phaseProgress, setPhaseProgress] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [deploymentContext, setDeploymentContext] = useState<DeploymentContext | null>(null);
@@ -73,7 +73,7 @@ export function useTaskProgress({
   const pendingUpdateRef = useRef<{
     message: string;
     progress: number;
-    phase: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "finalize" | null;
+    phase: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "embedding" | "finalize" | null;
     phaseProgress: number;
     metrics: TqdmMetrics | null;
   } | null>(null);

@@ -519,6 +519,69 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 except Exception as e:
                     logger.error(f"Postprocessing failed (non-fatal): {e}", exc_info=True)
 
+            # ============================================================
+            # PHASE 8: Embedding (DINOv2) — fatal if configured
+            # ============================================================
+            embedding_model_id = project.embedding_model_id
+            if embedding_model_id and final_json_path.exists():
+                logger.info(f"Phase 8: Computing embeddings with {embedding_model_id}")
+                await deployment_progress_callback("Computing embeddings...", 0.0, "embedding", 0.0)
+
+                emb_manifest = manifest_manager.get_model(embedding_model_id)
+                emb_model_path = model_storage.get_model_file(emb_manifest)
+
+                from app.ml.inference.embedding_model import EmbeddingModel
+                from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
+
+                embedding_model = EmbeddingModel(emb_model_path, emb_manifest, env_manager)
+
+                input_data = build_embedding_input(deployment.id, folder_path, artifacts_folder, db)
+                embedding_input_json = artifacts_folder / "embedding_input.json"
+                embedding_output_npz = artifacts_folder / "embeddings.npz"
+
+                import json as _json
+                with open(embedding_input_json, "w") as f:
+                    _json.dump(input_data, f)
+
+                # Progress wrapper for embedding phase
+                loop = asyncio.get_event_loop()
+
+                def sync_embedding_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                    """Sync wrapper that schedules async callback from executor thread."""
+                    if metrics:
+                        metrics["unit"] = "crop"
+                    asyncio.run_coroutine_threadsafe(
+                        deployment_progress_callback(
+                            message,
+                            0.0,
+                            "embedding",
+                            phase_progress,
+                            metrics,
+                        ),
+                        loop,
+                    )
+
+                # Run embedding subprocess in executor (blocking I/O)
+                embedded_count = await loop.run_in_executor(
+                    None,
+                    lambda: embedding_model.compute_embeddings(
+                        embedding_input_json, embedding_output_npz, sync_embedding_progress
+                    ),
+                )
+
+                # Save embeddings to database
+                if embedding_output_npz.exists():
+                    save_embeddings_to_db(
+                        embedding_output_npz, job_id, embedding_model_id,
+                        emb_manifest.embedding_dim, db,
+                    )
+
+                # Clean up intermediate files
+                embedding_input_json.unlink(missing_ok=True)
+                embedding_output_npz.unlink(missing_ok=True)
+
+                logger.info(f"Embedding complete: {embedded_count} detections embedded")
+
             # Clean up intermediate JSONs (only results.json is needed at runtime)
             for intermediate in [video_json_path, image_json_path]:
                 if intermediate != final_json_path and intermediate.exists():

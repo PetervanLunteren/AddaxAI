@@ -17,6 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from .detection_embedding import DetectionEmbedding
     from .file import File
     from .job import Job
 
@@ -69,6 +70,9 @@ class Detection(Base):
     # Relationships
     file: Mapped["File"] = relationship("File", back_populates="detections")
     job: Mapped["Job | None"] = relationship("Job")
+    embeddings: Mapped[list["DetectionEmbedding"]] = relationship(
+        "DetectionEmbedding", back_populates="detection", cascade="all, delete-orphan"
+    )
 
     # Indexes for common queries
     __table_args__ = (

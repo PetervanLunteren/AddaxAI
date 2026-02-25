@@ -23,8 +23,8 @@ class ModelManifest(BaseModel):
     model_id: str
     friendly_name: str
     emoji: str
-    type: str
-    model_category: str | None = None  # "detection" or "classification" - set during loading based on directory
+    type: str | None = None  # Unused legacy field, kept for backward compatibility with existing manifests
+    model_category: str | None = None  # "detection", "classification", or "embedding" - set during loading based on directory
 
     # Environment & Model Files
     env: str
@@ -44,6 +44,11 @@ class ModelManifest(BaseModel):
     # Classification-specific
     species_list: list[str] | None = None
 
+    # Embedding-specific
+    embedding_dim: int | None = None    # 384, 768, or 1024
+    input_size: int | None = None       # e.g., 224
+    torch_hub_model: str | None = None  # e.g., "dinov2_vits14" (for architecture loading)
+
     class Config:
         """Pydantic config."""
 
@@ -52,7 +57,7 @@ class ModelManifest(BaseModel):
                 "model_id": "MD5A-0-0",
                 "friendly_name": "MegaDetector 5a",
                 "emoji": "🔍",
-                "type": "detection",
+
                 "env": "megadetector",
                 "model_fname": "md_v5a.0.0.pt",
                 "hf_repo": "Addax-Data-Science/MD5A-0-0",
