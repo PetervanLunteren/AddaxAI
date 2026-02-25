@@ -2,7 +2,10 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO crop verification
-- [ ] perform embedding plan. 
+- [ ] make UI pretty from start to finish
+    - [ ] make model selection with the (i) to make it consistent with det and cls models
+    - [ ] the pbar didn't appear from the start
+    - [ ] check videos
 - [ ] add UI interface to cluster similarity. 
 
 ## TODO priority 1
