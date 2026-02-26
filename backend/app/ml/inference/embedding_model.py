@@ -104,12 +104,16 @@ class EmbeddingModel:
         if progress_callback:
             progress_callback("Loading embedding model...", 0.0, None)
 
+        import os as _os
+        env = {**_os.environ, "PYTHONUNBUFFERED": "1"}
+
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=env,
         )
 
         embedded_count = 0

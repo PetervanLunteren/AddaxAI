@@ -896,28 +896,33 @@ export default function SettingsPage() {
                               ))}
                             </SelectContent>
                           </Select>
-                          {field.value && field.value !== "none" && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="self-center">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3"
-                                    onClick={() => {
-                                      setSelectedModelId(field.value!);
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="self-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="px-3"
+                                  onClick={() => {
+                                    if (field.value && field.value !== "none") {
+                                      setSelectedModelId(field.value);
                                       setShowModelInfo(true);
-                                    }}
-                                  >
-                                    <InfoIcon className="h-4 w-4" />
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>View model information</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                                    }
+                                  }}
+                                  disabled={!field.value || field.value === "none"}
+                                >
+                                  <InfoIcon className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {field.value && field.value !== "none"
+                                  ? "View model information"
+                                  : "Select an embedding model to view details"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
                         <FormMessage />
 

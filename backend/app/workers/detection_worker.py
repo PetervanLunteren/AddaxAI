@@ -176,6 +176,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         "video_count": entry.video_count,
                         "image_count": entry.image_count,
                         "has_classifier": classification_model is not None,
+                        "has_embedding": bool(project.embedding_model_id),
                     },
                 )
                 logger.info(f"[{datetime.now().isoformat()}] First progress sent, now scanning for file paths")
@@ -209,6 +210,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         "video_count": len(video_files),
                         "image_count": len(image_files),
                         "has_classifier": classification_model is not None,
+                        "has_embedding": bool(project.embedding_model_id),
                     },
                 )
                 logger.info(f"[{datetime.now().isoformat()}] First progress sent")
@@ -470,7 +472,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             if json_files_to_merge:
                 logger.info(f"Phase 5: Merging {len(json_files_to_merge)} JSON files")
-                await deployment_progress_callback("Merging results...", 0.0, "finalize", 0.5)
+                await deployment_progress_callback("Merging results...", 0.0, "saving", 0.5)
 
                 merge_json_files(json_files_to_merge, final_json_path, deployment.id)
 
@@ -479,7 +481,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             if final_json_path.exists():
                 logger.info("Phase 6: Loading results to database")
-                await deployment_progress_callback("Loading to database...", 0.0, "finalize", 0.75)
+                await deployment_progress_callback("Loading to database...", 0.0, "saving", 0.75)
 
                 from app.ml.json_pipeline import load_json_to_database
 

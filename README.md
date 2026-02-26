@@ -3,8 +3,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO crop verification
 - [ ] make UI pretty from start to finish
-    - [ ] make model selection with the (i) to make it consistent with det and cls models
-    - [ ] the pbar didn't appear from the start
     - [ ] check videos
 - [ ] add UI interface to cluster similarity. 
 

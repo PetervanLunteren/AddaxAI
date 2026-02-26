@@ -81,7 +81,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
   const phaseProgressPercent = (phaseProgress ?? 0) * 100;
 
   // Phase ordering for progress calculation
-  const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "embedding", "finalize"];
+  const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "saving", "embedding", "finalize"];
   const currentPhaseIndex = phase ? phaseOrder.indexOf(phase) : -1;
 
   // Calculate progress for each phase based on TQDM metrics
@@ -114,26 +114,18 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
   // Determine status messages (raw tqdm output from backend)
   const getPhaseStatus = (targetPhase: string, defaultWaiting: string): string => {
     const targetIndex = phaseOrder.indexOf(targetPhase);
-    const finalizeIndex = phaseOrder.indexOf("finalize");
 
     if (currentPhaseIndex < targetIndex) return defaultWaiting;
-
-    // If we're in finalize phase and this phase is completed, show "Finalizing..."
-    if (currentPhaseIndex === finalizeIndex && currentPhaseIndex > targetIndex) return "Finalizing...";
-
     if (currentPhaseIndex > targetIndex) return "Complete";
 
-    // If this is the current phase
+    // This is the current phase
     if (phase === targetPhase) {
-      // Check if metrics show 100% complete (current === total)
       if (metrics?.current !== undefined && metrics?.total !== undefined && metrics.current >= metrics.total) {
-        return "Finalizing...";
+        return "Complete";
       }
-      // Fallback: Check if phase_progress is 100% (for phases without detailed metrics)
       if (phaseProgress !== undefined && phaseProgress >= 1.0) {
-        return "Finalizing...";
+        return "Complete";
       }
-      // Otherwise show "Starting up..." (will display until metrics card takes over)
       return "Starting up...";
     }
     return defaultWaiting;
@@ -154,7 +146,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
           <span>{status}</span>
         </div>
       );
-    } else if (status === "Starting up..." || status === "Finalizing...") {
+    } else if (status === "Starting up...") {
       return (
         <div className="flex items-center gap-2">
           <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#156065' }} />
@@ -172,7 +164,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
     return <span>{status}</span>;
   };
 
-  const showSpinner = phase === "finalize" || isWaitingForJob;
+  const showSpinner = isWaitingForJob;
 
   return (
     <Dialog open={open} onOpenChange={isComplete || hasError ? onOpenChange : undefined}>
@@ -212,7 +204,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
           {/* Processing States */}
           {!isComplete && !hasError && (
             <>
-              {/* Spinner for finalize phase */}
+              {/* Spinner while waiting for job */}
               {showSpinner && (
                 <div className="flex items-center gap-3">
                   <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />
@@ -435,8 +427,8 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
                       </div>
                     )}
 
-                    {/* Embedding - only shown when embedding phase is active or completed */}
-                    {(phase === "embedding" || (currentPhaseIndex > phaseOrder.indexOf("embedding"))) && (
+                    {/* Embedding - shown from the start if project has embedding model */}
+                    {deploymentContext.hasEmbedding && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-medium text-gray-700">Embedding</p>

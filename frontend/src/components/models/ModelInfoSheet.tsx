@@ -1,8 +1,8 @@
 /**
  * Model Info Sheet Component
  *
- * Displays detailed information about a classification or detection model
- * in a slide-out drawer from the right.
+ * Displays detailed information about a detection, classification, or embedding
+ * model in a slide-out drawer from the right.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -40,6 +40,13 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
     enabled: open && !!modelId,
   });
 
+  // Fetch all embedding models
+  const { data: embeddingModels } = useQuery({
+    queryKey: ["models", "embedding"],
+    queryFn: () => modelsApi.listEmbeddingModels(),
+    enabled: open && !!modelId,
+  });
+
   // Fetch taxonomy to get class count
   const { data: taxonomy } = useQuery({
     queryKey: ["taxonomy", modelId],
@@ -48,7 +55,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
   });
 
   // Find the selected model
-  const model = [...(classificationModels || []), ...(detectionModels || [])].find(
+  const model = [...(classificationModels || []), ...(detectionModels || []), ...(embeddingModels || [])].find(
     (m) => m.model_id === modelId
   );
 
@@ -78,7 +85,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             {model.friendly_name}
           </SheetTitle>
           <SheetDescription>
-            {model.type === "detection" ? "Detection model" : "Classification model"}
+            {model.type === "detection" ? "Detection model" : model.type === "embedding" ? "Embedding model" : "Classification model"}
           </SheetDescription>
         </SheetHeader>
 
@@ -90,6 +97,19 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
           </div>
 
           <Separator />
+
+          {/* Embedding specs (for embedding models) */}
+          {model.type === "embedding" && model.embedding_dim && (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Specifications</h3>
+                <p className="text-sm text-gray-700">
+                  {model.embedding_dim}-dimensional feature vectors
+                </p>
+              </div>
+              <Separator />
+            </>
+          )}
 
           {/* Classes (for classification models) */}
           {model.type === "classification" && classList.length > 0 && (

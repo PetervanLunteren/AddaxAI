@@ -21,7 +21,7 @@ export interface ProgressMessage {
   job_id: string;
   message: string;
   progress?: number; // 0.0-1.0 (overall progress, for backward compatibility)
-  phase?: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "embedding" | "finalize";
+  phase?: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "saving" | "embedding" | "finalize";
   phase_progress?: number; // 0.0-1.0 (progress within current phase)
   success?: boolean;
   data?: {
@@ -30,6 +30,7 @@ export interface ProgressMessage {
     video_count?: number;
     image_count?: number;
     has_classifier?: boolean;
+    has_embedding?: boolean;
     metrics?: TqdmMetrics;
     [key: string]: unknown;
   };
@@ -41,6 +42,7 @@ export interface DeploymentContext {
   videoCount: number;
   imageCount: number;
   hasClassifier: boolean;
+  hasEmbedding: boolean;
 }
 
 interface UseTaskProgressOptions {
@@ -56,7 +58,7 @@ export function useTaskProgress({
 }: UseTaskProgressOptions) {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
-  const [phase, setPhase] = useState<"init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "embedding" | "finalize" | null>(null);
+  const [phase, setPhase] = useState<"init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "saving" | "embedding" | "finalize" | null>(null);
   const [phaseProgress, setPhaseProgress] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [deploymentContext, setDeploymentContext] = useState<DeploymentContext | null>(null);
@@ -73,7 +75,7 @@ export function useTaskProgress({
   const pendingUpdateRef = useRef<{
     message: string;
     progress: number;
-    phase: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "embedding" | "finalize" | null;
+    phase: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "saving" | "embedding" | "finalize" | null;
     phaseProgress: number;
     metrics: TqdmMetrics | null;
   } | null>(null);
@@ -124,6 +126,7 @@ export function useTaskProgress({
                 videoCount: data.data.video_count ?? 0,
                 imageCount: data.data.image_count ?? 0,
                 hasClassifier: data.data.has_classifier ?? false,
+                hasEmbedding: data.data.has_embedding ?? false,
               };
 
               // Update context only on first receipt or when deployment_index actually changes
