@@ -19,20 +19,16 @@ logger = get_logger(__name__)
 
 def build_embedding_input(
     deployment_id: str,
-    deployment_folder: Path,
-    artifacts_folder: Path,
     db: Session,
 ) -> dict:
     """
     Query all detections for a deployment and build input for embedding_script.py.
 
-    For video detections (frame_number is not None): resolve frame path from artifacts.
-    For image detections: use File.file_path directly.
+    Uses File.file_path directly for both images and video frames
+    (video frame paths are stored in the DB by the loader).
 
     Args:
         deployment_id: Deployment ID to query detections for
-        deployment_folder: Root folder of the deployment
-        artifacts_folder: Project-scoped artifacts folder (contains video_frames/)
         db: Database session
 
     Returns:
@@ -45,28 +41,17 @@ def build_embedding_input(
         .all()
     )
 
-    video_frames_dir = artifacts_folder / "video_frames"
     entries = []
 
     for det, file in detections:
-        # Resolve image path
-        if det.frame_number is not None:
-            # Video detection — resolve extracted frame
-            frame_path = video_frames_dir / Path(file.file_path).name / f"frame{det.frame_number:06d}.jpg"
-            if not frame_path.exists():
-                logger.warning(
-                    f"Frame not found for detection {det.id}: {frame_path}, skipping"
-                )
-                continue
-            image_path = str(frame_path)
-        else:
-            # Image detection — use file path directly
-            image_path = file.file_path
-            if not Path(image_path).exists():
-                logger.warning(
-                    f"Image not found for detection {det.id}: {image_path}, skipping"
-                )
-                continue
+        # Use file_path directly — for images it's the original path,
+        # for video frames it's the extracted frame path (stored by DB loader)
+        image_path = file.file_path
+        if not Path(image_path).exists():
+            logger.warning(
+                f"Image not found for detection {det.id}: {image_path}, skipping"
+            )
+            continue
 
         entries.append({
             "detection_id": det.id,

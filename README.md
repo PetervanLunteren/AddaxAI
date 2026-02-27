@@ -2,12 +2,21 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO crop verification
-- [ ] make UI pretty from start to finish
-    - [ ] check videos
 - [ ] add UI interface to cluster similarity. 
 
 ## TODO priority 1
+- [ ] that websocket stuff is very subjective huh? some seconds here, some seconds there.... it feels very hacky tacky.                                                          
+                                                                                                                     
+⏺ Yeah, it is. The whole buffer-and-replay approach is a workaround for a race condition: the frontend opens the WebSocket after the backend already started sending         
+  progress. The "right" fix would be to guarantee ordering — don't start processing until the WebSocket is connected, or have the frontend poll for current state instead of
+  relying on replayed messages. Then you wouldn't need a buffer at all.                                                                                                      
+                                                                                                                                                                             
+- [ ] run on ukraine dep 2 and check the rep image for the lynx. The rep is animal 91%, while there are others with 93%. Maybe we should revisit the formula for rep definition. First combined animal conf, then bbox surface, then sharpness. 
+
+
+
 - [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
+
 - [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?

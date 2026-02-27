@@ -27,6 +27,17 @@ import {
   type SaveResults,
   type StatSnapshot,
 } from "../components/projects/SaveResultsModal";
+import { ReEmbedModal } from "../components/projects/ReEmbedModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import {
@@ -190,6 +201,12 @@ export default function SettingsPage() {
     newThreshold: number;
     newInterval: number;
   } | null>(null);
+
+  // Re-embed confirmation + progress state
+  const [reEmbedConfirmOpen, setReEmbedConfirmOpen] = useState(false);
+  const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
+  const [reEmbedDetectionCount, setReEmbedDetectionCount] = useState(0);
+  const pendingFormData = useRef<SettingsFormData | null>(null);
 
   /** Show the custom save toast with auto-dismiss. */
   const showSaveToast = useCallback((results: SaveResults) => {
@@ -520,6 +537,39 @@ export default function SettingsPage() {
       }
     }
 
+    // Intercept embedding model change — confirm only when replacing an existing model
+    // and there are detections to re-embed. Skip for "none" → model (first-time enable).
+    const currentValues = form.formState.defaultValues as SettingsFormData;
+    const oldEmbModel = currentValues.embedding_model_id || "none";
+    const newEmbModel = data.embedding_model_id || "none";
+    if (oldEmbModel !== newEmbModel && oldEmbModel !== "none" && newEmbModel !== "none") {
+      let count = 0;
+      try {
+        ({ count } = await projectsApi.getDetectionCount(projectId, 0));
+      } catch { /* fall through with 0 */ }
+
+      if (count > 0) {
+        pendingFormData.current = data;
+        setReEmbedDetectionCount(count);
+        setReEmbedConfirmOpen(true);
+        return; // Wait for user confirmation
+      }
+    }
+
+    // No confirmation needed — save and trigger re-embed inline if model changed
+    await runSaveFlow(data);
+    if (oldEmbModel !== newEmbModel && newEmbModel !== "none") {
+      try {
+        const result = await projectsApi.reEmbed(projectId);
+        if (result.job_id) setReEmbedJobId(result.job_id);
+      } catch { /* non-fatal */ }
+    }
+  };
+
+  /** Core save flow — extracted so confirmation handlers can call it too. */
+  const runSaveFlow = async (data: SettingsFormData) => {
+    if (!projectId) return;
+
     try {
       const currentValues = form.formState.defaultValues as SettingsFormData;
       const willReprocess = hasSmoothingChanges(currentValues, data);
@@ -576,6 +626,43 @@ export default function SettingsPage() {
       setIsSaving(false);
       toast.error(error.message || "Failed to save settings");
     }
+  };
+
+  /** User confirmed re-embedding — save settings, then trigger re-embed. */
+  const handleConfirmReEmbed = async () => {
+    setReEmbedConfirmOpen(false);
+    const data = pendingFormData.current;
+    pendingFormData.current = null;
+    if (!data || !projectId) return;
+
+    // Run the full save flow (saves all settings including new embedding model)
+    await runSaveFlow(data);
+
+    // Trigger re-embedding and open progress modal
+    try {
+      const reEmbedResult = await projectsApi.reEmbed(projectId);
+      if (reEmbedResult.job_id) {
+        setReEmbedJobId(reEmbedResult.job_id);
+      } else {
+        toast.success(reEmbedResult.message);
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to start re-embedding");
+    }
+  };
+
+  /** User declined re-embedding — revert embedding model, save other settings. */
+  const handleRevertReEmbed = async () => {
+    setReEmbedConfirmOpen(false);
+    const data = pendingFormData.current;
+    pendingFormData.current = null;
+    if (!data) return;
+
+    // Revert embedding model to old value, save everything else
+    const currentValues = form.formState.defaultValues as SettingsFormData;
+    const revertedData = { ...data, embedding_model_id: currentValues.embedding_model_id };
+    form.setValue("embedding_model_id", currentValues.embedding_model_id || "none");
+    await runSaveFlow(revertedData);
   };
 
   const handleReset = () => {
@@ -1497,6 +1584,47 @@ export default function SettingsPage() {
             />
           </DialogContent>
         </Dialog>
+
+        {/* Re-embed Confirmation Dialog */}
+        <AlertDialog open={reEmbedConfirmOpen} onOpenChange={setReEmbedConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Re-embed detections?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Changing the embedding model from{" "}
+                <strong>
+                  {embeddingModels.find(m => m.model_id === (form.formState.defaultValues as SettingsFormData)?.embedding_model_id)?.friendly_name ?? "None"}
+                </strong>{" "}
+                to{" "}
+                <strong>
+                  {embeddingModels.find(m => m.model_id === pendingFormData.current?.embedding_model_id)?.friendly_name ?? "None"}
+                </strong>{" "}
+                requires re-embedding{" "}
+                <strong>{reEmbedDetectionCount.toLocaleString()}</strong> detections.
+                This may take a while.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={handleRevertReEmbed}>
+                No, keep current model
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmReEmbed}>
+                Yes, re-embed
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Re-embed Progress Modal */}
+        <ReEmbedModal
+          open={!!reEmbedJobId}
+          onOpenChange={(open) => { if (!open) setReEmbedJobId(null); }}
+          jobId={reEmbedJobId}
+          onComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+            toast.success("Re-embedding complete!");
+          }}
+        />
       </div>
     </div>
   );

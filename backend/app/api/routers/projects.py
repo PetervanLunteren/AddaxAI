@@ -26,6 +26,7 @@ from app.api.schemas.project import (
 from app.core.logging_config import get_logger
 from app.db.base import get_db
 from app.models import Detection, Deployment, File, Job, Site
+from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -453,6 +454,75 @@ async def reprocess_classifications(
     asyncio.create_task(process_postprocessing_job(job.id))
 
     return {"message": "Postprocessing started", "job_id": job.id}
+
+
+def _delete_project_embeddings(db: Session, project_id: str) -> int:
+    """Delete all embeddings for a project via Detection→File→Deployment→Site chain."""
+    detection_ids = (
+        db.query(Detection.id)
+        .join(File)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+        .subquery()
+    )
+    count = (
+        db.query(DetectionEmbedding)
+        .filter(DetectionEmbedding.detection_id.in_(db.query(detection_ids.c.id)))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return count
+
+
+@router.post(
+    "/{project_id}/re-embed",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def re_embed_detections(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Re-embed all detections with the project's current embedding model.
+
+    If embedding_model_id is None, deletes all embeddings inline.
+    Otherwise, launches an async re-embedding job.
+    """
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    embedding_model_id = db_project.embedding_model_id
+
+    # No embedding model → delete all embeddings inline
+    if not embedding_model_id:
+        count = _delete_project_embeddings(db, project_id)
+        logger.info(f"Deleted {count} embeddings for project {project_id}")
+        return {"message": f"Deleted {count} embeddings", "job_id": None}
+
+    # Create re-embedding job
+    from app.api.crud import job as crud_job
+    from app.api.schemas.job import JobCreate
+
+    job_data = JobCreate(
+        type="re_embedding",
+        payload={
+            "project_id": project_id,
+            "embedding_model_id": embedding_model_id,
+        },
+    )
+    job = crud_job.create_job(db, job_data)
+    logger.info(f"Created re-embedding job {job.id} for project {project_id}")
+
+    from app.workers.embedding_worker import process_re_embedding_job
+
+    asyncio.create_task(process_re_embedding_job(job.id))
+
+    return {"message": "Re-embedding started", "job_id": job.id}
 
 
 @router.get("/{project_id}/postprocessing-status")

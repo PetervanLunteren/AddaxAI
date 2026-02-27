@@ -212,8 +212,8 @@ class ConnectionManager:
                     if job_id in self.active_connections and connection in self.active_connections[job_id]:
                         self.active_connections[job_id].remove(connection)
 
-        # Clean up buffer after 60 seconds (allows late connections to still get completion)
-        asyncio.create_task(self._cleanup_buffer(job_id, delay=60))
+        # Clean up buffer shortly after (frontend connects within milliseconds)
+        asyncio.create_task(self._cleanup_buffer(job_id, delay=5))
 
     async def send_error(self, job_id: str, error: str) -> None:
         """
@@ -259,8 +259,8 @@ class ConnectionManager:
                     if job_id in self.active_connections and connection in self.active_connections[job_id]:
                         self.active_connections[job_id].remove(connection)
 
-        # Clean up buffer after 60 seconds (allows late connections to still get error)
-        asyncio.create_task(self._cleanup_buffer(job_id, delay=60))
+        # Clean up buffer shortly after (frontend connects within milliseconds)
+        asyncio.create_task(self._cleanup_buffer(job_id, delay=5))
 
     def get_connection_count(self, job_id: str) -> int:
         """

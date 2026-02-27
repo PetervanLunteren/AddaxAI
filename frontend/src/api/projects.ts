@@ -65,6 +65,14 @@ export const projectsApi = {
     ),
 
   /**
+   * Re-embed all detections with the current embedding model
+   */
+  reEmbed: (id: string) =>
+    api.post<{ message: string; job_id: string | null }>(
+      `/api/projects/${id}/re-embed`
+    ),
+
+  /**
    * Get postprocessing status (needs reprocessing?)
    */
   getPostprocessingStatus: (id: string) =>

@@ -537,7 +537,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 embedding_model = EmbeddingModel(emb_model_path, emb_manifest, env_manager)
 
-                input_data = build_embedding_input(deployment.id, folder_path, artifacts_folder, db)
+                input_data = build_embedding_input(deployment.id, db)
                 embedding_input_json = artifacts_folder / "embedding_input.json"
                 embedding_output_npz = artifacts_folder / "embeddings.npz"
 
