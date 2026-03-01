@@ -35,6 +35,9 @@ dependencies:
     - st-modal
     - openpyxl
     
+    # Similarity search
+    - faiss-cpu>=1.7.4
+
     # MegaDetector and detection packages
     - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
     - megadetector==10.0.18

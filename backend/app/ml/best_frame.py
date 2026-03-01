@@ -98,14 +98,13 @@ def select_best_frames(video_json_path: Path, frames_base_dir: Path) -> None:
 
     for img_entry in data.get("images", []):
         relative_file = img_entry["file"]
-        video_name = Path(relative_file).name
         video_stem = Path(relative_file).stem
 
-        # Frames directory: {frames_base_dir}/{video_filename}/
-        frames_dir = frames_base_dir / video_name
+        # Frames directory: extract_frames preserves relative dir structure
+        frames_dir = frames_base_dir / relative_file
 
         if not frames_dir.exists():
-            logger.warning(f"Frames directory not found for {video_name}, skipping best frame selection")
+            logger.warning(f"Frames directory not found for {relative_file}, skipping best frame selection")
             continue
 
         detections = img_entry.get("detections", [])

@@ -19,7 +19,7 @@ class ProjectBase(BaseModel):
     description: str | None = Field(None, description="Optional project description")
     detection_model_id: str = Field(default="MD5A-0-0", description="Detection model ID")
     classification_model_id: str | None = Field(None, description="Classification model ID or null for detection-only")
-    embedding_model_id: str | None = Field(None, description="Embedding model ID or null to skip embeddings")
+    embedding_model_id: str | None = Field("DINOV2-VITB14", description="Embedding model ID or null to skip embeddings")
     excluded_classes: list[str] = Field(default_factory=list, description="Species classes to exclude from classification")
 
     # SpeciesNet geographic location (alternative to excluded_classes)
@@ -38,6 +38,10 @@ class ProjectBase(BaseModel):
     taxonomic_rollup: bool = Field(default=True, description="Aggregate detections by taxonomy")
     taxonomic_rollup_threshold: float = Field(default=0.65, ge=0.1, le=1.0, description="Confidence threshold for taxonomic rollup (0.1-1.0)")
     independence_interval: int = Field(default=1800, ge=0, description="Minimum time between independent events (seconds)")
+
+    # Similarity clustering defaults (HDBSCAN params)
+    min_cluster_size: int = Field(5, ge=2, le=100, description="HDBSCAN min_cluster_size parameter")
+    min_samples: int = Field(3, ge=1, le=50, description="HDBSCAN min_samples parameter")
 
 
 class ProjectCreate(ProjectBase):
@@ -72,6 +76,8 @@ class ProjectUpdate(BaseModel):
     taxonomic_rollup: bool | None = None
     taxonomic_rollup_threshold: float | None = Field(None, ge=0.1, le=1.0)
     independence_interval: int | None = Field(None, ge=0)
+    min_cluster_size: int | None = Field(None, ge=2, le=100)
+    min_samples: int | None = Field(None, ge=1, le=50)
 
 
 class ProjectResponse(ProjectBase):

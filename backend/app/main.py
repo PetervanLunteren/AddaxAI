@@ -27,6 +27,7 @@ from app.api.routers import (
     logs_router,
     ml_models_router,
     projects_router,
+    similarity_router,
     sites_router,
     websocket_router,
 )
@@ -148,6 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(logs_router)
     app.include_router(ml_models_router)
+    app.include_router(similarity_router)
     app.include_router(websocket_router)
 
     # Health check endpoint

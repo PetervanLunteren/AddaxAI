@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -63,6 +63,10 @@ class Detection(Base):
     # Video-specific field (None for images, frame index for videos)
     frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Detection-level verification
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -83,6 +87,7 @@ class Detection(Base):
         Index("idx_detections_species", "species"),
         Index("idx_detections_species_confidence", "species_confidence"),
         Index("idx_detections_frame_number", "frame_number"),
+        Index("idx_detections_verified", "verified"),
     )
 
     def __repr__(self) -> str:

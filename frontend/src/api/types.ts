@@ -23,6 +23,8 @@ export interface ProjectCreate {
   taxonomic_rollup: boolean;
   taxonomic_rollup_threshold: number;
   independence_interval: number;
+  min_cluster_size: number;
+  min_samples: number;
 }
 
 export interface ProjectUpdate {
@@ -41,6 +43,8 @@ export interface ProjectUpdate {
   taxonomic_rollup?: boolean | null;
   taxonomic_rollup_threshold?: number | null;
   independence_interval?: number | null;
+  min_cluster_size?: number | null;
+  min_samples?: number | null;
 }
 
 export interface ProjectResponse {
@@ -60,6 +64,8 @@ export interface ProjectResponse {
   taxonomic_rollup: boolean;
   taxonomic_rollup_threshold: number;
   independence_interval: number;
+  min_cluster_size: number;
+  min_samples: number;
   postprocessing_settings_hash: string | null;
   created_at: string;
   updated_at: string;
@@ -189,6 +195,8 @@ export interface DetectionResponse {
   species_confidence: number | null;
   classification_method: string | null;
   frame_number: number | null;
+  verified: boolean;
+  verified_at: string | null;
 }
 
 export interface FileResponse {
@@ -349,4 +357,65 @@ export interface TaxonomyResponse {
 export interface LocationsResponse {
   countries: Record<string, string>;  // Display name -> ISO code
   us_states: Record<string, string>;  // Display name -> State code
+}
+
+// Similarity types
+export interface SimilarityFilters {
+  species?: string[];
+  site_ids?: string[];
+  date_from?: string;
+  date_to?: string;
+  min_confidence?: number;
+  category?: string;
+  verified?: boolean;
+}
+
+export interface SortRequest {
+  filters?: SimilarityFilters;
+}
+
+export interface SearchRequest {
+  anchor_detection_id: string;
+  filters?: SimilarityFilters;
+  limit?: number;
+  threshold?: number;
+}
+
+export interface DetectionSummary {
+  detection_id: string;
+  file_id: string;
+  species: string | null;
+  species_confidence: number | null;
+  confidence: number;
+  category: string;
+  verified: boolean;
+  classification_method: string | null;
+  distance_to_centroid: number | null;
+  similarity: number | null;
+  neighbor_agreement: number | null;
+  neighbor_top_label: string | null;
+  site_name: string | null;
+  deployment_id: string | null;
+  timestamp: string | null;
+  crop_url: string;
+}
+
+export interface SortResponse {
+  detections: DetectionSummary[];
+  total_detections: number;
+}
+
+export interface SearchResponse {
+  anchor: DetectionSummary;
+  results: DetectionSummary[];
+  total_results: number;
+  threshold_applied: number;
+}
+
+export interface SimilarityStatsResponse {
+  total_detections: number;
+  embedded_detections: number;
+  missing_embeddings: number;
+  embedding_model_id: string | null;
+  embedding_dimension: number | null;
 }

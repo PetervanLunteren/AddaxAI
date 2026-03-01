@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
@@ -28,6 +29,7 @@ import {
   Play,
   Image as ImageIcon,
   Video,
+  Search,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -71,6 +73,7 @@ export function EventDetailModal({
   filters,
 }: EventDetailModalProps) {
   const queryClient = useQueryClient();
+  const [, setSearchParams] = useSearchParams();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [navScope, setNavScope] = useState<"event" | "file">("event");
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
@@ -1074,6 +1077,28 @@ export function EventDetailModal({
                     currentFile.favorited && "fill-[#882000] text-[#882000]"
                   )}
                 />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  // Navigate to Similarity tab with this detection as anchor
+                  const detId = selectedDetectionId || filteredDetections[0]?.id;
+                  if (detId) {
+                    onClose();
+                    setSearchParams((prev) => {
+                      prev.set("tab", "similarity");
+                      prev.set("mode", "search");
+                      prev.set("anchor", detId);
+                      return prev;
+                    }, { replace: true });
+                  }
+                }}
+                title="Find similar detections"
+                disabled={filteredDetections.length === 0}
+              >
+                <Search className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"

@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 def build_embedding_input(
     deployment_id: str,
     db: Session,
+    skip_detection_ids: set[str] | None = None,
 ) -> dict:
     """
     Query all detections for a deployment and build input for embedding_script.py.
@@ -30,6 +31,7 @@ def build_embedding_input(
     Args:
         deployment_id: Deployment ID to query detections for
         db: Database session
+        skip_detection_ids: Detection IDs to skip (already embedded)
 
     Returns:
         JSON-serializable dict: {"detections": [{"detection_id", "image_path", "bbox"}]}
@@ -44,6 +46,8 @@ def build_embedding_input(
     entries = []
 
     for det, file in detections:
+        if skip_detection_ids and det.id in skip_detection_ids:
+            continue
         # Use file_path directly — for images it's the original path,
         # for video frames it's the extracted frame path (stored by DB loader)
         image_path = file.file_path

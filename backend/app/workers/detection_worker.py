@@ -1076,11 +1076,13 @@ async def run_classification_on_json(
                     is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
 
                     # For videos: resolve frames directory (JPEGs already on disk)
+                    # extract_frames preserves relative dir structure from deployment folder
                     if is_video:
                         _frames_base = video_frames_base_dir or (deployment_folder / ".addaxai" / "video_frames")
-                        video_frames_dir = _frames_base / file_path.name
+                        relative_video_path = file_path.relative_to(deployment_folder)
+                        video_frames_dir = _frames_base / relative_video_path
                         if not video_frames_dir.exists():
-                            logger.warning(f"Frames directory not found for {file_path.name}, skipping {len(file_detections)} detections")
+                            logger.warning(f"Frames directory not found for {relative_video_path}, skipping {len(file_detections)} detections")
                             processed_count += len(file_detections)
                             continue
 

@@ -117,6 +117,8 @@ def _migrate_missing_columns(engine: Engine) -> None:
         # (table, column, SQL type + default)
         ("projects", "shortcut_labels", "JSON NOT NULL DEFAULT '{}'"),
         ("projects", "embedding_model_id", "VARCHAR(100)"),
+        ("detections", "verified", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("detections", "verified_at", "DATETIME"),
     ]
     inspector = inspect(engine)
     with engine.begin() as conn:

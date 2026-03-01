@@ -1,0 +1,136 @@
+/**
+ * BulkActionBar - floating bar for bulk operations on selected detections.
+ *
+ * Appears when one or more detections are selected.
+ * Actions: Verify, Relabel, Find similar, Deselect all.
+ */
+
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Tag, Search, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "../ui/button";
+import { detectionsApi } from "../../api/detections";
+import { LabelPicker } from "./LabelPicker";
+import type { LabelOption } from "../../hooks/useLabelOptions";
+
+interface BulkActionBarProps {
+  selectedIds: Set<string>;
+  onDeselectAll: () => void;
+  onFindSimilar: (detectionId: string) => void;
+  labelOptions: LabelOption[];
+  labelOptionsLoading: boolean;
+  onActionComplete: () => void;
+  onRelabel?: (ids: string[], species: string | null, category: string) => void;
+  onVerify?: (ids: string[]) => void;
+}
+
+export function BulkActionBar({
+  selectedIds,
+  onDeselectAll,
+  onFindSimilar,
+  labelOptions,
+  labelOptionsLoading,
+  onActionComplete,
+  onRelabel,
+  onVerify,
+}: BulkActionBarProps) {
+  const queryClient = useQueryClient();
+  const [relabelOpen, setRelabelOpen] = useState(false);
+  const count = selectedIds.size;
+  const ids = Array.from(selectedIds);
+
+  const verifyMutation = useMutation({
+    mutationFn: () => detectionsApi.bulkVerify(ids, true),
+    onSuccess: (data) => {
+      toast.success(`Verified ${data.updated_count} detections`);
+      if (onVerify) {
+        onVerify(ids);
+      } else {
+        onActionComplete();
+      }
+      onDeselectAll();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const relabelMutation = useMutation({
+    mutationFn: (opt: LabelOption) =>
+      detectionsApi.bulkRelabel(ids, opt.species, opt.category),
+    onSuccess: (data, opt) => {
+      toast.success(`Relabeled ${data.updated_count} detections`);
+      if (onRelabel) {
+        onRelabel(ids, opt.species, opt.category);
+      } else {
+        onActionComplete();
+      }
+      onDeselectAll();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  if (count === 0) return null;
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur border rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-3">
+      <span className="text-sm font-medium min-w-[80px]">
+        {count} selected
+      </span>
+
+      <Button
+        variant="default"
+        size="sm"
+        onClick={() => verifyMutation.mutate()}
+        disabled={verifyMutation.isPending}
+      >
+        <Check className="h-4 w-4 mr-1" />
+        Verify
+      </Button>
+
+      <div className="relative">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setRelabelOpen(!relabelOpen)}
+        >
+          <Tag className="h-4 w-4 mr-1" />
+          Relabel
+        </Button>
+        {relabelOpen && (
+          <div className="absolute bottom-full mb-2 left-0 z-50">
+            <LabelPicker
+              value=""
+              onSelect={(opt) => {
+                relabelMutation.mutate(opt);
+                setRelabelOpen(false);
+              }}
+              options={labelOptions}
+              isLoading={labelOptionsLoading}
+              forceOpen={true}
+              onOpenChange={(open) => {
+                if (!open) setRelabelOpen(false);
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          const first = selectedIds.values().next().value;
+          if (first) onFindSimilar(first);
+        }}
+      >
+        <Search className="h-4 w-4 mr-1" />
+        Find similar
+      </Button>
+
+      <Button variant="ghost" size="sm" onClick={onDeselectAll}>
+        <X className="h-4 w-4 mr-1" />
+        Deselect
+      </Button>
+    </div>
+  );
+}

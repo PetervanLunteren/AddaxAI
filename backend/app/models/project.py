@@ -50,7 +50,7 @@ class Project(Base):
         String(100), nullable=True
     )
     embedding_model_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
+        String(100), nullable=True, default="DINOV2-VITB14"
     )
     excluded_classes: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list
@@ -89,6 +89,14 @@ class Project(Base):
     # Video processing settings
     video_fps: Mapped[float] = mapped_column(
         Float, nullable=False, default=1.0  # Frames per second to extract
+    )
+
+    # Similarity clustering defaults (HDBSCAN params)
+    min_cluster_size: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5
+    )
+    min_samples: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3
     )
 
     # Postprocessing state — SHA-256 hash of last-applied smoothing settings

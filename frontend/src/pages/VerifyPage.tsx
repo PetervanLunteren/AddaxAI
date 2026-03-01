@@ -26,6 +26,7 @@ import { EventDetailModal } from "../components/verify/EventDetailModal";
 import { FilterPanel } from "../components/verify/FilterPanel";
 import { FilterChips } from "../components/verify/FilterChips";
 import { HelpSheet } from "../components/verify/HelpSheet";
+import { SimilarityTab } from "../components/verify/SimilarityTab";
 
 const PAGE_SIZE = 50;
 const FILTER_DEBOUNCE_MS = 300;
@@ -87,6 +88,27 @@ export default function VerifyPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // Tab state from URL
+  const activeTab = (searchParams.get("tab") as "events" | "similarity") || "events";
+  const setActiveTab = useCallback(
+    (tab: "events" | "similarity") => {
+      setSearchParams(
+        (prev) => {
+          if (tab === "events") {
+            prev.delete("tab");
+            prev.delete("mode");
+            prev.delete("anchor");
+          } else {
+            prev.set("tab", tab);
+          }
+          return prev;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
   // Parse filters from URL
   const filters = useMemo(
     () => filtersFromSearchParams(searchParams),
@@ -108,9 +130,16 @@ export default function VerifyPage() {
 
   const setFilters = useCallback(
     (next: EventFilterParams) => {
-      setSearchParams(filtersToSearchParams(next), { replace: true });
+      const sp = filtersToSearchParams(next);
+      // Preserve tab-related params
+      if (activeTab !== "events") sp.set("tab", activeTab);
+      const mode = searchParams.get("mode");
+      if (mode) sp.set("mode", mode);
+      const anchor = searchParams.get("anchor");
+      if (anchor) sp.set("anchor", anchor);
+      setSearchParams(sp, { replace: true });
     },
-    [setSearchParams]
+    [setSearchParams, activeTab, searchParams]
   );
 
   // Listen for navigation events from the modal
@@ -195,15 +224,17 @@ export default function VerifyPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {totalEvents > 0
-                ? <>
-                    Verify detections at the event level. Each card is one event, a group of files captured within the independence interval. The Rep. is the single image representing the event. Verifying it confirms the event's label at a glance. Open a card to review individual files, correct species, or mark blanks. Instance-level verification is coming soon.{" "}
-                    <button
-                      className="underline hover:text-foreground"
-                      onClick={() => setHelpOpen(true)}
-                    >
-                      See full event verification guide here.
-                    </button>
-                  </>
+                ? activeTab === "events"
+                  ? <>
+                      Verify detections at the event level. Each card is one event, a group of files captured within the independence interval.{" "}
+                      <button
+                        className="underline hover:text-foreground"
+                        onClick={() => setHelpOpen(true)}
+                      >
+                        See full event verification guide here.
+                      </button>
+                    </>
+                  : "Browse detections grouped by visual similarity. Cluster to find groups, search to find look-alikes, and verify or relabel in bulk."
                 : "Run a deployment analysis to get started"}
             </p>
           </div>
@@ -230,85 +261,121 @@ export default function VerifyPage() {
           )}
         </FilterPanel>
 
-        {/* Event cards */}
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : !events || events.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <p className="text-lg font-medium text-muted-foreground">
-                {isFiltered ? "No events match your filters" : "No events yet"}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                {isFiltered
-                  ? "Try adjusting or clearing your filters to see more events."
-                  : "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."}
-              </p>
-              {isFiltered && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => setFilters({})}
-                >
-                  Clear all filters
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
-              {events.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  detectionThreshold={detectionThreshold}
-                  onClick={() => setSelectedEventId(event.id)}
-                />
-              ))}
-            </div>
+        {/* Tab strip */}
+        <div className="flex items-center gap-1 border-b">
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "events"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("events")}
+          >
+            Events
+          </button>
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "similarity"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("similarity")}
+          >
+            Similarity
+          </button>
+        </div>
 
-            {/* Pagination */}
-            <div className="flex items-center justify-center gap-4">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 0}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                {isFiltered
-                  ? `${filteredEvents} of ${totalEvents} events`
-                  : `${totalEvents} events`}
-                {" · "}Page {page + 1}
-                {isFetching && " (loading...)"}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!hasMore}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
+        {/* Tab content */}
+        {activeTab === "events" ? (
+          <>
+            {/* Event cards */}
+            {isLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !events || events.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                  <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                  <p className="text-lg font-medium text-muted-foreground">
+                    {isFiltered ? "No events match your filters" : "No events yet"}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                    {isFiltered
+                      ? "Try adjusting or clearing your filters to see more events."
+                      : "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."}
+                  </p>
+                  {isFiltered && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => setFilters({})}
+                    >
+                      Clear all filters
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
+                  {events.map((event) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      detectionThreshold={detectionThreshold}
+                      onClick={() => setSelectedEventId(event.id)}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-center gap-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {isFiltered
+                      ? `${filteredEvents} of ${totalEvents} events`
+                      : `${totalEvents} events`}
+                    {" · "}Page {page + 1}
+                    {isFetching && " (loading...)"}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!hasMore}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {/* Event detail modal */}
+            <EventDetailModal
+              eventId={selectedEventId}
+              projectId={projectId!}
+              isOpen={!!selectedEventId}
+              onClose={() => setSelectedEventId(null)}
+              filters={debouncedFilters}
+            />
           </>
+        ) : (
+          <SimilarityTab
+            projectId={projectId!}
+            filters={debouncedFilters}
+            classificationModelId={project?.classification_model_id ?? null}
+          />
         )}
 
-        {/* Event detail modal */}
-        <EventDetailModal
-          eventId={selectedEventId}
-          projectId={projectId!}
-          isOpen={!!selectedEventId}
-          onClose={() => setSelectedEventId(null)}
-          filters={debouncedFilters}
-        />
         <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
       </div>
     </div>

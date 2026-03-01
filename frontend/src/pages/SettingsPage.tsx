@@ -248,7 +248,7 @@ export default function SettingsPage() {
     defaultValues: {
       detection_model_id: "MD5A-0-0",
       classification_model_id: "",
-      embedding_model_id: "none",
+      embedding_model_id: "DINOV2-VITB14",
       excluded_classes: [],
       country_code: null,
       state_code: null,

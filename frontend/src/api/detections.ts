@@ -28,4 +28,38 @@ export const detectionsApi = {
   deleteByFile: async (fileId: string): Promise<{ deleted_count: number }> => {
     return api.delete(`/api/detections/by-file/${fileId}`);
   },
+
+  /** Verify or unverify a single detection. */
+  verify: async (
+    id: string,
+    verified: boolean
+  ): Promise<DetectionResponse> => {
+    return api.patch<DetectionResponse>(`/api/detections/${id}/verify`, {
+      verified,
+    });
+  },
+
+  /** Bulk verify/unverify detections. */
+  bulkVerify: async (
+    ids: string[],
+    verified: boolean
+  ): Promise<{ updated_count: number }> => {
+    return api.post("/api/detections/bulk-verify", {
+      detection_ids: ids,
+      verified,
+    });
+  },
+
+  /** Bulk relabel detections. */
+  bulkRelabel: async (
+    ids: string[],
+    species: string | null,
+    category?: string
+  ): Promise<{ updated_count: number }> => {
+    return api.post("/api/detections/bulk-relabel", {
+      detection_ids: ids,
+      species,
+      category,
+    });
+  },
 };

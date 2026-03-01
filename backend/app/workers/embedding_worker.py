@@ -1,17 +1,14 @@
 """
-Re-embedding worker for recomputing embeddings when the embedding model changes.
+Embedding worker — incrementally embeds detections missing embeddings for the current model.
 
-Iterates all deployments with detections, computes embeddings with the new model,
-and saves them to DB (replacing any previous embeddings for the same model).
-
-Follows the postprocessing_worker.py pattern exactly.
+Iterates all deployments with detections, skips already-embedded ones,
+and saves new embeddings to DB. Existing embeddings for the same
+(detection_id, model) pair are replaced by save_embeddings_to_db.
 """
 
 import asyncio
 import json as _json
 from pathlib import Path
-
-from sqlalchemy.orm import Session
 
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
@@ -23,25 +20,6 @@ from app.models import Deployment, Detection, File, Site
 from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
-
-
-def _delete_project_embeddings(db: Session, project_id: str) -> int:
-    """Delete all embeddings for a project via Detection->File->Deployment->Site chain."""
-    detection_ids = (
-        db.query(Detection.id)
-        .join(File)
-        .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
-        .subquery()
-    )
-    count = (
-        db.query(DetectionEmbedding)
-        .filter(DetectionEmbedding.detection_id.in_(db.query(detection_ids.c.id)))
-        .delete(synchronize_session=False)
-    )
-    db.commit()
-    return count
 
 
 async def process_re_embedding_job(job_id: str) -> None:
@@ -76,12 +54,7 @@ async def process_re_embedding_job(job_id: str) -> None:
             raise ValueError(f"Project not found: {project_id}")
 
         job_crud.update_job_status(db, job_id, "running")
-        await ws_manager.send_progress(job_id, "Starting re-embedding...", 0.0)
-
-        # Delete ALL old embeddings for the project (any model) before re-embedding
-        deleted = _delete_project_embeddings(db, project_id)
-        if deleted:
-            logger.info(f"Deleted {deleted} old embeddings for project {project_id}")
+        await ws_manager.send_progress(job_id, "Starting embedding...", 0.0)
 
         # Find all deployments with detections
         deployments = (
@@ -142,7 +115,22 @@ async def process_re_embedding_job(job_id: str) -> None:
             )
 
             try:
-                input_data = build_embedding_input(deployment.id, db)
+                # Find detections already embedded with the current model
+                already_embedded = set(
+                    row[0]
+                    for row in db.query(DetectionEmbedding.detection_id)
+                    .join(Detection, Detection.id == DetectionEmbedding.detection_id)
+                    .join(File, File.id == Detection.file_id)
+                    .filter(
+                        File.deployment_id == deployment.id,
+                        DetectionEmbedding.embedding_model_id == embedding_model_id,
+                    )
+                    .all()
+                )
+
+                input_data = build_embedding_input(
+                    deployment.id, db, skip_detection_ids=already_embedded,
+                )
                 if not input_data["detections"]:
                     logger.info(f"Deployment {deployment.id}: no valid detections, skipping")
                     continue

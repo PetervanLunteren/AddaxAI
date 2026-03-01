@@ -813,8 +813,9 @@ def load_json_to_database(
                 best_frame_number = img.get("best_frame_number")
                 best_frame_path = None
                 if best_frame_number is not None:
-                    video_name = absolute_path.name
-                    best_frame_path = str(_af / "video_frames" / video_name / f"frame{best_frame_number:06d}.jpg")
+                    # MegaDetector's extract_frames preserves relative dir structure
+                    relative_video_path = absolute_path.relative_to(deployment_folder)
+                    best_frame_path = str(_af / "video_frames" / relative_video_path / f"frame{best_frame_number:06d}.jpg")
 
                 # Frame rate (video only) - output by MegaDetector's process_video
                 frame_rate = img.get("frame_rate")
@@ -841,10 +842,10 @@ def load_json_to_database(
             # and build a mapping from frame_number -> frame File record
             frame_file_map: dict[int, File] = {}
             if is_video and has_extracted_frames:
-                # MegaDetector's extract_frames_from_video uses the full
-                # filename (including extension) as the subdirectory name
-                video_name = absolute_path.name
-                frames_subdir = video_frames_dir / video_name
+                # MegaDetector's extract_frames_from_video preserves the
+                # relative directory structure from the deployment folder
+                relative_video_path = absolute_path.relative_to(deployment_folder)
+                frames_subdir = video_frames_dir / relative_video_path
 
                 if frames_subdir.exists():
                     video_timestamp = file_record.timestamp
@@ -891,7 +892,7 @@ def load_json_to_database(
 
                     db.flush()
                     logger.debug(
-                        f"Created {len(frame_file_map)} frame records for video {video_name}"
+                        f"Created {len(frame_file_map)} frame records for video {relative_video_path}"
                     )
 
             # Track categories per-frame (for frame observation_type) and per-video
