@@ -363,10 +363,13 @@ export function SimilarityTab({
     );
   }
 
-  const isLoading = sortMutation.isPending || searchMutation.isPending;
   const hasResults =
     (viewMode === "sort" && sortResult !== null) ||
     (viewMode === "search" && searchResult !== null);
+  // Show spinner only when actively loading AND no results yet.
+  // Avoids stuck spinner when useMutation.isPending doesn't reset (Strict Mode).
+  const isLoading =
+    (sortMutation.isPending || searchMutation.isPending) && !hasResults;
 
   const handleEmbedNow = async () => {
     try {

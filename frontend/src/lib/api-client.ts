@@ -58,6 +58,11 @@ async function apiFetch<T>(
     logger.info(`API ${method} ${endpoint} → ${response.status} OK`);
     return await response.json();
   } catch (error) {
+    // Abort errors are expected (tab switches, React Strict Mode) — re-throw silently
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
     // Re-throw with more context
     if (error instanceof Error) {
       // Don't log again if we already logged above
@@ -78,17 +83,18 @@ export const api = {
   /**
    * GET request
    */
-  get: <T>(endpoint: string): Promise<T> => {
-    return apiFetch<T>(endpoint, { method: "GET" });
+  get: <T>(endpoint: string, options?: { signal?: AbortSignal }): Promise<T> => {
+    return apiFetch<T>(endpoint, { method: "GET", signal: options?.signal });
   },
 
   /**
    * POST request
    */
-  post: <T>(endpoint: string, data?: unknown): Promise<T> => {
+  post: <T>(endpoint: string, data?: unknown, options?: { signal?: AbortSignal }): Promise<T> => {
     return apiFetch<T>(endpoint, {
       method: "POST",
       body: data ? JSON.stringify(data) : undefined,
+      signal: options?.signal,
     });
   },
 

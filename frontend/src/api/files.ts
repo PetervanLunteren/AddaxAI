@@ -32,8 +32,8 @@ export const filesApi = {
   /**
    * Get file by ID with detections
    */
-  get: async (id: string): Promise<FileWithDetections> => {
-    return api.get<FileWithDetections>(`/api/files/${id}`);
+  get: async (id: string, options?: { signal?: AbortSignal }): Promise<FileWithDetections> => {
+    return api.get<FileWithDetections>(`/api/files/${id}`, options);
   },
 
   /**

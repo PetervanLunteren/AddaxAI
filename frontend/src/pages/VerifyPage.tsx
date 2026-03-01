@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Layers, Check, Circle } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
@@ -84,6 +84,7 @@ function hasActiveFilters(filters: EventFilterParams): boolean {
 export default function VerifyPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -92,6 +93,12 @@ export default function VerifyPage() {
   const activeTab = (searchParams.get("tab") as "events" | "similarity") || "events";
   const setActiveTab = useCallback(
     (tab: "events" | "similarity") => {
+      // Cancel in-flight event queries to free browser connections
+      if (tab === "similarity") {
+        queryClient.cancelQueries({ queryKey: ["events"] });
+        queryClient.cancelQueries({ queryKey: ["event-count-filtered"] });
+        queryClient.cancelQueries({ queryKey: ["file"] });
+      }
       setSearchParams(
         (prev) => {
           if (tab === "events") {
@@ -106,7 +113,7 @@ export default function VerifyPage() {
         { replace: true }
       );
     },
-    [setSearchParams]
+    [setSearchParams, queryClient]
   );
 
   // Parse filters from URL
@@ -241,26 +248,6 @@ export default function VerifyPage() {
           {/* Filters are always visible below */}
         </div>
 
-        {/* Filter panel */}
-        <FilterPanel
-          filters={filters}
-          onChange={setFilters}
-          projectId={projectId!}
-          isOpen={true}
-          onToggle={() => {}}
-          classificationModelId={project?.classification_model_id}
-        >
-          {isFiltered && (
-            <FilterChips
-              filters={filters}
-              onChange={setFilters}
-              filteredCount={filteredEvents}
-              totalCount={totalEvents}
-              siteNames={siteNames}
-            />
-          )}
-        </FilterPanel>
-
         {/* Tab strip */}
         <div className="flex items-center gap-1 border-b">
           <button
@@ -288,6 +275,25 @@ export default function VerifyPage() {
         {/* Tab content */}
         {activeTab === "events" ? (
           <>
+            {/* Filter panel */}
+            <FilterPanel
+              filters={filters}
+              onChange={setFilters}
+              projectId={projectId!}
+              isOpen={true}
+              onToggle={() => {}}
+              classificationModelId={project?.classification_model_id}
+            >
+              {isFiltered && (
+                <FilterChips
+                  filters={filters}
+                  onChange={setFilters}
+                  filteredCount={filteredEvents}
+                  totalCount={totalEvents}
+                  siteNames={siteNames}
+                />
+              )}
+            </FilterPanel>
             {/* Event cards */}
             {isLoading ? (
               <div className="flex items-center justify-center h-64">
@@ -371,7 +377,7 @@ export default function VerifyPage() {
         ) : (
           <SimilarityTab
             projectId={projectId!}
-            filters={debouncedFilters}
+            filters={{}}
             classificationModelId={project?.classification_model_id ?? null}
           />
         )}
@@ -412,7 +418,7 @@ function EventCard({
   // Fetch representative file detections for overlay
   const { data: repFile } = useQuery({
     queryKey: ["file", event.representative_file_id],
-    queryFn: () => filesApi.get(event.representative_file_id!),
+    queryFn: ({ signal }) => filesApi.get(event.representative_file_id!, { signal }),
     enabled: !!event.representative_file_id,
   });
 
