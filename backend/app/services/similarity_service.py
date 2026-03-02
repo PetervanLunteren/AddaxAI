@@ -145,6 +145,7 @@ def sort_detections(
     filters = _apply_project_threshold(body.filters, project_id, db)
     params = {
         "filters": _filters_to_dict(filters),
+        "reverse": body.reverse,
     }
     result = _run_similarity_subprocess("sort", project_id, params)
     return SortResponse(**result)
@@ -186,5 +187,5 @@ def build_detection_summary(
         site_name=meta.get("site_name"),
         deployment_id=meta.get("deployment_id"),
         timestamp=meta.get("timestamp"),
-        crop_url=f"/api/detections/{detection_id}/crop?size=160",
+        crop_url=f"/api/detections/{detection_id}/crop?size=200",
     )

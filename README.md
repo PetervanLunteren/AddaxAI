@@ -2,179 +2,42 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 
-
-
-
-
-
-
-
-
-
-
-
-  1. Vector search stack: Are we allowed to add a native vector index dependency such as faiss-cpu or hnswlib, or should we stay pure-SQLite/NumPy? This choice affects the entire backend/
-     indexing design.
-You're allowed to add dependencies. 
-
-  2. Scope of similarity search: Should nearest-neighbour queries run only within the currently filtered subset (e.g., same project + species filter) or can they span the whole project
-     regardless of filters?
-run only within the currently filtered subset. But it should also work if no filters are set. It will always be inside a project, so it should never show results of another project. 
-
-  3. Verification actions: Do you expect these embedding-driven views to write back to detections immediately (label change, verification flags) the same way as existing verification
-     workflows, or just queue suggested edits elsewhere?
-write back immidiately the same way as existing verification
-     workflows
-
-  4. Dataset scale targets: Roughly how many detections per project should we optimize for (tens of thousands vs millions) so we can justify background indexing jobs vs on-the-fly
-     computation?
-tens of thousands. on the fly computation with spinner is fine. If the dataset is large users will understand it takes some time. Keep it simple. 
-
-  5. Frontend expectations: Should the clustered/similarity views live under the existing “Verify” page or become a dedicated new route/tab?
-live under the existing “Verify” page. I'm envirioning a tab for event based verification, and similarity based verification. 
-
-
-
-
-You are working inside the AddaxAI codebase.
-
-Goal: design and plan a new feature that lets users visually review and verify animal detections using embeddings, by grouping and sorting detections so visually similar items sit next to each other. This should support:
-
-“show me all detections classified as wolves, arranged into similarity clusters so I can quickly spot mislabels like foxes”
-
-“similarity search from a chosen crop to find visually similar detections, including cases that are not part of the model’s class set”
-
-Context: every detection in the database now has an embedding stored after analysis.
-
-Your tasks:
-
-Read deep-research-report.md and extract the landscape of relevant tools and patterns that offer similar experiences (visual similarity review, clustering, nearest-neighbour search, dataset exploration, verification workflows). Summarise only what matters for AddaxAI’s feature decisions.
-
-Inspect the repository to understand:
-
-project structure
-
-frontend patterns and components
-
-backend architecture (framework, routing, services)
-
-database schema and migrations
-
-where detections are queried, filtered, paginated, and rendered
-
-how embeddings are stored and accessed
-
-Propose the best UX and UI for AddaxAI to support:
-
-“clustered view” within a filtered set (example: only predicted wolves)
-
-“similarity search” from one selected detection crop
-
-fast verification actions (confirm label, change label, bulk operations)
-
-performance for large result sets (pagination, virtualisation, background jobs where needed)
-
-transparency controls (distance metric display, threshold sliders, cluster size control, label distribution hints)
-
-Produce a detailed but concise implementation plan that includes:
-
-database considerations (indexes, vector search strategy, storage type, migrations if needed)
-
-backend design (services, background jobs if needed, caching, failure modes)
-
-required api endpoints (routes, request and response shapes, pagination, filters)
-
-frontend implementation (views, components, state management, loading states)
-
-clustering approach (what algorithm, where it runs, how to tune it)
-
-similarity search approach (top-k, threshold, hybrid filtering by species, date range, camera, etc.)
-
-security and permissions (who can access what)
-
-observability (logging and metrics that matter)
-
-Write the output to a new markdown file:
-
-path: EMB_UX_UI_PLAN_CODEX.md
-
-Output format for EMB_UX_UI_PLAN_CODEX.md:
-
-Title and one-paragraph overview
-
-“what already exists in the repo” (short, factual)
-
-“tool landscape takeaways” (short, decision-relevant)
-
-UX and UI proposal
-
-primary user flows (step by step)
-
-screens and layouts (describe placement of buttons, overlays, controls)
-
-interaction details (selection, hover, zoom, compare, bulk verify, keyboard shortcuts if appropriate)
-
-Backend and api design
-
-endpoints list with method, route, purpose
-
-json request and response examples for each endpoint
-
-pagination strategy
-
-filtering options and how they compose with similarity
-
-Data and algorithms
-
-embedding format assumptions
-
-distance metric
-
-nearest neighbour approach (db native vs external index)
-
-clustering approach and where it runs
-
-performance notes and constraints
-
-Stepwise todo list
-
-ordered checklist from schema changes through ui polish
-
-each item small, actionable, and testable
-
-Testing plan
-
-unit tests, integration tests, ui tests
-
-test datasets and edge cases
-
-Open questions and risks
-
-Important constraints:
-
-Prioritise simplicity and clarity over perfection.
-
-Keep code and architecture clean and easy for collaborators.
-
-If any critical detail is unclear, stop and ask before proceeding further.
-
-Do not assume hidden infrastructure. Only propose what is reasonable given the repo.
-
-Be thorough, but avoid fluff.
-
-Before you start writing the plan, do this:
-
-List the key unknowns you need to confirm.
-
-If any unknown blocks a correct plan, stop and ask me those questions.
-
-
-
-
-
-
-
-
+The filters in the event verfication view are only for the event verification, not for the similarity verification. Similarity should not depend on any of those. Similarity needs its own set. I was thinking something in the lines of:
+
+Filters:
+- Sites
+- start dat
+- end date
+- species
+
+Settings (sort):
+- sort noise first or noise last
+- hide verified (if a bunch is verified, hide them so you can work until all are done)
+- slider that defines the tile size (small to large)
+- show mislabels = "Show only suspicious"
+
+Settings (search):
+- Add "Achor:" before the anchor
+- make the anchor card white, so you can siee its separate from the background
+- leave threshold as is
+- remove the X at the end. Users can switch to Sort with the segmented control. 
+
+What do you think? Any things I'm missing? Please reason as a camera trap user. Instructions:
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+
+Workflow:
+* read CONVENTIONS.md
+* Ask at least 3 clarifying questions before beginning.
+* Based on my answers, suggest a few general approaches. These should range from simple solutions to more sophisticated alternatives, with clear trade-offs for each. For every approach, explain:
+   - Complexity (difficulty, dependencies, maintainability)
+   - Readability (clarity for collaborators)
+   - Effect (impact on performance, usability, flexibility)
+* Give your recommendation regarding the alternatives discribed earlier, with a short reasoning. 
+* After I select an approach, draft a detailed plan for implementation.
+* Only start working if I agree with the proposed plan.
 
 
 

@@ -8,7 +8,7 @@ Provides endpoints for creating, updating, and deleting detections
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse as FastAPIFileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -104,7 +104,7 @@ def delete_detection(
 @router.get("/{detection_id}/crop")
 def get_detection_crop(
     detection_id: str,
-    size: int = Query(160, ge=32, le=512, description="Crop size in pixels"),
+    size: int = Query(200, ge=32, le=512, description="Crop size in pixels"),
     db: Session = Depends(get_db),
 ):
     """
@@ -113,12 +113,12 @@ def get_detection_crop(
     Generates and caches a square JPEG crop from the source image
     at the detection's bounding box location.
     """
-    crop_path = get_or_create_crop(detection_id, size, db)
-    if not crop_path:
+    jpeg_bytes = get_or_create_crop(detection_id, size, db)
+    if not jpeg_bytes:
         raise HTTPException(status_code=404, detail="Could not generate crop")
 
-    return FastAPIFileResponse(
-        path=str(crop_path),
+    return Response(
+        content=jpeg_bytes,
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=86400"},
     )

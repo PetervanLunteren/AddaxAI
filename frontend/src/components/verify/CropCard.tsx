@@ -1,12 +1,20 @@
 /**
- * CropCard - 160×160 detection crop thumbnail with metadata.
+ * CropCard - detection crop thumbnail with bbox overlay and metadata.
  *
  * Shows species, confidence, similarity score,
- * verified badge, and selection state.
+ * verified badge, and selection state. The crop is expanded to show
+ * context around the detection, with an SVG overlay highlighting the bbox.
  */
 
 import { Check, Circle } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
+import { getCategoryColor } from "../../lib/detection-utils";
+import {
+  BBOX_STROKE_WIDTH,
+  BBOX_OPACITY,
+  BBOX_CORNER_RADIUS,
+  svgRoundedRectPath,
+} from "../../lib/detection-overlay";
 import { cn } from "../../lib/utils";
 import type { DetectionSummary } from "../../api/types";
 
@@ -56,6 +64,36 @@ export function CropCard({ detection, selected, onClick }: CropCardProps) {
             (e.target as HTMLImageElement).style.display = "none";
           }}
         />
+        {/* Bbox overlay */}
+        {detection.crop_bbox && (
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            viewBox="0 0 200 200"
+          >
+            <path
+              fillRule="evenodd"
+              d={`M0,0H200V200H0Z` + svgRoundedRectPath(
+                detection.crop_bbox.x * 200,
+                detection.crop_bbox.y * 200,
+                detection.crop_bbox.w * 200,
+                detection.crop_bbox.h * 200,
+                BBOX_CORNER_RADIUS
+              )}
+              fill="rgba(0, 0, 0, 0.6)"
+            />
+            <rect
+              x={detection.crop_bbox.x * 200}
+              y={detection.crop_bbox.y * 200}
+              width={detection.crop_bbox.w * 200}
+              height={detection.crop_bbox.h * 200}
+              rx={BBOX_CORNER_RADIUS}
+              fill="none"
+              stroke={getCategoryColor(detection.category)}
+              strokeWidth={BBOX_STROKE_WIDTH}
+              opacity={BBOX_OPACITY}
+            />
+          </svg>
+        )}
         {/* Loading shimmer placeholder */}
         <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted-foreground/5 to-muted animate-pulse -z-10" />
       </div>
@@ -81,6 +119,12 @@ export function CropCard({ detection, selected, onClick }: CropCardProps) {
             {(detection.confidence * 100).toFixed(0)}%
           </span>
         </div>
+        {detection.neighbor_top_label &&
+          detection.neighbor_top_label !== detection.species && (
+            <div className="text-[10px] text-amber-600 dark:text-amber-400 truncate capitalize">
+              → {detection.neighbor_top_label}
+            </div>
+          )}
         {score && (
           <div className="text-[10px] text-muted-foreground">{score}</div>
         )}

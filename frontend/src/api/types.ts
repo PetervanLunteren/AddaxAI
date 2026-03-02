@@ -372,6 +372,7 @@ export interface SimilarityFilters {
 
 export interface SortRequest {
   filters?: SimilarityFilters;
+  reverse?: boolean;
 }
 
 export interface SearchRequest {
@@ -379,6 +380,13 @@ export interface SearchRequest {
   filters?: SimilarityFilters;
   limit?: number;
   threshold?: number;
+}
+
+export interface CropBbox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface DetectionSummary {
@@ -398,6 +406,7 @@ export interface DetectionSummary {
   deployment_id: string | null;
   timestamp: string | null;
   crop_url: string;
+  crop_bbox: CropBbox | null;
 }
 
 export interface SortResponse {

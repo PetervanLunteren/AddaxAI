@@ -31,6 +31,7 @@ interface FilterPanelProps {
   onToggle: () => void;
   classificationModelId?: string | null;
   children?: React.ReactNode;
+  verificationSection?: React.ReactNode;
 }
 
 const VERIFICATION_OPTIONS: { value: VerificationFilter | "all"; label: string }[] = [
@@ -49,6 +50,7 @@ export function FilterPanel({
   isOpen,
   classificationModelId,
   children,
+  verificationSection,
 }: FilterPanelProps) {
   // Fetch sites for multiselect
   const { data: sites } = useQuery({
@@ -87,7 +89,7 @@ export function FilterPanel({
 
   return (
     <div className="rounded-lg border bg-white p-4 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${verificationSection !== null ? "xl:grid-cols-5" : "xl:grid-cols-4"} gap-4`}>
         {/* Sites multiselect */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
@@ -207,35 +209,38 @@ export function FilterPanel({
           )}
         </div>
 
-        {/* Verification dropdown (single select) */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
-            Verification status
-          </label>
-          <Select
-            value={filters.verification ?? "all"}
-            onValueChange={(v) =>
-              onChange({
-                ...filters,
-                verification:
-                  v === "all" ? undefined : (v as VerificationFilter),
-              })
-            }
-          >
-            <SelectTrigger className="h-9 min-h-0 text-sm">
-              <span className="truncate">
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {VERIFICATION_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Verification dropdown (single select) — swappable via verificationSection prop.
+            Pass null to hide entirely, undefined (omit) for default Events dropdown. */}
+        {verificationSection !== undefined ? verificationSection : (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              Verification status
+            </label>
+            <Select
+              value={filters.verification ?? "all"}
+              onValueChange={(v) =>
+                onChange({
+                  ...filters,
+                  verification:
+                    v === "all" ? undefined : (v as VerificationFilter),
+                })
+              }
+            >
+              <SelectTrigger className="h-9 min-h-0 text-sm">
+                <span className="truncate">
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {VERIFICATION_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
       </div>
 

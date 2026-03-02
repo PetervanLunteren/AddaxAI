@@ -105,6 +105,10 @@ export default function VerifyPage() {
             prev.delete("tab");
             prev.delete("mode");
             prev.delete("anchor");
+            // Clean sim_* params when leaving Similarity tab
+            for (const key of [...prev.keys()]) {
+              if (key.startsWith("sim_")) prev.delete(key);
+            }
           } else {
             prev.set("tab", tab);
           }
@@ -377,7 +381,6 @@ export default function VerifyPage() {
         ) : (
           <SimilarityTab
             projectId={projectId!}
-            filters={{}}
             classificationModelId={project?.classification_model_id ?? null}
           />
         )}

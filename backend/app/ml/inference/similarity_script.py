@@ -35,7 +35,9 @@ BASE_SQL = """
 SELECT de.detection_id, de.vector, de.l2_norm,
        d.species, d.species_confidence, d.confidence, d.category,
        d.verified, d.classification_method, d.file_id,
-       f.deployment_id, f.timestamp, s.name AS site_name
+       d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
+       f.deployment_id, f.timestamp, f.width_px, f.height_px,
+       s.name AS site_name
 FROM detection_embeddings de
 JOIN detections d ON d.id = de.detection_id
 JOIN files f ON f.id = d.file_id
@@ -140,10 +142,48 @@ def _load_embeddings(
             "deployment_id": row["deployment_id"],
             "timestamp": ts,
             "site_name": row["site_name"],
+            "bbox_x": row["bbox_x"],
+            "bbox_y": row["bbox_y"],
+            "bbox_width": row["bbox_width"],
+            "bbox_height": row["bbox_height"],
+            "width_px": row["width_px"],
+            "height_px": row["height_px"],
         })
 
     vectors_f32 = np.stack(vectors)
     return vectors_f32, detection_ids, metadata_list
+
+
+def _compute_crop_bbox(meta: dict) -> dict | None:
+    """Compute bbox position within the expanded crop (normalized 0-1).
+
+    The crop is always centered on the bbox (no edge-shifting), matching
+    the blurred-edge-fill behavior in crop_service.py.
+    """
+    img_w = meta.get("width_px")
+    img_h = meta.get("height_px")
+    if not img_w or not img_h:
+        return None
+
+    bx = meta["bbox_x"] * img_w
+    by = meta["bbox_y"] * img_h
+    bw = meta["bbox_width"] * img_w
+    bh = meta["bbox_height"] * img_h
+
+    max_side = max(bw, bh)
+    pad = max_side * 0.10
+    crop_side = max_side + 2 * pad
+
+    if crop_side <= 0:
+        return None
+
+    # Bbox is always centered: offset = pad / crop_side
+    return {
+        "x": (crop_side - bw) / 2 / crop_side,
+        "y": (crop_side - bh) / 2 / crop_side,
+        "w": bw / crop_side,
+        "h": bh / crop_side,
+    }
 
 
 def _build_summary(
@@ -171,7 +211,8 @@ def _build_summary(
         "site_name": meta.get("site_name"),
         "deployment_id": meta.get("deployment_id"),
         "timestamp": meta.get("timestamp"),
-        "crop_url": f"/api/detections/{detection_id}/crop?size=160",
+        "crop_url": f"/api/detections/{detection_id}/crop?size=200",
+        "crop_bbox": _compute_crop_bbox(meta),
     }
 
 
@@ -273,6 +314,9 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
         for i in order
     ]
 
+    if params.get("reverse", False):
+        detections.reverse()
+
     return {"detections": detections, "total_detections": n}
 
 
@@ -309,7 +353,9 @@ def _load_anchor_embedding(
     SELECT de.vector, de.l2_norm,
            d.species, d.species_confidence, d.confidence, d.category,
            d.verified, d.classification_method, d.file_id,
-           f.deployment_id, f.timestamp, s.name AS site_name
+           d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
+           f.deployment_id, f.timestamp, f.width_px, f.height_px,
+           s.name AS site_name
     FROM detection_embeddings de
     JOIN detections d ON d.id = de.detection_id
     JOIN files f ON f.id = d.file_id
@@ -350,6 +396,12 @@ def _load_anchor_embedding(
         "deployment_id": row["deployment_id"],
         "timestamp": ts,
         "site_name": row["site_name"],
+        "bbox_x": row["bbox_x"],
+        "bbox_y": row["bbox_y"],
+        "bbox_width": row["bbox_width"],
+        "bbox_height": row["bbox_height"],
+        "width_px": row["width_px"],
+        "height_px": row["height_px"],
     }
 
     return vec, meta

@@ -1,15 +1,15 @@
 /**
  * SimilarityTab - orchestrates the embedding-driven similarity view.
  *
- * Manages sort/search mode via an explicit segmented control,
- * selection model, and coordinates toolbar, grid, bulk actions,
- * and detail sheet.
+ * Manages its own filter state (independent from Events tab) via sim_* URL
+ * params. Provides sort/search mode via segmented control, selection model,
+ * and coordinates toolbar, grid, bulk actions, settings, and detail sheet.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, Layers, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Layers, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { similarityApi } from "../../api/similarity";
 import { detectionsApi } from "../../api/detections";
@@ -21,8 +21,11 @@ import { Slider } from "../ui/slider";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
 import { CropGrid } from "./CropGrid";
+import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailSheet } from "./DetectionDetailSheet";
+import { FilterPanel } from "./FilterPanel";
+import { SimilaritySettings } from "./SimilaritySettings";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 import type {
@@ -35,28 +38,115 @@ import type {
 
 interface SimilarityTabProps {
   projectId: string;
-  filters: EventFilterParams;
   classificationModelId: string | null;
 }
 
-/** Convert event filters to similarity filters. */
-function toSimilarityFilters(f: EventFilterParams): SimilarityFilters {
+// ── Sim filter state (independent from Events filters) ──────────────────
+
+interface SimilarityFilterState {
+  site_ids?: string[];
+  date_from?: string;
+  date_to?: string;
+  species?: string[];
+}
+
+/** Parse sim_* params from URL. */
+function simFiltersFromSearchParams(sp: URLSearchParams): SimilarityFilterState {
+  const f: SimilarityFilterState = {};
+  const sites = sp.get("sim_sites");
+  if (sites) f.site_ids = sites.split(",");
+  const from = sp.get("sim_from");
+  if (from) f.date_from = from;
+  const to = sp.get("sim_to");
+  if (to) f.date_to = to;
+  const species = sp.get("sim_species");
+  if (species) f.species = species.split(",");
+  return f;
+}
+
+/** Write sim_* params to URL, preserving non-sim params. */
+function simFiltersToSearchParams(
+  filters: SimilarityFilterState,
+  current: URLSearchParams,
+): URLSearchParams {
+  const sp = new URLSearchParams(current);
+  // Clear all sim_* keys first
+  for (const key of [...sp.keys()]) {
+    if (key.startsWith("sim_")) sp.delete(key);
+  }
+  if (filters.site_ids?.length) sp.set("sim_sites", filters.site_ids.join(","));
+  if (filters.date_from) sp.set("sim_from", filters.date_from);
+  if (filters.date_to) sp.set("sim_to", filters.date_to);
+  if (filters.species?.length) sp.set("sim_species", filters.species.join(","));
+  return sp;
+}
+
+/** Convert SimilarityFilterState → SimilarityFilters for API calls. */
+function toSimilarityFilters(f: SimilarityFilterState): SimilarityFilters {
   return {
     species: f.species,
     site_ids: f.site_ids,
     date_from: f.date_from,
     date_to: f.date_to,
-    min_confidence: f.min_confidence,
+  };
+}
+
+/** Adapt SimilarityFilterState to EventFilterParams shape for FilterPanel. */
+function toFilterPanelFilters(f: SimilarityFilterState): EventFilterParams {
+  return {
+    site_ids: f.site_ids,
+    date_from: f.date_from,
+    date_to: f.date_to,
+    species: f.species,
   };
 }
 
 export function SimilarityTab({
   projectId,
-  filters,
   classificationModelId,
 }: SimilarityTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+
+  // ── Own filter state from URL sim_* params ──────────────────────────
+  const simFilters = useMemo(
+    () => simFiltersFromSearchParams(searchParams),
+    [searchParams],
+  );
+
+  const setSimFilters = useCallback(
+    (next: SimilarityFilterState) => {
+      setSearchParams(
+        (prev) => simFiltersToSearchParams(next, prev),
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  /** Handler for FilterPanel onChange (EventFilterParams shape). */
+  const handleFilterPanelChange = useCallback(
+    (fp: EventFilterParams) => {
+      setSimFilters({
+        ...simFilters,
+        site_ids: fp.site_ids,
+        date_from: fp.date_from,
+        date_to: fp.date_to,
+        species: fp.species,
+      });
+    },
+    [simFilters, setSimFilters],
+  );
+
+  // ── Local settings state ────────────────────────────────────────────
+  const [reverseSort, setReverseSort] = useState(false);
+  const [autoHideVerified, setAutoHideVerified] = useState(false);
+  const [tileSize, setTileSize] = useState<TileSize>("M");
+  const [showMislabelsOnly, setShowMislabelsOnly] = useState(false);
+  const [showSpeciesDividers, setShowSpeciesDividers] = useState(false);
+
+  // Explicit sorting flag — avoids isPending getting stuck in Strict Mode
+  const [isSorting, setIsSorting] = useState(false);
 
   // Re-embed state
   const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
@@ -76,9 +166,6 @@ export function SimilarityTab({
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Mislabel filter
-  const [showMislabelsOnly, setShowMislabelsOnly] = useState(false);
 
   // Detail sheet
   const [detailDetection, setDetailDetection] = useState<DetectionSummary | null>(null);
@@ -101,38 +188,45 @@ export function SimilarityTab({
     }
   }, [urlAnchor]);
 
-  // Sort mutation
+  // Sort mutation — passes reverse flag
   const sortMutation = useMutation({
     mutationFn: () =>
       similarityApi.sort(projectId, {
-        filters: toSimilarityFilters(filters),
+        filters: toSimilarityFilters(simFilters),
+        reverse: reverseSort,
       }),
+    onMutate: () => setIsSorting(true),
     onSuccess: (data) => {
       setSortResult(data);
       setSelectedIds(new Set());
       setShowMislabelsOnly(false);
+      setIsSorting(false);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setIsSorting(false);
+    },
   });
 
-  // Stable key for filter comparison — avoids redundant sorts when toggling tabs
-  const filtersKey = JSON.stringify(toSimilarityFilters(filters));
-  const lastSortFiltersRef = useRef<string | null>(null);
+  // Stable key for filter + settings comparison
+  const filtersKey = JSON.stringify(toSimilarityFilters(simFilters));
+  const sortKey = `${filtersKey}|${reverseSort}`;
+  const lastSortKeyRef = useRef<string | null>(null);
 
-  // Auto-sort on mount and when filters change
+  // Auto-sort on mount and when filters / reverseSort change
   useEffect(() => {
-    if (viewMode === "sort" && stats?.embedded_detections && filtersKey !== lastSortFiltersRef.current) {
-      lastSortFiltersRef.current = filtersKey;
+    if (viewMode === "sort" && stats?.embedded_detections && sortKey !== lastSortKeyRef.current) {
+      lastSortKeyRef.current = sortKey;
       sortMutation.mutate();
     }
-  }, [viewMode, filtersKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewMode, sortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Search mutation
   const searchMutation = useMutation({
     mutationFn: (anchor: string) =>
       similarityApi.search(projectId, {
         anchor_detection_id: anchor,
-        filters: toSimilarityFilters(filters),
+        filters: toSimilarityFilters(simFilters),
         limit: 100,
         threshold,
       }),
@@ -153,19 +247,26 @@ export function SimilarityTab({
   // Flat detection list for selection model
   const allDetections = useMemo((): DetectionSummary[] => {
     if (viewMode === "sort" && sortResult) {
-      const dets = sortResult.detections;
+      let dets = sortResult.detections;
       if (showMislabelsOnly) {
-        return dets.filter(
+        dets = dets.filter(
           (d) => d.neighbor_agreement != null && d.neighbor_agreement < 0.5
         );
+      }
+      if (autoHideVerified) {
+        dets = dets.filter((d) => !d.verified);
       }
       return dets;
     }
     if (viewMode === "search" && searchResult) {
-      return searchResult.results;
+      let dets = searchResult.results;
+      if (autoHideVerified) {
+        dets = dets.filter((d) => !d.verified);
+      }
+      return dets;
     }
     return [];
-  }, [viewMode, sortResult, searchResult, showMislabelsOnly]);
+  }, [viewMode, sortResult, searchResult, showMislabelsOnly, autoHideVerified]);
 
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
@@ -271,7 +372,6 @@ export function SimilarityTab({
       detectionsApi
         .bulkRelabel([detectionId], species, category)
         .then((data) => {
-          toast.success(`Relabelled ${data.updated_count} detection to ${species}`);
           patchLocalDetections((d) =>
             d.detection_id === detectionId ? { ...d, species, category, verified: true } : d
           );
@@ -301,6 +401,48 @@ export function SimilarityTab({
     [patchLocalDetections]
   );
 
+  /** Relabel detections to their neighbor_top_label suggestions, grouped by (label, category). */
+  const relabelToSuggestions = useCallback(
+    async (dets: DetectionSummary[]) => {
+      const withSuggestion = dets.filter(
+        (d) => d.neighbor_top_label && d.neighbor_top_label !== d.species
+      );
+      if (withSuggestion.length === 0) {
+        toast.info("No suggestions to accept");
+        return;
+      }
+      // Group by (neighbor_top_label, category)
+      const groups = new Map<string, { ids: string[]; species: string; category: string }>();
+      for (const d of withSuggestion) {
+        const key = `${d.neighbor_top_label}|${d.category}`;
+        if (!groups.has(key)) {
+          groups.set(key, { ids: [], species: d.neighbor_top_label!, category: d.category });
+        }
+        groups.get(key)!.ids.push(d.detection_id);
+      }
+      let totalUpdated = 0;
+      for (const { ids, species, category } of groups.values()) {
+        try {
+          const data = await detectionsApi.bulkRelabel(ids, species, category);
+          totalUpdated += data.updated_count;
+        } catch (err: unknown) {
+          toast.error(err instanceof Error ? err.message : "Relabel failed");
+        }
+      }
+      // Patch local state
+      const suggestionMap = new Map(
+        withSuggestion.map((d) => [d.detection_id, d.neighbor_top_label!])
+      );
+      patchLocalDetections((d) =>
+        suggestionMap.has(d.detection_id)
+          ? { ...d, species: suggestionMap.get(d.detection_id)!, verified: true }
+          : d
+      );
+      setSelectedIds(new Set());
+    },
+    [patchLocalDetections]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -325,11 +467,18 @@ export function SimilarityTab({
           detectionsApi
             .bulkVerify(ids, true)
             .then((data) => {
-              toast.success(`Verified ${data.updated_count} detections`);
               handleBulkVerify(ids);
               setSelectedIds(new Set());
             });
         });
+        return;
+      }
+
+      if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+        e.preventDefault();
+        // Relabel selected to their neighbor suggestions
+        const selectedDets = allDetections.filter((d) => selectedIds.has(d.detection_id));
+        relabelToSuggestions(selectedDets);
         return;
       }
 
@@ -343,7 +492,7 @@ export function SimilarityTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch]);
+  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions]);
 
   // No embeddings state
   if (stats && stats.embedded_detections === 0) {
@@ -367,9 +516,8 @@ export function SimilarityTab({
     (viewMode === "sort" && sortResult !== null) ||
     (viewMode === "search" && searchResult !== null);
   // Show spinner only when actively loading AND no results yet.
-  // Avoids stuck spinner when useMutation.isPending doesn't reset (Strict Mode).
   const isLoading =
-    (sortMutation.isPending || searchMutation.isPending) && !hasResults;
+    (isSorting || searchMutation.isPending) && !hasResults;
 
   const handleEmbedNow = async () => {
     try {
@@ -382,6 +530,18 @@ export function SimilarityTab({
 
   return (
     <div className="space-y-2">
+      {/* Filter panel — sites, dates, species only (no verification filter;
+          "Hide as I verify" in SimilaritySettings covers that workflow) */}
+      <FilterPanel
+        filters={toFilterPanelFilters(simFilters)}
+        onChange={handleFilterPanelChange}
+        projectId={projectId}
+        isOpen={true}
+        onToggle={() => {}}
+        classificationModelId={classificationModelId}
+        verificationSection={null}
+      />
+
       {/* Warning when embeddings are incomplete */}
       {stats && stats.missing_embeddings > 0 && (
         <Alert className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -448,34 +608,92 @@ export function SimilarityTab({
           <>
             <button
               onClick={() => sortMutation.mutate()}
-              disabled={sortMutation.isPending || !stats?.embedded_detections}
+              disabled={isSorting || !stats?.embedded_detections}
               className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
               title="Re-sort"
             >
-              <RefreshCw className={cn("h-4 w-4", sortMutation.isPending && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4", isSorting && "animate-spin")} />
             </button>
 
-            {sortResult && (
-              <button
-                className={cn(
-                  "px-3 py-1.5 text-xs rounded-md border transition-colors",
-                  showMislabelsOnly
-                    ? "bg-red-50 border-red-300 text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                )}
-                onClick={() => {
-                  setShowMislabelsOnly(!showMislabelsOnly);
-                  setSelectedIds(new Set());
-                }}
+            <SimilaritySettings
+              reverseSort={reverseSort}
+              onReverseSortChange={setReverseSort}
+              autoHideVerified={autoHideVerified}
+              onAutoHideVerifiedChange={setAutoHideVerified}
+              showMislabelsOnly={showMislabelsOnly}
+              onShowMislabelsOnlyChange={(v) => {
+                setShowMislabelsOnly(v);
+                setSelectedIds(new Set());
+              }}
+              showSpeciesDividers={showSpeciesDividers}
+              onShowSpeciesDividersChange={setShowSpeciesDividers}
+              tileSize={tileSize}
+              onTileSizeChange={setTileSize}
+            />
+
+            {/* Accept all suggestions — visible when filtering to suspicious */}
+            {showMislabelsOnly && allDetections.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => relabelToSuggestions(allDetections)}
               >
-                Show mislabels
-              </button>
+                <Check className="h-3.5 w-3.5" />
+                Accept suggestions
+              </Button>
             )}
 
             {sortResult && (
-              <span className="text-xs text-muted-foreground ml-auto">
-                {sortResult.total_detections} detection{sortResult.total_detections !== 1 ? "s" : ""}
-              </span>
+              <>
+                {/* Agreement quality summary */}
+                {(() => {
+                  const dets = sortResult.detections;
+                  let agreed = 0, suspicious = 0;
+                  for (const d of dets) {
+                    if (d.neighbor_agreement == null) continue;
+                    if (d.neighbor_agreement >= 0.5) agreed++;
+                    else suspicious++;
+                  }
+                  if (agreed + suspicious === 0) return null;
+                  return (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        title="Neighbors agree with current label — click to show all"
+                        onClick={() => { setShowMislabelsOnly(false); }}
+                      >
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
+                        Agreed labels: {agreed}
+                      </button>
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        title="Neighbors disagree with current label — click to filter"
+                        onClick={() => { setShowMislabelsOnly(true); setSelectedIds(new Set()); }}
+                      >
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
+                        Suspicious labels: {suspicious}
+                      </button>
+                      <span className="ml-1">
+                        {allDetections.length !== sortResult.total_detections
+                          ? `${allDetections.length} of ${sortResult.total_detections}`
+                          : sortResult.total_detections}{" "}
+                        detection{sortResult.total_detections !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Fallback count when no agreement data */}
+                {sortResult.detections.every((d) => d.neighbor_agreement == null) && (
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {allDetections.length !== sortResult.total_detections
+                      ? `${allDetections.length} of ${sortResult.total_detections}`
+                      : sortResult.total_detections}{" "}
+                    detection{sortResult.total_detections !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </>
             )}
           </>
         )}
@@ -484,11 +702,11 @@ export function SimilarityTab({
         {viewMode === "search" && anchorId && searchResult && (
           <>
             {/* Anchor chip */}
-            <div className="flex items-center gap-1.5 bg-muted rounded-md px-2 py-1">
+            <div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-0.5">
               <img
                 src={`${API_BASE_URL}${searchResult.anchor.crop_url}`}
                 alt="anchor"
-                className="h-8 w-8 rounded object-cover"
+                className="h-5 w-5 rounded object-cover"
               />
               <span className="text-xs capitalize">
                 {searchResult.anchor.species || searchResult.anchor.category}
@@ -517,15 +735,6 @@ export function SimilarityTab({
             <span className="text-xs text-muted-foreground ml-auto">
               {searchResult.total_results} result{searchResult.total_results !== 1 ? "s" : ""}
             </span>
-
-            {/* Close button */}
-            <button
-              onClick={handleCloseSearch}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title="Close search (Esc)"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </>
         )}
       </div>
@@ -555,6 +764,8 @@ export function SimilarityTab({
           onCardClick={handleCardClick}
           onFindSimilar={handleFindSimilar}
           onRelabel={handleRelabel}
+          tileSize={tileSize}
+          showSpeciesDividers={viewMode === "sort" && showSpeciesDividers}
         />
       )}
 

@@ -25,6 +25,7 @@ class SortRequest(BaseModel):
     """Request body for similarity-sorting detections."""
 
     filters: SimilarityFilters = Field(default_factory=SimilarityFilters)
+    reverse: bool = False
 
 
 class SearchRequest(BaseModel):
@@ -34,6 +35,15 @@ class SearchRequest(BaseModel):
     filters: SimilarityFilters = Field(default_factory=SimilarityFilters)
     limit: int = Field(100, ge=1, le=500)
     threshold: float = Field(0.0, ge=-1.0, le=1.0)
+
+
+class CropBbox(BaseModel):
+    """Bbox position within the expanded crop (normalized 0-1)."""
+
+    x: float
+    y: float
+    w: float
+    h: float
 
 
 class DetectionSummary(BaseModel):
@@ -55,6 +65,7 @@ class DetectionSummary(BaseModel):
     deployment_id: str | None = None
     timestamp: datetime | None = None
     crop_url: str
+    crop_bbox: CropBbox | None = None
 
 
 class SortResponse(BaseModel):
