@@ -14,6 +14,7 @@ from app.api.schemas.event import (
     AdjacentEventsResponse,
     EventFilterOptions,
     EventSummary,
+    EventVerificationStats,
     EventWithFiles,
     GenerateEventsRequest,
     GenerateEventsResponse,
@@ -111,6 +112,26 @@ def get_event_count(
     filters = _parse_filter_params(site_ids, date_from, date_to, species, verification, min_confidence, max_confidence)
     count = event_crud.get_event_count_by_project(db, project_id, **filters)
     return {"count": count}
+
+
+@router.get("/verification-stats", response_model=EventVerificationStats)
+def get_verification_stats(
+    project_id: str = Query(..., description="Project ID"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    species: str | None = Query(None, description="Comma-separated species"),
+    verification: str | None = Query(None, description="Verification filter"),
+    min_confidence: float | None = Query(None, ge=0, le=1),
+    max_confidence: float | None = Query(None, ge=0, le=1),
+    db: Session = Depends(get_db),
+):
+    """Get aggregate file verification stats across filtered events."""
+    filters = _parse_filter_params(
+        site_ids, date_from, date_to, species, verification,
+        min_confidence, max_confidence,
+    )
+    return event_crud.get_event_verification_stats(db, project_id, **filters)
 
 
 @router.get("/{event_id}", response_model=EventWithFiles)

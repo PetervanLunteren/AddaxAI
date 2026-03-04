@@ -38,8 +38,13 @@ async function apiFetch<T>(
     // Handle non-2xx responses
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      const detail = errorData.detail;
       const errorMsg =
-        errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join("; ")
+            : `HTTP ${response.status}: ${response.statusText}`;
 
       logger.error(`API ${method} ${endpoint} failed: ${errorMsg}`, {
         status: response.status,

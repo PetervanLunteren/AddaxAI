@@ -27,6 +27,7 @@ import { FilterPanel } from "../components/verify/FilterPanel";
 import { FilterChips } from "../components/verify/FilterChips";
 import { HelpSheet } from "../components/verify/HelpSheet";
 import { SimilarityTab } from "../components/verify/SimilarityTab";
+import { EventsStatsToolbar } from "../components/verify/EventsStatsToolbar";
 
 const PAGE_SIZE = 50;
 const FILTER_DEBOUNCE_MS = 300;
@@ -187,6 +188,13 @@ export default function VerifyPage() {
     enabled: !!projectId && isDebouncedFiltered,
   });
 
+  // Get verification stats across filtered events
+  const { data: verificationStats } = useQuery({
+    queryKey: ["events", "verification-stats", projectId, debouncedFilters],
+    queryFn: () => eventsApi.verificationStats(projectId!, debouncedFilters),
+    enabled: !!projectId && activeTab === "events",
+  });
+
   // Get events with debounced filters
   const {
     data: events,
@@ -235,17 +243,7 @@ export default function VerifyPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {totalEvents > 0
-                ? activeTab === "events"
-                  ? <>
-                      Verify detections at the event level. Each card is one event, a group of files captured within the independence interval.{" "}
-                      <button
-                        className="underline hover:text-foreground"
-                        onClick={() => setHelpOpen(true)}
-                      >
-                        See full event verification guide here.
-                      </button>
-                    </>
-                  : "Browse detections grouped by visual similarity. Cluster to find groups, search to find look-alikes, and verify or relabel in bulk."
+                ? "Review and verify AI detections. Browse by event or use visual similarity to spot mislabels in bulk."
                 : "Run a deployment analysis to get started"}
             </p>
           </div>
@@ -298,6 +296,12 @@ export default function VerifyPage() {
                 />
               )}
             </FilterPanel>
+            {totalEvents > 0 && (
+              <EventsStatsToolbar
+                stats={verificationStats}
+                onHelpClick={() => setHelpOpen(true)}
+              />
+            )}
             {/* Event cards */}
             {isLoading ? (
               <div className="flex items-center justify-center h-64">

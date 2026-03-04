@@ -1,7 +1,7 @@
 /**
  * SimilaritySettings — popover with sort/display settings for the Similarity tab.
  *
- * Contains toggles for noise-first sorting, auto-hide verified, show mislabels,
+ * Contains toggles for noise-first sorting, auto-hide verified, species dividers,
  * and tile size selection.
  */
 
@@ -16,8 +16,6 @@ interface SimilaritySettingsProps {
   onReverseSortChange: (v: boolean) => void;
   autoHideVerified: boolean;
   onAutoHideVerifiedChange: (v: boolean) => void;
-  showMislabelsOnly: boolean;
-  onShowMislabelsOnlyChange: (v: boolean) => void;
   showSpeciesDividers: boolean;
   onShowSpeciesDividersChange: (v: boolean) => void;
   tileSize: TileSize;
@@ -31,8 +29,6 @@ export function SimilaritySettings({
   onReverseSortChange,
   autoHideVerified,
   onAutoHideVerifiedChange,
-  showMislabelsOnly,
-  onShowMislabelsOnlyChange,
   showSpeciesDividers,
   onShowSpeciesDividersChange,
   tileSize,
@@ -67,15 +63,6 @@ export function SimilaritySettings({
             <p className="text-xs text-muted-foreground">Fade out items as you verify them</p>
           </div>
           <Switch checked={autoHideVerified} onCheckedChange={onAutoHideVerifiedChange} />
-        </label>
-
-        {/* Show only suspicious */}
-        <label className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-sm">Show only suspicious</p>
-            <p className="text-xs text-muted-foreground">Neighbor label disagrees</p>
-          </div>
-          <Switch checked={showMislabelsOnly} onCheckedChange={onShowMislabelsOnlyChange} />
         </label>
 
         {/* Species dividers */}

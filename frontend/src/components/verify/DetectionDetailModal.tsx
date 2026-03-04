@@ -8,16 +8,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Search, Tag, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Check, Search, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Progress } from "../ui/progress";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
+import { similarityApi } from "../../api/similarity";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getCategoryColor } from "../../lib/detection-utils";
+import { cn } from "../../lib/utils";
+import {
+  computePillLayout,
+  svgRoundedRectPath,
+  PILL_PAD_X, PILL_PAD_Y, DOT_R, LINE_GAP,
+  FONT_SM, FONT_LG, TEXT_START_X,
+  BBOX_STROKE_WIDTH, BBOX_OPACITY, BBOX_CORNER_RADIUS,
+  DIM_FILL, PILL_BG,
+} from "../../lib/detection-overlay";
 import type { DetectionSummary } from "../../api/types";
 
 interface DetectionDetailModalProps {
@@ -33,6 +41,8 @@ interface DetectionDetailModalProps {
   onNavigate?: (direction: "prev" | "next" | "nextUnverified") => boolean;
   /** Current position, e.g. "3 / 48" */
   position?: string;
+  /** Project ID for fetching nearest neighbors. */
+  projectId?: string;
 }
 
 export function DetectionDetailModal({
@@ -45,6 +55,7 @@ export function DetectionDetailModal({
   onVerify,
   onNavigate,
   position,
+  projectId,
 }: DetectionDetailModalProps) {
   const queryClient = useQueryClient();
   const [viewport, setViewport] = useState({
@@ -68,13 +79,21 @@ export function DetectionDetailModal({
     enabled: open && !!detection?.file_id,
   });
 
+  // Fetch 10 nearest neighbors for the Label Agreement thumbnails
+  const { data: neighborsData } = useQuery({
+    queryKey: ["detection-neighbors", detection?.detection_id],
+    queryFn: () =>
+      similarityApi.search(projectId!, {
+        anchor_detection_id: detection!.detection_id,
+        limit: 11,
+      }),
+    enabled: open && !!detection?.detection_id && !!projectId,
+  });
+
   const verifyMutation = useMutation({
     mutationFn: () =>
       detectionsApi.verify(detection!.detection_id, !detection!.verified),
     onSuccess: () => {
-      toast.success(
-        detection!.verified ? "Detection unverified" : "Detection verified"
-      );
       onActionComplete();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -84,7 +103,6 @@ export function DetectionDetailModal({
     mutationFn: ({ species, category }: { species: string; category: string }) =>
       detectionsApi.bulkRelabel([detection!.detection_id], species, category),
     onSuccess: (_, { species, category }) => {
-      toast.success(`Relabeled to "${species}"`);
       onRelabel?.(detection!.detection_id, species, category);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -200,24 +218,90 @@ export function DetectionDetailModal({
                 alt="Source image"
                 className="max-w-full max-h-full object-contain"
               />
-              {fullDetection && (
-                <svg
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${imgW} ${imgH}`}
-                  preserveAspectRatio="none"
-                >
-                  <rect
-                    x={fullDetection.bbox_x * imgW}
-                    y={fullDetection.bbox_y * imgH}
-                    width={fullDetection.bbox_width * imgW}
-                    height={fullDetection.bbox_height * imgH}
-                    fill="none"
-                    stroke={getCategoryColor(fullDetection.category)}
-                    strokeWidth={Math.max(imgW, imgH) * 0.003}
-                    rx={2}
-                  />
-                </svg>
-              )}
+              {fullDetection && (() => {
+                const s = Math.max(imgW, imgH) / 1000;
+                const pill = computePillLayout(fullDetection);
+                const bx = fullDetection.bbox_x * imgW;
+                const by = fullDetection.bbox_y * imgH;
+                const bw = fullDetection.bbox_width * imgW;
+                const bh = fullDetection.bbox_height * imgH;
+                const pillH = pill.pillHeight * s;
+                const pillY = by - pillH > 0 ? by - pillH : by;
+                const spotlightPath =
+                  `M0,0H${imgW}V${imgH}H0Z` +
+                  svgRoundedRectPath(bx, by, bw, bh, BBOX_CORNER_RADIUS * s);
+
+                return (
+                  <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    viewBox={`0 0 ${imgW} ${imgH}`}
+                    preserveAspectRatio="xMidYMid meet"
+                  >
+                    {/* Spotlight dim overlay */}
+                    <path fillRule="evenodd" d={spotlightPath} fill={DIM_FILL} />
+
+                    {/* Rounded bbox */}
+                    <rect
+                      x={bx} y={by} width={bw} height={bh}
+                      rx={BBOX_CORNER_RADIUS * s}
+                      fill="none"
+                      stroke={pill.color}
+                      strokeWidth={BBOX_STROKE_WIDTH * s}
+                      opacity={BBOX_OPACITY}
+                    />
+
+                    {/* Pill label */}
+                    <g transform={`translate(${bx}, ${pillY}) scale(${s})`}>
+                      <rect
+                        x={0} y={0}
+                        width={pill.pillWidth} height={pill.pillHeight}
+                        rx={BBOX_CORNER_RADIUS}
+                        fill={PILL_BG}
+                      />
+                      <circle
+                        cx={PILL_PAD_X + DOT_R}
+                        cy={pill.pillHeight / 2}
+                        r={DOT_R}
+                        fill={pill.color}
+                      />
+                      {pill.hasSpecies ? (
+                        <>
+                          <text
+                            x={TEXT_START_X} y={PILL_PAD_Y}
+                            fill="rgba(255,255,255,0.7)"
+                            fontSize={FONT_SM}
+                            fontFamily="Arial, sans-serif"
+                            dominantBaseline="hanging"
+                          >
+                            {pill.categoryText}
+                          </text>
+                          <text
+                            x={TEXT_START_X} y={PILL_PAD_Y + FONT_SM + LINE_GAP}
+                            fill="white"
+                            fontSize={FONT_LG}
+                            fontWeight="bold"
+                            fontFamily="Arial, sans-serif"
+                            dominantBaseline="hanging"
+                          >
+                            {pill.speciesText}
+                          </text>
+                        </>
+                      ) : (
+                        <text
+                          x={TEXT_START_X} y={PILL_PAD_Y}
+                          fill="white"
+                          fontSize={FONT_LG}
+                          fontWeight="bold"
+                          fontFamily="Arial, sans-serif"
+                          dominantBaseline="hanging"
+                        >
+                          {pill.categoryText}
+                        </text>
+                      )}
+                    </g>
+                  </svg>
+                );
+              })()}
             </div>
           </div>
 
@@ -249,6 +333,15 @@ export function DetectionDetailModal({
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => onNavigate("nextUnverified")}
+                      title="Next unverified"
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
                   </>
                 )}
               </div>
@@ -271,21 +364,65 @@ export function DetectionDetailModal({
                   alt="Crop"
                   className="w-full aspect-square object-cover rounded-lg border"
                 />
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm capitalize">
-                      {detection.category} ({(detection.confidence * 100).toFixed(0)}%)
-                    </span>
-                    {detection.verified && (
-                      <Badge variant="default" className="text-[10px]">
-                        Verified
-                      </Badge>
-                    )}
-                  </div>
-                  {detection.species && (
-                    <div className="font-medium capitalize">
-                      {detection.species} ({detection.species_confidence != null ? `${(detection.species_confidence * 100).toFixed(0)}%` : "—"})
-                    </div>
+                <div className="flex items-center gap-2">
+                  {fullDetection && (() => {
+                    const p = computePillLayout(fullDetection);
+                    const ps = 1.4;
+                    return (
+                      <svg width={p.pillWidth * ps} height={p.pillHeight * ps} viewBox={`0 0 ${p.pillWidth} ${p.pillHeight}`}>
+                        <rect
+                          x={0} y={0}
+                          width={p.pillWidth} height={p.pillHeight}
+                          rx={BBOX_CORNER_RADIUS}
+                          fill={PILL_BG}
+                        />
+                        <circle
+                          cx={PILL_PAD_X + DOT_R}
+                          cy={p.pillHeight / 2}
+                          r={DOT_R}
+                          fill={p.color}
+                        />
+                        {p.hasSpecies ? (
+                          <>
+                            <text
+                              x={TEXT_START_X} y={PILL_PAD_Y}
+                              fill="rgba(255,255,255,0.7)"
+                              fontSize={FONT_SM}
+                              fontFamily="Arial, sans-serif"
+                              dominantBaseline="hanging"
+                            >
+                              {p.categoryText}
+                            </text>
+                            <text
+                              x={TEXT_START_X} y={PILL_PAD_Y + FONT_SM + LINE_GAP}
+                              fill="white"
+                              fontSize={FONT_LG}
+                              fontWeight="bold"
+                              fontFamily="Arial, sans-serif"
+                              dominantBaseline="hanging"
+                            >
+                              {p.speciesText}
+                            </text>
+                          </>
+                        ) : (
+                          <text
+                            x={TEXT_START_X} y={PILL_PAD_Y}
+                            fill="white"
+                            fontSize={FONT_LG}
+                            fontWeight="bold"
+                            fontFamily="Arial, sans-serif"
+                            dominantBaseline="hanging"
+                          >
+                            {p.categoryText}
+                          </text>
+                        )}
+                      </svg>
+                    );
+                  })()}
+                  {detection.verified && (
+                    <Badge variant="default" className="text-[10px]">
+                      Verified
+                    </Badge>
                   )}
                 </div>
               </div>
@@ -295,10 +432,17 @@ export function DetectionDetailModal({
             <div className="flex-1 min-h-0 overflow-y-auto">
               {fileData && (
                 <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
-                  <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Image</h3>
+                  <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
+                    {fileData.file_type === "frame" ? "Video" : "Image"}
+                  </h3>
                   <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                     <div className="truncate">
-                      {fileData.file_path.split("/").pop()}
+                      {fileData.file_type === "frame"
+                        ? fileData.file_path.split("/").slice(-2, -1)[0]
+                        : fileData.file_path.split("/").pop()}
+                      {fileData.file_type === "frame" && fileData.source_frame_number != null && (
+                        <span> · frame {fileData.source_frame_number}</span>
+                      )}
                     </div>
                     <div>
                       {detection.timestamp &&
@@ -319,25 +463,21 @@ export function DetectionDetailModal({
               )}
 
               {/* Label Agreement */}
-              {detection.neighbor_agreement != null && (() => {
+              {!detection.verified && detection.neighbor_agreement != null && (() => {
                 const count = Math.round(detection.neighbor_agreement * 10);
                 const pct = detection.neighbor_agreement * 100;
                 const hasSuggestion =
                   detection.neighbor_top_label &&
                   detection.neighbor_top_label !== detection.species;
-                // Interpolate between bad (#882000) and good (#0f6064)
-                const t = detection.neighbor_agreement;
-                const r = Math.round(0x88 + (0x0f - 0x88) * t);
-                const g = Math.round(0x20 + (0x60 - 0x20) * t);
-                const b = Math.round(0x00 + (0x64 - 0x00) * t);
-                const barColor = `rgb(${r}, ${g}, ${b})`;
-
                 return (
                   <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
                     <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Label Agreement</h3>
                     <div className="px-3 pb-3 space-y-2">
-                      <Progress value={pct} className="h-3" barColor={barColor} />
-                      <p className="text-sm text-muted-foreground">
+                      <div className="relative h-3 w-full overflow-hidden rounded-full flex">
+                        <div style={{ width: `${pct}%`, backgroundColor: "#0f6064" }} className="h-full transition-all duration-500 ease-out" />
+                        <div style={{ width: `${100 - pct}%`, backgroundColor: "#882000" }} className="h-full transition-all duration-500 ease-out" />
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center">
                         {count}/10 neighbors agree
                       </p>
                       {hasSuggestion && (
@@ -364,6 +504,32 @@ export function DetectionDetailModal({
                           Accept &ldquo;{detection.neighbor_top_label}&rdquo;
                         </Button>
                       )}
+                      {/* Neighbor thumbnails */}
+                      {neighborsData?.results && neighborsData.results.length > 0 && (
+                        <div className="grid grid-cols-5 gap-1.5 pt-1">
+                          {neighborsData.results
+                            .filter((n) => n.detection_id !== detection.detection_id)
+                            .slice(0, 10)
+                            .map((n) => {
+                            const agrees = n.species === detection.species;
+                            return (
+                              <div key={n.detection_id} className="space-y-0.5">
+                                <img
+                                  src={`${API_BASE_URL}${n.crop_url}`}
+                                  alt={n.species || n.category}
+                                  className={cn(
+                                    "w-full aspect-square object-cover rounded border-2",
+                                    agrees ? "border-[#0f6064]" : "border-[#882000]"
+                                  )}
+                                />
+                                <p className="text-[9px] text-muted-foreground truncate text-center capitalize">
+                                  {n.species || n.category}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -372,28 +538,16 @@ export function DetectionDetailModal({
 
             {/* Bottom pinned: action buttons */}
             <div className="px-3 py-3 space-y-2 shrink-0">
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1"
-                  size="sm"
-                  onClick={() => verifyMutation.mutate()}
-                  disabled={verifyMutation.isPending}
-                  variant={detection.verified ? "outline" : "default"}
-                >
-                  <Check className="h-4 w-4 mr-2" />
-                  {detection.verified ? "Unverify" : "Verify"}
-                </Button>
-                {onNavigate && !detection.verified && (
-                  <Button
-                    className="flex-1"
-                    size="sm"
-                    onClick={handleVerifyAndAdvance}
-                  >
-                    <Check className="h-4 w-4 mr-2" />
-                    Verify & Next
-                  </Button>
-                )}
-              </div>
+              <Button
+                className="w-full"
+                size="sm"
+                onClick={detection.verified ? () => verifyMutation.mutate() : handleVerifyAndAdvance}
+                disabled={verifyMutation.isPending}
+                variant={detection.verified ? "outline" : "default"}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                {detection.verified ? "Unverify" : "Mark verified"}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

@@ -63,9 +63,6 @@ export function DetectionDetailSheet({
     mutationFn: () =>
       detectionsApi.verify(detection!.detection_id, !detection!.verified),
     onSuccess: () => {
-      toast.success(
-        detection!.verified ? "Detection unverified" : "Detection verified"
-      );
       onActionComplete();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -75,7 +72,6 @@ export function DetectionDetailSheet({
     mutationFn: ({ species, category }: { species: string; category: string }) =>
       detectionsApi.bulkRelabel([detection!.detection_id], species, category),
     onSuccess: (_, { species, category }) => {
-      toast.success(`Relabeled to "${species}"`);
       onRelabel?.(detection!.detection_id, species, category);
       onActionComplete();
     },
@@ -254,7 +250,7 @@ export function DetectionDetailSheet({
           </div>
 
           {/* Label Agreement */}
-          {detection.neighbor_agreement != null && (() => {
+          {!detection.verified && detection.neighbor_agreement != null && (() => {
             const count = Math.round(detection.neighbor_agreement * 10);
             const pct = detection.neighbor_agreement * 100;
             const hasSuggestion =

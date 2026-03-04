@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, time, timedelta
 
 import cv2
-from sqlalchemy import and_, delete, exists, func, insert, select
+from sqlalchemy import Integer, and_, delete, exists, func, insert, select
 from sqlalchemy.orm import Session, aliased, joinedload, subqueryload
 
 from app.core.logging_config import get_logger
@@ -572,6 +572,70 @@ def get_adjacent_events(
         "next_unverified_id": nxt_unv[0] if nxt_unv else None,
         "current_index": idx,
         "total_count": total,
+    }
+
+
+def get_event_verification_stats(
+    db: Session,
+    project_id: str,
+    site_ids: list[str] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    species: list[str] | None = None,
+    verification: str | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
+) -> dict[str, int]:
+    """Get aggregate file verification stats across filtered events."""
+    filter_kwargs = dict(
+        site_ids=site_ids, date_from=date_from, date_to=date_to,
+        species=species, verification=verification,
+        min_confidence=min_confidence, max_confidence=max_confidence,
+    )
+
+    # Base: filtered event IDs
+    event_ids_q = (
+        db.query(Event.id)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+    )
+    event_ids_q = _apply_event_filters(event_ids_q, db, **filter_kwargs)
+    event_ids_subq = event_ids_q.subquery()
+
+    # Query 1: file-level counts
+    file_stats = (
+        db.query(
+            func.count(func.distinct(File.id)),
+            func.sum(func.cast(File.verified, Integer)),
+        )
+        .join(event_files, event_files.c.file_id == File.id)
+        .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
+        .one()
+    )
+
+    # Query 2: representative file counts
+    RepFile = aliased(File)
+    rep_stats = (
+        db.query(
+            func.count(Event.representative_file_id),
+            func.sum(func.cast(RepFile.verified, Integer)),
+        )
+        .select_from(Event)
+        .join(Deployment, Deployment.id == Event.deployment_id)
+        .join(Site, Site.id == Deployment.site_id)
+        .outerjoin(RepFile, RepFile.id == Event.representative_file_id)
+        .filter(Site.project_id == project_id)
+        .filter(Event.id.in_(select(event_ids_subq.c.id)))
+        .filter(Event.representative_file_id.isnot(None))
+        .one()
+    )
+
+    return {
+        "total_files": file_stats[0] or 0,
+        "verified_files": int(file_stats[1] or 0),
+        "total_representatives": rep_stats[0] or 0,
+        "verified_representatives": int(rep_stats[1] or 0),
     }
 
 

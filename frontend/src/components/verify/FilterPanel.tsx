@@ -88,7 +88,7 @@ export function FilterPanel({
   if (!isOpen) return null;
 
   return (
-    <div className="rounded-lg border bg-white p-4 space-y-4">
+    <div className="rounded-lg border bg-white pt-2 pb-3 px-3 space-y-4">
       <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${verificationSection !== null ? "xl:grid-cols-5" : "xl:grid-cols-4"} gap-4`}>
         {/* Sites multiselect */}
         <div className="space-y-1.5">

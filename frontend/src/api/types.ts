@@ -282,6 +282,13 @@ export interface EventWithFiles {
   files: FileWithDetections[];
 }
 
+export interface EventVerificationStats {
+  total_files: number;
+  verified_files: number;
+  total_representatives: number;
+  verified_representatives: number;
+}
+
 export interface AdjacentEventsResponse {
   previous_id: string | null;
   next_id: string | null;

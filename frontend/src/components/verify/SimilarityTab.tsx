@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Loader2, Layers, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Check, CircleHelp, Loader2, Layers, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { similarityApi } from "../../api/similarity";
 import { detectionsApi } from "../../api/detections";
@@ -26,6 +26,8 @@ import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
 import { FilterPanel } from "./FilterPanel";
 import { SimilaritySettings } from "./SimilaritySettings";
+import { SimilarityHelpSheet } from "./SimilarityHelpSheet";
+import { SimilarityWelcomePopover } from "./SimilarityWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 import type {
@@ -138,12 +140,40 @@ export function SimilarityTab({
     [simFilters, setSimFilters],
   );
 
-  // ── Local settings state ────────────────────────────────────────────
-  const [reverseSort, setReverseSort] = useState(false);
-  const [autoHideVerified, setAutoHideVerified] = useState(false);
-  const [tileSize, setTileSize] = useState<TileSize>("M");
-  const [showMislabelsOnly, setShowMislabelsOnly] = useState(false);
-  const [showSpeciesDividers, setShowSpeciesDividers] = useState(false);
+  // ── Local settings state (persisted to localStorage) ────────────────
+  const LS_KEY = "addaxai:similaritySettings";
+  const savedSettings = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
+    catch { return {}; }
+  }, []);
+  const persistSetting = useCallback((key: string, value: unknown) => {
+    try {
+      const cur = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+      cur[key] = value;
+      localStorage.setItem(LS_KEY, JSON.stringify(cur));
+    } catch { /* ignore */ }
+  }, []);
+
+  const [reverseSort, _setReverseSort] = useState(savedSettings.reverseSort ?? false);
+  const setReverseSort = useCallback((v: boolean) => { _setReverseSort(v); persistSetting("reverseSort", v); }, [persistSetting]);
+  const [autoHideVerified, _setAutoHideVerified] = useState(savedSettings.autoHideVerified ?? true);
+  const setAutoHideVerified = useCallback((v: boolean) => { _setAutoHideVerified(v); persistSetting("autoHideVerified", v); }, [persistSetting]);
+  const [tileSize, _setTileSize] = useState<TileSize>(savedSettings.tileSize ?? "M");
+  const setTileSize = useCallback((v: TileSize) => { _setTileSize(v); persistSetting("tileSize", v); }, [persistSetting]);
+  const [showMislabelsOnly, _setShowMislabelsOnly] = useState(savedSettings.showMislabelsOnly ?? false);
+  const setShowMislabelsOnly = useCallback((v: boolean) => { _setShowMislabelsOnly(v); persistSetting("showMislabelsOnly", v); }, [persistSetting]);
+  const [showSpeciesDividers, _setShowSpeciesDividers] = useState(savedSettings.showSpeciesDividers ?? false);
+  const setShowSpeciesDividers = useCallback((v: boolean) => { _setShowSpeciesDividers(v); persistSetting("showSpeciesDividers", v); }, [persistSetting]);
+
+  // Help sheet + welcome popover
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(
+    () => !localStorage.getItem("addaxai:similarityWelcomeDismissed")
+  );
+  const handleDismissWelcome = useCallback(() => {
+    setShowWelcome(false);
+    localStorage.setItem("addaxai:similarityWelcomeDismissed", "1");
+  }, []);
 
   // Explicit sorting flag — avoids isPending getting stuck in Strict Mode
   const [isSorting, setIsSorting] = useState(false);
@@ -250,7 +280,7 @@ export function SimilarityTab({
       let dets = sortResult.detections;
       if (showMislabelsOnly) {
         dets = dets.filter(
-          (d) => d.neighbor_agreement != null && d.neighbor_agreement < 0.5
+          (d) => !d.verified && d.neighbor_agreement != null && d.neighbor_agreement < 0.7
         );
       }
       if (autoHideVerified) {
@@ -571,7 +601,7 @@ export function SimilarityTab({
       />
 
       {/* Unified toolbar with segmented control */}
-      <div className="flex flex-wrap items-center gap-3 py-2">
+      <div className="flex flex-wrap items-center gap-3 py-2 px-3 bg-white rounded-lg border shadow-sm">
         {/* Segmented control */}
         <div className="flex rounded-lg bg-muted p-0.5">
           <button
@@ -623,79 +653,80 @@ export function SimilarityTab({
               onReverseSortChange={setReverseSort}
               autoHideVerified={autoHideVerified}
               onAutoHideVerifiedChange={setAutoHideVerified}
-              showMislabelsOnly={showMislabelsOnly}
-              onShowMislabelsOnlyChange={(v) => {
-                setShowMislabelsOnly(v);
-                setSelectedIds(new Set());
-              }}
               showSpeciesDividers={showSpeciesDividers}
               onShowSpeciesDividersChange={setShowSpeciesDividers}
               tileSize={tileSize}
               onTileSizeChange={setTileSize}
             />
 
-            {/* Accept all suggestions — visible when filtering to suspicious */}
-            {showMislabelsOnly && allDetections.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs gap-1"
-                onClick={() => relabelToSuggestions(allDetections)}
-              >
-                <Check className="h-3.5 w-3.5" />
-                Accept suggestions
-              </Button>
-            )}
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="Help"
+            >
+              <CircleHelp className="h-4 w-4" />
+            </button>
 
             {sortResult && (
               <>
-                {/* Agreement quality summary */}
+                {/* Segmented toggle: Total / Suspicious + verified progress */}
                 {(() => {
                   const dets = sortResult.detections;
-                  let agreed = 0, suspicious = 0;
+                  let suspicious = 0;
+                  let hasAgreement = false;
+                  let verified = 0;
                   for (const d of dets) {
+                    if (d.verified) verified++;
                     if (d.neighbor_agreement == null) continue;
-                    if (d.neighbor_agreement >= 0.5) agreed++;
-                    else suspicious++;
+                    hasAgreement = true;
+                    if (!d.verified && d.neighbor_agreement < 0.7) suspicious++;
                   }
-                  if (agreed + suspicious === 0) return null;
+                  const total = dets.length;
+                  const verifiedPct = total > 0 ? (verified / total) * 100 : 0;
+
                   return (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
-                      <button
-                        className="flex items-center gap-1 hover:text-foreground transition-colors"
-                        title="Neighbors agree with current label — click to show all"
-                        onClick={() => { setShowMislabelsOnly(false); }}
-                      >
-                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
-                        Agreed labels: {agreed}
-                      </button>
-                      <button
-                        className="flex items-center gap-1 hover:text-foreground transition-colors"
-                        title="Neighbors disagree with current label — click to filter"
-                        onClick={() => { setShowMislabelsOnly(true); setSelectedIds(new Set()); }}
-                      >
-                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
-                        Suspicious labels: {suspicious}
-                      </button>
-                      <span className="ml-1">
-                        {allDetections.length !== sortResult.total_detections
-                          ? `${allDetections.length} of ${sortResult.total_detections}`
-                          : sortResult.total_detections}{" "}
-                        detection{sortResult.total_detections !== 1 ? "s" : ""}
-                      </span>
+                    <div className="flex items-center gap-3 ml-auto">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full transition-all duration-500 ease-out rounded-full"
+                            style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
+                          />
+                        </div>
+                        {verified}/{total} verified ({Math.round(verifiedPct)}%)
+                      </div>
+                      <div className="h-4 w-px bg-border" />
+                      <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
+                        <button
+                          className={cn(
+                            "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
+                            !showMislabelsOnly
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                          onClick={() => { setShowMislabelsOnly(false); setSelectedIds(new Set()); }}
+                        >
+                          <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
+                          All ({total})
+                        </button>
+                        {hasAgreement && (
+                          <button
+                            className={cn(
+                              "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
+                              showMislabelsOnly
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                            onClick={() => { setShowMislabelsOnly(true); setSelectedIds(new Set()); }}
+                          >
+                            <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
+                            Suspicious ({suspicious})
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
-
-                {/* Fallback count when no agreement data */}
-                {sortResult.detections.every((d) => d.neighbor_agreement == null) && (
-                  <span className="text-xs text-muted-foreground ml-auto">
-                    {allDetections.length !== sortResult.total_detections
-                      ? `${allDetections.length} of ${sortResult.total_detections}`
-                      : sortResult.total_detections}{" "}
-                    detection{sortResult.total_detections !== 1 ? "s" : ""}
-                  </span>
-                )}
               </>
             )}
           </>
@@ -759,6 +790,11 @@ export function SimilarityTab({
             </p>
           </CardContent>
         </Card>
+      ) : showMislabelsOnly && allDetections.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
+          <p className="text-sm">No suspicious labels in the current selection.</p>
+          <p className="text-xs mt-1">All detections have been verified or have high neighbor agreement.</p>
+        </div>
       ) : (
         <CropGrid
           detections={allDetections}
@@ -781,7 +817,19 @@ export function SimilarityTab({
         onActionComplete={handleActionComplete}
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
+        suggestionCount={
+          allDetections.filter(
+            (d) => selectedIds.has(d.detection_id) && d.neighbor_top_label && d.neighbor_top_label !== d.species
+          ).length
+        }
+        onAcceptSuggestions={() => {
+          const selectedDets = allDetections.filter((d) => selectedIds.has(d.detection_id));
+          relabelToSuggestions(selectedDets);
+        }}
       />
+
+      <SimilarityWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
+      <SimilarityHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <DetectionDetailModal
         detection={detailDetection}
@@ -791,6 +839,7 @@ export function SimilarityTab({
         }}
         onFindSimilar={handleFindSimilar}
         onActionComplete={handleActionComplete}
+        projectId={projectId}
         onRelabel={(detectionId, species, category) => {
           patchLocalDetections((d) =>
             d.detection_id === detectionId

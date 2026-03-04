@@ -23,6 +23,10 @@ interface BulkActionBarProps {
   onActionComplete: () => void;
   onRelabel?: (ids: string[], species: string | null, category: string) => void;
   onVerify?: (ids: string[]) => void;
+  /** Number of selected detections that have a neighbor label suggestion. */
+  suggestionCount?: number;
+  /** Accept neighbor suggestions for selected detections. */
+  onAcceptSuggestions?: () => void;
 }
 
 export function BulkActionBar({
@@ -34,6 +38,8 @@ export function BulkActionBar({
   onActionComplete,
   onRelabel,
   onVerify,
+  suggestionCount = 0,
+  onAcceptSuggestions,
 }: BulkActionBarProps) {
   const queryClient = useQueryClient();
   const [relabelOpen, setRelabelOpen] = useState(false);
@@ -42,8 +48,7 @@ export function BulkActionBar({
 
   const verifyMutation = useMutation({
     mutationFn: () => detectionsApi.bulkVerify(ids, true),
-    onSuccess: (data) => {
-      toast.success(`Verified ${data.updated_count} detections`);
+    onSuccess: (_data) => {
       if (onVerify) {
         onVerify(ids);
       } else {
@@ -57,8 +62,7 @@ export function BulkActionBar({
   const relabelMutation = useMutation({
     mutationFn: (opt: LabelOption) =>
       detectionsApi.bulkRelabel(ids, opt.species, opt.category),
-    onSuccess: (data, opt) => {
-      toast.success(`Relabeled ${data.updated_count} detections`);
+    onSuccess: (_data, opt) => {
       if (onRelabel) {
         onRelabel(ids, opt.species, opt.category);
       } else {
@@ -126,6 +130,17 @@ export function BulkActionBar({
         <Search className="h-4 w-4 mr-1" />
         Find similar
       </Button>
+
+      {suggestionCount > 0 && onAcceptSuggestions && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onAcceptSuggestions}
+        >
+          <Tag className="h-4 w-4 mr-1" />
+          Accept {suggestionCount} suggestion{suggestionCount !== 1 ? "s" : ""}
+        </Button>
+      )}
 
       <Button variant="ghost" size="sm" onClick={onDeselectAll}>
         <X className="h-4 w-4 mr-1" />

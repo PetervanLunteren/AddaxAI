@@ -76,6 +76,15 @@ class DateRange(BaseModel):
     max: datetime
 
 
+class EventVerificationStats(BaseModel):
+    """Aggregate verification stats across filtered events."""
+
+    total_files: int
+    verified_files: int
+    total_representatives: int
+    verified_representatives: int
+
+
 class EventFilterOptions(BaseModel):
     """Available filter options for a project's events."""
 

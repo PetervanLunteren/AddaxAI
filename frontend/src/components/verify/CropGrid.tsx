@@ -38,14 +38,14 @@ interface CropGridProps {
 
 const COLUMN_PRESETS: Record<TileSize, [number, number, number, number]> = {
   S: [6, 8, 12, 14],
-  M: [4, 6, 8, 10],
-  L: [3, 4, 6, 8],
+  M: [3, 5, 7, 9],
+  L: [2, 3, 4, 6],
 };
 
 const ESTIMATE_SIZE: Record<TileSize, number> = {
   S: 140,
-  M: 200,
-  L: 280,
+  M: 180,
+  L: 350,
 };
 
 const DIVIDER_HEIGHT = 32;
@@ -67,6 +67,12 @@ function useColumns(tileSize: TileSize = "M"): number {
   }, [tileSize]);
   return cols;
 }
+
+const GAP_CLASS: Record<TileSize, string> = {
+  S: "gap-2 pb-2",
+  M: "gap-3 pb-3",
+  L: "gap-4 pb-4",
+};
 
 export function CropGrid({
   detections,
@@ -123,6 +129,7 @@ export function CropGrid({
       rows[index].type === "divider" ? DIVIDER_HEIGHT : cardHeight,
     overscan: 5,
     scrollMargin: listRef.current?.offsetTop ?? 0,
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
 
   return (
@@ -141,12 +148,13 @@ export function CropGrid({
           return (
             <div
               key={`divider-${virtualRow.index}`}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
                 width: "100%",
-                height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
               }}
             >
@@ -164,17 +172,18 @@ export function CropGrid({
         return (
           <div
             key={virtualRow.index}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
             style={{
               position: "absolute",
               top: 0,
               left: 0,
               width: "100%",
-              height: `${virtualRow.size}px`,
               transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
             }}
           >
               <div
-                className="grid gap-2 px-1"
+                className={`grid px-1 ${GAP_CLASS[tileSize]}`}
                 style={{
                   gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                 }}
@@ -192,6 +201,7 @@ export function CropGrid({
                           <CropCard
                             detection={det}
                             selected={selectedIds.has(det.detection_id)}
+                            tileSize={tileSize}
                             onClick={(e) => {
                               if (e.ctrlKey || e.metaKey || e.shiftKey || selectedIds.size > 0) {
                                 onSelect(det.detection_id, e);

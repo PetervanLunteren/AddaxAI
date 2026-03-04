@@ -5,6 +5,14 @@
 import { api } from "../lib/api-client";
 import type { DetectionResponse, DetectionCreate, DetectionUpdate } from "./types";
 
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export const detectionsApi = {
   /** Create a human-drawn detection. */
   create: async (data: DetectionCreate): Promise<DetectionResponse> => {
@@ -39,27 +47,39 @@ export const detectionsApi = {
     });
   },
 
-  /** Bulk verify/unverify detections. */
+  /** Bulk verify/unverify detections (auto-batches in chunks of 500). */
   bulkVerify: async (
     ids: string[],
     verified: boolean
   ): Promise<{ updated_count: number }> => {
-    return api.post("/api/detections/bulk-verify", {
-      detection_ids: ids,
-      verified,
-    });
+    const chunks = chunkArray(ids, 500);
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        api.post<{ updated_count: number }>("/api/detections/bulk-verify", {
+          detection_ids: chunk,
+          verified,
+        })
+      )
+    );
+    return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
   },
 
-  /** Bulk relabel detections. */
+  /** Bulk relabel detections (auto-batches in chunks of 500). */
   bulkRelabel: async (
     ids: string[],
     species: string | null,
     category?: string
   ): Promise<{ updated_count: number }> => {
-    return api.post("/api/detections/bulk-relabel", {
-      detection_ids: ids,
-      species,
-      category,
-    });
+    const chunks = chunkArray(ids, 500);
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        api.post<{ updated_count: number }>("/api/detections/bulk-relabel", {
+          detection_ids: chunk,
+          species,
+          category,
+        })
+      )
+    );
+    return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
   },
 };

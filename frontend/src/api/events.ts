@@ -9,6 +9,7 @@ import type {
   AdjacentEventsResponse,
   EventFilterParams,
   EventFilterOptions,
+  EventVerificationStats,
 } from "./types";
 
 /** Append filter params to a URLSearchParams instance. */
@@ -85,6 +86,19 @@ export const eventsApi = {
     appendFilterParams(searchParams, filters);
     return api.get<AdjacentEventsResponse>(
       `/api/events/${eventId}/adjacent?${searchParams.toString()}`
+    );
+  },
+
+  /** Get aggregate verification stats for filtered events. */
+  verificationStats: async (
+    projectId: string,
+    filters?: EventFilterParams
+  ): Promise<EventVerificationStats> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("project_id", projectId);
+    appendFilterParams(searchParams, filters);
+    return api.get<EventVerificationStats>(
+      `/api/events/verification-stats?${searchParams.toString()}`
     );
   },
 

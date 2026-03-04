@@ -1212,7 +1212,7 @@ export function EventDetailModal({
                   className="h-7 w-7"
                   disabled={nextUnverifiedDisabled}
                   onClick={handleNextUnverified}
-                  title="Next unverified (Enter)"
+                  title="Next unverified"
                 >
                   <ChevronsRight className="h-4 w-4" />
                 </Button>

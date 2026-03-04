@@ -4,49 +4,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
-the full image now only has white border at the top, not at the left side and bottom...  
 
-
-
-The filters in the event verfication view are only for the event verification, not for the similarity verification. Similarity should not depend on any of those. Similarity needs its own set. I was thinking something in the lines of:
-
-Filters:
-- Sites
-- start dat
-- end date
-- species
-
-Settings (sort):
-- sort noise first or noise last
-- hide verified (if a bunch is verified, hide them so you can work until all are done)
-- slider that defines the tile size (small to large)
-- show mislabels = "Show only suspicious"
-
-Settings (search):
-- Add "Achor:" before the anchor
-- make the anchor card white, so you can siee its separate from the background
-- leave threshold as is
-- remove the X at the end. Users can switch to Sort with the segmented control. 
-
-What do you think? Any things I'm missing? Please reason as a camera trap user. Instructions:
-* If something is unclear at any point, stop and ask before continuing.
-* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
-* I'm not in a rush. Please be precise and do the task thoroughly. 
-* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
-
-Workflow:
-* read CONVENTIONS.md
-* Ask at least 3 clarifying questions before beginning.
-* Based on my answers, suggest a few general approaches. These should range from simple solutions to more sophisticated alternatives, with clear trade-offs for each. For every approach, explain:
-   - Complexity (difficulty, dependencies, maintainability)
-   - Readability (clarity for collaborators)
-   - Effect (impact on performance, usability, flexibility)
-* Give your recommendation regarding the alternatives discribed earlier, with a short reasoning. 
-* After I select an approach, draft a detailed plan for implementation.
-* Only start working if I agree with the proposed plan.
-
-
-
+- [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 
 
 
 
