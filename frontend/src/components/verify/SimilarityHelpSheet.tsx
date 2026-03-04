@@ -48,6 +48,15 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
                 </Badge>
                 ) below the crop.
               </p>
+              <p>
+                This tab verifies at the detection level. Each
+                individual detection crop can be verified independently, which
+                is useful for bulk-verifying species labels across your entire
+                dataset rather than going file by file. It cannot verify at the
+                file level because it only shows individual crops, not the full
+                image, so you cannot know whether the file is missing detections
+                that should be there.
+              </p>
             </div>
           </section>
 

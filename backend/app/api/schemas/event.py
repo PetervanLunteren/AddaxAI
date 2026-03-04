@@ -83,6 +83,8 @@ class EventVerificationStats(BaseModel):
     verified_files: int
     total_representatives: int
     verified_representatives: int
+    total_detections: int
+    verified_detections: int
 
 
 class EventFilterOptions(BaseModel):

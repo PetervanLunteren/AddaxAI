@@ -3,6 +3,9 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
+- [ ] since we now have a bar at each verify method, would it make sense to add the filters there as a popover (similar to the settings popover?)
+- [ ] what do we do with the verified detections? Are tey over writtin in the DB? What is the benefit of verifiying? 
+
 
 
 - [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 

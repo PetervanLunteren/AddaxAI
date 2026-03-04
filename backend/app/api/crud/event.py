@@ -631,11 +631,25 @@ def get_event_verification_stats(
         .one()
     )
 
+    # Query 3: detection-level counts
+    det_stats = (
+        db.query(
+            func.count(Detection.id),
+            func.sum(func.cast(Detection.verified, Integer)),
+        )
+        .join(File, File.id == Detection.file_id)
+        .join(event_files, event_files.c.file_id == File.id)
+        .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
+        .one()
+    )
+
     return {
         "total_files": file_stats[0] or 0,
         "verified_files": int(file_stats[1] or 0),
         "total_representatives": rep_stats[0] or 0,
         "verified_representatives": int(rep_stats[1] or 0),
+        "total_detections": det_stats[0] or 0,
+        "verified_detections": int(det_stats[1] or 0),
     }
 
 

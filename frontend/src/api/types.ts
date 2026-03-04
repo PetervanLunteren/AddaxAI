@@ -287,6 +287,8 @@ export interface EventVerificationStats {
   verified_files: number;
   total_representatives: number;
   verified_representatives: number;
+  total_detections: number;
+  verified_detections: number;
 }
 
 export interface AdjacentEventsResponse {

@@ -693,7 +693,7 @@ export function SimilarityTab({
                             style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
                           />
                         </div>
-                        {verified}/{total} verified ({Math.round(verifiedPct)}%)
+                        {Math.round(verifiedPct)}% detections verified ({verified}/{total})
                       </div>
                       <div className="h-4 w-px bg-border" />
                       <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">

@@ -69,6 +69,13 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 automatically. You can browse your events here and optionally
                 verify them by confirming or correcting the detections.
               </p>
+              <p>
+                This tab verifies at the file level. When you
+                press Enter, the current file and all its detections are marked
+                as verified. The progress bars in the toolbar track how many
+                representative files and total files have been verified. This is
+                the primary workflow for reviewing events image by image.
+              </p>
             </div>
           </section>
 

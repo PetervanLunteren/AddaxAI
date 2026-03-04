@@ -43,7 +43,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
               style={{ width: `${repPct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {stats.verified_representatives}/{stats.total_representatives} rep. verified ({Math.round(repPct)}%)
+          {Math.round(repPct)}% representatives verified ({stats.verified_representatives}/{stats.total_representatives})
         </div>
         <div className="h-4 w-px bg-border" />
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -53,7 +53,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
               style={{ width: `${filePct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {stats.verified_files}/{stats.total_files} files verified ({Math.round(filePct)}%)
+          {Math.round(filePct)}% files verified ({stats.verified_files}/{stats.total_files})
         </div>
       </div>
     </div>
