@@ -2,6 +2,12 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 
+
+
+the full image now only has white border at the top, not at the left side and bottom...  
+
+
+
 The filters in the event verfication view are only for the event verification, not for the similarity verification. Similarity should not depend on any of those. Similarity needs its own set. I was thinking something in the lines of:
 
 Filters:

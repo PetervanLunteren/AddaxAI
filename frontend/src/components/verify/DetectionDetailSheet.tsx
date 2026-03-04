@@ -2,10 +2,12 @@
  * DetectionDetailSheet - right-side slide-out panel showing full detection details.
  *
  * Shows the source image with bbox overlay, detection metadata, and action buttons.
+ * Supports prev/next navigation and verify-and-advance (Enter) for rapid review.
  */
 
+import { useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Search, Tag, ExternalLink } from "lucide-react";
+import { Check, Search, Tag, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -15,6 +17,7 @@ import {
 } from "../ui/sheet";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Progress } from "../ui/progress";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { API_BASE_URL } from "../../lib/api-client";
@@ -27,6 +30,13 @@ interface DetectionDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   onFindSimilar: (detectionId: string) => void;
   onActionComplete: () => void;
+  onRelabel?: (detectionId: string, species: string, category: string) => void;
+  /** Optimistic verify callback so parent can patch local state before navigating. */
+  onVerify?: (detectionId: string) => void;
+  /** Navigate to adjacent detection. Return false if at boundary. */
+  onNavigate?: (direction: "prev" | "next" | "nextUnverified") => boolean;
+  /** Current position, e.g. "3 / 48" */
+  position?: string;
 }
 
 export function DetectionDetailSheet({
@@ -35,6 +45,10 @@ export function DetectionDetailSheet({
   onOpenChange,
   onFindSimilar,
   onActionComplete,
+  onRelabel,
+  onVerify,
+  onNavigate,
+  position,
 }: DetectionDetailSheetProps) {
   const queryClient = useQueryClient();
 
@@ -57,6 +71,57 @@ export function DetectionDetailSheet({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const relabelMutation = useMutation({
+    mutationFn: ({ species, category }: { species: string; category: string }) =>
+      detectionsApi.bulkRelabel([detection!.detection_id], species, category),
+    onSuccess: (_, { species, category }) => {
+      toast.success(`Relabeled to "${species}"`);
+      onRelabel?.(detection!.detection_id, species, category);
+      onActionComplete();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Verify current detection and advance to next unverified
+  const handleVerifyAndAdvance = useCallback(() => {
+    if (!detection || detection.verified) {
+      // Already verified — just advance
+      onNavigate?.("nextUnverified");
+      return;
+    }
+    // Patch local state immediately so navigation sees updated verified status
+    onVerify?.(detection.detection_id);
+    onNavigate?.("nextUnverified");
+    // Fire API call in background
+    detectionsApi
+      .verify(detection.detection_id, true)
+      .then(() => onActionComplete())
+      .catch((err: Error) => toast.error(err.message));
+  }, [detection, onActionComplete, onNavigate, onVerify]);
+
+  // Keyboard navigation while sheet is open
+  useEffect(() => {
+    if (!open || !onNavigate) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        onNavigate!("prev");
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        onNavigate!("next");
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        handleVerifyAndAdvance();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onNavigate, handleVerifyAndAdvance]);
+
   if (!detection) return null;
 
   // Find the matching detection in file data for bbox
@@ -71,9 +136,36 @@ export function DetectionDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="capitalize">
-            {detection.species || detection.category}
-          </SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle className="capitalize">
+              {detection.species || detection.category}
+            </SheetTitle>
+            {onNavigate && (
+              <div className="flex items-center gap-1">
+                {position && (
+                  <span className="text-xs text-muted-foreground mr-1">
+                    {position}
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => onNavigate("prev")}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => onNavigate("next")}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         </SheetHeader>
 
         <div className="space-y-4 mt-4">
@@ -146,12 +238,6 @@ export function DetectionDetailSheet({
                 <p>{new Date(detection.timestamp).toLocaleString()}</p>
               </div>
             )}
-            {detection.neighbor_agreement != null && (
-              <div>
-                <span className="text-muted-foreground">Neighbor agreement</span>
-                <p>{Math.round(detection.neighbor_agreement * 10)}/10 agree</p>
-              </div>
-            )}
             {detection.similarity != null && (
               <div>
                 <span className="text-muted-foreground">Similarity</span>
@@ -167,16 +253,82 @@ export function DetectionDetailSheet({
               )}
           </div>
 
+          {/* Label Agreement */}
+          {detection.neighbor_agreement != null && (() => {
+            const count = Math.round(detection.neighbor_agreement * 10);
+            const pct = detection.neighbor_agreement * 100;
+            const hasSuggestion =
+              detection.neighbor_top_label &&
+              detection.neighbor_top_label !== detection.species;
+            const barColorClass =
+              detection.neighbor_agreement >= 0.7
+                ? "[&>div]:bg-green-500"
+                : detection.neighbor_agreement >= 0.3
+                  ? "[&>div]:bg-amber-500"
+                  : "[&>div]:bg-red-500";
+
+            return (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Label Agreement</h4>
+                <Progress value={pct} className={`h-3 ${barColorClass}`} />
+                <p className="text-sm text-muted-foreground">
+                  {count}/10 neighbors agree
+                </p>
+                {hasSuggestion && (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    Neighbors suggest:{" "}
+                    <span className="font-semibold capitalize">
+                      {detection.neighbor_top_label}
+                    </span>
+                  </p>
+                )}
+                {detection.classification_method && (
+                  <p className="text-xs text-muted-foreground">
+                    Labeled by {detection.classification_method}
+                  </p>
+                )}
+                {hasSuggestion && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={relabelMutation.isPending}
+                    onClick={() =>
+                      relabelMutation.mutate({
+                        species: detection.neighbor_top_label!,
+                        category: detection.category,
+                      })
+                    }
+                  >
+                    <Tag className="h-4 w-4 mr-2" />
+                    Accept &ldquo;{detection.neighbor_top_label}&rdquo;
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Actions */}
           <div className="flex flex-col gap-2 pt-2">
-            <Button
-              onClick={() => verifyMutation.mutate()}
-              disabled={verifyMutation.isPending}
-              variant={detection.verified ? "outline" : "default"}
-            >
-              <Check className="h-4 w-4 mr-2" />
-              {detection.verified ? "Unverify" : "Verify"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                onClick={() => verifyMutation.mutate()}
+                disabled={verifyMutation.isPending}
+                variant={detection.verified ? "outline" : "default"}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                {detection.verified ? "Unverify" : "Verify"}
+              </Button>
+              {onNavigate && !detection.verified && (
+                <Button
+                  className="flex-1"
+                  onClick={handleVerifyAndAdvance}
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Verify & Next
+                </Button>
+              )}
+            </div>
             <Button
               variant="outline"
               onClick={() => {
@@ -187,6 +339,11 @@ export function DetectionDetailSheet({
               <Search className="h-4 w-4 mr-2" />
               Find similar
             </Button>
+            {onNavigate && (
+              <p className="text-[11px] text-center text-muted-foreground">
+                ← → navigate &middot; Enter verify &amp; next
+              </p>
+            )}
           </div>
         </div>
       </SheetContent>

@@ -23,7 +23,7 @@ import { cn } from "../../lib/utils";
 import { CropGrid } from "./CropGrid";
 import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
-import { DetectionDetailSheet } from "./DetectionDetailSheet";
+import { DetectionDetailModal } from "./DetectionDetailModal";
 import { FilterPanel } from "./FilterPanel";
 import { SimilaritySettings } from "./SimilaritySettings";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
@@ -459,6 +459,9 @@ export function SimilarityTab({
         return;
       }
 
+      // Skip grid shortcuts when detail sheet is open (sheet handles its own keys)
+      if (detailDetection) return;
+
       if (e.key === "Enter" && selectedIds.size > 0) {
         e.preventDefault();
         // Verify selected
@@ -780,7 +783,7 @@ export function SimilarityTab({
         onVerify={handleBulkVerify}
       />
 
-      <DetectionDetailSheet
+      <DetectionDetailModal
         detection={detailDetection}
         open={!!detailDetection}
         onOpenChange={(open) => {
@@ -788,7 +791,55 @@ export function SimilarityTab({
         }}
         onFindSimilar={handleFindSimilar}
         onActionComplete={handleActionComplete}
+        onRelabel={(detectionId, species, category) => {
+          patchLocalDetections((d) =>
+            d.detection_id === detectionId
+              ? { ...d, species, category, verified: true }
+              : d
+          );
+        }}
+        onVerify={(detectionId) => {
+          patchLocalDetections((d) =>
+            d.detection_id === detectionId ? { ...d, verified: true } : d
+          );
+        }}
+        position={
+          detailDetection
+            ? `${allDetections.findIndex((d) => d.detection_id === detailDetection.detection_id) + 1} / ${allDetections.length}`
+            : undefined
+        }
+        onNavigate={(direction) => {
+          if (!detailDetection) return false;
+          const idx = allDetections.findIndex(
+            (d) => d.detection_id === detailDetection.detection_id
+          );
+          if (idx === -1) return false;
+
+          if (direction === "nextUnverified") {
+            // Find next unverified after current index, wrapping around
+            for (let i = 1; i <= allDetections.length; i++) {
+              const candidate = allDetections[(idx + i) % allDetections.length];
+              if (!candidate.verified) {
+                setDetailDetection(candidate);
+                return true;
+              }
+            }
+            // All verified — close the sheet
+            toast.success("All detections verified");
+            setDetailDetection(null);
+            return false;
+          }
+
+          const nextIdx =
+            direction === "next"
+              ? Math.min(idx + 1, allDetections.length - 1)
+              : Math.max(idx - 1, 0);
+          if (nextIdx === idx) return false;
+          setDetailDetection(allDetections[nextIdx]);
+          return true;
+        }}
       />
     </div>
   );
 }
+
