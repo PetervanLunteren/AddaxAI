@@ -15,12 +15,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 ## TODO priority 1
-- [ ] that websocket stuff is very subjective huh? some seconds here, some seconds there.... it feels very hacky tacky.                                                          
-                                                                                                                     
-⏺ Yeah, it is. The whole buffer-and-replay approach is a workaround for a race condition: the frontend opens the WebSocket after the backend already started sending         
-  progress. The "right" fix would be to guarantee ordering — don't start processing until the WebSocket is connected, or have the frontend poll for current state instead of
-  relying on replayed messages. Then you wouldn't need a buffer at all.                                                                                                      
-                                                                                                                                                                             
+- [ ] investiggate the websocket handling in this project. I just removed a very hacky-tacky way where we would add several deplays at serveral different locations and it would work most of the time, but was very error prone. Can you check if all the websocket stuff is following convention and doesnt do anything wrid or using shortcuts or anything? I want it following convenstion, clear code, simple, and no ductape... please investigate. I'm not in a hurry. 
+
 - [ ] implement the taxonomy stuff in the taxonomic rollup setting. If that works, make sure the Event smoothing works with taxonomy aware too (with dans script). And it would be great if we could have a dropdown for the smoothing aggresiveness.
 - [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to store the taxonomy trees. How to add a class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. 
 

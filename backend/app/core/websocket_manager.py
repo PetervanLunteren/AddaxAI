@@ -16,6 +16,10 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# How long (seconds) a registered start function can wait for a "ready" signal
+# before being cleaned up. Prevents memory leaks if frontend never connects.
+_PENDING_START_TIMEOUT = 300  # 5 minutes
+
 
 class ConnectionManager:
     """
@@ -47,13 +51,11 @@ class ConnectionManager:
             if job_id not in self.active_connections:
                 self.active_connections[job_id] = []
             self.active_connections[job_id].append(websocket)
+            state = self.current_state.get(job_id)
 
         logger.info(f"WebSocket connected for job {job_id}")
 
         # Send current state to catch up reconnecting clients
-        async with self._lock:
-            state = self.current_state.get(job_id)
-
         if state:
             try:
                 await websocket.send_json(state)
@@ -84,9 +86,15 @@ class ConnectionManager:
 
         Called by API endpoints instead of asyncio.create_task(). The start_fn
         must be an async callable (coroutine function or lambda returning coroutine).
+
+        Schedules automatic cleanup after _PENDING_START_TIMEOUT seconds to
+        prevent memory leaks if the frontend never connects.
         """
         self._pending_starts[task_id] = start_fn
         logger.info(f"Registered pending start for task {task_id}")
+
+        # Schedule cleanup in case frontend never connects
+        asyncio.create_task(self._cleanup_pending_start(task_id))
 
     async def handle_ready(self, task_id: str) -> None:
         """
@@ -124,29 +132,31 @@ class ConnectionManager:
             "data": data or {},
         }
 
-        # Store as current state (latest only)
+        # Store state and snapshot connections atomically
         async with self._lock:
             self.current_state[job_id] = progress_data
 
+            if job_id in self.active_connections:
+                connections_to_send = list(self.active_connections[job_id])
+            else:
+                connections_to_send = []
+
         # Send to all currently connected clients
-        if job_id in self.active_connections:
-            disconnected: list[WebSocket] = []
+        disconnected: list[WebSocket] = []
 
-            for connection in self.active_connections[job_id]:
-                try:
-                    await connection.send_json(progress_data)
-                    # Force event loop to yield and flush WebSocket buffer
-                    await asyncio.sleep(0)
-                except Exception as e:
-                    logger.warning(f"Failed to send progress to client: {e}")
-                    disconnected.append(connection)
+        for connection in connections_to_send:
+            try:
+                await connection.send_json(progress_data)
+            except Exception as e:
+                logger.warning(f"Failed to send progress to client: {e}")
+                disconnected.append(connection)
 
-            # Clean up disconnected clients
-            if disconnected:
-                async with self._lock:
-                    for connection in disconnected:
-                        if connection in self.active_connections[job_id]:
-                            self.active_connections[job_id].remove(connection)
+        # Clean up disconnected clients
+        if disconnected:
+            async with self._lock:
+                for connection in disconnected:
+                    if job_id in self.active_connections and connection in self.active_connections[job_id]:
+                        self.active_connections[job_id].remove(connection)
 
     async def send_complete(
         self, job_id: str, success: bool, message: str, data: dict[str, Any] | None = None
@@ -165,7 +175,7 @@ class ConnectionManager:
             "data": data or {},
         }
 
-        # Store and send atomically
+        # Store state and snapshot connections atomically
         async with self._lock:
             self.current_state[job_id] = complete_data
 
@@ -179,7 +189,6 @@ class ConnectionManager:
         for connection in connections_to_send:
             try:
                 await connection.send_json(complete_data)
-                await asyncio.sleep(0)
                 logger.info("Successfully sent completion message to client")
             except Exception as e:
                 logger.warning(f"Failed to send completion to client: {e}")
@@ -203,7 +212,7 @@ class ConnectionManager:
             "message": error,
         }
 
-        # Store and send atomically
+        # Store state and snapshot connections atomically
         async with self._lock:
             self.current_state[job_id] = error_data
 
@@ -217,7 +226,6 @@ class ConnectionManager:
         for connection in connections_to_send:
             try:
                 await connection.send_json(error_data)
-                await asyncio.sleep(0)
                 logger.info("Successfully sent error message to client")
             except Exception as e:
                 logger.warning(f"Failed to send error to client: {e}")
@@ -238,6 +246,13 @@ class ConnectionManager:
         if job_id in self.current_state:
             del self.current_state[job_id]
             logger.debug(f"Cleaned up state for job {job_id}")
+
+    async def _cleanup_pending_start(self, task_id: str, delay: int = _PENDING_START_TIMEOUT) -> None:
+        """Remove a pending start if the frontend never sent 'ready'."""
+        await asyncio.sleep(delay)
+        removed = self._pending_starts.pop(task_id, None)
+        if removed is not None:
+            logger.warning(f"Cleaned up orphaned pending start for task {task_id} (no 'ready' received after {delay}s)")
 
 
 # Global connection manager instance

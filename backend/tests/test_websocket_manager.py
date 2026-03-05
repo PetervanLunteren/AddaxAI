@@ -495,6 +495,41 @@ class TestCleanupState:
         assert "job-2" in mgr.current_state
 
 
+class TestCleanupPendingStart:
+    async def test_cleanup_removes_orphaned_pending_start(self):
+        """Pending start is removed after timeout if no 'ready' received."""
+        mgr = ConnectionManager()
+        mgr._pending_starts["job-1"] = AsyncMock()
+
+        await mgr._cleanup_pending_start("job-1", delay=0)
+
+        assert "job-1" not in mgr._pending_starts
+
+    async def test_cleanup_noop_if_already_started(self):
+        """If 'ready' already popped the start_fn, cleanup is a no-op."""
+        mgr = ConnectionManager()
+        mgr._pending_starts["job-1"] = AsyncMock()
+
+        # Simulate "ready" consuming the start function
+        await mgr.handle_ready("job-1")
+        await asyncio.sleep(0.05)
+
+        # Cleanup should not raise
+        await mgr._cleanup_pending_start("job-1", delay=0)
+        assert "job-1" not in mgr._pending_starts
+
+    async def test_cleanup_does_not_affect_other_tasks(self):
+        """Cleaning up one task doesn't affect another."""
+        mgr = ConnectionManager()
+        mgr._pending_starts["job-1"] = AsyncMock()
+        mgr._pending_starts["job-2"] = AsyncMock()
+
+        await mgr._cleanup_pending_start("job-1", delay=0)
+
+        assert "job-1" not in mgr._pending_starts
+        assert "job-2" in mgr._pending_starts
+
+
 # ---------------------------------------------------------------------------
 # Connection count
 # ---------------------------------------------------------------------------

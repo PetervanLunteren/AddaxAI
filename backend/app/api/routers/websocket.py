@@ -49,7 +49,7 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
     # status in the DB. This handles backend restarts where state is lost.
     if job_id in ws_manager.current_state:
         logger.info(f"Job {job_id} has in-memory state (type={ws_manager.current_state[job_id].get('type')}), skipping DB check")
-    if job_id not in ws_manager.current_state:
+    else:
         try:
             db = next(get_db())
             try:
