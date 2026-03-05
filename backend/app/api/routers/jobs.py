@@ -7,14 +7,13 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-import asyncio
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.crud import job as crud_job
 from app.api.schemas.job import JobCreate, JobResponse, JobUpdate, RunQueueResponse
 from app.core.logging_config import get_logger
+from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.workers import process_deployment_analysis
 
@@ -164,11 +163,10 @@ async def run_queue(
             job_ids=[],
         )
 
-    # Start background workers for each job
+    # Register workers to start when frontend sends "ready" over WebSocket
     for job_id in job_ids:
-        logger.info(f"Starting background worker for job {job_id}")
-        # Create task in current event loop
-        asyncio.create_task(process_deployment_analysis(job_id))
+        logger.info(f"Registering background worker for job {job_id}")
+        ws_manager.register_start(job_id, lambda jid=job_id: process_deployment_analysis(jid))
 
     logger.info(
         f"Run queue triggered for project {project_id or 'all'}: "

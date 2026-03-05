@@ -7,7 +7,6 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-import asyncio
 import shutil
 from pathlib import Path
 
@@ -24,6 +23,7 @@ from app.api.schemas.project import (
     ProjectWithStats,
 )
 from app.core.logging_config import get_logger
+from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.models import Detection, Deployment, File, Job, Site
 from app.models.detection_embedding import DetectionEmbedding
@@ -451,7 +451,7 @@ async def reprocess_classifications(
 
     from app.workers.postprocessing_worker import process_postprocessing_job
 
-    asyncio.create_task(process_postprocessing_job(job.id))
+    ws_manager.register_start(job.id, lambda jid=job.id: process_postprocessing_job(jid))
 
     return {"message": "Postprocessing started", "job_id": job.id}
 
@@ -520,7 +520,7 @@ async def re_embed_detections(
 
     from app.workers.embedding_worker import process_re_embedding_job
 
-    asyncio.create_task(process_re_embedding_job(job.id))
+    ws_manager.register_start(job.id, lambda jid=job.id: process_re_embedding_job(jid))
 
     return {"message": "Re-embedding started", "job_id": job.id}
 

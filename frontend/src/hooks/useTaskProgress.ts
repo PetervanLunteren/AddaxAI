@@ -85,6 +85,16 @@ export function useTaskProgress({
       return;
     }
 
+    // Reset all state for new task (prevents stale data from previous task)
+    setProgress(0);
+    setMessage("");
+    setPhase(null);
+    setPhaseProgress(0);
+    setIsConnected(false);
+    setDeploymentContext(null);
+    setMetrics(null);
+    setComputeDevice(null);
+
     // Reset refs for new task
     hasSetDeploymentContextRef.current = false;
     deploymentIndexRef.current = undefined;
@@ -104,6 +114,9 @@ export function useTaskProgress({
         console.debug(`[useTaskProgress] WebSocket connected for task ${taskId}`);
         setIsConnected(true);
         reconnectAttemptRef.current = 0;
+
+        // Signal backend that WebSocket is ready — backend starts work on this signal
+        ws.send(JSON.stringify({ type: "ready" }));
 
         // Start heartbeat ping to keep connection alive through proxies
         pingIntervalRef.current = setInterval(() => {
@@ -173,6 +186,7 @@ export function useTaskProgress({
               }
             }, 16); // ~60fps (16ms) - faster updates for responsive progress bars
           } else if (data.type === "complete") {
+            console.debug(`[useTaskProgress] COMPLETE received for job_id=${data.job_id}, taskId=${taskId}, message=${data.message}`);
             taskCompletedRef.current = true;
 
             // Clear any pending updates
@@ -223,8 +237,12 @@ export function useTaskProgress({
           pingIntervalRef.current = null;
         }
 
-        // Reconnect if the task hasn't completed or errored
-        if (!taskCompletedRef.current) {
+        // Only reconnect if:
+        // 1. Task hasn't completed or errored
+        // 2. This WS is still the active one (prevents stale WS from reconnecting
+        //    after taskId changes — the cleanup resets taskCompletedRef before the
+        //    old WS's onclose fires asynchronously)
+        if (!taskCompletedRef.current && wsRef.current === ws) {
           const attempt = reconnectAttemptRef.current;
           const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // 1s, 2s, 4s, 8s, cap 10s
           console.debug(`[useTaskProgress] Reconnecting in ${delay}ms (attempt ${attempt + 1})...`);

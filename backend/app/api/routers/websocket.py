@@ -6,6 +6,8 @@ Following DEVELOPERS.md principles:
 - Explicit error handling
 """
 
+import json
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.logging_config import get_logger
@@ -43,10 +45,11 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
     """
     await ws_manager.connect(websocket, job_id)
 
-    # After connect (which replays any in-memory buffer), check if the buffer
-    # was empty and the job already has a terminal status in the DB.
-    # This handles backend restarts where the in-memory buffer is lost.
-    if job_id not in ws_manager.message_buffer or not ws_manager.message_buffer[job_id]:
+    # If no in-memory state exists, check if the job already has a terminal
+    # status in the DB. This handles backend restarts where state is lost.
+    if job_id in ws_manager.current_state:
+        logger.info(f"Job {job_id} has in-memory state (type={ws_manager.current_state[job_id].get('type')}), skipping DB check")
+    if job_id not in ws_manager.current_state:
         try:
             db = next(get_db())
             try:
@@ -95,10 +98,17 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
             logger.warning(f"Failed to check job status for {job_id}: {e}")
 
     try:
-        # Keep connection alive until client disconnects
+        # Keep connection alive and handle client messages
         while True:
-            # Wait for any client messages (mostly for keep-alive)
-            await websocket.receive_text()
+            text = await websocket.receive_text()
+            # Parse JSON messages; plain "ping" is keepalive (ignored)
+            if text and text.strip() != "ping":
+                try:
+                    msg = json.loads(text)
+                    if msg.get("type") == "ready":
+                        await ws_manager.handle_ready(job_id)
+                except (json.JSONDecodeError, AttributeError):
+                    pass  # Ignore malformed messages
 
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket, job_id)

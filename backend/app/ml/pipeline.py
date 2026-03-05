@@ -103,7 +103,6 @@ class MLPipeline:
 
             # Phase 0: Initialization
             await progress_callback("Initializing ML models...", 0.0, "init", 0.0)
-            await asyncio.sleep(0.1)
 
             # Phase 1: Detection
             await progress_callback("Detection: Starting...", 0.1, "detection", 0.0)
@@ -141,7 +140,6 @@ class MLPipeline:
 
             # Phase 2: Finalization - Save detections to database
             await progress_callback("Saving detections to database...", 0.51, "finalize", 0.1)
-            await asyncio.sleep(0.1)
 
             detection_records = self._save_detections_to_db(
                 db=db,
@@ -235,11 +233,9 @@ class MLPipeline:
                     "classification",
                     0.0
                 )
-                await asyncio.sleep(0.5)
 
             # Phase 4: Final finalization
             await progress_callback("Updating deployment status...", 0.95, "finalize", 0.8)
-            await asyncio.sleep(0.1)
 
             await progress_callback("Pipeline complete", 1.0, "finalize", 1.0)
 

@@ -8,8 +8,7 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
-from collections import deque
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import WebSocket
 
@@ -22,33 +21,25 @@ class ConnectionManager:
     """
     Manages WebSocket connections for job progress updates.
 
-    Allows multiple clients to subscribe to updates for specific jobs.
-    Buffers recent messages to handle race conditions where connections
-    arrive after progress updates have been sent.
+    Uses a ready-handshake protocol: API endpoints register a start function
+    via register_start(), and the actual work only begins when the frontend
+    sends {"type": "ready"} over the WebSocket. This eliminates race
+    conditions without buffers or artificial delays.
     """
 
-    def __init__(self, buffer_size: int = 50):
-        """
-        Initialize connection manager.
-
-        Args:
-            buffer_size: Number of recent messages to buffer per job
-        """
+    def __init__(self):
         # Map job_id -> list of WebSocket connections
         self.active_connections: dict[str, list[WebSocket]] = {}
-        # Map job_id -> deque of recent messages (for replay to late connections)
-        self.message_buffer: dict[str, deque[dict[str, Any]]] = {}
-        self.buffer_size = buffer_size
+        # Latest progress/complete/error message per task (for reconnection)
+        self.current_state: dict[str, dict] = {}
+        # Registered start functions waiting for "ready" signal
+        self._pending_starts: dict[str, Callable] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, job_id: str) -> None:
         """
         Accept and register a WebSocket connection for a job.
-        Replays any buffered messages to catch up the new connection.
-
-        Args:
-            websocket: WebSocket connection
-            job_id: Job ID to subscribe to
+        Sends current state if available (handles reconnections mid-job).
         """
         await websocket.accept()
 
@@ -59,34 +50,24 @@ class ConnectionManager:
 
         logger.info(f"WebSocket connected for job {job_id}")
 
-        # Replay buffered messages to catch up this connection
+        # Send current state to catch up reconnecting clients
         async with self._lock:
-            if job_id in self.message_buffer:
-                # Create a copy of the buffer to avoid holding the lock during replay
-                buffered_messages = list(self.message_buffer[job_id])
-            else:
-                buffered_messages = []
+            state = self.current_state.get(job_id)
 
-        if buffered_messages:
-            logger.info(f"Replaying {len(buffered_messages)} buffered messages for job {job_id}")
-            for buffered_msg in buffered_messages:
-                try:
-                    await websocket.send_json(buffered_msg)
-                    progress_info = f", progress={buffered_msg.get('progress', 'N/A')}" if 'progress' in buffered_msg else ""
-                    logger.info(f"Replayed: {buffered_msg['type']}{progress_info}, message={buffered_msg.get('message', '')[:50]}")
-                except Exception as e:
-                    logger.warning(f"Failed to replay buffered message: {e}")
+        if state:
+            try:
+                await websocket.send_json(state)
+                logger.info(
+                    f"Sent current state to reconnecting client for job {job_id}: "
+                    f"type={state['type']}, message={state.get('message', '')[:50]}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send current state: {e}")
         else:
-            logger.info(f"No buffered messages for job {job_id}")
+            logger.info(f"No current state for job {job_id}")
 
     async def disconnect(self, websocket: WebSocket, job_id: str) -> None:
-        """
-        Remove a WebSocket connection.
-
-        Args:
-            websocket: WebSocket connection to remove
-            job_id: Job ID
-        """
+        """Remove a WebSocket connection."""
         async with self._lock:
             if job_id in self.active_connections:
                 self.active_connections[job_id].remove(websocket)
@@ -96,6 +77,29 @@ class ConnectionManager:
                     del self.active_connections[job_id]
 
         logger.info(f"WebSocket disconnected for job {job_id}")
+
+    def register_start(self, task_id: str, start_fn: Callable) -> None:
+        """
+        Register a worker coroutine to start when the frontend sends "ready".
+
+        Called by API endpoints instead of asyncio.create_task(). The start_fn
+        must be an async callable (coroutine function or lambda returning coroutine).
+        """
+        self._pending_starts[task_id] = start_fn
+        logger.info(f"Registered pending start for task {task_id}")
+
+    async def handle_ready(self, task_id: str) -> None:
+        """
+        Handle "ready" signal from frontend. Pops and starts the registered worker.
+
+        Idempotent: no-op on reconnection (start_fn already popped on first call).
+        """
+        start_fn = self._pending_starts.pop(task_id, None)
+        if start_fn is not None:
+            logger.info(f"Received 'ready' for task {task_id}, starting worker")
+            asyncio.create_task(start_fn())
+        else:
+            logger.debug(f"Received 'ready' for task {task_id}, but no pending start (reconnection or already started)")
 
     async def send_progress(
         self,
@@ -108,17 +112,8 @@ class ConnectionManager:
     ) -> None:
         """
         Send progress update to all clients subscribed to a job.
-        Buffers the message for late-arriving connections.
-
-        Args:
-            job_id: Job ID
-            message: Progress message
-            progress: Overall progress value (0.0-1.0) - for backward compatibility
-            phase: Current phase: "init", "detection", "classification", "finalize"
-            phase_progress: Progress within current phase (0.0-1.0)
-            data: Optional additional data
+        Stores as current state (replaces previous, not append).
         """
-        # Build progress message
         progress_data = {
             "type": "progress",
             "job_id": job_id,
@@ -129,11 +124,9 @@ class ConnectionManager:
             "data": data or {},
         }
 
-        # Buffer the message for late-arriving connections
+        # Store as current state (latest only)
         async with self._lock:
-            if job_id not in self.message_buffer:
-                self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
-            self.message_buffer[job_id].append(progress_data)
+            self.current_state[job_id] = progress_data
 
         # Send to all currently connected clients
         if job_id in self.active_connections:
@@ -143,7 +136,6 @@ class ConnectionManager:
                 try:
                     await connection.send_json(progress_data)
                     # Force event loop to yield and flush WebSocket buffer
-                    # Without this, messages queue up and are sent in a burst at the end
                     await asyncio.sleep(0)
                 except Exception as e:
                     logger.warning(f"Failed to send progress to client: {e}")
@@ -161,17 +153,10 @@ class ConnectionManager:
     ) -> None:
         """
         Send completion message to all clients subscribed to a job.
-        Buffers the completion message and cleans up after a delay.
-
-        Args:
-            job_id: Job ID
-            success: Whether job completed successfully
-            message: Completion message
-            data: Optional result data
+        Stores in current state and schedules cleanup.
         """
         logger.info(f"send_complete() called for job {job_id}: success={success}, message={message[:50]}")
 
-        # Build completion message
         complete_data = {
             "type": "complete",
             "job_id": job_id,
@@ -180,112 +165,79 @@ class ConnectionManager:
             "data": data or {},
         }
 
-        # Buffer the completion message AND send to connected clients atomically
-        # This prevents race condition where WebSocket connects after we check
-        # but before we buffer the message
+        # Store and send atomically
         async with self._lock:
-            # Buffer first
-            if job_id not in self.message_buffer:
-                self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
-            self.message_buffer[job_id].append(complete_data)
-            logger.info(f"Buffered completion message for job {job_id} (buffer size: {len(self.message_buffer[job_id])})")
+            self.current_state[job_id] = complete_data
 
-            # Then send to currently connected clients (if any)
             if job_id in self.active_connections:
                 logger.info(f"Sending completion to {len(self.active_connections[job_id])} connected clients")
                 connections_to_send = list(self.active_connections[job_id])
             else:
-                logger.info(f"No active connections for job {job_id}, completion message only buffered")
+                logger.info(f"No active connections for job {job_id}, completion stored in state only")
                 connections_to_send = []
 
-        # Send outside the lock to avoid blocking other operations
         for connection in connections_to_send:
             try:
                 await connection.send_json(complete_data)
-                # Force event loop to yield and flush WebSocket buffer
                 await asyncio.sleep(0)
-                logger.info(f"Successfully sent completion message to client")
+                logger.info("Successfully sent completion message to client")
             except Exception as e:
                 logger.warning(f"Failed to send completion to client: {e}")
-                # Remove failed connection
                 async with self._lock:
                     if job_id in self.active_connections and connection in self.active_connections[job_id]:
                         self.active_connections[job_id].remove(connection)
 
-        # Clean up buffer shortly after (frontend connects within milliseconds)
-        asyncio.create_task(self._cleanup_buffer(job_id, delay=5))
+        # Clean up state after 60s (client has long since received it)
+        asyncio.create_task(self._cleanup_state(job_id, delay=60))
 
     async def send_error(self, job_id: str, error: str) -> None:
         """
         Send error message to all clients subscribed to a job.
-        Buffers the error message and cleans up after a delay.
-
-        Args:
-            job_id: Job ID
-            error: Error message
+        Stores in current state and schedules cleanup.
         """
         logger.info(f"send_error() called for job {job_id}: error={error[:50]}")
 
-        # Build error message — use "message" key so frontend data.message works
         error_data = {
             "type": "error",
             "job_id": job_id,
             "message": error,
         }
 
-        # Buffer the error message AND send to connected clients atomically
+        # Store and send atomically
         async with self._lock:
-            if job_id not in self.message_buffer:
-                self.message_buffer[job_id] = deque(maxlen=self.buffer_size)
-            self.message_buffer[job_id].append(error_data)
-            logger.info(f"Buffered error message for job {job_id} (buffer size: {len(self.message_buffer[job_id])})")
+            self.current_state[job_id] = error_data
 
             if job_id in self.active_connections:
                 logger.info(f"Sending error to {len(self.active_connections[job_id])} connected clients")
                 connections_to_send = list(self.active_connections[job_id])
             else:
-                logger.info(f"No active connections for job {job_id}, error message only buffered")
+                logger.info(f"No active connections for job {job_id}, error stored in state only")
                 connections_to_send = []
 
-        # Send outside the lock to avoid blocking other operations
         for connection in connections_to_send:
             try:
                 await connection.send_json(error_data)
                 await asyncio.sleep(0)
-                logger.info(f"Successfully sent error message to client")
+                logger.info("Successfully sent error message to client")
             except Exception as e:
                 logger.warning(f"Failed to send error to client: {e}")
                 async with self._lock:
                     if job_id in self.active_connections and connection in self.active_connections[job_id]:
                         self.active_connections[job_id].remove(connection)
 
-        # Clean up buffer shortly after (frontend connects within milliseconds)
-        asyncio.create_task(self._cleanup_buffer(job_id, delay=5))
+        # Clean up state after 60s
+        asyncio.create_task(self._cleanup_state(job_id, delay=60))
 
     def get_connection_count(self, job_id: str) -> int:
-        """
-        Get number of active connections for a job.
-
-        Args:
-            job_id: Job ID
-
-        Returns:
-            Number of active connections
-        """
+        """Get number of active connections for a job."""
         return len(self.active_connections.get(job_id, []))
 
-    async def _cleanup_buffer(self, job_id: str, delay: int = 60) -> None:
-        """
-        Clean up buffered messages for a job after a delay.
-
-        Args:
-            job_id: Job ID
-            delay: Delay in seconds before cleanup
-        """
+    async def _cleanup_state(self, job_id: str, delay: int = 60) -> None:
+        """Clean up current state for a job after a delay."""
         await asyncio.sleep(delay)
-        if job_id in self.message_buffer:
-            del self.message_buffer[job_id]
-            logger.debug(f"Cleaned up message buffer for job {job_id}")
+        if job_id in self.current_state:
+            del self.current_state[job_id]
+            logger.debug(f"Cleaned up state for job {job_id}")
 
 
 # Global connection manager instance

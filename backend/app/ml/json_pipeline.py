@@ -142,7 +142,6 @@ class JSONBasedMLPipeline:
             await progress_callback(
                 "Classification: Waiting for detection...", 0.0, "classification", 0.0
             )
-            await asyncio.sleep(0.1)
 
             # Phase 1: Detection (updates detection progress bar)
             logger.info("Phase 1: Running MegaDetector")

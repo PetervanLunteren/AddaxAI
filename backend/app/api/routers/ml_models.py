@@ -162,8 +162,11 @@ async def prepare_model(model_id: str) -> ModelPrepareResponse:
         # Use model_id as task_id for WebSocket tracking
         task_id = model_id
 
-        # Start preparation in background
-        asyncio.create_task(_prepare_model_task(model_id, manifest, task_id))
+        # Register worker to start when frontend sends "ready" over WebSocket
+        ws_manager.register_start(
+            task_id,
+            lambda mid=model_id, m=manifest, tid=task_id: _prepare_model_task(mid, m, tid),
+        )
 
         return ModelPrepareResponse(
             model_id=model_id,
@@ -201,8 +204,11 @@ async def prepare_model_weights(model_id: str) -> ModelPrepareResponse:
         # Use model_id as task_id for WebSocket tracking
         task_id = f"{model_id}-weights"
 
-        # Start weights download in background
-        asyncio.create_task(_prepare_weights_task(model_id, manifest, task_id))
+        # Register worker to start when frontend sends "ready" over WebSocket
+        ws_manager.register_start(
+            task_id,
+            lambda mid=model_id, m=manifest, tid=task_id: _prepare_weights_task(mid, m, tid),
+        )
 
         return ModelPrepareResponse(
             model_id=model_id,
@@ -240,8 +246,11 @@ async def prepare_model_environment(model_id: str) -> ModelPrepareResponse:
         # Use model_id as task_id for WebSocket tracking
         task_id = f"{model_id}-env"
 
-        # Start environment build in background
-        asyncio.create_task(_prepare_env_task(model_id, manifest, task_id))
+        # Register worker to start when frontend sends "ready" over WebSocket
+        ws_manager.register_start(
+            task_id,
+            lambda mid=model_id, m=manifest, tid=task_id: _prepare_env_task(mid, m, tid),
+        )
 
         return ModelPrepareResponse(
             model_id=model_id,

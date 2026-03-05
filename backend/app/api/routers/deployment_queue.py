@@ -7,9 +7,6 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-import asyncio
-import time
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,6 +20,7 @@ from app.api.schemas.deployment_queue import (
 )
 from app.api.schemas.job import JobCreate
 from app.core.logging_config import get_logger
+from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.workers import process_deployment_analysis
 
@@ -148,18 +146,10 @@ async def process_queue(
     for entry in pending_entries:
         crud_queue.update_queue_status(db, entry.id, status="processing")
 
-    # Start background task to process ALL entries sequentially via ONE worker
-    # Add delay to ensure WebSocket connects before job starts
-    # This prevents the job from completing before the WebSocket is ready
-    async def delayed_start():
-        logger.info(f"[{time.time()}] API: Job {job.id} created, starting 100ms delay for WebSocket connection")
-        await asyncio.sleep(0.1)  # 100ms delay - ensures WebSocket connects first (localhost is ~10-50ms)
-        logger.info(f"[{time.time()}] API: 100ms delay complete, starting worker")
-        await process_deployment_analysis(job.id)
+    # Register worker to start when frontend sends "ready" over WebSocket
+    ws_manager.register_start(job.id, lambda jid=job.id: process_deployment_analysis(jid))
 
-    asyncio.create_task(delayed_start())
-
-    logger.info(f"[{time.time()}] API: Scheduled batch job {job.id} for {len(entry_ids)} entries")
+    logger.info(f"Registered batch job {job.id} for {len(entry_ids)} entries")
 
     return {
         "message": f"Queue processing started. {len(entry_ids)} deployments will be processed sequentially.",
