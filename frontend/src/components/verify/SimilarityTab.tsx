@@ -158,12 +158,17 @@ export function SimilarityTab({
 
   const [reverseSort, _setReverseSort] = useState(savedSettings.reverseSort ?? false);
   const setReverseSort = useCallback((v: boolean) => { _setReverseSort(v); persistSetting("reverseSort", v); }, [persistSetting]);
-  const [autoHideVerified, _setAutoHideVerified] = useState(savedSettings.autoHideVerified ?? true);
-  const setAutoHideVerified = useCallback((v: boolean) => { _setAutoHideVerified(v); persistSetting("autoHideVerified", v); }, [persistSetting]);
   const [tileSize, _setTileSize] = useState<TileSize>(savedSettings.tileSize ?? "M");
   const setTileSize = useCallback((v: TileSize) => { _setTileSize(v); persistSetting("tileSize", v); }, [persistSetting]);
-  const [showMislabelsOnly, _setShowMislabelsOnly] = useState(savedSettings.showMislabelsOnly ?? false);
-  const setShowMislabelsOnly = useCallback((v: boolean) => { _setShowMislabelsOnly(v); persistSetting("showMislabelsOnly", v); }, [persistSetting]);
+
+  type VerificationFilter = "all" | "unverified" | "suspicious";
+  const [verificationFilter, _setVerificationFilter] = useState<VerificationFilter>(
+    savedSettings.verificationFilter ?? "unverified"
+  );
+  const setVerificationFilter = useCallback((v: VerificationFilter) => {
+    _setVerificationFilter(v);
+    persistSetting("verificationFilter", v);
+  }, [persistSetting]);
   const [showSpeciesDividers, _setShowSpeciesDividers] = useState(savedSettings.showSpeciesDividers ?? false);
   const setShowSpeciesDividers = useCallback((v: boolean) => { _setShowSpeciesDividers(v); persistSetting("showSpeciesDividers", v); }, [persistSetting]);
 
@@ -261,7 +266,6 @@ export function SimilarityTab({
     onSuccess: (data) => {
       setSortResult(data);
       setSelectedIds(new Set());
-      setShowMislabelsOnly(false);
       setIsSorting(false);
     },
     onError: (err: Error) => {
@@ -308,27 +312,19 @@ export function SimilarityTab({
 
   // Flat detection list for selection model
   const allDetections = useMemo((): DetectionSummary[] => {
-    if (viewMode === "sort" && sortResult) {
-      let dets = sortResult.detections;
-      if (showMislabelsOnly) {
-        dets = dets.filter(
-          (d) => !d.verified && d.neighbor_agreement != null && d.neighbor_agreement < 0.7
-        );
-      }
-      if (autoHideVerified) {
-        dets = dets.filter((d) => !d.verified);
-      }
-      return dets;
+    let dets: DetectionSummary[] = [];
+    if (viewMode === "sort" && sortResult) dets = sortResult.detections;
+    else if (viewMode === "search" && searchResult) dets = searchResult.results;
+
+    if (verificationFilter === "unverified") {
+      dets = dets.filter((d) => !d.verified);
+    } else if (verificationFilter === "suspicious") {
+      dets = dets.filter(
+        (d) => !d.verified && d.neighbor_agreement != null && d.neighbor_agreement < 0.7
+      );
     }
-    if (viewMode === "search" && searchResult) {
-      let dets = searchResult.results;
-      if (autoHideVerified) {
-        dets = dets.filter((d) => !d.verified);
-      }
-      return dets;
-    }
-    return [];
-  }, [viewMode, sortResult, searchResult, showMislabelsOnly, autoHideVerified]);
+    return dets;
+  }, [viewMode, sortResult, searchResult, verificationFilter]);
 
   // Unfiltered count to detect "all hidden by filters" vs "genuinely empty"
   const totalCount = useMemo(() => {
@@ -632,8 +628,8 @@ export function SimilarityTab({
 
   return (
     <div className="space-y-2">
-      {/* Filter panel — sites, dates, species only (no verification filter;
-          "Hide as I verify" in SimilaritySettings covers that workflow) */}
+      {/* Filter panel — sites, dates, species only (verification filtering
+          is handled by the toolbar segmented control) */}
       <FilterPanel
         filters={toFilterPanelFilters(simFilters)}
         onChange={handleFilterPanelChange}
@@ -720,8 +716,6 @@ export function SimilarityTab({
             <SimilaritySettings
               reverseSort={reverseSort}
               onReverseSortChange={setReverseSort}
-              autoHideVerified={autoHideVerified}
-              onAutoHideVerifiedChange={setAutoHideVerified}
               showSpeciesDividers={showSpeciesDividers}
               onShowSpeciesDividersChange={setShowSpeciesDividers}
               tileSize={tileSize}
@@ -787,68 +781,73 @@ export function SimilarityTab({
               <CircleHelp className="h-4 w-4" />
             </button>
 
-            {sortResult && (
-              <>
-                {/* Segmented toggle: Total / Suspicious + verified progress */}
-                {(() => {
-                  const dets = sortResult.detections;
-                  let suspicious = 0;
-                  let hasAgreement = false;
-                  let verified = 0;
-                  for (const d of dets) {
-                    if (d.verified) verified++;
-                    if (d.neighbor_agreement == null) continue;
-                    hasAgreement = true;
-                    if (!d.verified && d.neighbor_agreement < 0.7) suspicious++;
-                  }
-                  const total = dets.length;
-                  const verifiedPct = total > 0 ? (verified / total) * 100 : 0;
+            {sortResult && (() => {
+              const dets = sortResult.detections;
+              const total = dets.length;
+              const unverified = dets.filter((d) => !d.verified).length;
+              const suspicious = dets.filter(
+                (d) => !d.verified && d.neighbor_agreement != null && d.neighbor_agreement < 0.7
+              ).length;
+              const hasAgreement = dets.some((d) => d.neighbor_agreement != null);
+              const verified = total - unverified;
+              const verifiedPct = total > 0 ? (verified / total) * 100 : 0;
 
-                  return (
-                    <div className="flex items-center gap-3 ml-auto">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full transition-all duration-500 ease-out rounded-full"
-                            style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
-                          />
-                        </div>
-                        {Math.round(verifiedPct)}% detections verified ({verified}/{total})
-                      </div>
-                      <div className="h-4 w-px bg-border" />
-                      <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
-                        <button
-                          className={cn(
-                            "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
-                            !showMislabelsOnly
-                              ? "bg-background text-foreground shadow-sm"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                          onClick={() => { setShowMislabelsOnly(false); setSelectedIds(new Set()); }}
-                        >
-                          <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
-                          All ({total})
-                        </button>
-                        {hasAgreement && (
-                          <button
-                            className={cn(
-                              "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
-                              showMislabelsOnly
-                                ? "bg-background text-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground"
-                            )}
-                            onClick={() => { setShowMislabelsOnly(true); setSelectedIds(new Set()); }}
-                          >
-                            <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
-                            Suspicious ({suspicious})
-                          </button>
-                        )}
-                      </div>
+              return (
+                <div className="flex items-center gap-3 ml-auto">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    Verified
+                    <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full transition-all duration-500 ease-out rounded-full"
+                        style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
+                      />
                     </div>
-                  );
-                })()}
-              </>
-            )}
+                    {Math.round(verifiedPct)}%
+                  </div>
+                  <div className="h-4 w-px bg-border" />
+                  <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
+                    <button
+                      className={cn(
+                        "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
+                        verificationFilter === "all"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => { setVerificationFilter("all"); setSelectedIds(new Set()); }}
+                    >
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
+                      All ({total})
+                    </button>
+                    <button
+                      className={cn(
+                        "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
+                        verificationFilter === "unverified"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => { setVerificationFilter("unverified"); setSelectedIds(new Set()); }}
+                    >
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#71b7ba" }} />
+                      Unverified ({unverified})
+                    </button>
+                    {hasAgreement && (
+                      <button
+                        className={cn(
+                          "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
+                          verificationFilter === "suspicious"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        onClick={() => { setVerificationFilter("suspicious"); setSelectedIds(new Set()); }}
+                      >
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
+                        Suspicious ({suspicious})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
 
@@ -910,7 +909,7 @@ export function SimilarityTab({
             </p>
           </CardContent>
         </Card>
-      ) : showMislabelsOnly && allDetections.length === 0 ? (
+      ) : allDetections.length === 0 && totalCount > 0 && verificationFilter === "suspicious" ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <p className="text-sm">No suspicious labels in the current selection.</p>
           <p className="text-xs mt-1">All detections have been verified or have high neighbor agreement.</p>
@@ -919,7 +918,7 @@ export function SimilarityTab({
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
           <p className="text-sm">All {totalCount} detections in this view are verified.</p>
-          <p className="text-xs mt-1">Turn off &quot;Hide as I verify&quot; in settings to see them.</p>
+          <p className="text-xs mt-1">Switch to &quot;All&quot; to see them.</p>
         </div>
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
@@ -948,7 +947,7 @@ export function SimilarityTab({
         onVerify={handleBulkVerify}
         suggestionCount={
           allDetections.filter(
-            (d) => selectedIds.has(d.detection_id) && d.neighbor_top_label && d.neighbor_top_label !== d.species
+            (d) => selectedIds.has(d.detection_id) && !d.verified && d.neighbor_top_label && d.neighbor_top_label !== d.species
           ).length
         }
         onAcceptSuggestions={() => {

@@ -1,7 +1,7 @@
 /**
  * SimilaritySettings — popover with sort/display settings for the Similarity tab.
  *
- * Contains toggles for noise-first sorting, auto-hide verified, species dividers,
+ * Contains toggles for noise-first sorting, species dividers,
  * and tile size selection.
  */
 
@@ -14,8 +14,6 @@ import type { TileSize } from "./CropGrid";
 interface SimilaritySettingsProps {
   reverseSort: boolean;
   onReverseSortChange: (v: boolean) => void;
-  autoHideVerified: boolean;
-  onAutoHideVerifiedChange: (v: boolean) => void;
   showSpeciesDividers: boolean;
   onShowSpeciesDividersChange: (v: boolean) => void;
   tileSize: TileSize;
@@ -27,8 +25,6 @@ const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 export function SimilaritySettings({
   reverseSort,
   onReverseSortChange,
-  autoHideVerified,
-  onAutoHideVerifiedChange,
   showSpeciesDividers,
   onShowSpeciesDividersChange,
   tileSize,
@@ -54,15 +50,6 @@ export function SimilaritySettings({
             <p className="text-xs text-muted-foreground">Show outliers at top</p>
           </div>
           <Switch checked={reverseSort} onCheckedChange={onReverseSortChange} />
-        </label>
-
-        {/* Hide as I verify */}
-        <label className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-sm">Hide as I verify</p>
-            <p className="text-xs text-muted-foreground">Fade out items as you verify them</p>
-          </div>
-          <Switch checked={autoHideVerified} onCheckedChange={onAutoHideVerifiedChange} />
         </label>
 
         {/* Species dividers */}

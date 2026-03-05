@@ -81,13 +81,13 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
                 detections that don't look like their neighbors) appear at the top.
               </p>
               <p>
-                The toolbar also shows your progress:{" "}
-                <span className="inline-flex items-center gap-1.5 align-middle">
-                  <span className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-muted align-middle">
-                    <span className="absolute inset-y-0 left-0 h-full rounded-full" style={{ width: "30%", backgroundColor: "#0f6064" }} />
-                  </span>
-                  <span className="text-[10px]">1,283/4,304 verified (30%)</span>
+                Use the filter in the toolbar to switch between{" "}
+                <span className="inline-flex rounded-md bg-muted p-0.5 align-middle">
+                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium text-muted-foreground">All</span>
+                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium rounded bg-background text-foreground shadow-sm">Unverified</span>
+                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium text-muted-foreground">Suspicious</span>
                 </span>
+                {" "}detections. The counts update as you verify.
               </p>
             </div>
           </section>
@@ -216,8 +216,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
               <p>
                 The gear icon opens settings:{" "}
                 <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Noise first</code> (reverse sort
-                order), <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Hide as I verify</code> (auto-hides verified detections),{" "}
-                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Species dividers</code> (group headers between species), and tile
+                order), <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Species dividers</code> (group headers between species), and tile
                 size (<code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">S</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">M</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">L</code>).
               </p>
             </div>
