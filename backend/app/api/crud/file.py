@@ -124,11 +124,19 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
 
     if update.verified is not None:
         if update.verified and not file.verified:
+            now = datetime.utcnow()
             file.verified = True
-            file.verified_at = datetime.utcnow()
+            file.verified_at = now
+            db.query(Detection).filter(
+                Detection.file_id == file_id,
+                Detection.verified == False,
+            ).update({"verified": True, "verified_at": now})
         elif not update.verified and file.verified:
             file.verified = False
             file.verified_at = None
+            db.query(Detection).filter(
+                Detection.file_id == file_id,
+            ).update({"verified": False, "verified_at": None})
 
     if update.notes is not None:
         file.notes = update.notes

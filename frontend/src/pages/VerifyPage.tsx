@@ -243,7 +243,7 @@ export default function VerifyPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {totalEvents > 0
-                ? "Review and verify AI detections. Browse by event or use visual similarity to spot mislabels in bulk."
+                ? "Review and verify AI detections. Events verifies at the file level, similarity at the detection level."
                 : "Run a deployment analysis to get started"}
             </p>
           </div>

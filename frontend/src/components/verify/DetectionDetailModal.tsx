@@ -355,6 +355,9 @@ export function DetectionDetailModal({
               </Button>
             </div>
 
+            {/* Scrollable area for all cards */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+
             {/* Card 1: Crop + species info */}
             <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
               <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Detection</h3>
@@ -362,12 +365,12 @@ export function DetectionDetailModal({
                 <img
                   src={`${API_BASE_URL}${detection.crop_url}`}
                   alt="Crop"
-                  className="w-full aspect-square object-cover rounded-lg border"
+                  className="w-full aspect-square max-h-[150px] max-w-[150px] mx-auto object-cover rounded-lg border"
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center gap-2">
                   {fullDetection && (() => {
                     const p = computePillLayout(fullDetection);
-                    const ps = 1.4;
+                    const ps = 1.2;
                     return (
                       <svg width={p.pillWidth * ps} height={p.pillHeight * ps} viewBox={`0 0 ${p.pillWidth} ${p.pillHeight}`}>
                         <rect
@@ -428,8 +431,7 @@ export function DetectionDetailModal({
               </div>
             </div>
 
-            {/* Card 2: Image metadata (scrollable) */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* Card 2: Image metadata */}
               {fileData && (
                 <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
                   <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
@@ -534,7 +536,7 @@ export function DetectionDetailModal({
                   </div>
                 );
               })()}
-            </div>
+            </div> {/* end scrollable area */}
 
             {/* Bottom pinned: action buttons */}
             <div className="px-3 py-3 space-y-2 shrink-0">

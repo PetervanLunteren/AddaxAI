@@ -32,6 +32,7 @@ interface CropGridProps {
   onCardClick: (detection: DetectionSummary) => void;
   onFindSimilar?: (detectionId: string) => void;
   onRelabel?: (detectionId: string, species: string, category: string) => void;
+  onBackgroundClick?: () => void;
   tileSize?: TileSize;
   showSpeciesDividers?: boolean;
 }
@@ -81,6 +82,7 @@ export function CropGrid({
   onCardClick,
   onFindSimilar,
   onRelabel,
+  onBackgroundClick,
   tileSize = "M",
   showSpeciesDividers = false,
 }: CropGridProps) {
@@ -140,6 +142,14 @@ export function CropGrid({
         width: "100%",
         position: "relative",
       }}
+      onClick={(e) => {
+        if (
+          onBackgroundClick &&
+          !(e.target as HTMLElement).closest("[data-crop-card]")
+        ) {
+          onBackgroundClick();
+        }
+      }}
     >
       {virtualizer.getVirtualItems().map((virtualRow) => {
         const row = rows[virtualRow.index];
@@ -197,7 +207,7 @@ export function CropGrid({
                   return (
                     <ContextMenu key={det.detection_id}>
                       <ContextMenuTrigger asChild>
-                        <div>
+                        <div data-crop-card>
                           <CropCard
                             detection={det}
                             selected={selectedIds.has(det.detection_id)}

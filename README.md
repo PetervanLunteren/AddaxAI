@@ -3,11 +3,14 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
-- [ ] since we now have a bar at each verify method, would it make sense to add the filters there as a popover (similar to the settings popover?)
-- [ ] what do we do with the verified detections? Are tey over writtin in the DB? What is the benefit of verifiying? 
 
 
+- [ ] the re-embed warning looks weird. See attached. The icon is not aligned. Adjust the text to something like "This can happen when you switched off embedding in the settings, when something error happened during analysis, or you manually added detecitons via event verification."
 
+- [ ] Do the shotcuts for similarity verification
+
+- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
+  species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
 - [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 
 
 

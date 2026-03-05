@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, CircleHelp, Loader2, Layers, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Check, CircleHelp, Keyboard, Loader2, Layers, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { similarityApi } from "../../api/similarity";
 import { detectionsApi } from "../../api/detections";
@@ -17,6 +17,7 @@ import { projectsApi } from "../../api/projects";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Slider } from "../ui/slider";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
@@ -27,9 +28,10 @@ import { DetectionDetailModal } from "./DetectionDetailModal";
 import { FilterPanel } from "./FilterPanel";
 import { SimilaritySettings } from "./SimilaritySettings";
 import { SimilarityHelpSheet } from "./SimilarityHelpSheet";
+import { LabelPicker } from "./LabelPicker";
 import { SimilarityWelcomePopover } from "./SimilarityWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
-import { useLabelOptions } from "../../hooks/useLabelOptions";
+import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import type {
   SortResponse,
   SearchResponse,
@@ -204,6 +206,36 @@ export function SimilarityTab({
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(classificationModelId, projectId);
 
+  // Project query for shortcut_labels
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId),
+  });
+
+  const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useEffect(() => {
+    if (project?.shortcut_labels) {
+      const parsed: Record<number, LabelOption> = {};
+      for (const [k, v] of Object.entries(project.shortcut_labels)) {
+        parsed[Number(k)] = v as LabelOption;
+      }
+      setShortcutLabels(parsed);
+    }
+  }, [project?.shortcut_labels]);
+
+  const updateShortcutLabels = useCallback(
+    (updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>) => {
+      setShortcutLabels((prev) => {
+        const next = updater(prev);
+        projectsApi.update(projectId, { shortcut_labels: next });
+        return next;
+      });
+    },
+    [projectId]
+  );
+
   // Stats query
   const { data: stats } = useQuery({
     queryKey: ["similarity-stats", projectId],
@@ -297,6 +329,13 @@ export function SimilarityTab({
     }
     return [];
   }, [viewMode, sortResult, searchResult, showMislabelsOnly, autoHideVerified]);
+
+  // Unfiltered count to detect "all hidden by filters" vs "genuinely empty"
+  const totalCount = useMemo(() => {
+    if (viewMode === "sort" && sortResult) return sortResult.detections.length;
+    if (viewMode === "search" && searchResult) return searchResult.results.length;
+    return 0;
+  }, [viewMode, sortResult, searchResult]);
 
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
@@ -520,12 +559,42 @@ export function SimilarityTab({
         // Select all visible
         const allIds = new Set(allDetections.map((d) => d.detection_id));
         setSelectedIds(allIds);
+        return;
+      }
+
+      if (e.key >= "1" && e.key <= "5" && !e.ctrlKey && !e.metaKey) {
+        const slot = parseInt(e.key);
+        const label = shortcutLabels[slot];
+        if (!label || selectedIds.size === 0) return;
+        e.preventDefault();
+        const ids = Array.from(selectedIds);
+        detectionsApi.bulkRelabel(ids, label.species, label.category).then(() => {
+          const idSet = new Set(ids);
+          patchLocalDetections((d) =>
+            idSet.has(d.detection_id)
+              ? { ...d, species: label.species ?? label.category, category: label.category, verified: true }
+              : d
+          );
+          setSelectedIds(new Set());
+        });
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions]);
+  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions, shortcutLabels, patchLocalDetections]);
+
+  // Click outside grid to deselect
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    function handleClick(e: MouseEvent) {
+      const el = e.target as HTMLElement;
+      if (el.closest("[data-crop-card], button, a, input, select, [role='menu'], [role='dialog'], [data-radix-popper-content-wrapper]")) return;
+      setSelectedIds(new Set());
+    }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [selectedIds.size > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // No embeddings state
   if (stats && stats.embedded_detections === 0) {
@@ -658,6 +727,57 @@ export function SimilarityTab({
               tileSize={tileSize}
               onTileSizeChange={setTileSize}
             />
+
+            <Popover open={showShortcuts} onOpenChange={setShowShortcuts}>
+              <PopoverTrigger asChild>
+                <button
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Keyboard shortcuts"
+                >
+                  <Keyboard className="h-4 w-4" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto px-4 py-3">
+                <div className="flex gap-8">
+                  {/* Left column: grid shortcuts */}
+                  <div>
+                    {[
+                      ["Click", "Open detail"],
+                      [navigator.platform.includes("Mac") ? "Cmd + Click" : "Ctrl + Click", "Select"],
+                      ["Shift + Click", "Select range"],
+                      ["Click outside", "Deselect all"],
+                      ["Enter", "Verify selected"],
+                      ["R", "Accept suggestions"],
+                      [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all"],
+                      ["Esc", "Deselect / close"],
+                    ].map(([key, action]) => (
+                      <div key={key} className="flex items-center text-xs gap-3 h-7">
+                        <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{(key as string).split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                        <span>{action}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Right column: label shortcuts 1-5 */}
+                  <div>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <div key={n} className="flex items-center text-xs gap-3 h-7">
+                        <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
+                        <span>Change selected to</span>
+                        <LabelPicker
+                          value={shortcutLabels[n]?.value ?? null}
+                          onSelect={(option) =>
+                            updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
+                          }
+                          options={labelOptions}
+                          isLoading={labelOptionsLoading}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
             <button
               onClick={() => setHelpOpen(true)}
@@ -795,17 +915,26 @@ export function SimilarityTab({
           <p className="text-sm">No suspicious labels in the current selection.</p>
           <p className="text-xs mt-1">All detections have been verified or have high neighbor agreement.</p>
         </div>
+      ) : allDetections.length === 0 && totalCount > 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
+          <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
+          <p className="text-sm">All {totalCount} detections in this view are verified.</p>
+          <p className="text-xs mt-1">Turn off &quot;Hide as I verify&quot; in settings to see them.</p>
+        </div>
       ) : (
-        <CropGrid
-          detections={allDetections}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-          onCardClick={handleCardClick}
-          onFindSimilar={handleFindSimilar}
-          onRelabel={handleRelabel}
-          tileSize={tileSize}
-          showSpeciesDividers={viewMode === "sort" && showSpeciesDividers}
-        />
+        <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
+          <CropGrid
+            detections={allDetections}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+            onCardClick={handleCardClick}
+            onFindSimilar={handleFindSimilar}
+            onRelabel={handleRelabel}
+            onBackgroundClick={() => setSelectedIds(new Set())}
+            tileSize={tileSize}
+            showSpeciesDividers={viewMode === "sort" && showSpeciesDividers}
+          />
+        </div>
       )}
 
       <BulkActionBar
