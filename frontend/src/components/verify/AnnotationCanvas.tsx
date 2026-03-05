@@ -557,15 +557,15 @@ export function AnnotationCanvas({
             <Shape
               sceneFunc={(context) => {
                 const ctx = (context as any)._context as CanvasRenderingContext2D;
-                ctx.beginPath();
-                // Outer rect (full stage)
-                ctx.moveTo(0, 0);
-                ctx.lineTo(stageSize.width, 0);
-                ctx.lineTo(stageSize.width, stageSize.height);
-                ctx.lineTo(0, stageSize.height);
-                ctx.closePath();
-                // Cut holes for each detection
+                ctx.save();
+                // Dark overlay over entire stage
+                ctx.fillStyle = DIM_FILL;
+                ctx.fillRect(0, 0, stageSize.width, stageSize.height);
+                // Erase box regions — overlapping boxes merge cleanly
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.fillStyle = "black";
                 for (const det of filteredDetections) {
+                  ctx.beginPath();
                   roundedRectPath(
                     ctx,
                     normToPixel(det.bbox_x, imgWidth),
@@ -574,9 +574,9 @@ export function AnnotationCanvas({
                     normToPixel(det.bbox_height, imgHeight),
                     BBOX_CORNER_RADIUS,
                   );
+                  ctx.fill();
                 }
-                ctx.fillStyle = DIM_FILL;
-                ctx.fill("evenodd");
+                ctx.restore();
               }}
               listening={false}
             />

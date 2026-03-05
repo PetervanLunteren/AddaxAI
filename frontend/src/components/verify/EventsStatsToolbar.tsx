@@ -26,7 +26,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
       : 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 py-2 px-3 bg-white rounded-lg border shadow-sm">
+    <div className="flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm">
       <button
         onClick={onHelpClick}
         className="text-muted-foreground hover:text-foreground transition-colors"
@@ -43,7 +43,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
               style={{ width: `${repPct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {Math.round(repPct)}% representatives verified ({stats.verified_representatives}/{stats.total_representatives})
+          {Math.round(repPct)}% representatives verified
         </div>
         <div className="h-4 w-px bg-border" />
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -53,7 +53,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
               style={{ width: `${filePct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {Math.round(filePct)}% files verified ({stats.verified_files}/{stats.total_files})
+          {Math.round(filePct)}% files verified
         </div>
       </div>
     </div>

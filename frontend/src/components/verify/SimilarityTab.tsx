@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import { similarityApi } from "../../api/similarity";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
-import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -627,7 +626,7 @@ export function SimilarityTab({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       {/* Filter panel — sites, dates, species only (verification filtering
           is handled by the toolbar segmented control) */}
       <FilterPanel
@@ -642,18 +641,16 @@ export function SimilarityTab({
 
       {/* Warning when embeddings are incomplete */}
       {stats && stats.missing_embeddings > 0 && (
-        <Alert className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <AlertDescription className="flex items-center gap-2">
-            <span>
-              {stats.missing_embeddings} detection{stats.missing_embeddings !== 1 ? "s are" : " is"} missing embeddings
-              — similarity results may be incomplete.
-            </span>
-            <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={handleEmbedNow}>
-              Embed now
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">{stats.missing_embeddings} detection{stats.missing_embeddings !== 1 ? "s are" : " is"} missing embeddings</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300">This can happen when embedding was switched off in settings, when an error occurred during analysis, or when detections were added manually via event verification.</p>
+          </div>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={handleEmbedNow}>
+            Embed now
+          </Button>
+        </div>
       )}
 
       <ReEmbedModal
@@ -666,7 +663,7 @@ export function SimilarityTab({
       />
 
       {/* Unified toolbar with segmented control */}
-      <div className="flex flex-wrap items-center gap-3 py-2 px-3 bg-white rounded-lg border shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm">
         {/* Segmented control */}
         <div className="flex rounded-lg bg-muted p-0.5">
           <button
@@ -795,14 +792,13 @@ export function SimilarityTab({
               return (
                 <div className="flex items-center gap-3 ml-auto">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    Verified
                     <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full transition-all duration-500 ease-out rounded-full"
                         style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
                       />
                     </div>
-                    {Math.round(verifiedPct)}%
+                    {Math.round(verifiedPct)}% detections verified
                   </div>
                   <div className="h-4 w-px bg-border" />
                   <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">

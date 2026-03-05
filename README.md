@@ -5,13 +5,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
-- [ ] the re-embed warning looks weird. See attached. The icon is not aligned. Adjust the text to something like "This can happen when you switched off embedding in the settings, when something error happened during analysis, or you manually added detecitons via event verification."
-
-- [ ] Do the shotcuts for similarity verification
-
-- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
-  species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
-- [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 
 
 
 
@@ -20,9 +13,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
-
-## TODO crop verification
-- [ ] add UI interface to cluster similarity. 
 
 ## TODO priority 1
 - [ ] that websocket stuff is very subjective huh? some seconds here, some seconds there.... it feels very hacky tacky.                                                          
@@ -31,7 +21,18 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
   progress. The "right" fix would be to guarantee ordering — don't start processing until the WebSocket is connected, or have the frontend poll for current state instead of
   relying on replayed messages. Then you wouldn't need a buffer at all.                                                                                                      
                                                                                                                                                                              
+- [ ] implement the taxonomy stuff in the taxonomic rollup setting. If that works, make sure the Event smoothing works with taxonomy aware too (with dans script). And it would be great if we could have a dropdown for the smoothing aggresiveness.
+- [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to store the taxonomy trees. How to add a class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. 
+
+
 - [ ] run on ukraine dep 2 and check the rep image for the lynx. The rep is animal 91%, while there are others with 93%. Maybe we should revisit the formula for rep definition. First combined animal conf, then bbox surface, then sharpness. 
+
+
+- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
+  species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
+
+- [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 
+
 
 
 
