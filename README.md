@@ -3,17 +3,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 ## TODO priority 1
 
 - [ ] implement the taxonomy stuff in the taxonomic rollup setting. If that works, make sure the Event smoothing works with taxonomy aware too (with dans script). And it would be great if we could have a dropdown for the smoothing aggresiveness.

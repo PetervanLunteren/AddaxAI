@@ -4,7 +4,7 @@
  * Interactive map for selecting site locations.
  * - Shows existing project sites as markers
  * - Click map to place new site marker
- * - Auto-zooms to fit existing markers
+ * - Auto-zooms to fit existing markers and initial GPS location
  * - Displays lat/lon coordinates
  */
 
@@ -86,15 +86,20 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
   const mapReady = useRef(false);
   const hasAutoZoomed = useRef(false);
 
-  // Compute the target viewport from sites
+  // Compute the target viewport from sites and selected location
   const computeSitesViewState = useCallback(() => {
-    if (!sites || sites.length === 0) return null;
-
-    const validSites = sites.filter((s) => s.latitude != null && s.longitude != null);
-    if (validSites.length === 0) return null;
+    const validSites = (sites ?? []).filter((s) => s.latitude != null && s.longitude != null);
 
     const lats = validSites.map((s) => s.latitude!);
     const lons = validSites.map((s) => s.longitude!);
+
+    // Include the selected location (e.g. GPS from deployment) as a zoom target
+    if (selectedLocation) {
+      lats.push(selectedLocation.lat);
+      lons.push(selectedLocation.lon);
+    }
+
+    if (lats.length === 0) return null;
 
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
@@ -122,7 +127,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
       latitude: (minLat + maxLat) / 2,
       zoom,
     };
-  }, [sites]);
+  }, [sites, selectedLocation]);
 
   // Auto-zoom to fit sites once the map is loaded
   const handleMapLoad = useCallback(() => {
