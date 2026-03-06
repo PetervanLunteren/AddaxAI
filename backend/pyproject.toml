@@ -19,6 +19,9 @@ select = [
 ]
 ignore = []
 
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]  # imports after env var setup is intentional
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

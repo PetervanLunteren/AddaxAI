@@ -6,12 +6,9 @@ and edge cases around concurrent connections and cleanup.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from app.core.websocket_manager import ConnectionManager
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -402,7 +399,7 @@ class TestSendComplete:
         """Complete state should be cleaned up after delay."""
         mgr = ConnectionManager()
 
-        with patch.object(mgr, "_cleanup_state", new_callable=AsyncMock) as mock_cleanup:
+        with patch.object(mgr, "_cleanup_state", new_callable=AsyncMock):
             # Patch asyncio.create_task to capture the coroutine
             original_create_task = asyncio.create_task
 

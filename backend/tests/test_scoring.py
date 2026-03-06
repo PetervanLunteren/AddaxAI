@@ -2,12 +2,10 @@
 Tests for the shared scoring module (app.ml.scoring).
 """
 
-import pytest
 import numpy as np
+import pytest
 
 from app.ml.scoring import (
-    CONFIDENCE_THRESHOLD,
-    TOP_FRACTION,
     compute_sharpness,
     compute_union_area,
     pick_best_candidate,

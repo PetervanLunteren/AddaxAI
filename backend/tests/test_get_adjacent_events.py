@@ -15,7 +15,6 @@ from tests.conftest import (
     make_site,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -106,7 +105,7 @@ def test_next_unverified_skips_verified(db):
         start_time=datetime(2024, 6, 1, 10, 0),
         files_verified=[False],
     )
-    ev_b = make_event_with_files(
+    make_event_with_files(
         db, deployment_id=dep.id,
         start_time=datetime(2024, 6, 1, 12, 0),
         files_verified=[True, True],  # fully verified

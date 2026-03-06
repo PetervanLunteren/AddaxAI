@@ -10,9 +10,6 @@ Verifies that:
 
 import uuid
 from datetime import datetime
-from unittest.mock import patch
-
-from sqlalchemy import insert
 
 from app.api.crud.event import (
     _create_event,
@@ -21,7 +18,6 @@ from app.api.crud.event import (
     get_events_by_project,
 )
 from app.models.detection import Detection
-from app.models.event import event_files
 from app.models.file import File
 from tests.conftest import (
     make_deployment,
@@ -29,7 +25,6 @@ from tests.conftest import (
     make_project,
     make_site,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

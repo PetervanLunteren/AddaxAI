@@ -35,7 +35,6 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base, get_db
 from app.models.deployment import Deployment
-from app.models.deployment_queue import DeploymentQueue
 from app.models.detection import Detection
 from app.models.event import Event, event_files
 from app.models.file import File
