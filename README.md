@@ -25,7 +25,8 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 - [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 
 
-
+- [ ] do we need to add anythoing about this new testing method to the README.md / DEVELOPERS.md / 
+  other MD files? 
 
 
 - [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
