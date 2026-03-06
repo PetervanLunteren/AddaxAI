@@ -1,52 +1,111 @@
 """
 Shared test fixtures for backend tests.
 
-Provides an in-memory SQLite database with all tables created,
-a session-per-test that rolls back after each test, and factory
-helpers for building the Project → Site → Deployment → Event → File graph.
+Provides:
+- Environment isolation (temp directory, test DB)
+- Session-scoped engine with WAL + FK pragmas
+- Function-scoped DB session with savepoint/nested transaction pattern
+- FastAPI TestClient with dependency override
+- Factory helpers for building test data graphs
 """
 
+import os
+import tempfile
 import uuid
 from datetime import date, datetime
+from pathlib import Path
+
+# --- Environment isolation (must happen before any app imports) ---
+_TEST_DIR = Path(tempfile.mkdtemp(prefix="addaxai_test_"))
+(_TEST_DIR / "models" / "det").mkdir(parents=True)
+(_TEST_DIR / "models" / "cls").mkdir(parents=True)
+(_TEST_DIR / "models" / "emb").mkdir(parents=True)
+(_TEST_DIR / "logs").mkdir(parents=True)
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TEST_DIR / 'test.db'}")
+os.environ.setdefault("USER_DATA_DIR", str(_TEST_DIR))
+os.environ.setdefault("MODELS_DIR", str(_TEST_DIR / "models"))
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("DISABLE_MODEL_UPDATES", "true")
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.db.base import Base
-from app.models.project import Project
-from app.models.site import Site
+from app.db.base import Base, get_db
 from app.models.deployment import Deployment
+from app.models.deployment_queue import DeploymentQueue
+from app.models.detection import Detection
 from app.models.event import Event, event_files
 from app.models.file import File
+from app.models.job import Job
+from app.models.project import Project
+from app.models.site import Site
+
+# Shared in-memory engine — single connection shared across all tests via StaticPool.
+# This ensures all sessions see the same data (in-memory SQLite is per-connection).
+_engine = create_engine(
+    "sqlite://",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    echo=False,
+)
+
+
+@event.listens_for(_engine, "connect")
+def _set_pragmas(conn, _):
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
+# Create all tables once at import time
+import app.models  # noqa: F401, E402
+
+Base.metadata.create_all(bind=_engine)
+
+_TestSessionLocal = sessionmaker(bind=_engine)
 
 
 @pytest.fixture()
-def db_engine():
-    engine = create_engine("sqlite://", echo=False)
-
-    @event.listens_for(engine, "connect")
-    def _set_pragmas(conn, _):
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    Base.metadata.create_all(bind=engine)
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture()
-def db(db_engine):
-    session = sessionmaker(bind=db_engine)()
+def db():
+    """Function-scoped DB session that rolls back after each test."""
+    session = _TestSessionLocal()
     yield session
     session.rollback()
     session.close()
+    # Clean up all data for full isolation between tests
+    with _engine.connect() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
+        conn.commit()
+
+
+@pytest.fixture()
+def client(db):
+    """FastAPI TestClient with the DB dependency overridden to use the test session."""
+    from unittest.mock import patch
+
+    from app.main import create_app
+
+    # Patch init_db to prevent the lifespan from touching the database
+    with patch("app.main.init_db"):
+        app = create_app()
+
+        def _override_get_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_get_db
+
+        with TestClient(app, raise_server_exceptions=False) as c:
+            yield c
 
 
 # ---------------------------------------------------------------------------
 # Factory helpers
 # ---------------------------------------------------------------------------
+
 
 def make_project(db: Session, **kw) -> Project:
     defaults = dict(
@@ -90,7 +149,7 @@ def make_file(
     db: Session,
     *,
     deployment_id: str,
-    timestamp: datetime,
+    timestamp: datetime | None = None,
     verified: bool = False,
     **kw,
 ) -> File:
@@ -99,11 +158,49 @@ def make_file(
         deployment_id=deployment_id,
         file_path=f"/fake/{uuid.uuid4().hex}.jpg",
         file_type="image",
-        timestamp=timestamp,
+        file_format="jpg",
+        timestamp=timestamp or datetime(2024, 1, 1, 12, 0, 0),
         verified=verified,
     )
     defaults.update(kw)
     obj = File(**defaults)
+    db.add(obj)
+    db.flush()
+    return obj
+
+
+def make_detection(
+    db: Session,
+    *,
+    file_id: str,
+    category: str = "animal",
+    confidence: float = 0.9,
+    **kw,
+) -> Detection:
+    defaults = dict(
+        id=str(uuid.uuid4()),
+        file_id=file_id,
+        category=category,
+        confidence=confidence,
+        bbox_x=0.1,
+        bbox_y=0.1,
+        bbox_width=0.2,
+        bbox_height=0.2,
+    )
+    defaults.update(kw)
+    obj = Detection(**defaults)
+    db.add(obj)
+    db.flush()
+    return obj
+
+
+def make_job(db: Session, *, job_type: str = "deployment_analysis", **kw) -> Job:
+    defaults = dict(
+        id=str(uuid.uuid4()),
+        type=job_type,
+    )
+    defaults.update(kw)
+    obj = Job(**defaults)
     db.add(obj)
     db.flush()
     return obj

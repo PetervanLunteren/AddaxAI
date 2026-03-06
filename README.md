@@ -20,32 +20,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 - [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to store the taxonomy trees. How to add a class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. 
 
-
-- [ ] If i run on ukraine dep 2 and check the rep image for the lynx. The rep is animal 91%, while there are others with 93%. 
-
-rep.:
-Video
-REC0008.mp4 · frame 24
-7 Mar 2022 06:47 · 123
-Animal 91%
-Lynx 100%
-1 bbox
-
-other lynx:
-Image
-REC0007.jpg
-7 Mar 2022 06:47 · 123
-Animal 93%
-Lynx 100%
-1 bbox
-
-Can you figure out why it choose this representative? The other lynx looks better to me. Investigate. 
-
-
-
-Maybe we should revisit the formula for rep definition. First combined animal conf, then bbox surface, then sharpness. 
-
-
 - [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
   species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
 

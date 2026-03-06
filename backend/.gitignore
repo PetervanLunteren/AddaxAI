@@ -32,6 +32,11 @@ dist/
 *.log
 logs/
 
+# Coverage
+coverage.xml
+.coverage
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db
