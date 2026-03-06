@@ -118,14 +118,14 @@ def test_select_representative_picks_highest_scoring(db):
     assert result == f2.id
 
 
-def test_select_representative_ignores_non_animal(db):
-    """Non-animal detections are ignored for scoring."""
+def test_select_representative_scores_all_categories(db):
+    """All detection categories contribute to scoring (representative = best frame)."""
     _, dep = _setup(db)
 
     f1 = make_file(db, deployment_id=dep.id, timestamp=datetime(2024, 6, 1))
     f2 = make_file(db, deployment_id=dep.id, timestamp=datetime(2024, 6, 1, 0, 1))
 
-    # f1 has high confidence but it's "person", not "animal"
+    # f1 has high confidence "person" detection
     _add_detection(db, f1.id, "person", 0.95)
 
     # f2 has moderate animal confidence
@@ -140,7 +140,8 @@ def test_select_representative_ignores_non_animal(db):
     )
 
     result = _select_representative_file(files)
-    assert result == f2.id
+    # Higher-confidence detection wins regardless of category
+    assert result == f1.id
 
 
 def test_select_representative_below_threshold_fallback(db):

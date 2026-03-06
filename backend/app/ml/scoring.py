@@ -8,6 +8,7 @@ Used by:
 Dependencies: only cv2, numpy. No app imports.
 """
 
+import math
 from collections import defaultdict
 from collections.abc import Callable
 
@@ -62,32 +63,33 @@ def compute_union_area(boxes: list[Bbox]) -> float:
 
 def score_detections(
     detections: list[tuple[str, float, Bbox]],
-) -> dict[str, float]:
+) -> dict[str, tuple[int, float]]:
     """
-    Score candidates by n_detections * sum(confidence) * union_bbox_area.
+    Score candidates as (confidence_bin, sqrt_area) tuples.
 
-    Prioritises frames with the most individuals visible, then rewards
-    larger / more confident detections for easier species identification.
+    Tiered lexicographic scoring:
+    1. confidence_bin (primary): sum of round(conf * 100) per candidate.
+    2. sqrt(union_bbox_area) (secondary): dampens area so 2x difference → 1.4x.
 
     Args:
         detections: list of (candidate_key, confidence, bbox) tuples.
             bbox is (x, y, width, height).
     Returns:
-        Dict mapping candidate_key -> score.
+        Dict mapping candidate_key -> (conf_bin, sqrt_area).
         Keys with no qualifying detections are omitted.
     """
-    confs: dict[str, float] = {}
+    conf_bins: dict[str, int] = {}
     boxes: dict[str, list[Bbox]] = defaultdict(list)
 
     for key, conf, bbox in detections:
         if conf < CONFIDENCE_THRESHOLD:
             continue
-        confs[key] = confs.get(key, 0.0) + conf
+        conf_bins[key] = conf_bins.get(key, 0) + round(conf * 100)
         boxes[key].append(bbox)
 
     return {
-        key: len(boxes[key]) * conf * compute_union_area(boxes[key])
-        for key, conf in confs.items()
+        key: (conf_bin, math.sqrt(compute_union_area(boxes[key])))
+        for key, conf_bin in conf_bins.items()
     }
 
 
@@ -100,22 +102,21 @@ def compute_sharpness(image_np: np.ndarray) -> float:
 
 
 def pick_best_candidate(
-    scores: dict[str, float],
+    scores: dict[str, tuple[int, float]],
     get_sharpest: Callable[[list[str]], str] | None = None,
     fallback_keys: list[str] | None = None,
 ) -> str | None:
     """
-    Pick the best candidate key from a scored set.
+    Pick the best candidate key using tiered lexicographic selection.
 
     Algorithm:
     1. If scores is empty (blank): call get_sharpest(fallback_keys).
-    2. Else: find candidates within TOP_FRACTION of max score.
-    3. If 1 candidate: return it.
-    4. If multiple + get_sharpest provided: return get_sharpest(candidates).
-    5. If multiple + no get_sharpest: return the highest-scoring one.
+    2. Tier 1 — confidence bin: only candidates with the highest conf_bin.
+    3. Tier 2 — sqrt(area): among conf ties, within TOP_FRACTION of best.
+    4. Tier 3 — sharpness: tiebreaker among remaining candidates.
 
     Args:
-        scores: output of score_detections().
+        scores: output of score_detections(), mapping key -> (conf_bin, sqrt_area).
         get_sharpest: takes a list of candidate keys, returns the sharpest one.
             Called lazily only when needed (tiebreaker or blank case).
         fallback_keys: keys to pass to get_sharpest when scores is empty.
@@ -125,15 +126,23 @@ def pick_best_candidate(
             return get_sharpest(fallback_keys)
         return None
 
-    best_score = max(scores.values())
-    threshold = best_score * TOP_FRACTION
-    candidates = [k for k, s in scores.items() if s >= threshold]
+    # Tier 1: highest confidence bin
+    best_conf = max(s[0] for s in scores.values())
+    candidates = [k for k, s in scores.items() if s[0] == best_conf]
 
     if len(candidates) == 1:
         return candidates[0]
 
-    if get_sharpest:
-        return get_sharpest(candidates)
+    # Tier 2: among confidence ties, best sqrt(area) within TOP_FRACTION
+    best_area = max(scores[k][1] for k in candidates)
+    threshold = best_area * TOP_FRACTION
+    area_candidates = [k for k in candidates if scores[k][1] >= threshold]
 
-    # No sharpness tiebreaker — return the highest-scoring one
-    return max(candidates, key=lambda k: scores[k])
+    if len(area_candidates) == 1:
+        return area_candidates[0]
+
+    # Tier 3: sharpness tiebreaker
+    if get_sharpest:
+        return get_sharpest(area_candidates)
+
+    return max(area_candidates, key=lambda k: scores[k][1])

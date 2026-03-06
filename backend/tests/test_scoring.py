@@ -14,7 +14,7 @@ from app.ml.scoring import (
     score_detections,
 )
 
-UNIT_BBOX = (0.0, 0.0, 1.0, 1.0)  # area = 1.0, so score = sum_conf * 1.0
+UNIT_BBOX = (0.0, 0.0, 1.0, 1.0)  # area = 1.0, sqrt(area) = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -29,9 +29,12 @@ def test_score_detections_sums_by_key():
         ("b", 0.9, UNIT_BBOX),
     ]
     scores = score_detections(detections)
-    # a: n=2, sum_conf=1.3, union=1.0 -> 2 * 1.3 * 1.0 = 2.6
-    # b: n=1, sum_conf=0.9, union=1.0 -> 1 * 0.9 * 1.0 = 0.9
-    assert scores == {"a": pytest.approx(2.6), "b": pytest.approx(0.9)}
+    # a: conf_bin = round(0.8*100) + round(0.5*100) = 80+50 = 130, sqrt(1.0) = 1.0
+    # b: conf_bin = round(0.9*100) = 90, sqrt(1.0) = 1.0
+    assert scores == {
+        "a": (130, pytest.approx(1.0)),
+        "b": (90, pytest.approx(1.0)),
+    }
 
 
 def test_score_detections_filters_below_threshold():
@@ -44,7 +47,7 @@ def test_score_detections_filters_below_threshold():
     scores = score_detections(detections)
     assert "a" not in scores
     assert "b" not in scores
-    assert scores == {"c": pytest.approx(0.3)}
+    assert scores == {"c": (30, pytest.approx(1.0))}
 
 
 def test_score_detections_empty():
@@ -109,14 +112,15 @@ def test_union_area_mixed_degenerate_and_valid():
 
 
 def test_score_big_box_beats_small_box():
-    """Same confidence, but bigger bbox should score higher."""
-    big_box = (0.0, 0.0, 0.8, 0.8)   # area = 0.64
-    small_box = (0.0, 0.0, 0.1, 0.1)  # area = 0.01
+    """Same confidence, but bigger bbox should have larger sqrt_area."""
+    big_box = (0.0, 0.0, 0.8, 0.8)   # area = 0.64, sqrt = 0.8
+    small_box = (0.0, 0.0, 0.1, 0.1)  # area = 0.01, sqrt = 0.1
     detections = [
         ("big", 0.9, big_box),
         ("small", 0.9, small_box),
     ]
     scores = score_detections(detections)
+    # Same conf_bin (90), so tuples compared lexicographically by sqrt_area
     assert scores["big"] > scores["small"]
 
 
@@ -131,11 +135,12 @@ def test_score_spread_beats_stacked():
         ("stacked", 0.9, (0.0, 0.0, 0.3, 0.3)),
     ]
     scores = score_detections(spread + stacked)
+    # Same conf_bin (180), so compared by sqrt_area
     assert scores["spread"] > scores["stacked"]
 
 
 def test_score_more_individuals_beats_fewer():
-    """More individuals in frame should outscore fewer, even if single is larger."""
+    """More individuals should outscore fewer via higher conf_bin sum."""
     many = [
         ("many", 0.8, (0.0, 0.0, 0.2, 0.2)),
         ("many", 0.8, (0.3, 0.0, 0.2, 0.2)),
@@ -146,6 +151,7 @@ def test_score_more_individuals_beats_fewer():
         ("single", 0.9, (0.0, 0.0, 0.6, 0.6)),
     ]
     scores = score_detections(many + single)
+    # many: conf_bin = 4*80 = 320; single: conf_bin = 90
     assert scores["many"] > scores["single"]
 
 
@@ -175,23 +181,23 @@ def test_compute_sharpness_noisy_image():
 
 
 def test_pick_best_single_clear_winner():
-    """One candidate scores way above the rest — returned directly."""
-    scores = {"a": 1.0, "b": 0.5, "c": 0.3}
-    # Only "a" is within 90% of max (0.9), so "a" wins
+    """One candidate has highest conf_bin — returned directly."""
+    scores = {"a": (95, 0.5), "b": (80, 0.8), "c": (70, 0.9)}
+    # "a" has highest conf_bin (95), alone in tier 1
     assert pick_best_candidate(scores) == "a"
 
 
 def test_pick_best_tiebreak_without_sharpness():
-    """Multiple candidates within TOP_FRACTION, no get_sharpest — highest score wins."""
-    scores = {"a": 1.0, "b": 0.95}
-    # Both are within 90% of 1.0 (threshold = 0.9)
+    """Same conf_bin, area within TOP_FRACTION, no get_sharpest — largest area wins."""
+    scores = {"a": (90, 1.0), "b": (90, 0.95)}
+    # Both in same conf_bin, both within 90% of 1.0 (threshold = 0.9)
     result = pick_best_candidate(scores)
     assert result == "a"
 
 
 def test_pick_best_tiebreak_with_sharpness():
-    """Multiple candidates within TOP_FRACTION — get_sharpest is called."""
-    scores = {"a": 1.0, "b": 0.95}
+    """Same conf_bin, area within TOP_FRACTION — get_sharpest is called."""
+    scores = {"a": (90, 1.0), "b": (90, 0.95)}
     # get_sharpest picks "b" as sharpest
     result = pick_best_candidate(scores, get_sharpest=lambda keys: "b")
     assert result == "b"
@@ -225,8 +231,24 @@ def test_pick_best_sharpness_only_called_when_needed():
         called.append(keys)
         return keys[0]
 
-    # "a" is the only one within 90% of 2.0 (threshold 1.8)
-    scores = {"a": 2.0, "b": 1.0}
+    # "a" has higher conf_bin — wins at tier 1, no sharpness needed
+    scores = {"a": (95, 0.5), "b": (90, 1.0)}
     result = pick_best_candidate(scores, get_sharpest=spy_sharpest)
     assert result == "a"
     assert called == []  # not called
+
+
+def test_pick_best_confidence_beats_larger_area():
+    """Higher confidence wins even when the other candidate has a much larger bbox.
+
+    Reproduces the lynx scenario: 93% conf with smaller bbox should beat
+    91% conf with 1.88x larger bbox.
+    """
+    # REC0007: 93% conf, smaller bbox (area ≈ 0.029)
+    sharp = (93, pytest.approx(0.170, abs=0.01))
+    # frame24: 91% conf, larger bbox (area ≈ 0.055)
+    blurry = (91, pytest.approx(0.234, abs=0.01))
+
+    scores = {"sharp": sharp, "blurry": blurry}
+    result = pick_best_candidate(scores)
+    assert result == "sharp"

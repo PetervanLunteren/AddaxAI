@@ -15,13 +15,35 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 ## TODO priority 1
-- [ ] investiggate the websocket handling in this project. I just removed a very hacky-tacky way where we would add several deplays at serveral different locations and it would work most of the time, but was very error prone. Can you check if all the websocket stuff is following convention and doesnt do anything wrid or using shortcuts or anything? I want it following convenstion, clear code, simple, and no ductape... please investigate. I'm not in a hurry. 
 
 - [ ] implement the taxonomy stuff in the taxonomic rollup setting. If that works, make sure the Event smoothing works with taxonomy aware too (with dans script). And it would be great if we could have a dropdown for the smoothing aggresiveness.
+
 - [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to store the taxonomy trees. How to add a class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. 
 
 
-- [ ] run on ukraine dep 2 and check the rep image for the lynx. The rep is animal 91%, while there are others with 93%. Maybe we should revisit the formula for rep definition. First combined animal conf, then bbox surface, then sharpness. 
+- [ ] If i run on ukraine dep 2 and check the rep image for the lynx. The rep is animal 91%, while there are others with 93%. 
+
+rep.:
+Video
+REC0008.mp4 · frame 24
+7 Mar 2022 06:47 · 123
+Animal 91%
+Lynx 100%
+1 bbox
+
+other lynx:
+Image
+REC0007.jpg
+7 Mar 2022 06:47 · 123
+Animal 93%
+Lynx 100%
+1 bbox
+
+Can you figure out why it choose this representative? The other lynx looks better to me. Investigate. 
+
+
+
+Maybe we should revisit the formula for rep definition. First combined animal conf, then bbox surface, then sharpness. 
 
 
 - [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
