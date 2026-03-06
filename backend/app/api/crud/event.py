@@ -5,7 +5,7 @@ Events are time-clustered groups of files within a deployment.
 """
 
 import uuid
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 
 import cv2
 from sqlalchemy import Integer, and_, delete, exists, func, insert, select
@@ -39,7 +39,9 @@ def _apply_event_filters(
 
     if date_to is not None:
         # Include the entire end-of-day
-        end_of_day = datetime.combine(date_to.date(), time.max) if isinstance(date_to, datetime) else date_to
+        end_of_day = (
+            datetime.combine(date_to.date(), time.max) if isinstance(date_to, datetime) else date_to
+        )
         query = query.filter(Event.start_time <= end_of_day)
 
     if species:
@@ -92,25 +94,29 @@ def _apply_event_filters(
         elif verification == "unverified_representative":
             # Representative file is unverified
             RepFile = aliased(File)
-            query = query.filter(exists(
-                select(RepFile.id).where(
-                    and_(
-                        RepFile.id == Event.representative_file_id,
-                        RepFile.verified == False,  # noqa: E712
+            query = query.filter(
+                exists(
+                    select(RepFile.id).where(
+                        and_(
+                            RepFile.id == Event.representative_file_id,
+                            RepFile.verified == False,  # noqa: E712
+                        )
                     )
                 )
-            ))
+            )
         elif verification == "verified_representative":
             # Representative file is verified
             RepFile = aliased(File)
-            query = query.filter(exists(
-                select(RepFile.id).where(
-                    and_(
-                        RepFile.id == Event.representative_file_id,
-                        RepFile.verified == True,  # noqa: E712
+            query = query.filter(
+                exists(
+                    select(RepFile.id).where(
+                        and_(
+                            RepFile.id == Event.representative_file_id,
+                            RepFile.verified == True,  # noqa: E712
+                        )
                     )
                 )
-            ))
+            )
         elif verification == "none_verified":
             # Zero files verified: NOT EXISTS any verified file
             verified_subq = (
@@ -215,19 +221,12 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     independence_interval = project.independence_interval  # seconds
 
     # Get all deployments for this project
-    deployments = (
-        db.query(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
-        .all()
-    )
+    deployments = db.query(Deployment).join(Site).filter(Site.project_id == project_id).all()
 
     # Delete existing events for all deployments in this project
     deployment_ids = [d.id for d in deployments]
     if deployment_ids:
-        db.execute(
-            delete(Event).where(Event.deployment_id.in_(deployment_ids))
-        )
+        db.execute(delete(Event).where(Event.deployment_id.in_(deployment_ids)))
 
     total_events = 0
 
@@ -314,14 +313,10 @@ def get_events_by_project(
     Returns event data with representative file, species list,
     observation type, and verification progress.
     """
-    query = (
-        db.query(Event)
-        .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
-    )
+    query = db.query(Event).join(Deployment).join(Site).filter(Site.project_id == project_id)
     query = _apply_event_filters(
-        query, db,
+        query,
+        db,
         site_ids=site_ids,
         date_from=date_from,
         date_to=date_to,
@@ -331,8 +326,7 @@ def get_events_by_project(
         max_confidence=max_confidence,
     )
     events = (
-        query
-        .options(joinedload(Event.files).joinedload(File.detections))
+        query.options(joinedload(Event.files).joinedload(File.detections))
         .order_by(Event.start_time.desc())
         .offset(skip)
         .limit(limit)
@@ -359,7 +353,11 @@ def get_events_by_project(
         species_set: set[str] = set()
         for f in sorted_files:
             for d in f.detections:
-                if d.species and (min_confidence is None or d.confidence >= min_confidence) and (max_confidence is None or d.confidence <= max_confidence):
+                if (
+                    d.species
+                    and (min_confidence is None or d.confidence >= min_confidence)
+                    and (max_confidence is None or d.confidence <= max_confidence)
+                ):
                     species_set.add(d.species)
 
         # Determine dominant observation type (animal > human > vehicle > blank)
@@ -378,26 +376,36 @@ def get_events_by_project(
         # Count files by type and verification
         image_count = sum(1 for f in sorted_files if f.file_type == "image")
         frame_count = sum(1 for f in sorted_files if f.file_type == "frame")
-        video_count = len({f.source_video_id for f in sorted_files if f.file_type == "frame" and f.source_video_id})
+        video_count = len(
+            {
+                f.source_video_id
+                for f in sorted_files
+                if f.file_type == "frame" and f.source_video_id
+            }
+        )
         verified_count = sum(1 for f in sorted_files if f.verified)
 
-        summaries.append({
-            "id": event.id,
-            "deployment_id": event.deployment_id,
-            "start_time": event.start_time,
-            "end_time": event.end_time,
-            "file_count": event.file_count,
-            "representative_file_id": event.representative_file_id,
-            "site_name": event.deployment.site.name if event.deployment and event.deployment.site else None,
-            "species": sorted(species_set),
-            "observation_type": dominant_type,
-            "observation_types": sorted(observation_types_set),
-            "image_count": image_count,
-            "frame_count": frame_count,
-            "video_count": video_count,
-            "verified_count": verified_count,
-            "total_count": len(sorted_files),
-        })
+        summaries.append(
+            {
+                "id": event.id,
+                "deployment_id": event.deployment_id,
+                "start_time": event.start_time,
+                "end_time": event.end_time,
+                "file_count": event.file_count,
+                "representative_file_id": event.representative_file_id,
+                "site_name": event.deployment.site.name
+                if event.deployment and event.deployment.site
+                else None,
+                "species": sorted(species_set),
+                "observation_type": dominant_type,
+                "observation_types": sorted(observation_types_set),
+                "image_count": image_count,
+                "frame_count": frame_count,
+                "video_count": video_count,
+                "verified_count": verified_count,
+                "total_count": len(sorted_files),
+            }
+        )
 
     return summaries
 
@@ -435,7 +443,8 @@ def get_event_count_by_project(
         .filter(Site.project_id == project_id)
     )
     query = _apply_event_filters(
-        query, db,
+        query,
+        db,
         site_ids=site_ids,
         date_from=date_from,
         date_to=date_to,
@@ -480,11 +489,7 @@ def get_adjacent_events(
     )
 
     # 1. Get current event's start_time
-    current = (
-        db.query(Event.id, Event.start_time)
-        .filter(Event.id == event_id)
-        .first()
-    )
+    current = db.query(Event.id, Event.start_time).filter(Event.id == event_id).first()
     if not current:
         return {
             "previous_id": None,
@@ -498,21 +503,13 @@ def get_adjacent_events(
     cid = current.id
 
     def base():
-        q = (
-            db.query(Event.id)
-            .join(Deployment)
-            .join(Site)
-            .filter(Site.project_id == project_id)
-        )
+        q = db.query(Event.id).join(Deployment).join(Site).filter(Site.project_id == project_id)
         return _apply_event_filters(q, db, **filter_kwargs)
 
     # 2. Previous (newer in DESC order): start_time > current, or same time + higher id
     prev = (
         base()
-        .filter(
-            (Event.start_time > ct)
-            | ((Event.start_time == ct) & (Event.id > cid))
-        )
+        .filter((Event.start_time > ct) | ((Event.start_time == ct) & (Event.id > cid)))
         .order_by(Event.start_time.asc(), Event.id.asc())
         .first()
     )
@@ -520,10 +517,7 @@ def get_adjacent_events(
     # 3. Next (older in DESC order): start_time < current, or same time + lower id
     nxt = (
         base()
-        .filter(
-            (Event.start_time < ct)
-            | ((Event.start_time == ct) & (Event.id < cid))
-        )
+        .filter((Event.start_time < ct) | ((Event.start_time == ct) & (Event.id < cid)))
         .order_by(Event.start_time.desc(), Event.id.desc())
         .first()
     )
@@ -533,10 +527,7 @@ def get_adjacent_events(
         base()
         .join(event_files, Event.id == event_files.c.event_id)
         .join(File, File.id == event_files.c.file_id)
-        .filter(
-            (Event.start_time < ct)
-            | ((Event.start_time == ct) & (Event.id < cid))
-        )
+        .filter((Event.start_time < ct) | ((Event.start_time == ct) & (Event.id < cid)))
         .filter(File.verified == False)  # noqa: E712
         .order_by(Event.start_time.desc(), Event.id.desc())
         .first()
@@ -558,10 +549,7 @@ def get_adjacent_events(
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
-        .filter(
-            (Event.start_time > ct)
-            | ((Event.start_time == ct) & (Event.id > cid))
-        )
+        .filter((Event.start_time > ct) | ((Event.start_time == ct) & (Event.id > cid)))
     )
     idx_q = _apply_event_filters(idx_q, db, **filter_kwargs)
     idx = idx_q.scalar() or 0
@@ -588,17 +576,18 @@ def get_event_verification_stats(
 ) -> dict[str, int]:
     """Get aggregate file verification stats across filtered events."""
     filter_kwargs = dict(
-        site_ids=site_ids, date_from=date_from, date_to=date_to,
-        species=species, verification=verification,
-        min_confidence=min_confidence, max_confidence=max_confidence,
+        site_ids=site_ids,
+        date_from=date_from,
+        date_to=date_to,
+        species=species,
+        verification=verification,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
     )
 
     # Base: filtered event IDs
     event_ids_q = (
-        db.query(Event.id)
-        .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        db.query(Event.id).join(Deployment).join(Site).filter(Site.project_id == project_id)
     )
     event_ids_q = _apply_event_filters(event_ids_q, db, **filter_kwargs)
     event_ids_subq = event_ids_q.subquery()

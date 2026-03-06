@@ -71,10 +71,10 @@ def load_inference_class(model_dir: Path, model_path: Path):
     spec.loader.exec_module(module)
 
     # Instantiate ModelInference class
-    if not hasattr(module, 'ModelInference'):
+    if not hasattr(module, "ModelInference"):
         raise AttributeError(
-            f"inference.py must define a 'ModelInference' class.\n"
-            f"See /backend/templates/inference_template.py for reference."
+            "inference.py must define a 'ModelInference' class.\n"
+            "See /backend/templates/inference_template.py for reference."
         )
 
     model_inference = module.ModelInference(model_dir, model_path)
@@ -91,7 +91,13 @@ def validate_interface(model_inference):
     Raises:
         ValueError: If required methods are missing
     """
-    required_methods = ["check_gpu", "load_model", "get_crop", "get_classification", "get_class_names"]
+    required_methods = [
+        "check_gpu",
+        "load_model",
+        "get_crop",
+        "get_classification",
+        "get_class_names",
+    ]
 
     missing = [m for m in required_methods if not hasattr(model_inference, m)]
 
@@ -126,7 +132,8 @@ def detect_device_name(gpu_available: bool) -> str:
     # Check PyTorch
     try:
         import torch
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             return "GPU (Apple Silicon)"
         if torch.cuda.is_available():
             return "GPU (NVIDIA)"
@@ -135,9 +142,10 @@ def detect_device_name(gpu_available: bool) -> str:
     # Check TensorFlow
     try:
         import tensorflow as tf
-        gpus = tf.config.list_physical_devices('GPU')
+
+        gpus = tf.config.list_physical_devices("GPU")
         if gpus:
-            if platform.system() == 'Darwin':
+            if platform.system() == "Darwin":
                 return "GPU (Apple Silicon)"
             return "GPU (NVIDIA)"
     except ImportError:
@@ -174,10 +182,16 @@ def main():
         device_name = detect_device_name(gpu_available)
 
         # Send ready signal FIRST (before any stderr logging to avoid deadlock)
-        send_response({"status": "ready", "gpu_available": gpu_available, "compute_device": device_name})
+        send_response(
+            {"status": "ready", "gpu_available": gpu_available, "compute_device": device_name}
+        )
 
         # Now safe to log to stderr (after ready signal sent)
-        print(f"[Worker] GPU available: {gpu_available}, Device: {device_name}", file=sys.stderr, flush=True)
+        print(
+            f"[Worker] GPU available: {gpu_available}, Device: {device_name}",
+            file=sys.stderr,
+            flush=True,
+        )
         print("[Worker] Model loaded and ready", file=sys.stderr, flush=True)
         print("[Worker] Entering request loop", file=sys.stderr, flush=True)
         while True:
@@ -249,12 +263,15 @@ def main():
                         print(
                             f"[Worker] Invalid crop for bbox {bbox} on image {image_path.name} "
                             f"(too small or out of bounds)",
-                            file=sys.stderr
+                            file=sys.stderr,
                         )
                         send_response(
                             {
                                 "success": False,
-                                "error": f"Invalid crop for bbox {bbox} (too small or out of bounds)",
+                                "error": (
+                                    f"Invalid crop for bbox {bbox} "
+                                    f"(too small or out of bounds)"
+                                ),
                                 "error_type": "CropError",
                             }
                         )
@@ -266,8 +283,9 @@ def main():
                     # Check if results are empty
                     if not results:
                         print(
-                            f"[Worker] Empty classification results for bbox {bbox} on image {image_path.name}",
-                            file=sys.stderr
+                            f"[Worker] Empty classification results "
+                            f"for bbox {bbox} on image {image_path.name}",
+                            file=sys.stderr,
                         )
                         send_response(
                             {
@@ -279,7 +297,8 @@ def main():
                         continue
 
                     # Sort by confidence descending (so parent always gets highest confidence first)
-                    # This way model developers don't need to duplicate sorting logic in each inference.py
+                    # This way model developers don't need to duplicate
+                    # sorting logic in each inference.py
                     sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
 
                     # Send results

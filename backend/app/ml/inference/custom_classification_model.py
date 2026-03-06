@@ -18,8 +18,8 @@ import json
 import os
 import platform
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -87,16 +87,12 @@ class CustomClassificationModel(ClassificationModel):
                 f"Custom classification model ({model_dir.name}) using Python: {self.python_path}"
             )
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to get Python environment '{env_full_name}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to get Python environment '{env_full_name}': {e}") from e
 
         # Get path to classification_worker.py script
         self.worker_script = Path(__file__).parent / "classification_worker.py"
         if not self.worker_script.exists():
-            raise FileNotFoundError(
-                f"Classification worker script not found: {self.worker_script}"
-            )
+            raise FileNotFoundError(f"Classification worker script not found: {self.worker_script}")
 
         logger.info(f"Custom classification model initialized: {model_dir.name}")
 
@@ -128,11 +124,11 @@ class CustomClassificationModel(ClassificationModel):
 
         # Prepare environment variables with MPS fallback for macOS
         env = os.environ.copy()
-        if platform.system() == 'Darwin':  # macOS
+        if platform.system() == "Darwin":  # macOS
             # Enable MPS CPU fallback for PyTorch operations not yet supported on MPS
             # This allows models using unsupported ops (like BICUBIC resize with antialiasing)
             # to fall back to CPU instead of crashing
-            env['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+            env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
             logger.debug("Set PYTORCH_ENABLE_MPS_FALLBACK=1 for macOS compatibility")
 
         # Start worker process
@@ -163,9 +159,13 @@ class CustomClassificationModel(ClassificationModel):
                 raise RuntimeError(f"Worker sent unexpected response: {ready_response}")
 
             gpu_available = ready_response.get("gpu_available", False)
-            self.compute_device = ready_response.get("compute_device", "GPU" if gpu_available else "CPU")
+            self.compute_device = ready_response.get(
+                "compute_device", "GPU" if gpu_available else "CPU"
+            )
             logger.info(
-                f"Worker ready (GPU: {gpu_available}, Device: {self.compute_device}) for {self.model_dir.name}"
+                f"Worker ready (GPU: {gpu_available}, "
+                f"Device: {self.compute_device}) "
+                f"for {self.model_dir.name}"
             )
 
         except json.JSONDecodeError as e:
@@ -335,9 +335,7 @@ class CustomClassificationModel(ClassificationModel):
             if not response.get("success", False):
                 error = response.get("error", "Unknown error")
                 error_type = response.get("error_type", "Error")
-                logger.warning(
-                    f"Classification failed: {error_type}: {error} - Skipping detection"
-                )
+                logger.warning(f"Classification failed: {error_type}: {error} - Skipping detection")
                 return None
 
             # Parse classifications

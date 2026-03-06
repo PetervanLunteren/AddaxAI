@@ -12,7 +12,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 FolderStatus = Literal["valid", "missing", "needs_relink"]
 
 

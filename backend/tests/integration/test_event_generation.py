@@ -12,11 +12,16 @@ from app.api.crud.event import generate_events_for_project
 from app.ml.json_pipeline import load_json_to_database
 from app.models import Event, File
 
-from .conftest import build_detection_json, create_tiny_jpeg, write_json
+from .conftest import (
+    build_detection_json,
+    create_tiny_jpeg,
+    create_video_frames,
+    write_json,
+)
 
 
-def _load_images_with_timestamps(s, timestamps):
-    """Helper: create tiny JPEGs with EXIF timestamps and load to DB."""
+def _load_images_with_timestamps(s: dict, timestamps: list[datetime]) -> None:
+    """Create tiny JPEGs with EXIF timestamps and load to DB."""
     db, deploy_dir = s["db"], s["deploy_dir"]
 
     images = []
@@ -81,8 +86,6 @@ def test_events_with_mixed_content(deployment_scaffold):
     """Frame files included in events; video files excluded."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-
-    from .conftest import create_video_frames
 
     create_video_frames(s["artifacts"], "videos/clip.mp4", [0, 30])
 

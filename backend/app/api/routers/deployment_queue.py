@@ -30,9 +30,7 @@ router = APIRouter(prefix="/api/deployment-queue", tags=["Deployment Queue"])
 
 @router.get("", response_model=list[DeploymentQueueResponse])
 def list_queue_entries(
-    project_id: str,
-    status: str | None = None,
-    db: Session = Depends(get_db)
+    project_id: str, status: str | None = None, db: Session = Depends(get_db)
 ) -> list[DeploymentQueueResponse]:
     """
     List all queue entries for a project.
@@ -46,8 +44,7 @@ def list_queue_entries(
 
 @router.post("", response_model=DeploymentQueueResponse, status_code=status.HTTP_201_CREATED)
 def create_queue_entry(
-    entry: DeploymentQueueCreate,
-    db: Session = Depends(get_db)
+    entry: DeploymentQueueCreate, db: Session = Depends(get_db)
 ) -> DeploymentQueueResponse:
     """
     Add a new entry to the deployment queue.
@@ -56,7 +53,9 @@ def create_queue_entry(
     """
     try:
         db_entry = crud_queue.create_queue_entry(db, entry)
-        logger.info(f"Added entry to queue: project_id={entry.project_id}, folder={entry.folder_path}")
+        logger.info(
+            f"Added entry to queue: project_id={entry.project_id}, folder={entry.folder_path}"
+        )
         return DeploymentQueueResponse.model_validate(db_entry)
     except IntegrityError as e:
         logger.error(f"Failed to create queue entry: {e}")
@@ -67,10 +66,7 @@ def create_queue_entry(
 
 
 @router.get("/{entry_id}", response_model=DeploymentQueueResponse)
-def get_queue_entry(
-    entry_id: str,
-    db: Session = Depends(get_db)
-) -> DeploymentQueueResponse:
+def get_queue_entry(entry_id: str, db: Session = Depends(get_db)) -> DeploymentQueueResponse:
     """
     Get queue entry by ID.
 
@@ -87,10 +83,7 @@ def get_queue_entry(
 
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_queue_entry(
-    entry_id: str,
-    db: Session = Depends(get_db)
-) -> None:
+def delete_queue_entry(entry_id: str, db: Session = Depends(get_db)) -> None:
     """
     Remove an entry from the queue.
 
@@ -108,8 +101,7 @@ def delete_queue_entry(
 
 @router.post("/process", status_code=status.HTTP_202_ACCEPTED)
 async def process_queue(
-    request: ProcessQueueRequest,
-    db: Session = Depends(get_db)
+    request: ProcessQueueRequest, db: Session = Depends(get_db)
 ) -> dict[str, str | int | list[str]]:
     """
     Start processing the deployment queue for a project.
@@ -122,13 +114,13 @@ async def process_queue(
 
     if not pending_entries:
         logger.info(f"No pending queue entries for project: {request.project_id}")
-        return {
-            "message": "No pending queue entries to process",
-            "jobs_started": 0,
-            "job_ids": []
-        }
+        return {"message": "No pending queue entries to process", "jobs_started": 0, "job_ids": []}
 
-    logger.info(f"Starting sequential queue processing for project {request.project_id}: {len(pending_entries)} entries")
+    entry_count = len(pending_entries)
+    logger.info(
+        f"Starting sequential queue processing for "
+        f"project {request.project_id}: {entry_count} entries"
+    )
 
     # Create ONE job for ALL queue entries
     entry_ids = [entry.id for entry in pending_entries]
@@ -137,8 +129,8 @@ async def process_queue(
         payload={
             "project_id": request.project_id,
             "queue_entry_ids": entry_ids,  # List of ALL entries to process sequentially
-            "is_batch_job": True
-        }
+            "is_batch_job": True,
+        },
     )
     job = crud_job.create_job(db, job_create)
 
@@ -152,7 +144,10 @@ async def process_queue(
     logger.info(f"Registered batch job {job.id} for {len(entry_ids)} entries")
 
     return {
-        "message": f"Queue processing started. {len(entry_ids)} deployments will be processed sequentially.",
+        "message": (
+            f"Queue processing started. "
+            f"{len(entry_ids)} deployments will be processed sequentially."
+        ),
         "jobs_started": 1,
-        "job_ids": [job.id]
+        "job_ids": [job.id],
     }

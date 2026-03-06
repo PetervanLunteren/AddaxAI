@@ -8,7 +8,8 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import WebSocket
 
@@ -107,7 +108,10 @@ class ConnectionManager:
             logger.info(f"Received 'ready' for task {task_id}, starting worker")
             asyncio.create_task(start_fn())
         else:
-            logger.debug(f"Received 'ready' for task {task_id}, but no pending start (reconnection or already started)")
+            logger.debug(
+                f"Received 'ready' for task {task_id}, "
+                f"but no pending start (reconnection or already started)"
+            )
 
     async def send_progress(
         self,
@@ -155,7 +159,10 @@ class ConnectionManager:
         if disconnected:
             async with self._lock:
                 for connection in disconnected:
-                    if job_id in self.active_connections and connection in self.active_connections[job_id]:
+                    if (
+                        job_id in self.active_connections
+                        and connection in self.active_connections[job_id]
+                    ):
                         self.active_connections[job_id].remove(connection)
 
     async def send_complete(
@@ -165,7 +172,9 @@ class ConnectionManager:
         Send completion message to all clients subscribed to a job.
         Stores in current state and schedules cleanup.
         """
-        logger.info(f"send_complete() called for job {job_id}: success={success}, message={message[:50]}")
+        logger.info(
+            f"send_complete() called for job {job_id}: success={success}, message={message[:50]}"
+        )
 
         complete_data = {
             "type": "complete",
@@ -180,10 +189,16 @@ class ConnectionManager:
             self.current_state[job_id] = complete_data
 
             if job_id in self.active_connections:
-                logger.info(f"Sending completion to {len(self.active_connections[job_id])} connected clients")
+                conn_count = len(self.active_connections[job_id])
+                logger.info(
+                    f"Sending completion to {conn_count} "
+                    f"connected clients"
+                )
                 connections_to_send = list(self.active_connections[job_id])
             else:
-                logger.info(f"No active connections for job {job_id}, completion stored in state only")
+                logger.info(
+                    f"No active connections for job {job_id}, completion stored in state only"
+                )
                 connections_to_send = []
 
         for connection in connections_to_send:
@@ -193,7 +208,10 @@ class ConnectionManager:
             except Exception as e:
                 logger.warning(f"Failed to send completion to client: {e}")
                 async with self._lock:
-                    if job_id in self.active_connections and connection in self.active_connections[job_id]:
+                    if (
+                        job_id in self.active_connections
+                        and connection in self.active_connections[job_id]
+                    ):
                         self.active_connections[job_id].remove(connection)
 
         # Clean up state after 60s (client has long since received it)
@@ -217,7 +235,9 @@ class ConnectionManager:
             self.current_state[job_id] = error_data
 
             if job_id in self.active_connections:
-                logger.info(f"Sending error to {len(self.active_connections[job_id])} connected clients")
+                logger.info(
+                    f"Sending error to {len(self.active_connections[job_id])} connected clients"
+                )
                 connections_to_send = list(self.active_connections[job_id])
             else:
                 logger.info(f"No active connections for job {job_id}, error stored in state only")
@@ -230,7 +250,10 @@ class ConnectionManager:
             except Exception as e:
                 logger.warning(f"Failed to send error to client: {e}")
                 async with self._lock:
-                    if job_id in self.active_connections and connection in self.active_connections[job_id]:
+                    if (
+                        job_id in self.active_connections
+                        and connection in self.active_connections[job_id]
+                    ):
                         self.active_connections[job_id].remove(connection)
 
         # Clean up state after 60s
@@ -247,12 +270,17 @@ class ConnectionManager:
             del self.current_state[job_id]
             logger.debug(f"Cleaned up state for job {job_id}")
 
-    async def _cleanup_pending_start(self, task_id: str, delay: int = _PENDING_START_TIMEOUT) -> None:
+    async def _cleanup_pending_start(
+        self, task_id: str, delay: int = _PENDING_START_TIMEOUT
+    ) -> None:
         """Remove a pending start if the frontend never sent 'ready'."""
         await asyncio.sleep(delay)
         removed = self._pending_starts.pop(task_id, None)
         if removed is not None:
-            logger.warning(f"Cleaned up orphaned pending start for task {task_id} (no 'ready' received after {delay}s)")
+            logger.warning(
+                f"Cleaned up orphaned pending start for "
+                f"task {task_id} (no 'ready' after {delay}s)"
+            )
 
 
 # Global connection manager instance

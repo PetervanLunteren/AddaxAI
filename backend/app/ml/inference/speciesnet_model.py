@@ -14,11 +14,10 @@ Created by Claude Code on 2026-01-07
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -70,9 +69,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
                 f"SpeciesNet model initialized: {model_dir.name} using Python: {self.python_path}"
             )
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to get Python environment '{env_full_name}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to get Python environment '{env_full_name}': {e}") from e
 
         logger.info(f"SpeciesNet model ready: {model_dir.name}")
 
@@ -96,7 +93,8 @@ class SpeciesNetClassificationModel(ClassificationModel):
             country_code: Country code for geofencing (e.g., "USA", "KEN")
             state_code: Optional state code for USA (e.g., "CA", "TX")
             deployment_folder: Base folder containing images
-            progress_callback: Optional async callback(message, overall_progress, phase, phase_progress)
+            progress_callback: Optional async callback
+                (message, overall_progress, phase, phase_progress)
 
         Raises:
             RuntimeError: If SpeciesNet subprocess fails
@@ -119,13 +117,18 @@ class SpeciesNetClassificationModel(ClassificationModel):
         # Build command for run_md_and_speciesnet
         command = [
             str(self.python_path),
-            "-m", "megadetector.detection.run_md_and_speciesnet",
+            "-m",
+            "megadetector.detection.run_md_and_speciesnet",
             str(deployment_folder),  # source folder
-            str(output_file),        # output file
-            "--detections_file", str(detection_json_path),  # skip detection, use existing
-            "--classification_model", str(self.model_dir),  # local model directory
-            "--loader_workers", "1",  # Reduce workers to avoid multiprocessing issues
-            "--classifier_batch_size", "1",  # Process one image at a time for granular progress
+            str(output_file),  # output file
+            "--detections_file",
+            str(detection_json_path),  # skip detection, use existing
+            "--classification_model",
+            str(self.model_dir),  # local model directory
+            "--loader_workers",
+            "1",  # Reduce workers to avoid multiprocessing issues
+            "--classifier_batch_size",
+            "1",  # Process one image at a time for granular progress
         ]
 
         # Add country code if specified (skip if None, empty, or "NONE")
@@ -133,13 +136,17 @@ class SpeciesNetClassificationModel(ClassificationModel):
             command.extend(["--country", country_code])
 
             # Add state for USA if specified (skip if None, empty, or "NONE")
-            if country_code.upper() == "USA" and state_code and state_code.upper() not in ("NONE", ""):
+            if (
+                country_code.upper() == "USA"
+                and state_code
+                and state_code.upper() not in ("NONE", "")
+            ):
                 command.extend(["--admin1_region", state_code])
                 logger.info(f"SpeciesNet geofencing: USA/{state_code}")
             else:
                 logger.info(f"SpeciesNet geofencing: {country_code}")
         else:
-            logger.info(f"SpeciesNet geofencing: DISABLED (no country specified)")
+            logger.info("SpeciesNet geofencing: DISABLED (no country specified)")
 
         # Log command for debugging
         logger.info(f"Running SpeciesNet command: {' '.join(command)}")
@@ -166,7 +173,6 @@ class SpeciesNetClassificationModel(ClassificationModel):
 
             # Stream output and parse progress
             last_progress = 0.0
-            last_current = 0
             last_total = 0
             output_lines = []  # Capture all output for error reporting
             device_detected = False
@@ -186,29 +192,39 @@ class SpeciesNetClassificationModel(ClassificationModel):
                         device_detected = True
                         if progress_callback:
                             progress_callback(
-                                "Initializing classifier...", 0.0, "classification", 0.0,
+                                "Initializing classifier...",
+                                0.0,
+                                "classification",
+                                0.0,
                                 {"compute_device": device_name},
                             )
                     elif "GPU available" in line:
                         import platform
+
                         has_gpu = "True" in line
                         if has_gpu:
-                            device_name = "GPU (Apple Silicon)" if platform.system() == 'Darwin' else "GPU (NVIDIA)"
+                            device_name = (
+                                "GPU (Apple Silicon)"
+                                if platform.system() == "Darwin"
+                                else "GPU (NVIDIA)"
+                            )
                         else:
                             device_name = "CPU"
                         device_detected = True
                         if progress_callback:
                             progress_callback(
-                                "Initializing classifier...", 0.0, "classification", 0.0,
+                                "Initializing classifier...",
+                                0.0,
+                                "classification",
+                                0.0,
                                 {"compute_device": device_name},
                             )
 
                 # Parse progress from tqdm or similar output
                 # Look for patterns like: "45/100" or "45%"
-                progress_match = re.search(r'(\d+)/(\d+)', line)
+                progress_match = re.search(r"(\d+)/(\d+)", line)
                 if progress_match and progress_callback:
                     current, total = map(int, progress_match.groups())
-                    last_current = current  # Track for final update
                     last_total = total
                     phase_progress = current / total
 
@@ -229,7 +245,8 @@ class SpeciesNetClassificationModel(ClassificationModel):
             process.stdout.close()
             return_code = process.wait()
 
-            # Send final 100% update if we didn't already (handles case where last update was <1% change)
+            # Send final 100% update if we didn't already
+            # (handles case where last update was <1% change)
             if progress_callback and last_total > 0 and last_progress < 1.0:
                 progress_callback(
                     f"Classification: {last_total}/{last_total} images processed",
@@ -260,7 +277,7 @@ class SpeciesNetClassificationModel(ClassificationModel):
             detection_json_path.unlink()
             output_file.rename(detection_json_path)
 
-            logger.info(f"SpeciesNet classification completed successfully")
+            logger.info("SpeciesNet classification completed successfully")
 
             # Final progress update
             if progress_callback:

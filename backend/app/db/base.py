@@ -97,7 +97,17 @@ def init_db() -> None:
     Crashes if database cannot be initialized.
     Called on application startup.
     """
-    from app.models import audit_log, deployment, detection, detection_embedding, event, file, job, project, site  # noqa: F401
+    from app.models import (  # noqa: F401
+        audit_log,
+        deployment,
+        detection,
+        detection_embedding,
+        event,
+        file,
+        job,
+        project,
+        site,
+    )
 
     engine = get_engine()
 

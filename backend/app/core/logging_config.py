@@ -11,7 +11,6 @@ Sets up rotating file logging to ~/AddaxAI/logs/backend.log
 
 import logging
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from app.core.config import get_settings
 

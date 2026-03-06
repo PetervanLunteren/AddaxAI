@@ -7,7 +7,7 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.detection import DetectionCreate, DetectionCreateHuman, DetectionUpdate

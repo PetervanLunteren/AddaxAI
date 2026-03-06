@@ -11,11 +11,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import DateTime, Index, JSON, String
+from sqlalchemy import JSON, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
 
 AuditAction = Literal["create", "update", "delete"]
 

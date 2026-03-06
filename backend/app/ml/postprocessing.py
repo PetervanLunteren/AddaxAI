@@ -21,7 +21,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.models import Detection, Deployment, File
+from app.models import Deployment, Detection, File
 
 logger = get_logger(__name__)
 

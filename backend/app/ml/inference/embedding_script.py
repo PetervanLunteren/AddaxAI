@@ -26,8 +26,6 @@ import argparse
 import json
 import os
 import sys
-import time
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -41,10 +39,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", required=True, help="Path to input JSON file")
     parser.add_argument("--output", required=True, help="Path to output .npz file")
     parser.add_argument("--weights", required=True, help="Path to model weights (.pth)")
-    parser.add_argument("--model-arch", required=True, help="DINOv2 architecture name (e.g., dinov2_vits14)")
-    parser.add_argument("--embedding-dim", required=True, type=int, help="Expected embedding dimension")
-    parser.add_argument("--input-size", required=True, type=int, help="Input image size (e.g., 224)")
-    parser.add_argument("--batch-size", type=int, default=0, help="Batch size (0 = auto-select based on device)")
+    parser.add_argument(
+        "--model-arch", required=True, help="DINOv2 architecture name (e.g., dinov2_vits14)"
+    )
+    parser.add_argument(
+        "--embedding-dim", required=True, type=int, help="Expected embedding dimension"
+    )
+    parser.add_argument(
+        "--input-size", required=True, type=int, help="Input image size (e.g., 224)"
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=0, help="Batch size (0 = auto-select based on device)"
+    )
     return parser.parse_args()
 
 
@@ -87,12 +93,14 @@ def load_model(model_arch: str, weights_path: str, device: torch.device) -> torc
 
 def build_transform(input_size: int) -> transforms.Compose:
     """Build preprocessing pipeline matching DINOv2 training."""
-    return transforms.Compose([
-        transforms.Resize(input_size, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(input_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+    return transforms.Compose(
+        [
+            transforms.Resize(input_size, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.CenterCrop(input_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
 
 def crop_detection(image: Image.Image, bbox: list[float]) -> Image.Image:
@@ -149,6 +157,7 @@ def main() -> None:
 
     # Group detections by image_path for efficient I/O
     from collections import defaultdict
+
     detections_by_image: dict[str, list[dict]] = defaultdict(list)
     for det in detections:
         detections_by_image[det["image_path"]].append(det)
@@ -227,11 +236,11 @@ def _process_batch(
     # Convert to float16 numpy
     embeddings_np = embeddings.cpu().to(torch.float16).numpy()
 
-    assert embeddings_np.shape[1] == embedding_dim, (
-        f"Expected dim {embedding_dim}, got {embeddings_np.shape[1]}"
-    )
+    assert (
+        embeddings_np.shape[1] == embedding_dim
+    ), f"Expected dim {embedding_dim}, got {embeddings_np.shape[1]}"
 
-    for det_id, emb in zip(batch_ids, embeddings_np):
+    for det_id, emb in zip(batch_ids, embeddings_np, strict=False):
         results[det_id] = emb
 
 

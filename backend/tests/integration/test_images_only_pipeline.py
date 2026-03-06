@@ -54,7 +54,7 @@ def test_load_creates_file_records(deployment_scaffold):
 
 
 def test_load_creates_detection_records(deployment_scaffold):
-    """Correct Detection count, category mapping, bbox, species, classification_method."""
+    """Correct detection count, category mapping, bbox, species, classification_method."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 

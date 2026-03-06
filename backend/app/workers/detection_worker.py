@@ -13,12 +13,9 @@ Created by Claude Code on 2026-01-04
 
 import asyncio
 import os
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
-
-from PIL import Image
-from PIL.ExifTags import TAGS
 
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
@@ -114,13 +111,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 raise FileNotFoundError(error_msg)
 
             # Use custom classification model with subprocess isolation
-            logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
+            logger.info(
+                f"Loading custom classification model: {classification_model_id} (env: {env_name})"
+            )
             classification_model = CustomClassificationModel(
                 cls_model_dir, cls_model_path, env_name, env_manager
             )
 
     # Create JSON-based ML pipeline with country/state for SpeciesNet
-    pipeline = JSONBasedMLPipeline(
+    JSONBasedMLPipeline(
         detection_model,
         classification_model,
         detection_model_id,
@@ -153,13 +152,17 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             progress_end = idx / total_entries
             progress_range = progress_end - progress_start
 
-            logger.info(f"Batch job {job_id}: Processing entry {idx}/{total_entries} - {folder_path}")
+            logger.info(
+                f"Batch job {job_id}: Processing entry {idx}/{total_entries} - {folder_path}"
+            )
 
             # Use pre-scanned counts from database if available
             # This allows us to send initial progress immediately without scanning
             if entry.video_count > 0 or entry.image_count > 0:
                 logger.info(
-                    f"Using pre-scanned counts: {entry.video_count} videos, {entry.image_count} images"
+                    f"Using pre-scanned counts: "
+                    f"{entry.video_count} videos, "
+                    f"{entry.image_count} images"
                 )
 
                 # Send initial progress IMMEDIATELY with pre-scanned counts
@@ -234,7 +237,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 continue
 
             # Create deployment
-            deployment = create_deployment(db=db, site_id=entry.site_id, folder_path=str(folder_path))
+            deployment = create_deployment(
+                db=db, site_id=entry.site_id, folder_path=str(folder_path)
+            )
             logger.info(f"Created deployment: {deployment.id}")
 
             # Create project-scoped artifacts folder
@@ -250,15 +255,25 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             # Define progress callback for this specific deployment
             async def deployment_progress_callback(
-                message: str, progress: float, phase: str, phase_progress: float, metrics: dict | None = None
+                message: str,
+                progress: float,
+                phase: str,
+                phase_progress: float,
+                metrics: dict | None = None,
+                *,
+                _ps=progress_start,
+                _pr=progress_range,
+                _idx=idx,
+                _vf=video_files,
+                _if=image_files,
             ) -> None:
                 """Forward progress updates (no prefix, header shows deployment context)"""
-                overall_progress = progress_start + (progress * progress_range)
+                overall_progress = _ps + (progress * _pr)
                 data = {
-                    "deployment_index": idx,
+                    "deployment_index": _idx,
                     "total_deployments": total_entries,
-                    "video_count": len(video_files),
-                    "image_count": len(image_files),
+                    "video_count": len(_vf),
+                    "image_count": len(_if),
                     "has_classifier": classification_model is not None,
                 }
                 # Extract compute_device from metrics to data level
@@ -274,7 +289,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     overall_progress,
                     phase,
                     phase_progress,
-                    data
+                    data,
                 )
 
             # ============================================================
@@ -286,32 +301,37 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 try:
                     # Create video detection model
                     from app.ml.inference.video_detector import VideoDetectionModel
+
                     video_detector = VideoDetectionModel(det_model_path, env_manager)
 
                     # Create sync progress wrapper for executor thread
                     loop = asyncio.get_event_loop()
 
-                    def sync_video_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                    def sync_video_detection_progress(
+                        message: str,
+                        phase_progress: float,
+                        metrics: dict | None = None,
+                        *,
+                        _loop=loop,
+                    ) -> None:
                         """Sync wrapper that schedules async callback from executor thread"""
                         if metrics:
                             metrics["unit"] = "video"
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
-                                message,
-                                0.0,
-                                "video_detection",
-                                phase_progress,
-                                metrics
+                                message, 0.0, "video_detection", phase_progress, metrics
                             ),
-                            loop
+                            _loop,
                         )
 
                     # Run video detection in executor (blocking subprocess I/O)
                     await loop.run_in_executor(
                         None,
-                        lambda: video_detector.detect_videos_to_json(
-                            video_folder=folder_path,
-                            output_json=video_json_path,
+                        lambda _vd=video_detector,
+                        _fp=folder_path,
+                        _vjp=video_json_path: _vd.detect_videos_to_json(
+                            video_folder=_fp,
+                            output_json=_vjp,
                             fps=project.video_fps,
                             confidence_threshold=0.1,
                             progress_callback=sync_video_detection_progress,
@@ -329,8 +349,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if video_files and video_json_path.exists():
                 try:
                     from app.ml.frame_extraction import extract_all_video_frames
-                    extract_all_video_frames(folder_path, project.video_fps, env_manager,
-                                            output_dir=artifacts_folder / "video_frames")
+
+                    extract_all_video_frames(
+                        folder_path,
+                        project.video_fps,
+                        env_manager,
+                        output_dir=artifacts_folder / "video_frames",
+                    )
                     logger.info("Video frame extraction complete")
                 except Exception as e:
                     logger.error(f"Video frame extraction failed: {e}", exc_info=True)
@@ -340,6 +365,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if video_files and video_json_path.exists():
                 try:
                     from app.ml.best_frame import select_best_frames
+
                     select_best_frames(video_json_path, artifacts_folder / "video_frames")
                     logger.info("Best frame selection complete")
                 except Exception as e:
@@ -349,16 +375,20 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             # PHASE 2: Video Classification (if videos + classifier)
             # ============================================================
-            logger.debug(f"Phase 2 check: video_files={len(video_files) if video_files else 0}, "
-                        f"classification_model={classification_model is not None}, "
-                        f"video_json_exists={video_json_path.exists()}")
+            logger.debug(
+                f"Phase 2 check: video_files={len(video_files) if video_files else 0}, "
+                f"classification_model={classification_model is not None}, "
+                f"video_json_exists={video_json_path.exists()}"
+            )
 
             if video_files and classification_model and video_json_path.exists():
                 logger.info("Phase 2: Running video classification")
 
                 try:
                     # Progress wrapper for video classification phase
-                    async def video_classification_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                    async def video_classification_progress(
+                        message: str, phase_progress: float, metrics: dict | None = None
+                    ) -> None:
                         # Override unit to be more descriptive
                         if metrics:
                             metrics["unit"] = "animal"
@@ -367,7 +397,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             0.0,
                             "video_classification",
                             phase_progress,
-                            metrics
+                            metrics,
                         )
 
                     # Run classification on video detections
@@ -383,7 +413,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         video_frames_base_dir=artifacts_folder / "video_frames",
                     )
 
-                    logger.info(f"Video classification complete")
+                    logger.info("Video classification complete")
 
                 except Exception as e:
                     logger.error(f"Video classification failed: {e}", exc_info=True)
@@ -398,7 +428,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 try:
                     # Create synchronous progress wrapper for executor
                     loop = asyncio.get_event_loop()
-                    def sync_image_detection_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+
+                    def sync_image_detection_progress(
+                        message: str,
+                        phase_progress: float,
+                        metrics: dict | None = None,
+                        *,
+                        _loop=loop,
+                    ) -> None:
                         """Sync wrapper that schedules async callback"""
                         # Override unit to be more descriptive
                         if metrics:
@@ -409,20 +446,22 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                                 0.0,
                                 "image_detection",
                                 phase_progress,
-                                metrics
+                                metrics,
                             ),
-                            loop
+                            _loop,
                         )
 
                     # Run MegaDetector on images
                     image_json_path = await loop.run_in_executor(
                         None,
-                        lambda: detection_model.detect_to_json(
-                            image_paths=image_files,
-                            deployment_folder=folder_path,
+                        lambda _if=image_files,
+                        _fp=folder_path,
+                        _ijp=image_json_path: detection_model.detect_to_json(
+                            image_paths=_if,
+                            deployment_folder=_fp,
                             confidence_threshold=0.1,
                             progress_callback=sync_image_detection_progress,
-                            output_path=image_json_path,
+                            output_path=_ijp,
                         ),
                     )
 
@@ -441,13 +480,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 try:
                     # Progress wrapper for image classification phase
-                    async def image_classification_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                    async def image_classification_progress(
+                        message: str, phase_progress: float, metrics: dict | None = None
+                    ) -> None:
                         await deployment_progress_callback(
                             message,  # Raw tqdm output
                             0.0,
                             "image_classification",
                             phase_progress,
-                            metrics
+                            metrics,
                         )
 
                     # Run classification on image detections
@@ -462,7 +503,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         video_frames_base_dir=artifacts_folder / "video_frames",
                     )
 
-                    logger.info(f"Image classification complete")
+                    logger.info("Image classification complete")
 
                 except Exception as e:
                     logger.error(f"Image classification failed: {e}", exc_info=True)
@@ -515,9 +556,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     pp_result = update_database_from_smoothed_results(
                         deployment.id, smoothed, folder_path, db
                     )
-                    logger.info(
-                        f"Postprocessing complete: {pp_result.get('updated', 0)} updated"
-                    )
+                    logger.info(f"Postprocessing complete: {pp_result.get('updated', 0)} updated")
                 except Exception as e:
                     logger.error(f"Postprocessing failed (non-fatal): {e}", exc_info=True)
 
@@ -532,8 +571,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 emb_manifest = manifest_manager.get_model(embedding_model_id)
                 emb_model_path = model_storage.get_model_file(emb_manifest)
 
-                from app.ml.inference.embedding_model import EmbeddingModel
                 from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
+                from app.ml.inference.embedding_model import EmbeddingModel
 
                 embedding_model = EmbeddingModel(emb_model_path, emb_manifest, env_manager)
 
@@ -542,13 +581,16 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 embedding_output_npz = artifacts_folder / "embeddings.npz"
 
                 import json as _json
+
                 with open(embedding_input_json, "w") as f:
                     _json.dump(input_data, f)
 
                 # Progress wrapper for embedding phase
                 loop = asyncio.get_event_loop()
 
-                def sync_embedding_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+                def sync_embedding_progress(
+                    message: str, phase_progress: float, metrics: dict | None = None, *, _loop=loop
+                ) -> None:
                     """Sync wrapper that schedules async callback from executor thread."""
                     if metrics:
                         metrics["unit"] = "crop"
@@ -560,22 +602,27 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             phase_progress,
                             metrics,
                         ),
-                        loop,
+                        _loop,
                     )
 
                 # Run embedding subprocess in executor (blocking I/O)
                 embedded_count = await loop.run_in_executor(
                     None,
-                    lambda: embedding_model.compute_embeddings(
-                        embedding_input_json, embedding_output_npz, sync_embedding_progress
+                    lambda _em=embedding_model,
+                    _eij=embedding_input_json,
+                    _eon=embedding_output_npz: _em.compute_embeddings(
+                        _eij, _eon, sync_embedding_progress
                     ),
                 )
 
                 # Save embeddings to database
                 if embedding_output_npz.exists():
                     save_embeddings_to_db(
-                        embedding_output_npz, job_id, embedding_model_id,
-                        emb_manifest.embedding_dim, db,
+                        embedding_output_npz,
+                        job_id,
+                        embedding_model_id,
+                        emb_manifest.embedding_dim,
+                        db,
                     )
 
                 # Clean up intermediate files
@@ -594,7 +641,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             await deployment_progress_callback("Complete", 1.0, "finalize", 1.0)
 
             # Update queue entry with deployment ID
-            queue_crud.update_queue_status(db, entry_id, status="completed", deployment_id=deployment.id)
+            queue_crud.update_queue_status(
+                db, entry_id, status="completed", deployment_id=deployment.id
+            )
 
             logger.info(
                 f"Batch job {job_id}: Completed entry {idx}/{total_entries} - "
@@ -621,8 +670,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             data={
                 "deployments_processed": total_entries,
                 "total_files": total_files,
-                "total_detections": total_detections
-            }
+                "total_detections": total_detections,
+            },
         )
 
         logger.info(
@@ -694,7 +743,9 @@ async def process_deployment_analysis(job_id: str) -> None:
 
             # Single deployment processing (original logic)
             folder_path = payload.get("folder_path")
-            queue_entry_id = payload.get("queue_entry_id")  # Optional - may be None if not from queue
+            queue_entry_id = payload.get(
+                "queue_entry_id"
+            )  # Optional - may be None if not from queue
 
             if not all([project_id, folder_path]):
                 raise ValueError("Invalid job payload: missing project_id or folder_path")
@@ -769,7 +820,9 @@ async def process_deployment_analysis(job_id: str) -> None:
 
                 if is_speciesnet:
                     # SpeciesNet: batch processing, no inference.py needed
-                    logger.info(f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})")
+                    logger.info(
+                        f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})"
+                    )
                     from app.ml.inference.speciesnet_model import SpeciesNetClassificationModel
 
                     classification_model = SpeciesNetClassificationModel(
@@ -787,7 +840,11 @@ async def process_deployment_analysis(job_id: str) -> None:
                         raise FileNotFoundError(error_msg)
 
                     # Use custom classification model with subprocess isolation
-                    logger.info(f"Loading custom classification model: {classification_model_id} (env: {env_name})")
+                    logger.info(
+                        f"Loading custom classification model: "
+                        f"{classification_model_id} "
+                        f"(env: {env_name})"
+                    )
                     classification_model = CustomClassificationModel(
                         cls_model_dir, cls_model_path, env_name, env_manager
                     )
@@ -817,7 +874,8 @@ async def process_deployment_analysis(job_id: str) -> None:
             # Run JSON-based pipeline (detection → classification → database)
             result = await pipeline.process_deployment(
                 deployment_id=deployment.id,
-                deployment_folder=folder_path,  # Use folder_path from payload, not deployment record
+                # Use folder_path from payload, not deployment record
+                deployment_folder=folder_path,
                 image_paths=image_files,
                 job_id=job_id,
                 db=db,
@@ -835,10 +893,7 @@ async def process_deployment_analysis(job_id: str) -> None:
             # Update queue entry if this job was from queue
             if queue_entry_id:
                 queue_crud.update_queue_status(
-                    db,
-                    queue_entry_id,
-                    status="completed",
-                    deployment_id=deployment.id
+                    db, queue_entry_id, status="completed", deployment_id=deployment.id
                 )
                 logger.info(f"Updated queue entry {queue_entry_id} to completed")
 
@@ -887,10 +942,7 @@ async def process_deployment_analysis(job_id: str) -> None:
                 queue_entry_id = job.payload.get("queue_entry_id")
                 if queue_entry_id:
                     queue_crud.update_queue_status(
-                        db,
-                        queue_entry_id,
-                        status="failed",
-                        error=str(e)
+                        db, queue_entry_id, status="failed", error=str(e)
                     )
                     logger.info(f"Updated queue entry {queue_entry_id} to failed")
 
@@ -958,6 +1010,7 @@ async def run_classification_on_json(
         RuntimeError: If classification fails
     """
     import json
+
     from app.ml.json_utils import extract_animal_detections
 
     # Check if SpeciesNet (batch processing)
@@ -977,8 +1030,7 @@ async def run_classification_on_json(
                 if metrics and "unit" in metrics:
                     metrics["unit"] = "video"
                 asyncio.run_coroutine_threadsafe(
-                    progress_callback(message, phase_progress, metrics),
-                    loop
+                    progress_callback(message, phase_progress, metrics), loop
                 )
 
         await loop.run_in_executor(
@@ -996,7 +1048,7 @@ async def run_classification_on_json(
         logger.info("Running per-detection classification")
 
         # Load detection JSON
-        with open(json_path, "r") as f:
+        with open(json_path) as f:
             md_results = json.load(f)
 
         # Extract animal detections
@@ -1010,12 +1062,13 @@ async def run_classification_on_json(
         # Create sync progress wrapper for executor thread
         loop = asyncio.get_event_loop()
 
-        def sync_cls_progress(message: str, phase_progress: float, metrics: dict | None = None) -> None:
+        def sync_cls_progress(
+            message: str, phase_progress: float, metrics: dict | None = None
+        ) -> None:
             """Sync wrapper that schedules async callback from executor thread"""
             if progress_callback:
                 asyncio.run_coroutine_threadsafe(
-                    progress_callback(message, phase_progress, metrics),
-                    loop
+                    progress_callback(message, phase_progress, metrics), loop
                 )
 
         def _run_per_detection_classification():
@@ -1023,8 +1076,14 @@ async def run_classification_on_json(
             # Start classification worker (context manager)
             with classification_model as cls_model:
                 # Send compute device info if available
-                if progress_callback and hasattr(cls_model, 'compute_device') and cls_model.compute_device:
-                    sync_cls_progress("Classifying...", 0.0, {"compute_device": cls_model.compute_device})
+                if (
+                    progress_callback
+                    and hasattr(cls_model, "compute_device")
+                    and cls_model.compute_device
+                ):
+                    sync_cls_progress(
+                        "Classifying...", 0.0, {"compute_device": cls_model.compute_device}
+                    )
 
                 # Get class names (ID -> name mapping)
                 class_names = cls_model.get_class_names()
@@ -1034,42 +1093,50 @@ async def run_classification_on_json(
 
                 # Group detections by file for efficient video frame caching
                 from collections import defaultdict
+
                 detections_by_file = defaultdict(list)
                 for img_idx, det_idx, detection in animal_detections:
                     img_info = md_results["images"][img_idx]
                     relative_file = img_info["file"]
                     img_path = (deployment_folder / relative_file).resolve()
 
-                    detections_by_file[str(img_path)].append({
-                        'img_idx': img_idx,
-                        'det_idx': det_idx,
-                        'detection': detection,
-                        'img_info': img_info
-                    })
+                    detections_by_file[str(img_path)].append(
+                        {
+                            "img_idx": img_idx,
+                            "det_idx": det_idx,
+                            "detection": detection,
+                            "img_info": img_info,
+                        }
+                    )
 
                 # Process files in order (videos first, then images)
                 classified_count = 0
                 processed_count = 0
 
                 # Use tqdm for progress tracking
-                from tqdm import tqdm
                 import time
+
+                from tqdm import tqdm
 
                 start_time = time.time()
 
-                # Create tqdm iterator (but don't actually iterate with it - just use for formatting)
+                # Create tqdm iterator (don't actually iterate -
+                # just use for formatting)
                 pbar = tqdm(
                     total=total_animals,
                     desc="Classifying",
                     unit="animal",
-                    disable=True  # Don't print to console
+                    disable=True,  # Don't print to console
                 )
 
                 for file_path_str, file_detections in detections_by_file.items():
                     file_path = Path(file_path_str)
 
                     if not file_path.exists():
-                        logger.warning(f"File not found: {file_path}, skipping {len(file_detections)} detections")
+                        logger.warning(
+                            f"File not found: {file_path}, "
+                            f"skipping {len(file_detections)} detections"
+                        )
                         processed_count += len(file_detections)
                         continue
 
@@ -1078,11 +1145,17 @@ async def run_classification_on_json(
                     # For videos: resolve frames directory (JPEGs already on disk)
                     # extract_frames preserves relative dir structure from deployment folder
                     if is_video:
-                        _frames_base = video_frames_base_dir or (deployment_folder / ".addaxai" / "video_frames")
+                        _frames_base = video_frames_base_dir or (
+                            deployment_folder / ".addaxai" / "video_frames"
+                        )
                         relative_video_path = file_path.relative_to(deployment_folder)
                         video_frames_dir = _frames_base / relative_video_path
                         if not video_frames_dir.exists():
-                            logger.warning(f"Frames directory not found for {relative_video_path}, skipping {len(file_detections)} detections")
+                            logger.warning(
+                                f"Frames dir not found for "
+                                f"{relative_video_path}, skipping "
+                                f"{len(file_detections)} detections"
+                            )
                             processed_count += len(file_detections)
                             continue
 
@@ -1099,16 +1172,23 @@ async def run_classification_on_json(
                                 elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
 
                                 rate = processed_count / elapsed if elapsed > 0 else 0
-                                remaining = (total_animals - processed_count) / rate if rate > 0 else 0
+                                remaining = (
+                                    (total_animals - processed_count) / rate if rate > 0 else 0
+                                )
                                 remaining_str = f"{int(remaining//60):02d}:{int(remaining%60):02d}"
 
                                 # Create tqdm-style output
                                 percent = int(100 * processed_count / total_animals)
                                 bar_length = 10
                                 filled = int(bar_length * processed_count / total_animals)
-                                bar = '█' * filled + '░' * (bar_length - filled)
+                                bar = "█" * filled + "░" * (bar_length - filled)
 
-                                raw_line = f"{percent}%|{bar}| {processed_count}/{total_animals} [{elapsed_str}<{remaining_str}, {rate:.2f}animal/s]"
+                                raw_line = (
+                                    f"{percent}%|{bar}| "
+                                    f"{processed_count}/{total_animals} "
+                                    f"[{elapsed_str}<{remaining_str}, "
+                                    f"{rate:.2f}animal/s]"
+                                )
 
                                 metrics = {
                                     "raw_line": raw_line,
@@ -1117,18 +1197,19 @@ async def run_classification_on_json(
                                     "elapsed": elapsed_str,
                                     "remaining": remaining_str,
                                     "rate": rate,
-                                    "unit": "animal"
+                                    "unit": "animal",
                                 }
 
                                 phase_progress = processed_count / total_animals
                                 sync_cls_progress(raw_line, phase_progress, metrics)
 
-                            detection = det_info['detection']
-                            img_idx = det_info['img_idx']
-                            det_idx = det_info['det_idx']
+                            detection = det_info["detection"]
+                            img_idx = det_info["img_idx"]
+                            det_idx = det_info["det_idx"]
 
                             # Create bbox object
                             from app.ml.inference.base import BoundingBox
+
                             bbox = BoundingBox(
                                 x=detection["bbox"][0],
                                 y=detection["bbox"][1],
@@ -1138,14 +1219,16 @@ async def run_classification_on_json(
 
                             # Get frame/image path for classification
                             if is_video:
-                                frame_number = detection.get('frame_number')
+                                frame_number = detection.get("frame_number")
                                 if frame_number is None:
-                                    logger.warning(f"Detection missing frame_number, skipping")
+                                    logger.warning("Detection missing frame_number, skipping")
                                     continue
 
                                 frame_path = video_frames_dir / f"frame{frame_number:06d}.jpg"
                                 if not frame_path.exists():
-                                    logger.warning(f"Frame {frame_path.name} not found on disk, skipping")
+                                    logger.warning(
+                                        f"Frame {frame_path.name} not found on disk, skipping"
+                                    )
                                     continue
 
                                 result = cls_model.classify(frame_path, bbox)
@@ -1154,14 +1237,18 @@ async def run_classification_on_json(
 
                             # Check if classification succeeded
                             if result is None:
-                                logger.warning(f"Classification returned None for detection, skipping")
+                                logger.warning(
+                                    "Classification returned None for detection, skipping"
+                                )
                                 continue
 
                             # Add classification to detection (update in-place in md_results)
                             # Convert class names to IDs for JSON format consistency
                             # Store all results (not truncated) so species exclusion
                             # can find included species even if they rank low.
-                            md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
+                            md_results["images"][img_idx]["detections"][det_idx][
+                                "classifications"
+                            ] = [
                                 [name_to_id[class_name], prob]
                                 for class_name, prob in result.all_probabilities.items()
                                 if class_name in name_to_id
@@ -1172,7 +1259,6 @@ async def run_classification_on_json(
                         except Exception as e:
                             logger.error(f"Classification failed for detection: {e}")
                             continue
-
 
                 # Close tqdm
                 pbar.close()
@@ -1245,7 +1331,7 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
                 logger.warning(f"JSON file not found: {json_file}")
                 continue
 
-            with open(json_file, "r") as f:
+            with open(json_file) as f:
                 data = json.load(f)
 
             # Get classification categories from this file
@@ -1286,7 +1372,9 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
                                 else:
                                     # Unknown class ID - keep original (shouldn't happen)
                                     logger.warning(
-                                        f"Unknown classification ID '{class_id}' in {json_file.name}, "
+                                        f"Unknown classification ID "
+                                        f"'{class_id}' in "
+                                        f"{json_file.name}, "
                                         f"keeping original"
                                     )
                                     renumbered_classifications.append([class_id, confidence])
@@ -1304,16 +1392,17 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
 
         # Build unified classification_categories (inverse of unified_class_mapping)
         merged_data["classification_categories"] = {
-            class_id: species_name
-            for species_name, class_id in unified_class_mapping.items()
+            class_id: species_name for species_name, class_id in unified_class_mapping.items()
         }
 
         # Remove empty descriptions dict
         if not merged_data["classification_category_descriptions"]:
             del merged_data["classification_category_descriptions"]
 
+        num_species = len(merged_data['classification_categories'])
         logger.info(
-            f"Unified classification mapping: {len(merged_data['classification_categories'])} species "
+            f"Unified classification mapping: "
+            f"{num_species} species "
             f"across {len(json_files)} JSON files"
         )
 
@@ -1357,6 +1446,7 @@ def scan_folder_for_videos(folder_path: Path) -> list[Path]:
     video_files.sort()
 
     return video_files
+
 
 def create_deployment(db, site_id: str, folder_path: str) -> Deployment:
     """

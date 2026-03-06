@@ -15,10 +15,10 @@ Created by Claude Code on 2026-01-04
 
 from app.ml.inference.base import (
     BoundingBox,
+    ClassificationModel,
     ClassificationResult,
     DetectionModel,
     DetectionResult,
-    ClassificationModel,
     PipelineResult,
 )
 

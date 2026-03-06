@@ -12,7 +12,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-
 DetectionCategory = Literal["animal", "person", "vehicle"]
 
 

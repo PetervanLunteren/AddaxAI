@@ -54,7 +54,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
     # Read CSV
     rows = []
     try:
-        with open(csv_path, "r", encoding="utf-8") as f:
+        with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
     except Exception as e:

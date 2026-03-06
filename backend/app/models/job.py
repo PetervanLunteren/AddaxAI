@@ -11,11 +11,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import DateTime, Index, Integer, JSON, String, Text
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
 
 JobType = Literal["import", "ml_inference", "export", "event_computation"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]

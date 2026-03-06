@@ -105,12 +105,18 @@ async def process_re_embedding_job(job_id: str) -> None:
 
             # Send deployment context message (matches useTaskProgress protocol)
             await ws_manager.send_progress(
-                job_id, "Computing embeddings...", progress,
-                phase="embedding", phase_progress=0.0,
+                job_id,
+                "Computing embeddings...",
+                progress,
+                phase="embedding",
+                phase_progress=0.0,
                 data={
-                    "deployment_index": idx, "total_deployments": total,
-                    "video_count": 0, "image_count": 0,
-                    "has_classifier": False, "has_embedding": True,
+                    "deployment_index": idx,
+                    "total_deployments": total,
+                    "video_count": 0,
+                    "image_count": 0,
+                    "has_classifier": False,
+                    "has_embedding": True,
                 },
             )
 
@@ -129,7 +135,9 @@ async def process_re_embedding_job(job_id: str) -> None:
                 )
 
                 input_data = build_embedding_input(
-                    deployment.id, db, skip_detection_ids=already_embedded,
+                    deployment.id,
+                    db,
+                    skip_detection_ids=already_embedded,
                 )
                 if not input_data["detections"]:
                     logger.info(f"Deployment {deployment.id}: no valid detections, skipping")
@@ -146,14 +154,20 @@ async def process_re_embedding_job(job_id: str) -> None:
 
                 # Sync progress callback (same pattern as detection_worker.py)
                 def sync_embedding_progress(
-                    message: str, phase_progress: float, metrics: dict | None = None,
-                    _idx=idx, _progress=progress,
+                    message: str,
+                    phase_progress: float,
+                    metrics: dict | None = None,
+                    _idx=idx,
+                    _progress=progress,
                 ) -> None:
                     """Sync wrapper that schedules async callback from executor thread."""
                     data: dict = {
-                        "deployment_index": _idx, "total_deployments": total,
-                        "video_count": 0, "image_count": 0,
-                        "has_classifier": False, "has_embedding": True,
+                        "deployment_index": _idx,
+                        "total_deployments": total,
+                        "video_count": 0,
+                        "image_count": 0,
+                        "has_classifier": False,
+                        "has_embedding": True,
                     }
                     if metrics:
                         metrics["unit"] = "crop"
@@ -162,8 +176,12 @@ async def process_re_embedding_job(job_id: str) -> None:
                         data["metrics"] = metrics
                     asyncio.run_coroutine_threadsafe(
                         ws_manager.send_progress(
-                            job_id, message, _progress,
-                            "embedding", phase_progress, data,
+                            job_id,
+                            message,
+                            _progress,
+                            "embedding",
+                            phase_progress,
+                            data,
                         ),
                         loop,
                     )
@@ -171,16 +189,19 @@ async def process_re_embedding_job(job_id: str) -> None:
                 # Run embedding in executor (blocking subprocess)
                 embedded_count = await loop.run_in_executor(
                     None,
-                    lambda cb=sync_embedding_progress: embedding_model.compute_embeddings(
-                        embedding_input_json, embedding_output_npz, cb
-                    ),
+                    lambda cb=sync_embedding_progress,
+                    _eij=embedding_input_json,
+                    _eon=embedding_output_npz: embedding_model.compute_embeddings(_eij, _eon, cb),
                 )
 
                 # Save to DB
                 if embedding_output_npz.exists():
                     save_embeddings_to_db(
-                        embedding_output_npz, job_id, embedding_model_id,
-                        emb_manifest.embedding_dim, db,
+                        embedding_output_npz,
+                        job_id,
+                        embedding_model_id,
+                        emb_manifest.embedding_dim,
+                        db,
                     )
                     total_embedded += embedded_count
 
@@ -188,9 +209,7 @@ async def process_re_embedding_job(job_id: str) -> None:
                 embedding_input_json.unlink(missing_ok=True)
                 embedding_output_npz.unlink(missing_ok=True)
 
-                logger.info(
-                    f"Deployment {idx}/{total}: {embedded_count} detections embedded"
-                )
+                logger.info(f"Deployment {idx}/{total}: {embedded_count} detections embedded")
 
             except Exception as e:
                 logger.error(

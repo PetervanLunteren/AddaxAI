@@ -14,8 +14,8 @@ Created by Claude Code on 2026-01-04
 import json
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -167,7 +167,9 @@ class MegaDetectorV1000(DetectionModel):
                             raw = line.split("PTDetector using device")[-1].strip()
                             device_name = self._format_device_name(raw)
                             try:
-                                progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                                progress_callback(
+                                    "Initializing detector...", 0.0, {"compute_device": device_name}
+                                )
                             except TypeError:
                                 pass
 
@@ -176,9 +178,14 @@ class MegaDetectorV1000(DetectionModel):
                             progress = self._parse_progress_line(line)
                             metrics = self._parse_tqdm_metrics(line)
                             if progress is not None:
-                                # Try to send metrics if callback accepts 3 params, else fallback to 2
+                                # Try to send metrics if callback accepts
+                                # 3 params, else fallback to 2
                                 try:
-                                    progress_callback(line if metrics else line[:80], 0.1 + progress * 0.8, metrics)
+                                    progress_callback(
+                                        line if metrics else line[:80],
+                                        0.1 + progress * 0.8,
+                                        metrics,
+                                    )
                                 except TypeError:
                                     # Callback only accepts 2 params (backward compatibility)
                                     progress_callback(line[:80], 0.1 + progress * 0.8)
@@ -187,9 +194,7 @@ class MegaDetectorV1000(DetectionModel):
                 process.wait()
 
                 if process.returncode != 0:
-                    raise RuntimeError(
-                        f"MegaDetector failed with return code {process.returncode}"
-                    )
+                    raise RuntimeError(f"MegaDetector failed with return code {process.returncode}")
 
                 # Read and parse results
                 if not output_file.exists():
@@ -393,9 +398,7 @@ class MegaDetectorV1000(DetectionModel):
                     detections.append(detection)
 
                 except (ValueError, IndexError) as e:
-                    logger.warning(
-                        f"Skipping invalid detection in {absolute_path}: {e}"
-                    )
+                    logger.warning(f"Skipping invalid detection in {absolute_path}: {e}")
                     continue
 
         return detections
@@ -509,7 +512,9 @@ class MegaDetectorV1000(DetectionModel):
                             raw = line.split("PTDetector using device")[-1].strip()
                             device_name = self._format_device_name(raw)
                             try:
-                                progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                                progress_callback(
+                                    "Initializing detector...", 0.0, {"compute_device": device_name}
+                                )
                             except TypeError:
                                 pass
 
@@ -518,9 +523,14 @@ class MegaDetectorV1000(DetectionModel):
                             progress = self._parse_progress_line(line)
                             metrics = self._parse_tqdm_metrics(line)
                             if progress is not None:
-                                # Try to send metrics if callback accepts 3 params, else fallback to 2
+                                # Try to send metrics if callback accepts
+                                # 3 params, else fallback to 2
                                 try:
-                                    progress_callback(line if metrics else line[:80], 0.1 + progress * 0.8, metrics)
+                                    progress_callback(
+                                        line if metrics else line[:80],
+                                        0.1 + progress * 0.8,
+                                        metrics,
+                                    )
                                 except TypeError:
                                     # Callback only accepts 2 params (backward compatibility)
                                     progress_callback(line[:80], 0.1 + progress * 0.8)
@@ -529,9 +539,7 @@ class MegaDetectorV1000(DetectionModel):
                 process.wait()
 
                 if process.returncode != 0:
-                    raise RuntimeError(
-                        f"MegaDetector failed with return code {process.returncode}"
-                    )
+                    raise RuntimeError(f"MegaDetector failed with return code {process.returncode}")
 
                 # Verify temp output exists
                 if not temp_output.exists():
@@ -554,9 +562,7 @@ class MegaDetectorV1000(DetectionModel):
                 with open(output_file, "w") as f:
                     json.dump(md_results, f, indent=2)
 
-                logger.info(
-                    f"Detection complete: Results saved to {output_file}"
-                )
+                logger.info(f"Detection complete: Results saved to {output_file}")
 
                 if progress_callback:
                     progress_callback("Detection complete", 1.0)

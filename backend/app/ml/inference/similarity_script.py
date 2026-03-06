@@ -23,7 +23,6 @@ import json
 import sqlite3
 import sys
 from collections import Counter
-from datetime import datetime
 
 import numpy as np
 
@@ -165,8 +164,8 @@ def _compute_crop_bbox(meta: dict) -> dict | None:
     if not img_w or not img_h:
         return None
 
-    bx = meta["bbox_x"] * img_w
-    by = meta["bbox_y"] * img_h
+    meta["bbox_x"] * img_w
+    meta["bbox_y"] * img_h
     bw = meta["bbox_width"] * img_w
     bh = meta["bbox_height"] * img_h
 
@@ -440,7 +439,7 @@ def do_search(db_path: str, project_id: str, params: dict) -> dict:
     indices, similarities = _search(anchor_vector, vectors, limit=limit, threshold=threshold)
 
     results = []
-    for idx, sim in zip(indices, similarities):
+    for idx, sim in zip(indices, similarities, strict=False):
         idx = int(idx)
         if det_ids[idx] == anchor_id:
             continue

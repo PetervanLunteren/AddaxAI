@@ -26,8 +26,13 @@ _BLUR_RADIUS = 30
 
 
 def compute_expanded_crop_region(
-    bbox_x: float, bbox_y: float, bbox_w: float, bbox_h: float,
-    img_w: int, img_h: int, padding: float = 0.10,
+    bbox_x: float,
+    bbox_y: float,
+    bbox_w: float,
+    bbox_h: float,
+    img_w: int,
+    img_h: int,
+    padding: float = 0.10,
 ) -> tuple[int, int, int, int]:
     """Compute square crop region centered on bbox with padding.
 
@@ -49,7 +54,9 @@ def compute_expanded_crop_region(
     return int(left), int(top), int(left + crop_side), int(top + crop_side)
 
 
-def _crop_with_blur_fill(img: Image.Image, left: int, top: int, right: int, bottom: int) -> Image.Image:
+def _crop_with_blur_fill(
+    img: Image.Image, left: int, top: int, right: int, bottom: int
+) -> Image.Image:
     """Crop a region from the image, filling out-of-bounds areas with blurred edge."""
     img_w, img_h = img.size
     crop_w = right - left
@@ -133,9 +140,12 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
             img = img.convert("RGB")
 
         left, top, right, bottom = compute_expanded_crop_region(
-            detection.bbox_x, detection.bbox_y,
-            detection.bbox_width, detection.bbox_height,
-            w, h,
+            detection.bbox_x,
+            detection.bbox_y,
+            detection.bbox_width,
+            detection.bbox_height,
+            w,
+            h,
         )
 
         crop_w = right - left

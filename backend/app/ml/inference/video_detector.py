@@ -13,8 +13,8 @@ Created by Claude Code on 2026-01-07
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -139,7 +139,9 @@ class VideoDetectionModel:
                     raw = line.split("PTDetector using device")[-1].strip()
                     device_name = self._format_device_name(raw)
                     try:
-                        progress_callback("Initializing detector...", 0.0, {"compute_device": device_name})
+                        progress_callback(
+                            "Initializing detector...", 0.0, {"compute_device": device_name}
+                        )
                     except TypeError:
                         pass
 
@@ -166,7 +168,7 @@ class VideoDetectionModel:
                             progress_callback(
                                 line if metrics else f"Processing video {current}/{total}",
                                 phase_progress,
-                                metrics
+                                metrics,
                             )
                         except TypeError:
                             # Fallback for callbacks that don't accept metrics

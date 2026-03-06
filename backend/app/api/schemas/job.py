@@ -12,9 +12,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # Job types
-JobType = Literal["deployment_analysis", "import", "ml_inference", "export", "event_computation", "postprocessing", "re_embedding"]
+JobType = Literal[
+    "deployment_analysis",
+    "import",
+    "ml_inference",
+    "export",
+    "event_computation",
+    "postprocessing",
+    "re_embedding",
+]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 # Model options for deployment analysis (use model IDs from manifests)

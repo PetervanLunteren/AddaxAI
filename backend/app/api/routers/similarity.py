@@ -21,6 +21,8 @@ from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project, Site
 from app.services.similarity_service import (
     search_similar as search_similar_service,
+)
+from app.services.similarity_service import (
     sort_detections as sort_detections_service,
 )
 
@@ -37,11 +39,11 @@ def sort_detections(
     try:
         return sort_detections_service(project_id, body, db)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from None
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from None
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @router.post("/{project_id}/similarity/search", response_model=SearchResponse)
@@ -54,11 +56,11 @@ def search_similar(
     try:
         return search_similar_service(project_id, body, db)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from None
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from None
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @router.get(

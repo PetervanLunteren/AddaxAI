@@ -9,8 +9,8 @@ Following CONVENTIONS.md: crash early and loudly, no silent failures.
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -91,12 +91,18 @@ class EmbeddingModel:
         cmd = [
             str(self.python_path),
             str(self.script_path),
-            "--input", str(input_json_path),
-            "--output", str(output_npz_path),
-            "--weights", str(self.model_path),
-            "--model-arch", self.manifest.torch_hub_model,
-            "--embedding-dim", str(self.manifest.embedding_dim),
-            "--input-size", str(self.manifest.input_size),
+            "--input",
+            str(input_json_path),
+            "--output",
+            str(output_npz_path),
+            "--weights",
+            str(self.model_path),
+            "--model-arch",
+            self.manifest.torch_hub_model,
+            "--embedding-dim",
+            str(self.manifest.embedding_dim),
+            "--input-size",
+            str(self.manifest.input_size),
         ]
 
         logger.info(f"Running embedding: {' '.join(cmd)}")
@@ -105,6 +111,7 @@ class EmbeddingModel:
             progress_callback("Loading embedding model...", 0.0, None)
 
         import os as _os
+
         env = {**_os.environ, "PYTHONUNBUFFERED": "1"}
 
         process = subprocess.Popen(
@@ -140,7 +147,9 @@ class EmbeddingModel:
             if progress_callback and "%" in line:
                 metrics = _parse_tqdm_metrics(line)
                 if metrics:
-                    progress = metrics["current"] / metrics["total"] if metrics["total"] > 0 else 0.0
+                    progress = (
+                        metrics["current"] / metrics["total"] if metrics["total"] > 0 else 0.0
+                    )
                     progress_callback(
                         metrics.get("raw_line", line[:80]),
                         progress,

@@ -11,8 +11,9 @@ Uses the official megadetector package CLI for inference.
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager

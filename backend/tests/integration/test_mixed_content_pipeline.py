@@ -5,6 +5,7 @@ Tests merge_json_files() for classification ID unification and
 load_json_to_database() for video/frame File record creation.
 """
 
+import json
 from unittest.mock import patch
 
 from app.ml.json_pipeline import load_json_to_database
@@ -55,7 +56,6 @@ def test_merge_unifies_classification_ids(deployment_scaffold):
         s["deployment"].id,
     )
 
-    import json
     with open(merged_path) as f:
         merged = json.load(f)
 

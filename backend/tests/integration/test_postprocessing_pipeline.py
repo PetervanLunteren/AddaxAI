@@ -10,6 +10,7 @@ Mocks: subprocess.run, _get_ml_python_path, _find_classification_model_dir
 
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from app.ml.json_pipeline import load_json_to_database
@@ -20,12 +21,15 @@ from app.ml.postprocessing import (
     update_database_from_smoothed_results,
 )
 from app.models import Detection, File
+from tests.conftest import make_file
 
-from .conftest import build_detection_json, create_tiny_jpeg, write_json
+from .conftest import build_detection_json, create_tiny_jpeg, create_video_frames, write_json
 
 
-def _load_basic_images(s, species_map=None):
-    """Helper: load 3 images with animal detections into DB, return json_path."""
+def _load_basic_images(
+    s: dict, species_map: dict[str, str] | None = None
+) -> Path:
+    """Load 3 images with animal detections into DB, return json_path."""
     db, deploy_dir = s["db"], s["deploy_dir"]
     classification_categories = species_map or {"1": "lion", "2": "zebra", "3": "giraffe"}
 
@@ -86,12 +90,7 @@ def test_update_db_from_smoothed_results(deployment_scaffold):
     )
 
     for i, f in enumerate(files):
-        rel = str(deploy_dir / f.file_path).replace(str(deploy_dir) + "/", "")
-        try:
-            rel = str(f.file_path).split(str(deploy_dir) + "/")[1]
-        except IndexError:
-            from pathlib import Path
-            rel = str(Path(f.file_path).relative_to(deploy_dir))
+        rel = str(Path(f.file_path).relative_to(deploy_dir))
 
         if i < 2:
             # Change to zebra
@@ -139,8 +138,6 @@ def test_smoothing_matches_by_bbox_and_frame(deployment_scaffold):
     """Matching works for images (path+bbox) and video frames (path+bbox+frame_number)."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-
-    from .conftest import create_video_frames
 
     create_video_frames(s["artifacts"], "videos/clip.mp4", [0, 30])
 
@@ -287,7 +284,6 @@ def test_reload_raw_classifications(deployment_scaffold):
     files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
     smoothed_images = []
     for f in files:
-        from pathlib import Path
         rel = str(Path(f.file_path).relative_to(deploy_dir))
         smoothed_images.append({
             "file": rel,
@@ -326,8 +322,6 @@ def test_build_sequence_groups_by_interval(deployment_scaffold):
     """Files within interval → same seq_id; gap > interval → different seq_id."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-
-    from tests.conftest import make_file
 
     base_time = datetime(2024, 6, 15, 10, 0, 0)
 

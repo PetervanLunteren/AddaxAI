@@ -30,7 +30,9 @@ from megadetector.postprocessing.classification_postprocessing import (
 
 def main() -> None:
     if len(sys.argv) != 4:
-        print("Usage: smoothing_script.py <input_json> <options_json> <output_json>", file=sys.stderr)
+        print(
+            "Usage: smoothing_script.py <input_json> <options_json> <output_json>", file=sys.stderr
+        )
         sys.exit(1)
 
     input_path = sys.argv[1]
@@ -56,8 +58,14 @@ def main() -> None:
 
     # Base other categories (case-insensitive matching handled by lowercasing)
     base_other = [
-        "other", "unknown", "no cv result", "animal",
-        "blank", "mammal", "false detection", "vide",
+        "other",
+        "unknown",
+        "no cv result",
+        "animal",
+        "blank",
+        "mammal",
+        "false detection",
+        "vide",
     ]
     options.other_category_names = [name.lower() for name in base_other]
 

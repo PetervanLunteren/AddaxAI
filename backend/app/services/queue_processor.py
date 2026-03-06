@@ -51,7 +51,11 @@ def process_queue_entry(db: Session, entry: DeploymentQueue) -> None:
         detection_model_id = project.detection_model_id
         classification_model_id = project.classification_model_id
 
-        logger.info(f"Using models from project {project.id}: detection={detection_model_id}, classification={classification_model_id}")
+        logger.info(
+            f"Using models from project {project.id}: "
+            f"detection={detection_model_id}, "
+            f"classification={classification_model_id}"
+        )
 
         # TODO: Implement deployment creation
         # deployment = create_deployment_from_queue_entry(db, entry)
@@ -64,7 +68,9 @@ def process_queue_entry(db: Session, entry: DeploymentQueue) -> None:
         #     run_detection_model(db, deployment.id, detection_model_id)
 
         # if classification_model_id and classification_model_id != "none":
-        #     run_classification_model(db, deployment.id, classification_model_id, project.taxonomy_config)
+        #     run_classification_model(
+        #         db, deployment.id, classification_model_id,
+        #         project.taxonomy_config)
 
         # Update status to completed
         crud_queue.update_queue_status(
@@ -77,12 +83,7 @@ def process_queue_entry(db: Session, entry: DeploymentQueue) -> None:
 
     except Exception as e:
         logger.error(f"Failed to process queue entry {entry.id}: {e}", exc_info=True)
-        crud_queue.update_queue_status(
-            db,
-            entry.id,
-            status="failed",
-            error=str(e)
-        )
+        crud_queue.update_queue_status(db, entry.id, status="failed", error=str(e))
         raise
 
 

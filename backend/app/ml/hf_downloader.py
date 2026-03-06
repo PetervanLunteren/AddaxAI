@@ -14,14 +14,13 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
-import os
-import time
-import requests
 import threading
-from pathlib import Path
+import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from pathlib import Path
 
+import requests
 from huggingface_hub import HfApi
 from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
 
@@ -82,9 +81,7 @@ class HuggingFaceRepoDownloader:
             logger.info(f"Fetching repository info for {repo_id}...")
 
             # Get repository files
-            files = self.api.list_repo_files(
-                repo_id=repo_id, revision=revision, repo_type="model"
-            )
+            files = self.api.list_repo_files(repo_id=repo_id, revision=revision, repo_type="model")
 
             # Get detailed file information
             files_info = []
@@ -102,14 +99,22 @@ class HuggingFaceRepoDownloader:
                         repo_type="model",
                     )
 
-                    if file_info_list and hasattr(file_info_list[0], "size") and file_info_list[0].size:
+                    hf_url = (
+                        f"https://huggingface.co/{repo_id}"
+                        f"/resolve/{revision}/{file_path}"
+                    )
+                    if (
+                        file_info_list
+                        and hasattr(file_info_list[0], "size")
+                        and file_info_list[0].size
+                    ):
                         file_size = file_info_list[0].size
                         total_size += file_size
                         files_info.append(
                             {
                                 "path": file_path,
                                 "size": file_size,
-                                "url": f"https://huggingface.co/{repo_id}/resolve/{revision}/{file_path}",
+                                "url": hf_url,
                             }
                         )
                     else:
@@ -118,18 +123,22 @@ class HuggingFaceRepoDownloader:
                             {
                                 "path": file_path,
                                 "size": 0,
-                                "url": f"https://huggingface.co/{repo_id}/resolve/{revision}/{file_path}",
+                                "url": hf_url,
                             }
                         )
 
                 except Exception as e:
                     logger.warning(f"Could not get size for {file_path}: {e}")
                     # Add file without size info
+                    hf_url = (
+                        f"https://huggingface.co/{repo_id}"
+                        f"/resolve/{revision}/{file_path}"
+                    )
                     files_info.append(
                         {
                             "path": file_path,
                             "size": 0,
-                            "url": f"https://huggingface.co/{repo_id}/resolve/{revision}/{file_path}",
+                            "url": hf_url,
                         }
                     )
 
@@ -227,7 +236,11 @@ class HuggingFaceRepoDownloader:
 
             # Verify size matches expected
             if file_size > 0 and temp_file_path.stat().st_size != file_size:
-                raise ValueError(f"Downloaded file size mismatch: expected {file_size}, got {temp_file_path.stat().st_size}")
+                actual = temp_file_path.stat().st_size
+                raise ValueError(
+                    f"Downloaded file size mismatch: "
+                    f"expected {file_size}, got {actual}"
+                )
 
             # Atomic rename - only move to final location if download was successful
             temp_file_path.rename(local_file_path)
@@ -277,7 +290,9 @@ class HuggingFaceRepoDownloader:
             logger.info(f"Repository size: {size_gb:.2f} GB ({len(files_info)} files)")
 
             if progress_callback:
-                progress_callback(f"Downloading {len(files_info)} files ({size_gb:.2f} GB)...", 0.05)
+                progress_callback(
+                    f"Downloading {len(files_info)} files ({size_gb:.2f} GB)...", 0.05
+                )
 
             # Create local directory
             local_dir.mkdir(parents=True, exist_ok=True)
@@ -316,7 +331,10 @@ class HuggingFaceRepoDownloader:
                             else:
                                 failed_downloads += 1
                         except Exception as e:
-                            logger.error(f"Unexpected error downloading {file_info['path']}: {e}")
+                            logger.error(
+                                f"Unexpected error downloading "
+                                f"{file_info['path']}: {e}"
+                            )
                             failed_downloads += 1
 
                         completed += 1
@@ -325,8 +343,8 @@ class HuggingFaceRepoDownloader:
                     current_time = time.time()
                     time_since_last = current_time - last_progress_update
                     should_update = (
-                        time_since_last >= progress_update_interval or
-                        len(completed_futures) > 0  # Also update when files complete
+                        time_since_last >= progress_update_interval
+                        or len(completed_futures) > 0  # Also update when files complete
                     )
 
                     # DEBUG: Log the check conditions
@@ -348,7 +366,9 @@ class HuggingFaceRepoDownloader:
                             speed_mbps = (self.downloaded_bytes / elapsed) / (1024 * 1024)
 
                             # Only show download speed (progress bar already shows percentage)
-                            logger.debug(f"Sending progress: {overall_progress:.1%}, {speed_mbps:.2f} MB/s")
+                            logger.debug(
+                                f"Sending progress: {overall_progress:.1%}, {speed_mbps:.2f} MB/s"
+                            )
                             progress_callback(
                                 f"Downloading model at {speed_mbps:.2f} MB/s",
                                 overall_progress,
@@ -361,7 +381,9 @@ class HuggingFaceRepoDownloader:
                     time.sleep(0.1)
 
             # Summary
-            logger.info(f"Download completed! Success: {successful_downloads}, Failed: {failed_downloads}")
+            logger.info(
+                f"Download completed! Success: {successful_downloads}, Failed: {failed_downloads}"
+            )
 
             if progress_callback:
                 progress_callback("Download complete", 1.0)

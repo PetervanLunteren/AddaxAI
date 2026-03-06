@@ -17,10 +17,14 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
 ]
-ignore = []
+ignore = [
+    "B008",  # Depends() in FastAPI route argument defaults is idiomatic
+    "E712",  # SQLAlchemy filters require == False/True (not `is` or `not`)
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]  # imports after env var setup is intentional
+"app/ml/json_pipeline.py" = ["E402"]  # BoundingBox import at end avoids circular import
 
 [tool.mypy]
 python_version = "3.11"

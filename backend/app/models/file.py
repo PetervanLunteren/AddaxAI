@@ -11,9 +11,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, JSON, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import ColumnElement
 from sqlalchemy.sql.schema import ForeignKey
 
 from app.db.base import Base

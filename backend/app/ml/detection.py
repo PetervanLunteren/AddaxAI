@@ -9,8 +9,8 @@ Following DEVELOPERS.md principles:
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -97,7 +97,7 @@ class MegaDetectorRunner:
                     str(model_file),
                     str(image_list_file),
                     str(output_file),
-                    f"--threshold",
+                    "--threshold",
                     str(confidence_threshold),
                     "--quiet",
                 ]
@@ -129,7 +129,9 @@ class MegaDetectorRunner:
                 with open(output_file) as f:
                     results = json.load(f)
 
-                logger.info(f"Detection complete: {len(results.get('images', []))} images processed")
+                logger.info(
+                    f"Detection complete: {len(results.get('images', []))} images processed"
+                )
 
                 if progress_callback:
                     progress_callback("Detection complete", 0.90)

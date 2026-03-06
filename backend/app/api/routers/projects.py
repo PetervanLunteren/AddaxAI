@@ -25,7 +25,7 @@ from app.api.schemas.project import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.models import Detection, Deployment, File, Job, Site
+from app.models import Deployment, Detection, File, Job, Site
 from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
@@ -56,8 +56,8 @@ def create_project(
     Returns 400 if model IDs are invalid.
     Returns 409 if project name already exists.
     """
-    from app.ml.manifest_manager import ManifestManager
     from app.core.config import get_settings
+    from app.ml.manifest_manager import ManifestManager
 
     # Validate models exist
     settings = get_settings()
@@ -71,7 +71,7 @@ def create_project(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Detection model '{project.detection_model_id}' not found",
-        )
+        ) from None
 
     # Normalize "none" to NULL and validate classification model
     if project.classification_model_id == "none":
@@ -84,7 +84,7 @@ def create_project(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Classification model '{project.classification_model_id}' not found",
-            )
+            ) from None
 
     # Normalize "none" to NULL and validate embedding model
     if project.embedding_model_id == "none":
@@ -97,7 +97,7 @@ def create_project(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
-            )
+            ) from None
 
     try:
         db_project = crud_project.create_project(db, project)
@@ -155,7 +155,7 @@ def update_project(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
-            )
+            ) from None
 
     # Validate that not all species are excluded
     if project.excluded_classes is not None and len(project.excluded_classes) > 0:
@@ -163,7 +163,7 @@ def update_project(
         if db_existing and db_existing.classification_model_id:
             try:
                 from app.core.config import get_settings
-                from app.ml.taxonomy_parser import parse_taxonomy_csv, get_all_leaf_classes
+                from app.ml.taxonomy_parser import get_all_leaf_classes, parse_taxonomy_csv
 
                 settings = get_settings()
                 taxonomy_path = (

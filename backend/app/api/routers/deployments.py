@@ -42,9 +42,7 @@ def list_deployments(
     return [DeploymentResponse.model_validate(d) for d in deployments]
 
 
-@router.post(
-    "", response_model=DeploymentResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=DeploymentResponse, status_code=status.HTTP_201_CREATED)
 def create_deployment(
     deployment: DeploymentCreate, db: Session = Depends(get_db)
 ) -> DeploymentResponse:
@@ -88,8 +86,11 @@ def preview_folder_path(
     try:
         logger.info(f"Scanning folder: {path}")
         preview = scan_folder(path)
+        img_count = preview['image_count']
+        vid_count = preview['video_count']
         logger.info(
-            f"Folder scan complete: {preview['image_count']} images, {preview['video_count']} videos"
+            f"Folder scan complete: {img_count} images, "
+            f"{vid_count} videos"
         )
     except FileNotFoundError as e:
         logger.error(f"Folder not found: {path}")
@@ -104,10 +105,7 @@ def preview_folder_path(
             detail=f"Permission denied: {str(e)}",
         ) from e
     except Exception as e:
-        logger.error(
-            f"Error scanning folder: {type(e).__name__}: {e}",
-            exc_info=True
-        )
+        logger.error(f"Error scanning folder: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error scanning folder: {str(e)}",
@@ -118,9 +116,7 @@ def preview_folder_path(
         image_count=preview["image_count"],
         video_count=preview["video_count"],
         total_count=preview["total_count"],
-        gps_location=GPSCoordinates(**preview["gps_location"])
-        if preview["gps_location"]
-        else None,
+        gps_location=GPSCoordinates(**preview["gps_location"]) if preview["gps_location"] else None,
         suggested_site_id=None,
         sample_files=preview["sample_files"],
         start_date=preview["start_date"],
@@ -131,9 +127,7 @@ def preview_folder_path(
 
 
 @router.get("/{deployment_id}", response_model=DeploymentResponse)
-def get_deployment(
-    deployment_id: str, db: Session = Depends(get_db)
-) -> DeploymentResponse:
+def get_deployment(deployment_id: str, db: Session = Depends(get_db)) -> DeploymentResponse:
     """
     Get deployment by ID.
 
@@ -192,9 +186,7 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> None
 
 
 @router.get("/{deployment_id}/stats", response_model=DeploymentWithStats)
-def get_deployment_stats(
-    deployment_id: str, db: Session = Depends(get_db)
-) -> DeploymentWithStats:
+def get_deployment_stats(deployment_id: str, db: Session = Depends(get_db)) -> DeploymentWithStats:
     """
     Get deployment with statistics.
 
@@ -260,13 +252,17 @@ def preview_deployment_folder(
             f"{preview['image_count']} images, {preview['video_count']} videos"
         )
     except FileNotFoundError as e:
-        logger.error(f"Folder not found for deployment {deployment_id}: {db_deployment.folder_path}")
+        logger.error(
+            f"Folder not found for deployment {deployment_id}: {db_deployment.folder_path}"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Folder not found: {str(e)}",
         ) from e
     except PermissionError as e:
-        logger.error(f"Permission denied for deployment {deployment_id}: {db_deployment.folder_path}")
+        logger.error(
+            f"Permission denied for deployment {deployment_id}: {db_deployment.folder_path}"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied: {str(e)}",
@@ -274,7 +270,7 @@ def preview_deployment_folder(
     except Exception as e:
         logger.error(
             f"Error scanning folder for deployment {deployment_id}: {type(e).__name__}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -289,9 +285,7 @@ def preview_deployment_folder(
         image_count=preview["image_count"],
         video_count=preview["video_count"],
         total_count=preview["total_count"],
-        gps_location=GPSCoordinates(**preview["gps_location"])
-        if preview["gps_location"]
-        else None,
+        gps_location=GPSCoordinates(**preview["gps_location"]) if preview["gps_location"] else None,
         suggested_site_id=suggested_site_id,
         sample_files=preview["sample_files"],
         start_date=preview["start_date"],

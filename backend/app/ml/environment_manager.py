@@ -10,14 +10,13 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
-import hashlib
 import os
 import platform
 import shutil
 import subprocess
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
@@ -76,8 +75,7 @@ class EnvironmentManager:
             url = "https://micro.mamba.pm/api/micromamba/win-64/latest"
         else:
             raise RuntimeError(
-                f"Unsupported platform: {system} {machine}. "
-                f"Please install micromamba manually."
+                f"Unsupported platform: {system} {machine}. " f"Please install micromamba manually."
             )
 
         logger.info(f"Downloading micromamba from {url}")
@@ -261,7 +259,9 @@ class EnvironmentManager:
         try:
             # Parse YAML to count packages and allocate progress ranges
             conda_count, pip_count = self._parse_env_yaml(yaml_path)
-            logger.info(f"Environment has {conda_count} conda packages and {pip_count} pip packages")
+            logger.info(
+                f"Environment has {conda_count} conda packages and {pip_count} pip packages"
+            )
 
             # Dynamically allocate progress based on package counts
             # Each package (conda or pip) is weighted equally
@@ -269,11 +269,10 @@ class EnvironmentManager:
 
             if total_packages > 0:
                 conda_progress_range = conda_count / total_packages
-                pip_progress_range = pip_count / total_packages
+                pip_count / total_packages
             else:
                 # Fallback if no packages (shouldn't happen)
                 conda_progress_range = 0.5
-                pip_progress_range = 0.5
 
             # Reserve 5% for initial setup, distribute rest between conda and pip
             conda_start = 0.05
@@ -290,7 +289,6 @@ class EnvironmentManager:
                 progress_callback("Starting package installation...", 0.1)
 
             # Create environment in temporary location first for atomic operation
-            import tempfile
             temp_env_path = env_path.parent / f".{env_name}.tmp"
 
             # Clean up any existing temp directory from previous failed attempts
@@ -365,7 +363,9 @@ class EnvironmentManager:
                         # Conda linking phase
                         elif line.startswith("Linking "):
                             # Rough progress through conda range
-                            current_progress = max(current_progress, conda_start + (conda_end - conda_start) * 0.5)
+                            current_progress = max(
+                                current_progress, conda_start + (conda_end - conda_start) * 0.5
+                            )
                         elif "transaction finished" in line.lower():
                             current_progress = max(current_progress, conda_end)
 
@@ -444,9 +444,7 @@ class EnvironmentManager:
 
                 if result.returncode != 0:
                     logger.error(f"Failed to install speciesnet: {result.stderr}")
-                    raise RuntimeError(
-                        f"Failed to install speciesnet package: {result.stderr}"
-                    )
+                    raise RuntimeError(f"Failed to install speciesnet package: {result.stderr}")
 
                 logger.info("Speciesnet installed successfully")
 

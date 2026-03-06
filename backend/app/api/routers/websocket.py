@@ -10,11 +10,11 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.api.crud import deployment_queue as queue_crud
+from app.api.crud import job as job_crud
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.api.crud import job as job_crud
-from app.api.crud import deployment_queue as queue_crud
 
 logger = get_logger(__name__)
 
@@ -48,32 +48,42 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
     # If no in-memory state exists, check if the job already has a terminal
     # status in the DB. This handles backend restarts where state is lost.
     if job_id in ws_manager.current_state:
-        logger.info(f"Job {job_id} has in-memory state (type={ws_manager.current_state[job_id].get('type')}), skipping DB check")
+        state_type = ws_manager.current_state[job_id].get('type')
+        logger.info(
+            f"Job {job_id} has in-memory state "
+            f"(type={state_type}), skipping DB check"
+        )
     else:
         try:
             db = next(get_db())
             try:
                 job = job_crud.get_job(db, job_id)
                 if job and job.status == "completed":
-                    await websocket.send_json({
-                        "type": "complete",
-                        "job_id": job_id,
-                        "success": True,
-                        "message": "Job completed (reconnected after restart)",
-                        "data": {},
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "complete",
+                            "job_id": job_id,
+                            "success": True,
+                            "message": "Job completed (reconnected after restart)",
+                            "data": {},
+                        }
+                    )
                 elif job and job.status == "failed":
-                    await websocket.send_json({
-                        "type": "error",
-                        "job_id": job_id,
-                        "message": "Job failed (reconnected after restart)",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "job_id": job_id,
+                            "message": "Job failed (reconnected after restart)",
+                        }
+                    )
                 elif job and job.status == "running":
                     # Job is "running" but no buffer exists — the worker
                     # died (e.g. backend was killed). Mark it failed in the
                     # DB and notify the client.
                     job_crud.update_job_status(db, job_id, "failed")
-                    logger.warning(f"Job {job_id} was stuck in 'running' after restart, marked as failed")
+                    logger.warning(
+                        f"Job {job_id} was stuck in 'running' after restart, marked as failed"
+                    )
 
                     # Also mark any associated queue entries as failed
                     payload = job.payload or {}
@@ -84,14 +94,20 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
                     for entry_id in queue_entry_ids:
                         entry = queue_crud.get_queue_entry(db, entry_id)
                         if entry and entry.status == "processing":
-                            queue_crud.update_queue_status(db, entry_id, status="failed", error=error_msg)
-                            logger.warning(f"Queue entry {entry_id} marked as failed (server restart)")
+                            queue_crud.update_queue_status(
+                                db, entry_id, status="failed", error=error_msg
+                            )
+                            logger.warning(
+                                f"Queue entry {entry_id} marked as failed (server restart)"
+                            )
 
-                    await websocket.send_json({
-                        "type": "error",
-                        "job_id": job_id,
-                        "message": "Job was interrupted by server restart",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "job_id": job_id,
+                            "message": "Job was interrupted by server restart",
+                        }
+                    )
             finally:
                 db.close()
         except Exception as e:

@@ -132,13 +132,13 @@ async def get_model_status(model_id: str) -> ModelStatusResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from None
     except Exception as e:
         logger.error(f"Failed to check model status for {model_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to check model status: {e}",
-        )
+        ) from None
 
 
 @router.post("/models/{model_id}/prepare", response_model=ModelPrepareResponse)
@@ -178,13 +178,13 @@ async def prepare_model(model_id: str) -> ModelPrepareResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from None
     except Exception as e:
         logger.error(f"Failed to start preparation for {model_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start preparation: {e}",
-        )
+        ) from None
 
 
 @router.post("/models/{model_id}/prepare-weights", response_model=ModelPrepareResponse)
@@ -220,13 +220,13 @@ async def prepare_model_weights(model_id: str) -> ModelPrepareResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from None
     except Exception as e:
         logger.error(f"Failed to start weights download for {model_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start weights download: {e}",
-        )
+        ) from None
 
 
 @router.post("/models/{model_id}/prepare-env", response_model=ModelPrepareResponse)
@@ -262,13 +262,13 @@ async def prepare_model_environment(model_id: str) -> ModelPrepareResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from None
     except Exception as e:
         logger.error(f"Failed to start environment build for {model_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start environment build: {e}",
-        )
+        ) from None
 
 
 async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
@@ -337,19 +337,17 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
                 )
 
             # Download weights (blocking call in thread pool)
-            await asyncio.to_thread(
-                model_storage.download_weights, manifest, weights_progress
-            )
+            await asyncio.to_thread(model_storage.download_weights, manifest, weights_progress)
 
             await ws_manager.send_progress(task_id, "Weights downloaded", weights_range[1])
 
         # Step 2: Build environment (if needed)
         if needs_env:
             # Send initial progress for env build
-            initial_msg = "Step 2/2 - Building environment..." if needs_weights else "Building environment..."
-            await ws_manager.send_progress(
-                task_id, initial_msg, env_range[0] + 0.01
+            initial_msg = (
+                "Step 2/2 - Building environment..." if needs_weights else "Building environment..."
             )
+            await ws_manager.send_progress(task_id, initial_msg, env_range[0] + 0.01)
 
             def env_progress(message: str, progress: float):
                 """Sync callback for environment build progress."""
@@ -364,7 +362,10 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
                     prefix = "Installing: "
 
                 formatted_message = f"{prefix}{message}"
-                logger.info(f"Environment progress: {formatted_message} ({progress:.1%} -> {mapped_progress:.1%})")
+                logger.info(
+                    f"Environment progress: {formatted_message} "
+                    f"({progress:.1%} -> {mapped_progress:.1%})"
+                )
 
                 # Schedule coroutine from thread using run_coroutine_threadsafe
                 asyncio.run_coroutine_threadsafe(
@@ -380,14 +381,22 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
 
             python_path = env_manager.get_python(f"env-{manifest.env}")
             cache_cmd = [
-                str(python_path), "-c",
-                f"import torch; torch.hub.load('facebookresearch/dinov2', '{manifest.torch_hub_model}', pretrained=False)",
+                str(python_path),
+                "-c",
+                "import torch; torch.hub.load("
+                f"'facebookresearch/dinov2', "
+                f"'{manifest.torch_hub_model}', "
+                "pretrained=False)",
             ]
 
             import subprocess
+
             result = await asyncio.to_thread(
-                subprocess.run, cache_cmd,
-                capture_output=True, text=True, timeout=120,
+                subprocess.run,
+                cache_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode != 0:
                 logger.warning(f"torch.hub cache warming failed: {result.stderr}")
@@ -432,9 +441,7 @@ async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
             )
 
         # Download weights (blocking call in thread pool)
-        await asyncio.to_thread(
-            model_storage.download_weights, manifest, weights_progress
-        )
+        await asyncio.to_thread(model_storage.download_weights, manifest, weights_progress)
 
         await ws_manager.send_complete(
             task_id,
@@ -499,10 +506,7 @@ def get_model_updates(request: Request) -> dict:
         Dict with new_models list and checked_at timestamp
     """
     # Access app.state from request
-    updates = getattr(request.app.state, "model_updates", {
-        "new_models": [],
-        "checked_at": None
-    })
+    updates = getattr(request.app.state, "model_updates", {"new_models": [], "checked_at": None})
     return updates
 
 
@@ -662,9 +666,8 @@ def get_model_taxonomy(model_id: str):
         404: If model not found or no taxonomy.csv exists
         500: If taxonomy.csv parsing fails
     """
-    from pathlib import Path
-    from app.ml.taxonomy_parser import parse_taxonomy_csv, get_all_leaf_classes
     from app.core.config import get_settings
+    from app.ml.taxonomy_parser import get_all_leaf_classes, parse_taxonomy_csv
 
     settings = get_settings()
     manifest_mgr, _, _ = _get_managers()
@@ -673,13 +676,13 @@ def get_model_taxonomy(model_id: str):
     try:
         manifest = manifest_mgr.get_model(model_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
 
     # Only classification models have taxonomy
     if manifest.model_category == "detection":
         raise HTTPException(
             status_code=400,
-            detail=f"Model {model_id} is a detection model and does not have taxonomy"
+            detail=f"Model {model_id} is a detection model and does not have taxonomy",
         )
 
     # Find taxonomy.csv in model directory
@@ -690,23 +693,17 @@ def get_model_taxonomy(model_id: str):
         raise HTTPException(
             status_code=404,
             detail=f"Taxonomy file not found for model {model_id}. "
-                   f"Expected at: {taxonomy_path}"
+            f"Expected at: {taxonomy_path}",
         )
 
     try:
         tree = parse_taxonomy_csv(taxonomy_path)
         all_classes = get_all_leaf_classes(tree)
 
-        return {
-            "tree": tree,
-            "all_classes": all_classes
-        }
+        return {"tree": tree, "all_classes": all_classes}
     except Exception as e:
         logger.error(f"Failed to parse taxonomy for {model_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to parse taxonomy: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to parse taxonomy: {str(e)}") from None
 
 
 @router.get("/models/speciesnet/locations")
@@ -725,13 +722,9 @@ def get_speciesnet_locations():
     try:
         from app.ml.data.countries import countries_data, us_states_data
 
-        return {
-            "countries": countries_data,
-            "us_states": us_states_data
-        }
+        return {"countries": countries_data, "us_states": us_states_data}
     except Exception as e:
         logger.error(f"Failed to load location data: {e}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to load location data: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to load location data: {str(e)}"
+        ) from None

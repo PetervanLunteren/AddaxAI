@@ -13,8 +13,8 @@ Created by Claude Code on 2026-01-04
 """
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PIL import Image
 from sqlalchemy.orm import Session
@@ -60,9 +60,15 @@ class MLPipeline:
         self.detection_model = detection_model
         self.classification_model = classification_model
 
+        cls_name = (
+            type(classification_model).__name__
+            if classification_model
+            else "None"
+        )
         logger.info(
-            f"Pipeline initialized with detection={type(detection_model).__name__}, "
-            f"classification={type(classification_model).__name__ if classification_model else 'None'}"
+            f"Pipeline initialized with "
+            f"detection={type(detection_model).__name__}, "
+            f"classification={cls_name}"
         )
 
     async def process_deployment(
@@ -122,7 +128,7 @@ class MLPipeline:
                 # Schedule callback on event loop from thread
                 asyncio.run_coroutine_threadsafe(
                     progress_callback(prefixed_message, overall_progress, "detection", progress),
-                    loop
+                    loop,
                 )
 
             detections = await loop.run_in_executor(
@@ -131,7 +137,7 @@ class MLPipeline:
                     image_paths=image_paths,
                     confidence_threshold=0.1,
                     progress_callback=sync_progress_callback,
-                )
+                ),
             )
 
             logger.info(f"Detection found {len(detections)} total detections")
@@ -168,7 +174,7 @@ class MLPipeline:
                     f"Classification: Starting on {animal_count} animals...",
                     0.55,
                     "classification",
-                    0.0
+                    0.0,
                 )
 
                 # Filter animal detections
@@ -208,8 +214,11 @@ class MLPipeline:
                             # Update progress after EVERY detection (smooth progress bar)
                             phase_progress = (i + 1) / len(animal_detections)
                             overall_progress = 0.55 + (phase_progress * 0.35)
+                            n_animals = len(animal_detections)
                             await progress_callback(
-                                f"Classification: Classified {classified_count}/{len(animal_detections)} animals ({i + 1} processed)",
+                                f"Classification: {classified_count}"
+                                f"/{n_animals} animals"
+                                f" ({i + 1} processed)",
                                 overall_progress,
                                 "classification",
                                 phase_progress,
@@ -228,10 +237,7 @@ class MLPipeline:
             elif animal_count == 0:
                 # No animals detected, skip classification
                 await progress_callback(
-                    "No animals detected - skipping classification",
-                    0.55,
-                    "classification",
-                    0.0
+                    "No animals detected - skipping classification", 0.55, "classification", 0.0
                 )
 
             # Phase 4: Final finalization
@@ -320,7 +326,8 @@ class MLPipeline:
                 db.add(file_record)
                 db.flush()  # Get file_record.id
 
-            # Set observation_type based on detection categories (priority: animal > human > vehicle)
+            # Set observation_type based on detection categories
+            # Priority: animal > human > vehicle
             categories = {det.category for det in file_dets}
             if "animal" in categories:
                 file_record.observation_type = "animal"

@@ -11,9 +11,9 @@ Created by Claude Code on 2026-01-04
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,9 @@ class BoundingBox:
             raise ValueError(f"Invalid bbox position: x={self.x}, y={self.y}")
         if not (0 < self.width <= 1 and 0 < self.height <= 1):
             raise ValueError(f"Invalid bbox size: width={self.width}, height={self.height}")
-        if self.x + self.width > 1.0001 or self.y + self.height > 1.0001:  # Small tolerance for float precision
+        if (
+            self.x + self.width > 1.0001 or self.y + self.height > 1.0001
+        ):  # Small tolerance for float precision
             raise ValueError(f"Bbox extends beyond image bounds: {self}")
 
 

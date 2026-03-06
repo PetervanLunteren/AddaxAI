@@ -44,7 +44,7 @@ def _get_env_python() -> Path:
         raise FileNotFoundError(
             "ML environment not found. "
             "Run an analysis with a detection model first to set up the ML environment."
-        )
+        ) from None
 
 
 def _get_db_path() -> str:

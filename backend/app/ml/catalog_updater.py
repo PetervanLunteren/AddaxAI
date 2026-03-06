@@ -9,12 +9,11 @@ Following DEVELOPERS.md principles:
 
 import json
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from app.core.logging_config import get_logger
-from app.ml.schemas.model_manifest import ModelManifest
 
 logger = get_logger(__name__)
 
@@ -73,10 +72,12 @@ class ModelCatalogUpdater:
                 logger.error("Invalid catalog structure: missing 'det' or 'cls' in models")
                 return None
 
+            det_count = len(catalog['models']['det'])
+            cls_count = len(catalog['models']['cls'])
             emb_count = len(catalog["models"].get("emb", []))
             logger.info(
-                f"Fetched catalog: "
-                f"{len(catalog['models']['det'])} det, {len(catalog['models']['cls'])} cls, {emb_count} emb models"
+                f"Fetched catalog: {det_count} det, "
+                f"{cls_count} cls, {emb_count} emb models"
             )
             return catalog
 
@@ -115,7 +116,9 @@ class ModelCatalogUpdater:
         )
         return local_models
 
-    def compare_models(self, remote_catalog: dict[str, Any], local_models: dict[str, set[str]]) -> list[dict[str, Any]]:
+    def compare_models(
+        self, remote_catalog: dict[str, Any], local_models: dict[str, set[str]]
+    ) -> list[dict[str, Any]]:
         """
         Compare remote catalog with local models and return new models.
 
@@ -219,7 +222,9 @@ class ModelCatalogUpdater:
                 self.download_taxonomy(model_id, model_dir)
 
         except Exception as e:
-            logger.error(f"Failed to create model stub for {model_type}/{model_id}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to create model stub for {model_type}/{model_id}: {e}", exc_info=True
+            )
 
     async def sync(self) -> dict[str, Any]:
         """
@@ -240,7 +245,7 @@ class ModelCatalogUpdater:
         """
         result: dict[str, Any] = {
             "new_models": [],
-            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "checked_at": datetime.now(UTC).isoformat(),
         }
 
         try:
@@ -254,7 +259,9 @@ class ModelCatalogUpdater:
             local_models = self.get_local_models()
 
             # Check if this is a fresh install (no models at all)
-            total_local = len(local_models["det"]) + len(local_models["cls"]) + len(local_models["emb"])
+            total_local = (
+                len(local_models["det"]) + len(local_models["cls"]) + len(local_models["emb"])
+            )
             is_fresh_install = total_local == 0
 
             # Compare and find new models
@@ -266,17 +273,25 @@ class ModelCatalogUpdater:
 
                 # Only add to notification list if not a fresh install
                 if not is_fresh_install:
-                    result["new_models"].append({
-                        "model_id": new_model["model_id"],
-                        "friendly_name": new_model["friendly_name"],
-                        "emoji": new_model["emoji"],
-                    })
+                    result["new_models"].append(
+                        {
+                            "model_id": new_model["model_id"],
+                            "friendly_name": new_model["friendly_name"],
+                            "emoji": new_model["emoji"],
+                        }
+                    )
 
             if new_models:
                 if is_fresh_install:
-                    logger.info(f"Model catalog sync complete: {len(new_models)} models initialized (fresh install)")
+                    logger.info(
+                        f"Model catalog sync complete: "
+                        f"{len(new_models)} models initialized "
+                        f"(fresh install)"
+                    )
                 else:
-                    logger.info(f"Model catalog sync complete: {len(result['new_models'])} new models added")
+                    logger.info(
+                        f"Model catalog sync complete: {len(result['new_models'])} new models added"
+                    )
             else:
                 logger.info("Model catalog sync complete: no new models")
 

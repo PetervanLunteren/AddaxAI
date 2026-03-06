@@ -17,14 +17,13 @@ import asyncio
 import json
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable
 
 from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
-from app.utils.media_dates import extract_video_dates
 from app.api.schemas.detection import DetectionCreate
 from app.core.logging_config import get_logger
 from app.ml.inference.base import ClassificationModel, DetectionModel, PipelineResult
@@ -33,7 +32,8 @@ from app.ml.json_utils import (
     build_addaxai_metadata,
     extract_animal_detections,
 )
-from app.models import Detection, File
+from app.models import File
+from app.utils.media_dates import extract_video_dates
 from app.utils.video_utils import _filename_to_frame_number
 
 logger = get_logger(__name__)
@@ -85,9 +85,15 @@ class JSONBasedMLPipeline:
         self.state_code = state_code
         self.classification_model_dir = classification_model_dir
 
+        det_name = type(detection_model).__name__
+        cls_name = (
+            type(classification_model).__name__
+            if classification_model
+            else "None"
+        )
         logger.info(
-            f"JSON Pipeline initialized with detection={type(detection_model).__name__}, "
-            f"classification={type(classification_model).__name__ if classification_model else 'None'}"
+            f"JSON Pipeline initialized with "
+            f"detection={det_name}, classification={cls_name}"
         )
 
     async def process_deployment(
@@ -170,7 +176,8 @@ class JSONBasedMLPipeline:
 
                 await progress_callback("Classification complete", 0.8, "classification", 1.0)
                 logger.info(
-                    f"Extended JSON saved to: {extended_json_path}, classified {classified_count} animals"
+                    f"Extended JSON saved to: {extended_json_path}, "
+                    f"classified {classified_count} animals"
                 )
             else:
                 # No classification model - use detection JSON as final JSON
@@ -191,7 +198,11 @@ class JSONBasedMLPipeline:
             )
 
             # Clean up intermediate detection JSON if classification produced a separate result
-            if self.classification_model and detection_json_path != extended_json_path and detection_json_path.exists():
+            if (
+                self.classification_model
+                and detection_json_path != extended_json_path
+                and detection_json_path.exists()
+            ):
                 detection_json_path.unlink()
                 logger.debug(f"Cleaned up intermediate: {detection_json_path.name}")
 
@@ -427,16 +438,17 @@ class JSONBasedMLPipeline:
                         classifications.sort(key=lambda x: x[1], reverse=True)
 
                         # Add classifications to detection
-                        md_results["images"][img_idx]["detections"][det_idx][
-                            "classifications"
-                        ] = classifications
+                        md_results["images"][img_idx]["detections"][det_idx]["classifications"] = (
+                            classifications
+                        )
 
                         classified_count += 1
 
                     # Update progress after each detection
                     phase_progress = (i + 1) / total_animals
                     await progress_callback(
-                        f"Classification: {classified_count}/{total_animals} animals (processed {i+1})",
+                        f"Classification: {classified_count}/{total_animals} "
+                        f"animals (processed {i+1})",
                         0.0,
                         "classification",
                         phase_progress,
@@ -458,9 +470,7 @@ class JSONBasedMLPipeline:
             if taxonomy_csv.exists():
                 from app.ml.json_utils import build_classification_category_descriptions
 
-                descriptions = build_classification_category_descriptions(
-                    class_names, taxonomy_csv
-                )
+                descriptions = build_classification_category_descriptions(class_names, taxonomy_csv)
                 if descriptions:
                     md_results["classification_category_descriptions"] = descriptions
                     logger.info(
@@ -526,7 +536,7 @@ class JSONBasedMLPipeline:
         classified_count = 0
 
         # Group detections by file
-        file_detections = defaultdict(list)
+        defaultdict(list)
 
         for img in results.get("images", []):
             relative_file = img["file"]
@@ -560,18 +570,26 @@ class JSONBasedMLPipeline:
                 timestamp = None
                 if exif_metadata and "DateTimeOriginal" in exif_metadata:
                     try:
-                        timestamp = datetime.strptime(exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S")
+                        timestamp = datetime.strptime(
+                            exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
+                        )
                     except (ValueError, TypeError):
                         pass
                 if timestamp is None:
-                    timestamp = datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow()
+                    timestamp = (
+                        datetime.fromtimestamp(absolute_path.stat().st_mtime)
+                        if absolute_path.exists()
+                        else datetime.utcnow()
+                    )
 
                 file_record = File(
                     id=file_id,
                     deployment_id=deployment_id,
                     file_path=str(absolute_path),
                     file_type="image",
-                    file_format=absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else "jpg",
+                    file_format=absolute_path.suffix.lstrip(".").lower()
+                    if absolute_path.exists()
+                    else "jpg",
                     size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
                     timestamp=timestamp,
                     width_px=img.get("width"),
@@ -623,7 +641,7 @@ class JSONBasedMLPipeline:
                         classified_count += 1
 
                 # Create Detection record
-                detection_id = det.get("detection_id", str(uuid.uuid4()))
+                det.get("detection_id", str(uuid.uuid4()))
 
                 # Extract frame_number if present (for video detections)
                 frame_number = det.get("frame_number")
@@ -648,7 +666,8 @@ class JSONBasedMLPipeline:
                     detection_record.species_confidence = species_confidence
                     detection_record.classification_method = "machine"
 
-            # Set observation_type based on detection categories (priority: animal > human > vehicle)
+            # Set observation_type based on detection categories
+            # (priority: animal > human > vehicle)
             if file_categories:
                 if "animal" in file_categories:
                     file_record.observation_type = "animal"
@@ -755,7 +774,7 @@ def load_json_to_database(
         video_dates = extract_video_dates(video_paths) if video_paths else {}
 
         # Group detections by file
-        file_detections = defaultdict(list)
+        defaultdict(list)
 
         # Check for extracted video frames directory
         _af = artifacts_folder or (deployment_folder / ".addaxai")
@@ -802,11 +821,17 @@ def load_json_to_database(
                 if timestamp is None:
                     if exif_metadata and "DateTimeOriginal" in exif_metadata:
                         try:
-                            timestamp = datetime.strptime(exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S")
+                            timestamp = datetime.strptime(
+                                exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
+                            )
                         except (ValueError, TypeError):
                             pass
                 if timestamp is None:
-                    timestamp = datetime.fromtimestamp(absolute_path.stat().st_mtime) if absolute_path.exists() else datetime.utcnow()
+                    timestamp = (
+                        datetime.fromtimestamp(absolute_path.stat().st_mtime)
+                        if absolute_path.exists()
+                        else datetime.utcnow()
+                    )
 
                 # Best frame fields (video only)
                 best_frame_number = img.get("best_frame_number")
@@ -814,7 +839,12 @@ def load_json_to_database(
                 if best_frame_number is not None:
                     # MegaDetector's extract_frames preserves relative dir structure
                     relative_video_path = absolute_path.relative_to(deployment_folder)
-                    best_frame_path = str(_af / "video_frames" / relative_video_path / f"frame{best_frame_number:06d}.jpg")
+                    best_frame_path = str(
+                        _af
+                        / "video_frames"
+                        / relative_video_path
+                        / f"frame{best_frame_number:06d}.jpg"
+                    )
 
                 # Frame rate (video only) - output by MegaDetector's process_video
                 frame_rate = img.get("frame_rate")
@@ -859,6 +889,7 @@ def load_json_to_database(
                     frame_height = img.get("height")
                     if (not frame_width or not frame_height) and frame_jpgs:
                         from PIL import Image as PILImage
+
                         with PILImage.open(frame_jpgs[0]) as pil_img:
                             frame_width, frame_height = pil_img.size
 
@@ -890,8 +921,10 @@ def load_json_to_database(
                         frame_file_map[frame_num] = frame_file
 
                     db.flush()
+                    frame_count = len(frame_file_map)
                     logger.debug(
-                        f"Created {len(frame_file_map)} frame records for video {relative_video_path}"
+                        f"Created {frame_count} frame records "
+                        f"for video {relative_video_path}"
                     )
 
             # Track categories per-frame (for frame observation_type) and per-video
@@ -948,7 +981,7 @@ def load_json_to_database(
                         classified_count += 1
 
                 # Create Detection record
-                detection_id = det.get("detection_id", str(uuid.uuid4()))
+                det.get("detection_id", str(uuid.uuid4()))
 
                 # Extract frame_number if present (for video detections)
                 frame_number = det.get("frame_number")

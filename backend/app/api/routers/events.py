@@ -60,7 +60,7 @@ def generate_events(
     try:
         count = event_crud.generate_events_for_project(db, request.project_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
 
     return GenerateEventsResponse(
         event_count=count,
@@ -92,7 +92,9 @@ def list_events(
     db: Session = Depends(get_db),
 ):
     """List event summaries for a project with optional filters."""
-    filters = _parse_filter_params(site_ids, date_from, date_to, species, verification, min_confidence, max_confidence)
+    filters = _parse_filter_params(
+        site_ids, date_from, date_to, species, verification, min_confidence, max_confidence
+    )
     return event_crud.get_events_by_project(db, project_id, skip=skip, limit=limit, **filters)
 
 
@@ -109,7 +111,9 @@ def get_event_count(
     db: Session = Depends(get_db),
 ):
     """Get total event count for a project with optional filters."""
-    filters = _parse_filter_params(site_ids, date_from, date_to, species, verification, min_confidence, max_confidence)
+    filters = _parse_filter_params(
+        site_ids, date_from, date_to, species, verification, min_confidence, max_confidence
+    )
     count = event_crud.get_event_count_by_project(db, project_id, **filters)
     return {"count": count}
 
@@ -128,8 +132,13 @@ def get_verification_stats(
 ):
     """Get aggregate file verification stats across filtered events."""
     filters = _parse_filter_params(
-        site_ids, date_from, date_to, species, verification,
-        min_confidence, max_confidence,
+        site_ids,
+        date_from,
+        date_to,
+        species,
+        verification,
+        min_confidence,
+        max_confidence,
     )
     return event_crud.get_event_verification_stats(db, project_id, **filters)
 
@@ -160,10 +169,7 @@ def get_event(
         representative_file_id=event.representative_file_id,
         created_at=event.created_at,
         site_name=site_name,
-        files=[
-            FileWithDetections.model_validate(f, from_attributes=True)
-            for f in sorted_files
-        ],
+        files=[FileWithDetections.model_validate(f, from_attributes=True) for f in sorted_files],
     )
 
 
@@ -181,6 +187,8 @@ def get_adjacent_events(
     db: Session = Depends(get_db),
 ):
     """Get adjacent event IDs for navigation, scoped to filtered set."""
-    filters = _parse_filter_params(site_ids, date_from, date_to, species, verification, min_confidence, max_confidence)
+    filters = _parse_filter_params(
+        site_ids, date_from, date_to, species, verification, min_confidence, max_confidence
+    )
     result = event_crud.get_adjacent_events(db, event_id, project_id, **filters)
     return result

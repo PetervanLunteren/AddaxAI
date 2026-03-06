@@ -60,8 +60,7 @@ class ManifestManager:
 
         if not self.models_dir.exists():
             raise FileNotFoundError(
-                f"Models directory not found: {self.models_dir}. "
-                f"Application is misconfigured."
+                f"Models directory not found: {self.models_dir}. " f"Application is misconfigured."
             )
 
         # Scan det/ and cls/ subdirectories for model directories
@@ -92,7 +91,11 @@ class ManifestManager:
                     # Set model_category based on which directory it was loaded from
                     manifest.model_category = category_map[model_type]
                     validated_manifests[manifest.model_id] = manifest
-                    logger.debug(f"Loaded manifest for {manifest.model_id} from {model_dir.name} (category: {manifest.model_category})")
+                    logger.debug(
+                        f"Loaded manifest for {manifest.model_id} "
+                        f"from {model_dir.name} "
+                        f"(category: {manifest.model_category})"
+                    )
 
                 except Exception as e:
                     logger.error(f"Invalid manifest in {manifest_path}: {e}")
@@ -124,9 +127,7 @@ class ManifestManager:
         manifests = self.load_manifests()
         if model_id not in manifests:
             available = ", ".join(manifests.keys())
-            raise ValueError(
-                f"Unknown model: {model_id}. Available models: {available}"
-            )
+            raise ValueError(f"Unknown model: {model_id}. Available models: {available}")
         return manifests[model_id]
 
     def get_detection_models(self) -> dict[str, ModelManifest]:
@@ -155,4 +156,3 @@ class ManifestManager:
             for model_id, manifest in manifests.items()
             if manifest.model_category == "embedding"
         }
-

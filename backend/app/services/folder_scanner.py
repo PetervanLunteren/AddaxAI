@@ -18,9 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
-import exiftool
 from PIL import Image
-from PIL.ExifTags import GPSTAGS, TAGS
+from PIL.ExifTags import GPSTAGS
 
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
@@ -48,8 +47,6 @@ class FolderPreview(TypedDict):
     end_date: str | None  # ISO format datetime
     missing_datetime: bool  # True if no EXIF dates found
     datetime_validation_log: list[str]  # Log of what was tried and why rejected
-
-
 
 
 def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
@@ -90,10 +87,7 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
                 video_files.append(file_path)
 
     # Get relative paths for sample
-    sample_files = [
-        str(f.relative_to(folder))
-        for f in (image_files[:5] + video_files[:2])[:10]
-    ]
+    sample_files = [str(f.relative_to(folder)) for f in (image_files[:5] + video_files[:2])[:10]]
 
     # Try to extract GPS from random sample of images
     gps_location = _extract_gps_from_sample(folder, image_files, gps_sample_size)
@@ -142,9 +136,7 @@ def _extract_gps_from_sample(
                 gps_coords.append(coords)
         except Exception as e:
             # Skip files with corrupt EXIF or other issues, but log it
-            logger.warning(
-                f"Failed to extract GPS from {img_path.name}: {type(e).__name__}: {e}"
-            )
+            logger.warning(f"Failed to extract GPS from {img_path.name}: {type(e).__name__}: {e}")
             continue
 
         # Stop early after finding GPS in 5 images
@@ -191,12 +183,8 @@ def _extract_gps_from_image(img_path: Path) -> GPSCoordinates | None:
                 gps_data[tag_name] = value
 
             # Convert to decimal degrees
-            lat = _convert_to_degrees(
-                gps_data.get("GPSLatitude"), gps_data.get("GPSLatitudeRef")
-            )
-            lon = _convert_to_degrees(
-                gps_data.get("GPSLongitude"), gps_data.get("GPSLongitudeRef")
-            )
+            lat = _convert_to_degrees(gps_data.get("GPSLatitude"), gps_data.get("GPSLatitudeRef"))
+            lon = _convert_to_degrees(gps_data.get("GPSLongitude"), gps_data.get("GPSLongitudeRef"))
 
             if lat is not None and lon is not None:
                 return GPSCoordinates(latitude=lat, longitude=lon)
@@ -205,9 +193,7 @@ def _extract_gps_from_image(img_path: Path) -> GPSCoordinates | None:
 
     except Exception as e:
         # Image corrupt, not readable, or other error - log it
-        logger.debug(
-            f"Cannot read image {img_path.name}: {type(e).__name__}: {e}"
-        )
+        logger.debug(f"Cannot read image {img_path.name}: {type(e).__name__}: {e}")
         return None
 
 
@@ -322,7 +308,11 @@ def _extract_date_range(
 
     # Extract dates from videos
     if video_sample:
-        validation_log.append("Videos: Trying CreateDate → DateTimeOriginal → MediaCreateDate → TrackCreateDate → RIFF:DateTimeOriginal → RIFF:DateCreated")
+        validation_log.append(
+            "Videos: Trying CreateDate → DateTimeOriginal"
+            " → MediaCreateDate → TrackCreateDate"
+            " → RIFF:DateTimeOriginal → RIFF:DateCreated"
+        )
         video_dates = _extract_video_dates(video_sample)
     else:
         video_dates = []
@@ -350,9 +340,7 @@ def _extract_date_range(
     else:
         validation_log.append("✗ No datetime metadata found in any images or videos")
 
-    validation_log.append(
-        "✗ DateTime extraction failed - no valid timestamps found"
-    )
+    validation_log.append("✗ DateTime extraction failed - no valid timestamps found")
     return None, None, validation_log
 
 
@@ -391,9 +379,7 @@ def _extract_exif_dates(sample: list[Path]) -> list[datetime]:
                         continue
 
         except Exception as e:
-            logger.debug(
-                f"Cannot read EXIF from {img_path.name}: {type(e).__name__}: {e}"
-            )
+            logger.debug(f"Cannot read EXIF from {img_path.name}: {type(e).__name__}: {e}")
             continue
 
     return dates

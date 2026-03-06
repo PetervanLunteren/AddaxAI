@@ -14,11 +14,11 @@ Created: 2026-01-07
 
 import os
 import re
+from collections.abc import Callable
+
 import cv2
-from typing import Callable, Optional, Union
 
 from app.core.logging_config import get_logger
-from app.core.media_types import VIDEO_EXTENSIONS
 
 logger = get_logger(__name__)
 
@@ -27,12 +27,12 @@ DEFAULT_BACKEND = -1
 
 # Backend IDs to try in order for maximum compatibility
 backend_id_to_name = {
-    DEFAULT_BACKEND: 'default',
-    cv2.CAP_FFMPEG: 'CAP_FFMPEG',
-    cv2.CAP_DSHOW: 'CAP_DSHOW',
-    cv2.CAP_MSMF: 'CAP_MSMF',
-    cv2.CAP_AVFOUNDATION: 'CAP_AVFOUNDATION',
-    cv2.CAP_GSTREAMER: 'CAP_GSTREAMER'
+    DEFAULT_BACKEND: "default",
+    cv2.CAP_FFMPEG: "CAP_FFMPEG",
+    cv2.CAP_DSHOW: "CAP_DSHOW",
+    cv2.CAP_MSMF: "CAP_MSMF",
+    cv2.CAP_AVFOUNDATION: "CAP_AVFOUNDATION",
+    cv2.CAP_GSTREAMER: "CAP_GSTREAMER",
 }
 
 
@@ -46,7 +46,7 @@ def _frame_number_to_filename(frame_number: int) -> str:
     Returns:
         Synthetic filename like "frame000042.jpg"
     """
-    return f'frame{frame_number:06d}.jpg'
+    return f"frame{frame_number:06d}.jpg"
 
 
 def _filename_to_frame_number(filename: str) -> int:
@@ -63,19 +63,21 @@ def _filename_to_frame_number(filename: str) -> int:
         ValueError: If filename doesn't match expected pattern
     """
     filename = os.path.basename(filename)
-    match = re.search(r'frame(\d+)\.jpg', filename)
+    match = re.search(r"frame(\d+)\.jpg", filename)
     if match is None:
-        raise ValueError(f'{filename} does not appear to be a frame file')
+        raise ValueError(f"{filename} does not appear to be a frame file")
 
     try:
         frame_number = int(match.group(1))
-    except Exception:
-        raise ValueError(f'Filename {filename} does not contain a valid frame number')
+    except Exception as e:
+        raise ValueError(f"Filename {filename} does not contain a valid frame number") from e
 
     return frame_number
 
 
-def open_video(video_path: str, verbose: bool = False) -> tuple[Optional[cv2.VideoCapture], Optional[object]]:
+def open_video(
+    video_path: str, verbose: bool = False
+) -> tuple[cv2.VideoCapture | None, object | None]:
     """
     Open video file with multiple OpenCV backend fallbacks.
 
@@ -95,7 +97,7 @@ def open_video(video_path: str, verbose: bool = False) -> tuple[Optional[cv2.Vid
         Tuple of (VideoCapture object, first frame) or (None, None) if all backends fail
     """
     if not os.path.isfile(video_path):
-        logger.error(f'Video file {video_path} not found')
+        logger.error(f"Video file {video_path} not found")
         return None, None
 
     backend_ids = backend_id_to_name.keys()
@@ -104,7 +106,7 @@ def open_video(video_path: str, verbose: bool = False) -> tuple[Optional[cv2.Vid
         backend_name = backend_id_to_name[backend_id]
 
         if verbose:
-            logger.debug(f'Trying backend {backend_name} for {video_path}')
+            logger.debug(f"Trying backend {backend_name} for {video_path}")
 
         try:
             if backend_id == DEFAULT_BACKEND:
@@ -113,12 +115,12 @@ def open_video(video_path: str, verbose: bool = False) -> tuple[Optional[cv2.Vid
                 vidcap = cv2.VideoCapture(video_path, backend_id)
         except Exception as e:
             if verbose:
-                logger.warning(f'Error opening {video_path} with backend {backend_name}: {e}')
+                logger.warning(f"Error opening {video_path} with backend {backend_name}: {e}")
             continue
 
         if not vidcap.isOpened():
             if verbose:
-                logger.warning(f'isOpened() is False for {video_path} with backend {backend_name}')
+                logger.warning(f"isOpened() is False for {video_path} with backend {backend_name}")
             try:
                 vidcap.release()
             except Exception:
@@ -128,24 +130,24 @@ def open_video(video_path: str, verbose: bool = False) -> tuple[Optional[cv2.Vid
         success, image = vidcap.read()
         if success and (image is not None):
             if verbose:
-                logger.info(f'Successfully opened {video_path} with backend: {backend_name}')
+                logger.info(f"Successfully opened {video_path} with backend: {backend_name}")
             return vidcap, image
 
-        logger.warning(f'Failed to read first frame from {video_path} with backend {backend_name}')
+        logger.warning(f"Failed to read first frame from {video_path} with backend {backend_name}")
         try:
             vidcap.release()
         except Exception:
             pass
 
-    logger.error(f'Failed to open {video_path} with any backend')
+    logger.error(f"Failed to open {video_path} with any backend")
     return None, None
 
 
 def run_callback_on_frames(
     input_video_file: str,
     frame_callback: Callable[[object, str], object],
-    frames_to_process: Optional[Union[list[int], int]] = None,
-    verbose: bool = False
+    frames_to_process: list[int] | int | None = None,
+    verbose: bool = False,
 ) -> dict:
     """
     Extract specific frames from video and run callback on each.
@@ -173,7 +175,7 @@ def run_callback_on_frames(
         Exception: If video cannot be opened or contains no frames
     """
     if not os.path.isfile(input_video_file):
-        raise FileNotFoundError(f'Video file {input_video_file} not found')
+        raise FileNotFoundError(f"Video file {input_video_file} not found")
 
     if isinstance(frames_to_process, int):
         frames_to_process = [frames_to_process]
@@ -184,13 +186,13 @@ def run_callback_on_frames(
         vidcap, image = open_video(input_video_file, verbose=verbose)
 
         if vidcap is None:
-            raise RuntimeError(f'Failed to open video {input_video_file}')
+            raise RuntimeError(f"Failed to open video {input_video_file}")
 
         n_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_rate = vidcap.get(cv2.CAP_PROP_FPS)
 
         if verbose:
-            logger.info(f'Video {input_video_file} contains {n_frames} frames at {frame_rate} Hz')
+            logger.info(f"Video {input_video_file} contains {n_frames} frames at {frame_rate} Hz")
 
         frame_filenames = []
         results = []
@@ -204,7 +206,7 @@ def run_callback_on_frames(
 
             if not success:
                 if verbose:
-                    logger.debug(f'Read terminating at frame {frame_number} of {n_frames}')
+                    logger.debug(f"Read terminating at frame {frame_number} of {n_frames}")
                 break
 
             # Skip frames not in frames_to_process list
@@ -227,10 +229,12 @@ def run_callback_on_frames(
             results.append(frame_results)
 
         if len(frame_filenames) == 0:
-            raise Exception(f'Error: found no frames in file {input_video_file}')
+            raise Exception(f"Error: found no frames in file {input_video_file}")
 
         if verbose:
-            logger.info(f'Processed {len(frame_filenames)} of {n_frames} frames for {input_video_file}')
+            logger.info(
+                f"Processed {len(frame_filenames)} of {n_frames} frames for {input_video_file}"
+            )
 
     finally:
         if vidcap is not None:
@@ -239,8 +243,4 @@ def run_callback_on_frames(
             except Exception:
                 pass
 
-    return {
-        'frame_filenames': frame_filenames,
-        'frame_rate': frame_rate,
-        'results': results
-    }
+    return {"frame_filenames": frame_filenames, "frame_rate": frame_rate, "results": results}

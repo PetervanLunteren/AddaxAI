@@ -61,6 +61,7 @@ def _blank_video_sample_frames(frames_dir: Path) -> list[int]:
         List of frame numbers to evaluate
     """
     import re
+
     frame_files = sorted(frames_dir.glob("frame*.jpg"))
     if not frame_files:
         return [0]
@@ -104,7 +105,9 @@ def select_best_frames(video_json_path: Path, frames_base_dir: Path) -> None:
         frames_dir = frames_base_dir / relative_file
 
         if not frames_dir.exists():
-            logger.warning(f"Frames directory not found for {relative_file}, skipping best frame selection")
+            logger.warning(
+                f"Frames directory not found for {relative_file}, skipping best frame selection"
+            )
             continue
 
         detections = img_entry.get("detections", [])

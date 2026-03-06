@@ -16,7 +16,9 @@ from app.api.schemas.deployment_queue import DeploymentQueueCreate
 from app.models import DeploymentQueue
 
 
-def get_queue_entries(db: Session, project_id: str, status: str | None = None) -> list[DeploymentQueue]:
+def get_queue_entries(
+    db: Session, project_id: str, status: str | None = None
+) -> list[DeploymentQueue]:
     """
     Get all queue entries for a project.
 
@@ -67,10 +69,7 @@ def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQ
 
 
 def update_queue_counts(
-    db: Session,
-    entry_id: str,
-    video_count: int,
-    image_count: int
+    db: Session, entry_id: str, video_count: int, image_count: int
 ) -> DeploymentQueue | None:
     """
     Update file counts for a queue entry.
@@ -95,7 +94,7 @@ def update_queue_status(
     entry_id: str,
     status: str,
     error: str | None = None,
-    deployment_id: str | None = None
+    deployment_id: str | None = None,
 ) -> DeploymentQueue | None:
     """
     Update queue entry status.

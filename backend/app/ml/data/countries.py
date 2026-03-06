@@ -167,7 +167,6 @@ countries_data = {
     "🇲🇿 Mozambique": "MOZ",
     "🇲🇷 Mauritania": "MRT",
     "🇲🇸 Montserrat": "MSR",
-    "🇲🇹 Malta": "MLT",
     "🇲🇺 Mauritius": "MUS",
     "🇲🇼 Malawi": "MWI",
     "🇲🇾 Malaysia": "MYS",
