@@ -10,6 +10,7 @@ import type {
   EventFilterParams,
   EventFilterOptions,
   EventVerificationStats,
+  SpeciesTreeResponse,
 } from "./types";
 
 /** Append filter params to a URLSearchParams instance. */
@@ -108,6 +109,17 @@ export const eventsApi = {
   ): Promise<EventFilterOptions> => {
     return api.get<EventFilterOptions>(
       `/api/events/filter-options?project_id=${projectId}`
+    );
+  },
+
+  /** Get the species filter tree (pre-built from species_taxonomy table). */
+  getSpeciesTree: async (
+    projectId: string,
+    countBy?: string
+  ): Promise<SpeciesTreeResponse | null> => {
+    const params = `project_id=${projectId}${countBy ? `&count_by=${countBy}` : ""}`;
+    return api.get<SpeciesTreeResponse | null>(
+      `/api/events/species-tree?${params}`
     );
   },
 };

@@ -9,13 +9,12 @@ Usage:
 
 Where options_json contains:
     {
-        "taxonomic_rollup": bool,
         "event_smoothing": bool,
         "sequence_info": list[dict] | null
     }
 
-Species exclusion is handled upstream before this script runs.
-The input JSON already has excluded species zeroed out and renormalized.
+Species exclusion and taxonomic rollup are handled upstream before this
+script runs. The input JSON already has those transformations applied.
 """
 
 import json
@@ -45,14 +44,13 @@ def main() -> None:
     with open(options_path) as f:
         opts = json.load(f)
 
-    taxonomic_rollup = opts.get("taxonomic_rollup", False)
     event_smoothing = opts.get("event_smoothing", False)
     detection_threshold = opts.get("detection_threshold", 0.15)
     sequence_info = opts.get("sequence_info")
 
     # Configure smoothing options
     options = ClassificationSmoothingOptions()
-    options.propagate_classifications_through_taxonomy = taxonomic_rollup
+    options.propagate_classifications_through_taxonomy = True
     options.detection_confidence_threshold = detection_threshold
     options.detection_category_names_to_smooth = ["animal"]
 

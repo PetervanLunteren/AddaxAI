@@ -93,3 +93,25 @@ class EventFilterOptions(BaseModel):
     species: list[str]
     date_range: DateRange | None
     species_event_counts: dict[str, int]
+
+
+class SpeciesTreeNode(BaseModel):
+    """A node in the species filter tree."""
+
+    id: str
+    name: str
+    level: int
+    children: list["SpeciesTreeNode"]
+    selected: bool
+    annotation: str | None = None
+    count: int | None = None
+    child_count: int | None = None
+
+
+class SpeciesTreeResponse(BaseModel):
+    """Response for the species filter tree endpoint."""
+
+    tree: list[SpeciesTreeNode]
+    all_leaf_ids: list[str]
+    species_event_counts: dict[str, int]
+    count_unit: str

@@ -10,6 +10,7 @@ from .file import File
 from .job import Job
 from .project import Project
 from .site import Site
+from .species_taxonomy import SpeciesTaxonomy
 
 __all__ = [
     "AuditLog",
@@ -22,5 +23,6 @@ __all__ = [
     "Job",
     "Project",
     "Site",
+    "SpeciesTaxonomy",
     "event_files",
 ]

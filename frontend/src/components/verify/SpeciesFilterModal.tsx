@@ -1,14 +1,13 @@
 /**
  * Species Filter Modal for the Verify page.
  *
- * Thin wrapper around TreeSelector (inclusion mode) that prunes the full
- * taxonomy tree to only show species with actual detections.
- * Uses a working-copy pattern: changes are only applied on "Apply".
+ * Accepts a pre-built taxonomy tree (already pruned server-side to only
+ * detected species with event counts). Uses a working-copy pattern:
+ * changes are only applied on "Apply".
  */
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import type { TaxonomyNode } from "../../api/types";
-import { pruneTaxonomyTree, collectLeafIds } from "../../lib/taxonomy-utils";
 import { TreeSelector } from "../taxonomy/TreeSelector";
 import { Button } from "../ui/button";
 import {
@@ -21,50 +20,40 @@ import {
 } from "../ui/dialog";
 
 interface SpeciesFilterModalProps {
-  /** Full taxonomy tree from the API. */
-  fullTree: TaxonomyNode[];
-  /** Species IDs that have detections (from filter-options endpoint). */
-  detectedSpecies: string[];
-  /** Event counts per species (from filter-options endpoint). */
-  speciesEventCounts?: Record<string, number>;
+  /** Pre-built taxonomy tree from the species-tree endpoint. */
+  preBuiltTree: TaxonomyNode[];
+  /** All leaf IDs from the species-tree endpoint. */
+  allLeafIds: string[];
   /** Currently active species filter values. */
   selectedSpecies: string[];
   /** Called with the new species list when the user clicks Apply. */
   onApply: (species: string[]) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Count unit label, e.g. "event" or "detection". */
+  countUnit?: string;
 }
 
 export function SpeciesFilterModal({
-  fullTree,
-  detectedSpecies,
-  speciesEventCounts,
+  preBuiltTree,
+  allLeafIds,
   selectedSpecies,
   onApply,
   open,
   onOpenChange,
+  countUnit,
 }: SpeciesFilterModalProps) {
   // Working copy — initialized from props each time the modal opens
   const [workingSet, setWorkingSet] = useState<Set<string>>(new Set());
 
-  // Prune tree to only branches leading to detected species
-  const detectedSet = useMemo(() => new Set(detectedSpecies), [detectedSpecies]);
-  const eventCountsMap = useMemo(
-    () => speciesEventCounts ? new Map(Object.entries(speciesEventCounts)) : undefined,
-    [speciesEventCounts]
-  );
-  const prunedTree = useMemo(
-    () => pruneTaxonomyTree(fullTree, detectedSet, eventCountsMap),
-    [fullTree, detectedSet, eventCountsMap]
-  );
-  const allPrunedLeafIds = useMemo(() => collectLeafIds(prunedTree), [prunedTree]);
+  const allLeafIdSet = useMemo(() => new Set(allLeafIds), [allLeafIds]);
 
   // Re-initialize working set each time the modal opens
   useEffect(() => {
     if (open) {
       // No filter active → start with all species selected
       if (selectedSpecies.length === 0) {
-        setWorkingSet(new Set(allPrunedLeafIds));
+        setWorkingSet(new Set(allLeafIdSet));
       } else {
         setWorkingSet(new Set(selectedSpecies));
       }
@@ -92,13 +81,13 @@ export function SpeciesFilterModal({
 
         <div className="flex-1 min-h-0">
           <TreeSelector
-            tree={prunedTree}
+            tree={preBuiltTree}
             selectedIds={workingSet}
             mode="inclusion"
             onSelectionChange={setWorkingSet}
             fillHeight
             emptyMessage="No species with detections"
-            counterText={`${workingSet.size} of ${allPrunedLeafIds.size} species selected`}
+            countUnit={countUnit ?? "event"}
           />
         </div>
 

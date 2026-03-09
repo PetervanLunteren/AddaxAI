@@ -19,14 +19,16 @@ from pathlib import Path
 from typing import TypedDict
 
 
-class TaxonomyNode(TypedDict):
+class TaxonomyNode(TypedDict, total=False):
     """Node in taxonomy tree."""
 
     id: str  # e.g., "mammalia", "carnivora", "felidae", "leopard"
-    name: str  # Display name with formatting
+    name: str  # Clean display label, no markup
     level: int  # 1-6 (class, order, family, genus, species, model_class)
     children: list["TaxonomyNode"]
     selected: bool  # Default selection state
+    annotation: str  # Optional: e.g. "leopard", "unspecified"
+    child_count: int  # Optional: number of leaf descendants (parents only)
 
 
 def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
@@ -90,6 +92,8 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
         if not model_class:
             continue
 
+        display_name = model_class.replace("_", " ")
+
         class_name = row.get("class", "").strip()
         order_name = row.get("order", "").strip()
         family_name = row.get("family", "").strip()
@@ -101,7 +105,8 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             other_children = ensure_other_group()
             if model_class not in other_children:
                 other_children[model_class] = {
-                    "_label": f"**{model_class}** (_unknown taxonomy_)",
+                    "_label": display_name,
+                    "_annotation": "unknown taxonomy",
                     "_value": model_class,
                     "_children": {},
                     "_level": "other",
@@ -111,10 +116,10 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
         # No class but has other info -> place at root with unknown taxonomy
         if not class_name:
             taxonomic_value = species_name or model_class
-            label = f"{taxonomic_value} (**{model_class}**, _unknown taxonomy_)"
             if model_class not in root:
                 root[model_class] = {
-                    "_label": label,
+                    "_label": taxonomic_value,
+                    "_annotation": f"{display_name}, unknown taxonomy",
                     "_value": model_class,
                     "_children": {},
                     "_level": "unknown",
@@ -164,7 +169,8 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 # Add model_class as leaf with "unspecified" marker
                 if model_class not in current_level:
                     current_level[model_class] = {
-                        "_label": f"**{model_class}** (_unspecified_)",
+                        "_label": display_name.title(),
+                        "_annotation": "unspecified",
                         "_value": model_class,
                         "_children": {},
                         "_level": "unspecified",
@@ -179,13 +185,16 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             if is_last_level:
                 # Leaf node
                 if level_name == "species":
-                    label = f"{label_with_prefix} (**{model_class}**)"
+                    leaf_label = label_with_prefix
+                    leaf_annotation = display_name
                 else:
-                    label = f"**{model_class}** (_unspecified_)"
+                    leaf_label = display_name.title()
+                    leaf_annotation = "unspecified"
 
                 if model_class not in current_level:
                     current_level[model_class] = {
-                        "_label": label,
+                        "_label": leaf_label,
+                        "_annotation": leaf_annotation,
                         "_value": model_class,
                         "_children": {},
                         "_level": level_name,
@@ -213,6 +222,8 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 dict_to_list(node_val["_children"]) if node_val["_children"] else []
             )
             node = {"_label": node_val["_label"], "_value": node_val["_value"]}
+            if "_annotation" in node_val:
+                node["_annotation"] = node_val["_annotation"]
             if children_list:
                 node["_children"] = children_list
             result.append(node)
@@ -267,14 +278,13 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
 
         return leaves + parents
 
-    # Add descendant counts to parent node labels with teal color
+    # Add descendant counts to parent nodes
     def annotate_counts(nodes: list[dict]) -> int:
         total = 0
         for node in nodes:
             if "_children" in node and node["_children"]:
                 child_total = annotate_counts(node["_children"])
-                # Format count with code styling and teal color (#086164)
-                node["_label"] = f"{node['_label']} `({child_total} species)`"
+                node["_child_count"] = child_total
                 total += child_total
             else:
                 total += 1
@@ -295,6 +305,10 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 ),
                 "selected": True,
             }
+            if "_annotation" in node:
+                taxonomy_node["annotation"] = node["_annotation"]
+            if "_child_count" in node:
+                taxonomy_node["child_count"] = node["_child_count"]
             result.append(taxonomy_node)
         return result
 

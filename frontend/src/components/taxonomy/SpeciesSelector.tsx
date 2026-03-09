@@ -82,7 +82,6 @@ export function SpeciesSelector({
           height={treeHeight}
           fillHeight={fillHeight}
           emptyMessage="No taxonomy available for this model"
-          counterText={`Currently included ${allClasses.length - excludedSet.size} of ${allClasses.length}${excludedSet.size > 0 ? ` (${excludedSet.size} excluded)` : ""}`}
         />
       )}
     </div>

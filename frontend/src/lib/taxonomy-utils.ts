@@ -12,7 +12,7 @@ import type { TaxonomyNode } from "../api/types";
  *
  * - Leaf nodes are kept only if their `id` is in `keepSet`
  * - Parent nodes are kept only if they have surviving children
- * - Parent name count annotations like ` (N)` are stripped
+ * - If `eventCounts` is provided, sets `count` on leaf nodes
  * - Returns a new tree (no mutation)
  */
 export function pruneTaxonomyTree(
@@ -27,18 +27,13 @@ export function pruneTaxonomyTree(
         // Leaf: keep only if in the set
         if (keepSet.has(node.id)) {
           const count = eventCounts?.get(node.id);
-          const name = count != null ? `${node.name} \`(${count} ${count === 1 ? "event" : "events"})\`` : node.name;
-          result.push({ ...node, name });
+          result.push(count != null ? { ...node, count } : { ...node });
         }
       } else {
         // Parent: recurse, keep if any children survive
         const prunedChildren = prune(node.children);
         if (prunedChildren.length > 0) {
-          result.push({
-            ...node,
-            name: node.name.replace(/\s*`\(\d+[^)]*\)`\s*$/, ""),
-            children: prunedChildren,
-          });
+          result.push({ ...node, children: prunedChildren });
         }
       }
     }

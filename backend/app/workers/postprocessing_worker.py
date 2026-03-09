@@ -171,6 +171,22 @@ async def process_postprocessing_job(job_id: str) -> None:
                 )
                 total_errors += 1
 
+        # Ensure base taxonomy is populated (handles reprocessing with new model)
+        if project.classification_model_id:
+            try:
+                from app.ml.postprocessing import _find_classification_model_dir
+                from app.ml.taxonomy_db import populate_taxonomy_from_csv
+
+                cls_model_dir = _find_classification_model_dir(project, db)
+                if cls_model_dir:
+                    taxonomy_csv = cls_model_dir / "taxonomy.csv"
+                    if taxonomy_csv.exists():
+                        populate_taxonomy_from_csv(
+                            project.classification_model_id, taxonomy_csv, db
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to populate taxonomy DB: {e}")
+
         # Update project hash
         project.postprocessing_settings_hash = compute_postprocessing_settings_hash(
             project

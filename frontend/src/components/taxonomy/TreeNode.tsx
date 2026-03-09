@@ -22,6 +22,13 @@ interface TreeNodeProps {
   onExpand: (nodeId: string, expanded: boolean) => void;
   isLastChild?: boolean;
   ancestorLines?: boolean[]; // Tracks which ancestor levels need vertical lines
+  countUnit?: string; // e.g. "event" — omit for settings tree
+}
+
+function pluralize(unit: string, n: number): string {
+  if (n === 1) return unit;
+  if (unit.endsWith("y")) return unit.slice(0, -1) + "ies";
+  return unit + "s";
 }
 
 export function TreeNode({
@@ -34,6 +41,7 @@ export function TreeNode({
   onExpand,
   isLastChild = false,
   ancestorLines = [],
+  countUnit,
 }: TreeNodeProps) {
   const expanded = expandedNodes.has(node.id);
 
@@ -178,19 +186,21 @@ export function TreeNode({
           onCheckedChange={(newChecked) => onToggle(node.id, !!newChecked)}
         />
 
-        {/* Node label - backend provides formatted names with counts */}
-        <span
-          className="ml-2 text-sm"
-          dangerouslySetInnerHTML={{
-            __html: node.name
-              // Convert **bold** to <strong>
-              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-              // Convert _italic_ to <em>
-              .replace(/_([^_]+)_/g, '<em>$1</em>')
-              // Convert `code` to <code> with teal color (#0f6064 primary)
-              .replace(/`([^`]+)`/g, '<code style="color: #0f6064; font-size: 0.85em;">$1</code>')
-          }}
-        />
+        {/* Node label */}
+        <span className="ml-2 text-sm">
+          {node.name}
+          {node.annotation && (
+            <>
+              {" "}
+              (<em>{node.annotation}</em>)
+            </>
+          )}
+          {isLeaf && node.count != null && countUnit && (
+            <span className="ml-1 text-muted-foreground text-xs">
+              ({node.count} {pluralize(countUnit, node.count)})
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Render children if expanded */}
@@ -216,6 +226,7 @@ export function TreeNode({
                 onExpand={onExpand}
                 isLastChild={index === node.children.length - 1}
                 ancestorLines={childAncestorLines}
+                countUnit={countUnit}
               />
             );
           })}

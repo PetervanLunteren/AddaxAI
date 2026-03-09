@@ -67,10 +67,57 @@ def test_leaf_count_annotation(tmp_path):
         "lion,mammalia,carnivora,felidae,panthera,leo",
     ])
     tree = parse_taxonomy_csv(csv_path)
-    # Find a parent node — should have "(N species)" in its name
+    # Parent nodes should have child_count field, not markup in name
     parent_nodes = [n for n in tree if n["children"]]
     if parent_nodes:
-        assert "species" in parent_nodes[0]["name"]
+        assert "child_count" in parent_nodes[0]
+        assert parent_nodes[0]["child_count"] == 2
+        # Name should be clean (no markup)
+        assert "categories" not in parent_nodes[0]["name"]
+
+
+def test_species_leaf_has_annotation(tmp_path):
+    csv_path = _write_csv(tmp_path, [
+        "leopard,mammalia,carnivora,felidae,panthera,pardus",
+    ])
+    tree = parse_taxonomy_csv(csv_path)
+
+    def find_leaf(nodes, target_id):
+        for n in nodes:
+            if n["id"] == target_id:
+                return n
+            found = find_leaf(n.get("children", []), target_id)
+            if found:
+                return found
+        return None
+
+    leaf = find_leaf(tree, "leopard")
+    assert leaf is not None
+    # Name should be clean scientific text, annotation should be display name
+    assert leaf["name"] == "species pardus"
+    assert leaf["annotation"] == "leopard"
+
+
+def test_unspecified_leaf_has_annotation(tmp_path):
+    csv_path = _write_csv(tmp_path, [
+        "eagle,aves,accipitriformes,accipitridae,,",
+    ])
+    tree = parse_taxonomy_csv(csv_path)
+
+    def find_leaf(nodes, target_id):
+        for n in nodes:
+            if n["id"] == target_id:
+                return n
+            found = find_leaf(n.get("children", []), target_id)
+            if found:
+                return found
+        return None
+
+    leaf = find_leaf(tree, "eagle")
+    assert leaf is not None
+    assert leaf["annotation"] == "unspecified"
+    # Name should be clean (no markup)
+    assert "_" not in leaf["name"]
 
 
 def test_leaves_sorted(tmp_path):

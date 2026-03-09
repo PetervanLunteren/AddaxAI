@@ -25,6 +25,7 @@ from app.models import (  # noqa: F401
     Job,
     Project,
     Site,
+    SpeciesTaxonomy,
     event_files,
 )
 

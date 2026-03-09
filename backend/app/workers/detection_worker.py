@@ -539,6 +539,19 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
+                # Populate species_taxonomy table from taxonomy.csv
+                if classification_model_id:
+                    try:
+                        taxonomy_csv = cls_model_dir / "taxonomy.csv"
+                        if taxonomy_csv.exists():
+                            from app.ml.taxonomy_db import populate_taxonomy_from_csv
+
+                            populate_taxonomy_from_csv(
+                                classification_model_id, taxonomy_csv, db
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to populate taxonomy DB: {e}")
+
             # ============================================================
             # PHASE 7: Postprocessing (smoothing) — non-fatal
             # ============================================================

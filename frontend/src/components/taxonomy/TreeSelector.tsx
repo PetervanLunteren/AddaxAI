@@ -33,17 +33,19 @@ interface TreeSelectorProps {
   fillHeight?: boolean;
   /** Shown when tree is empty. */
   emptyMessage?: string;
-  /** Optional counter text displayed above the search bar (e.g. "3 of 6 species selected"). */
-  counterText?: string;
+  /** Count unit label, e.g. "event". Omit for settings tree (no item counts). */
+  countUnit?: string;
 }
 
-/** Recursively filter tree nodes by search query (case-insensitive match on name). */
+/** Recursively filter tree nodes by search query (case-insensitive match on name or annotation). */
 function filterTree(nodes: TaxonomyNode[], query: string): TaxonomyNode[] {
   if (!query) return nodes;
   const lower = query.toLowerCase();
   const result: TaxonomyNode[] = [];
   for (const node of nodes) {
-    if (node.name.toLowerCase().includes(lower)) {
+    const nameMatch = node.name.toLowerCase().includes(lower);
+    const annotationMatch = node.annotation?.toLowerCase().includes(lower);
+    if (nameMatch || annotationMatch) {
       // Match: include the node with all its children
       result.push(node);
     } else if (node.children && node.children.length > 0) {
@@ -70,6 +72,40 @@ function collectAllNodeIds(nodes: TaxonomyNode[]): Set<string> {
   return ids;
 }
 
+/** Sum node.count for all leaves in the tree that are in the given ID set. */
+function sumLeafCounts(nodes: TaxonomyNode[], ids: Set<string>): number {
+  let total = 0;
+  for (const node of nodes) {
+    if (!node.children || node.children.length === 0) {
+      if (ids.has(node.id) && node.count != null) {
+        total += node.count;
+      }
+    } else {
+      total += sumLeafCounts(node.children, ids);
+    }
+  }
+  return total;
+}
+
+/** Sum node.count for all leaves in the tree. */
+function sumAllLeafCounts(nodes: TaxonomyNode[]): number {
+  let total = 0;
+  for (const node of nodes) {
+    if (!node.children || node.children.length === 0) {
+      if (node.count != null) total += node.count;
+    } else {
+      total += sumAllLeafCounts(node.children);
+    }
+  }
+  return total;
+}
+
+function pluralize(unit: string, n: number): string {
+  if (n === 1) return unit;
+  if (unit.endsWith("y")) return unit.slice(0, -1) + "ies";
+  return unit + "s";
+}
+
 export function TreeSelector({
   tree,
   selectedIds,
@@ -78,7 +114,7 @@ export function TreeSelector({
   height = "300px",
   fillHeight = false,
   emptyMessage = "No species available",
-  counterText,
+  countUnit,
 }: TreeSelectorProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,14 +209,31 @@ export function TreeSelector({
     setExpandedNodes(new Set());
   }, []);
 
+  // Compute counter text internally
+  const counterText = useMemo(() => {
+    const totalCategories = allLeafIds.size;
+    if (mode === "exclusion") {
+      const includedCount = totalCategories - selectedIds.size;
+      const suffix = selectedIds.size > 0 ? ` (${selectedIds.size} excluded)` : "";
+      return `Currently included ${includedCount} of ${totalCategories}${suffix}`;
+    }
+    // inclusion mode
+    const selectedCount = selectedIds.size;
+    let text = `${selectedCount} of ${totalCategories} ${pluralize("category", totalCategories)} selected`;
+    if (countUnit) {
+      const selectedItemCount = sumLeafCounts(tree, selectedIds);
+      const totalItemCount = sumAllLeafCounts(tree);
+      text += ` (${selectedItemCount} of ${totalItemCount} ${pluralize(countUnit, totalItemCount)})`;
+    }
+    return text;
+  }, [allLeafIds, selectedIds, mode, countUnit, tree]);
+
   const selectLabel = mode === "exclusion" ? "Include all" : "Select all";
   const clearLabel = mode === "exclusion" ? "Exclude all" : "Clear all";
 
   return (
     <div className={`space-y-2 border rounded-md p-3${fillHeight ? " h-full flex flex-col overflow-hidden" : ""}`}>
-      {counterText && (
-        <p className="text-sm text-muted-foreground">{counterText}</p>
-      )}
+      <p className="text-sm text-muted-foreground">{counterText}</p>
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -251,6 +304,7 @@ export function TreeSelector({
                 onToggle={handleToggle}
                 onExpand={handleExpand}
                 level={0}
+                countUnit={countUnit}
               />
             ))}
           </div>

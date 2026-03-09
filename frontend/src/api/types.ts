@@ -355,11 +355,21 @@ export interface TaxonomyNode {
   level: number;
   children: TaxonomyNode[];
   selected: boolean;
+  annotation?: string;
+  count?: number;
+  child_count?: number;
 }
 
 export interface TaxonomyResponse {
   tree: TaxonomyNode[];
   all_classes: string[];
+}
+
+export interface SpeciesTreeResponse {
+  tree: TaxonomyNode[];
+  all_leaf_ids: string[];
+  species_event_counts: Record<string, number>;
+  count_unit: string;
 }
 
 // SpeciesNet Locations types

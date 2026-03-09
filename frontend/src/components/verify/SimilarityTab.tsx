@@ -637,6 +637,7 @@ export function SimilarityTab({
         onToggle={() => {}}
         classificationModelId={classificationModelId}
         verificationSection={null}
+        countBy="detection"
       />
 
       {/* Warning when embeddings are incomplete */}

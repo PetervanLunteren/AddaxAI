@@ -107,6 +107,7 @@ def init_db() -> None:
         job,
         project,
         site,
+        species_taxonomy,
     )
 
     engine = get_engine()

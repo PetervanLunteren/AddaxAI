@@ -233,25 +233,55 @@ def run_postprocessing_for_deployment(
 
         apply_species_exclusion_to_results(md_results, project.excluded_classes)
 
-    # If neither smoothing nor rollup is enabled, return raw results
-    if not project.event_smoothing and not project.taxonomic_rollup:
+    # Apply taxonomic rollup BEFORE smoothing so the smoother can refine
+    # rolled-up labels using image/sequence context (e.g. "felidae" → "lion"
+    # if nearby detections are confidently "lion")
+    if project.taxonomic_rollup:
+        cls_model_dir = _find_classification_model_dir(project, db)
+        if cls_model_dir:
+            taxonomy_csv = cls_model_dir / "taxonomy.csv"
+            if taxonomy_csv.exists():
+                from app.ml.taxonomic_rollup import (
+                    apply_taxonomic_rollup_to_results,
+                    load_taxonomy_lookup,
+                )
+
+                rollup_result = apply_taxonomic_rollup_to_results(md_results, taxonomy_csv)
+                md_results = rollup_result.md_results
+
+                # Persist rolled-up entries to species_taxonomy table
+                if rollup_result.new_entries and project.classification_model_id:
+                    try:
+                        from app.ml.taxonomy_db import add_rollup_taxonomy_entry
+
+                        taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv)
+                        for entry in rollup_result.new_entries:
+                            add_rollup_taxonomy_entry(
+                                project.classification_model_id,
+                                entry["name"],
+                                entry["level"],
+                                taxonomy_lookup,
+                                db,
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to persist rollup taxonomy entries: {e}")
+
+    # If event smoothing is not enabled, return now
+    if not project.event_smoothing:
         return md_results
 
     # Build sequence info for event smoothing
-    sequence_info = None
-    if project.event_smoothing:
-        sequence_info = build_sequence_information(
-            deployment_id, project.independence_interval, db
+    sequence_info = build_sequence_information(
+        deployment_id, project.independence_interval, db
+    )
+    if sequence_info:
+        logger.info(
+            f"Running sequence-level smoothing with {len(sequence_info)} images "
+            f"(interval={project.independence_interval}s)"
         )
-        if sequence_info:
-            logger.info(
-                f"Running sequence-level smoothing with {len(sequence_info)} images "
-                f"(interval={project.independence_interval}s)"
-            )
 
     # Build options for the subprocess script
     smoothing_options = {
-        "taxonomic_rollup": project.taxonomic_rollup,
         "event_smoothing": project.event_smoothing,
         "detection_threshold": project.detection_threshold,
         "sequence_info": sequence_info,
@@ -265,7 +295,7 @@ def run_postprocessing_for_deployment(
         json.dump(smoothing_options, opts_f)
         opts_path = opts_f.name
 
-    # Write exclusion-modified JSON to a temp file (don't pass the on-disk raw file)
+    # Write rollup-modified JSON to a temp file (don't pass the on-disk raw file)
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
     ) as input_f:
@@ -284,7 +314,8 @@ def run_postprocessing_for_deployment(
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"Smoothing script failed: {result.stderr}")
+            error_detail = result.stderr or result.stdout or "(no output)"
+            raise RuntimeError(f"Smoothing script failed: {error_detail}")
 
         with open(output_path) as f:
             smoothed = json.load(f)

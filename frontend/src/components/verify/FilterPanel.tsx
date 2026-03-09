@@ -9,7 +9,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ListTodo } from "lucide-react";
 import { eventsApi } from "../../api/events";
-import { modelsApi } from "../../api/models";
 import { sitesApi } from "../../api/sites";
 import type { EventFilterParams, VerificationFilter } from "../../api/types";
 import { Button } from "../ui/button";
@@ -32,6 +31,7 @@ interface FilterPanelProps {
   classificationModelId?: string | null;
   children?: React.ReactNode;
   verificationSection?: React.ReactNode;
+  countBy?: string;
 }
 
 const VERIFICATION_OPTIONS: { value: VerificationFilter | "all"; label: string }[] = [
@@ -51,6 +51,7 @@ export function FilterPanel({
   classificationModelId,
   children,
   verificationSection,
+  countBy,
 }: FilterPanelProps) {
   // Fetch sites for multiselect
   const { data: sites } = useQuery({
@@ -66,16 +67,13 @@ export function FilterPanel({
     enabled: !!projectId,
   });
 
-  // Fetch taxonomy when a classification model is available (not SpeciesNet)
-  const hasTaxonomyModel =
-    !!classificationModelId &&
-    !classificationModelId.toLowerCase().includes("speciesnet");
-  const { data: taxonomy } = useQuery({
-    queryKey: ["taxonomy", classificationModelId],
-    queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
-    enabled: hasTaxonomyModel,
+  // Fetch pre-built species tree (taxonomy + detected species + counts)
+  const { data: speciesTree } = useQuery({
+    queryKey: ["species-tree", projectId, countBy],
+    queryFn: () => eventsApi.getSpeciesTree(projectId, countBy),
+    enabled: !!projectId,
   });
-  const hasTaxonomy = hasTaxonomyModel && !!taxonomy?.tree?.length;
+  const hasTaxonomy = !!speciesTree?.tree?.length;
 
   const [speciesModalOpen, setSpeciesModalOpen] = useState(false);
 
@@ -177,13 +175,12 @@ export function FilterPanel({
                 </span>
               </Button>
               <SpeciesFilterModal
-                fullTree={taxonomy!.tree}
-                detectedSpecies={filterOptions?.species ?? []}
-                speciesEventCounts={filterOptions?.species_event_counts}
+                preBuiltTree={speciesTree!.tree}
+                allLeafIds={speciesTree!.all_leaf_ids}
                 selectedSpecies={filters.species ?? []}
                 onApply={(species) => {
-                  const allDetected = filterOptions?.species ?? [];
-                  const isAll = species.length >= allDetected.length;
+                  const allLeafs = speciesTree!.all_leaf_ids;
+                  const isAll = species.length >= allLeafs.length;
                   onChange({
                     ...filters,
                     species: isAll ? undefined : species.length ? species : undefined,
@@ -191,6 +188,7 @@ export function FilterPanel({
                 }}
                 open={speciesModalOpen}
                 onOpenChange={setSpeciesModalOpen}
+                countUnit={speciesTree!.count_unit}
               />
             </>
           ) : (

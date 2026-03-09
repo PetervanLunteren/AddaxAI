@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.crud import event as event_crud
+from app.api.crud import species_tree as species_tree_crud
 from app.api.schemas.event import (
     AdjacentEventsResponse,
     EventFilterOptions,
@@ -18,6 +19,7 @@ from app.api.schemas.event import (
     EventWithFiles,
     GenerateEventsRequest,
     GenerateEventsResponse,
+    SpeciesTreeResponse,
 )
 from app.api.schemas.file import FileWithDetections
 from app.db.base import get_db
@@ -35,11 +37,16 @@ def _parse_filter_params(
     max_confidence: float | None,
 ) -> dict:
     """Parse common filter query params into kwargs for CRUD functions."""
+    # Strip :unspecified suffix from species IDs (used by rolled-up taxa in tree)
+    raw_species = species.split(",") if species else None
+    if raw_species:
+        raw_species = [s.removesuffix(":unspecified") for s in raw_species]
+
     return dict(
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=datetime.fromisoformat(date_from) if date_from else None,
         date_to=datetime.fromisoformat(date_to) if date_to else None,
-        species=species.split(",") if species else None,
+        species=raw_species,
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
@@ -75,6 +82,24 @@ def get_filter_options(
 ):
     """Get available filter options (distinct species, date range) for a project."""
     return event_crud.get_filter_options(db, project_id)
+
+
+@router.get("/species-tree")
+def get_species_tree(
+    project_id: str = Query(..., description="Project ID"),
+    count_by: str = Query("event", description="Count unit: 'event' or 'detection'"),
+    db: Session = Depends(get_db),
+) -> SpeciesTreeResponse | None:
+    """
+    Get the species filter tree built from the species_taxonomy table.
+
+    Returns a pre-built tree with only detected species, annotated with counts.
+    Returns null if no taxonomy data is available (frontend falls back to flat list).
+    """
+    result = species_tree_crud.build_species_filter_tree(project_id, db, count_by=count_by)
+    if result is None:
+        return None
+    return result
 
 
 @router.get("", response_model=list[EventSummary])
