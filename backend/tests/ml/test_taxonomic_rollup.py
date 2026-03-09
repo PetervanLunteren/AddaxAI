@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.ml.taxonomic_rollup import (
+    NON_SPECIES_CLASSES,
     apply_taxonomic_rollup_to_results,
     load_taxonomy_lookup,
     rollup_single_detection,
@@ -260,3 +261,31 @@ def test_apply_adds_descriptions(taxonomy_csv):
     assert tokens[6] == "panthera"  # display name (last)
     assert tokens[1] == "mammalia"  # class
     assert tokens[4] == "panthera"  # genus level (the rollup level)
+
+
+# --- NON_SPECIES_CLASSES exclusion ---
+
+def test_non_species_excluded_even_with_taxonomy(taxonomy_lookup, class_id_to_name):
+    """Non-species classes are excluded even if they hypothetically appear in taxonomy_lookup."""
+    # Inject "blank" into taxonomy_lookup so the taxonomy guard alone wouldn't stop it
+    taxonomy_lookup["blank"] = {"class": "mammalia", "order": "carnivora", "family": "felidae", "genus": "panthera", "species": "pardus"}
+    # top-1 is "blank" (class_id 5) with low confidence → would normally trigger rollup
+    classifications = [[5, 0.50], [0, 0.30], [1, 0.20]]
+    result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
+    assert result is None
+
+    # Also verify "blank" doesn't contribute to summation when it appears in lower ranks
+    classifications = [[0, 0.30], [5, 0.30], [1, 0.05]]
+    result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
+    assert result is not None
+    # Only leopard (0.30) + lion (0.05) contribute to genus panthera = 0.35
+    # Without exclusion, blank would add 0.30 → panthera = 0.65
+    assert result["confidence"] == pytest.approx(0.35, abs=0.01)
+
+
+def test_non_species_classes_constant():
+    """NON_SPECIES_CLASSES contains the expected entries."""
+    assert "blank" in NON_SPECIES_CLASSES
+    assert "empty" in NON_SPECIES_CLASSES
+    assert "false detection" in NON_SPECIES_CLASSES
+    assert "none" in NON_SPECIES_CLASSES

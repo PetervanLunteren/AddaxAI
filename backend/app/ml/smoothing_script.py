@@ -61,8 +61,10 @@ def main() -> None:
         "no cv result",
         "animal",
         "blank",
+        "empty",
         "mammal",
         "false detection",
+        "none",
         "vide",
     ]
     options.other_category_names = [name.lower() for name in base_other]

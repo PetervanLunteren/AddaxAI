@@ -7,37 +7,12 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 - [ ] And it would be great if we could have a dropdown for the smoothing aggresiveness.
 
 
-Great! explan to me in a few sentences and examples where the taxonomy is stored, how 
- it works with raw model classes, and with rolled up result classes, and how it would   
- work if we add a new custom class with taxonomy information via UI. And how it         
- fetches the information from the classification models / ML results / etc. How it      
- works for both speciesnet and the other custom classes.  
+- [ ] I've implemented the "Taxonomic rollup", but forgot to mention that some model classes should not participate in the rollup. We're talking about these classes: /Applications/AddaxAI_files/AddaxAI/classification_utils/inference_lib.py:26~32
 
 
+- [x] Are the filters for event verification and similarity verification shared? If so, not needed. We have have separate filters for each. I dont think many users will switch between these two verification methods and expecting the filters to be the same. It is also not doing the same thing, so not needed. And while we're at it, make the counts for the species filter in the similarity vierification count detections instead of events ("(2 events)" - > "(7 detections)"). 
 
-
-Focus on the taxonomy CSV s that each model has with it, where the model classes have their taxonomic levels listed. What is its format, and is there any code that currently use it?
-
-Now lets think about how we get the rolled up detections...
-in the species selection filter in the event verification method. How doesit          
-currently work? And how should it work? Is it handy to add columns to eachdetection   
-with all taxonomic info (spp, genus, fmaily, etc), or just a new table which willbe   
-linked to each detection if something needs the full taxonomy. What is handy here?I   
-want the new rolled up taxa like "bovidae" in the taoxnomic tree in thespecies        
-filter, saying something like "bovidae (unspecified) (3 events)". Investigate howthe  
-taxonomic tree currently works, and what we need to do to get it working. Keepin      
-mind that we will get many rolled up taxa (which all have taxonomic informationof     
-course), and we will be adding a feature later where users can add new classes tothe  
-system with custom taxons.  
-
-
-
-- I've implemented the "Taxonomic rollup", but forgot to mention that some model classes should not participate in the rollup. We're talking about these classes: /Applications/AddaxAI_files/AddaxAI/classification_utils/inference_lib.py:26~32
-
-
-- [ ] Are the filters for event verification and similarity verification shared? If so, not needed. We have have separate filters for each. I dont think many users will switch between these two verification methods and expecting the filters to be the same. It is also not doing the same thing, so not needed. And while we're at it, make the counts for the species filter in the similarity vierification count detections instead of events ("(2 events)" - > "(7 detections)"). 
-
-- [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to store the taxonomy trees. How to add a class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. 
+- [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to add a custom class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. Somethng like Apple's spotlight searchbar? 
 
 - [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
   species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 

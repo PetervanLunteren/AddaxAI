@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]  # broadest → most specific
 ROLLUP_THRESHOLD = 0.65
+NON_SPECIES_CLASSES = frozenset({"blank", "empty", "false detection", "none"})
 
 
 @dataclass
@@ -130,8 +131,8 @@ def rollup_single_detection(
     if top_conf >= ROLLUP_THRESHOLD:
         return None
 
-    # Skip non-taxonomic classes (not in taxonomy CSV)
-    if top_name not in taxonomy_lookup:
+    # Skip non-species classes and non-taxonomic classes (not in taxonomy CSV)
+    if top_name in NON_SPECIES_CLASSES or top_name not in taxonomy_lookup:
         return None
 
     # Sum confidences into level_sums[level][taxon_value]
@@ -139,7 +140,7 @@ def rollup_single_detection(
 
     for cls_id, conf in classifications:
         name = class_id_to_name.get(str(cls_id), "").lower()
-        if name not in taxonomy_lookup:
+        if name in NON_SPECIES_CLASSES or name not in taxonomy_lookup:
             continue
         entry = taxonomy_lookup[name]
         for level in TAXONOMY_LEVELS:
@@ -218,7 +219,7 @@ def apply_taxonomic_rollup_to_results(md_results: dict, taxonomy_csv_path: Path)
                 top_name = class_id_to_name.get(str(classifications[0][0]), "").lower()
                 if top_conf >= ROLLUP_THRESHOLD:
                     skipped_confident += 1
-                elif top_name not in taxonomy_lookup:
+                elif top_name in NON_SPECIES_CLASSES or top_name not in taxonomy_lookup:
                     skipped_non_taxonomic += 1
                 continue
 
