@@ -91,3 +91,112 @@ class ModelInference:
 - NAM-ADS-v1: YOLOv8 (PyTorch) - `/Users/peter/AddaxAI/models/cls/NAM-ADS-v1/inference.py`
 - TAS-BB-v1: MEWC-Keras (Keras/JAX) - `/Users/peter/AddaxAI/models/cls/TAS-BB-v1/inference.py`
 
+## Species taxonomy and the hierarchical filter tree
+
+The species filter in the UI can render as either a flat multiselect or a hierarchical tree (class > order > family > genus > species). The tree is built from the `species_taxonomy` table. If no taxonomy rows exist for a project's classification model, the frontend falls back to the flat list.
+
+### Database table: `species_taxonomy`
+
+See `backend/app/models/species_taxonomy.py`.
+
+| Column | Purpose |
+|--------|---------|
+| `classification_model_id` | Links to the classification model |
+| `name` | Display label — **must match `Detection.species`** (this is the join key) |
+| `taxon_class` .. `taxon_species` | Formal taxonomy ranks (nullable) |
+| `level` | Most specific non-empty rank: `"class"`, `"order"`, `"family"`, `"genus"`, or `"species"` |
+| `is_custom` | `True` for user-created entries, `False` for model-sourced entries |
+
+Unique constraint: `(classification_model_id, name)`. All taxonomy functions are idempotent — calling them twice inserts 0 the second time.
+
+`Detection.species` is a plain text field, **not** a foreign key. The tree builder matches it against `species_taxonomy.name` by string equality. This means the `name` value must exactly match whatever string ends up in `Detection.species`.
+
+### How taxonomy gets populated
+
+Taxonomy is populated automatically during two worker phases. All population functions live in `backend/app/ml/taxonomy_db.py`.
+
+#### 1. Custom models with `taxonomy.csv`
+
+Custom classification models (e.g. EUR-DF, NAM-ADS) ship a `taxonomy.csv` alongside their weights:
+
+```csv
+model_class,class,order,family,genus,species
+leopard,mammalia,carnivora,felidae,panthera,pardus
+bird,aves,,,,
+```
+
+`populate_taxonomy_from_csv(model_id, csv_path, db)` reads this file and inserts one row per line. The `model_class` column becomes `species_taxonomy.name`. Entries with only partial taxonomy (e.g. "bird" with just `class=aves`) get `level="class"`.
+
+#### 2. SpeciesNet (no CSV, taxonomy embedded in results JSON)
+
+SpeciesNet doesn't ship a `taxonomy.csv`. Instead, its `results.json` contains a `classification_category_descriptions` dict with semicolon-delimited taxonomy strings:
+
+```json
+{
+  "classification_category_descriptions": {
+    "0": "uuid;mammalia;cetartiodactyla;bovidae;bos;taurus;domestic cattle",
+    "1": "uuid;mammalia;cetartiodactyla;bovidae;;;bovidae",
+    "2": "uuid;;;;;;;blank"
+  }
+}
+```
+
+Format: `UUID;class;order;family;genus;species;common_name`
+
+`populate_taxonomy_from_json(model_id, json_path, db)` parses these strings and uses the **common name** (last field) as `species_taxonomy.name`. Entries with no taxonomy fields (e.g. "blank") are skipped.
+
+#### 3. Taxonomic rollup entries
+
+When taxonomic rollup is enabled and a detection's top-1 confidence is below threshold, confidences are summed up the taxonomy tree. If a higher-level taxon (e.g. "felidae" at family level) crosses the threshold, `Detection.species` is set to that taxon name.
+
+`add_rollup_taxonomy_entry(model_id, name, level, taxonomy_lookup, db)` inserts a new `species_taxonomy` row for the rolled-up label so it appears in the tree under the correct branch. Called from `backend/app/ml/postprocessing.py` for each new rolled-up label.
+
+### Where population is triggered
+
+Both workers use the same fallback pattern — try CSV first, fall back to JSON:
+
+| Worker | When | Code location |
+|--------|------|---------------|
+| `detection_worker.py` | After loading results to DB (phase 6) | ~line 542 |
+| `postprocessing_worker.py` | After reprocessing all deployments | ~line 174 |
+
+```python
+# Simplified pattern used in both workers:
+if taxonomy_csv.exists():
+    populate_taxonomy_from_csv(model_id, taxonomy_csv, db)
+elif results_json.exists():
+    populate_taxonomy_from_json(model_id, results_json, db)
+```
+
+The detection worker runs this once per deployment. The postprocessing worker runs it when reprocessing (e.g. after changing model or settings). Since all functions are idempotent, running them multiple times is safe.
+
+### How the filter tree is built
+
+`build_species_filter_tree()` in `backend/app/api/crud/species_tree.py`:
+
+1. Queries which species actually have detections in the project
+2. Joins against `species_taxonomy` to get taxonomy columns
+3. Builds the hierarchy: class > order > family > genus > species
+4. Annotates each leaf with detection or event counts
+5. Species with no taxonomy match go under an `"__other__"` node
+6. Returns `null` if no taxonomy rows exist (frontend shows flat list)
+
+Exposed via `GET /api/events/species-tree?project_id=<id>&count_by=<event|detection>`.
+
+### The `is_custom` flag
+
+All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag exists for future UI-driven taxonomy creation where users can add custom species with taxonomy info. Custom entries would work identically in the tree builder — it queries all `species_taxonomy` rows for the model regardless of `is_custom`.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `backend/app/models/species_taxonomy.py` | SQLAlchemy model |
+| `backend/app/ml/taxonomy_db.py` | Population functions (CSV, JSON, rollup) |
+| `backend/app/ml/taxonomic_rollup.py` | Rollup algorithm (sums confidences up tree) |
+| `backend/app/ml/postprocessing.py` | Orchestrates rollup + calls `add_rollup_taxonomy_entry` |
+| `backend/app/api/crud/species_tree.py` | Builds the filter tree from `species_taxonomy` |
+| `backend/app/ml/taxonomy_parser.py` | Parses CSV into a tree structure (used for validation, not DB) |
+| `backend/tests/ml/test_taxonomy_db.py` | Tests for all population functions |
+| `backend/tests/api/test_species_tree.py` | Tests for tree building + API endpoint |
+
