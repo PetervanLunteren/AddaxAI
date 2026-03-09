@@ -184,6 +184,12 @@ async def process_postprocessing_job(job_id: str) -> None:
                         populate_taxonomy_from_csv(
                             project.classification_model_id, taxonomy_csv, db
                         )
+                    elif json_path.exists():
+                        from app.ml.taxonomy_db import populate_taxonomy_from_json
+
+                        populate_taxonomy_from_json(
+                            project.classification_model_id, json_path, db
+                        )
             except Exception as e:
                 logger.warning(f"Failed to populate taxonomy DB: {e}")
 

@@ -1,11 +1,20 @@
 # AddaxAI-WebUI
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
-
-
 ## TODO priority 1
+- [x] implement the taxonomy stuff in the taxonomic rollup setting. 
+- [ ] If that works, make sure the Event smoothing works with taxonomy aware too (with dan's script).
+- [ ] And it would be great if we could have a dropdown for the smoothing aggresiveness.
 
-- [ ] implement the taxonomy stuff in the taxonomic rollup setting. If that works, make sure the Event smoothing works with taxonomy aware too (with dans script). And it would be great if we could have a dropdown for the smoothing aggresiveness.
+
+Great! explan to me in a few sentences and examples where the taxonomy is stored, how 
+ it works with raw model classes, and with rolled up result classes, and how it would   
+ work if we add a new custom class with taxonomy information via UI. And how it         
+ fetches the information from the classification models / ML results / etc. How it      
+ works for both speciesnet and the other custom classes.  
+
+
+
 
 Focus on the taxonomy CSV s that each model has with it, where the model classes have their taxonomic levels listed. What is its format, and is there any code that currently use it?
 

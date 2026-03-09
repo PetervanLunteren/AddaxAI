@@ -539,7 +539,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
-                # Populate species_taxonomy table from taxonomy.csv
+                # Populate species_taxonomy table from taxonomy.csv or results JSON
                 if classification_model_id:
                     try:
                         taxonomy_csv = cls_model_dir / "taxonomy.csv"
@@ -548,6 +548,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                             populate_taxonomy_from_csv(
                                 classification_model_id, taxonomy_csv, db
+                            )
+                        elif final_json_path.exists():
+                            from app.ml.taxonomy_db import populate_taxonomy_from_json
+
+                            populate_taxonomy_from_json(
+                                classification_model_id, final_json_path, db
                             )
                     except Exception as e:
                         logger.warning(f"Failed to populate taxonomy DB: {e}")
