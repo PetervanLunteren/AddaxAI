@@ -763,6 +763,7 @@ export function SimilarityTab({
                           }
                           options={labelOptions}
                           isLoading={labelOptionsLoading}
+                          projectId={projectId}
                         />
                       </div>
                     ))}
@@ -942,6 +943,7 @@ export function SimilarityTab({
         onActionComplete={handleActionComplete}
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
+        projectId={projectId}
         suggestionCount={
           allDetections.filter(
             (d) => selectedIds.has(d.detection_id) && !d.verified && d.neighbor_top_label && d.neighbor_top_label !== d.species

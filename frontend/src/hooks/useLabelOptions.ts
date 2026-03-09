@@ -2,8 +2,9 @@
  * Hook to build label options for the unified label picker.
  *
  * Fetches species from the classification model's taxonomy (or from
- * project species stats for SpeciesNet), and combines them with
- * the always-available "person" and "vehicle" options.
+ * project species stats for SpeciesNet), merges in any project-specific
+ * custom species, and combines them with the always-available "person"
+ * and "vehicle" options.
  */
 
 import { useMemo } from "react";
@@ -50,8 +51,20 @@ export function useLabelOptions(
     enabled: isSpeciesNet,
   });
 
+  // Custom species added by the user for this project
+  const {
+    data: customSpecies,
+    isLoading: customLoading,
+  } = useQuery({
+    queryKey: ["custom-species", projectId],
+    queryFn: () => projectsApi.getCustomSpecies(projectId),
+    enabled: !!projectId,
+  });
+
   const isLoading =
-    (hasTaxonomyModel && taxonomyLoading) || (isSpeciesNet && statsLoading);
+    (hasTaxonomyModel && taxonomyLoading) ||
+    (isSpeciesNet && statsLoading) ||
+    (!!projectId && customLoading);
 
   const options = useMemo(() => {
     const result: LabelOption[] = [...GENERAL_OPTIONS];
@@ -72,8 +85,19 @@ export function useLabelOptions(
       }
     }
 
+    // Append custom species, deduplicating against already-present names
+    if (customSpecies) {
+      const existingNames = new Set(result.map((o) => o.value.toLowerCase()));
+      for (const cs of customSpecies) {
+        if (!existingNames.has(cs.name.toLowerCase())) {
+          result.push({ value: cs.name, category: "animal", species: cs.name });
+          existingNames.add(cs.name.toLowerCase());
+        }
+      }
+    }
+
     return result;
-  }, [hasTaxonomyModel, taxonomy, isSpeciesNet, speciesStats]);
+  }, [hasTaxonomyModel, taxonomy, isSpeciesNet, speciesStats, customSpecies]);
 
   return { options, isLoading };
 }

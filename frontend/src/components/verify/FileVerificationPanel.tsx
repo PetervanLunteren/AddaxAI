@@ -228,6 +228,7 @@ export function FileVerificationPanel({
                   forceOpenPicker={openLabelPickerFor === detection.id}
                   onPickerOpenChange={onLabelPickerOpenChange}
                   pinnedOptions={pinnedOptions}
+                  projectId={projectId}
                 />
               ))}
 
@@ -327,6 +328,7 @@ function DetectionItem({
   forceOpenPicker,
   onPickerOpenChange,
   pinnedOptions,
+  projectId,
 }: {
   detection: DetectionResponse;
   isSelected: boolean;
@@ -338,6 +340,7 @@ function DetectionItem({
   forceOpenPicker?: boolean;
   onPickerOpenChange?: (open: boolean) => void;
   pinnedOptions?: PinnedOption[];
+  projectId?: string;
 }) {
   const currentLabel = detection.species || detection.category;
   const itemRef = useRef<HTMLDivElement>(null);
@@ -366,6 +369,7 @@ function DetectionItem({
           forceOpen={forceOpenPicker}
           onOpenChange={onPickerOpenChange}
           pinnedOptions={pinnedOptions}
+          projectId={projectId}
         />
         <div className="flex items-center gap-1 ml-auto">
           <span className="text-muted-foreground text-xs tabular-nums">

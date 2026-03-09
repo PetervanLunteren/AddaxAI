@@ -27,6 +27,7 @@ interface BulkActionBarProps {
   suggestionCount?: number;
   /** Accept neighbor suggestions for selected detections. */
   onAcceptSuggestions?: () => void;
+  projectId?: string;
 }
 
 export function BulkActionBar({
@@ -40,6 +41,7 @@ export function BulkActionBar({
   onVerify,
   suggestionCount = 0,
   onAcceptSuggestions,
+  projectId,
 }: BulkActionBarProps) {
   const queryClient = useQueryClient();
   const [relabelOpen, setRelabelOpen] = useState(false);
@@ -114,6 +116,7 @@ export function BulkActionBar({
               onOpenChange={(open) => {
                 if (!open) setRelabelOpen(false);
               }}
+              projectId={projectId}
             />
           </div>
         )}

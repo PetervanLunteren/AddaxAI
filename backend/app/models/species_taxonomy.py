@@ -39,17 +39,19 @@ class SpeciesTaxonomy(Base):
     is_custom: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
 
     __table_args__ = (
         UniqueConstraint(
-            "classification_model_id", "name",
-            name="uq_species_taxonomy_model_name",
+            "classification_model_id", "name", "project_id",
+            name="uq_species_taxonomy_model_name_project",
         ),
         Index("idx_species_taxonomy_model", "classification_model_id"),
         Index("idx_species_taxonomy_name", "name"),
+        Index("idx_species_taxonomy_project", "project_id"),
     )
 
     def __repr__(self) -> str:

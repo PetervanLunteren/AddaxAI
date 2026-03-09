@@ -809,6 +809,7 @@ export function EventDetailModal({
                     }))}
                     hideDot
                     hideLabel
+                    projectId={projectId}
                   />
                 </div>
               )}
@@ -1333,6 +1334,7 @@ export function EventDetailModal({
                             }
                             options={labelOptions}
                             isLoading={labelOptionsLoading}
+                            projectId={projectId}
                           />
                         </div>
                       ))}

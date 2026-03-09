@@ -141,3 +141,14 @@ class ProjectWithStats(ProjectResponse):
     deployment_count: int = Field(0, description="Number of deployments in this project")
     file_count: int = Field(0, description="Total number of files in this project")
     detection_count: int = Field(0, description="Total number of detections in this project")
+
+
+class CustomSpeciesCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+
+
+class CustomSpeciesResponse(BaseModel):
+    id: str
+    name: str
+
+    model_config = {"from_attributes": True}

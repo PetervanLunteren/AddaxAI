@@ -8,6 +8,10 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 
+
+- [ ] The taxonomic tree select, it should capitalise the first letter of all classes, including raw model classes, and normalise it to a human readable form. Capitalise the first letters of all inputs in the tree, and make the species level genus+species, so "Panthera leo", and "Bos taurus" (or would you advise against that, since we see the gebus parent node directly above that?). 
+
+
 - [x] I've implemented the "Taxonomic rollup", but forgot to mention that some model classes should not participate in the rollup. We're talking about these classes: /Applications/AddaxAI_files/AddaxAI/classification_utils/inference_lib.py:26~32
 
 

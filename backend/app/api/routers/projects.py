@@ -17,11 +17,14 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import project as crud_project
 from app.api.schemas.project import (
+    CustomSpeciesCreate,
+    CustomSpeciesResponse,
     ProjectCreate,
     ProjectResponse,
     ProjectUpdate,
     ProjectWithStats,
 )
+from app.models.species_taxonomy import SpeciesTaxonomy
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -454,6 +457,84 @@ async def reprocess_classifications(
     ws_manager.register_start(job.id, lambda jid=job.id: process_postprocessing_job(jid))
 
     return {"message": "Postprocessing started", "job_id": job.id}
+
+
+@router.get("/{project_id}/custom-species", response_model=list[CustomSpeciesResponse])
+def list_custom_species(
+    project_id: str, db: Session = Depends(get_db)
+) -> list[CustomSpeciesResponse]:
+    """
+    List custom species for a project.
+
+    Returns all user-defined custom species entries for this project.
+    """
+    rows = (
+        db.query(SpeciesTaxonomy)
+        .filter(
+            SpeciesTaxonomy.project_id == project_id,
+            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+        )
+        .all()
+    )
+    return [CustomSpeciesResponse.model_validate(r) for r in rows]
+
+
+@router.post(
+    "/{project_id}/custom-species",
+    response_model=CustomSpeciesResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_custom_species(
+    project_id: str,
+    body: CustomSpeciesCreate,
+    db: Session = Depends(get_db),
+) -> CustomSpeciesResponse:
+    """
+    Add a custom species to a project.
+
+    If the species name already exists (case-insensitive) in the model taxonomy
+    or among this project's custom species, returns the existing entry.
+    """
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    name = body.name.strip()
+    model_id = db_project.classification_model_id
+
+    # Check if already exists (case-insensitive) in current model taxonomy
+    # or among this project's custom species
+    existing = (
+        db.query(SpeciesTaxonomy)
+        .filter(
+            func.lower(SpeciesTaxonomy.name) == name.lower(),
+            (
+                (SpeciesTaxonomy.classification_model_id == model_id)
+                | (SpeciesTaxonomy.project_id == project_id)
+            ),
+        )
+        .first()
+    )
+
+    if existing:
+        return CustomSpeciesResponse.model_validate(existing)
+
+    new_species = SpeciesTaxonomy(
+        is_custom=True,
+        project_id=project_id,
+        level="unknown",
+        name=name,
+        classification_model_id="",
+    )
+    db.add(new_species)
+    db.commit()
+    db.refresh(new_species)
+
+    logger.info(f"Created custom species '{name}' for project {project_id}")
+    return CustomSpeciesResponse.model_validate(new_species)
 
 
 def _delete_project_embeddings(db: Session, project_id: str) -> int:

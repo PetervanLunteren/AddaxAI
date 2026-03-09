@@ -97,6 +97,18 @@ export const projectsApi = {
     ),
 
   /**
+   * List custom species for a project
+   */
+  getCustomSpecies: (projectId: string) =>
+    api.get<{ id: string; name: string }[]>(`/api/projects/${projectId}/custom-species`),
+
+  /**
+   * Create a custom species for a project
+   */
+  createCustomSpecies: (projectId: string, name: string) =>
+    api.post<{ id: string; name: string }>(`/api/projects/${projectId}/custom-species`, { name }),
+
+  /**
    * Get independent event counts per species for a given interval
    */
   getIndependentEventStats: (

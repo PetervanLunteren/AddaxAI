@@ -6,6 +6,7 @@ annotated with event counts. Replaces the frontend's two-query + client-side
 pruning approach.
 """
 
+import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -70,15 +71,33 @@ def build_species_filter_tree(
     species_event_counts = {name: count for name, count in species_count_rows}
     detected_species = set(species_event_counts.keys())
 
-    # Get taxonomy rows for detected species
-    taxonomy_rows = (
+    # Get taxonomy rows for detected species: model-level first, then custom.
+    # Custom species are excluded if the model already provides that name
+    # (e.g. user added "lion" with EUR model, then switched to AFRICA which has it natively).
+    model_rows = (
         db.query(SpeciesTaxonomy)
         .filter(
             SpeciesTaxonomy.classification_model_id == model_id,
+            SpeciesTaxonomy.project_id.is_(None),
             SpeciesTaxonomy.name.in_(detected_species),
         )
         .all()
     )
+    model_species_names = {r.name.lower() for r in model_rows}
+
+    custom_rows = (
+        db.query(SpeciesTaxonomy)
+        .filter(
+            SpeciesTaxonomy.project_id == project_id,
+            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+            SpeciesTaxonomy.name.in_(detected_species),
+        )
+        .all()
+    )
+    # Only keep custom species not already covered by the model
+    custom_rows = [r for r in custom_rows if r.name.lower() not in model_species_names]
+
+    taxonomy_rows = model_rows + custom_rows
 
     if not taxonomy_rows:
         return None
