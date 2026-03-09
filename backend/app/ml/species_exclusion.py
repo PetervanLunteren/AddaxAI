@@ -15,7 +15,9 @@ logger = get_logger(__name__)
 # Non-species classes that should always be excluded from classifications.
 # These are generic labels from the model that aren't real species and should
 # never appear as species predictions in the UI or affect smoothing/rollup.
-NON_SPECIES_CLASSES = frozenset({"blank", "empty", "false detection", "none"})
+# Stripped during JSON ingest and before postprocessing — rollup and smoothing
+# never see them. Add new junk classes here (e.g. "calibration", "setup").
+NON_SPECIES_CLASSES = frozenset({"bait", "blank", "empty", "false detection", "none"})
 
 
 def filter_classifications(

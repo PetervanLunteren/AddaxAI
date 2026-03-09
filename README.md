@@ -15,24 +15,22 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 - [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to add a custom class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. Somethng like Apple's spotlight searchbar? 
 
-- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite
-  species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
+- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
 
-- [ ] we should probabaly have something to tag the deteciton as a "False detection". Right? How? Maybe w eshould add this when we have implemented the taxonomy aware label search verification modela. 
+- [ ] We should probabaly have something to tag the deteciton as a "False detection" in the similarity verification process. Right? In the event verification ww ould simply remove the box ("this is not an animal at all"), but in similarity verification it is a bit harder... What would you suggest? What is handy? 
 
-- [ ] do we need to add anythoing about this new testing method to the README.md / DEVELOPERS.md / 
-  other MD files? 
+- [ ] do we need to add anythoing about this new testing method to the README.md / DEVELOPERS.md / other MD files? 
 
 
 - [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
 
 
-- [ ] Can we confirm that the smoothing works for both taxonomies returned by SpeciesNet and taxonomies returned by other CLS models? 
+- [x] Can we confirm that the smoothing works for both taxonomies returned by SpeciesNet and taxonomies returned by other CLS models? 
 
-- [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
-- [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
+- [x] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
+- [x] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
-- [ ] do not use instances of "blank", "false detection", "vide", "no cv result", (case insensitive) into the smoothing function and do not load into the DB. They should remain in the JSON as raw data, but should otherwise be ignored. 
+- [x] do not use instances of "blank", "false detection", "vide", "no cv result", (case insensitive) into the smoothing function and do not load into the DB. They should remain in the JSON as raw data, but should otherwise be ignored. 
 
 ## TODO priority 2
 - [ ] make the pbars for processing more compact. Take the information that is now below it and put that in the pbar description with icons. SO it would be something like "Running... (file-icon) 18 of 46 - (elapsed time icon) 00:06 - etc. Then make the modal wider so it feels less cramped. 
