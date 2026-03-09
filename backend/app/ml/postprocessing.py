@@ -41,6 +41,7 @@ def compute_postprocessing_settings_hash(project) -> str:
     canonical = json.dumps(
         {
             "event_smoothing": project.event_smoothing,
+            "smoothing_strength": project.smoothing_strength,
             "taxonomic_rollup": project.taxonomic_rollup,
             "taxonomic_rollup_threshold": project.taxonomic_rollup_threshold,
             "independence_interval": project.independence_interval,
@@ -227,15 +228,17 @@ def run_postprocessing_for_deployment(
             json.dump(md_results, f, indent=2)
         logger.info("Rebuilt classification_category_descriptions to 7-token format")
 
-    # Apply species exclusion in memory (JSON on disk stays as ground truth)
-    if project.excluded_classes:
-        from app.ml.species_exclusion import apply_species_exclusion_to_results
+    # Apply species exclusion in memory (JSON on disk stays as ground truth).
+    # Always strips non-species classes (blank, empty, false detection, none)
+    # plus any user-configured excluded species.
+    from app.ml.species_exclusion import apply_species_exclusion_to_results
 
-        apply_species_exclusion_to_results(md_results, project.excluded_classes)
+    apply_species_exclusion_to_results(md_results, project.excluded_classes)
 
-    # Apply taxonomic rollup BEFORE smoothing so the smoother can refine
-    # rolled-up labels using image/sequence context (e.g. "felidae" → "lion"
-    # if nearby detections are confidently "lion")
+    # --- Taxonomic rollup (independent of smoothing) ---
+    # Runs before smoothing so that when both are enabled, the smoother can
+    # refine rolled-up labels using image/sequence context (e.g. "felidae"
+    # → "lion" if nearby detections are confidently "lion").
     if project.taxonomic_rollup:
         cls_model_dir = _find_classification_model_dir(project, db)
         if cls_model_dir:
@@ -266,7 +269,9 @@ def run_postprocessing_for_deployment(
                     except Exception as e:
                         logger.warning(f"Failed to persist rollup taxonomy entries: {e}")
 
-    # If event smoothing is not enabled, return now
+    # --- Event smoothing (independent of rollup) ---
+    # Rollup section above is complete. If smoothing is off, return the
+    # (possibly rolled-up) results as-is — no subprocess needed.
     if not project.event_smoothing:
         return md_results
 
@@ -283,6 +288,7 @@ def run_postprocessing_for_deployment(
     # Build options for the subprocess script
     smoothing_options = {
         "event_smoothing": project.event_smoothing,
+        "smoothing_strength": project.smoothing_strength,
         "detection_threshold": project.detection_threshold,
         "sequence_info": sequence_info,
     }
@@ -493,10 +499,9 @@ def reload_raw_classifications_from_json(
     with open(json_path) as f:
         raw_results = json.load(f)
 
-    if excluded_classes:
-        from app.ml.species_exclusion import apply_species_exclusion_to_results
+    from app.ml.species_exclusion import apply_species_exclusion_to_results
 
-        apply_species_exclusion_to_results(raw_results, excluded_classes)
+    apply_species_exclusion_to_results(raw_results, excluded_classes)
 
     return update_database_from_smoothed_results(
         deployment_id, raw_results, deployment_folder, db

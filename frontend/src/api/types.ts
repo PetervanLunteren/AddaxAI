@@ -20,6 +20,7 @@ export interface ProjectCreate {
   video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
+  smoothing_strength: string;
   taxonomic_rollup: boolean;
   taxonomic_rollup_threshold: number;
   independence_interval: number;
@@ -40,6 +41,7 @@ export interface ProjectUpdate {
   video_fps?: number | null;
   detection_threshold?: number | null;
   event_smoothing?: boolean | null;
+  smoothing_strength?: string | null;
   taxonomic_rollup?: boolean | null;
   taxonomic_rollup_threshold?: number | null;
   independence_interval?: number | null;
@@ -61,6 +63,7 @@ export interface ProjectResponse {
   video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
+  smoothing_strength: string;
   taxonomic_rollup: boolean;
   taxonomic_rollup_threshold: number;
   independence_interval: number;

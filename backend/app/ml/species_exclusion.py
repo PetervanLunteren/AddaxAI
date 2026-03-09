@@ -12,6 +12,11 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Non-species classes that should always be excluded from classifications.
+# These are generic labels from the model that aren't real species and should
+# never appear as species predictions in the UI or affect smoothing/rollup.
+NON_SPECIES_CLASSES = frozenset({"blank", "empty", "false detection", "none"})
+
 
 def filter_classifications(
     classifications: list[list],
@@ -54,39 +59,68 @@ def filter_classifications(
     return renormalized
 
 
+def build_excluded_class_ids(
+    class_categories: dict[str, str],
+    excluded_species: list[str] | None = None,
+) -> set[str]:
+    """
+    Build the full set of class IDs to exclude.
+
+    Always includes NON_SPECIES_CLASSES (blank, empty, false detection, none).
+    Additionally includes any user-configured excluded species.
+
+    Args:
+        class_categories: Mapping of class_id -> class_name from JSON
+        excluded_species: Optional user-configured species names to exclude
+
+    Returns:
+        Set of class ID strings to exclude
+    """
+    if not class_categories:
+        return set()
+
+    # Build name -> [class_ids] lookup (lowercase for NON_SPECIES_CLASSES matching)
+    name_to_ids: dict[str, list[str]] = {}
+    name_lower_to_ids: dict[str, list[str]] = {}
+    for cls_id, name in class_categories.items():
+        name_to_ids.setdefault(name, []).append(cls_id)
+        name_lower_to_ids.setdefault(name.lower(), []).append(cls_id)
+
+    excluded_class_ids: set[str] = set()
+
+    # Always exclude non-species classes (case-insensitive)
+    for non_species in NON_SPECIES_CLASSES:
+        for cls_id in name_lower_to_ids.get(non_species, []):
+            excluded_class_ids.add(str(cls_id))
+
+    # Exclude user-configured species (exact match)
+    if excluded_species:
+        for species_name in excluded_species:
+            for cls_id in name_to_ids.get(species_name, []):
+                excluded_class_ids.add(str(cls_id))
+
+    return excluded_class_ids
+
+
 def apply_species_exclusion_to_results(
     md_results: dict,
-    excluded_species: list[str],
+    excluded_species: list[str] | None = None,
 ) -> dict:
     """
     Apply species exclusion to a full MegaDetector JSON results dict (in place).
 
-    Builds an excluded class ID set from classification_categories, then calls
-    filter_classifications() on every detection.
+    Always excludes NON_SPECIES_CLASSES (blank, empty, false detection, none).
+    Additionally excludes any user-configured species.
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
-        excluded_species: List of species names to exclude
+        excluded_species: Optional list of species names to exclude
 
     Returns:
         The modified dict (same reference as input)
     """
-    if not excluded_species:
-        return md_results
-
     class_categories = md_results.get("classification_categories", {})
-    if not class_categories:
-        return md_results
-
-    # Build set of class IDs to exclude (name -> id lookup)
-    name_to_ids: dict[str, list[str]] = {}
-    for cls_id, name in class_categories.items():
-        name_to_ids.setdefault(name, []).append(cls_id)
-
-    excluded_class_ids: set[str] = set()
-    for species_name in excluded_species:
-        for cls_id in name_to_ids.get(species_name, []):
-            excluded_class_ids.add(str(cls_id))
+    excluded_class_ids = build_excluded_class_ids(class_categories, excluded_species)
 
     if not excluded_class_ids:
         return md_results

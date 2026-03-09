@@ -3,11 +3,12 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO priority 1
 - [x] implement the taxonomy stuff in the taxonomic rollup setting. 
-- [ ] If that works, make sure the Event smoothing works with taxonomy aware too (with dan's script).
+- [x] If that works, make sure the Event smoothing works with taxonomy aware too (with dan's script).
 - [ ] And it would be great if we could have a dropdown for the smoothing aggresiveness.
 
 
-- [ ] I've implemented the "Taxonomic rollup", but forgot to mention that some model classes should not participate in the rollup. We're talking about these classes: /Applications/AddaxAI_files/AddaxAI/classification_utils/inference_lib.py:26~32
+
+- [x] I've implemented the "Taxonomic rollup", but forgot to mention that some model classes should not participate in the rollup. We're talking about these classes: /Applications/AddaxAI_files/AddaxAI/classification_utils/inference_lib.py:26~32
 
 
 - [x] Are the filters for event verification and similarity verification shared? If so, not needed. We have have separate filters for each. I dont think many users will switch between these two verification methods and expecting the filters to be the same. It is also not doing the same thing, so not needed. And while we're at it, make the counts for the species filter in the similarity vierification count detections instead of events ("(2 events)" - > "(7 detections)"). 
@@ -24,6 +25,9 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 
 - [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
+
+
+- [ ] Can we confirm that the smoothing works for both taxonomies returned by SpeciesNet and taxonomies returned by other CLS models? 
 
 - [ ] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
 - [ ] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 

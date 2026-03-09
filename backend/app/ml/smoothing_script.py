@@ -10,6 +10,7 @@ Usage:
 Where options_json contains:
     {
         "event_smoothing": bool,
+        "smoothing_strength": "mild" | "normal" | "aggressive",
         "sequence_info": list[dict] | null
     }
 
@@ -25,6 +26,35 @@ from megadetector.postprocessing.classification_postprocessing import (
     smooth_classification_results_image_level,
     smooth_classification_results_sequence_level,
 )
+
+# Preset parameter mappings for smoothing strength levels.
+# "normal" matches MegaDetector's defaults exactly.
+SMOOTHING_PRESETS = {
+    "mild": {
+        "classification_confidence_threshold": 0.6,
+        "min_detections_to_overwrite_other": 3,
+        "min_detections_to_overwrite_secondary": 6,
+        "max_detections_nondominant_class": 1,
+        "min_detections_to_overwrite_secondary_same_family": -1,
+        "max_detections_nondominant_class_same_family": -1,
+    },
+    "normal": {
+        "classification_confidence_threshold": 0.5,
+        "min_detections_to_overwrite_other": 2,
+        "min_detections_to_overwrite_secondary": 4,
+        "max_detections_nondominant_class": 1,
+        "min_detections_to_overwrite_secondary_same_family": 2,
+        "max_detections_nondominant_class_same_family": -1,
+    },
+    "aggressive": {
+        "classification_confidence_threshold": 0.3,
+        "min_detections_to_overwrite_other": 1,
+        "min_detections_to_overwrite_secondary": 2,
+        "max_detections_nondominant_class": 2,
+        "min_detections_to_overwrite_secondary_same_family": 2,
+        "max_detections_nondominant_class_same_family": 2,
+    },
+}
 
 
 def main() -> None:
@@ -46,6 +76,7 @@ def main() -> None:
 
     event_smoothing = opts.get("event_smoothing", False)
     detection_threshold = opts.get("detection_threshold", 0.15)
+    smoothing_strength = opts.get("smoothing_strength", "normal")
     sequence_info = opts.get("sequence_info")
 
     # Configure smoothing options
@@ -54,18 +85,20 @@ def main() -> None:
     options.detection_confidence_threshold = detection_threshold
     options.detection_category_names_to_smooth = ["animal"]
 
-    # Base other categories (case-insensitive matching handled by lowercasing)
+    # Apply strength preset
+    preset = SMOOTHING_PRESETS.get(smoothing_strength, SMOOTHING_PRESETS["normal"])
+    for param, value in preset.items():
+        setattr(options, param, value)
+
+    # Generic "other" categories that the smoother can overwrite with a dominant
+    # real species. Non-species classes (blank, empty, false detection, none) are
+    # already stripped by species exclusion before smoothing runs.
     base_other = [
         "other",
         "unknown",
         "no cv result",
         "animal",
-        "blank",
-        "empty",
         "mammal",
-        "false detection",
-        "none",
-        "vide",
     ]
     options.other_category_names = [name.lower() for name in base_other]
 

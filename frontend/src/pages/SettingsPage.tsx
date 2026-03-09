@@ -100,6 +100,7 @@ const settingsSchema = z.object({
   video_fps: z.number().min(0.1).max(10),
   detection_threshold: z.number().min(0).max(1),
   event_smoothing: z.boolean(),
+  smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
   taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
@@ -131,6 +132,7 @@ type SettingsFormData = z.infer<typeof settingsSchema>;
 /** Settings that trigger classification reprocessing when changed. */
 const SMOOTHING_SETTINGS = [
   "event_smoothing",
+  "smoothing_strength",
   "taxonomic_rollup",
   "taxonomic_rollup_threshold",
   "independence_interval",
@@ -255,6 +257,7 @@ export default function SettingsPage() {
       video_fps: 1.0,
       detection_threshold: 0.5,
       event_smoothing: true,
+      smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
       taxonomic_rollup_threshold: 0.65,
       independence_interval: 1800,
@@ -274,6 +277,7 @@ export default function SettingsPage() {
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
+        smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
         taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
@@ -677,6 +681,7 @@ export default function SettingsPage() {
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
+        smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
         taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
@@ -1334,7 +1339,7 @@ export default function SettingsPage() {
                 <FormField
                   control={form.control}
                   name="event_smoothing"
-                  render={({ field }) => (
+                  render={() => (
                     <div className="grid grid-cols-2 gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Event smoothing</FormLabel>
@@ -1343,10 +1348,27 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="flex items-center">
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
+                        <Select
+                          value={form.watch("event_smoothing") ? form.watch("smoothing_strength") : "off"}
+                          onValueChange={(value) => {
+                            if (value === "off") {
+                              form.setValue("event_smoothing", false, { shouldDirty: true });
+                            } else {
+                              form.setValue("event_smoothing", true, { shouldDirty: true });
+                              form.setValue("smoothing_strength", value as "mild" | "normal" | "aggressive", { shouldDirty: true });
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="max-w-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="off">Off</SelectItem>
+                            <SelectItem value="mild">Mild</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="aggressive">Aggressive</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}
@@ -1402,6 +1424,7 @@ export default function SettingsPage() {
                     form.setValue("video_fps", 1.0, { shouldDirty: true });
                     form.setValue("detection_threshold", 0.5, { shouldDirty: true });
                     form.setValue("event_smoothing", true, { shouldDirty: true });
+                    form.setValue("smoothing_strength", "normal", { shouldDirty: true });
                     form.setValue("taxonomic_rollup", true, { shouldDirty: true });
                     form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
                     form.setValue("independence_interval", 1800, { shouldDirty: true });

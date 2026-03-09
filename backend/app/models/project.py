@@ -71,6 +71,9 @@ class Project(Base):
     event_smoothing: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+    smoothing_strength: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="normal"
+    )
     taxonomic_rollup: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )

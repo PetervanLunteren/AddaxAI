@@ -745,16 +745,13 @@ def load_json_to_database(
 
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
-        # Build excluded class ID set for species filtering
-        excluded_class_ids: set[str] = set()
-        if excluded_classes:
-            class_categories = results.get("classification_categories", {})
-            name_to_ids: dict[str, list[str]] = {}
-            for cls_id, name in class_categories.items():
-                name_to_ids.setdefault(name, []).append(cls_id)
-            for species_name in excluded_classes:
-                for cls_id in name_to_ids.get(species_name, []):
-                    excluded_class_ids.add(str(cls_id))
+        # Build excluded class ID set for species filtering.
+        # Always strips non-species classes (blank, empty, false detection, none)
+        # plus any user-configured excluded species.
+        from app.ml.species_exclusion import build_excluded_class_ids
+
+        class_categories = results.get("classification_categories", {})
+        excluded_class_ids = build_excluded_class_ids(class_categories, excluded_classes)
 
         # Track statistics
         total_detections = 0

@@ -57,6 +57,11 @@ class ProjectBase(BaseModel):
     event_smoothing: bool = Field(
         default=True, description="Apply temporal smoothing to detections"
     )
+    smoothing_strength: str = Field(
+        default="normal",
+        pattern="^(mild|normal|aggressive)$",
+        description="Smoothing aggressiveness: mild, normal, or aggressive",
+    )
     taxonomic_rollup: bool = Field(default=True, description="Aggregate detections by taxonomy")
     taxonomic_rollup_threshold: float = Field(
         default=0.65,
@@ -102,6 +107,7 @@ class ProjectUpdate(BaseModel):
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
     detection_threshold: float | None = Field(None, ge=0.0, le=1.0)
     event_smoothing: bool | None = None
+    smoothing_strength: str | None = Field(None, pattern="^(mild|normal|aggressive)$")
     taxonomic_rollup: bool | None = None
     taxonomic_rollup_threshold: float | None = Field(None, ge=0.1, le=1.0)
     independence_interval: int | None = Field(None, ge=0)
