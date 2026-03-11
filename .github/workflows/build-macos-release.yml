@@ -583,14 +583,14 @@ jobs:
       - name: Compress the macOS installer
         run: |
           cd "${{ github.workspace }}/install_files/macos"
-          zip -r "MacOS-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
+          zip -r "macos-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
 
           mkdir -p temp
-          mv "MacOS-installer.zip" temp/
+          mv "macos-installer.zip" temp/
 
       - name: Upload MacOS installer to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ env.UPLOAD_TAG }}" \
-            "${{ github.workspace }}/install_files/macos/temp/MacOS-installer.zip" --clobber
+            "${{ github.workspace }}/install_files/macos/temp/macos-installer.zip" --clobber
