@@ -8,6 +8,9 @@
 
 import { api } from "../lib/api-client";
 import type {
+  CustomSpeciesResponse,
+  CustomSpeciesUpdate,
+  GBIFSuggestion,
   ProjectCreate,
   ProjectResponse,
   ProjectUpdate,
@@ -100,13 +103,31 @@ export const projectsApi = {
    * List custom species for a project
    */
   getCustomSpecies: (projectId: string) =>
-    api.get<{ id: string; name: string }[]>(`/api/projects/${projectId}/custom-species`),
+    api.get<CustomSpeciesResponse[]>(`/api/projects/${projectId}/custom-species`),
 
   /**
    * Create a custom species for a project
    */
   createCustomSpecies: (projectId: string, name: string) =>
-    api.post<{ id: string; name: string }>(`/api/projects/${projectId}/custom-species`, { name }),
+    api.post<CustomSpeciesResponse>(`/api/projects/${projectId}/custom-species`, { name }),
+
+  /**
+   * Update a custom species (name and/or taxonomy fields)
+   */
+  updateCustomSpecies: (projectId: string, speciesId: string, data: CustomSpeciesUpdate) =>
+    api.patch<CustomSpeciesResponse>(`/api/projects/${projectId}/custom-species/${speciesId}`, data),
+
+  /**
+   * Delete a custom species from a project
+   */
+  deleteCustomSpecies: (projectId: string, speciesId: string) =>
+    api.delete<void>(`/api/projects/${projectId}/custom-species/${speciesId}`),
+
+  /**
+   * Search GBIF for species suggestions by vernacular name
+   */
+  gbifSuggest: (query: string) =>
+    api.get<GBIFSuggestion[]>(`/api/projects/gbif/suggest?q=${encodeURIComponent(query)}`),
 
   /**
    * Get independent event counts per species for a given interval

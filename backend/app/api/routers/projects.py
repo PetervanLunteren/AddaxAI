@@ -19,6 +19,8 @@ from app.api.crud import project as crud_project
 from app.api.schemas.project import (
     CustomSpeciesCreate,
     CustomSpeciesResponse,
+    CustomSpeciesUpdate,
+    GBIFSuggestion,
     ProjectCreate,
     ProjectResponse,
     ProjectUpdate,
@@ -112,6 +114,85 @@ def create_project(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Project with name '{project.name}' already exists",
         ) from e
+
+
+@router.get("/gbif/suggest", response_model=list[GBIFSuggestion])
+def gbif_suggest(q: str) -> list[GBIFSuggestion]:
+    """
+    Proxy GBIF species search.
+
+    Tries VERNACULAR first, falls back to a general search (all fields)
+    when the vernacular query returns no results. This handles cases like
+    "king fisher" (two words) that GBIF's vernacular index doesn't match
+    but the general index resolves fine.
+
+    Deduplicates by canonicalName and returns up to 5 suggestions.
+    """
+    import httpx
+
+    client = httpx.Client(timeout=5.0)
+
+    skip_ranks = {"SUBSPECIES", "VARIETY", "FORM"}
+
+    def _usable(r: dict) -> bool:
+        """Check if a GBIF result is usable (has class, not a subspecies)."""
+        return bool(r.get("canonicalName") and r.get("class") and r.get("rank", "") not in skip_ranks)
+
+    try:
+        # Try vernacular name search first
+        resp = client.get(
+            "https://api.gbif.org/v1/species/search",
+            params={"q": q, "limit": 10, "qField": "VERNACULAR"},
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+
+        # Fall back to general search if no usable vernacular results
+        if not any(_usable(r) for r in results):
+            resp = client.get(
+                "https://api.gbif.org/v1/species/search",
+                params={"q": q, "limit": 10},
+            )
+            resp.raise_for_status()
+            results = resp.json().get("results", [])
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="GBIF service unavailable",
+        )
+    finally:
+        client.close()
+
+    # Boost exact canonical name matches to the top
+    q_lower = q.strip().lower()
+    results.sort(key=lambda r: r.get("canonicalName", "").lower() != q_lower)
+
+    # Deduplicate by canonicalName.
+    seen: set[str] = set()
+    suggestions: list[GBIFSuggestion] = []
+    for r in results:
+        if not _usable(r):
+            continue
+        canonical = r["canonicalName"]
+        key = canonical.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append(GBIFSuggestion(
+            gbif_key=r.get("key", 0),
+            scientific_name=r.get("scientificName", canonical),
+            canonical_name=canonical,
+            rank=r.get("rank", "UNKNOWN"),
+            taxon_class=r.get("class"),
+            taxon_order=r.get("order"),
+            taxon_family=r.get("family"),
+            taxon_genus=r.get("genus"),
+            taxon_species=r.get("species"),
+        ))
+        if len(suggestions) >= 5:
+            break
+
+    return suggestions
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -535,6 +616,116 @@ def create_custom_species(
 
     logger.info(f"Created custom species '{name}' for project {project_id}")
     return CustomSpeciesResponse.model_validate(new_species)
+
+
+def _derive_taxonomy_level(body: CustomSpeciesUpdate) -> str:
+    """Derive the most specific taxonomy level from populated fields."""
+    if body.taxon_species:
+        return "species"
+    if body.taxon_genus:
+        return "genus"
+    if body.taxon_family:
+        return "family"
+    if body.taxon_order:
+        return "order"
+    if body.taxon_class:
+        return "class"
+    return "unknown"
+
+
+@router.patch(
+    "/{project_id}/custom-species/{species_id}",
+    response_model=CustomSpeciesResponse,
+)
+def update_custom_species(
+    project_id: str,
+    species_id: str,
+    body: CustomSpeciesUpdate,
+    db: Session = Depends(get_db),
+) -> CustomSpeciesResponse:
+    """
+    Update taxonomy fields on a custom species.
+
+    Derives the taxonomy level from the most specific populated field.
+    """
+    row = (
+        db.query(SpeciesTaxonomy)
+        .filter(
+            SpeciesTaxonomy.id == species_id,
+            SpeciesTaxonomy.project_id == project_id,
+            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom species not found",
+        )
+
+    # Handle name update with collision check
+    if body.name is not None:
+        new_name = body.name.strip()
+        if new_name.lower() != row.name.lower():
+            collision = (
+                db.query(SpeciesTaxonomy)
+                .filter(
+                    func.lower(SpeciesTaxonomy.name) == new_name.lower(),
+                    SpeciesTaxonomy.id != species_id,
+                    SpeciesTaxonomy.project_id == project_id,
+                )
+                .first()
+            )
+            if collision:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Species '{new_name}' already exists",
+                )
+        row.name = new_name
+
+    row.taxon_class = body.taxon_class
+    row.taxon_order = body.taxon_order
+    row.taxon_family = body.taxon_family
+    row.taxon_genus = body.taxon_genus
+    row.taxon_species = body.taxon_species
+    row.level = _derive_taxonomy_level(body)
+
+    db.commit()
+    db.refresh(row)
+
+    logger.info(f"Updated custom species '{row.name}' → level={row.level}")
+    return CustomSpeciesResponse.model_validate(row)
+
+
+@router.delete(
+    "/{project_id}/custom-species/{species_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_custom_species(
+    project_id: str,
+    species_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a custom species from a project."""
+    row = (
+        db.query(SpeciesTaxonomy)
+        .filter(
+            SpeciesTaxonomy.id == species_id,
+            SpeciesTaxonomy.project_id == project_id,
+            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom species not found",
+        )
+
+    name = row.name
+    db.delete(row)
+    db.commit()
+    logger.info(f"Deleted custom species '{name}' from project {project_id}")
 
 
 def _delete_project_embeddings(db: Session, project_id: str) -> int:

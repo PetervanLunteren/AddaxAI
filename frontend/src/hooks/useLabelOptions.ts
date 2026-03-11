@@ -16,6 +16,8 @@ export interface LabelOption {
   value: string;
   category: "animal" | "person" | "vehicle";
   species: string | null;
+  isCustom?: boolean;
+  customId?: string;
 }
 
 const GENERAL_OPTIONS: LabelOption[] = [
@@ -90,7 +92,13 @@ export function useLabelOptions(
       const existingNames = new Set(result.map((o) => o.value.toLowerCase()));
       for (const cs of customSpecies) {
         if (!existingNames.has(cs.name.toLowerCase())) {
-          result.push({ value: cs.name, category: "animal", species: cs.name });
+          result.push({
+            value: cs.name,
+            category: "animal",
+            species: cs.name,
+            isCustom: true,
+            customId: cs.id,
+          });
           existingNames.add(cs.name.toLowerCase());
         }
       }

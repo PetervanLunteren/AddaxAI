@@ -114,7 +114,7 @@ def build_species_filter_tree(
         current: dict, level_name: str, taxon_value: str, path_parts: list[str],
     ) -> dict:
         """Ensure a parent node exists and return its children dict."""
-        path_parts.append(f"{level_name}:{taxon_value}")
+        path_parts.append(f"{level_name}:{taxon_value.lower()}")
         node_id = "|".join(path_parts)
         if node_id not in current:
             display = taxon_value if level_name == "species" else taxon_value.title()
@@ -149,7 +149,15 @@ def build_species_filter_tree(
         count = species_event_counts.get(row.name, 0)
 
         if row.level == "species":
-            species_label = row.taxon_species or row.name
+            # Build binomial display name.
+            # Model-native: taxon_species is the epithet → prepend genus.
+            # Custom (GBIF): taxon_species is already the full binomial.
+            if row.is_custom:
+                species_label = row.taxon_species or row.name
+            elif row.taxon_species and row.taxon_genus:
+                species_label = f"{row.taxon_genus.strip().capitalize()} {row.taxon_species}"
+            else:
+                species_label = row.taxon_species or row.name
             display_name = row.name.replace("_", " ")
             leaf_id = row.name
             leaf_node = {

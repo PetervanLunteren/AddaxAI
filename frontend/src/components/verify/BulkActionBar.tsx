@@ -102,24 +102,21 @@ export function BulkActionBar({
           <Tag className="h-4 w-4 mr-1" />
           Relabel
         </Button>
-        {relabelOpen && (
-          <div className="absolute bottom-full mb-2 left-0 z-50">
-            <LabelPicker
-              value=""
-              onSelect={(opt) => {
-                relabelMutation.mutate(opt);
-                setRelabelOpen(false);
-              }}
-              options={labelOptions}
-              isLoading={labelOptionsLoading}
-              forceOpen={true}
-              onOpenChange={(open) => {
-                if (!open) setRelabelOpen(false);
-              }}
-              projectId={projectId}
-            />
-          </div>
-        )}
+        <div className="absolute bottom-full mb-2 left-0 z-50">
+          <LabelPicker
+            value=""
+            onSelect={(opt) => {
+              relabelMutation.mutate(opt);
+            }}
+            options={labelOptions}
+            isLoading={labelOptionsLoading}
+            forceOpen={relabelOpen}
+            onOpenChange={(open) => {
+              if (!open) setRelabelOpen(false);
+            }}
+            projectId={projectId}
+          />
+        </div>
       </div>
 
       <Button

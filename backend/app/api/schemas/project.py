@@ -150,5 +150,32 @@ class CustomSpeciesCreate(BaseModel):
 class CustomSpeciesResponse(BaseModel):
     id: str
     name: str
+    level: str
+    taxon_class: str | None = None
+    taxon_order: str | None = None
+    taxon_family: str | None = None
+    taxon_genus: str | None = None
+    taxon_species: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CustomSpeciesUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    taxon_class: str | None = Field(None, max_length=100)
+    taxon_order: str | None = Field(None, max_length=100)
+    taxon_family: str | None = Field(None, max_length=100)
+    taxon_genus: str | None = Field(None, max_length=100)
+    taxon_species: str | None = Field(None, max_length=100)
+
+
+class GBIFSuggestion(BaseModel):
+    gbif_key: int
+    scientific_name: str
+    canonical_name: str
+    rank: str
+    taxon_class: str | None = None
+    taxon_order: str | None = None
+    taxon_family: str | None = None
+    taxon_genus: str | None = None
+    taxon_species: str | None = None

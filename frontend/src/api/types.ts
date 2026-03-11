@@ -81,6 +81,39 @@ export interface ProjectWithStats extends ProjectResponse {
   detection_count: number;
 }
 
+// Custom species types
+export interface CustomSpeciesResponse {
+  id: string;
+  name: string;
+  level: string;
+  taxon_class: string | null;
+  taxon_order: string | null;
+  taxon_family: string | null;
+  taxon_genus: string | null;
+  taxon_species: string | null;
+}
+
+export interface CustomSpeciesUpdate {
+  name?: string | null;
+  taxon_class?: string | null;
+  taxon_order?: string | null;
+  taxon_family?: string | null;
+  taxon_genus?: string | null;
+  taxon_species?: string | null;
+}
+
+export interface GBIFSuggestion {
+  gbif_key: number;
+  scientific_name: string;
+  canonical_name: string;
+  rank: string;
+  taxon_class: string | null;
+  taxon_order: string | null;
+  taxon_family: string | null;
+  taxon_genus: string | null;
+  taxon_species: string | null;
+}
+
 // Site types
 export interface SiteCreate {
   project_id: string;
