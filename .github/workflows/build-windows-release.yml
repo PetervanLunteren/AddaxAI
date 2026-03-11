@@ -761,5 +761,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          cp "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe" \
+             "${{ github.workspace }}/install_files/windows/temp/windows-installer.exe"
           gh release upload "${{ env.UPLOAD_TAG }}" \
-            "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe#Windows-installer.exe" --clobber
+            "${{ github.workspace }}/install_files/windows/temp/windows-installer.exe" --clobber
