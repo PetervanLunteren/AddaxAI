@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .detection_embedding import DetectionEmbedding
     from .file import File
     from .job import Job
+    from .species_taxonomy import SpeciesTaxonomy
 
 
 class Detection(Base):
@@ -57,6 +58,13 @@ class Detection(Base):
     species: Mapped[str | None] = mapped_column(String(100), nullable=True)
     species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # FK to SpeciesTaxonomy — source of truth for taxonomy lookups (exports, filter tree).
+    # Nullable: existing detections won't have it, and inference creates detections
+    # before taxonomy rows exist. Linked during postprocessing.
+    species_taxonomy_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("species_taxonomy.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Classification method (Camtrap DP classificationMethod) - "machine" or "human"
     classification_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
@@ -74,6 +82,9 @@ class Detection(Base):
     # Relationships
     file: Mapped["File"] = relationship("File", back_populates="detections")
     job: Mapped["Job | None"] = relationship("Job")
+    species_taxonomy: Mapped["SpeciesTaxonomy | None"] = relationship(
+        "SpeciesTaxonomy", back_populates="detections"
+    )
     embeddings: Mapped[list["DetectionEmbedding"]] = relationship(
         "DetectionEmbedding", back_populates="detection", cascade="all, delete-orphan"
     )
@@ -86,6 +97,7 @@ class Detection(Base):
         Index("idx_detections_confidence", "confidence"),
         Index("idx_detections_species", "species"),
         Index("idx_detections_species_confidence", "species_confidence"),
+        Index("idx_detections_species_taxonomy", "species_taxonomy_id"),
         Index("idx_detections_frame_number", "frame_number"),
         Index("idx_detections_verified", "verified"),
     )

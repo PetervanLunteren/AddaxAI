@@ -3,7 +3,6 @@ Taxonomy CSV parser with advanced tree building.
 
 Implements the same logic as streamlit-AddaxAI:
 - Handles missing/partial taxonomy gracefully
-- Merges redundant single-child chains
 - Sorts leaves before parents (both alphabetically)
 - Adds descendant counts to parent nodes
 - Groups unknown taxonomy under "other"
@@ -81,11 +80,6 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             }
         return root[other_key]["_children"]
 
-    def format_prefix(level_name: str, taxon_name: str) -> str:
-        """Format taxonomy level prefix (e.g., 'class Mammalia')."""
-        display_name = taxon_name if level_name == "species" else taxon_name.title()
-        return f"{level_name} {display_name}"
-
     # Process each row
     for row in rows:
         model_class = row.get("model_class", "").strip()
@@ -105,7 +99,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             other_children = ensure_other_group()
             if model_class not in other_children:
                 other_children[model_class] = {
-                    "_label": display_name,
+                    "_label": display_name.capitalize(),
                     "_annotation": "unknown taxonomy",
                     "_value": model_class,
                     "_children": {},
@@ -118,7 +112,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             taxonomic_value = species_name or model_class
             if model_class not in root:
                 root[model_class] = {
-                    "_label": taxonomic_value,
+                    "_label": taxonomic_value.capitalize(),
                     "_annotation": f"{display_name}, unknown taxonomy",
                     "_value": model_class,
                     "_children": {},
@@ -149,7 +143,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 len(set(remaining_names)) == 1 if remaining_names else False
             )
 
-            label_with_prefix = format_prefix(level_name, taxon_name)
+            display_taxon = taxon_name if level_name == "species" else taxon_name.title()
 
             # Handle unspecified branch
             if unspecified_branch and level_name != "species" and not species_available:
@@ -158,7 +152,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
 
                 if node_value not in current_level:
                     current_level[node_value] = {
-                        "_label": label_with_prefix,
+                        "_label": display_taxon,
                         "_value": node_value,
                         "_children": {},
                         "_level": level_name,
@@ -169,7 +163,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 # Add model_class as leaf with "unspecified" marker
                 if model_class not in current_level:
                     current_level[model_class] = {
-                        "_label": display_name.title(),
+                        "_label": display_name.capitalize(),
                         "_annotation": "unspecified",
                         "_value": model_class,
                         "_children": {},
@@ -185,10 +179,13 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             if is_last_level:
                 # Leaf node
                 if level_name == "species":
-                    leaf_label = label_with_prefix
+                    if genus_name and species_name:
+                        leaf_label = f"{genus_name.strip().capitalize()} {species_name}"
+                    else:
+                        leaf_label = species_name or display_name
                     leaf_annotation = display_name
                 else:
-                    leaf_label = display_name.title()
+                    leaf_label = display_name.capitalize()
                     leaf_annotation = "unspecified"
 
                 if model_class not in current_level:
@@ -206,7 +203,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
 
                 if node_value not in current_level:
                     current_level[node_value] = {
-                        "_label": label_with_prefix,
+                        "_label": display_taxon,
                         "_value": node_value,
                         "_children": {},
                         "_level": level_name,
@@ -228,36 +225,6 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 node["_children"] = children_list
             result.append(node)
         return result
-
-    # Merge single-child redundant nodes
-    def merge_single_redundant_nodes(nodes: list[dict]) -> list[dict]:
-        merged = []
-        for node in nodes:
-            if "_children" in node and len(node["_children"]) == 1:
-                child = node["_children"][0]
-
-                # Check if parent and child have same prefix
-                parent_prefix = node["_label"].split(" ")[0]
-                child_prefix = child["_label"].split(" ")[0]
-
-                if parent_prefix == child_prefix:
-                    # Merge: replace parent with child
-                    node["_label"] = child["_label"]
-                    node["_value"] = child["_value"]
-
-                    # Adopt grandchildren if any
-                    grandkids = child.get("_children", [])
-                    if grandkids:
-                        node["_children"] = merge_single_redundant_nodes(grandkids)
-                    else:
-                        node.pop("_children", None)  # Make it a leaf
-
-            # Recurse into children if still has them
-            if "_children" in node and node["_children"]:
-                node["_children"] = merge_single_redundant_nodes(node["_children"])
-
-            merged.append(node)
-        return merged
 
     # Sort leaves first, then parents (both alphabetically)
     def sort_leaf_first(nodes: list[dict]) -> list[dict]:
@@ -314,8 +281,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
 
     # Apply all transformations
     raw_tree = dict_to_list(root)
-    merged_tree = merge_single_redundant_nodes(raw_tree)
-    sorted_tree = sort_leaf_first(merged_tree)
+    sorted_tree = sort_leaf_first(raw_tree)
     annotate_counts(sorted_tree)
 
     return to_taxonomy_nodes(sorted_tree, 1)

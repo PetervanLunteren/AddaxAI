@@ -100,6 +100,7 @@ export function FileVerificationPanel({
     }) => detectionsApi.update(detectionId, { category, species }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
     },
   });
 

@@ -193,6 +193,14 @@ async def process_postprocessing_job(job_id: str) -> None:
             except Exception as e:
                 logger.warning(f"Failed to populate taxonomy DB: {e}")
 
+        # Link detections to taxonomy rows via FK
+        try:
+            from app.ml.taxonomy_db import link_detections_to_taxonomy
+
+            link_detections_to_taxonomy(project_id, db)
+        except Exception as e:
+            logger.warning(f"Failed to link detections to taxonomy: {e}")
+
         # Update project hash
         project.postprocessing_settings_hash = compute_postprocessing_settings_hash(
             project

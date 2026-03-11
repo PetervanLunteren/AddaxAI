@@ -7,11 +7,15 @@ taxonomic rollup. Enables server-side species filter tree building.
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from .detection import Detection
 
 
 class SpeciesTaxonomy(Base):
@@ -42,6 +46,11 @@ class SpeciesTaxonomy(Base):
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
+    )
+
+    # Back-reference to detections linked via FK
+    detections: Mapped[list["Detection"]] = relationship(
+        "Detection", back_populates="species_taxonomy"
     )
 
     __table_args__ = (

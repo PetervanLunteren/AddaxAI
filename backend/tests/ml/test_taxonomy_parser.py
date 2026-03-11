@@ -94,7 +94,7 @@ def test_species_leaf_has_annotation(tmp_path):
     leaf = find_leaf(tree, "leopard")
     assert leaf is not None
     # Name should be clean scientific text, annotation should be display name
-    assert leaf["name"] == "species pardus"
+    assert leaf["name"] == "Panthera pardus"
     assert leaf["annotation"] == "leopard"
 
 

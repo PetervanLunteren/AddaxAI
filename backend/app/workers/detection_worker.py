@@ -558,6 +558,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     except Exception as e:
                         logger.warning(f"Failed to populate taxonomy DB: {e}")
 
+                # Link detections to taxonomy rows via FK
+                try:
+                    from app.ml.taxonomy_db import link_detections_to_taxonomy
+
+                    link_detections_to_taxonomy(project_id, db)
+                except Exception as e:
+                    logger.warning(f"Failed to link detections to taxonomy: {e}")
+
             # ============================================================
             # PHASE 7: Postprocessing (smoothing) — non-fatal
             # ============================================================

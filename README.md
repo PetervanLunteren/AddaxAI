@@ -2,22 +2,13 @@
 A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
 ## TODO priority 1
-- [x] implement the taxonomy stuff in the taxonomic rollup setting. 
-- [x] If that works, make sure the Event smoothing works with taxonomy aware too (with dan's script).
-- [ ] And it would be great if we could have a dropdown for the smoothing aggresiveness.
+
+- [ ] throughout the project we refer to "Species"/"Labels"/"Categorioes" for model classes. We cant use "Class", since it creates confusion with the txonomic level class. But species is not accurate neither. Often it doesnt refelct the species level, (but higher level taxons), or something else enirely (vehicle, bait, etc). Should we change this to something more generic that fits all purposes and is easy understandable, like "label". That would make it "Configure labels", "Add custom label", etc. Or do you have alternatives? What do you propose? Category? 
+
+- [ ] in the similarity veriofication flow, the shift+click doesnt work very well. Often it doesnt recognise it or something lags. Can we make the SHIFT+CLICK the default? So click is always selecting (first is start of range, second is end of range), click outside gird is deselect. double clikc is opening the modal. What do you think? Agree that this is good UX? If so,m implement, and update the guides and shortcut info panes. 
 
 
-
-
-- [ ] The taxonomic tree select, it should capitalise the first letter of all classes, including raw model classes, and normalise it to a human readable form. Capitalise the first letters of all inputs in the tree, and make the species level genus+species, so "Panthera leo", and "Bos taurus" (or would you advise against that, since we see the gebus parent node directly above that?). 
-
-
-- [x] I've implemented the "Taxonomic rollup", but forgot to mention that some model classes should not participate in the rollup. We're talking about these classes: /Applications/AddaxAI_files/AddaxAI/classification_utils/inference_lib.py:26~32
-
-
-- [x] Are the filters for event verification and similarity verification shared? If so, not needed. We have have separate filters for each. I dont think many users will switch between these two verification methods and expecting the filters to be the same. It is also not doing the same thing, so not needed. And while we're at it, make the counts for the species filter in the similarity vierification count detections instead of events ("(2 events)" - > "(7 detections)"). 
-
-- [ ] if the taxonomy settings all works for SpeciesNet and other models, its time to think about how to add a custom class while verifying? Where does custom taxonomy inputs get stored? Should we adjust the "slect label dropwdown" in the verification workflow with a more elaborate search bar that lists all taxonomies and gives the option to add new ones. Somethng like Apple's spotlight searchbar? 
+- [ ] do a full audit on this repo. I want to clean it from redundatn files, scripts, md files, etc. Give me a report, with a short summary of its content and your recommendation (delete / keep / review). I want to clean this repo. Especially check the PROJECT_PLAN.md. Is it still relevant? Its been a while since I read it. Most of the work has been done without it. If we can remove it, are there any information in there that we want to sotre in developers.md? 
 
 - [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
 

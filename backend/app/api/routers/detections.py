@@ -193,10 +193,17 @@ def bulk_relabel_detections(
     if not detections:
         raise HTTPException(status_code=404, detail="No detections found")
 
+    # Resolve taxonomy ID for the new species label
+    new_taxonomy_id = None
+    if body.species:
+        from app.api.crud.detection import _resolve_detection_taxonomy
+        new_taxonomy_id = _resolve_detection_taxonomy(db, detections[0], body.species)
+
     for det in detections:
         if body.species is not None:
             det.species = body.species if body.species != "" else None
             det.species_confidence = 1.0 if body.species else None
+            det.species_taxonomy_id = new_taxonomy_id
         if body.category is not None:
             det.category = body.category
         det.classification_method = "human"

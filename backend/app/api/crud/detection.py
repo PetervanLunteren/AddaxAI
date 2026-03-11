@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.detection import DetectionCreate, DetectionCreateHuman, DetectionUpdate
-from app.models import Detection
+from app.models import Detection, Deployment, File, Site
 
 
 def get_detection(db: Session, detection_id: str) -> Detection | None:
@@ -217,6 +217,9 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
         detection.bbox_height = update.bbox_height
     if "species" in update.model_fields_set:
         detection.species = update.species
+        detection.species_taxonomy_id = _resolve_detection_taxonomy(
+            db, detection, update.species
+        )
         detection.classification_method = "human"
         if update.species is None:
             detection.species_confidence = None
@@ -258,3 +261,28 @@ def delete_detections_by_file(db: Session, file_id: str) -> int:
 
     db.commit()
     return count
+
+
+def _get_project_id_for_detection(db: Session, detection: Detection) -> str | None:
+    """Resolve project_id from Detection → File → Deployment → Site."""
+    row = (
+        db.query(Site.project_id)
+        .join(Deployment)
+        .join(File)
+        .filter(File.id == detection.file_id)
+        .first()
+    )
+    return row[0] if row else None
+
+
+def _resolve_detection_taxonomy(
+    db: Session, detection: Detection, species_name: str | None
+) -> str | None:
+    """Look up the correct species_taxonomy_id for a relabeled detection."""
+    if not species_name:
+        return None
+    project_id = _get_project_id_for_detection(db, detection)
+    if not project_id:
+        return None
+    from app.ml.taxonomy_db import resolve_taxonomy_id
+    return resolve_taxonomy_id(species_name, project_id, db)

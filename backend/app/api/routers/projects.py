@@ -312,6 +312,16 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
             detail=f"Project with id '{project_id}' not found",
         )
 
+    # Delete custom species taxonomy entries scoped to this project
+    taxonomy_count = (
+        db.query(SpeciesTaxonomy)
+        .filter(SpeciesTaxonomy.project_id == project_id)
+        .delete(synchronize_session=False)
+    )
+    if taxonomy_count:
+        db.commit()
+        logger.info(f"Deleted {taxonomy_count} custom species for project {project_id}")
+
     # Delete jobs associated with this project (after cascade removes detections
     # that have a FK to jobs)
     job_count = (
@@ -666,7 +676,8 @@ def update_custom_species(
     # Handle name update with collision check
     if body.name is not None:
         new_name = body.name.strip()
-        if new_name.lower() != row.name.lower():
+        old_name = row.name
+        if new_name.lower() != old_name.lower():
             collision = (
                 db.query(SpeciesTaxonomy)
                 .filter(
@@ -681,6 +692,25 @@ def update_custom_species(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Species '{new_name}' already exists",
                 )
+        if new_name != old_name:
+            # Update all detections in this project that reference the old name
+            (
+                db.query(Detection)
+                .filter(
+                    Detection.species == old_name,
+                    Detection.file_id.in_(
+                        db.query(File.id)
+                        .join(Deployment)
+                        .join(Site)
+                        .filter(Site.project_id == project_id)
+                    ),
+                )
+                .update(
+                    {Detection.species: new_name, Detection.species_taxonomy_id: species_id},
+                    synchronize_session=False,
+                )
+            )
+            logger.info(f"Renamed detections '{old_name}' → '{new_name}' in project {project_id}")
         row.name = new_name
 
     row.taxon_class = body.taxon_class
@@ -689,6 +719,26 @@ def update_custom_species(
     row.taxon_genus = body.taxon_genus
     row.taxon_species = body.taxon_species
     row.level = _derive_taxonomy_level(body)
+
+    # Ensure all detections with this species name point to this taxonomy row
+    project_file_ids = (
+        db.query(File.id)
+        .join(Deployment)
+        .join(Site)
+        .filter(Site.project_id == project_id)
+    )
+    (
+        db.query(Detection)
+        .filter(
+            Detection.species == row.name,
+            Detection.species_taxonomy_id != species_id,
+            Detection.file_id.in_(project_file_ids),
+        )
+        .update(
+            {Detection.species_taxonomy_id: species_id},
+            synchronize_session=False,
+        )
+    )
 
     db.commit()
     db.refresh(row)
@@ -723,6 +773,14 @@ def delete_custom_species(
         )
 
     name = row.name
+
+    # SET NULL the FK on detections that reference this taxonomy row
+    (
+        db.query(Detection)
+        .filter(Detection.species_taxonomy_id == species_id)
+        .update({Detection.species_taxonomy_id: None}, synchronize_session=False)
+    )
+
     db.delete(row)
     db.commit()
     logger.info(f"Deleted custom species '{name}' from project {project_id}")

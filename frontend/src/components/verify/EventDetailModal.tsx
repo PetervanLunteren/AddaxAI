@@ -403,6 +403,7 @@ export function EventDetailModal({
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["file"] });
+      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
     },
   });
 
@@ -417,6 +418,7 @@ export function EventDetailModal({
     },
     onSuccess: (next) => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
       setSelectedDetectionId(next?.id ?? null);
     },
   });
@@ -626,6 +628,7 @@ export function EventDetailModal({
             )
           ).then(() => {
             queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+            queryClient.invalidateQueries({ queryKey: ["species-tree"] });
           });
           break;
         }

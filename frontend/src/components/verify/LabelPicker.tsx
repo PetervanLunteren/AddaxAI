@@ -3,17 +3,16 @@
  *
  * Opens a centered dialog with searchable groups: pinned shortcuts,
  * general labels (person/vehicle), and species from the classification
- * model. When the search text doesn't match any existing option, an
- * "Add as new species" action appears at the bottom.
+ * model. An "Add new label" action at the bottom opens the TaxonomySheet
+ * slideout for creating a new custom species with optional GBIF lookup.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Pencil, Plus, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronsUpDown, Pencil, Plus } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { getCategoryColor } from "../../lib/detection-utils";
 import { projectsApi } from "../../api/projects";
-import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import {
@@ -60,7 +59,9 @@ export function LabelPicker({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [taxonomySpecies, setTaxonomySpecies] = useState<CustomSpeciesResponse | null>(null);
+  const [taxonomySheetOpen, setTaxonomySheetOpen] = useState(false);
   const [pendingOption, setPendingOption] = useState<LabelOption | null>(null);
+  const [createName, setCreateName] = useState("");
   const queryClient = useQueryClient();
 
   // Fetch custom species for edit lookups
@@ -77,19 +78,6 @@ export function LabelPicker({
     }
     return map;
   }, [customSpeciesList]);
-
-  const deleteMutation = useMutation({
-    mutationFn: ({ speciesId }: { speciesId: string }) =>
-      projectsApi.deleteCustomSpecies(projectId!, speciesId),
-    onSuccess: () => {
-      toast.success("Species removed");
-      queryClient.invalidateQueries({ queryKey: ["custom-species", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
-    },
-    onError: () => {
-      toast.error("Failed to delete species");
-    },
-  });
 
   // When forceOpen changes to true, open the dialog
   useEffect(() => {
@@ -132,34 +120,52 @@ export function LabelPicker({
     (o) => !searchLower || o.value.toLowerCase().includes(searchLower)
   );
 
-  // Show "Add new" when search doesn't match any existing option exactly
-  const exactMatch =
-    searchLower &&
-    options.some((o) => o.value.toLowerCase() === searchLower);
-  const showAddNew = searchLower.length > 0 && !exactMatch && !!projectId;
+  const hasResults =
+    (filteredPinned && filteredPinned.length > 0) ||
+    filteredGeneral.length > 0 ||
+    filteredModelSpecies.length > 0 ||
+    filteredCustomSpecies.length > 0;
+  const showAddNew = !!projectId && (!searchLower || !hasResults);
 
-  const handleAddNew = useCallback(async () => {
-    if (!projectId || !search.trim()) return;
-    const created = await projectsApi.createCustomSpecies(
-      projectId,
-      search.trim()
-    );
-    const option: LabelOption = {
-      value: created.name,
-      category: "animal",
-      species: created.name,
-    };
-    queryClient.invalidateQueries({
-      queryKey: ["custom-species", projectId],
-    });
-    // Defer onSelect until the TaxonomySheet closes — calling it now
-    // would trigger parent callbacks (relabel, deselect) that unmount us.
-    setPendingOption(option);
+  const handleAddNew = useCallback(() => {
+    if (!projectId) return;
+    setCreateName(search.trim());
     setOpen(false);
     setSearch("");
-    setTaxonomySpecies(created);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, search, queryClient]);
+    setTaxonomySpecies(null);
+    setTaxonomySheetOpen(true);
+  }, [projectId, search]);
+
+  const handleTaxonomySheetCreated = useCallback(
+    (created: CustomSpeciesResponse) => {
+      queryClient.invalidateQueries({ queryKey: ["custom-species", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+      const option: LabelOption = {
+        value: created.name,
+        category: "animal",
+        species: created.name,
+      };
+      // Defer onSelect until sheet close to avoid unmount issues
+      setPendingOption(option);
+    },
+    [projectId, queryClient]
+  );
+
+  const handleTaxonomySheetClose = useCallback(
+    (isOpen: boolean) => {
+      if (!isOpen) {
+        setTaxonomySheetOpen(false);
+        setTaxonomySpecies(null);
+        setCreateName("");
+        if (pendingOption) {
+          onSelect(pendingOption);
+          setPendingOption(null);
+        }
+        onOpenChange?.(false);
+      }
+    },
+    [pendingOption, onSelect, onOpenChange]
+  );
 
   // Trigger button
   const currentOption = options.find((o) => o.value === value);
@@ -312,20 +318,13 @@ export function LabelPicker({
                           onClick={(e) => {
                             e.stopPropagation();
                             const cs = customSpeciesMap.get(opt.customId!);
-                            if (cs) setTaxonomySpecies(cs);
+                            if (cs) {
+                              setTaxonomySpecies(cs);
+                              setTaxonomySheetOpen(true);
+                            }
                           }}
                         >
                           <Pencil className="h-3 w-3 text-muted-foreground" />
-                        </button>
-                        <button
-                          type="button"
-                          className="p-0.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteMutation.mutate({ speciesId: opt.customId! });
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3 text-muted-foreground" />
                         </button>
                         <Check
                           className={cn(
@@ -339,12 +338,14 @@ export function LabelPicker({
                 </CommandGroup>
               )}
 
-              {/* Add new species */}
+              {/* Add new label */}
               {showAddNew && (
                 <CommandGroup>
                   <CommandItem onSelect={handleAddNew}>
                     <Plus className="h-4 w-4 mr-1.5 text-muted-foreground" />
-                    Add &ldquo;{search.trim()}&rdquo; as new species
+                    {search.trim()
+                      ? <>Add new label for &ldquo;{search.trim()}&rdquo;</>
+                      : "Add new label"}
                   </CommandItem>
                 </CommandGroup>
               )}
@@ -368,18 +369,10 @@ export function LabelPicker({
         <TaxonomySheet
           species={taxonomySpecies}
           projectId={projectId}
-          open={taxonomySpecies !== null}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) {
-              setTaxonomySpecies(null);
-              // Flush deferred label selection now that the sheet is closed
-              if (pendingOption) {
-                onSelect(pendingOption);
-                setPendingOption(null);
-              }
-              onOpenChange?.(false);
-            }
-          }}
+          initialName={createName}
+          open={taxonomySheetOpen}
+          onOpenChange={handleTaxonomySheetClose}
+          onCreated={handleTaxonomySheetCreated}
         />
       )}
     </>

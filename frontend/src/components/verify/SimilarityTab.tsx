@@ -411,7 +411,8 @@ export function SimilarityTab({
     } else if (anchorId) {
       searchMutation.mutate(anchorId);
     }
-  }, [viewMode, anchorId]); // eslint-disable-line react-hooks/exhaustive-deps
+    queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+  }, [viewMode, anchorId, queryClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
   const patchLocalDetections = useCallback(

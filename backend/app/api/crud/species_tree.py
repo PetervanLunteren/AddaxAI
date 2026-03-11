@@ -71,33 +71,54 @@ def build_species_filter_tree(
     species_event_counts = {name: count for name, count in species_count_rows}
     detected_species = set(species_event_counts.keys())
 
-    # Get taxonomy rows for detected species: model-level first, then custom.
-    # Custom species are excluded if the model already provides that name
-    # (e.g. user added "lion" with EUR model, then switched to AFRICA which has it natively).
-    model_rows = (
-        db.query(SpeciesTaxonomy)
+    # Get taxonomy rows via FK join (preferred) + string match fallback for unlinked.
+    # FK-linked: query distinct taxonomy rows referenced by detections in this project.
+    linked_taxonomy_ids = (
+        db.query(func.distinct(Detection.species_taxonomy_id))
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .join(Site, Site.id == Deployment.site_id)
         .filter(
-            SpeciesTaxonomy.classification_model_id == model_id,
-            SpeciesTaxonomy.project_id.is_(None),
-            SpeciesTaxonomy.name.in_(detected_species),
+            Site.project_id == project_id,
+            Detection.species_taxonomy_id.isnot(None),
         )
+        .subquery()
+    )
+    fk_rows = (
+        db.query(SpeciesTaxonomy)
+        .filter(SpeciesTaxonomy.id.in_(db.query(linked_taxonomy_ids.c[0])))
         .all()
     )
-    model_species_names = {r.name.lower() for r in model_rows}
+    fk_species_names = {r.name for r in fk_rows}
 
-    custom_rows = (
-        db.query(SpeciesTaxonomy)
-        .filter(
-            SpeciesTaxonomy.project_id == project_id,
-            SpeciesTaxonomy.is_custom == True,  # noqa: E712
-            SpeciesTaxonomy.name.in_(detected_species),
+    # String-match fallback for unlinked detections (species_taxonomy_id IS NULL)
+    unlinked_species = detected_species - fk_species_names
+    fallback_rows: list[SpeciesTaxonomy] = []
+    if unlinked_species:
+        model_rows = (
+            db.query(SpeciesTaxonomy)
+            .filter(
+                SpeciesTaxonomy.classification_model_id == model_id,
+                SpeciesTaxonomy.project_id.is_(None),
+                SpeciesTaxonomy.name.in_(unlinked_species),
+            )
+            .all()
         )
-        .all()
-    )
-    # Only keep custom species not already covered by the model
-    custom_rows = [r for r in custom_rows if r.name.lower() not in model_species_names]
+        model_species_names = {r.name.lower() for r in model_rows}
 
-    taxonomy_rows = model_rows + custom_rows
+        custom_rows = (
+            db.query(SpeciesTaxonomy)
+            .filter(
+                SpeciesTaxonomy.project_id == project_id,
+                SpeciesTaxonomy.is_custom == True,  # noqa: E712
+                SpeciesTaxonomy.name.in_(unlinked_species),
+            )
+            .all()
+        )
+        custom_rows = [r for r in custom_rows if r.name.lower() not in model_species_names]
+        fallback_rows = model_rows + custom_rows
+
+    taxonomy_rows = fk_rows + fallback_rows
 
     if not taxonomy_rows:
         return None
