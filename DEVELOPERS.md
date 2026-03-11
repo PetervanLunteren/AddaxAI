@@ -27,6 +27,28 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 **Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days).
 
+## Linting (CI enforcement)
+
+GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:
+
+```bash
+cd backend
+ruff check app tests          # check only
+ruff check app tests --fix    # auto-fix import sorting (I001) and unused imports (F401)
+```
+
+**Common pitfalls that CI catches:**
+
+| Rule | What it means | How to fix |
+|------|---------------|------------|
+| **E501** | Line exceeds 100 characters | Break the line — wrap args, use intermediate variables, etc. |
+| **I001** | Imports not sorted | Run `ruff check --fix` (auto-fixable) |
+| **F401** | Unused import | Remove it, or run `ruff check --fix` |
+| **F841** | Variable assigned but never used | Remove the assignment |
+| **B904** | `raise` inside `except` without `from` | Use `raise ... from err` or `raise ... from None` |
+
+The max line length is **100 characters** (configured in `pyproject.toml`). This is the #1 source of CI failures — keep lines short.
+
 ## Best frame selection (videos)
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:

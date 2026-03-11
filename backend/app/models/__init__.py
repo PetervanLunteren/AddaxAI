@@ -8,9 +8,9 @@ from .detection_embedding import DetectionEmbedding
 from .event import Event, event_files
 from .file import File
 from .job import Job
+from .label_taxonomy import LabelTaxonomy
 from .project import Project
 from .site import Site
-from .label_taxonomy import LabelTaxonomy
 
 __all__ = [
     "AuditLog",

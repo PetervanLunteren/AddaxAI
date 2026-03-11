@@ -105,9 +105,9 @@ def init_db() -> None:
         event,
         file,
         job,
+        label_taxonomy,
         project,
         site,
-        label_taxonomy,
     )
 
     engine = get_engine()
@@ -131,7 +131,10 @@ def _migrate_missing_columns(engine: Engine) -> None:
         ("projects", "embedding_model_id", "VARCHAR(100)"),
         ("detections", "verified", "BOOLEAN NOT NULL DEFAULT 0"),
         ("detections", "verified_at", "DATETIME"),
-        ("detections", "label_taxonomy_id", "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL"),
+        (
+            "detections", "label_taxonomy_id",
+            "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL",
+        ),
     ]
     inspector = inspect(engine)
     with engine.begin() as conn:

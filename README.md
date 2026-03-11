@@ -3,8 +3,6 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO priority 1
 
-- [x] throughout the project we refer to "Species"/"Labels"/"Categorioes" for model classes — renamed to "label" everywhere (DB columns, API, frontend)
-
 - [ ] in the similarity veriofication flow, the shift+click doesnt work very well. Often it doesnt recognise it or something lags. Can we make the SHIFT+CLICK the default? So click is always selecting (first is start of range, second is end of range), click outside gird is deselect. double clikc is opening the modal. What do you think? Agree that this is good UX? If so,m implement, and update the guides and shortcut info panes. 
 
 

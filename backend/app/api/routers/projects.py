@@ -26,12 +26,12 @@ from app.api.schemas.project import (
     ProjectUpdate,
     ProjectWithStats,
 )
-from app.models.label_taxonomy import LabelTaxonomy
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.models import Deployment, Detection, File, Job, Site
 from app.models.detection_embedding import DetectionEmbedding
+from app.models.label_taxonomy import LabelTaxonomy
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -136,7 +136,10 @@ def gbif_suggest(q: str) -> list[GBIFSuggestion]:
 
     def _usable(r: dict) -> bool:
         """Check if a GBIF result is usable (has class, not a subspecies)."""
-        return bool(r.get("canonicalName") and r.get("class") and r.get("rank", "") not in skip_ranks)
+        return bool(
+            r.get("canonicalName") and r.get("class")
+            and r.get("rank", "") not in skip_ranks
+        )
 
     try:
         # Try vernacular name search first
@@ -155,11 +158,11 @@ def gbif_suggest(q: str) -> list[GBIFSuggestion]:
             )
             resp.raise_for_status()
             results = resp.json().get("results", [])
-    except httpx.HTTPError:
+    except httpx.HTTPError as err:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="GBIF service unavailable",
-        )
+        ) from err
     finally:
         client.close()
 

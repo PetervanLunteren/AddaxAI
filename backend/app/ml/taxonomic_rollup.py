@@ -63,7 +63,9 @@ def load_taxonomy_lookup(csv_path: Path) -> dict[str, dict[str, str]]:
     return lookup
 
 
-def _format_rollup_label(level: str, taxon_value: str, taxonomy_lookup: dict[str, dict[str, str]]) -> str:
+def _format_rollup_label(
+    level: str, taxon_value: str, taxonomy_lookup: dict[str, dict[str, str]],
+) -> str:
     """Format the display label for a rolled-up detection."""
     if level == "species":
         # Find genus from any taxonomy entry with that species value
@@ -74,7 +76,9 @@ def _format_rollup_label(level: str, taxon_value: str, taxonomy_lookup: dict[str
     return taxon_value
 
 
-def _build_rollup_description(level: str, taxon_value: str, taxonomy_lookup: dict[str, dict[str, str]]) -> str:
+def _build_rollup_description(
+    level: str, taxon_value: str, taxonomy_lookup: dict[str, dict[str, str]],
+) -> str:
     """
     Build a 7-token classification_category_description for a rolled-up label.
 
@@ -157,7 +161,10 @@ def rollup_single_detection(
         top_taxon = max(sums, key=sums.get)
         if sums[top_taxon] >= ROLLUP_THRESHOLD:
             label = _format_rollup_label(level, top_taxon, taxonomy_lookup)
-            return {"label": label, "confidence": sums[top_taxon], "level": level, "taxon": top_taxon}
+            return {
+                "label": label, "confidence": sums[top_taxon],
+                "level": level, "taxon": top_taxon,
+            }
 
     # Fallback: walk broadest to most specific, return first available
     for level in TAXONOMY_LEVELS:
@@ -165,7 +172,10 @@ def rollup_single_detection(
         if sums:
             top_taxon = max(sums, key=sums.get)
             label = _format_rollup_label(level, top_taxon, taxonomy_lookup)
-            return {"label": label, "confidence": sums[top_taxon], "level": level, "taxon": top_taxon}
+            return {
+                "label": label, "confidence": sums[top_taxon],
+                "level": level, "taxon": top_taxon,
+            }
 
     return None
 

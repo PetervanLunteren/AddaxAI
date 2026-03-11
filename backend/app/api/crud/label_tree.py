@@ -6,7 +6,6 @@ annotated with event counts. Replaces the frontend's two-query + client-side
 pruning approach.
 """
 
-import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -206,7 +205,11 @@ def build_label_filter_tree(
                 taxon_value_for_level is not None
                 and taxon_value_for_level.lower() == row.name.lower()
             )
-            display = row.name.replace("_", " ").title() if is_formal_taxon else row.name.replace("_", " ")
+            display = (
+                row.name.replace("_", " ").title()
+                if is_formal_taxon
+                else row.name.replace("_", " ")
+            )
             leaf_node = {
                 "id": leaf_id,
                 "name": display,

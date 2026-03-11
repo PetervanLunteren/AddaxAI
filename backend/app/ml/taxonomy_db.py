@@ -148,7 +148,10 @@ def populate_taxonomy_from_json(
         common_name = parts[6].strip().lower()
 
         # Skip entries with no taxonomy (e.g. "blank")
-        if not common_name or not any([taxon_class, taxon_order, taxon_family, taxon_genus, taxon_species]):
+        has_taxonomy = any([
+            taxon_class, taxon_order, taxon_family, taxon_genus, taxon_species,
+        ])
+        if not common_name or not has_taxonomy:
             continue
 
         if common_name in existing:

@@ -136,7 +136,6 @@ def test_smoothing_strength_passed_to_subprocess(db):
 
     captured_opts = {}
 
-    original_run = None
     def fake_subprocess_run(args, **kwargs):
         # Read the options JSON that was passed to the subprocess
         opts_path = args[3]  # [python, script, input, opts, output]
@@ -171,7 +170,8 @@ def test_smoothing_presets_aggressiveness_ordering():
     import ast
     from pathlib import Path
 
-    script_path = Path(__file__).resolve().parent.parent.parent / "app" / "ml" / "smoothing_script.py"
+    script_dir = Path(__file__).resolve().parent.parent.parent
+    script_path = script_dir / "app" / "ml" / "smoothing_script.py"
     tree = ast.parse(script_path.read_text())
 
     # Find the SMOOTHING_PRESETS assignment
@@ -187,21 +187,25 @@ def test_smoothing_presets_aggressiveness_ordering():
     normal = presets["normal"]
     aggressive = presets["aggressive"]
 
-    # Confidence threshold: mild > normal > aggressive (stricter → less aggressive)
-    assert mild["classification_confidence_threshold"] > normal["classification_confidence_threshold"]
-    assert normal["classification_confidence_threshold"] > aggressive["classification_confidence_threshold"]
+    # Confidence threshold: mild > normal > aggressive
+    k = "classification_confidence_threshold"
+    assert mild[k] > normal[k]
+    assert normal[k] > aggressive[k]
 
-    # min_detections_to_overwrite_other: mild > normal > aggressive (needs more evidence → less aggressive)
-    assert mild["min_detections_to_overwrite_other"] > normal["min_detections_to_overwrite_other"]
-    assert normal["min_detections_to_overwrite_other"] > aggressive["min_detections_to_overwrite_other"]
+    # min_detections_to_overwrite_other: mild > normal > aggressive
+    k = "min_detections_to_overwrite_other"
+    assert mild[k] > normal[k]
+    assert normal[k] > aggressive[k]
 
     # min_detections_to_overwrite_secondary: mild > normal > aggressive
-    assert mild["min_detections_to_overwrite_secondary"] > normal["min_detections_to_overwrite_secondary"]
-    assert normal["min_detections_to_overwrite_secondary"] > aggressive["min_detections_to_overwrite_secondary"]
+    k = "min_detections_to_overwrite_secondary"
+    assert mild[k] > normal[k]
+    assert normal[k] > aggressive[k]
 
-    # max_detections_nondominant_class: mild <= normal <= aggressive (tolerates more → more aggressive)
-    assert mild["max_detections_nondominant_class"] <= normal["max_detections_nondominant_class"]
-    assert normal["max_detections_nondominant_class"] <= aggressive["max_detections_nondominant_class"]
+    # max_detections_nondominant_class: mild <= normal <= aggressive
+    k = "max_detections_nondominant_class"
+    assert mild[k] <= normal[k]
+    assert normal[k] <= aggressive[k]
 
 
 def test_smoothing_presets_cover_all_strengths():
@@ -209,7 +213,8 @@ def test_smoothing_presets_cover_all_strengths():
     import ast
     from pathlib import Path
 
-    script_path = Path(__file__).resolve().parent.parent.parent / "app" / "ml" / "smoothing_script.py"
+    script_dir = Path(__file__).resolve().parent.parent.parent
+    script_path = script_dir / "app" / "ml" / "smoothing_script.py"
     tree = ast.parse(script_path.read_text())
 
     presets = None

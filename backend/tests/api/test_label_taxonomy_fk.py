@@ -58,7 +58,7 @@ def test_label_tree_uses_fk_linked_detections(db):
     """Tree correctly resolves taxonomy via FK join when detections are linked."""
     p, dets = _setup_project_with_linked_detections(db, ["leopard", "lion"])
 
-    leo_tax = _add_taxonomy(db, "leopard", "species",
+    _add_taxonomy(db, "leopard", "species",
                             taxon_class="mammalia", taxon_order="carnivora",
                             taxon_family="felidae", taxon_genus="panthera",
                             taxon_species="pardus")

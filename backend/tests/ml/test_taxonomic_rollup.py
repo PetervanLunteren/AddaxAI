@@ -1,7 +1,6 @@
 """Tests for app.ml.taxonomic_rollup."""
 
 import csv
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,12 +13,34 @@ from app.ml.taxonomic_rollup import (
 )
 
 SAMPLE_TAXONOMY_ROWS = [
-    {"model_class": "leopard", "class": "mammalia", "order": "carnivora", "family": "felidae", "genus": "panthera", "species": "pardus"},
-    {"model_class": "lion", "class": "mammalia", "order": "carnivora", "family": "felidae", "genus": "panthera", "species": "leo"},
-    {"model_class": "cheetah", "class": "mammalia", "order": "carnivora", "family": "felidae", "genus": "acinonyx", "species": "jubatus"},
-    {"model_class": "zebra", "class": "mammalia", "order": "perissodactyla", "family": "equidae", "genus": "equus", "species": "quagga"},
-    {"model_class": "bird", "class": "aves", "order": "", "family": "", "genus": "", "species": ""},
-    {"model_class": "blank", "class": "", "order": "", "family": "", "genus": "", "species": ""},
+    {
+        "model_class": "leopard", "class": "mammalia",
+        "order": "carnivora", "family": "felidae",
+        "genus": "panthera", "species": "pardus",
+    },
+    {
+        "model_class": "lion", "class": "mammalia",
+        "order": "carnivora", "family": "felidae",
+        "genus": "panthera", "species": "leo",
+    },
+    {
+        "model_class": "cheetah", "class": "mammalia",
+        "order": "carnivora", "family": "felidae",
+        "genus": "acinonyx", "species": "jubatus",
+    },
+    {
+        "model_class": "zebra", "class": "mammalia",
+        "order": "perissodactyla", "family": "equidae",
+        "genus": "equus", "species": "quagga",
+    },
+    {
+        "model_class": "bird", "class": "aves",
+        "order": "", "family": "", "genus": "", "species": "",
+    },
+    {
+        "model_class": "blank", "class": "",
+        "order": "", "family": "", "genus": "", "species": "",
+    },
 ]
 
 

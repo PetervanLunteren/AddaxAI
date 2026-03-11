@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.detection import DetectionCreate, DetectionCreateHuman, DetectionUpdate
-from app.models import Detection, Deployment, File, Site
+from app.models import Deployment, Detection, File, Site
 
 
 def get_detection(db: Session, detection_id: str) -> Detection | None:
