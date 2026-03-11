@@ -4,7 +4,15 @@
 Below are instructions for AddaxAI users who are unable to execute the normal install due to unstable internet, security issues, or something else. Installing AddaxAI should be plan B, as the normal installation is much quicker, performs additional checks, and automates the whole process. If you haven't tried the [normal install](https://addaxdatascience.com/AddaxAI-windows/) yet, please try that first. 
 
 **Follow the steps below to install AddaxAI from a ZIP file.**
-1. Download the compressed files using [this link](https://addaxaipremiumstorage.blob.core.windows.net/github-zips/latest/windows/base-install.7z). It might take a while, as it is 4.4 GB. If the internet connection is too unstable or slow for this to work, see the 'Download using the command line for a resume option in unstable internet' alternative at the bottom of this page.
+1. Download both parts of the compressed files:
+   - [Part 1 (~1.9 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.001)
+   - [Part 2 (~1.5 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.002)
+
+   After downloading both files, open a Command Prompt and combine them:
+   ```
+   copy /b "%USERPROFILE%\Downloads\windows-base-install.7z.001"+"%USERPROFILE%\Downloads\windows-base-install.7z.002" "%USERPROFILE%\Downloads\base-install.7z"
+   ```
+   If the internet connection is too unstable or slow for this to work, see the 'Download using the command line for a resume option in unstable internet' alternative at the bottom of this page.
 <div align="center"><img width="400" alt="Screenshot 2025-01-26 at 11 28 56" src="https://github.com/user-attachments/assets/e18ab79e-e955-426e-ac99-6cdc3e6a7d80"></div>
 <br>
 <br>
@@ -53,12 +61,14 @@ Instead of using the web browser to download the files at step 1, you can also u
 
 <img width="900" alt="Screenshot 2025-01-26 at 12 12 08" src="https://github.com/user-attachments/assets/ef8a286a-ff2f-4a69-8a57-40e4bc4918e2" />
 
-Open up a command prompt window (you might have to search for it via 'Start') and execute the following command. If the download is interrupted, you can resume the download by executing the same command again. If the download has finished, you can continue the install process at step 2 at the top of this page.
+Open up a command prompt window (you might have to search for it via 'Start') and execute the following commands. If the download is interrupted, you can resume the download by executing the same commands again. If both downloads have finished, combine them and continue the install process at step 2 at the top of this page.
 
   <br>
 
 ```
-curl --retry 5 --retry-delay 10 --retry-max-time 300 --connect-timeout 20 --continue-at - https://storage.googleapis.com/github-release-files-storage/latest/windows-latest.7z -o "%USERPROFILE%\Downloads\windows-latest.7z"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-base-install.7z.001" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.001"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-base-install.7z.002" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.002"
+copy /b "%USERPROFILE%\Downloads\windows-base-install.7z.001"+"%USERPROFILE%\Downloads\windows-base-install.7z.002" "%USERPROFILE%\Downloads\base-install.7z"
 ```
 
 </details>

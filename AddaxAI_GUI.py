@@ -6619,6 +6619,38 @@ def download_model(model_dir, skip_ask=False):
             pass
         show_download_error_window(model_title, model_dir, model_vars)
 
+# fetch platform manifest from GitHub Release assets
+def _fetch_manifest(platform_prefix):
+    """Fetch the platform manifest from GitHub Release assets.
+    Try pinned version first, fall back to latest."""
+    repo = "PetervanLunteren/AddaxAI"
+    manifest_name = f"{platform_prefix}-manifest.json"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
+        "Accept-Encoding": "*",
+        "Connection": "keep-alive"
+    }
+    for url in [
+        f"https://github.com/{repo}/releases/download/v{current_AA_version}/{manifest_name}",
+        f"https://github.com/{repo}/releases/latest/download/{manifest_name}",
+    ]:
+        try:
+            resp = requests.get(url, timeout=60, headers=headers, allow_redirects=True)
+            resp.raise_for_status()
+            return resp.json(), url.rsplit("/", 1)[0]
+        except Exception:
+            continue
+    raise RuntimeError(f"Could not fetch {manifest_name} from GitHub releases")
+
+
+# get download info from manifest
+def _get_download_info(manifest, base_url, asset_key):
+    """Return (list_of_urls, total_size) for a given asset key."""
+    entry = manifest[asset_key]
+    urls = [f"{base_url}/{part}" for part in entry["parts"]]
+    return urls, entry["total_size"]
+
+
 # download environment
 def download_environment(env_name, model_vars, skip_ask=False):
     
@@ -6628,16 +6660,16 @@ def download_environment(env_name, model_vars, skip_ask=False):
         env_dir = os.path.join(AddaxAI_files, "envs")
         # set environment variables
         if os.name == 'nt': # windows
-            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/v{current_AA_version}/windows/envs/env-{env_name}.zip"
-            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/latest/windows/envs/env-{env_name}.zip"
+            platform_prefix = "windows"
+            asset_key = f"windows-env-{env_name}.zip"
             filename = f"{env_name}.zip"
         elif platform.system() == 'Darwin': # macos
             import tarfile
-            download_pinned_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/v{current_AA_version}/macos/envs/env-{env_name}.tar.xz"
-            download_latest_url = f"https://addaxaipremiumstorage.blob.core.windows.net/github-zips/latest/macos/envs/env-{env_name}.tar.xz"
+            platform_prefix = "macos"
+            asset_key = f"macos-env-{env_name}.tar.xz"
             filename = f"{env_name}.tar.xz"
         else: # linux
-            return False # linux install this during setup 
+            return False # linux install this during setup
 
         # set headers to trick host to thinking we are a browser
         headers = {
@@ -6646,21 +6678,9 @@ def download_environment(env_name, model_vars, skip_ask=False):
             "Connection": "keep-alive"
         }
 
-        # check the total size first
-        try:
-            # first try the pinned version
-            total_size = 0
-            response = requests.get(download_pinned_url, stream=True, timeout=60, headers=headers)
-            response.raise_for_status()
-            total_size += int(response.headers.get('content-length', 0))
-            download_url = download_pinned_url
-        except:
-            # if that link doesn't woprk anymore, revert back to the latest version
-            total_size = 0
-            response = requests.get(download_latest_url, stream=True, timeout=60, headers=headers)
-            response.raise_for_status()
-            total_size += int(response.headers.get('content-length', 0))
-            download_url = download_latest_url
+        # fetch manifest and get download info
+        manifest, base_url = _fetch_manifest(platform_prefix)
+        part_urls, total_size = _get_download_info(manifest, base_url, asset_key)
 
         # check if the user wants to download
         if not skip_ask:
@@ -6677,15 +6697,16 @@ def download_environment(env_name, model_vars, skip_ask=False):
         download_popup = EnvDownloadProgressWindow(env_title = env_name, total_size_str = format_size(total_size))
         download_popup.open()
         file_path = os.path.join(env_dir, filename)
-        response = requests.get(download_url, stream=True, timeout=60, headers=headers)
-        response.raise_for_status()
         with open(file_path, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=65536):
-                if chunk:
-                    file.write(chunk)
-                    progress_bar.update(len(chunk))
-                    percentage_done = progress_bar.n / total_size
-                    download_popup.update_download_progress(percentage_done)
+            for part_url in part_urls:
+                response = requests.get(part_url, stream=True, timeout=60, headers=headers)
+                response.raise_for_status()
+                for chunk in response.iter_content(chunk_size=65536):
+                    if chunk:
+                        file.write(chunk)
+                        progress_bar.update(len(chunk))
+                        percentage_done = progress_bar.n / total_size
+                        download_popup.update_download_progress(percentage_done)
         progress_bar.close()
         print(f"Download successful. File saved at: {file_path}")
         

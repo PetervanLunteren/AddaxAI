@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       info:
-        description: "Here you can manually trigger the build. It will automatically fetch the latest release tag. Selecting branch 'main' will upload to the official Azure bucket, while any other branch will upload to the beta-versions bucket."
+        description: "Here you can manually trigger the build. It will automatically fetch the latest release tag. Selecting branch 'main' will upload to the official GitHub Release, while any other branch will upload to the beta release."
         required: false
         default: "[dummy input field - no need to fill in]"
   release:
@@ -37,17 +37,25 @@ jobs:
           echo RELEASE_VERSION: %RELEASE_VERSION%
           echo RELEASE_VERSION=%RELEASE_VERSION%>> %GITHUB_ENV%
 
-      - name: Set bucket name based on chosen branch
-        shell: cmd
+      - name: Set upload target
+        shell: bash
         run: |
-          echo BRANCH_NAME is %BRANCH_NAME%
-          if "%BRANCH_NAME%"=="main" (
-              set "BUCKET_NAME=github-zips"
-          ) else (
-              set "BUCKET_NAME=github-zips-beta"
-          )
-          echo BUCKET_NAME=%BUCKET_NAME%>> %GITHUB_ENV%
-          echo BUCKET_NAME is "%BUCKET_NAME%"
+          if [ "$BRANCH_NAME" = "main" ]; then
+            echo "UPLOAD_TAG=${{ env.RELEASE_VERSION }}" >> $GITHUB_ENV
+          else
+            echo "UPLOAD_TAG=beta" >> $GITHUB_ENV
+          fi
+
+      - name: Override release version for testing
+        shell: bash
+        run: echo "UPLOAD_TAG=test-migration" >> $GITHUB_ENV
+
+      - name: Ensure beta release exists
+        if: ${{ env.BRANCH_NAME != 'main' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release view beta 2>/dev/null || gh release create beta --prerelease --title "Beta builds" --notes "Automated beta builds"
 
       - name: Build env-pytorch
         shell: cmd
@@ -106,25 +114,49 @@ jobs:
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-pytorch"
 
-      - name: Upload pinned version of env-pytorch.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-pytorch to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $file = "${{ github.workspace }}\temp\env-pytorch.zip"
+          $size = (Get-Item $file).Length
+          $limit = 1990000000  # ~1.9 GB
 
-      - name: Upload latest version of env-pytorch.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: latest/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+          if ($size -gt $limit) {
+            # Split into 1.9GB parts
+            $partSize = 1900 * 1024 * 1024
+            $reader = [System.IO.File]::OpenRead($file)
+            $buffer = New-Object byte[] (8 * 1024 * 1024)
+            $partNum = 1
+            $parts = @()
+            while ($reader.Position -lt $reader.Length) {
+              $partName = "windows-env-pytorch.zip.$('{0:D3}' -f $partNum)"
+              $partPath = Join-Path "${{ github.workspace }}\temp" $partName
+              $writer = [System.IO.File]::Create($partPath)
+              $written = 0
+              while ($written -lt $partSize -and $reader.Position -lt $reader.Length) {
+                $toRead = [Math]::Min($buffer.Length, $partSize - $written)
+                $read = $reader.Read($buffer, 0, $toRead)
+                $writer.Write($buffer, 0, $read)
+                $written += $read
+              }
+              $writer.Close()
+              $parts += $partName
+              $partNum++
+            }
+            $reader.Close()
+            foreach ($part in $parts) {
+              gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\$part" --clobber
+            }
+            $partsJson = ($parts | ForEach-Object { "`"$_`"" }) -join ", "
+            echo "PARTS_PYTORCH=[$partsJson]" >> $env:GITHUB_ENV
+          } else {
+            Copy-Item $file "${{ github.workspace }}\temp\windows-env-pytorch.zip"
+            gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\windows-env-pytorch.zip" --clobber
+            echo "PARTS_PYTORCH=[`"windows-env-pytorch.zip`"]" >> $env:GITHUB_ENV
+          }
+          echo "SIZE_PYTORCH=$size" >> $env:GITHUB_ENV
 
       - name: Remove env-pytorch.zip
         shell: cmd
@@ -176,25 +208,48 @@ jobs:
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-tensorflow-v1"
 
-      - name: Upload pinned version of env-tensorflow-v1.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-tensorflow-v1 to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $file = "${{ github.workspace }}\temp\env-tensorflow-v1.zip"
+          $size = (Get-Item $file).Length
+          $limit = 1990000000  # ~1.9 GB
 
-      - name: Upload latest version of env-tensorflow-v1.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: latest/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+          if ($size -gt $limit) {
+            $partSize = 1900 * 1024 * 1024
+            $reader = [System.IO.File]::OpenRead($file)
+            $buffer = New-Object byte[] (8 * 1024 * 1024)
+            $partNum = 1
+            $parts = @()
+            while ($reader.Position -lt $reader.Length) {
+              $partName = "windows-env-tensorflow-v1.zip.$('{0:D3}' -f $partNum)"
+              $partPath = Join-Path "${{ github.workspace }}\temp" $partName
+              $writer = [System.IO.File]::Create($partPath)
+              $written = 0
+              while ($written -lt $partSize -and $reader.Position -lt $reader.Length) {
+                $toRead = [Math]::Min($buffer.Length, $partSize - $written)
+                $read = $reader.Read($buffer, 0, $toRead)
+                $writer.Write($buffer, 0, $read)
+                $written += $read
+              }
+              $writer.Close()
+              $parts += $partName
+              $partNum++
+            }
+            $reader.Close()
+            foreach ($part in $parts) {
+              gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\$part" --clobber
+            }
+            $partsJson = ($parts | ForEach-Object { "`"$_`"" }) -join ", "
+            echo "PARTS_TENSORFLOW_V1=[$partsJson]" >> $env:GITHUB_ENV
+          } else {
+            Copy-Item $file "${{ github.workspace }}\temp\windows-env-tensorflow-v1.zip"
+            gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\windows-env-tensorflow-v1.zip" --clobber
+            echo "PARTS_TENSORFLOW_V1=[`"windows-env-tensorflow-v1.zip`"]" >> $env:GITHUB_ENV
+          }
+          echo "SIZE_TENSORFLOW_V1=$size" >> $env:GITHUB_ENV
 
       - name: Remove env-tensorflow-v1.zip
         shell: cmd
@@ -260,25 +315,48 @@ jobs:
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-tensorflow-v2"
 
-      - name: Upload pinned version of env-tensorflow-v2.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-tensorflow-v2 to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $file = "${{ github.workspace }}\temp\env-tensorflow-v2.zip"
+          $size = (Get-Item $file).Length
+          $limit = 1990000000  # ~1.9 GB
 
-      - name: Upload latest version of env-tensorflow-v2.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: latest/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+          if ($size -gt $limit) {
+            $partSize = 1900 * 1024 * 1024
+            $reader = [System.IO.File]::OpenRead($file)
+            $buffer = New-Object byte[] (8 * 1024 * 1024)
+            $partNum = 1
+            $parts = @()
+            while ($reader.Position -lt $reader.Length) {
+              $partName = "windows-env-tensorflow-v2.zip.$('{0:D3}' -f $partNum)"
+              $partPath = Join-Path "${{ github.workspace }}\temp" $partName
+              $writer = [System.IO.File]::Create($partPath)
+              $written = 0
+              while ($written -lt $partSize -and $reader.Position -lt $reader.Length) {
+                $toRead = [Math]::Min($buffer.Length, $partSize - $written)
+                $read = $reader.Read($buffer, 0, $toRead)
+                $writer.Write($buffer, 0, $read)
+                $written += $read
+              }
+              $writer.Close()
+              $parts += $partName
+              $partNum++
+            }
+            $reader.Close()
+            foreach ($part in $parts) {
+              gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\$part" --clobber
+            }
+            $partsJson = ($parts | ForEach-Object { "`"$_`"" }) -join ", "
+            echo "PARTS_TENSORFLOW_V2=[$partsJson]" >> $env:GITHUB_ENV
+          } else {
+            Copy-Item $file "${{ github.workspace }}\temp\windows-env-tensorflow-v2.zip"
+            gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\windows-env-tensorflow-v2.zip" --clobber
+            echo "PARTS_TENSORFLOW_V2=[`"windows-env-tensorflow-v2.zip`"]" >> $env:GITHUB_ENV
+          }
+          echo "SIZE_TENSORFLOW_V2=$size" >> $env:GITHUB_ENV
 
       - name: Remove env-tensorflow-v2.zip
         shell: cmd
@@ -330,25 +408,48 @@ jobs:
           @REM remove folder contents
           rmdir /s /q "${{ github.workspace }}\temp\env-speciesnet"
 
-      - name: Upload pinned version of env-speciesnet.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-speciesnet to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $file = "${{ github.workspace }}\temp\env-speciesnet.zip"
+          $size = (Get-Item $file).Length
+          $limit = 1990000000  # ~1.9 GB
 
-      - name: Upload latest version of env-speciesnet.zip
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\temp
-          destination_folder: latest/windows/envs
-          is_recursive: false
-          delete_if_exists: true
+          if ($size -gt $limit) {
+            $partSize = 1900 * 1024 * 1024
+            $reader = [System.IO.File]::OpenRead($file)
+            $buffer = New-Object byte[] (8 * 1024 * 1024)
+            $partNum = 1
+            $parts = @()
+            while ($reader.Position -lt $reader.Length) {
+              $partName = "windows-env-speciesnet.zip.$('{0:D3}' -f $partNum)"
+              $partPath = Join-Path "${{ github.workspace }}\temp" $partName
+              $writer = [System.IO.File]::Create($partPath)
+              $written = 0
+              while ($written -lt $partSize -and $reader.Position -lt $reader.Length) {
+                $toRead = [Math]::Min($buffer.Length, $partSize - $written)
+                $read = $reader.Read($buffer, 0, $toRead)
+                $writer.Write($buffer, 0, $read)
+                $written += $read
+              }
+              $writer.Close()
+              $parts += $partName
+              $partNum++
+            }
+            $reader.Close()
+            foreach ($part in $parts) {
+              gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\$part" --clobber
+            }
+            $partsJson = ($parts | ForEach-Object { "`"$_`"" }) -join ", "
+            echo "PARTS_SPECIESNET=[$partsJson]" >> $env:GITHUB_ENV
+          } else {
+            Copy-Item $file "${{ github.workspace }}\temp\windows-env-speciesnet.zip"
+            gh release upload "$env:UPLOAD_TAG" "${{ github.workspace }}\temp\windows-env-speciesnet.zip" --clobber
+            echo "PARTS_SPECIESNET=[`"windows-env-speciesnet.zip`"]" >> $env:GITHUB_ENV
+          }
+          echo "SIZE_SPECIESNET=$size" >> $env:GITHUB_ENV
 
       - name: Remove env-speciesnet.zip
         shell: cmd
@@ -474,25 +575,64 @@ jobs:
           echo USERPROFILE=%USERPROFILE%>> %GITHUB_ENV%
           echo USERPROFILE is "%USERPROFILE%"
 
-      - name: Upload pinned version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.USERPROFILE }}\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows
-          is_recursive: false
-          delete_if_exists: true
+      - name: Split and upload base-install to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $file = "${{ env.USERPROFILE }}\temp\base-install.7z"
+          $size = (Get-Item $file).Length
+          $partSize = 1900 * 1024 * 1024
+          $reader = [System.IO.File]::OpenRead($file)
+          $buffer = New-Object byte[] (8 * 1024 * 1024)
+          $partNum = 1
+          $parts = @()
+          while ($reader.Position -lt $reader.Length) {
+            $partName = "windows-base-install.7z.$('{0:D3}' -f $partNum)"
+            $partPath = Join-Path "${{ env.USERPROFILE }}\temp" $partName
+            $writer = [System.IO.File]::Create($partPath)
+            $written = 0
+            while ($written -lt $partSize -and $reader.Position -lt $reader.Length) {
+              $toRead = [Math]::Min($buffer.Length, $partSize - $written)
+              $read = $reader.Read($buffer, 0, $toRead)
+              $writer.Write($buffer, 0, $read)
+              $written += $read
+            }
+            $writer.Close()
+            $parts += $partName
+            $partNum++
+          }
+          $reader.Close()
+          foreach ($part in $parts) {
+            gh release upload "$env:UPLOAD_TAG" "${{ env.USERPROFILE }}\temp\$part" --clobber
+          }
+          $partsJson = ($parts | ForEach-Object { "`"$_`"" }) -join ", "
+          echo "PARTS_BASE=[$partsJson]" >> $env:GITHUB_ENV
+          echo "SIZE_BASE=$size" >> $env:GITHUB_ENV
+          echo "NUM_BASE_PARTS=$($parts.Count)" >> $env:GITHUB_ENV
 
-      - name: Upload latest version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.USERPROFILE }}\temp
-          destination_folder: latest/windows
-          is_recursive: false
-          delete_if_exists: true
+      - name: Generate and upload windows-manifest.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+          import json, os
+          manifest = {}
+          for name in ['pytorch', 'tensorflow-v1', 'tensorflow-v2', 'speciesnet']:
+              key = f'windows-env-{name}.zip'
+              parts = json.loads(os.environ[f'PARTS_{name.upper().replace(\"-\", \"_\")}'])
+              size = int(os.environ[f'SIZE_{name.upper().replace(\"-\", \"_\")}'])
+              manifest[key] = {'parts': parts, 'total_size': size}
+          base_parts = json.loads(os.environ['PARTS_BASE'])
+          manifest['windows-base-install.7z'] = {
+              'parts': base_parts,
+              'total_size': int(os.environ['SIZE_BASE'])
+          }
+          with open('windows-manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          "
+          gh release upload "${{ env.UPLOAD_TAG }}" windows-manifest.json --clobber
 
       # - name: Get the release body
       #   shell: pwsh
@@ -560,11 +700,20 @@ jobs:
           xcopy "%GITHUB_WORKSPACE%\NScurl" "%GITHUB_WORKSPACE%\NSIS_Plugins" /E /Y
         shell: cmd
 
-      - name: Append VERSION and URL to NSIS script
+      - name: Verify base-install part count
+        shell: bash
+        run: |
+          if [ "${{ env.NUM_BASE_PARTS }}" -gt 2 ]; then
+            echo "ERROR: base-install has ${{ env.NUM_BASE_PARTS }} parts but NSIS script only supports 2"
+            exit 1
+          fi
+
+      - name: Append VERSION and URLs to NSIS script
         shell: cmd
         run: |
           echo !define VERSION "${{ env.RELEASE_VERSION }}" > newFile.nsi
-          echo !define URL "https://addaxaipremiumstorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/windows/base-install.7z" >> newFile.nsi
+          echo !define URL_PART1 "https://github.com/PetervanLunteren/AddaxAI/releases/download/${{ env.UPLOAD_TAG }}/windows-base-install.7z.001" >> newFile.nsi
+          echo !define URL_PART2 "https://github.com/PetervanLunteren/AddaxAI/releases/download/${{ env.UPLOAD_TAG }}/windows-base-install.7z.002" >> newFile.nsi
           type "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi" >> newFile.nsi
           move /Y newFile.nsi "%GITHUB_WORKSPACE%\install_files\windows\nsis-install-compiler.nsi"
 
@@ -618,73 +767,10 @@ jobs:
             echo "Failed to remove PFX file."
           }
   
-      - name: Get upload URL for asset release update
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        id: get_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ env.RELEASE_VERSION }}',
-            })
-            // Write the upload URL to the environment file instead of using set-output
-            const fs = require('fs');
-            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
-
-      - name: Remove existing asset if present
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        run: |
-          @echo off
-          setlocal
-          
-          REM List all assets in the release using curl
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }} > release_info.json
-          
-          REM Extract asset ID by matching the name
-          for /f "delims=" %%A in ('jq -r ".assets[] | select(.name == \"Windows-installer-${{ env.RELEASE_VERSION }}.exe\") | .id" release_info.json') do set asset_id=%%A
-          echo The asset_id is: %asset_id%
-          
-          REM Check if the asset exists and delete it
-          if not "%asset_id%"=="" (
-            curl -X DELETE ^
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" ^
-              https://api.github.com/repos/${{ github.repository }}/releases/assets/%asset_id%
-          ) else (
-            echo Asset not found. Continue with upload...
-          )
-          endlocal
-        shell: cmd
-
-      - name: Upload asset to GitHub release
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "install_files/windows/temp/AddaxAI-installer.exe"
-          asset_name: "Windows-installer-${{ env.RELEASE_VERSION }}.exe"
-          asset_content_type: application/octet-stream
+      - name: Upload Windows installer to release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
-
-      - name: Upload pinned version of installer exe
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\install_files\windows\temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/windows
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of installer exe
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}\install_files\windows\temp
-          destination_folder: latest/windows
-          is_recursive: false
-          delete_if_exists: true
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ env.UPLOAD_TAG }}" \
+            "${{ github.workspace }}/install_files/windows/temp/AddaxAI-installer.exe#Windows-installer.exe" --clobber

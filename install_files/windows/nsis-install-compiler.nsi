@@ -1,12 +1,11 @@
 # Script to create an NSIS exe to install AddaxAI on Windows
 # Peter van Lunteren, last edit on 20 Mar 2025
-# Var VERSION and URL will be defined by github actions by adding a line above like '!define VERSION "v6.34"'
+# Var VERSION, URL_PART1, and URL_PART2 will be defined by github actions by adding a line above like '!define VERSION "v6.34"'
 
 # Name and output location for the installer
 Outfile "AddaxAI-${VERSION}-installer.exe"
 
 # Define variables
-Var archiveUrl
 Var archiveName
 Var InstallStatus
 
@@ -106,25 +105,37 @@ Section "Install"
     # adjust header
     !insertmacro MUI_HEADER_TEXT "Step 2 of 3" "Downloading AddaxAI version ${VERSION}..."
 
-    # Download the 7z archive
-    DetailPrint "Downloading files..."
-    StrCpy $archiveUrl "${URL}"
-    StrCpy $archiveName "$INSTDIR\windows-${VERSION}.7z"
-    # NSISdl::download $archiveUrl $archiveName 	# standard download did not work with Azure blob storage links
-    # inetc::get /SILENT $archiveUrl $archiveName 	# this one works, but does not properly show progress on files > 2GB
-    NScurl::http get $archiveUrl $archiveName 
+    # Download part 1 of 2
+    DetailPrint "Downloading files (part 1 of 2)..."
+    StrCpy $archiveName "$INSTDIR\windows-${VERSION}.7z.001"
+    NScurl::http get "${URL_PART1}" $archiveName
     Pop $0
-
-    # Check if download was successful
-    IntCmp $0 0 downloadSuccess downloadFail
-    downloadSuccess:
-        DetailPrint "Downloaded archive successfully."
-        Goto downloadDone
-    downloadFail:
-        DetailPrint "Failed to download archive. Exiting."
-        MessageBox MB_ICONEXCLAMATION "An error occurred during installation! Could not download archive."
+    IntCmp $0 0 part1OK part1Fail
+    part1Fail:
+        DetailPrint "Failed to download part 1."
+        MessageBox MB_ICONEXCLAMATION "An error occurred during installation! Could not download archive (part 1)."
         Abort
-    downloadDone:
+    part1OK:
+
+    # Download part 2 of 2
+    DetailPrint "Downloading files (part 2 of 2)..."
+    StrCpy $archiveName "$INSTDIR\windows-${VERSION}.7z.002"
+    NScurl::http get "${URL_PART2}" $archiveName
+    Pop $0
+    IntCmp $0 0 part2OK part2Fail
+    part2Fail:
+        DetailPrint "Failed to download part 2."
+        MessageBox MB_ICONEXCLAMATION "An error occurred during installation! Could not download archive (part 2)."
+        Abort
+    part2OK:
+
+    # Reassemble archive from parts
+    DetailPrint "Reassembling archive..."
+    nsExec::Exec 'cmd /C copy /b "$INSTDIR\windows-${VERSION}.7z.001"+"$INSTDIR\windows-${VERSION}.7z.002" "$INSTDIR\windows-${VERSION}.7z"'
+
+    # Clean up parts
+    Delete "$INSTDIR\windows-${VERSION}.7z.001"
+    Delete "$INSTDIR\windows-${VERSION}.7z.002"
 
     # Show progress bar
     Push "true"
