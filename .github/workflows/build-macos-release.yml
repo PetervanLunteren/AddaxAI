@@ -37,21 +37,10 @@ jobs:
 
       - name: Set upload target
         run: |
-          echo "BRANCH_NAME is $BRANCH_NAME"
-          if [ "$BRANCH_NAME" = "main" ]; then
-            echo "UPLOAD_TAG=${{ env.RELEASE_VERSION }}" >> $GITHUB_ENV
-          else
-            echo "UPLOAD_TAG=beta" >> $GITHUB_ENV
-          fi
+          echo "UPLOAD_TAG=${{ env.RELEASE_VERSION }}" >> $GITHUB_ENV
 
       - name: Override release version for testing
         run: echo "UPLOAD_TAG=test-migration" >> $GITHUB_ENV
-
-      - name: Ensure beta release exists
-        if: ${{ env.BRANCH_NAME != 'main' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view beta 2>/dev/null || gh release create beta --prerelease --title "Beta builds" --notes "Automated beta builds"
 
       - name: Install Miniconda
         run: |
