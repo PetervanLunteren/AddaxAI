@@ -228,12 +228,12 @@ def run_postprocessing_for_deployment(
             json.dump(md_results, f, indent=2)
         logger.info("Rebuilt classification_category_descriptions to 7-token format")
 
-    # Apply species exclusion in memory (JSON on disk stays as ground truth).
-    # Always strips non-species classes (blank, empty, false detection, none)
-    # plus any user-configured excluded species.
-    from app.ml.species_exclusion import apply_species_exclusion_to_results
+    # Apply label exclusion in memory (JSON on disk stays as ground truth).
+    # Always strips non-label classes (blank, empty, false detection, none)
+    # plus any user-configured excluded labels.
+    from app.ml.label_exclusion import apply_label_exclusion_to_results
 
-    apply_species_exclusion_to_results(md_results, project.excluded_classes)
+    apply_label_exclusion_to_results(md_results, project.excluded_classes)
 
     # --- Taxonomic rollup (independent of smoothing) ---
     # Runs before smoothing so that when both are enabled, the smoother can
@@ -252,7 +252,7 @@ def run_postprocessing_for_deployment(
                 rollup_result = apply_taxonomic_rollup_to_results(md_results, taxonomy_csv)
                 md_results = rollup_result.md_results
 
-                # Persist rolled-up entries to species_taxonomy table
+                # Persist rolled-up entries to label_taxonomy table
                 if rollup_result.new_entries and project.classification_model_id:
                     try:
                         from app.ml.taxonomy_db import add_rollup_taxonomy_entry
@@ -397,7 +397,7 @@ def update_database_from_smoothed_results(
     unchanged = 0
     errors = 0
 
-    # Track which files had species changes (for observation_type recomputation)
+    # Track which files had label changes (for observation_type recomputation)
     changed_file_ids: set[str] = set()
 
     for img in smoothed_results.get("images", []):
@@ -425,15 +425,15 @@ def update_database_from_smoothed_results(
                 classifications = det.get("classifications", [])
                 if classifications:
                     top_class_id, top_conf = classifications[0]
-                    new_species = class_names.get(str(top_class_id))
+                    new_label = class_names.get(str(top_class_id))
                     new_confidence = float(top_conf)
                 else:
-                    new_species = None
+                    new_label = None
                     new_confidence = None
 
-                if db_det.species != new_species or db_det.species_confidence != new_confidence:
-                    db_det.species = new_species
-                    db_det.species_confidence = new_confidence
+                if db_det.label != new_label or db_det.label_confidence != new_confidence:
+                    db_det.label = new_label
+                    db_det.label_confidence = new_confidence
                     updated += 1
                     changed_file_ids.add(db_det.file_id)
                 else:
@@ -483,7 +483,7 @@ def reload_raw_classifications_from_json(
     Reload raw (unsmoothed) classifications from JSON back to database.
 
     Effectively reverts to the original predictions by reading the raw JSON
-    and updating DB records. If excluded_classes is provided, applies species
+    and updating DB records. If excluded_classes is provided, applies label
     exclusion (zero-out + renormalize) before writing to DB.
 
     Args:
@@ -491,7 +491,7 @@ def reload_raw_classifications_from_json(
         json_path: Path to results.json
         deployment_folder: Path to deployment folder
         db: Database session
-        excluded_classes: Optional list of species names to exclude
+        excluded_classes: Optional list of label names to exclude
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -499,9 +499,9 @@ def reload_raw_classifications_from_json(
     with open(json_path) as f:
         raw_results = json.load(f)
 
-    from app.ml.species_exclusion import apply_species_exclusion_to_results
+    from app.ml.label_exclusion import apply_label_exclusion_to_results
 
-    apply_species_exclusion_to_results(raw_results, excluded_classes)
+    apply_label_exclusion_to_results(raw_results, excluded_classes)
 
     return update_database_from_smoothed_results(
         deployment_id, raw_results, deployment_folder, db

@@ -34,7 +34,7 @@ interface DetectionDetailModalProps {
   onOpenChange: (open: boolean) => void;
   onFindSimilar: (detectionId: string) => void;
   onActionComplete: () => void;
-  onRelabel?: (detectionId: string, species: string, category: string) => void;
+  onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** Optimistic verify callback so parent can patch local state before navigating. */
   onVerify?: (detectionId: string) => void;
   /** Navigate to adjacent detection. Return false if at boundary. */
@@ -100,10 +100,10 @@ export function DetectionDetailModal({
   });
 
   const relabelMutation = useMutation({
-    mutationFn: ({ species, category }: { species: string; category: string }) =>
-      detectionsApi.bulkRelabel([detection!.detection_id], species, category),
-    onSuccess: (_, { species, category }) => {
-      onRelabel?.(detection!.detection_id, species, category);
+    mutationFn: ({ label, category }: { label: string; category: string }) =>
+      detectionsApi.bulkRelabel([detection!.detection_id], label, category),
+    onSuccess: (_, { label, category }) => {
+      onRelabel?.(detection!.detection_id, label, category);
       onActionComplete();
       onNavigate?.("nextUnverified");
     },
@@ -206,7 +206,7 @@ export function DetectionDetailModal({
         aria-describedby={undefined}
       >
         <DialogTitle className="sr-only">
-          {detection.species || detection.category} detection detail
+          {detection.label || detection.category} detection detail
         </DialogTitle>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -264,7 +264,7 @@ export function DetectionDetailModal({
                         r={DOT_R}
                         fill={pill.color}
                       />
-                      {pill.hasSpecies ? (
+                      {pill.hasLabel ? (
                         <>
                           <text
                             x={TEXT_START_X} y={PILL_PAD_Y}
@@ -283,7 +283,7 @@ export function DetectionDetailModal({
                             fontFamily="Arial, sans-serif"
                             dominantBaseline="hanging"
                           >
-                            {pill.speciesText}
+                            {pill.labelText}
                           </text>
                         </>
                       ) : (
@@ -358,7 +358,7 @@ export function DetectionDetailModal({
             {/* Scrollable area for all cards */}
             <div className="flex-1 min-h-0 overflow-y-auto">
 
-            {/* Card 1: Crop + species info */}
+            {/* Card 1: Crop + label info */}
             <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
               <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Detection</h3>
               <div className="px-3 pb-3 space-y-2">
@@ -385,7 +385,7 @@ export function DetectionDetailModal({
                           r={DOT_R}
                           fill={p.color}
                         />
-                        {p.hasSpecies ? (
+                        {p.hasLabel ? (
                           <>
                             <text
                               x={TEXT_START_X} y={PILL_PAD_Y}
@@ -404,7 +404,7 @@ export function DetectionDetailModal({
                               fontFamily="Arial, sans-serif"
                               dominantBaseline="hanging"
                             >
-                              {p.speciesText}
+                              {p.labelText}
                             </text>
                           </>
                         ) : (
@@ -470,7 +470,7 @@ export function DetectionDetailModal({
                 const pct = detection.neighbor_agreement * 100;
                 const hasSuggestion =
                   detection.neighbor_top_label &&
-                  detection.neighbor_top_label !== detection.species;
+                  detection.neighbor_top_label !== detection.label;
                 return (
                   <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
                     <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Label Agreement</h3>
@@ -497,7 +497,7 @@ export function DetectionDetailModal({
                           disabled={relabelMutation.isPending}
                           onClick={() =>
                             relabelMutation.mutate({
-                              species: detection.neighbor_top_label!,
+                              label: detection.neighbor_top_label!,
                               category: detection.category,
                             })
                           }
@@ -513,19 +513,19 @@ export function DetectionDetailModal({
                             .filter((n) => n.detection_id !== detection.detection_id)
                             .slice(0, 10)
                             .map((n) => {
-                            const agrees = n.species === detection.species;
+                            const agrees = n.label === detection.label;
                             return (
                               <div key={n.detection_id} className="space-y-0.5">
                                 <img
                                   src={`${API_BASE_URL}${n.crop_url}`}
-                                  alt={n.species || n.category}
+                                  alt={n.label || n.category}
                                   className={cn(
                                     "w-full aspect-square object-cover rounded border-2",
                                     agrees ? "border-[#0f6064]" : "border-[#882000]"
                                   )}
                                 />
                                 <p className="text-[9px] text-muted-foreground truncate text-center capitalize">
-                                  {n.species || n.category}
+                                  {n.label || n.category}
                                 </p>
                               </div>
                             );

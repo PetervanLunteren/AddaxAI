@@ -119,7 +119,7 @@ async def test_nam_ads_v1():
             )
 
             if result:
-                print(f"   ✓ Classification: {result.species} ({result.confidence:.5f})")
+                print(f"   ✓ Classification: {result.label} ({result.confidence:.5f})")
             else:
                 print(f"   ✗ Classification failed (returned None)")
     print()

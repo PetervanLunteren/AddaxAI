@@ -19,7 +19,7 @@ class EventSummary(BaseModel):
     file_count: int
     representative_file_id: str | None
     site_name: str | None
-    species: list[str]
+    labels: list[str]
     observation_type: str
     observation_types: list[str]
     image_count: int
@@ -90,28 +90,28 @@ class EventVerificationStats(BaseModel):
 class EventFilterOptions(BaseModel):
     """Available filter options for a project's events."""
 
-    species: list[str]
+    labels: list[str]
     date_range: DateRange | None
-    species_event_counts: dict[str, int]
+    label_event_counts: dict[str, int]
 
 
-class SpeciesTreeNode(BaseModel):
-    """A node in the species filter tree."""
+class LabelTreeNode(BaseModel):
+    """A node in the label filter tree."""
 
     id: str
     name: str
     level: int
-    children: list["SpeciesTreeNode"]
+    children: list["LabelTreeNode"]
     selected: bool
     annotation: str | None = None
     count: int | None = None
     child_count: int | None = None
 
 
-class SpeciesTreeResponse(BaseModel):
-    """Response for the species filter tree endpoint."""
+class LabelTreeResponse(BaseModel):
+    """Response for the label filter tree endpoint."""
 
-    tree: list[SpeciesTreeNode]
+    tree: list[LabelTreeNode]
     all_leaf_ids: list[str]
-    species_event_counts: dict[str, int]
+    label_event_counts: dict[str, int]
     count_unit: str

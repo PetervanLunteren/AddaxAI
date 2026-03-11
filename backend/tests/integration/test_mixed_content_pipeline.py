@@ -20,7 +20,7 @@ from .conftest import (
 
 
 def test_merge_unifies_classification_ids(deployment_scaffold):
-    """Same species from video JSON (id='1') and image JSON (id='2') gets unified ID."""
+    """Same label from video JSON (id='1') and image JSON (id='2') gets unified ID."""
     s = deployment_scaffold
     artifacts = s["artifacts"]
 
@@ -59,7 +59,7 @@ def test_merge_unifies_classification_ids(deployment_scaffold):
     with open(merged_path) as f:
         merged = json.load(f)
 
-    # Unified categories should have both species with consistent IDs
+    # Unified categories should have both labels with consistent IDs
     cats = merged["classification_categories"]
     assert "zebra" in cats.values()
     assert "giraffe" in cats.values()

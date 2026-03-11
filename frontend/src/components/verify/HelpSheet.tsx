@@ -133,7 +133,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               <p>
                 Click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Show keyboard shortcuts</code> at
                 the bottom of the sidebar to see all shortcuts. You can assign
-                species to
+                labels to
                 keys <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code>,
                 so you can relabel every detection in a file with one key.
               </p>

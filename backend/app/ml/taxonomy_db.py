@@ -1,8 +1,8 @@
 """
-Taxonomy DB population — sync taxonomy.csv and rollup entries to species_taxonomy table.
+Taxonomy DB population — sync taxonomy.csv and rollup entries to label_taxonomy table.
 
 Called during classification (detection_worker) and postprocessing to keep
-the species_taxonomy table in sync with what's in Detection.species.
+the label_taxonomy table in sync with what's in Detection.label.
 """
 
 import csv
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.models.detection import Detection
-from app.models.species_taxonomy import SpeciesTaxonomy
+from app.models.label_taxonomy import LabelTaxonomy
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,7 @@ def populate_taxonomy_from_csv(
     model_id: str, csv_path: Path, db: Session
 ) -> int:
     """
-    Upsert SpeciesTaxonomy rows from a taxonomy.csv file.
+    Upsert LabelTaxonomy rows from a taxonomy.csv file.
 
     Idempotent: skips rows where (model_id, name) already exists.
 
@@ -55,8 +55,8 @@ def populate_taxonomy_from_csv(
     # Query existing names for this model to skip duplicates
     existing = {
         r.name
-        for r in db.query(SpeciesTaxonomy.name)
-        .filter(SpeciesTaxonomy.classification_model_id == model_id)
+        for r in db.query(LabelTaxonomy.name)
+        .filter(LabelTaxonomy.classification_model_id == model_id)
         .all()
     }
 
@@ -72,7 +72,7 @@ def populate_taxonomy_from_csv(
             if val:
                 taxon[level] = val
 
-        entry = SpeciesTaxonomy(
+        entry = LabelTaxonomy(
             classification_model_id=model_id,
             name=name,
             taxon_class=taxon.get("class"),
@@ -100,14 +100,14 @@ def populate_taxonomy_from_json(
     model_id: str, json_path: Path, db: Session
 ) -> int:
     """
-    Upsert SpeciesTaxonomy rows from a SpeciesNet results.json file.
+    Upsert LabelTaxonomy rows from a SpeciesNet results.json file.
 
     Parses ``classification_category_descriptions`` which contain
     semicolon-delimited strings like:
         UUID;class;order;family;genus;species;common_name
 
-    Uses the **common name** (last field) as ``species_taxonomy.name``
-    to match ``Detection.species``.
+    Uses the **common name** (last field) as ``label_taxonomy.name``
+    to match ``Detection.label``.
 
     Idempotent: skips rows where (model_id, name) already exists.
 
@@ -128,8 +128,8 @@ def populate_taxonomy_from_json(
     # Query existing names for this model to skip duplicates
     existing = {
         r.name
-        for r in db.query(SpeciesTaxonomy.name)
-        .filter(SpeciesTaxonomy.classification_model_id == model_id)
+        for r in db.query(LabelTaxonomy.name)
+        .filter(LabelTaxonomy.classification_model_id == model_id)
         .all()
     }
 
@@ -166,7 +166,7 @@ def populate_taxonomy_from_json(
         if taxon_species:
             taxon["species"] = taxon_species
 
-        entry = SpeciesTaxonomy(
+        entry = LabelTaxonomy(
             classification_model_id=model_id,
             name=common_name,
             taxon_class=taxon.get("class"),
@@ -207,10 +207,10 @@ def add_rollup_taxonomy_entry(
         True if inserted, False if skipped.
     """
     exists = (
-        db.query(SpeciesTaxonomy.id)
+        db.query(LabelTaxonomy.id)
         .filter(
-            SpeciesTaxonomy.classification_model_id == model_id,
-            SpeciesTaxonomy.name == name,
+            LabelTaxonomy.classification_model_id == model_id,
+            LabelTaxonomy.name == name,
         )
         .first()
     )
@@ -224,7 +224,7 @@ def add_rollup_taxonomy_entry(
             ancestors = entry
             break
 
-    entry = SpeciesTaxonomy(
+    taxonomy_entry = LabelTaxonomy(
         classification_model_id=model_id,
         name=name,
         taxon_class=ancestors.get("class"),
@@ -235,7 +235,7 @@ def add_rollup_taxonomy_entry(
         level=level,
         is_custom=False,
     )
-    db.add(entry)
+    db.add(taxonomy_entry)
     db.commit()
 
     logger.info(f"Added rollup taxonomy entry: {name} ({level}) for model {model_id}")
@@ -252,7 +252,7 @@ BUILTIN_LABELS = [
 
 def ensure_builtin_labels(db: Session) -> int:
     """
-    Ensure SpeciesTaxonomy has rows for non-species labels ("person", "vehicle").
+    Ensure LabelTaxonomy has rows for non-classification labels ("person", "vehicle").
 
     These use classification_model_id="__builtin__" and level="none".
     Idempotent: skips rows that already exist.
@@ -262,40 +262,40 @@ def ensure_builtin_labels(db: Session) -> int:
     """
     existing = {
         r.name
-        for r in db.query(SpeciesTaxonomy.name)
-        .filter(SpeciesTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
+        for r in db.query(LabelTaxonomy.name)
+        .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .all()
     }
 
     inserted = 0
-    for label in BUILTIN_LABELS:
-        if label["name"] in existing:
+    for label_def in BUILTIN_LABELS:
+        if label_def["name"] in existing:
             continue
-        entry = SpeciesTaxonomy(
+        taxonomy_entry = LabelTaxonomy(
             classification_model_id=BUILTIN_MODEL_ID,
-            name=label["name"],
+            name=label_def["name"],
             level="none",
             is_custom=False,
         )
-        db.add(entry)
+        db.add(taxonomy_entry)
         inserted += 1
 
     if inserted:
         db.commit()
-        logger.info(f"Seeded {inserted} builtin label(s) in species_taxonomy")
+        logger.info(f"Seeded {inserted} builtin label(s) in label_taxonomy")
 
     return inserted
 
 
 def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     """
-    Batch-link detections to SpeciesTaxonomy rows via species_taxonomy_id FK.
+    Batch-link detections to LabelTaxonomy rows via label_taxonomy_id FK.
 
-    For each distinct Detection.species value in the project that has
-    species_taxonomy_id IS NULL, finds the matching SpeciesTaxonomy row
+    For each distinct Detection.label value in the project that has
+    label_taxonomy_id IS NULL, finds the matching LabelTaxonomy row
     (model-level first, then custom, then builtin) and bulk-updates.
 
-    One UPDATE per species string — not per detection.
+    One UPDATE per label string -- not per detection.
 
     Returns:
         Count of detections linked.
@@ -318,46 +318,46 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
         .subquery()
     )
 
-    # Get distinct species names with unlinked detections
-    unlinked_species = (
-        db.query(func.distinct(Detection.species))
+    # Get distinct label names with unlinked detections
+    unlinked_labels = (
+        db.query(func.distinct(Detection.label))
         .filter(
             Detection.file_id.in_(db.query(project_file_ids.c.id)),
-            Detection.species.isnot(None),
-            Detection.species_taxonomy_id.is_(None),
+            Detection.label.isnot(None),
+            Detection.label_taxonomy_id.is_(None),
         )
         .all()
     )
-    species_names = [row[0] for row in unlinked_species]
+    label_names = [row[0] for row in unlinked_labels]
 
-    if not species_names:
+    if not label_names:
         return 0
 
-    # Build lookup: species name → taxonomy ID
+    # Build lookup: label name -> taxonomy ID
     # Priority: model-level > custom > builtin
     name_to_taxonomy_id: dict[str, str] = {}
 
     # 1. Model-level taxonomy (if model exists)
     if model_id:
         model_rows = (
-            db.query(SpeciesTaxonomy.id, SpeciesTaxonomy.name)
+            db.query(LabelTaxonomy.id, LabelTaxonomy.name)
             .filter(
-                SpeciesTaxonomy.classification_model_id == model_id,
-                SpeciesTaxonomy.project_id.is_(None),
-                SpeciesTaxonomy.name.in_(species_names),
+                LabelTaxonomy.classification_model_id == model_id,
+                LabelTaxonomy.project_id.is_(None),
+                LabelTaxonomy.name.in_(label_names),
             )
             .all()
         )
         for tid, name in model_rows:
             name_to_taxonomy_id[name] = tid
 
-    # 2. Custom species for this project
+    # 2. Custom labels for this project
     custom_rows = (
-        db.query(SpeciesTaxonomy.id, SpeciesTaxonomy.name)
+        db.query(LabelTaxonomy.id, LabelTaxonomy.name)
         .filter(
-            SpeciesTaxonomy.project_id == project_id,
-            SpeciesTaxonomy.is_custom == True,  # noqa: E712
-            SpeciesTaxonomy.name.in_(species_names),
+            LabelTaxonomy.project_id == project_id,
+            LabelTaxonomy.is_custom == True,  # noqa: E712
+            LabelTaxonomy.name.in_(label_names),
         )
         .all()
     )
@@ -367,10 +367,10 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
 
     # 3. Builtin labels (person, vehicle)
     builtin_rows = (
-        db.query(SpeciesTaxonomy.id, SpeciesTaxonomy.name)
+        db.query(LabelTaxonomy.id, LabelTaxonomy.name)
         .filter(
-            SpeciesTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-            SpeciesTaxonomy.name.in_(species_names),
+            LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
+            LabelTaxonomy.name.in_(label_names),
         )
         .all()
     )
@@ -381,18 +381,18 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     if not name_to_taxonomy_id:
         return 0
 
-    # Bulk-update: one UPDATE per species
+    # Bulk-update: one UPDATE per label
     total_linked = 0
-    for species_name, taxonomy_id in name_to_taxonomy_id.items():
+    for label_name, taxonomy_id in name_to_taxonomy_id.items():
         count = (
             db.query(Detection)
             .filter(
                 Detection.file_id.in_(db.query(project_file_ids.c.id)),
-                Detection.species == species_name,
-                Detection.species_taxonomy_id.is_(None),
+                Detection.label == label_name,
+                Detection.label_taxonomy_id.is_(None),
             )
             .update(
-                {Detection.species_taxonomy_id: taxonomy_id},
+                {Detection.label_taxonomy_id: taxonomy_id},
                 synchronize_session=False,
             )
         )
@@ -402,17 +402,17 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
         db.commit()
         logger.info(
             f"Linked {total_linked} detections to taxonomy "
-            f"({len(name_to_taxonomy_id)} species) in project {project_id}"
+            f"({len(name_to_taxonomy_id)} labels) in project {project_id}"
         )
 
     return total_linked
 
 
-def resolve_taxonomy_id(species_name: str, project_id: str, db: Session) -> str | None:
+def resolve_taxonomy_id(label_name: str, project_id: str, db: Session) -> str | None:
     """
-    Look up the SpeciesTaxonomy ID for a species name within a project.
+    Look up the LabelTaxonomy ID for a label name within a project.
 
-    Priority: model-level → custom → builtin. Returns None if no match.
+    Priority: model-level -> custom -> builtin. Returns None if no match.
     """
     from app.models import Project
 
@@ -425,24 +425,24 @@ def resolve_taxonomy_id(species_name: str, project_id: str, db: Session) -> str 
     # 1. Model-level taxonomy
     if model_id:
         row = (
-            db.query(SpeciesTaxonomy.id)
+            db.query(LabelTaxonomy.id)
             .filter(
-                SpeciesTaxonomy.classification_model_id == model_id,
-                SpeciesTaxonomy.project_id.is_(None),
-                SpeciesTaxonomy.name == species_name,
+                LabelTaxonomy.classification_model_id == model_id,
+                LabelTaxonomy.project_id.is_(None),
+                LabelTaxonomy.name == label_name,
             )
             .first()
         )
         if row:
             return row[0]
 
-    # 2. Custom species for this project
+    # 2. Custom labels for this project
     row = (
-        db.query(SpeciesTaxonomy.id)
+        db.query(LabelTaxonomy.id)
         .filter(
-            SpeciesTaxonomy.project_id == project_id,
-            SpeciesTaxonomy.is_custom == True,  # noqa: E712
-            SpeciesTaxonomy.name == species_name,
+            LabelTaxonomy.project_id == project_id,
+            LabelTaxonomy.is_custom == True,  # noqa: E712
+            LabelTaxonomy.name == label_name,
         )
         .first()
     )
@@ -451,10 +451,10 @@ def resolve_taxonomy_id(species_name: str, project_id: str, db: Session) -> str 
 
     # 3. Builtin labels
     row = (
-        db.query(SpeciesTaxonomy.id)
+        db.query(LabelTaxonomy.id)
         .filter(
-            SpeciesTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-            SpeciesTaxonomy.name == species_name,
+            LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
+            LabelTaxonomy.name == label_name,
         )
         .first()
     )

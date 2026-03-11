@@ -1,7 +1,7 @@
 /**
  * File verification panel - side panel for verify mode.
  *
- * Shows detection list, species/category editing, draw button, notes,
+ * Shows detection list, label/category editing, draw button, notes,
  * and verification controls.
  */
 
@@ -87,20 +87,20 @@ export function FileVerificationPanel({
     },
   });
 
-  // Update label mutation (sets both category and species in one call)
+  // Update label mutation (sets both category and label in one call)
   const updateLabelMutation = useMutation({
     mutationFn: ({
       detectionId,
       category,
-      species,
+      label,
     }: {
       detectionId: string;
       category: string;
-      species: string | null;
-    }) => detectionsApi.update(detectionId, { category, species }),
+      label: string | null;
+    }) => detectionsApi.update(detectionId, { category, label }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     },
   });
 
@@ -118,7 +118,7 @@ export function FileVerificationPanel({
   const groupedDetections = useMemo(() => {
     const counts = new Map<string, number>();
     for (const d of filteredDetections) {
-      const label = d.species || d.category;
+      const label = d.label || d.category;
       counts.set(label, (counts.get(label) ?? 0) + 1);
     }
     return counts;
@@ -221,7 +221,7 @@ export function FileVerificationPanel({
                     updateLabelMutation.mutate({
                       detectionId: detection.id,
                       category: option.category,
-                      species: option.species,
+                      label: option.label,
                     })
                   }
                   labelOptions={labelOptions}
@@ -343,7 +343,7 @@ function DetectionItem({
   pinnedOptions?: PinnedOption[];
   projectId?: string;
 }) {
-  const currentLabel = detection.species || detection.category;
+  const currentLabel = detection.label || detection.category;
   const itemRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -374,7 +374,7 @@ function DetectionItem({
         />
         <div className="flex items-center gap-1 ml-auto">
           <span className="text-muted-foreground text-xs tabular-nums">
-            {(((detection.species ? detection.species_confidence : null) ?? detection.confidence) * 100).toFixed(0)}%
+            {(((detection.label ? detection.label_confidence : null) ?? detection.confidence) * 100).toFixed(0)}%
           </span>
         <button
           onClick={(e) => {

@@ -10,7 +10,7 @@ from app.ml.taxonomy_db import (
     populate_taxonomy_from_csv,
     populate_taxonomy_from_json,
 )
-from app.models.species_taxonomy import SpeciesTaxonomy
+from app.models.label_taxonomy import LabelTaxonomy
 
 SAMPLE_TAXONOMY_ROWS = [
     {
@@ -77,8 +77,8 @@ def test_populate_from_csv(db, taxonomy_csv):
     count = populate_taxonomy_from_csv(MODEL_ID, taxonomy_csv, db)
     assert count == 4
 
-    rows = db.query(SpeciesTaxonomy).filter(
-        SpeciesTaxonomy.classification_model_id == MODEL_ID
+    rows = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID
     ).all()
     assert len(rows) == 4
 
@@ -106,8 +106,8 @@ def test_populate_idempotent(db, taxonomy_csv):
     assert count1 == 4
     assert count2 == 0
 
-    total = db.query(SpeciesTaxonomy).filter(
-        SpeciesTaxonomy.classification_model_id == MODEL_ID
+    total = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID
     ).count()
     assert total == 4
 
@@ -125,9 +125,9 @@ def test_add_rollup_entry(db, taxonomy_lookup):
     )
     assert result is True
 
-    row = db.query(SpeciesTaxonomy).filter(
-        SpeciesTaxonomy.classification_model_id == MODEL_ID,
-        SpeciesTaxonomy.name == "felidae",
+    row = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID,
+        LabelTaxonomy.name == "felidae",
     ).first()
     assert row is not None
     assert row.level == "family"
@@ -146,20 +146,20 @@ def test_add_rollup_idempotent(db, taxonomy_lookup):
     assert r1 is True
     assert r2 is False
 
-    total = db.query(SpeciesTaxonomy).filter(
-        SpeciesTaxonomy.name == "felidae"
+    total = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.name == "felidae"
     ).count()
     assert total == 1
 
 
 def test_different_models_no_collision(db, taxonomy_csv):
-    """Same species name in different models creates separate rows."""
+    """Same label name in different models creates separate rows."""
     count1 = populate_taxonomy_from_csv("model-A", taxonomy_csv, db)
     count2 = populate_taxonomy_from_csv("model-B", taxonomy_csv, db)
     assert count1 == 4
     assert count2 == 4
 
-    total = db.query(SpeciesTaxonomy).count()
+    total = db.query(LabelTaxonomy).count()
     assert total == 8
 
 
@@ -196,8 +196,8 @@ def test_populate_from_json(db, results_json):
     # 3 entries: domestic cattle, bovidae, mammalia — blank is skipped
     assert count == 3
 
-    rows = db.query(SpeciesTaxonomy).filter(
-        SpeciesTaxonomy.classification_model_id == MODEL_ID
+    rows = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID
     ).all()
     assert len(rows) == 3
 
@@ -236,8 +236,8 @@ def test_populate_from_json_idempotent(db, results_json):
     assert count1 == 3
     assert count2 == 0
 
-    total = db.query(SpeciesTaxonomy).filter(
-        SpeciesTaxonomy.classification_model_id == MODEL_ID
+    total = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID
     ).count()
     assert total == 3
 

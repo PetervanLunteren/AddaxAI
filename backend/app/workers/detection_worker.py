@@ -539,7 +539,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
-                # Populate species_taxonomy table from taxonomy.csv or results JSON
+                # Populate label_taxonomy table from taxonomy.csv or results JSON
                 if classification_model_id:
                     try:
                         taxonomy_csv = cls_model_dir / "taxonomy.csv"
@@ -1271,8 +1271,8 @@ async def run_classification_on_json(
 
                             # Add classification to detection (update in-place in md_results)
                             # Convert class names to IDs for JSON format consistency
-                            # Store all results (not truncated) so species exclusion
-                            # can find included species even if they rank low.
+                            # Store all results (not truncated) so label exclusion
+                            # can find included labels even if they rank low.
                             md_results["images"][img_idx]["detections"][det_idx][
                                 "classifications"
                             ] = [
@@ -1325,8 +1325,8 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
     classification IDs to be consistent across video and image detections.
 
     Why this is necessary:
-    - SpeciesNet assigns classification IDs dynamically based on the order species appear
-    - Video and image JSONs may have different ID mappings for the same species
+    - SpeciesNet assigns classification IDs dynamically based on the order labels appear
+    - Video and image JSONs may have different ID mappings for the same label
     - Example: "zebra" might be ID "1" in video JSON but ID "2" in image JSON
     - This function unifies the mappings so all IDs are consistent
 
@@ -1349,7 +1349,7 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             "info": {},
         }
 
-        # Track unified classification mapping: species_name -> unified_id
+        # Track unified classification mapping: label_name -> unified_id
         unified_class_mapping = {}
         next_class_id = 1
 
@@ -1367,16 +1367,16 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             # Build mapping from old ID to new ID for this file
             id_remapping = {}
 
-            # For each species in this file's classification_categories
-            for old_id, species_name in file_class_categories.items():
-                # Check if we've seen this species before
-                if species_name not in unified_class_mapping:
-                    # New species - assign next available ID
-                    unified_class_mapping[species_name] = str(next_class_id)
+            # For each label in this file's classification_categories
+            for old_id, label_name in file_class_categories.items():
+                # Check if we've seen this label before
+                if label_name not in unified_class_mapping:
+                    # New label - assign next available ID
+                    unified_class_mapping[label_name] = str(next_class_id)
                     next_class_id += 1
 
                 # Map old ID to unified ID
-                id_remapping[old_id] = unified_class_mapping[species_name]
+                id_remapping[old_id] = unified_class_mapping[label_name]
 
             # Remap classification_category_descriptions using the same ID remapping
             file_descriptions = data.get("classification_category_descriptions", {})
@@ -1419,17 +1419,17 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
 
         # Build unified classification_categories (inverse of unified_class_mapping)
         merged_data["classification_categories"] = {
-            class_id: species_name for species_name, class_id in unified_class_mapping.items()
+            class_id: label_name for label_name, class_id in unified_class_mapping.items()
         }
 
         # Remove empty descriptions dict
         if not merged_data["classification_category_descriptions"]:
             del merged_data["classification_category_descriptions"]
 
-        num_species = len(merged_data['classification_categories'])
+        num_labels = len(merged_data['classification_categories'])
         logger.info(
             f"Unified classification mapping: "
-            f"{num_species} species "
+            f"{num_labels} labels "
             f"across {len(json_files)} JSON files"
         )
 

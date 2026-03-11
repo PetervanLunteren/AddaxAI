@@ -1,7 +1,7 @@
 /**
  * Pure utility functions for taxonomy tree operations.
  *
- * Used by both the settings species selector (full tree, exclusion mode)
+ * Used by both the settings label selector (full tree, exclusion mode)
  * and the verify filter modal (pruned tree, inclusion mode).
  */
 

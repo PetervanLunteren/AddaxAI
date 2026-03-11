@@ -2,8 +2,8 @@
  * Shared tree selection component.
  *
  * Extracted from SpeciesSelector so the same tree logic serves both:
- * - Settings page (exclusion mode: selected = excluded species)
- * - Verify filter modal (inclusion mode: selected = included species)
+ * - Settings page (exclusion mode: selected = excluded labels)
+ * - Verify filter modal (inclusion mode: selected = included labels)
  *
  * Manages expand/collapse, search, bulk actions, and cascading toggle.
  * Does NOT manage data fetching, tree pruning, working-copy pattern,
@@ -113,7 +113,7 @@ export function TreeSelector({
   onSelectionChange,
   height = "300px",
   fillHeight = false,
-  emptyMessage = "No species available",
+  emptyMessage = "No labels available",
   countUnit,
 }: TreeSelectorProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -239,7 +239,7 @@ export function TreeSelector({
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search species..."
+          placeholder="Search labels..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -311,7 +311,7 @@ export function TreeSelector({
         </ScrollArea>
       ) : (
         <div className="text-sm text-muted-foreground py-4">
-          {searchQuery ? "No matching species" : emptyMessage}
+          {searchQuery ? "No matching labels" : emptyMessage}
         </div>
       )}
     </div>

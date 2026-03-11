@@ -75,7 +75,7 @@ class ClassificationResult:
     for uncertainty analysis.
     """
 
-    species: str  # Top prediction class name (e.g., "giraffe")
+    label: str  # Top prediction class name (e.g., "giraffe")
     confidence: float  # Top prediction confidence (0.0 - 1.0)
     all_probabilities: dict[str, float]  # All classes with confidences
 
@@ -83,9 +83,9 @@ class ClassificationResult:
         """Validate classification data."""
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"Invalid confidence: {self.confidence}")
-        if self.species not in self.all_probabilities:
-            raise ValueError(f"Top species '{self.species}' not in probabilities")
-        if abs(self.all_probabilities[self.species] - self.confidence) > 0.0001:
+        if self.label not in self.all_probabilities:
+            raise ValueError(f"Top label '{self.label}' not in probabilities")
+        if abs(self.all_probabilities[self.label] - self.confidence) > 0.0001:
             raise ValueError("Top confidence mismatch with all_probabilities")
 
 
@@ -143,7 +143,7 @@ class ClassificationModel(ABC):
     """
     Abstract base class for classification models.
 
-    Classification models identify species in cropped detections.
+    Classification models identify labels in cropped detections.
     Examples: YOLOv8 classifiers, SpeciesNet, DeepFaune, MEWC.
     """
 
@@ -163,7 +163,7 @@ class ClassificationModel(ABC):
             progress_callback: Optional callback(message, progress) for updates
 
         Returns:
-            ClassificationResult with species and all probabilities
+            ClassificationResult with label and all probabilities
 
         Raises:
             RuntimeError: If classification fails

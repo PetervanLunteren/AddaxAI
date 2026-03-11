@@ -131,8 +131,8 @@ def rollup_single_detection(
         return None
 
     # Skip non-taxonomic classes (not in taxonomy CSV).
-    # Non-species classes (blank, empty, false detection, none) are already
-    # stripped by species exclusion before rollup runs.
+    # Non-label classes (blank, empty, false detection, none) are already
+    # stripped by label exclusion before rollup runs.
     if top_name not in taxonomy_lookup:
         return None
 

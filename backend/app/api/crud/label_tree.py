@@ -1,7 +1,7 @@
 """
-CRUD for building the species filter tree from the species_taxonomy table.
+CRUD for building the label filter tree from the label_taxonomy table.
 
-Returns a pre-built taxonomy tree containing only species with actual detections,
+Returns a pre-built taxonomy tree containing only labels with actual detections,
 annotated with event counts. Replaces the frontend's two-query + client-side
 pruning approach.
 """
@@ -13,25 +13,25 @@ from sqlalchemy.orm import Session
 from app.core.logging_config import get_logger
 from app.models import Deployment, Detection, Event, File, Project, Site
 from app.models.event import event_files
-from app.models.species_taxonomy import SpeciesTaxonomy
+from app.models.label_taxonomy import LabelTaxonomy
 
 logger = get_logger(__name__)
 
 LEVEL_ORDER = ["class", "order", "family", "genus"]
 
 
-def build_species_filter_tree(
+def build_label_filter_tree(
     project_id: str, db: Session, count_by: str = "event",
 ) -> dict | None:
     """
-    Build the species filter tree for a project from species_taxonomy + detections.
+    Build the label filter tree for a project from label_taxonomy + detections.
 
     Args:
-        count_by: "event" (default) counts distinct events per species;
-                  "detection" counts individual detections per species.
+        count_by: "event" (default) counts distinct events per label;
+                  "detection" counts individual detections per label.
 
     Returns:
-        Dict with tree, all_leaf_ids, species_event_counts, count_unit; or None if no taxonomy.
+        Dict with tree, all_leaf_ids, label_event_counts, count_unit; or None if no taxonomy.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project or not project.classification_model_id:
@@ -39,83 +39,83 @@ def build_species_filter_tree(
 
     model_id = project.classification_model_id
 
-    # Get detected species + counts (events or detections)
+    # Get detected labels + counts (events or detections)
     if count_by == "detection":
-        species_count_rows = (
-            db.query(Detection.species, func.count(Detection.id))
+        label_count_rows = (
+            db.query(Detection.label, func.count(Detection.id))
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
-            .filter(Detection.species.isnot(None))
-            .group_by(Detection.species)
+            .filter(Detection.label.isnot(None))
+            .group_by(Detection.label)
             .all()
         )
     else:
-        species_count_rows = (
-            db.query(Detection.species, func.count(func.distinct(Event.id)))
+        label_count_rows = (
+            db.query(Detection.label, func.count(func.distinct(Event.id)))
             .join(File, File.id == Detection.file_id)
             .join(event_files, event_files.c.file_id == File.id)
             .join(Event, Event.id == event_files.c.event_id)
             .join(Deployment, Deployment.id == Event.deployment_id)
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
-            .filter(Detection.species.isnot(None))
-            .group_by(Detection.species)
+            .filter(Detection.label.isnot(None))
+            .group_by(Detection.label)
             .all()
         )
 
-    if not species_count_rows:
+    if not label_count_rows:
         return None
 
-    species_event_counts = {name: count for name, count in species_count_rows}
-    detected_species = set(species_event_counts.keys())
+    label_event_counts = {name: count for name, count in label_count_rows}
+    detected_labels = set(label_event_counts.keys())
 
     # Get taxonomy rows via FK join (preferred) + string match fallback for unlinked.
     # FK-linked: query distinct taxonomy rows referenced by detections in this project.
     linked_taxonomy_ids = (
-        db.query(func.distinct(Detection.species_taxonomy_id))
+        db.query(func.distinct(Detection.label_taxonomy_id))
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(
             Site.project_id == project_id,
-            Detection.species_taxonomy_id.isnot(None),
+            Detection.label_taxonomy_id.isnot(None),
         )
         .subquery()
     )
     fk_rows = (
-        db.query(SpeciesTaxonomy)
-        .filter(SpeciesTaxonomy.id.in_(db.query(linked_taxonomy_ids.c[0])))
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.id.in_(db.query(linked_taxonomy_ids.c[0])))
         .all()
     )
-    fk_species_names = {r.name for r in fk_rows}
+    fk_label_names = {r.name for r in fk_rows}
 
-    # String-match fallback for unlinked detections (species_taxonomy_id IS NULL)
-    unlinked_species = detected_species - fk_species_names
-    fallback_rows: list[SpeciesTaxonomy] = []
-    if unlinked_species:
+    # String-match fallback for unlinked detections (label_taxonomy_id IS NULL)
+    unlinked_labels = detected_labels - fk_label_names
+    fallback_rows: list[LabelTaxonomy] = []
+    if unlinked_labels:
         model_rows = (
-            db.query(SpeciesTaxonomy)
+            db.query(LabelTaxonomy)
             .filter(
-                SpeciesTaxonomy.classification_model_id == model_id,
-                SpeciesTaxonomy.project_id.is_(None),
-                SpeciesTaxonomy.name.in_(unlinked_species),
+                LabelTaxonomy.classification_model_id == model_id,
+                LabelTaxonomy.project_id.is_(None),
+                LabelTaxonomy.name.in_(unlinked_labels),
             )
             .all()
         )
-        model_species_names = {r.name.lower() for r in model_rows}
+        model_label_names = {r.name.lower() for r in model_rows}
 
         custom_rows = (
-            db.query(SpeciesTaxonomy)
+            db.query(LabelTaxonomy)
             .filter(
-                SpeciesTaxonomy.project_id == project_id,
-                SpeciesTaxonomy.is_custom == True,  # noqa: E712
-                SpeciesTaxonomy.name.in_(unlinked_species),
+                LabelTaxonomy.project_id == project_id,
+                LabelTaxonomy.is_custom == True,  # noqa: E712
+                LabelTaxonomy.name.in_(unlinked_labels),
             )
             .all()
         )
-        custom_rows = [r for r in custom_rows if r.name.lower() not in model_species_names]
+        custom_rows = [r for r in custom_rows if r.name.lower() not in model_label_names]
         fallback_rows = model_rows + custom_rows
 
     taxonomy_rows = fk_rows + fallback_rows
@@ -123,9 +123,9 @@ def build_species_filter_tree(
     if not taxonomy_rows:
         return None
 
-    # Build sets for matched vs unmatched species
-    matched_species = {row.name for row in taxonomy_rows}
-    unmatched_species = detected_species - matched_species
+    # Build sets for matched vs unmatched labels
+    matched_labels = {row.name for row in taxonomy_rows}
+    unmatched_labels = detected_labels - matched_labels
 
     # Build hierarchical tree
     root: dict = {}
@@ -167,23 +167,23 @@ def build_species_filter_tree(
                 break
 
         # Add leaf node
-        count = species_event_counts.get(row.name, 0)
+        count = label_event_counts.get(row.name, 0)
 
         if row.level == "species":
             # Build binomial display name.
-            # Model-native: taxon_species is the epithet → prepend genus.
+            # Model-native: taxon_species is the epithet -> prepend genus.
             # Custom (GBIF): taxon_species is already the full binomial.
             if row.is_custom:
-                species_label = row.taxon_species or row.name
+                display_label = row.taxon_species or row.name
             elif row.taxon_species and row.taxon_genus:
-                species_label = f"{row.taxon_genus.strip().capitalize()} {row.taxon_species}"
+                display_label = f"{row.taxon_genus.strip().capitalize()} {row.taxon_species}"
             else:
-                species_label = row.taxon_species or row.name
+                display_label = row.taxon_species or row.name
             display_name = row.name.replace("_", " ")
             leaf_id = row.name
             leaf_node = {
                 "id": leaf_id,
-                "name": species_label,
+                "name": display_label,
                 "annotation": display_name,
                 "count": count,
                 "children": {},
@@ -195,7 +195,7 @@ def build_species_filter_tree(
             # Check if the raw model name matches its taxon field for this level.
             # If yes (e.g. "Bovidae" == taxon_family "Bovidae"), it's a proper
             # taxon name and gets the level prefix.  If no (e.g. "Bird" !=
-            # taxon_class "Aves"), it's a raw model label — show without prefix.
+            # taxon_class "Aves"), it's a raw model label -- show without prefix.
             taxon_value_for_level = {
                 "class": row.taxon_class,
                 "order": row.taxon_order,
@@ -220,15 +220,15 @@ def build_species_filter_tree(
         if leaf_id not in current:
             current[leaf_id] = leaf_node
 
-    # Add unmatched species to "other" group
-    if unmatched_species:
+    # Add unmatched labels to "other" group
+    if unmatched_labels:
         other_children: dict = {}
-        for sp in sorted(unmatched_species):
-            count = species_event_counts.get(sp, 0)
-            leaf_id = sp
+        for label_name in sorted(unmatched_labels):
+            count = label_event_counts.get(label_name, 0)
+            leaf_id = label_name
             other_children[leaf_id] = {
                 "id": leaf_id,
-                "name": sp.replace("_", " "),
+                "name": label_name.replace("_", " "),
                 "count": count,
                 "children": {},
                 "is_leaf": True,
@@ -305,6 +305,6 @@ def build_species_filter_tree(
     return {
         "tree": tree,
         "all_leaf_ids": all_leaf_ids,
-        "species_event_counts": species_event_counts,
+        "label_event_counts": label_event_counts,
         "count_unit": count_by,
     }

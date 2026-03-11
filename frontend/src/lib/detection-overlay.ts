@@ -82,8 +82,8 @@ export function svgRoundedRectPath(
 // ── Pill layout computation ───────────────────────────────────────
 export interface PillLayout {
   categoryText: string;
-  speciesText: string;
-  hasSpecies: boolean;
+  labelText: string;
+  hasLabel: boolean;
   pillWidth: number;
   pillHeight: number;
   color: string;
@@ -91,19 +91,19 @@ export interface PillLayout {
 
 export function computePillLayout(detection: DetectionResponse): PillLayout {
   const color = getCategoryColor(detection.category);
-  const hasSpecies = !!detection.species;
+  const hasLabel = !!detection.label;
 
   const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;
-  const speciesText = hasSpecies
-    ? `${detection.species!.charAt(0).toUpperCase() + detection.species!.slice(1)} ${((detection.species_confidence ?? detection.confidence) * 100).toFixed(0)}%`
+  const labelText = hasLabel
+    ? `${detection.label!.charAt(0).toUpperCase() + detection.label!.slice(1)} ${((detection.label_confidence ?? detection.confidence) * 100).toFixed(0)}%`
     : "";
 
   let pillHeight: number;
   let pillWidth: number;
-  if (hasSpecies) {
+  if (hasLabel) {
     pillHeight = PILL_PAD_Y + FONT_SM + LINE_GAP + FONT_LG + PILL_PAD_Y;
     const w1 = measureTextWidth(categoryText, FONT_SM, false);
-    const w2 = measureTextWidth(speciesText, FONT_LG, true);
+    const w2 = measureTextWidth(labelText, FONT_LG, true);
     pillWidth = TEXT_START_X + Math.max(w1, w2) + PILL_PAD_X;
   } else {
     pillHeight = PILL_PAD_Y + FONT_LG + PILL_PAD_Y;
@@ -111,5 +111,5 @@ export function computePillLayout(detection: DetectionResponse): PillLayout {
     pillWidth = TEXT_START_X + tw + PILL_PAD_X;
   }
 
-  return { categoryText, speciesText, hasSpecies, pillWidth, pillHeight, color };
+  return { categoryText, labelText, hasLabel, pillWidth, pillHeight, color };
 }

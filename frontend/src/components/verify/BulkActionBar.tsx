@@ -21,7 +21,7 @@ interface BulkActionBarProps {
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
   onActionComplete: () => void;
-  onRelabel?: (ids: string[], species: string | null, category: string) => void;
+  onRelabel?: (ids: string[], label: string | null, category: string) => void;
   onVerify?: (ids: string[]) => void;
   /** Number of selected detections that have a neighbor label suggestion. */
   suggestionCount?: number;
@@ -63,10 +63,10 @@ export function BulkActionBar({
 
   const relabelMutation = useMutation({
     mutationFn: (opt: LabelOption) =>
-      detectionsApi.bulkRelabel(ids, opt.species, opt.category),
+      detectionsApi.bulkRelabel(ids, opt.label, opt.category),
     onSuccess: (_data, opt) => {
       if (onRelabel) {
-        onRelabel(ids, opt.species, opt.category);
+        onRelabel(ids, opt.label, opt.category);
       } else {
         onActionComplete();
       }

@@ -50,7 +50,7 @@ interface SimilarityFilterState {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
-  species?: string[];
+  labels?: string[];
 }
 
 /** Parse sim_* params from URL. */
@@ -62,8 +62,8 @@ function simFiltersFromSearchParams(sp: URLSearchParams): SimilarityFilterState 
   if (from) f.date_from = from;
   const to = sp.get("sim_to");
   if (to) f.date_to = to;
-  const species = sp.get("sim_species");
-  if (species) f.species = species.split(",");
+  const labels = sp.get("sim_labels");
+  if (labels) f.labels = labels.split(",");
   return f;
 }
 
@@ -80,14 +80,14 @@ function simFiltersToSearchParams(
   if (filters.site_ids?.length) sp.set("sim_sites", filters.site_ids.join(","));
   if (filters.date_from) sp.set("sim_from", filters.date_from);
   if (filters.date_to) sp.set("sim_to", filters.date_to);
-  if (filters.species?.length) sp.set("sim_species", filters.species.join(","));
+  if (filters.labels?.length) sp.set("sim_labels", filters.labels.join(","));
   return sp;
 }
 
 /** Convert SimilarityFilterState → SimilarityFilters for API calls. */
 function toSimilarityFilters(f: SimilarityFilterState): SimilarityFilters {
   return {
-    species: f.species,
+    labels: f.labels,
     site_ids: f.site_ids,
     date_from: f.date_from,
     date_to: f.date_to,
@@ -100,7 +100,7 @@ function toFilterPanelFilters(f: SimilarityFilterState): EventFilterParams {
     site_ids: f.site_ids,
     date_from: f.date_from,
     date_to: f.date_to,
-    species: f.species,
+    labels: f.labels,
   };
 }
 
@@ -135,7 +135,7 @@ export function SimilarityTab({
         site_ids: fp.site_ids,
         date_from: fp.date_from,
         date_to: fp.date_to,
-        species: fp.species,
+        labels: fp.labels,
       });
     },
     [simFilters, setSimFilters],
@@ -168,8 +168,8 @@ export function SimilarityTab({
     _setVerificationFilter(v);
     persistSetting("verificationFilter", v);
   }, [persistSetting]);
-  const [showSpeciesDividers, _setShowSpeciesDividers] = useState(savedSettings.showSpeciesDividers ?? false);
-  const setShowSpeciesDividers = useCallback((v: boolean) => { _setShowSpeciesDividers(v); persistSetting("showSpeciesDividers", v); }, [persistSetting]);
+  const [showLabelDividers, _setShowLabelDividers] = useState(savedSettings.showLabelDividers ?? false);
+  const setShowLabelDividers = useCallback((v: boolean) => { _setShowLabelDividers(v); persistSetting("showLabelDividers", v); }, [persistSetting]);
 
   // Help sheet + welcome popover
   const [helpOpen, setHelpOpen] = useState(false);
@@ -411,7 +411,7 @@ export function SimilarityTab({
     } else if (anchorId) {
       searchMutation.mutate(anchorId);
     }
-    queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+    queryClient.invalidateQueries({ queryKey: ["label-tree"] });
   }, [viewMode, anchorId, queryClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
@@ -433,12 +433,12 @@ export function SimilarityTab({
   );
 
   const handleRelabel = useCallback(
-    (detectionId: string, species: string, category: string) => {
+    (detectionId: string, label: string, category: string) => {
       detectionsApi
-        .bulkRelabel([detectionId], species, category)
+        .bulkRelabel([detectionId], label, category)
         .then((data) => {
           patchLocalDetections((d) =>
-            d.detection_id === detectionId ? { ...d, species, category, verified: true } : d
+            d.detection_id === detectionId ? { ...d, label, category, verified: true } : d
           );
         })
         .catch((err: Error) => toast.error(err.message));
@@ -447,10 +447,10 @@ export function SimilarityTab({
   );
 
   const handleBulkRelabel = useCallback(
-    (ids: string[], species: string | null, category: string) => {
+    (ids: string[], label: string | null, category: string) => {
       const idSet = new Set(ids);
       patchLocalDetections((d) =>
-        idSet.has(d.detection_id) ? { ...d, species, category, verified: true } : d
+        idSet.has(d.detection_id) ? { ...d, label, category, verified: true } : d
       );
     },
     [patchLocalDetections]
@@ -470,25 +470,25 @@ export function SimilarityTab({
   const relabelToSuggestions = useCallback(
     async (dets: DetectionSummary[]) => {
       const withSuggestion = dets.filter(
-        (d) => d.neighbor_top_label && d.neighbor_top_label !== d.species
+        (d) => d.neighbor_top_label && d.neighbor_top_label !== d.label
       );
       if (withSuggestion.length === 0) {
         toast.info("No suggestions to accept");
         return;
       }
       // Group by (neighbor_top_label, category)
-      const groups = new Map<string, { ids: string[]; species: string; category: string }>();
+      const groups = new Map<string, { ids: string[]; label: string; category: string }>();
       for (const d of withSuggestion) {
         const key = `${d.neighbor_top_label}|${d.category}`;
         if (!groups.has(key)) {
-          groups.set(key, { ids: [], species: d.neighbor_top_label!, category: d.category });
+          groups.set(key, { ids: [], label: d.neighbor_top_label!, category: d.category });
         }
         groups.get(key)!.ids.push(d.detection_id);
       }
       let totalUpdated = 0;
-      for (const { ids, species, category } of groups.values()) {
+      for (const { ids, label, category } of groups.values()) {
         try {
-          const data = await detectionsApi.bulkRelabel(ids, species, category);
+          const data = await detectionsApi.bulkRelabel(ids, label, category);
           totalUpdated += data.updated_count;
         } catch (err: unknown) {
           toast.error(err instanceof Error ? err.message : "Relabel failed");
@@ -500,7 +500,7 @@ export function SimilarityTab({
       );
       patchLocalDetections((d) =>
         suggestionMap.has(d.detection_id)
-          ? { ...d, species: suggestionMap.get(d.detection_id)!, verified: true }
+          ? { ...d, label: suggestionMap.get(d.detection_id)!, verified: true }
           : d
       );
       setSelectedIds(new Set());
@@ -564,11 +564,11 @@ export function SimilarityTab({
         if (!label || selectedIds.size === 0) return;
         e.preventDefault();
         const ids = Array.from(selectedIds);
-        detectionsApi.bulkRelabel(ids, label.species, label.category).then(() => {
+        detectionsApi.bulkRelabel(ids, label.label, label.category).then(() => {
           const idSet = new Set(ids);
           patchLocalDetections((d) =>
             idSet.has(d.detection_id)
-              ? { ...d, species: label.species ?? label.category, category: label.category, verified: true }
+              ? { ...d, label: label.label ?? label.category, category: label.category, verified: true }
               : d
           );
           setSelectedIds(new Set());
@@ -628,7 +628,7 @@ export function SimilarityTab({
 
   return (
     <div className="space-y-4">
-      {/* Filter panel — sites, dates, species only (verification filtering
+      {/* Filter panel — sites, dates, labels only (verification filtering
           is handled by the toolbar segmented control) */}
       <FilterPanel
         filters={toFilterPanelFilters(simFilters)}
@@ -715,8 +715,8 @@ export function SimilarityTab({
             <SimilaritySettings
               reverseSort={reverseSort}
               onReverseSortChange={setReverseSort}
-              showSpeciesDividers={showSpeciesDividers}
-              onShowSpeciesDividersChange={setShowSpeciesDividers}
+              showLabelDividers={showLabelDividers}
+              onShowLabelDividersChange={setShowLabelDividers}
               tileSize={tileSize}
               onTileSizeChange={setTileSize}
             />
@@ -861,7 +861,7 @@ export function SimilarityTab({
                 className="h-5 w-5 rounded object-cover"
               />
               <span className="text-xs capitalize">
-                {searchResult.anchor.species || searchResult.anchor.category}
+                {searchResult.anchor.label || searchResult.anchor.category}
               </span>
             </div>
 
@@ -930,7 +930,7 @@ export function SimilarityTab({
             onRelabel={handleRelabel}
             onBackgroundClick={() => setSelectedIds(new Set())}
             tileSize={tileSize}
-            showSpeciesDividers={viewMode === "sort" && showSpeciesDividers}
+            showLabelDividers={viewMode === "sort" && showLabelDividers}
           />
         </div>
       )}
@@ -947,7 +947,7 @@ export function SimilarityTab({
         projectId={projectId}
         suggestionCount={
           allDetections.filter(
-            (d) => selectedIds.has(d.detection_id) && !d.verified && d.neighbor_top_label && d.neighbor_top_label !== d.species
+            (d) => selectedIds.has(d.detection_id) && !d.verified && d.neighbor_top_label && d.neighbor_top_label !== d.label
           ).length
         }
         onAcceptSuggestions={() => {
@@ -968,10 +968,10 @@ export function SimilarityTab({
         onFindSimilar={handleFindSimilar}
         onActionComplete={handleActionComplete}
         projectId={projectId}
-        onRelabel={(detectionId, species, category) => {
+        onRelabel={(detectionId, label, category) => {
           patchLocalDetections((d) =>
             d.detection_id === detectionId
-              ? { ...d, species, category, verified: true }
+              ? { ...d, label, category, verified: true }
               : d
           );
         }}

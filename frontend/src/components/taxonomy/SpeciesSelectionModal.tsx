@@ -57,9 +57,9 @@ export function SpeciesSelectionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Configure species selection</DialogTitle>
+          <DialogTitle>Configure label selection</DialogTitle>
           <DialogDescription>
-            Select which species to include in classifications
+            Select which labels to include in classifications
           </DialogDescription>
         </DialogHeader>
 

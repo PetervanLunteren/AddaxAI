@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class SimilarityFilters(BaseModel):
     """Filters for selecting detections to sort or search."""
 
-    species: list[str] | None = None
+    labels: list[str] | None = None
     site_ids: list[str] | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
@@ -51,8 +51,8 @@ class DetectionSummary(BaseModel):
 
     detection_id: str
     file_id: str
-    species: str | None
-    species_confidence: float | None
+    label: str | None
+    label_confidence: float | None
     confidence: float
     category: str
     verified: bool

@@ -19,7 +19,7 @@ export const detectionsApi = {
     return api.post<DetectionResponse>("/api/detections", data);
   },
 
-  /** Update a detection's category, bbox, or species. */
+  /** Update a detection's category, bbox, or label. */
   update: async (
     id: string,
     data: DetectionUpdate
@@ -67,7 +67,7 @@ export const detectionsApi = {
   /** Bulk relabel detections (auto-batches in chunks of 500). */
   bulkRelabel: async (
     ids: string[],
-    species: string | null,
+    label: string | null,
     category?: string
   ): Promise<{ updated_count: number }> => {
     const chunks = chunkArray(ids, 500);
@@ -75,7 +75,7 @@ export const detectionsApi = {
       chunks.map((chunk) =>
         api.post<{ updated_count: number }>("/api/detections/bulk-relabel", {
           detection_ids: chunk,
-          species,
+          label,
           category,
         })
       )

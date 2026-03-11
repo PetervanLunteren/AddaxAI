@@ -34,9 +34,9 @@ class DetectionBase(BaseModel):
     bbox_height: float = Field(
         ..., ge=0.0, le=1.0, description="Bounding box height (normalized 0-1)"
     )
-    species: str | None = Field(None, max_length=100, description="Species name")
-    species_confidence: float | None = Field(
-        None, ge=0.0, le=1.0, description="Species classification confidence"
+    label: str | None = Field(None, max_length=100, description="Label name")
+    label_confidence: float | None = Field(
+        None, ge=0.0, le=1.0, description="Label classification confidence"
     )
     classification_method: str | None = Field(
         None, description="Classification method: 'machine' or 'human'"
@@ -45,12 +45,12 @@ class DetectionBase(BaseModel):
         None, ge=0, description="Frame number for video detections (None for images)"
     )
 
-    @field_validator("species_confidence")
+    @field_validator("label_confidence")
     @classmethod
-    def validate_species_confidence(cls, v: float | None, info) -> float | None:
-        """Ensure species_confidence is only set if species is provided."""
-        if v is not None and info.data.get("species") is None:
-            raise ValueError("species_confidence requires species to be set")
+    def validate_label_confidence(cls, v: float | None, info) -> float | None:
+        """Ensure label_confidence is only set if label is provided."""
+        if v is not None and info.data.get("label") is None:
+            raise ValueError("label_confidence requires label to be set")
         return v
 
 
@@ -74,7 +74,7 @@ class DetectionCreateHuman(BaseModel):
     bbox_y: float = Field(..., ge=0.0, le=1.0)
     bbox_width: float = Field(..., ge=0.0, le=1.0)
     bbox_height: float = Field(..., ge=0.0, le=1.0)
-    species: str | None = Field(None, max_length=100)
+    label: str | None = Field(None, max_length=100)
 
 
 class DetectionUpdate(BaseModel):
@@ -85,8 +85,8 @@ class DetectionUpdate(BaseModel):
     bbox_y: float | None = Field(None, ge=0.0, le=1.0)
     bbox_width: float | None = Field(None, ge=0.0, le=1.0)
     bbox_height: float | None = Field(None, ge=0.0, le=1.0)
-    species: str | None = None
-    species_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    label: str | None = None
+    label_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
 
 class DetectionResponse(DetectionBase):

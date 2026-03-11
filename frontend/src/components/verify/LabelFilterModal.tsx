@@ -1,8 +1,8 @@
 /**
- * Species Filter Modal for the Verify page.
+ * Label Filter Modal for the Verify page.
  *
  * Accepts a pre-built taxonomy tree (already pruned server-side to only
- * detected species with event counts). Uses a working-copy pattern:
+ * detected labels with event counts). Uses a working-copy pattern:
  * changes are only applied on "Apply".
  */
 
@@ -19,30 +19,30 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
-interface SpeciesFilterModalProps {
-  /** Pre-built taxonomy tree from the species-tree endpoint. */
+interface LabelFilterModalProps {
+  /** Pre-built taxonomy tree from the label-tree endpoint. */
   preBuiltTree: TaxonomyNode[];
-  /** All leaf IDs from the species-tree endpoint. */
+  /** All leaf IDs from the label-tree endpoint. */
   allLeafIds: string[];
-  /** Currently active species filter values. */
-  selectedSpecies: string[];
-  /** Called with the new species list when the user clicks Apply. */
-  onApply: (species: string[]) => void;
+  /** Currently active label filter values. */
+  selectedLabels: string[];
+  /** Called with the new label list when the user clicks Apply. */
+  onApply: (labels: string[]) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Count unit label, e.g. "event" or "detection". */
   countUnit?: string;
 }
 
-export function SpeciesFilterModal({
+export function LabelFilterModal({
   preBuiltTree,
   allLeafIds,
-  selectedSpecies,
+  selectedLabels,
   onApply,
   open,
   onOpenChange,
   countUnit,
-}: SpeciesFilterModalProps) {
+}: LabelFilterModalProps) {
   // Working copy — initialized from props each time the modal opens
   const [workingSet, setWorkingSet] = useState<Set<string>>(new Set());
 
@@ -51,11 +51,11 @@ export function SpeciesFilterModal({
   // Re-initialize working set each time the modal opens
   useEffect(() => {
     if (open) {
-      // No filter active → start with all species selected
-      if (selectedSpecies.length === 0) {
+      // No filter active -> start with all labels selected
+      if (selectedLabels.length === 0) {
         setWorkingSet(new Set(allLeafIdSet));
       } else {
-        setWorkingSet(new Set(selectedSpecies));
+        setWorkingSet(new Set(selectedLabels));
       }
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -73,9 +73,9 @@ export function SpeciesFilterModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Filter by species</DialogTitle>
+          <DialogTitle>Filter by label</DialogTitle>
           <DialogDescription>
-            Select which species to include in results
+            Select which labels to include in results
           </DialogDescription>
         </DialogHeader>
 
@@ -86,7 +86,7 @@ export function SpeciesFilterModal({
             mode="inclusion"
             onSelectionChange={setWorkingSet}
             fillHeight
-            emptyMessage="No species with detections"
+            emptyMessage="No labels with detections"
             countUnit={countUnit ?? "event"}
           />
         </div>

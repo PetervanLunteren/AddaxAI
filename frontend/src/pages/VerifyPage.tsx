@@ -1,9 +1,9 @@
 /**
  * Browse and verify page - event-centric browse and annotation workflow.
  *
- * Displays events as cards with thumbnails, species tags, and verification progress.
+ * Displays events as cards with thumbnails, label tags, and verification progress.
  * Clicking a card opens the event detail modal (Phase 2).
- * Supports filtering by site, date range, species, verification status, and confidence.
+ * Supports filtering by site, date range, label, verification status, and confidence.
  * Filter state is persisted in URL search params.
  */
 
@@ -52,8 +52,8 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (from) filters.date_from = from;
   const to = sp.get("to");
   if (to) filters.date_to = to;
-  const species = sp.get("species");
-  if (species) filters.species = species.split(",");
+  const labels = sp.get("labels");
+  if (labels) filters.labels = labels.split(",");
   const verification = sp.get("verification") as VerificationFilter | null;
   if (verification && verification !== "all") filters.verification = verification;
   return filters;
@@ -65,7 +65,7 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
   if (filters.site_ids?.length) sp.set("sites", filters.site_ids.join(","));
   if (filters.date_from) sp.set("from", filters.date_from);
   if (filters.date_to) sp.set("to", filters.date_to);
-  if (filters.species?.length) sp.set("species", filters.species.join(","));
+  if (filters.labels?.length) sp.set("labels", filters.labels.join(","));
   if (filters.verification && filters.verification !== "all")
     sp.set("verification", filters.verification);
   return sp;
@@ -77,7 +77,7 @@ function hasActiveFilters(filters: EventFilterParams): boolean {
     (filters.site_ids?.length ?? 0) > 0 ||
     !!filters.date_from ||
     !!filters.date_to ||
-    (filters.species?.length ?? 0) > 0 ||
+    (filters.labels?.length ?? 0) > 0 ||
     (!!filters.verification && filters.verification !== "all")
   );
 }
@@ -499,7 +499,7 @@ function EventCard({
             </svg>
           );
         })()}
-        {/* Species chips */}
+        {/* Label chips */}
         <div className="absolute bottom-2 left-2 flex gap-1">
           {event.observation_types
             .filter((t) => t === "human" || t === "vehicle")
@@ -516,9 +516,9 @@ function EventCard({
                 </Badge>
               );
             })}
-          {event.species.length > 0 ? (
+          {event.labels.length > 0 ? (
             <>
-              {event.species.slice(0, 2).map((sp) => (
+              {event.labels.slice(0, 2).map((sp) => (
                 <Badge
                   key={sp}
                   variant="default"
@@ -527,12 +527,12 @@ function EventCard({
                   <span className="truncate">{sp}</span>
                 </Badge>
               ))}
-              {event.species.length > 2 && (
+              {event.labels.length > 2 && (
                 <Badge
                   variant="default"
                   className="text-[10px] px-1.5 py-0.5 shadow-sm"
                 >
-                  +{event.species.length - 2}
+                  +{event.labels.length - 2}
                 </Badge>
               )}
             </>

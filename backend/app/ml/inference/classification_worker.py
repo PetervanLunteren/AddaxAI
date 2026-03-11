@@ -9,9 +9,9 @@ class, and calls its methods to perform classifications.
 
 Communication via stdin/stdout using JSON:
 - Input: {"command": "classify", "image_path": "...", "bbox": [x,y,w,h]}
-- Output: {"success": true, "classifications": [["species", conf], ...]}
+- Output: {"success": true, "classifications": [["label", conf], ...]}
 - Input: {"command": "get_class_names"}
-- Output: {"success": true, "class_names": {"1": "species1", ...}}
+- Output: {"success": true, "class_names": {"1": "label1", ...}}
 - Shutdown: {"command": "stop"} → {"status": "stopped"}
 
 Created by Claude Code on 2026-01-05

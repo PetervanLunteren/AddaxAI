@@ -1,9 +1,9 @@
 /**
  * Hook to build label options for the unified label picker.
  *
- * Fetches species from the classification model's taxonomy (or from
- * project species stats for SpeciesNet), merges in any project-specific
- * custom species, and combines them with the always-available "person"
+ * Fetches labels from the classification model's taxonomy (or from
+ * project label stats for SpeciesNet), merges in any project-specific
+ * custom labels, and combines them with the always-available "person"
  * and "vehicle" options.
  */
 
@@ -15,14 +15,14 @@ import { projectsApi } from "../api/projects";
 export interface LabelOption {
   value: string;
   category: "animal" | "person" | "vehicle";
-  species: string | null;
+  label: string | null;
   isCustom?: boolean;
   customId?: string;
 }
 
 const GENERAL_OPTIONS: LabelOption[] = [
-  { value: "person", category: "person", species: null },
-  { value: "vehicle", category: "vehicle", species: null },
+  { value: "person", category: "person", label: null },
+  { value: "vehicle", category: "vehicle", label: null },
 ];
 
 export function useLabelOptions(
@@ -43,23 +43,23 @@ export function useLabelOptions(
     enabled: hasTaxonomyModel,
   });
 
-  // SpeciesNet fallback: distinct species already in the project
+  // SpeciesNet fallback: distinct labels already in the project
   const {
-    data: speciesStats,
+    data: labelStats,
     isLoading: statsLoading,
   } = useQuery({
-    queryKey: ["project-species-stats", projectId],
-    queryFn: () => projectsApi.getSpeciesStats(projectId),
+    queryKey: ["project-label-stats", projectId],
+    queryFn: () => projectsApi.getLabelStats(projectId),
     enabled: isSpeciesNet,
   });
 
-  // Custom species added by the user for this project
+  // Custom labels added by the user for this project
   const {
-    data: customSpecies,
+    data: customLabels,
     isLoading: customLoading,
   } = useQuery({
-    queryKey: ["custom-species", projectId],
-    queryFn: () => projectsApi.getCustomSpecies(projectId),
+    queryKey: ["custom-labels", projectId],
+    queryFn: () => projectsApi.getCustomLabels(projectId),
     enabled: !!projectId,
   });
 
@@ -73,39 +73,39 @@ export function useLabelOptions(
 
     if (hasTaxonomyModel && taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
-        result.push({ value: cls, category: "animal", species: cls });
+        result.push({ value: cls, category: "animal", label: cls });
       }
-    } else if (isSpeciesNet && speciesStats) {
-      for (const stat of speciesStats) {
-        if (stat.species) {
+    } else if (isSpeciesNet && labelStats) {
+      for (const stat of labelStats) {
+        if (stat.label) {
           result.push({
-            value: stat.species,
+            value: stat.label,
             category: "animal",
-            species: stat.species,
+            label: stat.label,
           });
         }
       }
     }
 
-    // Append custom species, deduplicating against already-present names
-    if (customSpecies) {
+    // Append custom labels, deduplicating against already-present names
+    if (customLabels) {
       const existingNames = new Set(result.map((o) => o.value.toLowerCase()));
-      for (const cs of customSpecies) {
-        if (!existingNames.has(cs.name.toLowerCase())) {
+      for (const cl of customLabels) {
+        if (!existingNames.has(cl.name.toLowerCase())) {
           result.push({
-            value: cs.name,
+            value: cl.name,
             category: "animal",
-            species: cs.name,
+            label: cl.name,
             isCustom: true,
-            customId: cs.id,
+            customId: cl.id,
           });
-          existingNames.add(cs.name.toLowerCase());
+          existingNames.add(cl.name.toLowerCase());
         }
       }
     }
 
     return result;
-  }, [hasTaxonomyModel, taxonomy, isSpeciesNet, speciesStats, customSpecies]);
+  }, [hasTaxonomyModel, taxonomy, isSpeciesNet, labelStats, customLabels]);
 
   return { options, isLoading };
 }

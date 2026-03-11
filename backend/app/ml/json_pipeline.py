@@ -421,16 +421,16 @@ class JSONBasedMLPipeline:
                     # Handle skipped detections (result is None)
                     if result is not None:
                         # Convert classifications to expected format
-                        # Result has all_probabilities as dict {species: confidence}
+                        # Result has all_probabilities as dict {label: confidence}
                         # We need list of [class_id, confidence] sorted by confidence
 
-                        # Create inverse mapping: species_name -> class_id
-                        species_to_id = {v: k for k, v in class_names.items()}
+                        # Create inverse mapping: label_name -> class_id
+                        label_to_id = {v: k for k, v in class_names.items()}
 
                         # Build classifications list
                         classifications = []
-                        for species, conf in result.all_probabilities.items():
-                            class_id = species_to_id.get(species)
+                        for label_name, conf in result.all_probabilities.items():
+                            class_id = label_to_id.get(label_name)
                             if class_id is not None:
                                 classifications.append([class_id, round(conf, 5)])
 
@@ -625,8 +625,8 @@ class JSONBasedMLPipeline:
                 bbox = det["bbox"]  # [x, y, width, height]
 
                 # Get classifications (if present)
-                species = None
-                species_confidence = None
+                label = None
+                label_confidence = None
 
                 if "classifications" in det and det["classifications"]:
                     # Get top classification
@@ -634,10 +634,10 @@ class JSONBasedMLPipeline:
 
                     # Get classification_categories mapping
                     class_names = results.get("classification_categories", {})
-                    species = class_names.get(str(top_class_id))
-                    species_confidence = float(top_conf)
+                    label = class_names.get(str(top_class_id))
+                    label_confidence = float(top_conf)
 
-                    if species:
+                    if label:
                         classified_count += 1
 
                 # Create Detection record
@@ -661,9 +661,9 @@ class JSONBasedMLPipeline:
                 detection_record = detection_crud.create_detection(db, detection_data)
 
                 # Update detection with classification data if present
-                if species:
-                    detection_record.species = species
-                    detection_record.species_confidence = species_confidence
+                if label:
+                    detection_record.label = label
+                    detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
 
             # Set observation_type based on detection categories
@@ -722,8 +722,8 @@ def load_json_to_database(
         deployment_folder: Deployment folder (base for relative paths)
         job_id: Job ID
         db: Database session
-        excluded_classes: Optional list of species names to exclude from
-            classification results. Excluded species are zeroed out and
+        excluded_classes: Optional list of label names to exclude from
+            classification results. Excluded labels are zeroed out and
             remaining confidences renormalized before writing to DB.
         artifacts_folder: Project-scoped artifacts folder. If provided,
             video_frames are read from artifacts_folder/video_frames/.
@@ -745,10 +745,10 @@ def load_json_to_database(
 
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
-        # Build excluded class ID set for species filtering.
-        # Always strips non-species classes (blank, empty, false detection, none)
-        # plus any user-configured excluded species.
-        from app.ml.species_exclusion import build_excluded_class_ids
+        # Build excluded class ID set for label filtering.
+        # Always strips non-label classes (blank, empty, false detection, none)
+        # plus any user-configured excluded labels.
+        from app.ml.label_exclusion import build_excluded_class_ids
 
         class_categories = results.get("classification_categories", {})
         excluded_class_ids = build_excluded_class_ids(class_categories, excluded_classes)
@@ -951,15 +951,15 @@ def load_json_to_database(
                 bbox = det["bbox"]  # [x, y, width, height]
 
                 # Get classifications (if present)
-                species = None
-                species_confidence = None
+                label = None
+                label_confidence = None
 
                 if "classifications" in det and det["classifications"]:
                     classifications = det["classifications"]
 
-                    # Apply species exclusion if configured
+                    # Apply label exclusion if configured
                     if excluded_class_ids:
-                        from app.ml.species_exclusion import filter_classifications
+                        from app.ml.label_exclusion import filter_classifications
 
                         classifications = filter_classifications(
                             classifications, excluded_class_ids
@@ -971,10 +971,10 @@ def load_json_to_database(
 
                         # Get classification_categories mapping
                         class_names = results.get("classification_categories", {})
-                        species = class_names.get(str(top_class_id))
-                        species_confidence = float(top_conf)
+                        label = class_names.get(str(top_class_id))
+                        label_confidence = float(top_conf)
 
-                    if species:
+                    if label:
                         classified_count += 1
 
                 # Create Detection record
@@ -1004,9 +1004,9 @@ def load_json_to_database(
                 detection_record = detection_crud.create_detection(db, detection_data)
 
                 # Update detection with classification data if present
-                if species:
-                    detection_record.species = species
-                    detection_record.species_confidence = species_confidence
+                if label:
+                    detection_record.label = label
+                    detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
 
             # Set observation_type on the video/image File record

@@ -10,7 +10,7 @@ import type {
   EventFilterParams,
   EventFilterOptions,
   EventVerificationStats,
-  SpeciesTreeResponse,
+  LabelTreeResponse,
 } from "./types";
 
 /** Append filter params to a URLSearchParams instance. */
@@ -23,8 +23,8 @@ function appendFilterParams(
     searchParams.set("site_ids", filters.site_ids.join(","));
   if (filters.date_from) searchParams.set("date_from", filters.date_from);
   if (filters.date_to) searchParams.set("date_to", filters.date_to);
-  if (filters.species?.length)
-    searchParams.set("species", filters.species.join(","));
+  if (filters.labels?.length)
+    searchParams.set("labels", filters.labels.join(","));
   if (filters.verification && filters.verification !== "all")
     searchParams.set("verification", filters.verification);
   if (filters.min_confidence !== undefined)
@@ -112,14 +112,14 @@ export const eventsApi = {
     );
   },
 
-  /** Get the species filter tree (pre-built from species_taxonomy table). */
-  getSpeciesTree: async (
+  /** Get the label filter tree (pre-built from label_taxonomy table). */
+  getLabelTree: async (
     projectId: string,
     countBy?: string
-  ): Promise<SpeciesTreeResponse | null> => {
+  ): Promise<LabelTreeResponse | null> => {
     const params = `project_id=${projectId}${countBy ? `&count_by=${countBy}` : ""}`;
-    return api.get<SpeciesTreeResponse | null>(
-      `/api/events/species-tree?${params}`
+    return api.get<LabelTreeResponse | null>(
+      `/api/events/label-tree?${params}`
     );
   },
 };

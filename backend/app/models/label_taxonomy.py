@@ -1,8 +1,8 @@
 """
-SpeciesTaxonomy model — one row per species/taxon per classification model.
+LabelTaxonomy model — one row per label/taxon per classification model.
 
 Stores parsed taxonomy data from taxonomy.csv and rolled-up entries from
-taxonomic rollup. Enables server-side species filter tree building.
+taxonomic rollup. Enables server-side label filter tree building.
 """
 
 import uuid
@@ -18,10 +18,10 @@ if TYPE_CHECKING:
     from .detection import Detection
 
 
-class SpeciesTaxonomy(Base):
-    """A species or rolled-up taxon entry for a classification model."""
+class LabelTaxonomy(Base):
+    """A label or rolled-up taxon entry for a classification model."""
 
-    __tablename__ = "species_taxonomy"
+    __tablename__ = "label_taxonomy"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
@@ -50,18 +50,18 @@ class SpeciesTaxonomy(Base):
 
     # Back-reference to detections linked via FK
     detections: Mapped[list["Detection"]] = relationship(
-        "Detection", back_populates="species_taxonomy"
+        "Detection", back_populates="label_taxonomy"
     )
 
     __table_args__ = (
         UniqueConstraint(
             "classification_model_id", "name", "project_id",
-            name="uq_species_taxonomy_model_name_project",
+            name="uq_label_taxonomy_model_name_project",
         ),
-        Index("idx_species_taxonomy_model", "classification_model_id"),
-        Index("idx_species_taxonomy_name", "name"),
-        Index("idx_species_taxonomy_project", "project_id"),
+        Index("idx_label_taxonomy_model", "classification_model_id"),
+        Index("idx_label_taxonomy_name", "name"),
+        Index("idx_label_taxonomy_project", "project_id"),
     )
 
     def __repr__(self) -> str:
-        return f"<SpeciesTaxonomy {self.name} ({self.level}) model={self.classification_model_id}>"
+        return f"<LabelTaxonomy {self.name} ({self.level}) model={self.classification_model_id}>"

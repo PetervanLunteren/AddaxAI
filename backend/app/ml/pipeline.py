@@ -41,7 +41,7 @@ class MLPipeline:
     1. Runs detection model on images
     2. Saves detections to database
     3. Runs classification on animal detections
-    4. Updates database with species information
+    4. Updates database with label information
     5. Reports progress via WebSocket callback
     """
 
@@ -86,7 +86,7 @@ class MLPipeline:
         1. Run detection model → DetectionResult objects
         2. Save to database → File + Detection records
         3. Run classification (if model configured) → ClassificationResult objects
-        4. Update database → Detection.species + Detection.species_confidence
+        4. Update database → Detection.label + Detection.label_confidence
 
         Args:
             deployment_id: Deployment ID for database records
@@ -205,8 +205,8 @@ class MLPipeline:
                             # Handle skipped detections (result is None)
                             if result is not None:
                                 # Update detection record
-                                detection.species = result.species
-                                detection.species_confidence = result.confidence
+                                detection.label = result.label
+                                detection.label_confidence = result.confidence
                                 detection.classification_all_probs = result.all_probabilities
                                 detection.classification_method = "machine"
                                 classified_count += 1

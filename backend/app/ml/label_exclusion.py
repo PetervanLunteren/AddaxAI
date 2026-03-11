@@ -1,7 +1,7 @@
 """
-Species exclusion: zero-out excluded species and renormalize confidences.
+Label exclusion: zero-out excluded labels and renormalize confidences.
 
-Applies species exclusion by zeroing out confidence for excluded class IDs,
+Applies label exclusion by zeroing out confidence for excluded class IDs,
 renormalizing remaining confidences to sum to 1.0, and re-sorting by confidence.
 
 JSON files on disk remain untouched as raw ground truth. Exclusion is applied
@@ -12,12 +12,12 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Non-species classes that should always be excluded from classifications.
-# These are generic labels from the model that aren't real species and should
-# never appear as species predictions in the UI or affect smoothing/rollup.
-# Stripped during JSON ingest and before postprocessing — rollup and smoothing
+# Non-label classes that should always be excluded from classifications.
+# These are generic labels from the model that aren't real labels and should
+# never appear as label predictions in the UI or affect smoothing/rollup.
+# Stripped during JSON ingest and before postprocessing -- rollup and smoothing
 # never see them. Add new junk classes here (e.g. "calibration", "setup").
-NON_SPECIES_CLASSES = frozenset({"bait", "blank", "empty", "false detection", "none"})
+NON_LABEL_CLASSES = frozenset({"bait", "blank", "empty", "false detection", "none"})
 
 
 def filter_classifications(
@@ -25,7 +25,7 @@ def filter_classifications(
     excluded_class_ids: set[str],
 ) -> list[list]:
     """
-    Zero out excluded species and renormalize remaining confidences.
+    Zero out excluded labels and renormalize remaining confidences.
 
     Args:
         classifications: List of [class_id, confidence] pairs
@@ -33,8 +33,8 @@ def filter_classifications(
 
     Returns:
         New list of [class_id, confidence] sorted by confidence descending,
-        with excluded species removed and remaining confidences renormalized
-        to sum to 1.0. Returns empty list if no species remain.
+        with excluded labels removed and remaining confidences renormalized
+        to sum to 1.0. Returns empty list if no labels remain.
     """
     if not classifications or not excluded_class_ids:
         return classifications
@@ -63,17 +63,17 @@ def filter_classifications(
 
 def build_excluded_class_ids(
     class_categories: dict[str, str],
-    excluded_species: list[str] | None = None,
+    excluded_labels: list[str] | None = None,
 ) -> set[str]:
     """
     Build the full set of class IDs to exclude.
 
-    Always includes NON_SPECIES_CLASSES (blank, empty, false detection, none).
-    Additionally includes any user-configured excluded species.
+    Always includes NON_LABEL_CLASSES (blank, empty, false detection, none).
+    Additionally includes any user-configured excluded labels.
 
     Args:
         class_categories: Mapping of class_id -> class_name from JSON
-        excluded_species: Optional user-configured species names to exclude
+        excluded_labels: Optional user-configured label names to exclude
 
     Returns:
         Set of class ID strings to exclude
@@ -81,7 +81,7 @@ def build_excluded_class_ids(
     if not class_categories:
         return set()
 
-    # Build name -> [class_ids] lookup (lowercase for NON_SPECIES_CLASSES matching)
+    # Build name -> [class_ids] lookup (lowercase for NON_LABEL_CLASSES matching)
     name_to_ids: dict[str, list[str]] = {}
     name_lower_to_ids: dict[str, list[str]] = {}
     for cls_id, name in class_categories.items():
@@ -90,39 +90,39 @@ def build_excluded_class_ids(
 
     excluded_class_ids: set[str] = set()
 
-    # Always exclude non-species classes (case-insensitive)
-    for non_species in NON_SPECIES_CLASSES:
-        for cls_id in name_lower_to_ids.get(non_species, []):
+    # Always exclude non-label classes (case-insensitive)
+    for non_label in NON_LABEL_CLASSES:
+        for cls_id in name_lower_to_ids.get(non_label, []):
             excluded_class_ids.add(str(cls_id))
 
-    # Exclude user-configured species (exact match)
-    if excluded_species:
-        for species_name in excluded_species:
-            for cls_id in name_to_ids.get(species_name, []):
+    # Exclude user-configured labels (exact match)
+    if excluded_labels:
+        for label_name in excluded_labels:
+            for cls_id in name_to_ids.get(label_name, []):
                 excluded_class_ids.add(str(cls_id))
 
     return excluded_class_ids
 
 
-def apply_species_exclusion_to_results(
+def apply_label_exclusion_to_results(
     md_results: dict,
-    excluded_species: list[str] | None = None,
+    excluded_labels: list[str] | None = None,
 ) -> dict:
     """
-    Apply species exclusion to a full MegaDetector JSON results dict (in place).
+    Apply label exclusion to a full MegaDetector JSON results dict (in place).
 
-    Always excludes NON_SPECIES_CLASSES (blank, empty, false detection, none).
-    Additionally excludes any user-configured species.
+    Always excludes NON_LABEL_CLASSES (blank, empty, false detection, none).
+    Additionally excludes any user-configured labels.
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
-        excluded_species: Optional list of species names to exclude
+        excluded_labels: Optional list of label names to exclude
 
     Returns:
         The modified dict (same reference as input)
     """
     class_categories = md_results.get("classification_categories", {})
-    excluded_class_ids = build_excluded_class_ids(class_categories, excluded_species)
+    excluded_class_ids = build_excluded_class_ids(class_categories, excluded_labels)
 
     if not excluded_class_ids:
         return md_results

@@ -5,7 +5,7 @@
  * - Type hints everywhere
  * - Simple, clear implementation
  *
- * Hierarchical tree with tri-state checkboxes for selecting species.
+ * Hierarchical tree with tri-state checkboxes for selecting labels.
  */
 
 import { useEffect, useState } from "react";
@@ -177,9 +177,9 @@ export function TaxonomyEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Configure species taxonomy</DialogTitle>
+          <DialogTitle>Configure label taxonomy</DialogTitle>
           <DialogDescription>
-            Select which species classes you want to monitor for this project.
+            Select which label classes you want to monitor for this project.
             {localSelected.size > 0 && (
               <span className="ml-2 font-medium">
                 ({localSelected.size} selected)
@@ -260,7 +260,7 @@ export function TaxonomyEditor({
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={isLoading}>
-            Save ({localSelected.size} species)
+            Save ({localSelected.size} labels)
           </Button>
         </DialogFooter>
       </DialogContent>

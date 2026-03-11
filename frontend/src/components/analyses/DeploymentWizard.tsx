@@ -4,7 +4,7 @@
  * Steps:
  * 1. Data - folder selection
  * 2. Deployment - site selection
- * 3. Species - expected species (optional)
+ * 3. Labels - expected labels (optional)
  *
  * Note: Detection and classification models are now configured at the project level.
  */
@@ -13,7 +13,7 @@ import { useState } from "react";
 import { Wizard, WizardStep } from "@/components/wizard/Wizard";
 import { StepData } from "./StepData";
 import { StepDeployment } from "./StepDeployment";
-import { StepSpecies } from "./StepSpecies";
+import { StepLabels } from "./StepLabels";
 import { useAddToQueue } from "@/hooks/useDeploymentQueue";
 
 interface DeploymentWizardProps {
@@ -24,14 +24,14 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
   // Wizard state
   const [folderPath, setFolderPath] = useState("");
   const [siteId, setSiteId] = useState<string | null>(null);
-  const [speciesList, setSpeciesList] = useState<string[]>([]);
+  const [labelsList, setLabelsList] = useState<string[]>([]);
 
   const addToQueue = useAddToQueue();
 
   const resetWizard = () => {
     setFolderPath("");
     setSiteId(null);
-    setSpeciesList([]);
+    setLabelsList([]);
   };
 
   const handleComplete = async () => {
@@ -42,7 +42,7 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
         site_id: siteId,
         detection_model_id: null, // Models come from project settings
         classification_model_id: null, // Models come from project settings
-        species_list: speciesList.length > 0 ? { species: speciesList } : null,
+        species_list: labelsList.length > 0 ? { species: labelsList } : null,
       });
 
       // Reset wizard state
@@ -58,7 +58,7 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
 
   return (
     <Wizard
-      steps={["Data", "Deployment", "Species"]}
+      steps={["Data", "Deployment", "Labels"]}
       onComplete={handleComplete}
       onReset={resetWizard}
       submitLabel="Add to Queue"
@@ -77,7 +77,7 @@ export function DeploymentWizard({ projectId }: DeploymentWizardProps) {
       </WizardStep>
 
       <WizardStep stepIndex={2}>
-        <StepSpecies speciesList={speciesList} onSpeciesChange={setSpeciesList} />
+        <StepLabels labelsList={labelsList} onLabelsChange={setLabelsList} />
       </WizardStep>
     </Wizard>
   );

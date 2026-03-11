@@ -58,8 +58,8 @@ def _get_db_path() -> str:
 def _filters_to_dict(filters: SimilarityFilters) -> dict[str, Any]:
     """Convert Pydantic SimilarityFilters to a JSON-safe dict."""
     d: dict[str, Any] = {}
-    if filters.species:
-        d["species"] = filters.species
+    if filters.labels:
+        d["labels"] = filters.labels
     if filters.site_ids:
         d["site_ids"] = filters.site_ids
     if filters.date_from is not None:
@@ -176,8 +176,8 @@ def build_detection_summary(
     return DetectionSummary(
         detection_id=detection_id,
         file_id=meta["file_id"],
-        species=meta["species"],
-        species_confidence=meta["species_confidence"],
+        label=meta["label"],
+        label_confidence=meta["label_confidence"],
         confidence=meta["confidence"],
         category=meta["category"],
         verified=meta["verified"],

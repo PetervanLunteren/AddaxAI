@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ml.species_exclusion import NON_SPECIES_CLASSES
+from app.ml.label_exclusion import NON_LABEL_CLASSES
 from app.ml.taxonomic_rollup import (
     apply_taxonomic_rollup_to_results,
     load_taxonomy_lookup,
@@ -263,23 +263,23 @@ def test_apply_adds_descriptions(taxonomy_csv):
     assert tokens[4] == "panthera"  # genus level (the rollup level)
 
 
-# --- NON_SPECIES_CLASSES exclusion ---
-# Non-species classes (blank, empty, false detection, none) are now stripped
-# by species_exclusion.py *before* rollup runs. Rollup no longer needs its
-# own guard — it simply won't see them.
+# --- NON_LABEL_CLASSES exclusion ---
+# Non-label classes (blank, empty, false detection, none) are now stripped
+# by label_exclusion.py *before* rollup runs. Rollup no longer needs its
+# own guard -- it simply won't see them.
 
 
-def test_non_species_not_in_taxonomy_skipped(taxonomy_lookup, class_id_to_name):
-    """Classes not in taxonomy_lookup are skipped by rollup (including non-species classes)."""
-    # "blank" (class_id 5) is not in taxonomy_lookup → rollup skips it
+def test_non_label_not_in_taxonomy_skipped(taxonomy_lookup, class_id_to_name):
+    """Classes not in taxonomy_lookup are skipped by rollup (including non-label classes)."""
+    # "blank" (class_id 5) is not in taxonomy_lookup -> rollup skips it
     classifications = [[5, 0.50], [0, 0.30], [1, 0.20]]
     result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
     assert result is None
 
 
-def test_non_species_classes_constant():
-    """NON_SPECIES_CLASSES (now in species_exclusion.py) contains the expected entries."""
-    assert "blank" in NON_SPECIES_CLASSES
-    assert "empty" in NON_SPECIES_CLASSES
-    assert "false detection" in NON_SPECIES_CLASSES
-    assert "none" in NON_SPECIES_CLASSES
+def test_non_label_classes_constant():
+    """NON_LABEL_CLASSES (now in label_exclusion.py) contains the expected entries."""
+    assert "blank" in NON_LABEL_CLASSES
+    assert "empty" in NON_LABEL_CLASSES
+    assert "false detection" in NON_LABEL_CLASSES
+    assert "none" in NON_LABEL_CLASSES

@@ -225,14 +225,14 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
                   {getClassificationModelName(project.classification_model_id)}
                 </dd>
 
-                {/* Species selection - only show if not SpeciesNet */}
+                {/* Label selection - only show if not SpeciesNet */}
                 {!project.classification_model_id?.toLowerCase().includes("speciesnet") && project.excluded_classes && (
                   <>
-                    <dt className="text-gray-500 font-medium">Species selection:</dt>
+                    <dt className="text-gray-500 font-medium">Label selection:</dt>
                     <dd className="text-gray-900">
                       {project.excluded_classes.length === 0
-                        ? "All species"
-                        : `${project.excluded_classes.length} species excluded`}
+                        ? "All labels"
+                        : `${project.excluded_classes.length} labels excluded`}
                     </dd>
                   </>
                 )}

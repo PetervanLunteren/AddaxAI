@@ -37,7 +37,7 @@ interface AnnotationCanvasProps {
   onDrawModeChange: (active: boolean) => void;
   imageFilter?: string;
   defaultCategory?: string;
-  defaultSpecies?: string;
+  defaultLabel?: string;
   boxesHidden?: boolean;
   exportFnRef?: React.MutableRefObject<(() => void) | null>;
   zoomFnRef?: React.MutableRefObject<{
@@ -65,7 +65,7 @@ export function AnnotationCanvas({
   onDrawModeChange,
   imageFilter,
   defaultCategory,
-  defaultSpecies,
+  defaultLabel,
   boxesHidden,
   exportFnRef,
   zoomFnRef,
@@ -305,7 +305,7 @@ export function AnnotationCanvas({
         bbox_y: Math.max(0, Math.min(1, normY)),
         bbox_width: Math.max(0, Math.min(1, normW)),
         bbox_height: Math.max(0, Math.min(1, normH)),
-        species: defaultSpecies,
+        label: defaultLabel,
       });
     },
     onSuccess: () => {
@@ -625,7 +625,7 @@ export function AnnotationCanvas({
                     radius={DOT_R}
                     fill={pill.color}
                   />
-                  {pill.hasSpecies ? (
+                  {pill.hasLabel ? (
                     <>
                       <Text
                         x={TEXT_START_X}
@@ -637,7 +637,7 @@ export function AnnotationCanvas({
                       <Text
                         x={TEXT_START_X}
                         y={PILL_PAD_Y + FONT_SM + LINE_GAP}
-                        text={pill.speciesText}
+                        text={pill.labelText}
                         fill="white"
                         fontSize={FONT_LG}
                         fontStyle="bold"

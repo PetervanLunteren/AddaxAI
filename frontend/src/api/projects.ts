@@ -8,8 +8,8 @@
 
 import { api } from "../lib/api-client";
 import type {
-  CustomSpeciesResponse,
-  CustomSpeciesUpdate,
+  CustomLabelResponse,
+  CustomLabelUpdate,
   GBIFSuggestion,
   ProjectCreate,
   ProjectResponse,
@@ -92,36 +92,36 @@ export const projectsApi = {
     ),
 
   /**
-   * Get top species counts, optionally filtered by confidence threshold
+   * Get top label counts, optionally filtered by confidence threshold
    */
-  getSpeciesStats: (id: string, threshold?: number) =>
-    api.get<{ species: string; count: number }[]>(
-      `/api/projects/${id}/species-stats${threshold ? `?threshold=${threshold}` : ""}`
+  getLabelStats: (id: string, threshold?: number) =>
+    api.get<{ label: string; count: number }[]>(
+      `/api/projects/${id}/label-stats${threshold ? `?threshold=${threshold}` : ""}`
     ),
 
   /**
-   * List custom species for a project
+   * List custom labels for a project
    */
-  getCustomSpecies: (projectId: string) =>
-    api.get<CustomSpeciesResponse[]>(`/api/projects/${projectId}/custom-species`),
+  getCustomLabels: (projectId: string) =>
+    api.get<CustomLabelResponse[]>(`/api/projects/${projectId}/custom-labels`),
 
   /**
-   * Create a custom species for a project
+   * Create a custom label for a project
    */
-  createCustomSpecies: (projectId: string, name: string) =>
-    api.post<CustomSpeciesResponse>(`/api/projects/${projectId}/custom-species`, { name }),
+  createCustomLabel: (projectId: string, name: string) =>
+    api.post<CustomLabelResponse>(`/api/projects/${projectId}/custom-labels`, { name }),
 
   /**
-   * Update a custom species (name and/or taxonomy fields)
+   * Update a custom label (name and/or taxonomy fields)
    */
-  updateCustomSpecies: (projectId: string, speciesId: string, data: CustomSpeciesUpdate) =>
-    api.patch<CustomSpeciesResponse>(`/api/projects/${projectId}/custom-species/${speciesId}`, data),
+  updateCustomLabel: (projectId: string, labelId: string, data: CustomLabelUpdate) =>
+    api.patch<CustomLabelResponse>(`/api/projects/${projectId}/custom-labels/${labelId}`, data),
 
   /**
-   * Delete a custom species from a project
+   * Delete a custom label from a project
    */
-  deleteCustomSpecies: (projectId: string, speciesId: string) =>
-    api.delete<void>(`/api/projects/${projectId}/custom-species/${speciesId}`),
+  deleteCustomLabel: (projectId: string, labelId: string) =>
+    api.delete<void>(`/api/projects/${projectId}/custom-labels/${labelId}`),
 
   /**
    * Search GBIF for species suggestions by vernacular name
@@ -130,14 +130,14 @@ export const projectsApi = {
     api.get<GBIFSuggestion[]>(`/api/projects/gbif/suggest?q=${encodeURIComponent(query)}`),
 
   /**
-   * Get independent event counts per species for a given interval
+   * Get independent event counts per label for a given interval
    */
   getIndependentEventStats: (
     id: string,
     interval: number,
     threshold?: number,
   ) =>
-    api.get<{ total: number; species: { species: string; count: number }[] }>(
+    api.get<{ total: number; labels: { label: string; count: number }[] }>(
       `/api/projects/${id}/independent-event-stats?interval=${interval}${threshold ? `&threshold=${threshold}` : ""}`
     ),
 };

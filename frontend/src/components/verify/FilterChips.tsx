@@ -72,24 +72,24 @@ export function FilterChips({
     });
   }
 
-  // Species chips
-  if (filters.species?.length) {
-    if (filters.species.length <= 2) {
-      for (const sp of filters.species) {
+  // Label chips
+  if (filters.labels?.length) {
+    if (filters.labels.length <= 2) {
+      for (const lbl of filters.labels) {
         chips.push({
-          key: `species-${sp}`,
-          label: sp,
+          key: `label-${lbl}`,
+          label: lbl,
           onRemove: () => {
-            const next = filters.species!.filter((s) => s !== sp);
-            onChange({ ...filters, species: next.length ? next : undefined });
+            const next = filters.labels!.filter((s) => s !== lbl);
+            onChange({ ...filters, labels: next.length ? next : undefined });
           },
         });
       }
     } else {
       chips.push({
-        key: "species",
-        label: `${filters.species.length} species`,
-        onRemove: () => onChange({ ...filters, species: undefined }),
+        key: "labels",
+        label: `${filters.labels.length} labels`,
+        onRemove: () => onChange({ ...filters, labels: undefined }),
       });
     }
   }

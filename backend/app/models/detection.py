@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .detection_embedding import DetectionEmbedding
     from .file import File
     from .job import Job
-    from .species_taxonomy import SpeciesTaxonomy
+    from .label_taxonomy import LabelTaxonomy
 
 
 class Detection(Base):
@@ -55,14 +55,14 @@ class Detection(Base):
     bbox_height: Mapped[float] = mapped_column(Float, nullable=False)
 
     # Classification results (filled by classification models)
-    species: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    label_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    # FK to SpeciesTaxonomy — source of truth for taxonomy lookups (exports, filter tree).
+    # FK to LabelTaxonomy — source of truth for taxonomy lookups (exports, filter tree).
     # Nullable: existing detections won't have it, and inference creates detections
     # before taxonomy rows exist. Linked during postprocessing.
-    species_taxonomy_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("species_taxonomy.id", ondelete="SET NULL"), nullable=True
+    label_taxonomy_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("label_taxonomy.id", ondelete="SET NULL"), nullable=True
     )
 
     # Classification method (Camtrap DP classificationMethod) - "machine" or "human"
@@ -82,8 +82,8 @@ class Detection(Base):
     # Relationships
     file: Mapped["File"] = relationship("File", back_populates="detections")
     job: Mapped["Job | None"] = relationship("Job")
-    species_taxonomy: Mapped["SpeciesTaxonomy | None"] = relationship(
-        "SpeciesTaxonomy", back_populates="detections"
+    label_taxonomy: Mapped["LabelTaxonomy | None"] = relationship(
+        "LabelTaxonomy", back_populates="detections"
     )
     embeddings: Mapped[list["DetectionEmbedding"]] = relationship(
         "DetectionEmbedding", back_populates="detection", cascade="all, delete-orphan"
@@ -95,9 +95,9 @@ class Detection(Base):
         Index("idx_detections_job", "job_id"),
         Index("idx_detections_category", "category"),
         Index("idx_detections_confidence", "confidence"),
-        Index("idx_detections_species", "species"),
-        Index("idx_detections_species_confidence", "species_confidence"),
-        Index("idx_detections_species_taxonomy", "species_taxonomy_id"),
+        Index("idx_detections_label", "label"),
+        Index("idx_detections_label_confidence", "label_confidence"),
+        Index("idx_detections_label_taxonomy", "label_taxonomy_id"),
         Index("idx_detections_frame_number", "frame_number"),
         Index("idx_detections_verified", "verified"),
     )

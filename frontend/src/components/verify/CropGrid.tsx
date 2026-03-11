@@ -3,7 +3,7 @@
  *
  * Uses @tanstack/react-virtual for efficient rendering of large detection sets.
  * Responsive columns: 4 (sm), 6 (md), 8 (lg), 10 (xl).
- * Supports optional species divider rows between species groups.
+ * Supports optional label divider rows between label groups.
  */
 
 import { useRef, useMemo, useEffect, useState } from "react";
@@ -23,7 +23,7 @@ export type TileSize = "S" | "M" | "L";
 
 type GridRow =
   | { type: "cards"; detections: DetectionSummary[] }
-  | { type: "divider"; species: string; count: number };
+  | { type: "divider"; label: string; count: number };
 
 interface CropGridProps {
   detections: DetectionSummary[];
@@ -31,10 +31,10 @@ interface CropGridProps {
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
   onCardClick: (detection: DetectionSummary) => void;
   onFindSimilar?: (detectionId: string) => void;
-  onRelabel?: (detectionId: string, species: string, category: string) => void;
+  onRelabel?: (detectionId: string, label: string, category: string) => void;
   onBackgroundClick?: () => void;
   tileSize?: TileSize;
-  showSpeciesDividers?: boolean;
+  showLabelDividers?: boolean;
 }
 
 const COLUMN_PRESETS: Record<TileSize, [number, number, number, number]> = {
@@ -84,14 +84,14 @@ export function CropGrid({
   onRelabel,
   onBackgroundClick,
   tileSize = "M",
-  showSpeciesDividers = false,
+  showLabelDividers = false,
 }: CropGridProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const columns = useColumns(tileSize);
 
-  // Build rows: optionally insert divider rows at species transitions
+  // Build rows: optionally insert divider rows at label transitions
   const rows = useMemo((): GridRow[] => {
-    if (!showSpeciesDividers) {
+    if (!showLabelDividers) {
       const result: GridRow[] = [];
       for (let i = 0; i < detections.length; i += columns) {
         result.push({ type: "cards", detections: detections.slice(i, i + columns) });
@@ -99,29 +99,29 @@ export function CropGrid({
       return result;
     }
 
-    // Walk detections, group by species, insert dividers
+    // Walk detections, group by label, insert dividers
     const result: GridRow[] = [];
     let i = 0;
     while (i < detections.length) {
-      const currentSpecies = detections[i].species || detections[i].category;
-      // Count how many consecutive detections share this species
+      const currentLabel = detections[i].label || detections[i].category;
+      // Count how many consecutive detections share this label
       let j = i;
       while (
         j < detections.length &&
-        (detections[j].species || detections[j].category) === currentSpecies
+        (detections[j].label || detections[j].category) === currentLabel
       ) {
         j++;
       }
       const count = j - i;
-      result.push({ type: "divider", species: currentSpecies, count });
-      // Chunk this species group into card rows
+      result.push({ type: "divider", label: currentLabel, count });
+      // Chunk this label group into card rows
       for (let k = i; k < j; k += columns) {
         result.push({ type: "cards", detections: detections.slice(k, Math.min(k + columns, j)) });
       }
       i = j;
     }
     return result;
-  }, [detections, columns, showSpeciesDividers]);
+  }, [detections, columns, showLabelDividers]);
 
   const cardHeight = ESTIMATE_SIZE[tileSize];
 
@@ -171,7 +171,7 @@ export function CropGrid({
               <div className="flex items-center gap-2 px-1 h-full">
                 <div className="h-px flex-1 bg-border" />
                 <span className="text-xs text-muted-foreground font-medium capitalize whitespace-nowrap">
-                  {row.species} ({row.count})
+                  {row.label} ({row.count})
                 </span>
                 <div className="h-px flex-1 bg-border" />
               </div>
@@ -202,7 +202,7 @@ export function CropGrid({
                   const showRelabel =
                     onRelabel &&
                     det.neighbor_top_label &&
-                    det.neighbor_top_label !== det.species;
+                    det.neighbor_top_label !== det.label;
 
                   return (
                     <ContextMenu key={det.detection_id}>

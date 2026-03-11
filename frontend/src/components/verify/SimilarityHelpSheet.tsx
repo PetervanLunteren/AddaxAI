@@ -42,7 +42,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
                 The AI embeds each detection crop into a vector based on visual
                 similarity, then sorts detections so similar-looking ones appear
                 next to each other. This makes it easy to spot mislabels and
-                verify in bulk. Each card shows the species label (e.g.{" "}
+                verify in bulk. Each card shows the label (e.g.{" "}
                 <Badge variant="default" className="text-[9px] px-1 py-0 leading-tight capitalize">
                   zebra
                 </Badge>
@@ -51,7 +51,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
               <p>
                 This tab verifies at the detection level. Each
                 individual detection crop can be verified independently, which
-                is useful for bulk-verifying species labels across your entire
+                is useful for bulk-verifying labels across your entire
                 dataset rather than going file by file. It cannot verify at the
                 file level because it only shows individual crops, not the full
                 image, so you cannot know whether the file is missing detections
@@ -216,7 +216,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
               <p>
                 The gear icon opens settings:{" "}
                 <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Noise first</code> (reverse sort
-                order), <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Species dividers</code> (group headers between species), and tile
+                order), <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Label dividers</code> (group headers between labels), and tile
                 size (<code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">S</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">M</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">L</code>).
               </p>
             </div>

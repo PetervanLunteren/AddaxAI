@@ -27,11 +27,11 @@ from .conftest import build_detection_json, create_tiny_jpeg, create_video_frame
 
 
 def _load_basic_images(
-    s: dict, species_map: dict[str, str] | None = None
+    s: dict, label_map: dict[str, str] | None = None
 ) -> Path:
     """Load 3 images with animal detections into DB, return json_path."""
     db, deploy_dir = s["db"], s["deploy_dir"]
-    classification_categories = species_map or {"1": "lion", "2": "zebra", "3": "giraffe"}
+    classification_categories = label_map or {"1": "lion", "2": "zebra", "3": "giraffe"}
 
     images = []
     for i, p in enumerate(s["img_paths"]):
@@ -70,7 +70,7 @@ def _load_basic_images(
 
 
 def test_update_db_from_smoothed_results(deployment_scaffold):
-    """Species/confidence updated in DB; correct {updated, unchanged, errors} counts."""
+    """Label/confidence updated in DB; correct {updated, unchanged, errors} counts."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
     _load_basic_images(s)
@@ -78,9 +78,9 @@ def test_update_db_from_smoothed_results(deployment_scaffold):
     # Verify initial state
     dets = db.query(Detection).all()
     assert len(dets) == 3
-    assert all(d.species == "lion" for d in dets)
+    assert all(d.label == "lion" for d in dets)
 
-    # Build smoothed results that change species for first 2 images
+    # Build smoothed results that change label for first 2 images
     smoothed_images = []
     files = (
         db.query(File)
@@ -129,9 +129,9 @@ def test_update_db_from_smoothed_results(deployment_scaffold):
 
     # Verify DB was updated
     updated_dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
-    assert updated_dets[0].species == "zebra"
-    assert updated_dets[1].species == "zebra"
-    assert updated_dets[2].species == "lion"
+    assert updated_dets[0].label == "zebra"
+    assert updated_dets[1].label == "zebra"
+    assert updated_dets[2].label == "lion"
 
 
 def test_smoothing_matches_by_bbox_and_frame(deployment_scaffold):
@@ -209,11 +209,11 @@ def test_smoothing_matches_by_bbox_and_frame(deployment_scaffold):
     assert counts["errors"] == 0
 
     for det in db.query(Detection).all():
-        assert det.species == "zebra"
+        assert det.label == "zebra"
 
 
-def test_species_exclusion_applied_before_smoothing(deployment_scaffold):
-    """JSON passed to smoothing subprocess has excluded species filtered out."""
+def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
+    """JSON passed to smoothing subprocess has excluded labels filtered out."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
     _load_basic_images(s)
@@ -266,8 +266,8 @@ def test_species_exclusion_applied_before_smoothing(deployment_scaffold):
     for img in data["images"]:
         for det in img.get("detections", []):
             for cls_id, _ in det.get("classifications", []):
-                species = data["classification_categories"].get(str(cls_id))
-                assert species != "lion", "Excluded species should be filtered out"
+                label_name = data["classification_categories"].get(str(cls_id))
+                assert label_name != "lion", "Excluded label should be filtered out"
 
 
 def test_reload_raw_classifications(deployment_scaffold):
@@ -276,9 +276,9 @@ def test_reload_raw_classifications(deployment_scaffold):
     db, deploy_dir = s["db"], s["deploy_dir"]
     json_path = _load_basic_images(s)
 
-    # First verify initial species
+    # First verify initial label
     dets = db.query(Detection).all()
-    assert all(d.species == "lion" for d in dets)
+    assert all(d.label == "lion" for d in dets)
 
     # Simulate smoothing: change all to zebra
     files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
@@ -303,7 +303,7 @@ def test_reload_raw_classifications(deployment_scaffold):
 
     # Verify smoothing took effect
     dets = db.query(Detection).all()
-    assert all(d.species == "zebra" for d in dets)
+    assert all(d.label == "zebra" for d in dets)
 
     # Now reload raw → should revert to lion
     counts = reload_raw_classifications_from_json(
@@ -315,7 +315,7 @@ def test_reload_raw_classifications(deployment_scaffold):
 
     assert counts["updated"] == 3
     dets = db.query(Detection).all()
-    assert all(d.species == "lion" for d in dets)
+    assert all(d.label == "lion" for d in dets)
 
 
 def test_build_sequence_groups_by_interval(deployment_scaffold):

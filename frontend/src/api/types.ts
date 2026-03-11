@@ -14,7 +14,7 @@ export interface ProjectCreate {
   classification_model_id: string | null;
   embedding_model_id: string | null;
   excluded_classes: string[];
-  shortcut_labels: Record<string, { value: string; category: string; species: string | null }>;
+  shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code?: string | null;
   state_code?: string | null;
   video_fps: number;
@@ -35,7 +35,7 @@ export interface ProjectUpdate {
   classification_model_id?: string | null;
   embedding_model_id?: string | null;
   excluded_classes?: string[] | null;
-  shortcut_labels?: Record<string, { value: string; category: string; species: string | null }> | null;
+  shortcut_labels?: Record<string, { value: string; category: string; label: string | null }> | null;
   country_code?: string | null;
   state_code?: string | null;
   video_fps?: number | null;
@@ -57,7 +57,7 @@ export interface ProjectResponse {
   classification_model_id: string | null;
   embedding_model_id: string | null;
   excluded_classes: string[];
-  shortcut_labels: Record<string, { value: string; category: string; species: string | null }>;
+  shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code: string | null;
   state_code: string | null;
   video_fps: number;
@@ -81,8 +81,8 @@ export interface ProjectWithStats extends ProjectResponse {
   detection_count: number;
 }
 
-// Custom species types
-export interface CustomSpeciesResponse {
+// Custom label types
+export interface CustomLabelResponse {
   id: string;
   name: string;
   level: string;
@@ -93,7 +93,7 @@ export interface CustomSpeciesResponse {
   taxon_species: string | null;
 }
 
-export interface CustomSpeciesUpdate {
+export interface CustomLabelUpdate {
   name?: string | null;
   taxon_class?: string | null;
   taxon_order?: string | null;
@@ -227,8 +227,8 @@ export interface DetectionResponse {
   bbox_y: number;
   bbox_width: number;
   bbox_height: number;
-  species: string | null;
-  species_confidence: number | null;
+  label: string | null;
+  label_confidence: number | null;
   classification_method: string | null;
   frame_number: number | null;
   verified: boolean;
@@ -275,16 +275,16 @@ export interface EventFilterParams {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
-  species?: string[];
+  labels?: string[];
   verification?: VerificationFilter;
   min_confidence?: number;
   max_confidence?: number;
 }
 
 export interface EventFilterOptions {
-  species: string[];
+  labels: string[];
   date_range: { min: string; max: string } | null;
-  species_event_counts: Record<string, number>;
+  label_event_counts: Record<string, number>;
 }
 
 // Event types
@@ -296,7 +296,7 @@ export interface EventSummary {
   file_count: number;
   representative_file_id: string | null;
   site_name: string | null;
-  species: string[];
+  labels: string[];
   observation_type: string;
   observation_types: string[];
   image_count: number;
@@ -343,7 +343,7 @@ export interface DetectionCreate {
   bbox_y: number;
   bbox_width: number;
   bbox_height: number;
-  species?: string | null;
+  label?: string | null;
 }
 
 export interface DetectionUpdate {
@@ -352,8 +352,8 @@ export interface DetectionUpdate {
   bbox_y?: number;
   bbox_width?: number;
   bbox_height?: number;
-  species?: string | null;
-  species_confidence?: number | null;
+  label?: string | null;
+  label_confidence?: number | null;
 }
 
 // Model options for deployment analysis
@@ -401,10 +401,10 @@ export interface TaxonomyResponse {
   all_classes: string[];
 }
 
-export interface SpeciesTreeResponse {
+export interface LabelTreeResponse {
   tree: TaxonomyNode[];
   all_leaf_ids: string[];
-  species_event_counts: Record<string, number>;
+  label_event_counts: Record<string, number>;
   count_unit: string;
 }
 
@@ -416,7 +416,7 @@ export interface LocationsResponse {
 
 // Similarity types
 export interface SimilarityFilters {
-  species?: string[];
+  labels?: string[];
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
@@ -447,8 +447,8 @@ export interface CropBbox {
 export interface DetectionSummary {
   detection_id: string;
   file_id: string;
-  species: string | null;
-  species_confidence: number | null;
+  label: string | null;
+  label_confidence: number | null;
   confidence: number;
   category: string;
   verified: boolean;

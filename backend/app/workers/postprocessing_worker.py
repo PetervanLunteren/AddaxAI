@@ -29,32 +29,32 @@ from app.models import Deployment, Detection, File, Site
 logger = get_logger(__name__)
 
 
-def _get_species_counts(db: Session, project_id: str) -> dict[str, int]:
-    """Query species detection counts for a project."""
+def _get_label_counts(db: Session, project_id: str) -> dict[str, int]:
+    """Query label detection counts for a project."""
     rows = (
-        db.query(Detection.species, func.count(Detection.id))
+        db.query(Detection.label, func.count(Detection.id))
         .join(File)
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
-        .filter(Detection.species.isnot(None))
-        .group_by(Detection.species)
+        .filter(Detection.label.isnot(None))
+        .group_by(Detection.label)
         .all()
     )
-    return {species: count for species, count in rows}
+    return {label: count for label, count in rows}
 
 
-def _build_species_diff(
+def _build_label_diff(
     before: dict[str, int], after: dict[str, int]
 ) -> list[dict]:
-    """Build list of species where counts changed, sorted by absolute change."""
-    all_species = set(before) | set(after)
+    """Build list of labels where counts changed, sorted by absolute change."""
+    all_labels = set(before) | set(after)
     diff = []
-    for sp in all_species:
-        b = before.get(sp, 0)
-        a = after.get(sp, 0)
+    for lbl in all_labels:
+        b = before.get(lbl, 0)
+        a = after.get(lbl, 0)
         if b != a:
-            diff.append({"species": sp, "before": b, "after": a})
+            diff.append({"label": lbl, "before": b, "after": a})
     diff.sort(key=lambda d: abs(d["after"] - d["before"]), reverse=True)
     return diff
 
@@ -99,7 +99,7 @@ async def process_postprocessing_job(job_id: str) -> None:
             .filter(Site.project_id == project_id)
             .join(File, File.deployment_id == Deployment.id)
             .join(Detection, Detection.file_id == File.id)
-            .filter(Detection.species.isnot(None))
+            .filter(Detection.label.isnot(None))
             .distinct()
             .all()
         )
@@ -119,8 +119,8 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         logger.info(f"Processing {total} deployments for project {project.name}")
 
-        # Snapshot species counts before processing
-        before_counts = _get_species_counts(db, project_id)
+        # Snapshot label counts before processing
+        before_counts = _get_label_counts(db, project_id)
 
         total_updated = 0
         total_errors = 0
@@ -210,9 +210,9 @@ async def process_postprocessing_job(job_id: str) -> None:
         # Expire cached state so the count query hits the DB fresh
         db.expire_all()
 
-        # Snapshot species counts after processing and compute diff
-        after_counts = _get_species_counts(db, project_id)
-        species_diff = _build_species_diff(before_counts, after_counts)
+        # Snapshot label counts after processing and compute diff
+        after_counts = _get_label_counts(db, project_id)
+        label_diff = _build_label_diff(before_counts, after_counts)
 
         # Report completion
         action = "Smoothing applied" if smoothing_enabled else "Raw predictions restored"
@@ -232,7 +232,7 @@ async def process_postprocessing_job(job_id: str) -> None:
                 "deployments_processed": total,
                 "detections_updated": total_updated,
                 "errors": total_errors,
-                "species_diff": species_diff,
+                "label_diff": label_diff,
             },
         )
 

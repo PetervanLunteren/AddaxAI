@@ -1,7 +1,7 @@
 /**
  * Project Settings Modal
  *
- * Displays readonly project settings (detection model, classification model, species selection).
+ * Displays readonly project settings (detection model, classification model, label selection).
  * Simple design matching Create Project modal style.
  */
 
@@ -65,12 +65,12 @@ export function ProjectSettingsModal({
     (m) => m.model_id === project.classification_model_id
   );
 
-  // Species selection summary
+  // Label selection summary
   const totalClasses = classificationModel?.description?.match(/\d+/)?.[0] || "?";
   const excludedCount = project.excluded_classes?.length || 0;
   const selectedCount = excludedCount > 0
-    ? `${Number(totalClasses) - excludedCount} species`
-    : "All species";
+    ? `${Number(totalClasses) - excludedCount} labels`
+    : "All labels";
 
   const handleEdit = () => {
     onOpenChange(false);
@@ -83,7 +83,7 @@ export function ProjectSettingsModal({
         <DialogHeader>
           <DialogTitle>Project settings</DialogTitle>
           <DialogDescription>
-            Current analysis models and species configuration
+            Current analysis models and label configuration
           </DialogDescription>
         </DialogHeader>
 
@@ -105,10 +105,10 @@ export function ProjectSettingsModal({
             </p>
           </div>
 
-          {/* Species selection */}
+          {/* Label selection */}
           {project.classification_model_id && (
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-1">Species selection</p>
+              <p className="text-sm font-medium text-gray-700 mb-1">Label selection</p>
               <p className="text-sm text-gray-900">{selectedCount}</p>
             </div>
           )}

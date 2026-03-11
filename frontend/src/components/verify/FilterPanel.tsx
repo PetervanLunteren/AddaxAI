@@ -1,7 +1,7 @@
 /**
  * Collapsible filter panel for the Browse & Verify page.
  *
- * Provides site, date range, species, verification status, and confidence
+ * Provides site, date range, label, verification status, and confidence
  * filters. All state is controlled via props (lifted to VerifyPage).
  */
 
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { SpeciesFilterModal } from "./SpeciesFilterModal";
+import { LabelFilterModal } from "./LabelFilterModal";
 
 interface FilterPanelProps {
   filters: EventFilterParams;
@@ -60,28 +60,28 @@ export function FilterPanel({
     enabled: !!projectId,
   });
 
-  // Fetch filter options (species list, date range)
+  // Fetch filter options (label list, date range)
   const { data: filterOptions } = useQuery({
     queryKey: ["event-filter-options", projectId],
     queryFn: () => eventsApi.getFilterOptions(projectId),
     enabled: !!projectId,
   });
 
-  // Fetch pre-built species tree (taxonomy + detected species + counts)
-  const { data: speciesTree } = useQuery({
-    queryKey: ["species-tree", projectId, countBy],
-    queryFn: () => eventsApi.getSpeciesTree(projectId, countBy),
+  // Fetch pre-built label tree (taxonomy + detected labels + counts)
+  const { data: labelTree } = useQuery({
+    queryKey: ["label-tree", projectId, countBy],
+    queryFn: () => eventsApi.getLabelTree(projectId, countBy),
     enabled: !!projectId,
   });
-  const hasTaxonomy = !!speciesTree?.tree?.length;
+  const hasTaxonomy = !!labelTree?.tree?.length;
 
-  const [speciesModalOpen, setSpeciesModalOpen] = useState(false);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
 
   const siteOptions: MultiSelectOption[] =
     sites?.map((s) => ({ value: s.id, label: s.name })) ?? [];
 
-  const speciesOptions: MultiSelectOption[] =
-    filterOptions?.species.map((sp) => ({ value: sp, label: sp })) ?? [];
+  const labelFilterOptions: MultiSelectOption[] =
+    filterOptions?.labels.map((lbl) => ({ value: lbl, label: lbl })) ?? [];
 
   if (!isOpen) return null;
 
@@ -154,10 +154,10 @@ export function FilterPanel({
           />
         </div>
 
-        {/* Species filter — taxonomy tree modal or flat multiselect fallback */}
+        {/* Label filter — taxonomy tree modal or flat multiselect fallback */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Species
+            Labels
           </label>
           {hasTaxonomy ? (
             <>
@@ -165,43 +165,43 @@ export function FilterPanel({
                 variant="outline"
                 size="sm"
                 className="w-full h-9 justify-start text-sm font-normal"
-                onClick={() => setSpeciesModalOpen(true)}
+                onClick={() => setLabelModalOpen(true)}
               >
                 <ListTodo className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
                 <span className="truncate">
-                  {filters.species?.length
-                    ? `${filters.species.length} species`
-                    : "All species"}
+                  {filters.labels?.length
+                    ? `${filters.labels.length} labels`
+                    : "All labels"}
                 </span>
               </Button>
-              <SpeciesFilterModal
-                preBuiltTree={speciesTree!.tree}
-                allLeafIds={speciesTree!.all_leaf_ids}
-                selectedSpecies={filters.species ?? []}
-                onApply={(species) => {
-                  const allLeafs = speciesTree!.all_leaf_ids;
-                  const isAll = species.length >= allLeafs.length;
+              <LabelFilterModal
+                preBuiltTree={labelTree!.tree}
+                allLeafIds={labelTree!.all_leaf_ids}
+                selectedLabels={filters.labels ?? []}
+                onApply={(labels) => {
+                  const allLeafs = labelTree!.all_leaf_ids;
+                  const isAll = labels.length >= allLeafs.length;
                   onChange({
                     ...filters,
-                    species: isAll ? undefined : species.length ? species : undefined,
+                    labels: isAll ? undefined : labels.length ? labels : undefined,
                   });
                 }}
-                open={speciesModalOpen}
-                onOpenChange={setSpeciesModalOpen}
-                countUnit={speciesTree!.count_unit}
+                open={labelModalOpen}
+                onOpenChange={setLabelModalOpen}
+                countUnit={labelTree!.count_unit}
               />
             </>
           ) : (
             <MultiSelect
-              options={speciesOptions}
-              value={filters.species ?? []}
+              options={labelFilterOptions}
+              value={filters.labels ?? []}
               onChange={(v) =>
-                onChange({ ...filters, species: v.length ? v : undefined })
+                onChange({ ...filters, labels: v.length ? v : undefined })
               }
-              placeholder="All species"
-              searchPlaceholder="Search species..."
-              emptyMessage="No species found."
-              summary={(n) => `${n} species`}
+              placeholder="All labels"
+              searchPlaceholder="Search labels..."
+              emptyMessage="No labels found."
+              summary={(n) => `${n} labels`}
               capitalize
             />
           )}

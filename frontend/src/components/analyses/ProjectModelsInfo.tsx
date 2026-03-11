@@ -64,7 +64,7 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
     ? classificationModels?.find((m) => m.model_id === project.classification_model_id)
     : null;
 
-  // Count excluded species
+  // Count excluded labels
   const excludedCount = project.excluded_classes?.length || 0;
 
   return (
@@ -79,7 +79,7 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
             </TooltipTrigger>
             <TooltipContent>
               <p className="max-w-xs">
-                These settings apply to all deployments in this project. Deployments will use the models and species configured here.
+                These settings apply to all deployments in this project. Deployments will use the models and labels configured here.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -109,12 +109,12 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
             </div>
           </div>
 
-          {/* Species selection */}
+          {/* Label selection */}
           {project.classification_model_id && (
             <div>
-              <p className="text-xs text-gray-600 mb-1">Species selection</p>
+              <p className="text-xs text-gray-600 mb-1">Label selection</p>
               <span className="text-sm">
-                {excludedCount > 0 ? `${excludedCount} species excluded` : "All species"}
+                {excludedCount > 0 ? `${excludedCount} labels excluded` : "All labels"}
               </span>
             </div>
           )}

@@ -107,7 +107,7 @@ def init_db() -> None:
         job,
         project,
         site,
-        species_taxonomy,
+        label_taxonomy,
     )
 
     engine = get_engine()
@@ -131,7 +131,7 @@ def _migrate_missing_columns(engine: Engine) -> None:
         ("projects", "embedding_model_id", "VARCHAR(100)"),
         ("detections", "verified", "BOOLEAN NOT NULL DEFAULT 0"),
         ("detections", "verified_at", "DATETIME"),
-        ("detections", "species_taxonomy_id", "VARCHAR(36) REFERENCES species_taxonomy(id) ON DELETE SET NULL"),
+        ("detections", "label_taxonomy_id", "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL"),
     ]
     inspector = inspect(engine)
     with engine.begin() as conn:
@@ -141,21 +141,21 @@ def _migrate_missing_columns(engine: Engine) -> None:
                 logger.info(f"Migrating: adding {table}.{column}")
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
 
-    # Create index on species_taxonomy_id if the column exists but index doesn't
+    # Create index on label_taxonomy_id if the column exists but index doesn't
     existing_indexes = {idx["name"] for idx in inspector.get_indexes("detections")}
-    if "idx_detections_species_taxonomy" not in existing_indexes:
+    if "idx_detections_label_taxonomy" not in existing_indexes:
         det_cols = {c["name"] for c in inspector.get_columns("detections")}
-        if "species_taxonomy_id" in det_cols:
+        if "label_taxonomy_id" in det_cols:
             with engine.begin() as conn:
-                logger.info("Migrating: adding index idx_detections_species_taxonomy")
+                logger.info("Migrating: adding index idx_detections_label_taxonomy")
                 conn.execute(text(
-                    "CREATE INDEX idx_detections_species_taxonomy "
-                    "ON detections(species_taxonomy_id)"
+                    "CREATE INDEX idx_detections_label_taxonomy "
+                    "ON detections(label_taxonomy_id)"
                 ))
 
 
 def _seed_builtin_labels() -> None:
-    """Seed builtin labels (person, vehicle) in species_taxonomy on startup."""
+    """Seed builtin labels (person, vehicle) in label_taxonomy on startup."""
     from app.ml.taxonomy_db import ensure_builtin_labels
 
     SessionLocal = get_session_factory()

@@ -155,7 +155,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
           queryClient.invalidateQueries({ queryKey: ["files", projectId] });
           queryClient.invalidateQueries({ queryKey: ["file"] });
           queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["species-stats", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["label-stats", projectId] });
           queryClient.invalidateQueries({ queryKey: ["observation-type-stats", projectId] });
           queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
           queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });

@@ -68,11 +68,11 @@ export function getDetectionLabel(detection: DetectionResponse): string {
     detection.category.charAt(0).toUpperCase() + detection.category.slice(1);
   const confPct = `${(detection.confidence * 100).toFixed(0)}%`;
 
-  if (detection.species && detection.species_confidence != null) {
-    const speciesLabel =
-      detection.species.charAt(0).toUpperCase() + detection.species.slice(1);
-    const speciesConfPct = `${(detection.species_confidence * 100).toFixed(0)}%`;
-    return `${speciesLabel} ${speciesConfPct} · ${categoryLabel} ${confPct}`;
+  if (detection.label && detection.label_confidence != null) {
+    const labelDisplay =
+      detection.label.charAt(0).toUpperCase() + detection.label.slice(1);
+    const labelConfPct = `${(detection.label_confidence * 100).toFixed(0)}%`;
+    return `${labelDisplay} ${labelConfPct} · ${categoryLabel} ${confPct}`;
   }
 
   return `${categoryLabel} ${confPct}`;

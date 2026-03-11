@@ -1,13 +1,13 @@
 /**
- * TaxonomySheet — right-side slideout for adding/editing custom species.
+ * TaxonomySheet — right-side slideout for adding/editing custom labels.
  *
- * Users search GBIF to look up taxonomy, which places the species in
+ * Users search GBIF to look up taxonomy, which places the label in
  * the hierarchical filter tree. Suggestion cards auto-fill the five
  * taxonomy fields. Fields can also be edited manually.
  *
  * Supports two modes:
- * - Edit: species prop is a CustomSpeciesResponse — updates existing entry
- * - Create: species is null — creates a new custom species on save
+ * - Edit: customLabel prop is a CustomLabelResponse — updates existing entry
+ * - Create: customLabel is null — creates a new custom label on save
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -27,35 +27,35 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { projectsApi } from "../../api/projects";
 import type {
-  CustomSpeciesResponse,
-  CustomSpeciesUpdate,
+  CustomLabelResponse,
+  CustomLabelUpdate,
   GBIFSuggestion,
 } from "../../api/types";
 
 interface TaxonomySheetProps {
-  species: CustomSpeciesResponse | null;
+  customLabel: CustomLabelResponse | null;
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pre-filled name for create mode (when species is null). */
+  /** Pre-filled name for create mode (when customLabel is null). */
   initialName?: string;
-  /** Called after a new custom species is created (create mode only). */
-  onCreated?: (created: CustomSpeciesResponse) => void;
+  /** Called after a new custom label is created (create mode only). */
+  onCreated?: (created: CustomLabelResponse) => void;
 }
 
-function hasTaxonomy(species: CustomSpeciesResponse | null): boolean {
-  if (!species) return false;
+function hasTaxonomy(entry: CustomLabelResponse | null): boolean {
+  if (!entry) return false;
   return !!(
-    species.taxon_class ||
-    species.taxon_order ||
-    species.taxon_family ||
-    species.taxon_genus ||
-    species.taxon_species
+    entry.taxon_class ||
+    entry.taxon_order ||
+    entry.taxon_family ||
+    entry.taxon_genus ||
+    entry.taxon_species
   );
 }
 
 export function TaxonomySheet({
-  species,
+  customLabel,
   projectId,
   open,
   onOpenChange,
@@ -64,7 +64,7 @@ export function TaxonomySheet({
 }: TaxonomySheetProps) {
   const queryClient = useQueryClient();
 
-  const [speciesName, setSpeciesName] = useState("");
+  const [labelName, setLabelName] = useState("");
   const [gbifQuery, setGbifQuery] = useState("");
   const [taxonClass, setTaxonClass] = useState("");
   const [taxonOrder, setTaxonOrder] = useState("");
@@ -79,23 +79,23 @@ export function TaxonomySheet({
   const [taxonomyExpanded, setTaxonomyExpanded] = useState(false);
   const [selectedGbifKey, setSelectedGbifKey] = useState<number | null>(null);
 
-  const isCreateMode = species === null;
-  const isEditing = hasTaxonomy(species);
+  const isCreateMode = customLabel === null;
+  const isEditing = hasTaxonomy(customLabel);
   const gbifInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset form when species changes or sheet opens in create mode
+  // Reset form when customLabel changes or sheet opens in create mode
   useEffect(() => {
     if (!open) return;
-    if (species) {
-      setSpeciesName(species.name);
-      setGbifQuery(species.name);
-      setTaxonClass(species.taxon_class ?? "");
-      setTaxonOrder(species.taxon_order ?? "");
-      setTaxonFamily(species.taxon_family ?? "");
-      setTaxonGenus(species.taxon_genus ?? "");
-      setTaxonSpecies(species.taxon_species ?? "");
+    if (customLabel) {
+      setLabelName(customLabel.name);
+      setGbifQuery(customLabel.name);
+      setTaxonClass(customLabel.taxon_class ?? "");
+      setTaxonOrder(customLabel.taxon_order ?? "");
+      setTaxonFamily(customLabel.taxon_family ?? "");
+      setTaxonGenus(customLabel.taxon_genus ?? "");
+      setTaxonSpecies(customLabel.taxon_species ?? "");
     } else {
-      setSpeciesName(initialName ?? "");
+      setLabelName(initialName ?? "");
       setGbifQuery(initialName ?? "");
       setTaxonClass("");
       setTaxonOrder("");
@@ -107,7 +107,7 @@ export function TaxonomySheet({
     setHasSearched(false);
     setTaxonomyExpanded(false);
     setSelectedGbifKey(null);
-  }, [species, open, initialName]);
+  }, [customLabel, open, initialName]);
 
   const fetchSuggestions = useCallback(async (query: string) => {
     const trimmed = query.trim();
@@ -129,11 +129,11 @@ export function TaxonomySheet({
 
   // Auto-search on mount (when sheet opens with a name)
   useEffect(() => {
-    const name = species?.name ?? initialName;
+    const name = customLabel?.name ?? initialName;
     if (open && name && !hasSearched) {
       fetchSuggestions(name);
     }
-  }, [open, species, initialName, hasSearched, fetchSuggestions]);
+  }, [open, customLabel, initialName, hasSearched, fetchSuggestions]);
 
   const handleGbifSearch = () => {
     fetchSuggestions(gbifQuery);
@@ -149,12 +149,12 @@ export function TaxonomySheet({
   };
 
   const updateMutation = useMutation({
-    mutationFn: (data: CustomSpeciesUpdate) =>
-      projectsApi.updateCustomSpecies(projectId, species!.id, data),
+    mutationFn: (data: CustomLabelUpdate) =>
+      projectsApi.updateCustomLabel(projectId, customLabel!.id, data),
     onSuccess: () => {
       toast.success("Taxonomy saved");
-      queryClient.invalidateQueries({ queryKey: ["custom-species", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
       onOpenChange(false);
     },
     onError: () => {
@@ -164,9 +164,9 @@ export function TaxonomySheet({
 
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
-      const created = await projectsApi.createCustomSpecies(projectId, name);
+      const created = await projectsApi.createCustomLabel(projectId, name);
       // Immediately update taxonomy fields
-      const updated = await projectsApi.updateCustomSpecies(projectId, created.id, {
+      const updated = await projectsApi.updateCustomLabel(projectId, created.id, {
         taxon_class: taxonClass || null,
         taxon_order: taxonOrder || null,
         taxon_family: taxonFamily || null,
@@ -177,8 +177,8 @@ export function TaxonomySheet({
     },
     onSuccess: (created) => {
       toast.success(`Label "${created.name}" created`);
-      queryClient.invalidateQueries({ queryKey: ["custom-species", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
       onCreated?.(created);
       onOpenChange(false);
     },
@@ -188,7 +188,7 @@ export function TaxonomySheet({
   });
 
   const handleSave = () => {
-    const trimmedName = speciesName.trim();
+    const trimmedName = labelName.trim();
     if (!trimmedName) {
       toast.error("Name is required");
       return;
@@ -198,7 +198,7 @@ export function TaxonomySheet({
       createMutation.mutate(trimmedName);
     } else {
       updateMutation.mutate({
-        name: trimmedName !== species?.name ? trimmedName || null : undefined,
+        name: trimmedName !== customLabel?.name ? trimmedName || null : undefined,
         taxon_class: taxonClass || null,
         taxon_order: taxonOrder || null,
         taxon_family: taxonFamily || null,
@@ -220,7 +220,7 @@ export function TaxonomySheet({
           <SheetDescription>
             {isCreateMode
               ? "Create a new custom label. Search GBIF to fill in taxonomy automatically, or enter fields manually. If this label has no taxonomy (e.g. \"bait\" or \"setup\"), leave all fields blank."
-              : "Add taxonomic information to your custom species. Search GBIF to fill in the fields automatically, or enter them manually. Scientific names often give better search results. If this label has no taxonomy (e.g. \"bait\" or \"setup\"), leave all fields blank."}
+              : "Add taxonomic information to your custom label. Search GBIF to fill in the fields automatically, or enter them manually. Scientific names often give better search results. If this label has no taxonomy (e.g. \"bait\" or \"setup\"), leave all fields blank."}
           </SheetDescription>
         </SheetHeader>
 
@@ -229,8 +229,8 @@ export function TaxonomySheet({
           <div>
             <label className="text-sm font-medium">Name</label>
             <Input
-              value={speciesName}
-              onChange={(e) => setSpeciesName(e.target.value)}
+              value={labelName}
+              onChange={(e) => setLabelName(e.target.value)}
               placeholder="e.g. spotted hyena"
               autoFocus={isCreateMode}
             />
@@ -410,7 +410,7 @@ export function TaxonomySheet({
         <SheetFooter>
           <Button
             onClick={handleSave}
-            disabled={isPending || !speciesName.trim()}
+            disabled={isPending || !labelName.trim()}
           >
             {isPending && (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

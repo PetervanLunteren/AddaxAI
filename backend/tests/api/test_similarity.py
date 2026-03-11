@@ -51,8 +51,8 @@ def test_search_similar_success(client, db):
     mock_anchor = DetectionSummary(
         detection_id="det-1",
         file_id="file-1",
-        species=None,
-        species_confidence=None,
+        label=None,
+        label_confidence=None,
         confidence=0.9,
         category="animal",
         verified=False,

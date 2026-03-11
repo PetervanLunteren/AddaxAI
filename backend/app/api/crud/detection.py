@@ -72,8 +72,8 @@ def create_detection(db: Session, detection: DetectionCreate) -> Detection:
         bbox_y=detection.bbox_y,
         bbox_width=detection.bbox_width,
         bbox_height=detection.bbox_height,
-        species=detection.species,
-        species_confidence=detection.species_confidence,
+        label=detection.label,
+        label_confidence=detection.label_confidence,
         frame_number=detection.frame_number,
     )
     db.add(db_detection)
@@ -107,8 +107,8 @@ def create_detections_bulk(
             bbox_y=detection.bbox_y,
             bbox_width=detection.bbox_width,
             bbox_height=detection.bbox_height,
-            species=detection.species,
-            species_confidence=detection.species_confidence,
+            label=detection.label,
+            label_confidence=detection.label_confidence,
             frame_number=detection.frame_number,
         )
         for detection in detections
@@ -185,8 +185,8 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
         bbox_y=data.bbox_y,
         bbox_width=data.bbox_width,
         bbox_height=data.bbox_height,
-        species=data.species,
-        species_confidence=1.0 if data.species else None,
+        label=data.label,
+        label_confidence=1.0 if data.label else None,
         classification_method="human",
     )
     db.add(db_detection)
@@ -199,7 +199,7 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
     """
     Partial update of a detection.
 
-    Sets classification_method to "human" when species is edited.
+    Sets classification_method to "human" when label is edited.
     """
     detection = get_detection(db, detection_id)
     if detection is None:
@@ -215,16 +215,16 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
         detection.bbox_width = update.bbox_width
     if update.bbox_height is not None:
         detection.bbox_height = update.bbox_height
-    if "species" in update.model_fields_set:
-        detection.species = update.species
-        detection.species_taxonomy_id = _resolve_detection_taxonomy(
-            db, detection, update.species
+    if "label" in update.model_fields_set:
+        detection.label = update.label
+        detection.label_taxonomy_id = _resolve_detection_taxonomy(
+            db, detection, update.label
         )
         detection.classification_method = "human"
-        if update.species is None:
-            detection.species_confidence = None
-    if update.species_confidence is not None:
-        detection.species_confidence = update.species_confidence
+        if update.label is None:
+            detection.label_confidence = None
+    if update.label_confidence is not None:
+        detection.label_confidence = update.label_confidence
 
     db.commit()
     db.refresh(detection)
@@ -276,13 +276,13 @@ def _get_project_id_for_detection(db: Session, detection: Detection) -> str | No
 
 
 def _resolve_detection_taxonomy(
-    db: Session, detection: Detection, species_name: str | None
+    db: Session, detection: Detection, label_name: str | None
 ) -> str | None:
-    """Look up the correct species_taxonomy_id for a relabeled detection."""
-    if not species_name:
+    """Look up the correct label_taxonomy_id for a relabeled detection."""
+    if not label_name:
         return None
     project_id = _get_project_id_for_detection(db, detection)
     if not project_id:
         return None
     from app.ml.taxonomy_db import resolve_taxonomy_id
-    return resolve_taxonomy_id(species_name, project_id, db)
+    return resolve_taxonomy_id(label_name, project_id, db)

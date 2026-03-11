@@ -16,7 +16,7 @@ interface TreeNodeProps {
   node: TaxonomyNodeType;
   level: number;
   selectedClasses: Set<string>;
-  excludedMode?: boolean; // If true, selectedClasses represents excluded species
+  excludedMode?: boolean; // If true, selectedClasses represents excluded labels
   onToggle: (nodeId: string, checked: boolean) => void;
   expandedNodes: Set<string>;
   onExpand: (nodeId: string, expanded: boolean) => void;

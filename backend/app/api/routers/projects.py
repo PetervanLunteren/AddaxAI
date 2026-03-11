@@ -17,16 +17,16 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import project as crud_project
 from app.api.schemas.project import (
-    CustomSpeciesCreate,
-    CustomSpeciesResponse,
-    CustomSpeciesUpdate,
+    CustomLabelCreate,
+    CustomLabelResponse,
+    CustomLabelUpdate,
     GBIFSuggestion,
     ProjectCreate,
     ProjectResponse,
     ProjectUpdate,
     ProjectWithStats,
 )
-from app.models.species_taxonomy import SpeciesTaxonomy
+from app.models.label_taxonomy import LabelTaxonomy
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -312,15 +312,15 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
             detail=f"Project with id '{project_id}' not found",
         )
 
-    # Delete custom species taxonomy entries scoped to this project
+    # Delete custom label taxonomy entries scoped to this project
     taxonomy_count = (
-        db.query(SpeciesTaxonomy)
-        .filter(SpeciesTaxonomy.project_id == project_id)
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.project_id == project_id)
         .delete(synchronize_session=False)
     )
     if taxonomy_count:
         db.commit()
-        logger.info(f"Deleted {taxonomy_count} custom species for project {project_id}")
+        logger.info(f"Deleted {taxonomy_count} custom labels for project {project_id}")
 
     # Delete jobs associated with this project (after cascade removes detections
     # that have a FK to jobs)
@@ -422,37 +422,37 @@ def get_detection_count(
     return {"count": count}
 
 
-@router.get("/{project_id}/species-stats")
-def get_species_stats(
+@router.get("/{project_id}/label-stats")
+def get_label_stats(
     project_id: str,
     threshold: float = 0.0,
     db: Session = Depends(get_db),
 ) -> list[dict]:
     """
-    Get top species counts for a project.
+    Get top label counts for a project.
 
-    Returns list of {species, count} sorted by count descending.
-    Only includes detections with a species classification.
+    Returns list of {label, count} sorted by count descending.
+    Only includes detections with a label classification.
     Optionally filters by confidence threshold.
     """
     query = (
-        db.query(Detection.species, func.count(Detection.id).label("count"))
+        db.query(Detection.label, func.count(Detection.id).label("count"))
         .join(File)
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
-        .filter(Detection.species.isnot(None))
+        .filter(Detection.label.isnot(None))
     )
     if threshold > 0:
         query = query.filter(Detection.confidence >= threshold)
     stats = (
         query
-        .group_by(Detection.species)
+        .group_by(Detection.label)
         .order_by(func.count(Detection.id).desc())
         .all()
     )
 
-    return [{"species": species, "count": count} for species, count in stats]
+    return [{"label": label_name, "count": count} for label_name, count in stats]
 
 
 @router.get("/{project_id}/independent-event-stats")
@@ -463,22 +463,22 @@ def get_independent_event_stats(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Count independent events per species for a project.
+    Count independent events per label for a project.
 
-    Groups consecutive detections of the same species within a deployment
+    Groups consecutive detections of the same label within a deployment
     that are within `interval` seconds of each other as a single event.
     Optionally filters by detection confidence threshold.
 
-    Returns {total: int, species: [{species, count}]}.
+    Returns {total: int, labels: [{label, count}]}.
     """
     sql = text("""
         WITH ordered AS (
             SELECT
-                d.species,
+                d.label,
                 dep.id AS deployment_id,
                 f.timestamp,
                 LAG(f.timestamp) OVER (
-                    PARTITION BY dep.id, d.species
+                    PARTITION BY dep.id, d.label
                     ORDER BY f.timestamp
                 ) AS prev_timestamp
             FROM detections d
@@ -486,18 +486,18 @@ def get_independent_event_stats(
             JOIN deployments dep ON f.deployment_id = dep.id
             JOIN sites s ON dep.site_id = s.id
             WHERE s.project_id = :project_id
-              AND d.species IS NOT NULL
+              AND d.label IS NOT NULL
               AND (:threshold <= 0 OR d.confidence >= :threshold)
         ),
         events AS (
-            SELECT species
+            SELECT label
             FROM ordered
             WHERE prev_timestamp IS NULL
                OR (julianday(timestamp) - julianday(prev_timestamp)) * 86400 > :interval
         )
-        SELECT species, COUNT(*) AS event_count
+        SELECT label, COUNT(*) AS event_count
         FROM events
-        GROUP BY species
+        GROUP BY label
         ORDER BY event_count DESC
     """)
 
@@ -507,9 +507,9 @@ def get_independent_event_stats(
     ).fetchall()
 
     total = sum(row[1] for row in rows)
-    species = [{"species": row[0], "count": row[1]} for row in rows]
+    label_counts = [{"label": row[0], "count": row[1]} for row in rows]
 
-    return {"total": total, "species": species}
+    return {"total": total, "labels": label_counts}
 
 
 @router.post(
@@ -550,41 +550,41 @@ async def reprocess_classifications(
     return {"message": "Postprocessing started", "job_id": job.id}
 
 
-@router.get("/{project_id}/custom-species", response_model=list[CustomSpeciesResponse])
-def list_custom_species(
+@router.get("/{project_id}/custom-labels", response_model=list[CustomLabelResponse])
+def list_custom_labels(
     project_id: str, db: Session = Depends(get_db)
-) -> list[CustomSpeciesResponse]:
+) -> list[CustomLabelResponse]:
     """
-    List custom species for a project.
+    List custom labels for a project.
 
-    Returns all user-defined custom species entries for this project.
+    Returns all user-defined custom label entries for this project.
     """
     rows = (
-        db.query(SpeciesTaxonomy)
+        db.query(LabelTaxonomy)
         .filter(
-            SpeciesTaxonomy.project_id == project_id,
-            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+            LabelTaxonomy.project_id == project_id,
+            LabelTaxonomy.is_custom == True,  # noqa: E712
         )
         .all()
     )
-    return [CustomSpeciesResponse.model_validate(r) for r in rows]
+    return [CustomLabelResponse.model_validate(r) for r in rows]
 
 
 @router.post(
-    "/{project_id}/custom-species",
-    response_model=CustomSpeciesResponse,
+    "/{project_id}/custom-labels",
+    response_model=CustomLabelResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_custom_species(
+def create_custom_label(
     project_id: str,
-    body: CustomSpeciesCreate,
+    body: CustomLabelCreate,
     db: Session = Depends(get_db),
-) -> CustomSpeciesResponse:
+) -> CustomLabelResponse:
     """
-    Add a custom species to a project.
+    Add a custom label to a project.
 
-    If the species name already exists (case-insensitive) in the model taxonomy
-    or among this project's custom species, returns the existing entry.
+    If the label name already exists (case-insensitive) in the model taxonomy
+    or among this project's custom labels, returns the existing entry.
     """
     db_project = crud_project.get_project(db, project_id)
     if db_project is None:
@@ -597,38 +597,38 @@ def create_custom_species(
     model_id = db_project.classification_model_id
 
     # Check if already exists (case-insensitive) in current model taxonomy
-    # or among this project's custom species
+    # or among this project's custom labels
     existing = (
-        db.query(SpeciesTaxonomy)
+        db.query(LabelTaxonomy)
         .filter(
-            func.lower(SpeciesTaxonomy.name) == name.lower(),
+            func.lower(LabelTaxonomy.name) == name.lower(),
             (
-                (SpeciesTaxonomy.classification_model_id == model_id)
-                | (SpeciesTaxonomy.project_id == project_id)
+                (LabelTaxonomy.classification_model_id == model_id)
+                | (LabelTaxonomy.project_id == project_id)
             ),
         )
         .first()
     )
 
     if existing:
-        return CustomSpeciesResponse.model_validate(existing)
+        return CustomLabelResponse.model_validate(existing)
 
-    new_species = SpeciesTaxonomy(
+    new_label = LabelTaxonomy(
         is_custom=True,
         project_id=project_id,
         level="unknown",
         name=name,
         classification_model_id="",
     )
-    db.add(new_species)
+    db.add(new_label)
     db.commit()
-    db.refresh(new_species)
+    db.refresh(new_label)
 
-    logger.info(f"Created custom species '{name}' for project {project_id}")
-    return CustomSpeciesResponse.model_validate(new_species)
+    logger.info(f"Created custom label '{name}' for project {project_id}")
+    return CustomLabelResponse.model_validate(new_label)
 
 
-def _derive_taxonomy_level(body: CustomSpeciesUpdate) -> str:
+def _derive_taxonomy_level(body: CustomLabelUpdate) -> str:
     """Derive the most specific taxonomy level from populated fields."""
     if body.taxon_species:
         return "species"
@@ -644,33 +644,33 @@ def _derive_taxonomy_level(body: CustomSpeciesUpdate) -> str:
 
 
 @router.patch(
-    "/{project_id}/custom-species/{species_id}",
-    response_model=CustomSpeciesResponse,
+    "/{project_id}/custom-labels/{label_id}",
+    response_model=CustomLabelResponse,
 )
-def update_custom_species(
+def update_custom_label(
     project_id: str,
-    species_id: str,
-    body: CustomSpeciesUpdate,
+    label_id: str,
+    body: CustomLabelUpdate,
     db: Session = Depends(get_db),
-) -> CustomSpeciesResponse:
+) -> CustomLabelResponse:
     """
-    Update taxonomy fields on a custom species.
+    Update taxonomy fields on a custom label.
 
     Derives the taxonomy level from the most specific populated field.
     """
     row = (
-        db.query(SpeciesTaxonomy)
+        db.query(LabelTaxonomy)
         .filter(
-            SpeciesTaxonomy.id == species_id,
-            SpeciesTaxonomy.project_id == project_id,
-            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+            LabelTaxonomy.id == label_id,
+            LabelTaxonomy.project_id == project_id,
+            LabelTaxonomy.is_custom == True,  # noqa: E712
         )
         .first()
     )
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Custom species not found",
+            detail="Custom label not found",
         )
 
     # Handle name update with collision check
@@ -679,25 +679,25 @@ def update_custom_species(
         old_name = row.name
         if new_name.lower() != old_name.lower():
             collision = (
-                db.query(SpeciesTaxonomy)
+                db.query(LabelTaxonomy)
                 .filter(
-                    func.lower(SpeciesTaxonomy.name) == new_name.lower(),
-                    SpeciesTaxonomy.id != species_id,
-                    SpeciesTaxonomy.project_id == project_id,
+                    func.lower(LabelTaxonomy.name) == new_name.lower(),
+                    LabelTaxonomy.id != label_id,
+                    LabelTaxonomy.project_id == project_id,
                 )
                 .first()
             )
             if collision:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Species '{new_name}' already exists",
+                    detail=f"Label '{new_name}' already exists",
                 )
         if new_name != old_name:
             # Update all detections in this project that reference the old name
             (
                 db.query(Detection)
                 .filter(
-                    Detection.species == old_name,
+                    Detection.label == old_name,
                     Detection.file_id.in_(
                         db.query(File.id)
                         .join(Deployment)
@@ -706,11 +706,11 @@ def update_custom_species(
                     ),
                 )
                 .update(
-                    {Detection.species: new_name, Detection.species_taxonomy_id: species_id},
+                    {Detection.label: new_name, Detection.label_taxonomy_id: label_id},
                     synchronize_session=False,
                 )
             )
-            logger.info(f"Renamed detections '{old_name}' → '{new_name}' in project {project_id}")
+            logger.info(f"Renamed detections '{old_name}' -> '{new_name}' in project {project_id}")
         row.name = new_name
 
     row.taxon_class = body.taxon_class
@@ -720,7 +720,7 @@ def update_custom_species(
     row.taxon_species = body.taxon_species
     row.level = _derive_taxonomy_level(body)
 
-    # Ensure all detections with this species name point to this taxonomy row
+    # Ensure all detections with this label name point to this taxonomy row
     project_file_ids = (
         db.query(File.id)
         .join(Deployment)
@@ -730,12 +730,12 @@ def update_custom_species(
     (
         db.query(Detection)
         .filter(
-            Detection.species == row.name,
-            Detection.species_taxonomy_id != species_id,
+            Detection.label == row.name,
+            Detection.label_taxonomy_id != label_id,
             Detection.file_id.in_(project_file_ids),
         )
         .update(
-            {Detection.species_taxonomy_id: species_id},
+            {Detection.label_taxonomy_id: label_id},
             synchronize_session=False,
         )
     )
@@ -743,33 +743,33 @@ def update_custom_species(
     db.commit()
     db.refresh(row)
 
-    logger.info(f"Updated custom species '{row.name}' → level={row.level}")
-    return CustomSpeciesResponse.model_validate(row)
+    logger.info(f"Updated custom label '{row.name}' -> level={row.level}")
+    return CustomLabelResponse.model_validate(row)
 
 
 @router.delete(
-    "/{project_id}/custom-species/{species_id}",
+    "/{project_id}/custom-labels/{label_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def delete_custom_species(
+def delete_custom_label(
     project_id: str,
-    species_id: str,
+    label_id: str,
     db: Session = Depends(get_db),
 ) -> None:
-    """Delete a custom species from a project."""
+    """Delete a custom label from a project."""
     row = (
-        db.query(SpeciesTaxonomy)
+        db.query(LabelTaxonomy)
         .filter(
-            SpeciesTaxonomy.id == species_id,
-            SpeciesTaxonomy.project_id == project_id,
-            SpeciesTaxonomy.is_custom == True,  # noqa: E712
+            LabelTaxonomy.id == label_id,
+            LabelTaxonomy.project_id == project_id,
+            LabelTaxonomy.is_custom == True,  # noqa: E712
         )
         .first()
     )
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Custom species not found",
+            detail="Custom label not found",
         )
 
     name = row.name
@@ -777,13 +777,13 @@ def delete_custom_species(
     # SET NULL the FK on detections that reference this taxonomy row
     (
         db.query(Detection)
-        .filter(Detection.species_taxonomy_id == species_id)
-        .update({Detection.species_taxonomy_id: None}, synchronize_session=False)
+        .filter(Detection.label_taxonomy_id == label_id)
+        .update({Detection.label_taxonomy_id: None}, synchronize_session=False)
     )
 
     db.delete(row)
     db.commit()
-    logger.info(f"Deleted custom species '{name}' from project {project_id}")
+    logger.info(f"Deleted custom label '{name}' from project {project_id}")
 
 
 def _delete_project_embeddings(db: Session, project_id: str) -> int:
@@ -882,7 +882,7 @@ def get_postprocessing_status(
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
-        .filter(Detection.species.isnot(None))
+        .filter(Detection.label.isnot(None))
         .limit(1)
         .first()
     ) is not None

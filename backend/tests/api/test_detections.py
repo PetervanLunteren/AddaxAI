@@ -130,7 +130,7 @@ def test_bulk_relabel(client, db):
     d2 = make_detection(db, file_id=f.id)
     resp = client.post("/api/detections/bulk-relabel", json={
         "detection_ids": [d1.id, d2.id],
-        "species": "leopard",
+        "label": "leopard",
     })
     assert resp.status_code == 200
     assert resp.json()["updated_count"] == 2

@@ -54,7 +54,7 @@ def test_load_creates_file_records(deployment_scaffold):
 
 
 def test_load_creates_detection_records(deployment_scaffold):
-    """Correct detection count, category mapping, bbox, species, classification_method."""
+    """Correct detection count, category mapping, bbox, label, classification_method."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -97,13 +97,13 @@ def test_load_creates_detection_records(deployment_scaffold):
     assert det.bbox_y == 0.2
     assert det.bbox_width == 0.3
     assert det.bbox_height == 0.4
-    assert det.species == "lion"
-    assert det.species_confidence == 0.85
+    assert det.label == "lion"
+    assert det.label_confidence == 0.85
     assert det.classification_method == "machine"
 
 
-def test_load_with_species_exclusion(deployment_scaffold):
-    """Excluded species removed; remaining confidences renormalized and re-sorted."""
+def test_load_with_label_exclusion(deployment_scaffold):
+    """Excluded labels removed; remaining confidences renormalized and re-sorted."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -137,10 +137,10 @@ def test_load_with_species_exclusion(deployment_scaffold):
         )
 
     det = db.query(Detection).one()
-    # lion excluded → top species should be zebra with renormalized confidence
-    assert det.species == "zebra"
+    # lion excluded -> top label should be zebra with renormalized confidence
+    assert det.label == "zebra"
     # 0.3 / (0.3 + 0.1) = 0.75
-    assert abs(det.species_confidence - 0.75) < 0.01
+    assert abs(det.label_confidence - 0.75) < 0.01
 
 
 def test_observation_type_priority(deployment_scaffold):

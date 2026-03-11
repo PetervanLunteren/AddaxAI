@@ -3,7 +3,7 @@
  *
  * Two cards: Observations (detection counts) and Independent events.
  * Each card shows total before → after with percentage change,
- * plus a collapsible per-species breakdown.
+ * plus a collapsible per-label breakdown.
  */
 
 import { useEffect, useState } from "react";
@@ -18,14 +18,14 @@ import { Card, CardContent } from "../ui/card";
 
 // --- Types ---
 
-export interface SpeciesCount {
-  species: string;
+export interface LabelCount {
+  label: string;
   count: number;
 }
 
 export interface StatSnapshot {
   total: number;
-  species: SpeciesCount[];
+  labels: LabelCount[];
 }
 
 export interface SaveResults {
@@ -63,20 +63,20 @@ function SmallCode({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Compute per-species diffs from two snapshots, sorted by absolute change. */
-function computeSpeciesDiff(
-  before: SpeciesCount[],
-  after: SpeciesCount[],
-): { species: string; before: number; after: number }[] {
-  const beforeMap = new Map(before.map((s) => [s.species, s.count]));
-  const afterMap = new Map(after.map((s) => [s.species, s.count]));
-  const allSpecies = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+/** Compute per-label diffs from two snapshots, sorted by absolute change. */
+function computeLabelDiff(
+  before: LabelCount[],
+  after: LabelCount[],
+): { label: string; before: number; after: number }[] {
+  const beforeMap = new Map(before.map((s) => [s.label, s.count]));
+  const afterMap = new Map(after.map((s) => [s.label, s.count]));
+  const allLabels = new Set([...beforeMap.keys(), ...afterMap.keys()]);
 
-  const diff: { species: string; before: number; after: number }[] = [];
-  for (const sp of allSpecies) {
-    const b = beforeMap.get(sp) ?? 0;
-    const a = afterMap.get(sp) ?? 0;
-    if (b !== a) diff.push({ species: sp, before: b, after: a });
+  const diff: { label: string; before: number; after: number }[] = [];
+  for (const lbl of allLabels) {
+    const b = beforeMap.get(lbl) ?? 0;
+    const a = afterMap.get(lbl) ?? 0;
+    if (b !== a) diff.push({ label: lbl, before: b, after: a });
   }
   return diff.sort((a, b) => Math.abs(b.after - b.before) - Math.abs(a.after - a.before));
 }
@@ -96,7 +96,7 @@ function StatCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const diff = computeSpeciesDiff(before.species, after.species);
+  const diff = computeLabelDiff(before.labels, after.labels);
 
   return (
     <Card>
@@ -122,18 +122,18 @@ function StatCard({
               ) : (
                 <ChevronDown className="h-3 w-3" />
               )}
-              {expanded ? "Hide" : "Show"} breakdown ({diff.length} species
+              {expanded ? "Hide" : "Show"} breakdown ({diff.length} labels
               changed)
             </button>
 
             {expanded && (
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-                {diff.map(({ species, before: b, after: a }) => (
+                {diff.map(({ label, before: b, after: a }) => (
                   <div
-                    key={species}
+                    key={label}
                     className="flex justify-between items-center text-xs text-muted-foreground"
                   >
-                    <span>{normalizeLabel(species)}</span>
+                    <span>{normalizeLabel(label)}</span>
                     <span className="tabular-nums">
                       <SmallCode>{b}</SmallCode>
                       {" \u2192 "}

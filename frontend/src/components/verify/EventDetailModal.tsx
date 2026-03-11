@@ -80,7 +80,7 @@ export function EventDetailModal({
     null
   );
   const [drawMode, setDrawMode] = useState(false);
-  const [drawLabel, setDrawLabel] = useState<{ category: string; species: string | undefined } | null>(null);
+  const [drawLabel, setDrawLabel] = useState<{ category: string; label: string | undefined } | null>(null);
   const [bulkSelection, setBulkSelection] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
@@ -237,17 +237,17 @@ export function EventDetailModal({
   // Compute most common detection label for smart draw defaults
   const defaultLabel = useMemo(() => {
     if (!event?.files)
-      return { category: "animal", species: undefined as string | undefined };
+      return { category: "animal", label: undefined as string | undefined };
 
     const labelCounts = new Map<
       string,
-      { count: number; category: string; species: string | undefined }
+      { count: number; category: string; label: string | undefined }
     >();
 
     for (const f of event.files) {
       for (const d of f.detections) {
         if (d.confidence >= detectionThreshold) {
-          const key = d.species || d.category;
+          const key = d.label || d.category;
           const existing = labelCounts.get(key);
           if (existing) {
             existing.count++;
@@ -255,19 +255,19 @@ export function EventDetailModal({
             labelCounts.set(key, {
               count: 1,
               category: d.category,
-              species: d.species || undefined,
+              label: d.label || undefined,
             });
           }
         }
       }
     }
 
-    let best = { category: "animal", species: undefined as string | undefined };
+    let best = { category: "animal", label: undefined as string | undefined };
     let bestCount = 0;
     for (const entry of labelCounts.values()) {
       if (entry.count > bestCount) {
         bestCount = entry.count;
-        best = { category: entry.category, species: entry.species };
+        best = { category: entry.category, label: entry.label };
       }
     }
 
@@ -353,7 +353,7 @@ export function EventDetailModal({
         bbox_y: best.bbox_y,
         bbox_width: best.bbox_width,
         bbox_height: best.bbox_height,
-        species: best.species,
+        label: best.label,
       });
       await detectionsApi.delete(best.id);
     },
@@ -403,7 +403,7 @@ export function EventDetailModal({
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["file"] });
-      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     },
   });
 
@@ -418,7 +418,7 @@ export function EventDetailModal({
     },
     onSuccess: (next) => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
       setSelectedDetectionId(next?.id ?? null);
     },
   });
@@ -623,12 +623,12 @@ export function EventDetailModal({
             filteredDetections.map((d) =>
               detectionsApi.update(d.id, {
                 category: label.category,
-                species: label.species,
+                label: label.label,
               })
             )
           ).then(() => {
             queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-            queryClient.invalidateQueries({ queryKey: ["species-tree"] });
+            queryClient.invalidateQueries({ queryKey: ["label-tree"] });
           });
           break;
         }
@@ -800,9 +800,9 @@ export function EventDetailModal({
               {drawMode && (
                 <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100" title="Label for new boxes">
                   <LabelPicker
-                    value={effectiveDrawLabel.species || effectiveDrawLabel.category}
+                    value={effectiveDrawLabel.label || effectiveDrawLabel.category}
                     onSelect={(option) =>
-                      setDrawLabel({ category: option.category, species: option.species ?? undefined })
+                      setDrawLabel({ category: option.category, label: option.label ?? undefined })
                     }
                     options={labelOptions}
                     isLoading={labelOptionsLoading}
@@ -1149,7 +1149,7 @@ export function EventDetailModal({
                     onDrawModeChange={setDrawMode}
                     imageFilter={imageFilter}
                     defaultCategory={effectiveDrawLabel.category}
-                    defaultSpecies={effectiveDrawLabel.species}
+                    defaultLabel={effectiveDrawLabel.label}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
                     zoomFnRef={zoomFnRef}

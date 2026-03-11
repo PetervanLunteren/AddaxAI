@@ -17,8 +17,8 @@ class DetectionResponse(BaseModel):
     bbox_y: float
     bbox_width: float
     bbox_height: float
-    species: str | None
-    species_confidence: float | None
+    label: str | None
+    label_confidence: float | None
     classification_method: str | None = None
     frame_number: int | None = None
 

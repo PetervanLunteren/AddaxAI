@@ -48,9 +48,9 @@ def update_detection(
     db: Session = Depends(get_db),
 ):
     """
-    Update a detection's category, bounding box, or species.
+    Update a detection's category, bounding box, or label.
 
-    Sets classification_method="human" when species is edited.
+    Sets classification_method="human" when label is edited.
     Invalidates crop cache when bbox changes.
     """
     detection = detection_crud.update_detection(db, detection_id, update)
@@ -138,7 +138,7 @@ class BulkVerifyRequest(BaseModel):
 
 class BulkRelabelRequest(BaseModel):
     detection_ids: list[str] = Field(..., max_length=500)
-    species: str | None = None
+    label: str | None = None
     category: str | None = None
 
 
@@ -193,17 +193,17 @@ def bulk_relabel_detections(
     if not detections:
         raise HTTPException(status_code=404, detail="No detections found")
 
-    # Resolve taxonomy ID for the new species label
+    # Resolve taxonomy ID for the new label
     new_taxonomy_id = None
-    if body.species:
+    if body.label:
         from app.api.crud.detection import _resolve_detection_taxonomy
-        new_taxonomy_id = _resolve_detection_taxonomy(db, detections[0], body.species)
+        new_taxonomy_id = _resolve_detection_taxonomy(db, detections[0], body.label)
 
     for det in detections:
-        if body.species is not None:
-            det.species = body.species if body.species != "" else None
-            det.species_confidence = 1.0 if body.species else None
-            det.species_taxonomy_id = new_taxonomy_id
+        if body.label is not None:
+            det.label = body.label if body.label != "" else None
+            det.label_confidence = 1.0 if body.label else None
+            det.label_taxonomy_id = new_taxonomy_id
         if body.category is not None:
             det.category = body.category
         det.classification_method = "human"

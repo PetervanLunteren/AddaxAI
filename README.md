@@ -3,14 +3,14 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO priority 1
 
-- [ ] throughout the project we refer to "Species"/"Labels"/"Categorioes" for model classes. We cant use "Class", since it creates confusion with the txonomic level class. But species is not accurate neither. Often it doesnt refelct the species level, (but higher level taxons), or something else enirely (vehicle, bait, etc). Should we change this to something more generic that fits all purposes and is easy understandable, like "label". That would make it "Configure labels", "Add custom label", etc. Or do you have alternatives? What do you propose? Category? 
+- [x] throughout the project we refer to "Species"/"Labels"/"Categorioes" for model classes — renamed to "label" everywhere (DB columns, API, frontend)
 
 - [ ] in the similarity veriofication flow, the shift+click doesnt work very well. Often it doesnt recognise it or something lags. Can we make the SHIFT+CLICK the default? So click is always selecting (first is start of range, second is end of range), click outside gird is deselect. double clikc is opening the modal. What do you think? Agree that this is good UX? If so,m implement, and update the guides and shortcut info panes. 
 
 
 - [ ] do a full audit on this repo. I want to clean it from redundatn files, scripts, md files, etc. Give me a report, with a short summary of its content and your recommendation (delete / keep / review). I want to clean this repo. Especially check the PROJECT_PLAN.md. Is it still relevant? Its been a while since I read it. Most of the work has been done without it. If we can remove it, are there any information in there that we want to sotre in developers.md? 
 
-- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite species labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
+- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
 
 - [ ] We should probabaly have something to tag the deteciton as a "False detection" in the similarity verification process. Right? In the event verification ww ould simply remove the box ("this is not an animal at all"), but in similarity verification it is a bit harder... What would you suggest? What is handy? 
 

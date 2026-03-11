@@ -143,11 +143,11 @@ class ProjectWithStats(ProjectResponse):
     detection_count: int = Field(0, description="Total number of detections in this project")
 
 
-class CustomSpeciesCreate(BaseModel):
+class CustomLabelCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
 
-class CustomSpeciesResponse(BaseModel):
+class CustomLabelResponse(BaseModel):
     id: str
     name: str
     level: str
@@ -160,7 +160,7 @@ class CustomSpeciesResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CustomSpeciesUpdate(BaseModel):
+class CustomLabelUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     taxon_class: str | None = Field(None, max_length=100)
     taxon_order: str | None = Field(None, max_length=100)

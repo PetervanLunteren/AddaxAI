@@ -30,7 +30,7 @@ interface DetectionDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   onFindSimilar: (detectionId: string) => void;
   onActionComplete: () => void;
-  onRelabel?: (detectionId: string, species: string, category: string) => void;
+  onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** Optimistic verify callback so parent can patch local state before navigating. */
   onVerify?: (detectionId: string) => void;
   /** Navigate to adjacent detection. Return false if at boundary. */
@@ -69,10 +69,10 @@ export function DetectionDetailSheet({
   });
 
   const relabelMutation = useMutation({
-    mutationFn: ({ species, category }: { species: string; category: string }) =>
-      detectionsApi.bulkRelabel([detection!.detection_id], species, category),
-    onSuccess: (_, { species, category }) => {
-      onRelabel?.(detection!.detection_id, species, category);
+    mutationFn: ({ label, category }: { label: string; category: string }) =>
+      detectionsApi.bulkRelabel([detection!.detection_id], label, category),
+    onSuccess: (_, { label, category }) => {
+      onRelabel?.(detection!.detection_id, label, category);
       onActionComplete();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -134,7 +134,7 @@ export function DetectionDetailSheet({
         <SheetHeader>
           <div className="flex items-center justify-between">
             <SheetTitle className="capitalize">
-              {detection.species || detection.category}
+              {detection.label || detection.category}
             </SheetTitle>
             {onNavigate && (
               <div className="flex items-center gap-1">
@@ -211,9 +211,9 @@ export function DetectionDetailSheet({
                     </Badge>
                   )}
                 </div>
-                {detection.species && (
+                {detection.label && (
                   <div className="font-medium capitalize">
-                    {detection.species} ({detection.species_confidence != null ? `${(detection.species_confidence * 100).toFixed(0)}%` : "—"})
+                    {detection.label} ({detection.label_confidence != null ? `${(detection.label_confidence * 100).toFixed(0)}%` : "—"})
                   </div>
                 )}
               </div>
@@ -255,7 +255,7 @@ export function DetectionDetailSheet({
             const pct = detection.neighbor_agreement * 100;
             const hasSuggestion =
               detection.neighbor_top_label &&
-              detection.neighbor_top_label !== detection.species;
+              detection.neighbor_top_label !== detection.label;
             const barColorClass =
               detection.neighbor_agreement >= 0.7
                 ? "[&>div]:bg-green-500"
@@ -290,7 +290,7 @@ export function DetectionDetailSheet({
                     disabled={relabelMutation.isPending}
                     onClick={() =>
                       relabelMutation.mutate({
-                        species: detection.neighbor_top_label!,
+                        label: detection.neighbor_top_label!,
                         category: detection.category,
                       })
                     }

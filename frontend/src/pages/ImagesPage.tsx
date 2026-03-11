@@ -25,10 +25,10 @@ export default function ImagesPage() {
     enabled: !!projectId,
   });
 
-  // Fetch species stats for bar chart
-  const { data: speciesStats } = useQuery({
-    queryKey: ["species-stats", projectId],
-    queryFn: () => projectsApi.getSpeciesStats(projectId!),
+  // Fetch label stats for bar chart
+  const { data: labelStats } = useQuery({
+    queryKey: ["label-stats", projectId],
+    queryFn: () => projectsApi.getLabelStats(projectId!),
     enabled: !!projectId,
   });
 
@@ -60,23 +60,23 @@ export default function ImagesPage() {
           </p>
         </div>
 
-        {/* Species bar chart */}
-        {speciesStats && speciesStats.length > 0 && (
+        {/* Label bar chart */}
+        {labelStats && labelStats.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Top Species
+                Top Labels
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
               <div className="space-y-1.5">
-                {speciesStats.map(({ species, count }) => {
-                  const maxCount = speciesStats[0].count;
+                {labelStats.map(({ label, count }) => {
+                  const maxCount = labelStats[0].count;
                   const pct = (count / maxCount) * 100;
                   return (
-                    <div key={species} className="flex items-center gap-3 text-sm">
+                    <div key={label} className="flex items-center gap-3 text-sm">
                       <span className="w-28 truncate text-right capitalize text-muted-foreground">
-                        {species}
+                        {label}
                       </span>
                       <div className="flex-1 h-5 bg-muted rounded overflow-hidden">
                         <div
@@ -272,9 +272,9 @@ function ImageViewer({ file, detectionThreshold }: { file: FileWithDetections; d
                   className="w-3 h-3 rounded-full"
                   style={{ backgroundColor: getCategoryColor(detection.category) }}
                 />
-                {detection.species ? (
+                {detection.label ? (
                   <>
-                    <span className="font-medium capitalize">{detection.species}</span>
+                    <span className="font-medium capitalize">{detection.label}</span>
                     <span className="text-muted-foreground capitalize">
                       ({detection.category})
                     </span>
@@ -284,8 +284,8 @@ function ImageViewer({ file, detectionThreshold }: { file: FileWithDetections; d
                 )}
               </div>
               <div className="flex gap-2 text-muted-foreground">
-                {detection.species_confidence != null && (
-                  <span>{(detection.species_confidence * 100).toFixed(1)}%</span>
+                {detection.label_confidence != null && (
+                  <span>{(detection.label_confidence * 100).toFixed(1)}%</span>
                 )}
                 <span>{(detection.confidence * 100).toFixed(1)}%</span>
               </div>

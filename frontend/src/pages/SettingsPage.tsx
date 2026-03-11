@@ -162,14 +162,14 @@ async function fetchStats(
   threshold: number,
   interval: number,
 ): Promise<{ observations: StatSnapshot; events: StatSnapshot }> {
-  const [detectionCount, speciesStats, eventStats] = await Promise.all([
+  const [detectionCount, labelStats, eventStats] = await Promise.all([
     projectsApi.getDetectionCount(projectId, threshold),
-    projectsApi.getSpeciesStats(projectId, threshold),
+    projectsApi.getLabelStats(projectId, threshold),
     projectsApi.getIndependentEventStats(projectId, interval, threshold),
   ]);
   return {
-    observations: { total: detectionCount.count, species: speciesStats },
-    events: { total: eventStats.total, species: eventStats.species },
+    observations: { total: detectionCount.count, labels: labelStats },
+    events: { total: eventStats.total, labels: eventStats.labels },
   };
 }
 
@@ -177,7 +177,7 @@ export default function SettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
   const [excludedClasses, setExcludedClasses] = useState<string[]>([]);
-  const [speciesModalOpen, setSpeciesModalOpen] = useState(false);
+  const [labelSelectionModalOpen, setLabelSelectionModalOpen] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
@@ -377,13 +377,13 @@ export default function SettingsPage() {
   // Clear excluded_classes when classification model changes
   useEffect(() => {
     if (classificationModelId && taxonomy?.all_classes) {
-      // Filter excluded_classes to only keep species that exist in the new model
+      // Filter excluded_classes to only keep classes that exist in the new model
       const currentExcluded = form.getValues("excluded_classes");
       const validExcluded = currentExcluded.filter(cls =>
         taxonomy.all_classes.includes(cls)
       );
 
-      // Only update if some species were removed
+      // Only update if some classes were removed
       if (validExcluded.length !== currentExcluded.length) {
         form.setValue("excluded_classes", validExcluded, { shouldDirty: true });
         setExcludedClasses(validExcluded);
@@ -466,14 +466,14 @@ export default function SettingsPage() {
       setSaveJobId(null);
       setIsSaving(false);
       // Invalidate all project-related caches so every page (images, dashboard,
-      // review, etc.) picks up the reprocessed species/annotations immediately.
+      // review, etc.) picks up the reprocessed labels/annotations immediately.
       queryClient.invalidateQueries({ queryKey: ["postprocessing-status", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["species-stats", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["label-stats", projectId] });
       queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
       queryClient.invalidateQueries({ queryKey: ["observation-type-stats", projectId] });
       queryClient.invalidateQueries({ queryKey: ["files", projectId] });
-      // Invalidate individual file detail queries (species annotations)
+      // Invalidate individual file detail queries (label annotations)
       queryClient.invalidateQueries({ queryKey: ["file"] });
       // Invalidate events (auto-regenerated after postprocessing)
       queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -530,12 +530,12 @@ export default function SettingsPage() {
   const onSubmit = async (data: SettingsFormData) => {
     if (!projectId) return;
 
-    // Validate that at least one species remains included
+    // Validate that at least one label remains included
     if (taxonomy && !isSpeciesNet) {
       const allCount = taxonomy.all_classes?.length || 0;
       if (allCount > 0 && data.excluded_classes.length >= allCount) {
         form.setError("excluded_classes", {
-          message: "At least one species must remain included",
+          message: "At least one label must remain included",
         });
         return;
       }
@@ -715,7 +715,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Project settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure AI models, species selection, and analysis parameters
+            Configure AI models, label selection, and analysis parameters
           </p>
         </div>
 
@@ -728,7 +728,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Models</CardTitle>
                 <CardDescription>
-                  Models used to detect objects and classify species. Changes apply to new analyses only and do not reprocess existing results.
+                  Models used to detect objects and classify labels. Changes apply to new analyses only and do not reprocess existing results.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y">
@@ -837,7 +837,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
-                          Used to identify species for detected animals.
+                          Used to classify detected animals.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1034,7 +1034,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Card 2: Geographic location (SpeciesNet) OR Species selection (other models) */}
+            {/* Card 2: Geographic location (SpeciesNet) OR Label selection (other models) */}
             {classificationModelId && isSpeciesNet && locations && (
               <Card>
                 <CardHeader>
@@ -1188,29 +1188,29 @@ export default function SettingsPage() {
             {classificationModelId && !isSpeciesNet && taxonomy && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Species selection</CardTitle>
+                  <CardTitle>Label selection</CardTitle>
                   <CardDescription>
-                    Control which species can be predicted
+                    Control which labels can be predicted
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-1">
-                      <FormLabel>Species selection</FormLabel>
+                      <FormLabel>Label selection</FormLabel>
                       <FormDescription className="text-sm">
-                        Limit predictions to species expected in your project area to reduce false positives.
+                        Limit predictions to labels expected in your project area to reduce false positives.
                       </FormDescription>
                     </div>
                     <div className="space-y-1">
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => setSpeciesModalOpen(true)}
+                        onClick={() => setLabelSelectionModalOpen(true)}
                         className="w-full min-h-14 flex flex-col items-start justify-center gap-1 text-left"
                       >
                         <div className="flex items-center gap-2">
                           <ListTodo className="h-4 w-4" />
-                          <span>Select species</span>
+                          <span>Select labels</span>
                         </div>
                         <span className="text-xs text-muted-foreground">
                           Currently included {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
@@ -1482,7 +1482,7 @@ export default function SettingsPage() {
           onOpenChange={setShowModelInfo}
         />
 
-        {/* Species Selection Modal */}
+        {/* Label Selection Modal */}
         {classificationModelId && taxonomy && (
           <SpeciesSelectionModal
             modelId={classificationModelId}
@@ -1491,8 +1491,8 @@ export default function SettingsPage() {
               setExcludedClasses(classes);
               form.setValue("excluded_classes", classes, { shouldDirty: true });
             }}
-            open={speciesModalOpen}
-            onOpenChange={setSpeciesModalOpen}
+            open={labelSelectionModalOpen}
+            onOpenChange={setLabelSelectionModalOpen}
             totalSpeciesCount={taxonomy.all_classes?.length || 0}
           />
         )}

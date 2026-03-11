@@ -1,4 +1,4 @@
-"""Tests for species_taxonomy_id FK linking and builtin labels."""
+"""Tests for label_taxonomy_id FK linking and builtin labels."""
 
 from datetime import datetime
 
@@ -7,7 +7,7 @@ from app.ml.taxonomy_db import (
     ensure_builtin_labels,
     link_detections_to_taxonomy,
 )
-from app.models.species_taxonomy import SpeciesTaxonomy
+from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -20,7 +20,7 @@ MODEL_ID = "EUR-DF-v1-3"
 
 
 def _add_taxonomy(db, name, level, model_id=MODEL_ID, **kw):
-    row = SpeciesTaxonomy(
+    row = LabelTaxonomy(
         classification_model_id=model_id,
         name=name,
         level=level,
@@ -31,16 +31,16 @@ def _add_taxonomy(db, name, level, model_id=MODEL_ID, **kw):
     return row
 
 
-def _make_project_with_detections(db, species_list, model_id=MODEL_ID):
-    """Create project → site → deployment → file → detections."""
+def _make_project_with_detections(db, label_list, model_id=MODEL_ID):
+    """Create project -> site -> deployment -> file -> detections."""
     p = make_project(db, classification_model_id=model_id)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
 
     detections = []
-    for sp in species_list:
-        det = make_detection(db, file_id=f.id, species=sp, species_confidence=0.8)
+    for lbl in label_list:
+        det = make_detection(db, file_id=f.id, label=lbl, label_confidence=0.8)
         detections.append(det)
 
     db.flush()
@@ -56,8 +56,8 @@ def test_ensure_builtin_labels_creates_rows(db):
     assert count == 2
 
     rows = (
-        db.query(SpeciesTaxonomy)
-        .filter(SpeciesTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .all()
     )
     names = {r.name for r in rows}
@@ -77,8 +77,8 @@ def test_ensure_builtin_labels_idempotent(db):
     assert count2 == 0
 
     total = (
-        db.query(SpeciesTaxonomy)
-        .filter(SpeciesTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .count()
     )
     assert total == 2
@@ -101,11 +101,11 @@ def test_link_detections_basic(db):
 
     db.expire_all()
     for det in dets:
-        assert det.species_taxonomy_id is not None
+        assert det.label_taxonomy_id is not None
 
     # Verify correct mapping
-    lion_det = [d for d in dets if d.species == "lion"][0]
-    assert lion_det.species_taxonomy_id == leo_tax.id
+    lion_det = [d for d in dets if d.label == "lion"][0]
+    assert lion_det.label_taxonomy_id == leo_tax.id
 
 
 def test_link_detections_idempotent(db):
@@ -120,7 +120,7 @@ def test_link_detections_idempotent(db):
 
 
 def test_link_detections_no_taxonomy(db):
-    """Returns 0 when no taxonomy rows exist for the species."""
+    """Returns 0 when no taxonomy rows exist for the label."""
     p, _ = _make_project_with_detections(db, ["unknown_animal"])
     count = link_detections_to_taxonomy(p.id, db)
     assert count == 0
@@ -136,14 +136,14 @@ def test_link_detections_builtin_labels(db):
 
     db.expire_all()
     for det in dets:
-        assert det.species_taxonomy_id is not None
+        assert det.label_taxonomy_id is not None
 
 
-def test_link_detections_custom_species(db):
-    """Links detections to custom species when no model-level match exists."""
+def test_link_detections_custom_label(db):
+    """Links detections to custom label when no model-level match exists."""
     p, dets = _make_project_with_detections(db, ["my_custom_bird"])
 
-    custom_tax = SpeciesTaxonomy(
+    custom_tax = LabelTaxonomy(
         classification_model_id="",
         name="my_custom_bird",
         level="unknown",
@@ -157,7 +157,7 @@ def test_link_detections_custom_species(db):
     assert count == 1
 
     db.expire_all()
-    assert dets[0].species_taxonomy_id == custom_tax.id
+    assert dets[0].label_taxonomy_id == custom_tax.id
 
 
 def test_link_detections_model_priority_over_custom(db):
@@ -165,7 +165,7 @@ def test_link_detections_model_priority_over_custom(db):
     p, dets = _make_project_with_detections(db, ["leopard"])
 
     model_tax = _add_taxonomy(db, "leopard", "species")
-    custom_tax = SpeciesTaxonomy(
+    custom_tax = LabelTaxonomy(
         classification_model_id="",
         name="leopard",
         level="species",
@@ -178,7 +178,7 @@ def test_link_detections_model_priority_over_custom(db):
     link_detections_to_taxonomy(p.id, db)
 
     db.expire_all()
-    assert dets[0].species_taxonomy_id == model_tax.id
+    assert dets[0].label_taxonomy_id == model_tax.id
 
 
 def test_link_detections_cross_project_isolation(db):
@@ -191,19 +191,19 @@ def test_link_detections_cross_project_isolation(db):
     link_detections_to_taxonomy(p1.id, db)
 
     db.expire_all()
-    assert dets1[0].species_taxonomy_id is not None
-    assert dets2[0].species_taxonomy_id is None
+    assert dets1[0].label_taxonomy_id is not None
+    assert dets2[0].label_taxonomy_id is None
 
 
-def test_link_detections_null_species_skipped(db):
-    """Detections with species=NULL are not linked."""
+def test_link_detections_null_label_skipped(db):
+    """Detections with label=NULL are not linked."""
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
 
-    det_with = make_detection(db, file_id=f.id, species="leopard", species_confidence=0.8)
-    det_without = make_detection(db, file_id=f.id, species=None)
+    det_with = make_detection(db, file_id=f.id, label="leopard", label_confidence=0.8)
+    det_without = make_detection(db, file_id=f.id, label=None)
 
     _add_taxonomy(db, "leopard", "species")
 
@@ -211,18 +211,18 @@ def test_link_detections_null_species_skipped(db):
     assert count == 1
 
     db.expire_all()
-    assert det_with.species_taxonomy_id is not None
-    assert det_without.species_taxonomy_id is None
+    assert det_with.label_taxonomy_id is not None
+    assert det_without.label_taxonomy_id is None
 
 
 def test_link_detections_no_model(db):
-    """Works for projects without a classification model (custom species only)."""
+    """Works for projects without a classification model (custom labels only)."""
     p = make_project(db, classification_model_id=None)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
 
-    det = make_detection(db, file_id=f.id, species="person")
+    det = make_detection(db, file_id=f.id, label="person")
     db.flush()
 
     ensure_builtin_labels(db)
@@ -230,4 +230,4 @@ def test_link_detections_no_model(db):
     assert count == 1
 
     db.expire_all()
-    assert det.species_taxonomy_id is not None
+    assert det.label_taxonomy_id is not None

@@ -1,9 +1,9 @@
-"""Tests for the /api/events/species-tree endpoint and build_species_filter_tree."""
+"""Tests for the /api/events/label-tree endpoint and build_label_filter_tree."""
 
 from datetime import datetime
 
-from app.api.crud.species_tree import build_species_filter_tree
-from app.models.species_taxonomy import SpeciesTaxonomy
+from app.api.crud.label_tree import build_label_filter_tree
+from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -16,8 +16,8 @@ MODEL_ID = "EUR-DF-v1-3"
 
 
 def _add_taxonomy(db, name, level, **kw):
-    """Helper to insert a SpeciesTaxonomy row."""
-    row = SpeciesTaxonomy(
+    """Helper to insert a LabelTaxonomy row."""
+    row = LabelTaxonomy(
         classification_model_id=MODEL_ID,
         name=name,
         level=level,
@@ -28,13 +28,13 @@ def _add_taxonomy(db, name, level, **kw):
     return row
 
 
-def _setup_project_with_detections(db, species_list):
-    """Create project → site → deployment → events with detections for each species."""
+def _setup_project_with_detections(db, label_list):
+    """Create project -> site -> deployment -> events with detections for each label."""
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
 
-    for sp in species_list:
+    for sp in label_list:
         ev = make_event_with_files(
             db,
             deployment_id=d.id,
@@ -45,14 +45,14 @@ def _setup_project_with_detections(db, species_list):
         file_row = db.execute(
             ef_table.select().where(ef_table.c.event_id == ev.id)
         ).first()
-        make_detection(db, file_id=file_row.file_id, species=sp, species_confidence=0.8)
+        make_detection(db, file_id=file_row.file_id, label=sp, label_confidence=0.8)
 
     db.flush()
     return p
 
 
-def test_build_tree_with_species_and_rollups(db):
-    """Verifies tree structure with both normal species and rolled-up taxa."""
+def test_build_tree_with_labels_and_rollups(db):
+    """Verifies tree structure with both normal labels and rolled-up taxa."""
     p = _setup_project_with_detections(db, ["leopard", "lion", "felidae"])
 
     # Add taxonomy rows
@@ -66,7 +66,7 @@ def test_build_tree_with_species_and_rollups(db):
                   taxon_class="mammalia", taxon_order="carnivora",
                   taxon_family="felidae")
 
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is not None
     assert "tree" in result
     assert "all_leaf_ids" in result
@@ -101,7 +101,7 @@ def test_build_tree_with_species_and_rollups(db):
     root_ids = [n["id"] for n in tree]
     assert "felidae:unspecified" not in root_ids
 
-    # Navigate hierarchy: class Mammalia → order Carnivora → family Felidae
+    # Navigate hierarchy: class Mammalia -> order Carnivora -> family Felidae
     mammalia_node = find_node(tree, "class:mammalia")
     assert mammalia_node is not None
 
@@ -115,27 +115,27 @@ def test_build_tree_with_species_and_rollups(db):
 def test_build_tree_no_model(db):
     """Returns None when project has no classification model."""
     p = make_project(db, classification_model_id=None)
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is None
 
 
 def test_build_tree_no_detections(db):
     """Returns None when project has no detections."""
     p = make_project(db, classification_model_id=MODEL_ID)
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is None
 
 
 def test_build_tree_no_taxonomy_rows(db):
-    """Returns None when species_taxonomy table has no matching rows."""
+    """Returns None when label_taxonomy table has no matching rows."""
     p = _setup_project_with_detections(db, ["leopard"])
     # Don't add any taxonomy rows
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is None
 
 
 def test_build_tree_with_event_counts(db):
-    """Event counts appear in the species_event_counts dict."""
+    """Event counts appear in the label_event_counts dict."""
     p = _setup_project_with_detections(db, ["leopard", "leopard", "lion"])
     _add_taxonomy(db, "leopard", "species",
                   taxon_class="mammalia", taxon_order="carnivora",
@@ -144,22 +144,22 @@ def test_build_tree_with_event_counts(db):
                   taxon_class="mammalia", taxon_order="carnivora",
                   taxon_family="felidae", taxon_genus="panthera", taxon_species="leo")
 
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is not None
-    counts = result["species_event_counts"]
+    counts = result["label_event_counts"]
     assert counts["leopard"] >= 1
     assert counts["lion"] >= 1
 
 
-def test_unmatched_species_in_other(db):
-    """Species not in taxonomy go to 'other' group."""
+def test_unmatched_label_in_other(db):
+    """Labels not in taxonomy go to 'other' group."""
     p = _setup_project_with_detections(db, ["leopard", "blank"])
     _add_taxonomy(db, "leopard", "species",
                   taxon_class="mammalia", taxon_order="carnivora",
                   taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
     # "blank" has no taxonomy row
 
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is not None
     assert "blank" in result["all_leaf_ids"]
 
@@ -177,7 +177,7 @@ def test_unmatched_species_in_other(db):
 
 
 def test_unspecified_suffix_stripping(client, db):
-    """Filter parsing strips :unspecified suffix from species IDs."""
+    """Filter parsing strips :unspecified suffix from label IDs."""
     p = _setup_project_with_detections(db, ["felidae"])
     _add_taxonomy(db, "felidae", "family",
                   taxon_class="mammalia", taxon_order="carnivora",
@@ -185,28 +185,28 @@ def test_unspecified_suffix_stripping(client, db):
 
     # Query with :unspecified suffix — should still match
     resp = client.get(
-        f"/api/events?project_id={p.id}&species=felidae:unspecified"
+        f"/api/events?project_id={p.id}&labels=felidae:unspecified"
     )
     assert resp.status_code == 200
 
 
-def test_species_tree_endpoint(client, db):
-    """The /species-tree endpoint returns tree or null."""
+def test_label_tree_endpoint(client, db):
+    """The /label-tree endpoint returns tree or null."""
     p = make_project(db, classification_model_id=MODEL_ID)
-    resp = client.get(f"/api/events/species-tree?project_id={p.id}")
+    resp = client.get(f"/api/events/label-tree?project_id={p.id}")
     assert resp.status_code == 200
-    # No detections → null
+    # No detections -> null
     assert resp.json() is None
 
 
-def test_species_tree_endpoint_with_data(client, db):
-    """The /species-tree endpoint returns tree when data exists."""
+def test_label_tree_endpoint_with_data(client, db):
+    """The /label-tree endpoint returns tree when data exists."""
     p = _setup_project_with_detections(db, ["leopard"])
     _add_taxonomy(db, "leopard", "species",
                   taxon_class="mammalia", taxon_order="carnivora",
                   taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
 
-    resp = client.get(f"/api/events/species-tree?project_id={p.id}")
+    resp = client.get(f"/api/events/label-tree?project_id={p.id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data is not None
@@ -217,13 +217,13 @@ def test_species_tree_endpoint_with_data(client, db):
 
 
 def test_leaf_has_structured_fields(db):
-    """Species leaf nodes have annotation and count fields."""
+    """Label leaf nodes have annotation and count fields."""
     p = _setup_project_with_detections(db, ["leopard"])
     _add_taxonomy(db, "leopard", "species",
                   taxon_class="mammalia", taxon_order="carnivora",
                   taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
 
-    result = build_species_filter_tree(p.id, db)
+    result = build_label_filter_tree(p.id, db)
     assert result is not None
 
     def find_node(nodes, target_id):
@@ -237,7 +237,7 @@ def test_leaf_has_structured_fields(db):
 
     leaf = find_node(result["tree"], "leopard")
     assert leaf is not None
-    assert leaf["name"] == "pardus"
+    assert leaf["name"] == "Panthera pardus"
     assert leaf["annotation"] == "leopard"
     assert leaf["count"] >= 1
 

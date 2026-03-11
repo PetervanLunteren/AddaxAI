@@ -25,7 +25,7 @@ def _apply_event_filters(
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-    species: list[str] | None = None,
+    labels: list[str] | None = None,
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
@@ -44,20 +44,20 @@ def _apply_event_filters(
         )
         query = query.filter(Event.start_time <= end_of_day)
 
-    if species:
-        # EXISTS subquery: event has at least one file with a detection matching species
-        species_subq = (
+    if labels:
+        # EXISTS subquery: event has at least one file with a detection matching labels
+        label_subq = (
             select(event_files.c.event_id)
             .join(File, File.id == event_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
-            .where(Detection.species.in_(species))
+            .where(Detection.label.in_(labels))
         )
         if min_confidence is not None:
-            species_subq = species_subq.where(Detection.confidence >= min_confidence)
+            label_subq = label_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
-            species_subq = species_subq.where(Detection.confidence <= max_confidence)
-        query = query.filter(exists(species_subq))
+            label_subq = label_subq.where(Detection.confidence <= max_confidence)
+        query = query.filter(exists(label_subq))
     elif min_confidence is not None or max_confidence is not None:
         # Standalone confidence filter: event has at least one detection in range
         conf_subq = (
@@ -302,7 +302,7 @@ def get_events_by_project(
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-    species: list[str] | None = None,
+    labels: list[str] | None = None,
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
@@ -310,7 +310,7 @@ def get_events_by_project(
     """
     Get event summaries for a project.
 
-    Returns event data with representative file, species list,
+    Returns event data with representative file, label list,
     observation type, and verification progress.
     """
     query = db.query(Event).join(Deployment).join(Site).filter(Site.project_id == project_id)
@@ -320,7 +320,7 @@ def get_events_by_project(
         site_ids=site_ids,
         date_from=date_from,
         date_to=date_to,
-        species=species,
+        labels=labels,
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
@@ -349,16 +349,16 @@ def get_events_by_project(
             key=lambda f: f.timestamp,
         )
 
-        # Collect unique species across all files
-        species_set: set[str] = set()
+        # Collect unique labels across all files
+        label_set: set[str] = set()
         for f in sorted_files:
             for d in f.detections:
                 if (
-                    d.species
+                    d.label
                     and (min_confidence is None or d.confidence >= min_confidence)
                     and (max_confidence is None or d.confidence <= max_confidence)
                 ):
-                    species_set.add(d.species)
+                    label_set.add(d.label)
 
         # Determine dominant observation type (animal > human > vehicle > blank)
         obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
@@ -396,7 +396,7 @@ def get_events_by_project(
                 "site_name": event.deployment.site.name
                 if event.deployment and event.deployment.site
                 else None,
-                "species": sorted(species_set),
+                "labels": sorted(label_set),
                 "observation_type": dominant_type,
                 "observation_types": sorted(observation_types_set),
                 "image_count": image_count,
@@ -430,7 +430,7 @@ def get_event_count_by_project(
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-    species: list[str] | None = None,
+    labels: list[str] | None = None,
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
@@ -448,7 +448,7 @@ def get_event_count_by_project(
         site_ids=site_ids,
         date_from=date_from,
         date_to=date_to,
-        species=species,
+        labels=labels,
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
@@ -464,7 +464,7 @@ def get_adjacent_events(
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-    species: list[str] | None = None,
+    labels: list[str] | None = None,
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
@@ -482,7 +482,7 @@ def get_adjacent_events(
         site_ids=site_ids,
         date_from=date_from,
         date_to=date_to,
-        species=species,
+        labels=labels,
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
@@ -569,7 +569,7 @@ def get_event_verification_stats(
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-    species: list[str] | None = None,
+    labels: list[str] | None = None,
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
@@ -579,7 +579,7 @@ def get_event_verification_stats(
         site_ids=site_ids,
         date_from=date_from,
         date_to=date_to,
-        species=species,
+        labels=labels,
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
@@ -643,34 +643,34 @@ def get_event_verification_stats(
 
 
 def get_filter_options(db: Session, project_id: str) -> dict:
-    """Get available filter options for a project (distinct species, date range)."""
-    # Distinct species across all detections in project
-    species_rows = (
-        db.query(Detection.species)
+    """Get available filter options for a project (distinct labels, date range)."""
+    # Distinct labels across all detections in project
+    label_rows = (
+        db.query(Detection.label)
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
-        .filter(Detection.species.isnot(None))
+        .filter(Detection.label.isnot(None))
         .distinct()
         .all()
     )
-    species_list = sorted([row[0] for row in species_rows])
+    label_list = sorted([row[0] for row in label_rows])
 
-    # Count distinct events per species
-    species_count_rows = (
-        db.query(Detection.species, func.count(func.distinct(Event.id)))
+    # Count distinct events per label
+    label_count_rows = (
+        db.query(Detection.label, func.count(func.distinct(Event.id)))
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .join(Event, Event.id == event_files.c.event_id)
         .join(Deployment, Deployment.id == Event.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
-        .filter(Detection.species.isnot(None))
-        .group_by(Detection.species)
+        .filter(Detection.label.isnot(None))
+        .group_by(Detection.label)
         .all()
     )
-    species_event_counts = {name: count for name, count in species_count_rows}
+    label_event_counts = {name: count for name, count in label_count_rows}
 
     # Date range from events
     date_row = (
@@ -689,7 +689,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         date_range = {"min": date_row[0], "max": date_row[1]}
 
     return {
-        "species": species_list,
+        "labels": label_list,
         "date_range": date_range,
-        "species_event_counts": species_event_counts,
+        "label_event_counts": label_event_counts,
     }

@@ -295,7 +295,7 @@ class CustomClassificationModel(ClassificationModel):
             progress_callback: Optional progress callback (unused)
 
         Returns:
-            ClassificationResult with top species and all probabilities,
+            ClassificationResult with top label and all probabilities,
             or None if classification fails (best effort mode)
 
         Raises:
@@ -349,17 +349,17 @@ class CustomClassificationModel(ClassificationModel):
             all_probs_dict = {name: conf for name, conf in classifications}
 
             # Get top prediction (already sorted by worker)
-            top_species, top_confidence = classifications[0]
+            top_label, top_confidence = classifications[0]
 
             # Build ClassificationResult
             result_obj = ClassificationResult(
-                species=top_species,
+                label=top_label,
                 confidence=top_confidence,
                 all_probabilities=all_probs_dict,
             )
 
             logger.debug(
-                f"Classification result: {result_obj.species} ({result_obj.confidence:.3f})"
+                f"Classification result: {result_obj.label} ({result_obj.confidence:.3f})"
             )
 
             return result_obj

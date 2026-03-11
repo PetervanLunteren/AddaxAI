@@ -142,14 +142,14 @@ function drawOverlaysOnCanvas(
     ctx.fill();
 
     // Text
-    if (pill.hasSpecies) {
+    if (pill.hasLabel) {
       ctx.font = `${FONT_SM * scale}px Arial, sans-serif`;
       ctx.fillStyle = "rgba(255,255,255,0.7)";
       ctx.fillText(pill.categoryText, x + TEXT_START_X * scale, pillY + PILL_PAD_Y * scale);
 
       ctx.font = `bold ${FONT_LG * scale}px Arial, sans-serif`;
       ctx.fillStyle = "white";
-      ctx.fillText(pill.speciesText, x + TEXT_START_X * scale, pillY + (PILL_PAD_Y + FONT_SM + LINE_GAP) * scale);
+      ctx.fillText(pill.labelText, x + TEXT_START_X * scale, pillY + (PILL_PAD_Y + FONT_SM + LINE_GAP) * scale);
     } else {
       ctx.font = `bold ${FONT_LG * scale}px Arial, sans-serif`;
       ctx.fillStyle = "white";
@@ -501,7 +501,7 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
                     r={DOT_R}
                     fill={pill.color}
                   />
-                  {pill.hasSpecies ? (
+                  {pill.hasLabel ? (
                     <>
                       <text
                         x={TEXT_START_X}
@@ -522,7 +522,7 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
                         fontFamily="Arial, sans-serif"
                         dominantBaseline="hanging"
                       >
-                        {pill.speciesText}
+                        {pill.labelText}
                       </text>
                     </>
                   ) : (

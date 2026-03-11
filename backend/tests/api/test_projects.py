@@ -106,9 +106,9 @@ def test_get_detection_count_zero(client, db):
     assert resp.json()["count"] == 0
 
 
-def test_get_species_stats_empty(client, db):
+def test_get_label_stats_empty(client, db):
     p = make_project(db)
-    resp = client.get(f"/api/projects/{p.id}/species-stats")
+    resp = client.get(f"/api/projects/{p.id}/label-stats")
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -119,7 +119,7 @@ def test_get_independent_event_stats_empty(client, db):
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 0
-    assert data["species"] == []
+    assert data["labels"] == []
 
 
 # --- Reprocess / Re-embed ---

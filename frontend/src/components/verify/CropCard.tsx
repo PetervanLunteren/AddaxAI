@@ -1,7 +1,7 @@
 /**
  * CropCard - detection crop thumbnail with bbox overlay and metadata.
  *
- * Shows species pill, label suggestion pill,
+ * Shows label pill, label suggestion pill,
  * verified badge, and selection state. The crop is expanded to show
  * context around the detection, with an SVG overlay highlighting the bbox.
  */
@@ -36,7 +36,7 @@ export function CropCard({ detection, selected, onClick, tileSize = "M" }: CropC
   const hasSuggestion =
     !detection.verified &&
     detection.neighbor_top_label &&
-    detection.neighbor_top_label !== detection.species;
+    detection.neighbor_top_label !== detection.label;
 
   const isSmall = tileSize === "S";
   const pillSize = isSmall ? "text-[8px] px-1 py-0" : "text-[10px] px-1.5 py-0.5";
@@ -55,7 +55,7 @@ export function CropCard({ detection, selected, onClick, tileSize = "M" }: CropC
       <div className="aspect-square bg-muted relative overflow-hidden rounded-t-lg">
         <img
           src={`${API_BASE_URL}${detection.crop_url}`}
-          alt={detection.species || detection.category}
+          alt={detection.label || detection.category}
           loading="lazy"
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -114,7 +114,7 @@ export function CropCard({ detection, selected, onClick, tileSize = "M" }: CropC
               isSuspicious && "border-transparent bg-[#882000] text-white hover:bg-[#882000]"
             )}
           >
-            <span className="truncate">{detection.species || detection.category}</span>
+            <span className="truncate">{detection.label || detection.category}</span>
           </Badge>
           {hasSuggestion && (
             <>

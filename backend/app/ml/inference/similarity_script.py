@@ -32,7 +32,7 @@ MAX_DETECTIONS = 20_000
 
 BASE_SQL = """
 SELECT de.detection_id, de.vector, de.l2_norm,
-       d.species, d.species_confidence, d.confidence, d.category,
+       d.label, d.label_confidence, d.confidence, d.category,
        d.verified, d.classification_method, d.file_id,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.timestamp, f.width_px, f.height_px,
@@ -51,10 +51,10 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
     clauses: list[str] = []
     params: list = [project_id]
 
-    if filters.get("species"):
-        placeholders = ",".join("?" for _ in filters["species"])
-        clauses.append(f"d.species IN ({placeholders})")
-        params.extend(filters["species"])
+    if filters.get("labels"):
+        placeholders = ",".join("?" for _ in filters["labels"])
+        clauses.append(f"d.label IN ({placeholders})")
+        params.extend(filters["labels"])
 
     if filters.get("site_ids"):
         placeholders = ",".join("?" for _ in filters["site_ids"])
@@ -131,8 +131,8 @@ def _load_embeddings(
             ts = str(ts)
 
         metadata_list.append({
-            "species": row["species"],
-            "species_confidence": row["species_confidence"],
+            "label": row["label"],
+            "label_confidence": row["label_confidence"],
             "confidence": row["confidence"],
             "category": row["category"],
             "verified": bool(row["verified"]),
@@ -197,8 +197,8 @@ def _build_summary(
     return {
         "detection_id": detection_id,
         "file_id": meta["file_id"],
-        "species": meta["species"],
-        "species_confidence": meta["species_confidence"],
+        "label": meta["label"],
+        "label_confidence": meta["label_confidence"],
         "confidence": meta["confidence"],
         "category": meta["category"],
         "verified": meta["verified"],
@@ -279,30 +279,30 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
             break
 
     # Compute neighbor agreement: for each detection, what fraction of its
-    # k nearest embedding neighbors share the same species label?
+    # k nearest embedding neighbors share the same label?
     k_neighbors = 10
     k_query = min(k_neighbors + 1, n)  # +1 because first result is self
     _, neighbor_idxs = index.search(vectors, k_query)
 
-    species_list = [metas[i]["species"] for i in range(n)]
+    label_list = [metas[i]["label"] for i in range(n)]
     agreement_scores = np.zeros(n, dtype=np.float32)
     top_labels: list[str | None] = [None] * n
     for i in range(n):
-        label = species_list[i]
+        current_label = label_list[i]
         matches = 0
         count = 0
-        neighbor_species: list[str] = []
+        neighbor_labels: list[str] = []
         for j in neighbor_idxs[i]:
             if j < 0 or j == i:
                 continue
             count += 1
-            if species_list[j]:
-                neighbor_species.append(species_list[j])
-            if species_list[j] == label:
+            if label_list[j]:
+                neighbor_labels.append(label_list[j])
+            if label_list[j] == current_label:
                 matches += 1
         agreement_scores[i] = matches / count if count > 0 else 1.0
-        if neighbor_species:
-            top_labels[i] = Counter(neighbor_species).most_common(1)[0][0]
+        if neighbor_labels:
+            top_labels[i] = Counter(neighbor_labels).most_common(1)[0][0]
 
     detections = [
         _build_summary(
@@ -350,7 +350,7 @@ def _load_anchor_embedding(
     """Load a single detection's embedding and metadata."""
     sql = """
     SELECT de.vector, de.l2_norm,
-           d.species, d.species_confidence, d.confidence, d.category,
+           d.label, d.label_confidence, d.confidence, d.category,
            d.verified, d.classification_method, d.file_id,
            d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
            f.deployment_id, f.timestamp, f.width_px, f.height_px,
@@ -385,8 +385,8 @@ def _load_anchor_embedding(
         ts = str(ts)
 
     meta = {
-        "species": row["species"],
-        "species_confidence": row["species_confidence"],
+        "label": row["label"],
+        "label_confidence": row["label_confidence"],
         "confidence": row["confidence"],
         "category": row["category"],
         "verified": bool(row["verified"]),

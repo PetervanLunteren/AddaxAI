@@ -1,7 +1,7 @@
 /**
  * SimilaritySettings — popover with sort/display settings for the Similarity tab.
  *
- * Contains toggles for noise-first sorting, species dividers,
+ * Contains toggles for noise-first sorting, label dividers,
  * and tile size selection.
  */
 
@@ -14,8 +14,8 @@ import type { TileSize } from "./CropGrid";
 interface SimilaritySettingsProps {
   reverseSort: boolean;
   onReverseSortChange: (v: boolean) => void;
-  showSpeciesDividers: boolean;
-  onShowSpeciesDividersChange: (v: boolean) => void;
+  showLabelDividers: boolean;
+  onShowLabelDividersChange: (v: boolean) => void;
   tileSize: TileSize;
   onTileSizeChange: (v: TileSize) => void;
 }
@@ -25,8 +25,8 @@ const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 export function SimilaritySettings({
   reverseSort,
   onReverseSortChange,
-  showSpeciesDividers,
-  onShowSpeciesDividersChange,
+  showLabelDividers,
+  onShowLabelDividersChange,
   tileSize,
   onTileSizeChange,
 }: SimilaritySettingsProps) {
@@ -52,13 +52,13 @@ export function SimilaritySettings({
           <Switch checked={reverseSort} onCheckedChange={onReverseSortChange} />
         </label>
 
-        {/* Species dividers */}
+        {/* Label dividers */}
         <label className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-sm">Species dividers</p>
-            <p className="text-xs text-muted-foreground">Show headers between species groups</p>
+            <p className="text-sm">Label dividers</p>
+            <p className="text-xs text-muted-foreground">Show headers between label groups</p>
           </div>
-          <Switch checked={showSpeciesDividers} onCheckedChange={onShowSpeciesDividersChange} />
+          <Switch checked={showLabelDividers} onCheckedChange={onShowLabelDividersChange} />
         </label>
 
         {/* Tile size */}

@@ -14,7 +14,7 @@ Where options_json contains:
         "sequence_info": list[dict] | null
     }
 
-Species exclusion and taxonomic rollup are handled upstream before this
+Label exclusion and taxonomic rollup are handled upstream before this
 script runs. The input JSON already has those transformations applied.
 """
 
@@ -91,8 +91,8 @@ def main() -> None:
         setattr(options, param, value)
 
     # Generic "other" categories that the smoother can overwrite with a dominant
-    # real species. Non-species classes (blank, empty, false detection, none) are
-    # already stripped by species exclusion before smoothing runs.
+    # real label. Non-label classes (blank, empty, false detection, none) are
+    # already stripped by label exclusion before smoothing runs.
     base_other = [
         "other",
         "unknown",
