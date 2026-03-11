@@ -109,7 +109,8 @@ jobs:
         run: |
           FILE="${{ github.workspace }}/temp/env-speciesnet.tar.xz"
           echo "SIZE_SPECIESNET=$(stat -f%z "$FILE")" >> $GITHUB_ENV
-          gh release upload "${{ env.UPLOAD_TAG }}" "${FILE}#macos-env-speciesnet.tar.xz" --clobber
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-speciesnet.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-speciesnet.tar.xz" --clobber
 
       - name: Remove env-speciesnet.tar.xz
         run: |
@@ -167,7 +168,8 @@ jobs:
         run: |
           FILE="${{ github.workspace }}/temp/env-tensorflow-v1.tar.xz"
           echo "SIZE_TF_V1=$(stat -f%z "$FILE")" >> $GITHUB_ENV
-          gh release upload "${{ env.UPLOAD_TAG }}" "${FILE}#macos-env-tensorflow-v1.tar.xz" --clobber
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-tensorflow-v1.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-tensorflow-v1.tar.xz" --clobber
 
       - name: Remove env-tensorflow-v1.tar.xz
         run: |
@@ -239,7 +241,8 @@ jobs:
         run: |
           FILE="${{ github.workspace }}/temp/env-tensorflow-v2.tar.xz"
           echo "SIZE_TF_V2=$(stat -f%z "$FILE")" >> $GITHUB_ENV
-          gh release upload "${{ env.UPLOAD_TAG }}" "${FILE}#macos-env-tensorflow-v2.tar.xz" --clobber
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-tensorflow-v2.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-tensorflow-v2.tar.xz" --clobber
 
       - name: Remove env-tensorflow-v2.tar.xz
         run: |
@@ -306,7 +309,8 @@ jobs:
         run: |
           FILE="${{ github.workspace }}/temp/env-pytorch.tar.xz"
           echo "SIZE_PYTORCH=$(stat -f%z "$FILE")" >> $GITHUB_ENV
-          gh release upload "${{ env.UPLOAD_TAG }}" "${FILE}#macos-env-pytorch.tar.xz" --clobber
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-pytorch.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-pytorch.tar.xz" --clobber
 
       - name: Remove env-pytorch.tar.xz
         run: |
@@ -364,7 +368,8 @@ jobs:
         run: |
           FILE="${{ github.workspace }}/temp/env-pywildlife.tar.xz"
           echo "SIZE_PYWILDLIFE=$(stat -f%z "$FILE")" >> $GITHUB_ENV
-          gh release upload "${{ env.UPLOAD_TAG }}" "${FILE}#macos-env-pywildlife.tar.xz" --clobber
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-pywildlife.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-pywildlife.tar.xz" --clobber
 
       - name: Remove env-pywildlife.tar.xz
         run: |
@@ -510,7 +515,8 @@ jobs:
         run: |
           FILE="${{ env.HOME }}/base-install/base-install.tar.xz"
           echo "SIZE_BASE_INSTALL=$(stat -f%z "$FILE")" >> $GITHUB_ENV
-          gh release upload "${{ env.UPLOAD_TAG }}" "${FILE}#macos-base-install.tar.xz" --clobber
+          cp "$FILE" "${{ env.HOME }}/base-install/macos-base-install.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ env.HOME }}/base-install/macos-base-install.tar.xz" --clobber
 
       - name: Generate and upload macos-manifest.json
         env:
