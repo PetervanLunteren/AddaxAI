@@ -6633,6 +6633,7 @@ def _fetch_manifest(platform_prefix):
     for url in [
         f"https://github.com/{repo}/releases/download/v{current_AA_version}/{manifest_name}",
         f"https://github.com/{repo}/releases/latest/download/{manifest_name}",
+        f"https://github.com/{repo}/releases/download/test-migration/{manifest_name}",  # TEMPORARY: remove before merging
     ]:
         try:
             resp = requests.get(url, timeout=60, headers=headers, allow_redirects=True)
