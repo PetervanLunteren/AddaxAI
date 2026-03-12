@@ -38,7 +38,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
             <h3 className="text-sm font-semibold mb-2">Overview</h3>
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>
+              <div>
                 The AI embeds each detection crop into a vector based on visual
                 similarity, then sorts detections so similar-looking ones appear
                 next to each other. This makes it easy to spot mislabels and
@@ -47,7 +47,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
                   zebra
                 </Badge>
                 ) below the crop.
-              </p>
+              </div>
               <p>
                 This tab verifies at the detection level. Each
                 individual detection crop can be verified independently, which
@@ -112,7 +112,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
             <h3 className="text-sm font-semibold mb-2">Suspicious labels</h3>
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>
+              <div>
                 The system checks each detection's 10 nearest embedding
                 neighbors. If fewer than 7 share the same label, the detection
                 is flagged as suspicious with a red label:{" "}
@@ -122,8 +122,8 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
                 >
                   impala
                 </Badge>
-              </p>
-              <p>
+              </div>
+              <div>
                 If the majority of neighbors have a different label, that label
                 is shown as a suggestion on the card:{" "}
                 <span className="inline-flex items-center gap-0.5 align-middle">
@@ -138,7 +138,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
                     gazelle
                   </Badge>
                 </span>
-              </p>
+              </div>
               <p>
                 Use the{" "}
                 <span className="inline-flex items-center gap-0.5 align-middle px-1 py-0 rounded-md bg-muted text-[9px] leading-tight font-medium text-foreground">
@@ -157,7 +157,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Click a card to open the detail window. For unverified
+                Double-click a card to open the detail window. For unverified
                 detections with neighbor data, you'll see a label agreement
                 section with a progress bar showing how many of the 10
                 neighbors agree:
@@ -184,9 +184,15 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Click to open detail, <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+Click</code> to
-                select, <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift+Click</code> for
-                range select. A floating bar appears with: Verify, Relabel,
+                Click a card to select it. Click a second card to select the
+                range between them. After a range is selected, clicking another
+                card clears the range and starts fresh.{" "}
+                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+Click</code> to
+                toggle individual cards,{" "}
+                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift+Click</code> to
+                extend the range.
+                Double-click any card to open the detail window.
+                A floating bar appears with: Verify, Relabel,
                 Find similar, Accept suggestions, Deselect.
               </p>
               <p>

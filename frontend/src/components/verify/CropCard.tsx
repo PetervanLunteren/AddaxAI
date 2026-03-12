@@ -6,6 +6,7 @@
  * context around the detection, with an SVG overlay highlighting the bbox.
  */
 
+import { memo } from "react";
 import { Check } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -24,11 +25,12 @@ type TileSize = "S" | "M" | "L";
 interface CropCardProps {
   detection: DetectionSummary;
   selected: boolean;
-  onClick: (e: React.MouseEvent) => void;
+  onSelect: (detectionId: string, e: React.MouseEvent) => void;
+  onDoubleClick?: (detection: DetectionSummary) => void;
   tileSize?: TileSize;
 }
 
-export function CropCard({ detection, selected, onClick, tileSize = "M" }: CropCardProps) {
+export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, tileSize = "M" }: CropCardProps) {
   const isSuspicious =
     !detection.verified &&
     detection.neighbor_agreement != null &&
@@ -45,11 +47,12 @@ export function CropCard({ detection, selected, onClick, tileSize = "M" }: CropC
   return (
     <div
       className={cn(
-        "relative group cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-all",
+        "relative group cursor-pointer rounded-lg border bg-card text-card-foreground transition-[box-shadow,transform] duration-150",
         "hover:-translate-y-0.5 hover:shadow-md",
         selected && "ring-2 ring-offset-2 ring-[#0f6064]"
       )}
-      onClick={onClick}
+      onClick={(e) => onSelect(detection.detection_id, e)}
+      onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(detection); }}
     >
       {/* Crop image */}
       <div className="aspect-square bg-muted relative overflow-hidden rounded-t-lg">
@@ -131,4 +134,4 @@ export function CropCard({ detection, selected, onClick, tileSize = "M" }: CropC
       </div>
     </div>
   );
-}
+});

@@ -92,23 +92,29 @@ def upgrade() -> None:
     # 4. Rename columns on detections and update FK + indexes.
     #    batch_alter_table recreates the table under the hood on SQLite,
     #    so column renames and FK changes are applied atomically.
+    #
+    #    Note: species_taxonomy_id was never added by a prior migration,
+    #    so we ADD label_taxonomy_id instead of renaming it.
     with op.batch_alter_table("detections") as batch_op:
         # Rename columns
         batch_op.alter_column("species", new_column_name="label")
         batch_op.alter_column("species_confidence", new_column_name="label_confidence")
-        batch_op.alter_column("species_taxonomy_id", new_column_name="label_taxonomy_id")
+
+        # Add label_taxonomy_id (no prior column to rename)
+        batch_op.add_column(
+            sa.Column("label_taxonomy_id", sa.String(36), nullable=True)
+        )
 
         # Drop old indexes
         batch_op.drop_index("idx_detections_species")
         batch_op.drop_index("idx_detections_species_confidence")
-        batch_op.drop_index("idx_detections_species_taxonomy")
 
         # Create new indexes with updated names
         batch_op.create_index("idx_detections_label", ["label"])
         batch_op.create_index("idx_detections_label_confidence", ["label_confidence"])
         batch_op.create_index("idx_detections_label_taxonomy", ["label_taxonomy_id"])
 
-        # Recreate FK pointing to the renamed table
+        # Create FK pointing to the renamed table
         batch_op.create_foreign_key(
             "fk_detections_label_taxonomy_id",
             "label_taxonomy",
@@ -137,19 +143,12 @@ def downgrade() -> None:
 
         batch_op.alter_column("label", new_column_name="species")
         batch_op.alter_column("label_confidence", new_column_name="species_confidence")
-        batch_op.alter_column("label_taxonomy_id", new_column_name="species_taxonomy_id")
+
+        # Drop the column (it was added in upgrade, not renamed)
+        batch_op.drop_column("label_taxonomy_id")
 
         batch_op.create_index("idx_detections_species", ["species"])
         batch_op.create_index("idx_detections_species_confidence", ["species_confidence"])
-        batch_op.create_index("idx_detections_species_taxonomy", ["species_taxonomy_id"])
-
-        batch_op.create_foreign_key(
-            "fk_detections_species_taxonomy_id",
-            "species_taxonomy",
-            ["species_taxonomy_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
 
     # 3. Revert unique constraint name on the taxonomy table
     with op.batch_alter_table("label_taxonomy") as batch_op:

@@ -6,7 +6,7 @@
  * Supports optional label divider rows between label groups.
  */
 
-import { useRef, useMemo, useEffect, useState } from "react";
+import { memo, useCallback, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Search, Tag } from "lucide-react";
 import { CropCard } from "./CropCard";
@@ -19,6 +19,33 @@ import {
 } from "../ui/context-menu";
 import type { DetectionSummary } from "../../api/types";
 
+/**
+ * Lightweight pub/sub store that lets individual GridCells subscribe to
+ * their own selection state without re-rendering the entire CropGrid.
+ */
+/**
+ * Lightweight pub/sub store that lets individual GridCells subscribe to
+ * their own selection state without re-rendering the entire CropGrid.
+ */
+class SelectionStore {
+  ids: Set<string> = new Set();
+  private listeners = new Set<() => void>();
+
+  getSnapshot = () => this.ids;
+
+  subscribe = (cb: () => void) => {
+    this.listeners.add(cb);
+    return () => { this.listeners.delete(cb); };
+  };
+
+  /** Update data and notify subscribers. Safe to call from useLayoutEffect. */
+  update(next: Set<string>) {
+    if (next === this.ids) return;
+    this.ids = next;
+    for (const cb of this.listeners) cb();
+  }
+}
+
 export type TileSize = "S" | "M" | "L";
 
 type GridRow =
@@ -29,7 +56,7 @@ interface CropGridProps {
   detections: DetectionSummary[];
   selectedIds: Set<string>;
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
-  onCardClick: (detection: DetectionSummary) => void;
+  onDoubleClick?: (detection: DetectionSummary) => void;
   onFindSimilar?: (detectionId: string) => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
   onBackgroundClick?: () => void;
@@ -75,11 +102,83 @@ const GAP_CLASS: Record<TileSize, string> = {
   L: "gap-4 pb-4",
 };
 
+interface GridCellProps {
+  detection: DetectionSummary;
+  selectionStore: SelectionStore;
+  tileSize: TileSize;
+  onSelect: (detectionId: string, e: React.MouseEvent) => void;
+  onDoubleClick?: (detection: DetectionSummary) => void;
+  onFindSimilar?: (detectionId: string) => void;
+  onRelabel?: (detectionId: string, label: string, category: string) => void;
+}
+
+const GridCell = memo(function GridCell({
+  detection,
+  selectionStore,
+  tileSize,
+  onSelect,
+  onDoubleClick,
+  onFindSimilar,
+  onRelabel,
+}: GridCellProps) {
+  const selected = useSyncExternalStore(
+    selectionStore.subscribe,
+    () => selectionStore.getSnapshot().has(detection.detection_id),
+  );
+  const showRelabel =
+    onRelabel &&
+    detection.neighbor_top_label &&
+    detection.neighbor_top_label !== detection.label;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div data-crop-card>
+          <CropCard
+            detection={detection}
+            selected={selected}
+            tileSize={tileSize}
+            onSelect={onSelect}
+            onDoubleClick={onDoubleClick}
+          />
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {onFindSimilar && (
+          <ContextMenuItem
+            onClick={() => onFindSimilar(detection.detection_id)}
+          >
+            <Search className="h-4 w-4" />
+            Find similar
+          </ContextMenuItem>
+        )}
+        {showRelabel && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() =>
+                onRelabel(
+                  detection.detection_id,
+                  detection.neighbor_top_label!,
+                  detection.category
+                )
+              }
+            >
+              <Tag className="h-4 w-4" />
+              Relabel to {detection.neighbor_top_label}
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+});
+
 export function CropGrid({
   detections,
   selectedIds,
   onSelect,
-  onCardClick,
+  onDoubleClick,
   onFindSimilar,
   onRelabel,
   onBackgroundClick,
@@ -88,6 +187,13 @@ export function CropGrid({
 }: CropGridProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const columns = useColumns(tileSize);
+
+  // Selection store — individual GridCells subscribe to their own selection
+  // state via useSyncExternalStore, avoiding full grid re-renders.
+  const [selectionStore] = useState(() => new SelectionStore());
+  // useLayoutEffect fires synchronously after DOM mutation but before paint,
+  // so cells see updated selection before the browser paints the frame.
+  useLayoutEffect(() => { selectionStore.update(selectedIds); }, [selectedIds, selectionStore]);
 
   // Build rows: optionally insert divider rows at label transitions
   const rows = useMemo((): GridRow[] => {
@@ -198,60 +304,18 @@ export function CropGrid({
                   gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                 }}
               >
-                {row.detections.map((det) => {
-                  const showRelabel =
-                    onRelabel &&
-                    det.neighbor_top_label &&
-                    det.neighbor_top_label !== det.label;
-
-                  return (
-                    <ContextMenu key={det.detection_id}>
-                      <ContextMenuTrigger asChild>
-                        <div data-crop-card>
-                          <CropCard
-                            detection={det}
-                            selected={selectedIds.has(det.detection_id)}
-                            tileSize={tileSize}
-                            onClick={(e) => {
-                              if (e.ctrlKey || e.metaKey || e.shiftKey || selectedIds.size > 0) {
-                                onSelect(det.detection_id, e);
-                              } else {
-                                onCardClick(det);
-                              }
-                            }}
-                          />
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        {onFindSimilar && (
-                          <ContextMenuItem
-                            onClick={() => onFindSimilar(det.detection_id)}
-                          >
-                            <Search className="h-4 w-4" />
-                            Find similar
-                          </ContextMenuItem>
-                        )}
-                        {showRelabel && (
-                          <>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem
-                              onClick={() =>
-                                onRelabel(
-                                  det.detection_id,
-                                  det.neighbor_top_label!,
-                                  det.category
-                                )
-                              }
-                            >
-                              <Tag className="h-4 w-4" />
-                              Relabel to {det.neighbor_top_label}
-                            </ContextMenuItem>
-                          </>
-                        )}
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  );
-                })}
+                {row.detections.map((det) => (
+                  <GridCell
+                    key={det.detection_id}
+                    detection={det}
+                    selectionStore={selectionStore}
+                    tileSize={tileSize}
+                    onSelect={onSelect}
+                    onDoubleClick={onDoubleClick}
+                    onFindSimilar={onFindSimilar}
+                    onRelabel={onRelabel}
+                  />
+                ))}
               </div>
             </div>
           );

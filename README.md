@@ -3,8 +3,66 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 ## TODO priority 1
 
-- [ ] in the similarity veriofication flow, the shift+click doesnt work very well. Often it doesnt recognise it or something lags. Can we make the SHIFT+CLICK the default? So click is always selecting (first is start of range, second is end of range), click outside gird is deselect. double clikc is opening the modal. What do you think? Agree that this is good UX? If so,m implement, and update the guides and shortcut info panes. 
+- [ ] in the similarity veriofication flow, the shift+click doesnt work very well. Often it doesnt recognise it or something lags. Not sure, but it doesnt feel snappy and misses it often. Can we make the SHIFT+CLICK the default? So click is always selecting (first is start of range, second is end of range), click outside gird is deselect. double clikc is opening the modal. What do you think? Agree that this is good UX? If so,m implement, and update the guides and shortcut info panes. Instructions:
+* Read all MD file in root to get a understanding of the project. 
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+* Ask at least 3 clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. 
 
+
+
+
+
+- [ ] add this to the similarity verification guide and the shortcuts help etc. This needs to be clear. Make sure the info below is up to date. 
+             ┌──────────────────────────────────────────────────────────────────────┐
+             │ Click card A     → A is selected (anchor)                            │
+             │ Click card D     → A..D range selected                               │
+             │ Click card F     → F is selected (new anchor, old selection cleared) │
+             │ Double-click F   → Opens detail sheet for F                          │
+             │ Click outside    → Deselect all                                      │
+             └──────────────────────────────────────────────────────────────────────┘
+              ┌──────────────────────────────────────────────────────────────────────┐
+              │ Click A   → [A] selected (anchor)                                    │
+              │ Click D   → [A,B,C,D] selected                                       │
+              │ Click F   → [F] selected (fresh anchor)                              │
+              │ Shift+F   → [A,B,C,D,E,F] (extend, power-user)                       │
+              └──────────────────────────────────────────────────────────────────────┘
+               ┌──────────────────────────────────────────────────────────────────────┐
+               │ Click A       → [A] anchor                                           │
+               │ Click D       → [A,B,C,D] range                                      │
+               │ Ctrl+Click B  → [A,C,D] (B removed)                                  │
+               │ Ctrl+Click F  → [A,C,D,F] (F added)                                  │
+               └──────────────────────────────────────────────────────────────────────┘
+
+            ┌──────────────────────────────────────────────────────────────────────┐
+            │ Click A       → [A] anchor                                           │
+            │ Click D       → [A,B,C,D] range                                      │
+            │ DblClick C    → Detail sheet for C opens                             │
+            │                  [A,B,C,D] still selected                            │
+            └──────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────┐
+│                   Action                    │                                    Behavior                                    │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Click card A (nothing selected)             │ A selected, A becomes anchor                                                   │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Click card D (A is anchor, only A selected) │ Range A..D selected, anchor stays A                                            │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Click card F (range exists)                 │ Clear range, F selected, F is new anchor                                       │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Shift+Click                                 │ Extend from anchor (power-user, adds to existing selection)                    │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Ctrl/Cmd+Click                              │ Toggle individual card on/off                                                  │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Double-click any card                       │ Open detail sheet (always, regardless of selection state; preserves selection) │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Click outside grid                          │ Deselect all, clear anchor                                                     │
+├─────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+│ Esc                                         │ Deselect / close detail / close search (unchanged)                             │
+└─────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────┘
 
 - [ ] do a full audit on this repo. I want to clean it from redundatn files, scripts, md files, etc. Give me a report, with a short summary of its content and your recommendation (delete / keep / review). I want to clean this repo. Especially check the PROJECT_PLAN.md. Is it still relevant? Its been a while since I read it. Most of the work has been done without it. If we can remove it, are there any information in there that we want to sotre in developers.md? 
 

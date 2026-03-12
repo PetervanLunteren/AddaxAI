@@ -202,6 +202,12 @@ export function SimilarityTab({
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectionAnchorRef = useRef<string | null>(null);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    selectionAnchorRef.current = null;
+  }, []);
 
   // Detail sheet
   const [detailDetection, setDetailDetection] = useState<DetectionSummary | null>(null);
@@ -264,7 +270,7 @@ export function SimilarityTab({
     onMutate: () => setIsSorting(true),
     onSuccess: (data) => {
       setSortResult(data);
-      setSelectedIds(new Set());
+      clearSelection();
       setIsSorting(false);
     },
     onError: (err: Error) => {
@@ -297,7 +303,7 @@ export function SimilarityTab({
       }),
     onSuccess: (data) => {
       setSearchResult(data);
-      setSelectedIds(new Set());
+      clearSelection();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -325,6 +331,15 @@ export function SimilarityTab({
     return dets;
   }, [viewMode, sortResult, searchResult, verificationFilter]);
 
+  // Pre-computed index lookup for O(1) range selection
+  const idIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < allDetections.length; i++) {
+      map.set(allDetections[i].detection_id, i);
+    }
+    return map;
+  }, [allDetections]);
+
   // Unfiltered count to detect "all hidden by filters" vs "genuinely empty"
   const totalCount = useMemo(() => {
     if (viewMode === "sort" && sortResult) return sortResult.detections.length;
@@ -334,41 +349,62 @@ export function SimilarityTab({
 
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
 
-        if (e.shiftKey && prev.size > 0) {
-          // Range select
-          const lastSelected = Array.from(prev).pop()!;
-          const allIds = allDetections.map((d) => d.detection_id);
-          const startIdx = allIds.indexOf(lastSelected);
-          const endIdx = allIds.indexOf(detectionId);
-          if (startIdx >= 0 && endIdx >= 0) {
-            const [lo, hi] =
-              startIdx < endIdx
-                ? [startIdx, endIdx]
-                : [endIdx, startIdx];
-            for (let i = lo; i <= hi; i++) {
-              next.add(allIds[i]);
-            }
+      const rangeFromAnchor = (anchorIdx: number, targetIdx: number): Set<string> => {
+        const [lo, hi] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+        const next = new Set<string>();
+        for (let i = lo; i <= hi; i++) next.add(allDetections[i].detection_id);
+        return next;
+      };
+
+      if (e.shiftKey && selectionAnchorRef.current) {
+        // Shift+Click: extend range from anchor
+        setSelectedIds((prev) => {
+          const startIdx = idIndexMap.get(selectionAnchorRef.current!);
+          const endIdx = idIndexMap.get(detectionId);
+          if (startIdx != null && endIdx != null) {
+            const range = rangeFromAnchor(startIdx, endIdx);
+            // Merge with existing selection
+            for (const id of prev) range.add(id);
+            return range;
           }
-        } else if (e.ctrlKey || e.metaKey) {
-          // Toggle
+          return prev;
+        });
+      } else if (e.ctrlKey || e.metaKey) {
+        // Ctrl/Cmd+Click: toggle individual card
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
           if (next.has(detectionId)) {
             next.delete(detectionId);
+            if (detectionId === selectionAnchorRef.current) {
+              const remaining = Array.from(next);
+              selectionAnchorRef.current = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+            }
           } else {
             next.add(detectionId);
+            if (!selectionAnchorRef.current) selectionAnchorRef.current = detectionId;
           }
-        } else {
-          // Single select
-          next.clear();
-          next.add(detectionId);
-        }
-
-        return next;
-      });
+          return next;
+        });
+      } else {
+        // Plain click: anchor state machine
+        setSelectedIds((prev) => {
+          if (prev.size === 1 && selectionAnchorRef.current && !prev.has(detectionId)) {
+            // State 1 → 2: range select
+            const startIdx = idIndexMap.get(selectionAnchorRef.current);
+            const endIdx = idIndexMap.get(detectionId);
+            if (startIdx != null && endIdx != null) {
+              return rangeFromAnchor(startIdx, endIdx);
+              // anchor stays the same
+            }
+          }
+          // State 0 → 1, State 2 → 1: fresh anchor
+          selectionAnchorRef.current = detectionId;
+          return new Set([detectionId]);
+        });
+      }
     },
-    [allDetections]
+    [allDetections, idIndexMap]
   );
 
   const handleCardClick = useCallback((detection: DetectionSummary) => {
@@ -393,7 +429,7 @@ export function SimilarityTab({
   const handleCloseSearch = useCallback(() => {
     setAnchorId(null);
     setSearchResult(null);
-    setSelectedIds(new Set());
+    clearSelection();
     setViewMode("sort");
     setSearchParams(
       (prev) => {
@@ -503,7 +539,7 @@ export function SimilarityTab({
           ? { ...d, label: suggestionMap.get(d.detection_id)!, verified: true }
           : d
       );
-      setSelectedIds(new Set());
+      clearSelection();
     },
     [patchLocalDetections]
   );
@@ -517,7 +553,7 @@ export function SimilarityTab({
         if (detailDetection) {
           setDetailDetection(null);
         } else if (selectedIds.size > 0) {
-          setSelectedIds(new Set());
+          clearSelection();
         } else if (viewMode === "search") {
           handleCloseSearch();
         }
@@ -536,7 +572,7 @@ export function SimilarityTab({
             .bulkVerify(ids, true)
             .then((data) => {
               handleBulkVerify(ids);
-              setSelectedIds(new Set());
+              clearSelection();
             });
         });
         return;
@@ -571,7 +607,7 @@ export function SimilarityTab({
               ? { ...d, label: label.label ?? label.category, category: label.category, verified: true }
               : d
           );
-          setSelectedIds(new Set());
+          clearSelection();
         });
       }
     }
@@ -586,7 +622,7 @@ export function SimilarityTab({
     function handleClick(e: MouseEvent) {
       const el = e.target as HTMLElement;
       if (el.closest("[data-crop-card], button, a, input, select, [role='menu'], [role='dialog'], [data-radix-popper-content-wrapper]")) return;
-      setSelectedIds(new Set());
+      clearSelection();
     }
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
@@ -677,7 +713,7 @@ export function SimilarityTab({
             )}
             onClick={() => {
               setViewMode("sort");
-              setSelectedIds(new Set());
+              clearSelection();
             }}
           >
             Sort
@@ -691,7 +727,7 @@ export function SimilarityTab({
             )}
             onClick={() => {
               setViewMode("search");
-              setSelectedIds(new Set());
+              clearSelection();
             }}
           >
             Search
@@ -735,9 +771,10 @@ export function SimilarityTab({
                   {/* Left column: grid shortcuts */}
                   <div>
                     {[
-                      ["Click", "Open detail"],
-                      [navigator.platform.includes("Mac") ? "Cmd + Click" : "Ctrl + Click", "Select"],
-                      ["Shift + Click", "Select range"],
+                      ["Click", "Select / range"],
+                      [navigator.platform.includes("Mac") ? "Cmd + Click" : "Ctrl + Click", "Toggle select"],
+                      ["Shift + Click", "Extend range"],
+                      ["Double-click", "Open detail"],
                       ["Click outside", "Deselect all"],
                       ["Enter", "Verify selected"],
                       ["R", "Accept suggestions"],
@@ -812,7 +849,7 @@ export function SimilarityTab({
                           ? "bg-background text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
                       )}
-                      onClick={() => { setVerificationFilter("all"); setSelectedIds(new Set()); }}
+                      onClick={() => { setVerificationFilter("all"); clearSelection(); }}
                     >
                       <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
                       All ({total})
@@ -824,7 +861,7 @@ export function SimilarityTab({
                           ? "bg-background text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
                       )}
-                      onClick={() => { setVerificationFilter("unverified"); setSelectedIds(new Set()); }}
+                      onClick={() => { setVerificationFilter("unverified"); clearSelection(); }}
                     >
                       <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#71b7ba" }} />
                       Unverified ({unverified})
@@ -837,7 +874,7 @@ export function SimilarityTab({
                             ? "bg-background text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground"
                         )}
-                        onClick={() => { setVerificationFilter("suspicious"); setSelectedIds(new Set()); }}
+                        onClick={() => { setVerificationFilter("suspicious"); clearSelection(); }}
                       >
                         <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
                         Suspicious ({suspicious})
@@ -925,10 +962,10 @@ export function SimilarityTab({
             detections={allDetections}
             selectedIds={selectedIds}
             onSelect={handleSelect}
-            onCardClick={handleCardClick}
+            onDoubleClick={handleCardClick}
             onFindSimilar={handleFindSimilar}
             onRelabel={handleRelabel}
-            onBackgroundClick={() => setSelectedIds(new Set())}
+            onBackgroundClick={clearSelection}
             tileSize={tileSize}
             showLabelDividers={viewMode === "sort" && showLabelDividers}
           />
@@ -937,7 +974,7 @@ export function SimilarityTab({
 
       <BulkActionBar
         selectedIds={selectedIds}
-        onDeselectAll={() => setSelectedIds(new Set())}
+        onDeselectAll={clearSelection}
         onFindSimilar={handleFindSimilar}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}

@@ -22,7 +22,7 @@ export function SimilarityWelcomePopover({ open, onDismiss }: SimilarityWelcomeP
           <p>
             Detections are sorted by visual similarity so similar-looking crops
             appear together. This makes it easy to spot mislabels and verify in
-            bulk: select a group, confirm the label, and move on.
+            bulk: click to select, click again to select a range, then verify or relabel.
           </p>
           <p>
             Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in

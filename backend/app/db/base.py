@@ -125,6 +125,35 @@ def init_db() -> None:
 
 def _migrate_missing_columns(engine: Engine) -> None:
     """Add any missing columns to existing tables (lightweight migration)."""
+    inspector = inspect(engine)
+
+    # ── Rename species_taxonomy → label_taxonomy if the old name still exists ──
+    existing_tables = set(inspector.get_table_names())
+    if "species_taxonomy" in existing_tables and "label_taxonomy" not in existing_tables:
+        logger.info("Migrating: renaming table species_taxonomy → label_taxonomy")
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE species_taxonomy RENAME TO label_taxonomy"))
+        # Refresh inspector after schema change
+        inspector = inspect(engine)
+
+    # ── Rename species → label columns on detections (SQLite 3.25+) ──
+    det_cols = {c["name"] for c in inspector.get_columns("detections")}
+    renames: list[tuple[str, str, str]] = [
+        # (table, old_column, new_column)
+        ("detections", "species", "label"),
+        ("detections", "species_confidence", "label_confidence"),
+    ]
+    for table, old_col, new_col in renames:
+        if old_col in det_cols and new_col not in det_cols:
+            logger.info(f"Migrating: renaming {table}.{old_col} → {new_col}")
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f"ALTER TABLE {table} RENAME COLUMN {old_col} TO {new_col}"
+                ))
+    # Refresh column set after renames
+    det_cols = {c["name"] for c in inspector.get_columns("detections")}
+
+    # ── Add missing columns ──
     migrations: list[tuple[str, str, str]] = [
         # (table, column, SQL type + default)
         ("projects", "shortcut_labels", "JSON NOT NULL DEFAULT '{}'"),
@@ -136,7 +165,6 @@ def _migrate_missing_columns(engine: Engine) -> None:
             "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL",
         ),
     ]
-    inspector = inspect(engine)
     with engine.begin() as conn:
         for table, column, col_type in migrations:
             existing = {c["name"] for c in inspector.get_columns(table)}
