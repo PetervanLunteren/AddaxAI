@@ -184,16 +184,17 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Click a card to select it. Click a second card to select the
-                range between them. After a range is selected, clicking another
-                card clears the range and starts fresh.{" "}
-                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+Click</code> to
-                toggle individual cards,{" "}
+                Click a card to select it.{" "}
                 <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift+Click</code> to
-                extend the range.
-                Double-click any card to open the detail window.
+                select a range from the last clicked card.{" "}
+                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+Click</code> to
+                toggle individual cards without clearing the selection.
                 A floating bar appears with: Verify, Relabel,
-                Find similar, Accept suggestions, Deselect.
+                Find similar, Deselect, and Accept suggestions
+                (when suggestions are available).
+              </p>
+              <p>
+                Double-click any card to open the detail window.
               </p>
               <p>
                 Verified detections show a{" "}
@@ -207,7 +208,9 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
               </p>
               <ul className="list-disc list-inside space-y-1 ml-1">
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> verify selected</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">R</code> accept suggestions for selected</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">R</code> relabel selected</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code> find similar</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code> accept suggestions for selected</li>
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+A</code> select all</li>
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Escape</code> deselect</li>
               </ul>

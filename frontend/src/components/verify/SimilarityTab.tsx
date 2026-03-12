@@ -173,6 +173,7 @@ export function SimilarityTab({
 
   // Help sheet + welcome popover
   const [helpOpen, setHelpOpen] = useState(false);
+  const [relabelOpen, setRelabelOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
     () => !localStorage.getItem("addaxai:similarityWelcomeDismissed")
   );
@@ -349,59 +350,37 @@ export function SimilarityTab({
 
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
-
-      const rangeFromAnchor = (anchorIdx: number, targetIdx: number): Set<string> => {
-        const [lo, hi] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
-        const next = new Set<string>();
-        for (let i = lo; i <= hi; i++) next.add(allDetections[i].detection_id);
-        return next;
-      };
-
       if (e.shiftKey && selectionAnchorRef.current) {
-        // Shift+Click: extend range from anchor
+        // Shift+Click: select range from anchor to target
         setSelectedIds((prev) => {
           const startIdx = idIndexMap.get(selectionAnchorRef.current!);
           const endIdx = idIndexMap.get(detectionId);
           if (startIdx != null && endIdx != null) {
-            const range = rangeFromAnchor(startIdx, endIdx);
-            // Merge with existing selection
-            for (const id of prev) range.add(id);
-            return range;
+            const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+            const next = new Set(prev);
+            for (let i = lo; i <= hi; i++) next.add(allDetections[i].detection_id);
+            return next;
           }
           return prev;
         });
+        // anchor stays — allows repeated Shift+Click to adjust range
       } else if (e.ctrlKey || e.metaKey) {
         // Ctrl/Cmd+Click: toggle individual card
         setSelectedIds((prev) => {
           const next = new Set(prev);
           if (next.has(detectionId)) {
             next.delete(detectionId);
-            if (detectionId === selectionAnchorRef.current) {
-              const remaining = Array.from(next);
-              selectionAnchorRef.current = remaining.length > 0 ? remaining[remaining.length - 1] : null;
-            }
           } else {
             next.add(detectionId);
-            if (!selectionAnchorRef.current) selectionAnchorRef.current = detectionId;
           }
           return next;
         });
+        // Move anchor to this card so Shift+Click extends from here
+        selectionAnchorRef.current = detectionId;
       } else {
-        // Plain click: anchor state machine
-        setSelectedIds((prev) => {
-          if (prev.size === 1 && selectionAnchorRef.current && !prev.has(detectionId)) {
-            // State 1 → 2: range select
-            const startIdx = idIndexMap.get(selectionAnchorRef.current);
-            const endIdx = idIndexMap.get(detectionId);
-            if (startIdx != null && endIdx != null) {
-              return rangeFromAnchor(startIdx, endIdx);
-              // anchor stays the same
-            }
-          }
-          // State 0 → 1, State 2 → 1: fresh anchor
-          selectionAnchorRef.current = detectionId;
-          return new Set([detectionId]);
-        });
+        // Plain click: select only this card, deselect all others
+        selectionAnchorRef.current = detectionId;
+        setSelectedIds(new Set([detectionId]));
       }
     },
     [allDetections, idIndexMap]
@@ -580,7 +559,19 @@ export function SimilarityTab({
 
       if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
         e.preventDefault();
-        // Relabel selected to their neighbor suggestions
+        setRelabelOpen((prev) => !prev);
+        return;
+      }
+
+      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+        e.preventDefault();
+        const first = selectedIds.values().next().value;
+        if (first) handleFindSimilar(first);
+        return;
+      }
+
+      if ((e.key === "a" || e.key === "A") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+        e.preventDefault();
         const selectedDets = allDetections.filter((d) => selectedIds.has(d.detection_id));
         relabelToSuggestions(selectedDets);
         return;
@@ -614,7 +605,7 @@ export function SimilarityTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions, shortcutLabels, patchLocalDetections]);
+  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions, shortcutLabels, patchLocalDetections, handleFindSimilar]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -771,13 +762,15 @@ export function SimilarityTab({
                   {/* Left column: grid shortcuts */}
                   <div>
                     {[
-                      ["Click", "Select / range"],
+                      ["Click", "Select"],
                       [navigator.platform.includes("Mac") ? "Cmd + Click" : "Ctrl + Click", "Toggle select"],
                       ["Shift + Click", "Extend range"],
                       ["Double-click", "Open detail"],
                       ["Click outside", "Deselect all"],
                       ["Enter", "Verify selected"],
-                      ["R", "Accept suggestions"],
+                      ["R", "Relabel selected"],
+                      ["F", "Find similar"],
+                      ["A", "Accept suggestions"],
                       [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all"],
                       ["Esc", "Deselect / close"],
                     ].map(([key, action]) => (
@@ -982,6 +975,8 @@ export function SimilarityTab({
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
         projectId={projectId}
+        relabelOpen={relabelOpen}
+        onRelabelOpenChange={setRelabelOpen}
         suggestionCount={
           allDetections.filter(
             (d) => selectedIds.has(d.detection_id) && !d.verified && d.neighbor_top_label && d.neighbor_top_label !== d.label

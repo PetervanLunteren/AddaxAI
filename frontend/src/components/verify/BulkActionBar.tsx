@@ -28,6 +28,9 @@ interface BulkActionBarProps {
   /** Accept neighbor suggestions for selected detections. */
   onAcceptSuggestions?: () => void;
   projectId?: string;
+  /** Controlled state for the relabel picker (keyboard shortcut). */
+  relabelOpen?: boolean;
+  onRelabelOpenChange?: (open: boolean) => void;
 }
 
 export function BulkActionBar({
@@ -42,9 +45,13 @@ export function BulkActionBar({
   suggestionCount = 0,
   onAcceptSuggestions,
   projectId,
+  relabelOpen: relabelOpenProp,
+  onRelabelOpenChange,
 }: BulkActionBarProps) {
   const queryClient = useQueryClient();
-  const [relabelOpen, setRelabelOpen] = useState(false);
+  const [relabelOpenLocal, setRelabelOpenLocal] = useState(false);
+  const relabelOpen = relabelOpenProp ?? relabelOpenLocal;
+  const setRelabelOpen = onRelabelOpenChange ?? setRelabelOpenLocal;
   const count = selectedIds.size;
   const ids = Array.from(selectedIds);
 
@@ -91,6 +98,7 @@ export function BulkActionBar({
       >
         <Check className="h-4 w-4 mr-1" />
         Verify
+        <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">⏎</kbd>
       </Button>
 
       <div className="relative">
@@ -101,6 +109,7 @@ export function BulkActionBar({
         >
           <Tag className="h-4 w-4 mr-1" />
           Relabel
+          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">R</kbd>
         </Button>
         <div className="absolute bottom-full mb-2 left-0 z-50">
           <LabelPicker
@@ -129,6 +138,7 @@ export function BulkActionBar({
       >
         <Search className="h-4 w-4 mr-1" />
         Find similar
+        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">F</kbd>
       </Button>
 
       {suggestionCount > 0 && onAcceptSuggestions && (
@@ -139,12 +149,14 @@ export function BulkActionBar({
         >
           <Tag className="h-4 w-4 mr-1" />
           Accept {suggestionCount} suggestion{suggestionCount !== 1 ? "s" : ""}
+          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">A</kbd>
         </Button>
       )}
 
-      <Button variant="ghost" size="sm" onClick={onDeselectAll}>
+      <Button variant="outline" size="sm" onClick={onDeselectAll}>
         <X className="h-4 w-4 mr-1" />
         Deselect
+        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">Esc</kbd>
       </Button>
     </div>
   );
