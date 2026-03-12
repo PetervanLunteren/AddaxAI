@@ -1,17 +1,9 @@
 ## TODO priority 1
-- [ ] do a full audit on this repo. I want to clean it from redundatn files, scripts, md files, etc. Give me a report, with a short summary of its content and your recommendation (delete / keep / review). I want to clean this repo. Especially check the PROJECT_PLAN.md. Is it still relevant? Its been a while since I read it. Most of the work has been done without it. If we can remove it, are there any information in there that we want to sotre in developers.md? 
-
 - [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
-
 - [ ] We should probabaly have something to tag the deteciton as a "False detection" in the similarity verification process. Right? In the event verification users would simply remove the box ("this is not an animal at all"), but in similarity verification it is a bit harder... What would you suggest? What is good UX? 
-
 - [ ] do we need to add anythoing about this testing suite to the README.md / DEVELOPERS.md / other MD files? Or is it already there?
-
 - [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
-
-
 - [x] Can we confirm that the smoothing works for both taxonomies returned by SpeciesNet and taxonomies returned by other CLS models? 
-
 - [x] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
 - [x] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
