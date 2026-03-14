@@ -1,13 +1,11 @@
 ## TODO priority 1
-- [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
-- [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
+- [ ] sometimes if you go to the a projects settings page, the dropdown manu value of "Event smoothing" is empty. Investigate whats going on there and why it is not always showing the selected value. 
 
 ## TODO priority 2
-- [ ]
+- [ ] Make sure a classification model is not required for a project. User can also just go with a megadetector version, and then do the identificaiton themselves. 
 
 ## TODO priority 3
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
-- [ ] make the backgrounds of all modals not only overlay dark, bot also vague. 
 - [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
 
 ## TODO after beta version

@@ -318,6 +318,114 @@ def test_reload_raw_classifications(deployment_scaffold):
     assert all(d.label == "lion" for d in dets)
 
 
+def test_verified_detections_skipped_during_reprocessing(deployment_scaffold):
+    """Verified detections keep their labels when smoothed results are applied."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+
+    # Verify initial state: all lion
+    dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    assert len(dets) == 3
+    assert all(d.label == "lion" for d in dets)
+
+    # Mark first detection as verified
+    dets[0].verified = True
+    dets[0].verified_at = datetime.utcnow()
+    db.flush()
+
+    # Build smoothed results changing all 3 to zebra
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == s["deployment"].id)
+        .order_by(File.timestamp.asc())
+        .all()
+    )
+    smoothed_images = []
+    for f in files:
+        rel = str(Path(f.file_path).relative_to(deploy_dir))
+        smoothed_images.append({
+            "file": rel,
+            "detections": [
+                {"category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
+                 "classifications": [[2, 0.9]]},
+            ],
+        })
+
+    smoothed = build_detection_json(
+        smoothed_images,
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["skipped_verified"] == 1
+    assert counts["updated"] == 2
+
+    # Verified detection keeps original label; others updated
+    updated_dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    assert updated_dets[0].label == "lion"
+    assert updated_dets[1].label == "zebra"
+    assert updated_dets[2].label == "zebra"
+
+
+def test_verified_detections_skipped_during_raw_reload(deployment_scaffold):
+    """Verified detections survive reload_raw_classifications_from_json()."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    json_path = _load_basic_images(s)
+
+    # Smoothing: change all to zebra
+    files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
+    smoothed_images = []
+    for f in files:
+        rel = str(Path(f.file_path).relative_to(deploy_dir))
+        smoothed_images.append({
+            "file": rel,
+            "detections": [
+                {"category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
+                 "classifications": [[2, 0.9]]},
+            ],
+        })
+
+    smoothed = build_detection_json(
+        smoothed_images,
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+    update_database_from_smoothed_results(
+        s["deployment"].id, smoothed, deploy_dir, db
+    )
+
+    # Verify all are now zebra
+    dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    assert all(d.label == "zebra" for d in dets)
+
+    # Mark first detection as verified (while labeled "zebra")
+    dets[0].verified = True
+    dets[0].verified_at = datetime.utcnow()
+    db.flush()
+
+    # Reload raw → would revert to lion, but verified detection should be protected
+    counts = reload_raw_classifications_from_json(
+        deployment_id=s["deployment"].id,
+        json_path=json_path,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["skipped_verified"] == 1
+
+    reloaded_dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    assert reloaded_dets[0].label == "zebra"  # protected
+    assert reloaded_dets[1].label == "lion"   # reverted
+    assert reloaded_dets[2].label == "lion"   # reverted
+
+
 def test_build_sequence_groups_by_interval(deployment_scaffold):
     """Files within interval → same seq_id; gap > interval → different seq_id."""
     s = deployment_scaffold

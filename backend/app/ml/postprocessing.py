@@ -396,6 +396,7 @@ def update_database_from_smoothed_results(
     updated = 0
     unchanged = 0
     errors = 0
+    skipped_verified = 0
 
     # Track which files had label changes (for observation_type recomputation)
     changed_file_ids: set[str] = set()
@@ -419,6 +420,12 @@ def update_database_from_smoothed_results(
                 db_det = detection_lookup.get(key)
                 if db_det is None:
                     errors += 1
+                    continue
+
+                # Preserve human-verified detections
+                if db_det.verified:
+                    skipped_verified += 1
+                    unchanged += 1
                     continue
 
                 # Get smoothed top-1 classification
@@ -466,10 +473,16 @@ def update_database_from_smoothed_results(
     db.commit()
 
     logger.info(
-        f"Database update complete: {updated} updated, {unchanged} unchanged, {errors} errors"
+        f"Database update complete: {updated} updated, {unchanged} unchanged, "
+        f"{errors} errors, {skipped_verified} skipped (verified)"
     )
 
-    return {"updated": updated, "unchanged": unchanged, "errors": errors}
+    return {
+        "updated": updated,
+        "unchanged": unchanged,
+        "errors": errors,
+        "skipped_verified": skipped_verified,
+    }
 
 
 def reload_raw_classifications_from_json(
