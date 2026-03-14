@@ -466,14 +466,13 @@ function EventCard({
           const dh = imgH * scale;
           const ox = (VW - dw) / 2;
           const oy = (VH - dh) / 2;
-          let d = `M0,0H${VW}V${VH}H0Z`;
+          const maskId = `m-card-${event.representative_file_id}`;
           const boxes = dets.map((det) => {
             const bx = ox + det.bbox_x * dw;
             const by = oy + det.bbox_y * dh;
             const bw = det.bbox_width * dw;
             const bh = det.bbox_height * dh;
             const color = getCategoryColor(det.category);
-            d += `M${bx},${by}h${bw}v${bh}h${-bw}Z`;
             return { bx, by, bw, bh, color };
           });
           return (
@@ -481,7 +480,15 @@ function EventCard({
               className="absolute inset-0 w-full h-full pointer-events-none"
               viewBox={`0 0 ${VW} ${VH}`}
             >
-              <path fillRule="evenodd" d={d} fill="rgba(0,0,0,0.35)" />
+              <defs>
+                <mask id={maskId}>
+                  <rect width={VW} height={VH} fill="white" />
+                  {boxes.map((b, i) => (
+                    <rect key={i} x={b.bx} y={b.by} width={b.bw} height={b.bh} rx={4} fill="black" />
+                  ))}
+                </mask>
+              </defs>
+              <rect width={VW} height={VH} fill="rgba(0,0,0,0.55)" mask={`url(#${maskId})`} />
               {boxes.map((b, i) => (
                 <rect
                   key={i}
@@ -489,11 +496,11 @@ function EventCard({
                   y={b.by}
                   width={b.bw}
                   height={b.bh}
-                  rx={2}
+                  rx={4}
                   fill="none"
                   stroke={b.color}
-                  strokeWidth={1.5}
-                  opacity={0.5}
+                  strokeWidth={2.5}
+                  opacity={1}
                 />
               ))}
             </svg>
