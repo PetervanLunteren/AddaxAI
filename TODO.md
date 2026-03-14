@@ -3,7 +3,7 @@
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
 
 ## TODO priority 2
-- [ ] make the pbars for processing more compact. Take the information that is now below it and put that in the pbar description with icons. SO it would be something like "Running... (file-icon) 18 of 46 - (elapsed time icon) 00:06 - etc. Then make the modal wider so it feels less cramped. 
+- [ ]
 
 ## TODO priority 3
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
