@@ -8,7 +8,7 @@
 
 import { memo, useCallback, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Search, Tag } from "lucide-react";
+import { Ban, Search, Tag } from "lucide-react";
 import { CropCard } from "./CropCard";
 import {
   ContextMenu,
@@ -59,6 +59,7 @@ interface CropGridProps {
   onDoubleClick?: (detection: DetectionSummary) => void;
   onFindSimilar?: (detectionId: string) => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
+  onMarkFalse?: (detectionId: string) => void;
   onBackgroundClick?: () => void;
   tileSize?: TileSize;
   showLabelDividers?: boolean;
@@ -110,6 +111,7 @@ interface GridCellProps {
   onDoubleClick?: (detection: DetectionSummary) => void;
   onFindSimilar?: (detectionId: string) => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
+  onMarkFalse?: (detectionId: string) => void;
 }
 
 const GridCell = memo(function GridCell({
@@ -120,6 +122,7 @@ const GridCell = memo(function GridCell({
   onDoubleClick,
   onFindSimilar,
   onRelabel,
+  onMarkFalse,
 }: GridCellProps) {
   const selected = useSyncExternalStore(
     selectionStore.subscribe,
@@ -169,6 +172,17 @@ const GridCell = memo(function GridCell({
             </ContextMenuItem>
           </>
         )}
+        {onMarkFalse && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => onMarkFalse(detection.detection_id)}
+            >
+              <Ban className="h-4 w-4" />
+              Mark as false detection
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -181,6 +195,7 @@ export function CropGrid({
   onDoubleClick,
   onFindSimilar,
   onRelabel,
+  onMarkFalse,
   onBackgroundClick,
   tileSize = "M",
   showLabelDividers = false,
@@ -314,6 +329,7 @@ export function CropGrid({
                     onDoubleClick={onDoubleClick}
                     onFindSimilar={onFindSimilar}
                     onRelabel={onRelabel}
+                    onMarkFalse={onMarkFalse}
                   />
                 ))}
               </div>

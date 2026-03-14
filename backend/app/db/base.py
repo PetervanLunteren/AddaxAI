@@ -127,15 +127,6 @@ def _migrate_missing_columns(engine: Engine) -> None:
     """Add any missing columns to existing tables (lightweight migration)."""
     inspector = inspect(engine)
 
-    # ── Rename species_taxonomy → label_taxonomy if the old name still exists ──
-    existing_tables = set(inspector.get_table_names())
-    if "species_taxonomy" in existing_tables and "label_taxonomy" not in existing_tables:
-        logger.info("Migrating: renaming table species_taxonomy → label_taxonomy")
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE species_taxonomy RENAME TO label_taxonomy"))
-        # Refresh inspector after schema change
-        inspector = inspect(engine)
-
     # ── Rename species → label columns on detections (SQLite 3.25+) ──
     det_cols = {c["name"] for c in inspector.get_columns("detections")}
     renames: list[tuple[str, str, str]] = [

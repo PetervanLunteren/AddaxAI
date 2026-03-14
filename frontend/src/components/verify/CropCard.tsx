@@ -31,7 +31,10 @@ interface CropCardProps {
 }
 
 export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, tileSize = "M" }: CropCardProps) {
+  const isFalseDetection =
+    detection.label === "false detection" && detection.verified;
   const isSuspicious =
+    !isFalseDetection &&
     !detection.verified &&
     detection.neighbor_agreement != null &&
     detection.neighbor_agreement < 0.7;
@@ -110,10 +113,11 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
       <div className="px-1.5 py-1">
         <div className="flex items-center justify-center gap-0.5 min-w-0">
           <Badge
-            variant={isSuspicious ? "outline" : "default"}
+            variant={isFalseDetection ? "secondary" : isSuspicious ? "outline" : "default"}
             className={cn(
               pillSize, "capitalize",
               hasSuggestion ? "max-w-[50%]" : "max-w-full",
+              isFalseDetection && "bg-muted text-muted-foreground hover:bg-muted",
               isSuspicious && "border-transparent bg-[#882000] text-white hover:bg-[#882000]"
             )}
           >

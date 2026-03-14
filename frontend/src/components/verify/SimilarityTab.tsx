@@ -467,8 +467,41 @@ export function SimilarityTab({
       patchLocalDetections((d) =>
         idSet.has(d.detection_id) ? { ...d, label, category, verified: true } : d
       );
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     },
-    [patchLocalDetections]
+    [patchLocalDetections, queryClient]
+  );
+
+  const handleMarkFalse = useCallback(
+    (ids: string[]) => {
+      const idSet = new Set(ids);
+      detectionsApi
+        .bulkRelabel(ids, "false detection", undefined)
+        .then(() => {
+          patchLocalDetections((d) =>
+            idSet.has(d.detection_id)
+              ? { ...d, label: "false detection", verified: true }
+              : d
+          );
+          clearSelection();
+          queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+        })
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [patchLocalDetections, clearSelection, queryClient]
+  );
+
+  const handleBulkMarkFalse = useCallback(
+    (ids: string[]) => {
+      const idSet = new Set(ids);
+      patchLocalDetections((d) =>
+        idSet.has(d.detection_id)
+          ? { ...d, label: "false detection", verified: true }
+          : d
+      );
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+    },
+    [patchLocalDetections, queryClient]
   );
 
   const handleBulkVerify = useCallback(
@@ -577,6 +610,12 @@ export function SimilarityTab({
         return;
       }
 
+      if ((e.key === "x" || e.key === "X") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+        e.preventDefault();
+        handleMarkFalse(Array.from(selectedIds));
+        return;
+      }
+
       if (e.key === "a" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         // Select all visible
@@ -605,7 +644,7 @@ export function SimilarityTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions, shortcutLabels, patchLocalDetections, handleFindSimilar]);
+  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions, shortcutLabels, patchLocalDetections, handleFindSimilar, handleMarkFalse]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -768,6 +807,7 @@ export function SimilarityTab({
                       ["Double-click", "Open detail"],
                       ["Click outside", "Deselect all"],
                       ["Enter", "Verify selected"],
+                      ["X", "Mark false detection"],
                       ["R", "Relabel selected"],
                       ["F", "Find similar"],
                       ["A", "Accept suggestions"],
@@ -958,6 +998,7 @@ export function SimilarityTab({
             onDoubleClick={handleCardClick}
             onFindSimilar={handleFindSimilar}
             onRelabel={handleRelabel}
+            onMarkFalse={(detectionId) => handleMarkFalse([detectionId])}
             onBackgroundClick={clearSelection}
             tileSize={tileSize}
             showLabelDividers={viewMode === "sort" && showLabelDividers}
@@ -974,6 +1015,7 @@ export function SimilarityTab({
         onActionComplete={handleActionComplete}
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
+        onMarkFalse={handleBulkMarkFalse}
         projectId={projectId}
         relabelOpen={relabelOpen}
         onRelabelOpenChange={setRelabelOpen}

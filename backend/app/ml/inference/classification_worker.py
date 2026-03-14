@@ -1,21 +1,13 @@
 """
-Persistent classification worker for subprocess execution.
+One-shot batch classification worker for subprocess execution.
 
-This worker process runs in the model's designated environment and maintains
-a loaded model in memory to process multiple classification requests efficiently.
+Usage: python classification_worker.py <model_dir> <model_path> <input_json> <output_json>
 
-The worker loads the model's inference.py file, instantiates the ModelInference
-class, and calls its methods to perform classifications.
-
-Communication via stdin/stdout using JSON:
-- Input: {"command": "classify", "image_path": "...", "bbox": [x,y,w,h]}
-- Output: {"success": true, "classifications": [["label", conf], ...]}
-- Input: {"command": "get_class_names"}
-- Output: {"success": true, "class_names": {"1": "label1", ...}}
-- Shutdown: {"command": "stop"} → {"status": "stopped"}
+Reads all detections from input_json, classifies them, writes results to output_json.
+Progress and status are streamed via stderr as JSON lines.
 
 Created by Claude Code on 2026-01-05
-Updated on 2026-01-13 - Migrated to class-based interface
+Updated on 2026-03-14 - Simplified from persistent worker to one-shot batch
 """
 
 from __future__ import annotations
@@ -113,18 +105,6 @@ def validate_interface(model_inference):
             raise ValueError(f"Required attribute '{method_name}' is not callable")
 
 
-def send_response(data: dict) -> None:
-    """
-    Send JSON response to stdout.
-
-    Args:
-        data: Dictionary to send as JSON
-    """
-    json_str = json.dumps(data)
-    print(json_str, flush=True)
-    sys.stdout.flush()
-
-
 def detect_device_name(gpu_available: bool) -> str:
     """Detect friendly device name from ML frameworks loaded in this process."""
     if not gpu_available:
@@ -153,210 +133,114 @@ def detect_device_name(gpu_available: bool) -> str:
     return "GPU"
 
 
+def emit(data: dict) -> None:
+    """Emit a JSON line to stderr for the parent process."""
+    print(json.dumps(data), file=sys.stderr, flush=True)
+
+
 def main():
-    """Main worker loop."""
-    if len(sys.argv) != 3:
+    """One-shot batch classification: load model, classify all items, write results, exit."""
+    if len(sys.argv) != 5:
         print(
-            f"Usage: {sys.argv[0]} <model_dir> <model_path>",
+            f"Usage: {sys.argv[0]} <model_dir> <model_path> <input_json> <output_json>",
             file=sys.stderr,
         )
         sys.exit(1)
 
     model_dir = Path(sys.argv[1])
     model_path = Path(sys.argv[2])
+    input_json = Path(sys.argv[3])
+    output_json = Path(sys.argv[4])
 
     try:
         # Load and instantiate ModelInference class
         model_inference = load_inference_class(model_dir, model_path)
-
-        # Validate interface
         validate_interface(model_inference)
 
-        # Check GPU
+        # Check GPU and load model
         gpu_available = model_inference.check_gpu()
-
-        # Load model (ONCE)
         model_inference.load_model()
-
-        # Detect device name from loaded framework
         device_name = detect_device_name(gpu_available)
 
-        # Send ready signal FIRST (before any stderr logging to avoid deadlock)
-        send_response(
-            {"status": "ready", "gpu_available": gpu_available, "compute_device": device_name}
-        )
+        # Signal ready with device info
+        emit({"status": "ready", "compute_device": device_name})
 
-        # Now safe to log to stderr (after ready signal sent)
-        print(
-            f"[Worker] GPU available: {gpu_available}, Device: {device_name}",
-            file=sys.stderr,
-            flush=True,
-        )
-        print("[Worker] Model loaded and ready", file=sys.stderr, flush=True)
-        print("[Worker] Entering request loop", file=sys.stderr, flush=True)
-        while True:
+    except Exception as e:
+        print(f"[Worker] Fatal error during startup: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        # Read input
+        with open(input_json) as f:
+            data = json.load(f)
+
+        items = data["items"]
+        total = len(items)
+        print(f"[Worker DEBUG] Read {total} items from {input_json}", file=sys.stderr, flush=True)
+
+        # Get class names
+        class_names = model_inference.get_class_names()
+        print(f"[Worker DEBUG] Got {len(class_names)} class names", file=sys.stderr, flush=True)
+
+        # Classify each item
+        results = []
+        for i, item in enumerate(items):
             try:
-                # Read command from stdin
-                line = sys.stdin.readline()
-                if not line:
-                    # EOF - parent process closed pipe
-                    print("[Worker] EOF detected, shutting down", file=sys.stderr)
-                    break
+                image_path = Path(item["image_path"])
+                bbox = tuple(item["bbox"])
 
-                line = line.strip()
-                if not line:
+                if not image_path.exists():
+                    results.append({"success": False, "error": f"Image not found: {image_path}"})
                     continue
 
-                # Parse command
-                try:
-                    request = json.loads(line)
-                except json.JSONDecodeError as e:
-                    send_response(
-                        {
-                            "success": False,
-                            "error": f"Invalid JSON: {e}",
-                            "error_type": "JSONDecodeError",
-                        }
-                    )
+                image = Image.open(image_path)
+                crop = model_inference.get_crop(image, bbox)
+
+                if crop is None:
+                    results.append({
+                        "success": False,
+                        "error": f"Invalid crop for bbox {bbox} (too small or out of bounds)",
+                    })
                     continue
 
-                command = request.get("command")
+                classifications = model_inference.get_classification(crop)
 
-                if command == "stop":
-                    print("[Worker] Stop command received", file=sys.stderr)
-                    send_response({"status": "stopped"})
-                    break
+                if not classifications:
+                    results.append({
+                        "success": False,
+                        "error": f"Classification returned empty results for bbox {bbox}",
+                    })
+                    continue
 
-                elif command == "classify":
-                    # Extract parameters
-                    image_path = Path(request["image_path"])
-                    bbox = tuple(request["bbox"])
-
-                    if len(bbox) != 4:
-                        send_response(
-                            {
-                                "success": False,
-                                "error": f"Invalid bbox length: {len(bbox)}, expected 4",
-                                "error_type": "ValueError",
-                            }
-                        )
-                        continue
-
-                    # Load image
-                    if not image_path.exists():
-                        send_response(
-                            {
-                                "success": False,
-                                "error": f"Image not found: {image_path}",
-                                "error_type": "FileNotFoundError",
-                            }
-                        )
-                        continue
-
-                    image = Image.open(image_path)
-
-                    # Get crop
-                    crop = model_inference.get_crop(image, bbox)
-
-                    # Check if crop is valid
-                    if crop is None:
-                        print(
-                            f"[Worker] Invalid crop for bbox {bbox} on image {image_path.name} "
-                            f"(too small or out of bounds)",
-                            file=sys.stderr,
-                        )
-                        send_response(
-                            {
-                                "success": False,
-                                "error": (
-                                    f"Invalid crop for bbox {bbox} "
-                                    f"(too small or out of bounds)"
-                                ),
-                                "error_type": "CropError",
-                            }
-                        )
-                        continue
-
-                    # Run classification
-                    results = model_inference.get_classification(crop)
-
-                    # Check if results are empty
-                    if not results:
-                        print(
-                            f"[Worker] Empty classification results "
-                            f"for bbox {bbox} on image {image_path.name}",
-                            file=sys.stderr,
-                        )
-                        send_response(
-                            {
-                                "success": False,
-                                "error": f"Classification returned empty results for bbox {bbox}",
-                                "error_type": "EmptyClassification",
-                            }
-                        )
-                        continue
-
-                    # Sort by confidence descending (so parent always gets highest confidence first)
-                    # This way model developers don't need to duplicate
-                    # sorting logic in each inference.py
-                    sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
-
-                    # Send results
-                    send_response(
-                        {
-                            "success": True,
-                            "classifications": sorted_results,
-                        }
-                    )
-
-                elif command == "get_class_names":
-                    # Get class names from model
-                    class_names = model_inference.get_class_names()
-
-                    # Send results
-                    send_response(
-                        {
-                            "success": True,
-                            "class_names": class_names,
-                        }
-                    )
-
-                else:
-                    send_response(
-                        {
-                            "success": False,
-                            "error": f"Unknown command: {command}",
-                            "error_type": "ValueError",
-                        }
-                    )
+                # Sort by confidence descending
+                sorted_results = sorted(classifications, key=lambda x: x[1], reverse=True)
+                results.append({"success": True, "classifications": sorted_results})
 
             except Exception as e:
-                # Classification error - send error but keep worker alive
-                print(f"[Worker] Classification error: {e}", file=sys.stderr)
-                traceback.print_exc(file=sys.stderr)
-                send_response(
-                    {
-                        "success": False,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    }
-                )
+                results.append({"success": False, "error": str(e)})
 
-        print("[Worker] Exiting cleanly", file=sys.stderr)
+            # Emit progress periodically (every item — parent decides how to throttle)
+            if (i + 1) % 5 == 0 or (i + 1) == total:
+                emit({"current": i + 1, "total": total})
+
+        # Write output
+        success_count = sum(1 for r in results if r.get("success"))
+        fail_count = len(results) - success_count
+        print(
+            f"[Worker DEBUG] Done: {success_count} succeeded, {fail_count} failed, "
+            f"writing to {output_json}",
+            file=sys.stderr, flush=True,
+        )
+
+        with open(output_json, "w") as f:
+            json.dump({"class_names": class_names, "results": results}, f)
+
         sys.exit(0)
 
     except Exception as e:
-        # Startup error - worker cannot continue
-        print(f"[Worker] Fatal error during startup: {e}", file=sys.stderr)
+        print(f"[Worker] Fatal error during classification: {e}", file=sys.stderr, flush=True)
         traceback.print_exc(file=sys.stderr)
-        send_response(
-            {
-                "success": False,
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "fatal": True,
-            }
-        )
         sys.exit(1)
 
 

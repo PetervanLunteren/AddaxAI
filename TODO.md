@@ -1,13 +1,9 @@
 ## TODO priority 1
 - [ ] "Does not protect detections from reprocessing — if you rerun analysis, smoothing/postprocessing will overwrite labels on verified detections too" -> this is wrong! HUman verified is always better than ML perdictions. 
-- [ ] We should probabaly have something to tag the deteciton as a "False detection" in the similarity verification process. Right? In the event verification users would simply remove the box ("this is not an animal at all"), but in similarity verification it is a bit harder... What would you suggest? What is good UX? 
-- [ ] do we need to add anythoing about this testing suite to the README.md / DEVELOPERS.md / other MD files? Or is it already there?
-- [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as siomple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
-- [x] Can we confirm that the smoothing works for both taxonomies returned by SpeciesNet and taxonomies returned by other CLS models? 
-- [x] Investiagte whether we can make the event smoothing more aggresive. And whether if wouold be translatable to a slider of some kind, or a dropdown with a few categories like mild, normal, aggresive, very aggresive, or simething like that. 
-- [x] build a proper test infrascturture where we can keep adding tests. Add some basic ones to fill the test suite. 
+- [ ] Apparently "the classification worker avoids reloading the model for each deployment but is more complex to implement and manage". Should we make it simple and just batch process it every time again for each deployment and task (img / vid)? It adds a bit of model loading, but I would like to keep it as simple as possible. Investigate what is currently happening and report the options to me. What is possible to make it more simple and what would be the benefit? Is it a major refactor? 
+- [ ] can we make the spotlight effect clearer in the grid thumbs? So outside the bbox more 
+  dark, and the border more thick. Also, the overlapping bboxes whould not be dark. This is fixed in the large image view, but aparently in the thumbs bbox overlay it is not. The uniion of the bbooxes should not be dark. 
 - [ ] is there a way that you can read the console.log yourself without me having to copy paste it every time?
-- [x] do not use instances of "blank", "false detection", "vide", "no cv result", (case insensitive) into the smoothing function and do not load into the DB. They should remain in the JSON as raw data, but should otherwise be ignored. 
 
 ## TODO priority 2
 - [ ] make the pbars for processing more compact. Take the information that is now below it and put that in the pbar description with icons. SO it would be something like "Running... (file-icon) 18 of 46 - (elapsed time icon) 00:06 - etc. Then make the modal wider so it feels less cramped. 

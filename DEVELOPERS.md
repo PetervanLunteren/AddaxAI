@@ -49,6 +49,34 @@ ruff check app tests --fix    # auto-fix import sorting (I001) and unused import
 
 The max line length is **100 characters** (configured in `pyproject.toml`). This is the #1 source of CI failures — keep lines short.
 
+## Testing
+
+Backend tests use **pytest** with an in-memory SQLite database. Each test gets a fresh DB session that rolls back after the test, so tests are fully isolated.
+
+```bash
+cd backend
+pytest                        # run all tests
+pytest tests/api/             # run only API tests
+pytest tests/ml/              # run only ML/taxonomy tests
+pytest tests/integration/     # run integration tests
+pytest -x                     # stop on first failure
+pytest -k "test_label_tree"   # run tests matching a name pattern
+```
+
+Coverage is collected automatically (`--cov=app` in `pyproject.toml`).
+
+**Test structure:**
+
+| Directory | What it tests |
+|-----------|---------------|
+| `tests/api/` | API endpoints via FastAPI `TestClient` |
+| `tests/ml/` | ML utilities (taxonomy parsing, rollup, postprocessing) |
+| `tests/integration/` | Multi-step pipelines (event generation, detection pipeline) |
+| `tests/models/` | SQLAlchemy model constraints and relationships |
+| `tests/` (root) | Standalone unit tests (scoring, websocket, etc.) |
+
+**Writing tests:** Use the factory helpers in `tests/conftest.py` (`make_project`, `make_site`, `make_deployment`, `make_file`, `make_detection`, `make_event_with_files`) to build test data. Use the `client` fixture for API tests and the `db` fixture for direct DB tests.
+
 ## Best frame selection (videos)
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:

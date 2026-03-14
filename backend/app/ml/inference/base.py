@@ -139,35 +139,12 @@ class DetectionModel(ABC):
         pass
 
 
-class ClassificationModel(ABC):
+class ClassificationModel:
     """
-    Abstract base class for classification models.
+    Base class for classification models.
 
     Classification models identify labels in cropped detections.
     Examples: YOLOv8 classifiers, SpeciesNet, DeepFaune, MEWC.
     """
 
-    @abstractmethod
-    def classify(
-        self,
-        image_path: Path,
-        bbox: BoundingBox,
-        progress_callback: Callable[[str, float], None] | None = None,
-    ) -> ClassificationResult:
-        """
-        Classify a detection crop from an image.
-
-        Args:
-            image_path: Path to original image file (worker will load and crop it)
-            bbox: Bounding box in normalized coordinates
-            progress_callback: Optional callback(message, progress) for updates
-
-        Returns:
-            ClassificationResult with label and all probabilities
-
-        Raises:
-            RuntimeError: If classification fails
-            ValueError: If bbox is invalid
-            FileNotFoundError: If image_path does not exist
-        """
-        pass
+    pass

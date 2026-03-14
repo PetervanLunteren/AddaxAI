@@ -376,90 +376,71 @@ class JSONBasedMLPipeline:
 
             return extended_json_path, classified_count
 
-        # Regular per-detection classification path
-        # Start classification worker
+        # Regular per-detection classification path (one-shot batch subprocess)
         classified_count = 0
-        class_names = None
 
-        with self.classification_model as cls_model:
-            # Get class names from model
-            class_names = cls_model.get_class_names()
-            logger.info(f"Retrieved {len(class_names)} class names from model")
+        # Assign UUIDs to detection JSON
+        assign_uuids_to_detection_json(md_results)
 
-            # Assign UUIDs to detection JSON
-            assign_uuids_to_detection_json(md_results)
+        # Build items list for batch classification
+        items: list[dict] = []
+        indices: list[tuple[int, int]] = []
 
-            # Classify each animal detection
-            for i, (img_idx, det_idx, det) in enumerate(animal_detections):
-                try:
-                    # Get image info
-                    img_info = md_results["images"][img_idx]
-                    relative_file = img_info["file"]
+        for img_idx, det_idx, det in animal_detections:
+            img_info = md_results["images"][img_idx]
+            relative_file = img_info["file"]
+            image_path = (deployment_folder / relative_file).resolve()
 
-                    # Construct absolute path
-                    image_path = (deployment_folder / relative_file).resolve()
+            if not image_path.exists():
+                logger.warning(f"Image not found: {image_path}, skipping detection")
+                continue
 
-                    if not image_path.exists():
-                        logger.warning(f"Image not found: {image_path}, skipping detection")
-                        continue
+            items.append({
+                "image_path": str(image_path),
+                "bbox": det["bbox"],
+            })
+            indices.append((img_idx, det_idx))
 
-                    # Get bbox (normalized coordinates)
-                    bbox = det["bbox"]  # [x, y, width, height]
+        # Run classification in thread pool (blocking subprocess I/O)
+        loop = asyncio.get_event_loop()
 
-                    # Classify detection (worker will load image from path)
-                    result = cls_model.classify(
-                        image_path=image_path,
-                        bbox=BoundingBox(
-                            x=float(bbox[0]),
-                            y=float(bbox[1]),
-                            width=float(bbox[2]),
-                            height=float(bbox[3]),
-                        ),
-                        progress_callback=None,
-                    )
+        async def on_progress(current: int, total: int) -> None:
+            phase_progress = current / total if total > 0 else 0.0
+            await progress_callback(
+                f"Classification: {current}/{total} animals",
+                0.0,
+                "classification",
+                phase_progress,
+            )
 
-                    # Handle skipped detections (result is None)
-                    if result is not None:
-                        # Convert classifications to expected format
-                        # Result has all_probabilities as dict {label: confidence}
-                        # We need list of [class_id, confidence] sorted by confidence
+        def sync_progress(current: int, total: int) -> None:
+            asyncio.run_coroutine_threadsafe(on_progress(current, total), loop)
 
-                        # Create inverse mapping: label_name -> class_id
-                        label_to_id = {v: k for k, v in class_names.items()}
+        results, class_names, compute_device = await loop.run_in_executor(
+            None,
+            lambda: self.classification_model.classify_detections(
+                items, progress_callback=sync_progress,
+            ),
+        )
 
-                        # Build classifications list
-                        classifications = []
-                        for label_name, conf in result.all_probabilities.items():
-                            class_id = label_to_id.get(label_name)
-                            if class_id is not None:
-                                classifications.append([class_id, round(conf, 5)])
+        # Merge results back into md_results JSON
+        label_to_id = {v: k for k, v in class_names.items()}
 
-                        # Sort by confidence descending
-                        classifications.sort(key=lambda x: x[1], reverse=True)
+        for (img_idx, det_idx), result in zip(indices, results):
+            if result is None:
+                continue
 
-                        # Add classifications to detection
-                        md_results["images"][img_idx]["detections"][det_idx]["classifications"] = (
-                            classifications
-                        )
+            classifications = []
+            for label_name, conf in result.all_probabilities.items():
+                class_id = label_to_id.get(label_name)
+                if class_id is not None:
+                    classifications.append([class_id, round(conf, 5)])
 
-                        classified_count += 1
-
-                    # Update progress after each detection
-                    phase_progress = (i + 1) / total_animals
-                    await progress_callback(
-                        f"Classification: {classified_count}/{total_animals} "
-                        f"animals (processed {i+1})",
-                        0.0,
-                        "classification",
-                        phase_progress,
-                    )
-
-                except Exception as e:
-                    logger.error(
-                        f"Classification failed for detection {i+1}/{total_animals}: {e}",
-                        exc_info=True,
-                    )
-                    # Continue with next detection
+            classifications.sort(key=lambda x: x[1], reverse=True)
+            md_results["images"][img_idx]["detections"][det_idx]["classifications"] = (
+                classifications
+            )
+            classified_count += 1
 
         # Add classification_categories to JSON
         md_results["classification_categories"] = class_names
@@ -694,10 +675,6 @@ class JSONBasedMLPipeline:
             vehicle_detections=vehicle_count,
             classified_detections=classified_count,
         )
-
-
-# Import BoundingBox at the end to avoid circular import
-from app.ml.inference.base import BoundingBox
 
 
 def load_json_to_database(

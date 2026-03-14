@@ -208,6 +208,7 @@ export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetP
               </p>
               <ul className="list-disc list-inside space-y-1 ml-1">
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> verify selected</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">X</code> mark as false detection</li>
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">R</code> relabel selected</li>
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code> find similar</li>
                 <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code> accept suggestions for selected</li>

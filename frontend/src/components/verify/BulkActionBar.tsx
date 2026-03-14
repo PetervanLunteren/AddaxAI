@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Tag, Search, X } from "lucide-react";
+import { Ban, Check, Tag, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { detectionsApi } from "../../api/detections";
@@ -23,6 +23,7 @@ interface BulkActionBarProps {
   onActionComplete: () => void;
   onRelabel?: (ids: string[], label: string | null, category: string) => void;
   onVerify?: (ids: string[]) => void;
+  onMarkFalse?: (ids: string[]) => void;
   /** Number of selected detections that have a neighbor label suggestion. */
   suggestionCount?: number;
   /** Accept neighbor suggestions for selected detections. */
@@ -42,6 +43,7 @@ export function BulkActionBar({
   onActionComplete,
   onRelabel,
   onVerify,
+  onMarkFalse,
   suggestionCount = 0,
   onAcceptSuggestions,
   projectId,
@@ -60,6 +62,19 @@ export function BulkActionBar({
     onSuccess: (_data) => {
       if (onVerify) {
         onVerify(ids);
+      } else {
+        onActionComplete();
+      }
+      onDeselectAll();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const markFalseMutation = useMutation({
+    mutationFn: () => detectionsApi.bulkRelabel(ids, "false detection", undefined),
+    onSuccess: () => {
+      if (onMarkFalse) {
+        onMarkFalse(ids);
       } else {
         onActionComplete();
       }
@@ -99,6 +114,17 @@ export function BulkActionBar({
         <Check className="h-4 w-4 mr-1" />
         Verify
         <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">⏎</kbd>
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => markFalseMutation.mutate()}
+        disabled={markFalseMutation.isPending}
+      >
+        <Ban className="h-4 w-4 mr-1" />
+        Mark false
+        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">X</kbd>
       </Button>
 
       <div className="relative">
