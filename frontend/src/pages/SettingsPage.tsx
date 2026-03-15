@@ -1351,6 +1351,7 @@ export default function SettingsPage() {
                         <Select
                           value={form.watch("event_smoothing") ? form.watch("smoothing_strength") : "off"}
                           onValueChange={(value) => {
+                            if (!value) return;
                             if (value === "off") {
                               form.setValue("event_smoothing", false, { shouldDirty: true });
                             } else {
