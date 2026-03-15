@@ -11,6 +11,7 @@ from .ml_models import router as ml_models_router
 from .projects import router as projects_router
 from .similarity import router as similarity_router
 from .sites import router as sites_router
+from .statistics import router as statistics_router
 from .websocket import router as websocket_router
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "projects_router",
     "similarity_router",
     "sites_router",
+    "statistics_router",
     "websocket_router",
 ]

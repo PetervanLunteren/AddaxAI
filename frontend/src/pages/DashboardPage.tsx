@@ -1,137 +1,217 @@
 /**
- * Dashboard page with detection statistics
+ * Dashboard page with statistics and charts
  */
-
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import { Bar } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  type ChartOptions,
+} from "chart.js";
+import { Crosshair, Images, Layers, FolderOpen, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { api } from "../lib/api-client";
+import { statisticsApi } from "../api/statistics";
+import { sitesApi } from "../api/sites";
+import { normalizeLabel } from "../utils/labels";
+import { getSpeciesColor, setSpeciesContext } from "../utils/species-colors";
+import {
+  type DateRange,
+  DashboardFilters,
+  ActivityPatternChart,
+  DetectionTrendChart,
+  AlertCounters,
+  SpeciesComparisonChart,
+  VerificationProgressChart,
+} from "../components/dashboard";
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
 export default function DashboardPage() {
   const { projectId } = useParams<{ projectId: string }>();
 
-  // Fetch detection statistics
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ["detection-stats", projectId],
-    queryFn: () =>
-      api.get<Record<string, number>>(`/api/projects/${projectId}/detection-stats`),
+  const [dateRange, setDateRange] = useState<DateRange>({
+    startDate: null,
+    endDate: null,
+  });
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
+
+  // Derive comma-separated site IDs for API calls
+  const siteIdsParam = selectedSiteIds.length > 0 ? selectedSiteIds.join(",") : undefined;
+
+  // Fetch sites for filter options
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId),
+    enabled: !!projectId,
   });
 
-  // Transform data for pie chart
-  const chartData = stats
-    ? Object.entries(stats).map(([category, count]) => ({
-        name: category.charAt(0).toUpperCase() + category.slice(1),
-        value: count,
-      }))
-    : [];
+  const siteOptions = useMemo(
+    () => (sites ?? []).map((s) => ({ value: s.id, label: s.name })),
+    [sites]
+  );
 
-  // Colors for categories
-  const COLORS: Record<string, string> = {
-    Animal: "#22c55e", // green
-    Person: "#ef4444", // red
-    Vehicle: "#3b82f6", // blue
+  // Fetch overview
+  const { data: overview, isLoading: overviewLoading } = useQuery({
+    queryKey: ["statistics", "overview", projectId, siteIdsParam, dateRange.startDate, dateRange.endDate],
+    queryFn: () =>
+      statisticsApi.getOverview(projectId!, siteIdsParam, dateRange.startDate ?? undefined, dateRange.endDate ?? undefined),
+    enabled: !!projectId,
+  });
+
+  // Fetch species distribution
+  const { data: species, isLoading: speciesLoading } = useQuery({
+    queryKey: ["statistics", "species", projectId, siteIdsParam, dateRange.startDate, dateRange.endDate],
+    queryFn: () =>
+      statisticsApi.getSpeciesDistribution(projectId!, siteIdsParam, dateRange.startDate ?? undefined, dateRange.endDate ?? undefined),
+    enabled: !!projectId,
+  });
+
+  // Set species color context
+  useMemo(() => {
+    if (species && species.length > 0) {
+      const allSpecies = species.map((s) => s.species);
+      allSpecies.push("animal", "person", "vehicle", "empty");
+      setSpeciesContext(allSpecies);
+    }
+  }, [species]);
+
+  // Summary cards
+  const summaryCards = [
+    { title: "Detections", value: overview?.total_detections ?? 0, icon: Crosshair, color: "#0f6064" },
+    { title: "Files", value: overview?.total_files ?? 0, icon: Images, color: "#0f6064" },
+    { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
+    { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
+    { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
+  ];
+
+  // Species bar chart
+  const speciesData = {
+    labels: species?.map((s) => normalizeLabel(s.species)) ?? [],
+    datasets: [
+      {
+        label: "Count",
+        data: species?.map((s) => s.count) ?? [],
+        backgroundColor: species?.map((s) => {
+          const color = getSpeciesColor(s.species);
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+          return `rgba(${r}, ${g}, ${b}, 0.8)`;
+        }) ?? [],
+        borderColor: species?.map((s) => getSpeciesColor(s.species)) ?? [],
+        borderWidth: 1,
+      },
+    ],
   };
 
-  const totalDetections = chartData.reduce((sum, item) => sum + item.value, 0);
+  const speciesOptions: ChartOptions<"bar"> = {
+    indexAxis: "y",
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: false },
+    },
+    scales: {
+      x: { beginAtZero: true, ticks: { precision: 0 } },
+    },
+  };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Overview of detection statistics
-        </p>
+    <div className="p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Project overview with statistics and trends
+          </p>
+        </div>
+        <DashboardFilters
+          siteOptions={siteOptions}
+          selectedSiteIds={selectedSiteIds}
+          onSiteIdsChange={setSelectedSiteIds}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          minDate={overview?.first_file_date}
+          maxDate={overview?.last_file_date}
+        />
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-muted-foreground">Loading statistics...</div>
-        </div>
-      ) : totalDetections === 0 ? (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center text-muted-foreground">
-              <p className="text-lg">No detections yet</p>
-              <p className="text-sm mt-2">
-                Run detection on a deployment to see statistics here
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Pie Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Detections by Category</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, value, percent }) =>
-                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
-                    }
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[entry.name] || "#9ca3af"}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Summary Stats */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                  <span className="text-lg font-semibold">Total Detections</span>
-                  <span className="text-2xl font-bold">{totalDetections}</span>
+      {/* Summary Cards */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        {summaryCards.map((card) => (
+          <Card key={card.title}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {overviewLoading ? "..." : card.value.toLocaleString()}
+                  </p>
                 </div>
-
-                {chartData.map((item) => (
-                  <div
-                    key={item.name}
-                    className="flex items-center justify-between p-3 border rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: COLORS[item.name] || "#9ca3af" }}
-                      />
-                      <span className="font-medium">{item.name}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-muted-foreground">
-                        {((item.value / totalDetections) * 100).toFixed(1)}%
-                      </span>
-                      <span className="font-semibold text-lg">{item.value}</span>
-                    </div>
-                  </div>
-                ))}
+                <div className="p-3 rounded-lg" style={{ backgroundColor: `${card.color}20` }}>
+                  <card.icon className="h-6 w-6" style={{ color: card.color }} />
+                </div>
               </div>
             </CardContent>
           </Card>
-        </div>
-      )}
+        ))}
+      </div>
+
+      {/* Row 1: Species detected + Detection trend */}
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Species detected</CardTitle>
+            <p className="text-sm text-muted-foreground">Top 10 most frequently observed</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              {speciesLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-muted-foreground">Loading...</p>
+                </div>
+              ) : species && species.length > 0 ? (
+                <Bar data={speciesData} options={speciesOptions} />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-muted-foreground">No species data available</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <DetectionTrendChart dateRange={dateRange} projectId={projectId!} siteIds={siteIdsParam} />
+      </div>
+
+      {/* Row 2: Activity pattern + Detection categories + Verification progress */}
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
+        <ActivityPatternChart dateRange={dateRange} projectId={projectId!} siteIds={siteIdsParam} />
+        <AlertCounters
+          projectId={projectId!}
+          siteIds={siteIdsParam}
+          dateFrom={dateRange.startDate ?? undefined}
+          dateTo={dateRange.endDate ?? undefined}
+        />
+        <VerificationProgressChart
+          projectId={projectId!}
+          siteIds={siteIdsParam}
+          dateFrom={dateRange.startDate ?? undefined}
+          dateTo={dateRange.endDate ?? undefined}
+        />
+      </div>
+
+      {/* Row 3: Species activity comparison */}
+      <SpeciesComparisonChart dateRange={dateRange} projectId={projectId!} siteIds={siteIdsParam} />
     </div>
   );
 }

@@ -1,5 +1,4 @@
 ## TODO priority 1
-- [ ] sometimes if you go to the a projects settings page, the dropdown manu value of "Event smoothing" is empty. Investigate whats going on there and why it is not always showing the selected value. 
 - [ ] For the dashboard page, have a look at a similar project (/Users/peter/Documents/Repos/AddaxAI-Connect) and how the dasboard is set up there. I want exactly the same dasboard, with the same widgets, and the same filters, etc. In terms of data source: Also use the same colors, and color codes for the species. Always prefer verified detecitons / files over non verfied detections / files. Instructions:
 * Read all MD file in root to get a understanding of the project. 
 * If something is unclear at any point, stop and ask before continuing.
