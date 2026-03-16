@@ -103,7 +103,8 @@ def get_trap_nights(
     Clips to date_from/date_to range if provided. Includes 0-file deployments.
     Returns at least 1 to avoid division by zero.
     """
-    # Get deployments with their max file date
+    # Get deployments with their min/max file dates
+    min_file_date = func.min(func.date(File.timestamp)).label("min_file_date")
     max_file_date = func.max(func.date(File.timestamp)).label("max_file_date")
 
     query = (
@@ -111,6 +112,7 @@ def get_trap_nights(
             Deployment.id,
             Deployment.start_date,
             Deployment.end_date,
+            min_file_date,
             max_file_date,
         )
         .select_from(Deployment)
@@ -135,16 +137,25 @@ def get_trap_nights(
         if not dep_start:
             continue
 
-        # Determine effective end
-        dep_end = row.end_date
+        # Parse file dates (SQLite returns strings)
+        min_fd = row.min_file_date
+        if min_fd and isinstance(min_fd, str):
+            min_fd = date.fromisoformat(min_fd)
+        elif min_fd and isinstance(min_fd, datetime):
+            min_fd = min_fd.date()
+
         max_fd = row.max_file_date
         if max_fd and isinstance(max_fd, str):
             max_fd = date.fromisoformat(max_fd)
         elif max_fd and isinstance(max_fd, datetime):
             max_fd = max_fd.date()
 
-        effective_end = dep_end or max_fd or dep_start
-        effective_start = dep_start
+        # Effective start: earliest of deployment start_date and first file
+        effective_start = min(dep_start, min_fd) if min_fd else dep_start
+
+        # Effective end: deployment end_date, or last file date, or start
+        dep_end = row.end_date
+        effective_end = dep_end or max_fd or effective_start
 
         # Clip to date range
         if clip_start:

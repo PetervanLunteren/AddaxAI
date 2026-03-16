@@ -1,22 +1,3 @@
-This looks great! A few notes:
-- icon for deteciton should be "maximize"
-- icon for files should be "file-image"
-- icon for Events should be "images"
-- Should we do the "Detection trend" and "Species detected" and "Activity pattern" and "Detection categories" as raw counts, or adjusted per camera trap night (i.e., per 100 camera trap nights)? Or should this be configurable in the settings? I would actualy not make it configurable, since it just adds complexity for the user. Just all per camera trap night is the standard. 
-- Should we add some kiund of setting popover like the filter popover where we can define the taxonomic rank the dashboard should adhere to (class/order/family/genus/species/raw)? I understand that some will not have all the way to species level, but it should be clear in the UI UX that it groups to that level where possible, or just shows the finest possible. What do you think?
-- "Species comparison" shows days in the x axis. It should be times of day. 
-
-Instructions:
-* Read all MD file in root to get a understanding of the project. 
-* If something is unclear at any point, stop and ask before continuing.
-* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
-* I'm not in a rush. Please be precise and do the task thoroughly. 
-* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
-* Ask at least 10 clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. 
-
-
-
-
 ## Priority 1
 - [ ] The tests on github keep on failing. Perhaps just remove the tests for now. We might restore later, but for now just not test on github actions. We'll just test tem locally ourselves. 
 
@@ -38,6 +19,7 @@ Instructions:
 - [ ] PROCESS BATCH RESULTS - https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 - [ ] BATCH PROCESSING OPTION - a completely separate option to do batch processing, where it just runs det+cls on all data recursively, and is agnostic of its contents (doestn need to know if it is a deployment, site, full project, etc.) It just runs everything at once. Users should be able to set settings before running the analysis. Then, after, it should give the user a few options, like export to CSV, XLSX, maps & graphs, separate into subfolders, etc. The bulk / management choice should be the first page users see when opening AddaxAI. 
 - [ ] IN DEPTH PLOTS, have a header in the menu "plots", and add page wide full plots that are interactive and with a bunch of filters and settings above. The dashboard is meant as a quick glance of the project, and these are more in depth to find out patterns etc. We will be adding in depth plots as we progress with the project, but the first one is "Comparison of the activity time" (improve wording, make it short and memorable), where the user can select up to 5 labels and compare the activity. One option should be to add the suntimes to the graph (sun hours, sunset, etc.), another option would be to have the actual time on the x axis, or the UTC times (based on the suntimes), do webqueries on how other platforms do this, and what the standard is, and what is usually reported in terms of metrics. Research scientific papers etc. 
+- [ ] IN DEPTH PLOT - add new in depth plot: Gantt-style timeline — one horizontal bar per deployment (or per site), showing the active period. Immediately shows gaps, overlaps, and total survey effort. Group by site with one bar per deployment within each site row. 
 - [ ] MAP - check AddaxAI Connect and copy the map from there. 
 - [ ] EXPORT OPTIONS - check AddaxAI Connect and copy from there. 
 - [ ]
