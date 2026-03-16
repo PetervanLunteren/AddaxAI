@@ -1,5 +1,24 @@
+This looks great! A few notes:
+- icon for deteciton should be "maximize"
+- icon for files should be "file-image"
+- icon for Events should be "images"
+- Should we do the "Detection trend" and "Species detected" and "Activity pattern" and "Detection categories" as raw counts, or adjusted per camera trap night (i.e., per 100 camera trap nights)? Or should this be configurable in the settings? I would actualy not make it configurable, since it just adds complexity for the user. Just all per camera trap night is the standard. 
+- Should we add some kiund of setting popover like the filter popover where we can define the taxonomic rank the dashboard should adhere to (class/order/family/genus/species/raw)? I understand that some will not have all the way to species level, but it should be clear in the UI UX that it groups to that level where possible, or just shows the finest possible. What do you think?
+- "Species comparison" shows days in the x axis. It should be times of day. 
+
+Instructions:
+* Read all MD file in root to get a understanding of the project. 
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+* Ask at least 10 clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. 
+
+
+
+
 ## Priority 1
-- [ ]
+- [ ] The tests on github keep on failing. Perhaps just remove the tests for now. We might restore later, but for now just not test on github actions. We'll just test tem locally ourselves. 
 
 ## Priority 2
 - [ ] Make sure a classification model is not required for a project. User can also just go with a megadetector version, and then do the identificaiton themselves. 

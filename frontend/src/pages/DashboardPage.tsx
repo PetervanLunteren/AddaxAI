@@ -16,19 +16,18 @@ import {
   Legend,
   type ChartOptions,
 } from "chart.js";
-import { Crosshair, Images, Layers, FolderOpen, MapPin } from "lucide-react";
+import { Maximize, FileImage, Images, FolderOpen, MapPin, Moon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
 import { normalizeLabel } from "../utils/labels";
-import { getSpeciesColor, setSpeciesContext } from "../utils/species-colors";
+import { getSpeciesColor, getSpeciesColorWithAlpha, setSpeciesContext } from "../utils/species-colors";
 import {
   type DateRange,
   DashboardFilters,
   ActivityPatternChart,
   DetectionTrendChart,
   AlertCounters,
-  SpeciesComparisonChart,
   VerificationProgressChart,
 } from "../components/dashboard";
 
@@ -42,6 +41,7 @@ export default function DashboardPage() {
     endDate: null,
   });
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
+  const [taxonomicRank, setTaxonomicRank] = useState("species");
 
   // Derive comma-separated site IDs for API calls
   const siteIdsParam = selectedSiteIds.length > 0 ? selectedSiteIds.join(",") : undefined;
@@ -68,9 +68,9 @@ export default function DashboardPage() {
 
   // Fetch species distribution
   const { data: species, isLoading: speciesLoading } = useQuery({
-    queryKey: ["statistics", "species", projectId, siteIdsParam, dateRange.startDate, dateRange.endDate],
+    queryKey: ["statistics", "species", projectId, siteIdsParam, dateRange.startDate, dateRange.endDate, taxonomicRank],
     queryFn: () =>
-      statisticsApi.getSpeciesDistribution(projectId!, siteIdsParam, dateRange.startDate ?? undefined, dateRange.endDate ?? undefined),
+      statisticsApi.getSpeciesDistribution(projectId!, siteIdsParam, dateRange.startDate ?? undefined, dateRange.endDate ?? undefined, taxonomicRank),
     enabled: !!projectId,
   });
 
@@ -83,29 +83,28 @@ export default function DashboardPage() {
     }
   }, [species]);
 
-  // Summary cards
+  // Trap nights for normalization
+  const trapNights = overview?.trap_nights ?? 0;
+  const norm = (n: number) => +(n / trapNights * 100).toFixed(2);
+
+  // Summary cards (raw counts, not normalized)
   const summaryCards = [
-    { title: "Detections", value: overview?.total_detections ?? 0, icon: Crosshair, color: "#0f6064" },
-    { title: "Files", value: overview?.total_files ?? 0, icon: Images, color: "#0f6064" },
-    { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
+    { title: "Detections", value: overview?.total_detections ?? 0, icon: Maximize, color: "#0f6064" },
+    { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
+    { title: "Events", value: overview?.total_events ?? 0, icon: Images, color: "#0f6064" },
     { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
     { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
+    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: Moon, color: "#0f6064" },
   ];
 
-  // Species bar chart
+  // Species bar chart (normalized)
   const speciesData = {
     labels: species?.map((s) => normalizeLabel(s.species)) ?? [],
     datasets: [
       {
-        label: "Count",
-        data: species?.map((s) => s.count) ?? [],
-        backgroundColor: species?.map((s) => {
-          const color = getSpeciesColor(s.species);
-          const r = parseInt(color.slice(1, 3), 16);
-          const g = parseInt(color.slice(3, 5), 16);
-          const b = parseInt(color.slice(5, 7), 16);
-          return `rgba(${r}, ${g}, ${b}, 0.8)`;
-        }) ?? [],
+        label: "Per 100 trap nights",
+        data: species?.map((s) => norm(s.count)) ?? [],
+        backgroundColor: species?.map((s) => getSpeciesColorWithAlpha(s.species, 0.8)) ?? [],
         borderColor: species?.map((s) => getSpeciesColor(s.species)) ?? [],
         borderWidth: 1,
       },
@@ -121,7 +120,10 @@ export default function DashboardPage() {
       title: { display: false },
     },
     scales: {
-      x: { beginAtZero: true, ticks: { precision: 0 } },
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: "Per 100 trap nights" },
+      },
     },
   };
 
@@ -143,11 +145,13 @@ export default function DashboardPage() {
           onDateRangeChange={setDateRange}
           minDate={overview?.first_file_date}
           maxDate={overview?.last_file_date}
+          taxonomicRank={taxonomicRank}
+          onTaxonomicRankChange={setTaxonomicRank}
         />
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         {summaryCards.map((card) => (
           <Card key={card.title}>
             <CardContent className="p-4">
@@ -171,8 +175,10 @@ export default function DashboardPage() {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Species detected</CardTitle>
-            <p className="text-sm text-muted-foreground">Top 10 most frequently observed</p>
+            <CardTitle className="text-lg">Taxa detected</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Top 10 most frequently observed
+            </p>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -190,17 +196,30 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <DetectionTrendChart dateRange={dateRange} projectId={projectId!} siteIds={siteIdsParam} />
+        <DetectionTrendChart
+          dateRange={dateRange}
+          projectId={projectId!}
+          siteIds={siteIdsParam}
+          trapNights={trapNights}
+          taxonomicRank={taxonomicRank}
+        />
       </div>
 
       {/* Row 2: Activity pattern + Detection categories + Verification progress */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
-        <ActivityPatternChart dateRange={dateRange} projectId={projectId!} siteIds={siteIdsParam} />
+        <ActivityPatternChart
+          dateRange={dateRange}
+          projectId={projectId!}
+          siteIds={siteIdsParam}
+          trapNights={trapNights}
+          taxonomicRank={taxonomicRank}
+        />
         <AlertCounters
           projectId={projectId!}
           siteIds={siteIdsParam}
           dateFrom={dateRange.startDate ?? undefined}
           dateTo={dateRange.endDate ?? undefined}
+          trapNights={trapNights}
         />
         <VerificationProgressChart
           projectId={projectId!}
@@ -209,9 +228,6 @@ export default function DashboardPage() {
           dateTo={dateRange.endDate ?? undefined}
         />
       </div>
-
-      {/* Row 3: Species activity comparison */}
-      <SpeciesComparisonChart dateRange={dateRange} projectId={projectId!} siteIds={siteIdsParam} />
     </div>
   );
 }

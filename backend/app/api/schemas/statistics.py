@@ -9,6 +9,7 @@ class DashboardOverview(BaseModel):
     total_events: int
     total_deployments: int
     total_sites: int
+    trap_nights: int
     first_file_date: str | None
     last_file_date: str | None
 

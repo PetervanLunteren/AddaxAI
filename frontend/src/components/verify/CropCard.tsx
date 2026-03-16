@@ -10,6 +10,7 @@ import { memo } from "react";
 import { Check } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getCategoryColor } from "../../lib/detection-utils";
+import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import {
   BBOX_STROKE_WIDTH,
   BBOX_OPACITY,
@@ -120,6 +121,11 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
               isFalseDetection && "bg-muted text-muted-foreground hover:bg-muted",
               isSuspicious && "border-transparent bg-[#882000] text-white hover:bg-[#882000]"
             )}
+            style={
+              !isFalseDetection && !isSuspicious && detection.label
+                ? { backgroundColor: getSpeciesColor(detection.label), color: getSpeciesTextColor(detection.label) }
+                : undefined
+            }
           >
             <span className="truncate">{detection.label || detection.category}</span>
           </Badge>

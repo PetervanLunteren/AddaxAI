@@ -43,10 +43,11 @@ def species_distribution(
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    taxonomic_rank: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> list[SpeciesCount]:
     return stats_crud.get_species_distribution(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
     )
 
 
@@ -57,10 +58,11 @@ def activity_pattern(
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    taxonomic_rank: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> ActivityPatternResponse:
     return stats_crud.get_activity_pattern(
-        db, project_id, species, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, species, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
     )
 
 
@@ -71,10 +73,11 @@ def detection_trend(
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    taxonomic_rank: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> list[DetectionTrendPoint]:
     return stats_crud.get_detection_trend(
-        db, project_id, species, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, species, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
     )
 
 

@@ -14,6 +14,7 @@ interface AlertCountersProps {
   siteIds?: string;
   dateFrom?: string;
   dateTo?: string;
+  trapNights?: number;
 }
 
 interface CounterConfig {
@@ -35,17 +36,22 @@ export const AlertCounters: React.FC<AlertCountersProps> = ({
   siteIds,
   dateFrom,
   dateTo,
+  trapNights,
 }) => {
   const { data, isLoading } = useQuery({
     queryKey: ["statistics", "categories", projectId, siteIds, dateFrom, dateTo],
     queryFn: () => statisticsApi.getDetectionCategories(projectId, siteIds, dateFrom, dateTo),
   });
 
+  const formatValue = (raw: number) => Math.round(raw / trapNights * 100).toLocaleString();
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-lg">Detection categories</CardTitle>
-        <p className="text-sm text-muted-foreground">Breakdown by detection type</p>
+        <p className="text-sm text-muted-foreground">
+          Per 100 trap nights
+        </p>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -69,7 +75,7 @@ export const AlertCounters: React.FC<AlertCountersProps> = ({
                   <p className="text-sm text-muted-foreground">{label}</p>
                 </div>
                 <p className="text-xl font-bold">
-                  {(data?.[key] ?? 0).toLocaleString()}
+                  {formatValue(data?.[key] ?? 0)}
                 </p>
               </div>
             ))}

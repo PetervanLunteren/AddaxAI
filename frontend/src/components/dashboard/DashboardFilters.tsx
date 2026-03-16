@@ -1,5 +1,5 @@
 /**
- * Filter popover for dashboard: site multiselect + date range inputs.
+ * Filter popover for dashboard: site multiselect + date range + taxonomic rank.
  *
  * Closes on click-outside. Shows badge count of active filters.
  */
@@ -7,8 +7,18 @@
 import { useState, useRef, useEffect } from "react";
 import { Filter } from "lucide-react";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import type { DateRange } from "./index";
+
+const TAXONOMIC_RANKS = [
+  { value: "species", label: "Species" },
+  { value: "genus", label: "Genus" },
+  { value: "family", label: "Family" },
+  { value: "order", label: "Order" },
+  { value: "class", label: "Class" },
+  { value: "raw", label: "Raw label" },
+];
 
 interface DashboardFiltersProps {
   siteOptions: MultiSelectOption[];
@@ -18,6 +28,8 @@ interface DashboardFiltersProps {
   onDateRangeChange: (range: DateRange) => void;
   minDate?: string | null;
   maxDate?: string | null;
+  taxonomicRank: string;
+  onTaxonomicRankChange: (rank: string) => void;
 }
 
 export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
@@ -28,15 +40,21 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   onDateRangeChange,
   minDate,
   maxDate,
+  taxonomicRank,
+  onTaxonomicRankChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
+      if (!containerRef.current) return;
+      const target = e.target as Node;
+      // Don't close if clicking inside the popover container
+      if (containerRef.current.contains(target)) return;
+      // Don't close if clicking inside a Radix portal (Select/MultiSelect dropdowns)
+      if ((target as HTMLElement).closest?.("[data-radix-popper-content-wrapper]")) return;
+      setIsOpen(false);
     };
     document.addEventListener("mousedown", handleMouseDown);
     return () => document.removeEventListener("mousedown", handleMouseDown);
@@ -45,11 +63,13 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   const activeCount =
     selectedSiteIds.length +
     (dateRange.startDate ? 1 : 0) +
-    (dateRange.endDate ? 1 : 0);
+    (dateRange.endDate ? 1 : 0) +
+    (taxonomicRank !== "species" ? 1 : 0);
 
   const clearAll = () => {
     onSiteIdsChange([]);
     onDateRangeChange({ startDate: null, endDate: null });
+    onTaxonomicRankChange("species");
   };
 
   return (
@@ -108,6 +128,22 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                 className="flex-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Taxonomic rank</label>
+            <Select value={taxonomicRank} onValueChange={onTaxonomicRankChange}>
+              <SelectTrigger className="w-full h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TAXONOMIC_RANKS.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {activeCount > 0 && (

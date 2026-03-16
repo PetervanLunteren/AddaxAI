@@ -45,24 +45,29 @@ interface ActivityPatternChartProps {
   dateRange: DateRange;
   projectId: string;
   siteIds?: string;
+  trapNights?: number;
+  taxonomicRank?: string;
 }
 
 export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
   dateRange,
   projectId,
   siteIds,
+  trapNights,
+  taxonomicRank,
 }) => {
   const [selectedSpecies, setSelectedSpecies] = useState("all");
 
   // Fetch species list for the selector
   const { data: speciesList } = useQuery({
-    queryKey: ["statistics", "species", projectId, siteIds, dateRange.startDate, dateRange.endDate],
+    queryKey: ["statistics", "species", projectId, siteIds, dateRange.startDate, dateRange.endDate, taxonomicRank],
     queryFn: () =>
       statisticsApi.getSpeciesDistribution(
         projectId,
         siteIds,
         dateRange.startDate || undefined,
         dateRange.endDate || undefined,
+        taxonomicRank,
       ),
   });
 
@@ -81,6 +86,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
       siteIds,
       dateRange.startDate,
       dateRange.endDate,
+      taxonomicRank,
     ],
     queryFn: () =>
       statisticsApi.getActivityPattern(projectId, {
@@ -88,8 +94,11 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
         siteIds,
         dateFrom: dateRange.startDate || undefined,
         dateTo: dateRange.endDate || undefined,
+        taxonomicRank,
       }),
   });
+
+  const norm = (n: number) => trapNights && trapNights > 0 ? +(n / trapNights * 100).toFixed(2) : n;
 
   const chartData = useMemo(() => {
     // Build a full 24-hour array, filling missing hours with 0
@@ -102,7 +111,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
 
     for (let h = 0; h < 24; h++) {
       labels.push(formatHourLabel(h));
-      values.push(hourMap.get(h) ?? 0);
+      values.push(norm(hourMap.get(h) ?? 0));
       colors.push(getHourColor(h));
     }
 
@@ -117,7 +126,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
         },
       ],
     };
-  }, [activityData]);
+  }, [activityData, trapNights]);
 
   const chartOptions: ChartOptions<"polarArea"> = {
     responsive: true,
@@ -126,7 +135,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
       legend: { display: false },
       tooltip: {
         callbacks: {
-          label: (context) => `${context.label}: ${context.parsed.r} detections`,
+          label: (context) => `${context.label}: ${context.parsed.r} per 100 trap nights`,
         },
       },
     },
@@ -146,9 +155,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
           <div>
             <CardTitle className="text-lg">Activity pattern</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {activityData
-                ? `${activityData.total_detections.toLocaleString()} total detections`
-                : "Detections by hour of day"}
+              Detections by hour of day
             </p>
           </div>
           <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
@@ -156,7 +163,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All species</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               {speciesList?.map((s) => (
                 <SelectItem key={s.species} value={s.species}>
                   {normalizeLabel(s.species)}

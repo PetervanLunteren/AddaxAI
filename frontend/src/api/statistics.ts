@@ -16,6 +16,7 @@ export interface DashboardOverview {
   total_events: number;
   total_deployments: number;
   total_sites: number;
+  trap_nights: number;
   first_file_date: string | null;
   last_file_date: string | null;
 }
@@ -60,7 +61,7 @@ export interface VerificationProgress {
  */
 function buildParams(
   projectId: string,
-  options?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string }
+  options?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
 ): string {
   const params = new URLSearchParams();
   params.set("project_id", projectId);
@@ -69,6 +70,7 @@ function buildParams(
   if (options?.siteIds) params.set("site_ids", options.siteIds);
   if (options?.dateFrom) params.set("date_from", options.dateFrom);
   if (options?.dateTo) params.set("date_to", options.dateTo);
+  if (options?.taxonomicRank) params.set("taxonomic_rank", options.taxonomicRank);
 
   return params.toString();
 }
@@ -87,8 +89,8 @@ export const statisticsApi = {
   /**
    * Species distribution (species name + detection count)
    */
-  getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
-    const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
+  getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string, taxonomicRank?: string) => {
+    const query = buildParams(projectId, { siteIds, dateFrom, dateTo, taxonomicRank });
     return api.get<SpeciesCount[]>(`/api/statistics/species?${query}`);
   },
 
@@ -97,7 +99,7 @@ export const statisticsApi = {
    */
   getActivityPattern: (
     projectId: string,
-    params?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string }
+    params?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
   ) => {
     const query = buildParams(projectId, params);
     return api.get<ActivityPatternResponse>(`/api/statistics/activity-pattern?${query}`);
@@ -108,7 +110,7 @@ export const statisticsApi = {
    */
   getDetectionTrend: (
     projectId: string,
-    params?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string }
+    params?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
   ) => {
     const query = buildParams(projectId, params);
     return api.get<DetectionTrendPoint[]>(`/api/statistics/detection-trend?${query}`);

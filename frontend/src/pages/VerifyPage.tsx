@@ -20,6 +20,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { getCategoryColor, getObservationBadge } from "../lib/detection-utils";
+import { setSpeciesContext, getSpeciesColor, getSpeciesTextColor } from "../utils/species-colors";
 import type { EventSummary, EventFilterParams, VerificationFilter } from "../api/types";
 
 import { EventDetailModal } from "../components/verify/EventDetailModal";
@@ -213,6 +214,14 @@ export default function VerifyPage() {
     enabled: !!projectId,
     placeholderData: (prev) => prev,
   });
+
+  // Set species color context from current events
+  useMemo(() => {
+    if (events?.length) {
+      const allLabels = [...new Set(events.flatMap((e) => e.labels))];
+      if (allLabels.length > 0) setSpeciesContext(allLabels);
+    }
+  }, [events]);
 
   // Fetch sites for name mapping in filter chips
   const { data: sites } = useQuery({
@@ -530,6 +539,7 @@ function EventCard({
                   key={sp}
                   variant="default"
                   className="text-[10px] px-1.5 py-0.5 capitalize shadow-sm max-w-[100px]"
+                  style={{ backgroundColor: getSpeciesColor(sp), color: getSpeciesTextColor(sp) }}
                 >
                   <span className="truncate">{sp}</span>
                 </Badge>

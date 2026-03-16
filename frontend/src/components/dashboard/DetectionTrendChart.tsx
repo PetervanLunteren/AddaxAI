@@ -23,6 +23,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { statisticsApi } from "../../api/statistics";
 import { normalizeLabel } from "../../utils/labels";
+import { getSpeciesColor, getSpeciesColorWithAlpha } from "../../utils/species-colors";
 import type { DateRange } from "./index";
 import type { DetectionTrendPoint } from "../../api/statistics";
 
@@ -83,36 +84,41 @@ interface DetectionTrendChartProps {
   dateRange: DateRange;
   projectId: string;
   siteIds?: string;
+  trapNights?: number;
+  taxonomicRank?: string;
 }
 
 export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
   dateRange,
   projectId,
   siteIds,
+  trapNights,
+  taxonomicRank,
 }) => {
   const [granularity, setGranularity] = useState<Granularity>("day");
   const [selectedSpecies, setSelectedSpecies] = useState("all");
-  const hasAutoSelected = useRef(false);
   const chartRef = useRef<ChartJS<"line"> | null>(null);
+
+  const norm = (n: number) => trapNights && trapNights > 0 ? +(n / trapNights * 100).toFixed(2) : n;
 
   // Fetch species list for the selector
   const { data: speciesList } = useQuery({
-    queryKey: ["statistics", "species", projectId, siteIds, dateRange.startDate, dateRange.endDate],
+    queryKey: ["statistics", "species", projectId, siteIds, dateRange.startDate, dateRange.endDate, taxonomicRank],
     queryFn: () =>
       statisticsApi.getSpeciesDistribution(
         projectId,
         siteIds,
         dateRange.startDate || undefined,
         dateRange.endDate || undefined,
+        taxonomicRank,
       ),
   });
 
-  // Auto-select the most observed species on first load
+  // Auto-select the most observed species on load and when species list changes
   useEffect(() => {
-    if (speciesList && speciesList.length > 0 && !hasAutoSelected.current) {
+    if (speciesList && speciesList.length > 0) {
       const top = speciesList.reduce((best, s) => (s.count > best.count ? s : best), speciesList[0]);
       setSelectedSpecies(top.species);
-      hasAutoSelected.current = true;
     }
   }, [speciesList]);
 
@@ -126,6 +132,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       siteIds,
       dateRange.startDate,
       dateRange.endDate,
+      taxonomicRank,
     ],
     queryFn: () =>
       statisticsApi.getDetectionTrend(projectId, {
@@ -133,6 +140,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         siteIds,
         dateFrom: dateRange.startDate || undefined,
         dateTo: dateRange.endDate || undefined,
+        taxonomicRank,
       }),
   });
 
@@ -148,18 +156,25 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
     [trendData, granularity],
   );
 
-  const totalDetections = values.reduce((sum, v) => sum + v, 0);
-  const avgPerPeriod = values.length > 0 ? Math.round(totalDetections / values.length) : 0;
+  const normalizedValues = useMemo(() => values.map(norm), [values, trapNights]);
+
+  // Derive line color from selected species
+  const lineColor = selectedSpecies === "all" ? "#0f6064" : getSpeciesColor(selectedSpecies);
 
   // Build gradient fill for the line
   const createGradient = useCallback(
     (ctx: CanvasRenderingContext2D, chartArea: { top: number; bottom: number }) => {
       const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-      gradient.addColorStop(0, "rgba(15, 96, 100, 0.4)");
-      gradient.addColorStop(1, "rgba(15, 96, 100, 0.02)");
+      if (selectedSpecies === "all") {
+        gradient.addColorStop(0, "rgba(15, 96, 100, 0.4)");
+        gradient.addColorStop(1, "rgba(15, 96, 100, 0.02)");
+      } else {
+        gradient.addColorStop(0, getSpeciesColorWithAlpha(selectedSpecies, 0.4));
+        gradient.addColorStop(1, getSpeciesColorWithAlpha(selectedSpecies, 0.02));
+      }
       return gradient;
     },
-    [],
+    [selectedSpecies],
   );
 
   const chartData = useMemo(
@@ -168,21 +183,21 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       datasets: [
         {
           label: "Detections",
-          data: values,
-          borderColor: "#0f6064",
+          data: normalizedValues,
+          borderColor: lineColor,
           backgroundColor: (context: { chart: ChartJS }) => {
             const { chart } = context;
-            if (!chart.chartArea) return "rgba(15, 96, 100, 0.2)";
+            if (!chart.chartArea) return getSpeciesColorWithAlpha(selectedSpecies === "all" ? "" : selectedSpecies, 0.2);
             return createGradient(chart.ctx, chart.chartArea);
           },
           fill: true,
           tension: 0.3,
-          pointRadius: values.length > 60 ? 0 : 3,
+          pointRadius: normalizedValues.length > 60 ? 0 : 3,
           pointHoverRadius: 5,
         },
       ],
     }),
-    [labels, values, createGradient],
+    [labels, normalizedValues, lineColor, createGradient, selectedSpecies],
   );
 
   const chartOptions: ChartOptions<"line"> = {
@@ -193,7 +208,9 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       legend: { display: false },
       tooltip: {
         callbacks: {
-          label: (context) => `${context.parsed.y.toLocaleString()} detections`,
+          label: (context) => {
+            return `${context.parsed.y.toLocaleString()} per 100 trap nights`;
+          },
         },
       },
     },
@@ -207,6 +224,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       },
       y: {
         beginAtZero: true,
+        title: { display: true, text: "Per 100 trap nights" },
         ticks: {
           callback: (value) => Number(value).toLocaleString(),
         },
@@ -221,9 +239,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           <div>
             <CardTitle className="text-lg">Detection trend</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {totalDetections > 0
-                ? `${totalDetections.toLocaleString()} total | ~${avgPerPeriod.toLocaleString()} avg per ${granularity}`
-                : "Detections over time"}
+              Detections over time
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -242,7 +258,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All species</SelectItem>
+                <SelectItem value="all">All</SelectItem>
                 {speciesList?.map((s) => (
                   <SelectItem key={s.species} value={s.species}>
                     {normalizeLabel(s.species)}
