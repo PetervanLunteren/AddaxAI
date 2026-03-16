@@ -16,7 +16,7 @@ import {
   Legend,
   type ChartOptions,
 } from "chart.js";
-import { Maximize, FileImage, Images, FolderOpen, MapPin, Moon } from "lucide-react";
+import { Maximize, FileImage, Layers, FolderOpen, MapPin, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
@@ -87,14 +87,21 @@ export default function DashboardPage() {
   const trapNights = overview?.trap_nights ?? 0;
   const norm = (n: number) => +(n / trapNights * 100).toFixed(2);
 
+  // Format large numbers with K/M suffixes
+  const compact = (n: number): string => {
+    if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 10_000) return `${+(n / 1_000).toFixed(1)}K`;
+    return n.toLocaleString();
+  };
+
   // Summary cards (raw counts, not normalized)
   const summaryCards = [
-    { title: "Detections", value: overview?.total_detections ?? 0, icon: Maximize, color: "#0f6064" },
-    { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
-    { title: "Events", value: overview?.total_events ?? 0, icon: Images, color: "#0f6064" },
-    { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
     { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
-    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: Moon, color: "#0f6064" },
+    { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
+    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: Calendar, color: "#0f6064" },
+    { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
+    { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
+    { title: "Detections", value: overview?.total_detections ?? 0, icon: Maximize, color: "#0f6064" },
   ];
 
   // Species bar chart (normalized)
@@ -151,7 +158,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (
           <Card key={card.title}>
             <CardContent className="p-4">
@@ -159,7 +166,7 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
                   <p className="text-2xl font-bold mt-1">
-                    {overviewLoading ? "..." : card.value.toLocaleString()}
+                    {overviewLoading ? "..." : compact(card.value)}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg" style={{ backgroundColor: `${card.color}20` }}>

@@ -12,3 +12,5 @@
 11. **Clean repo** - Value simplicity and cleanliness. No redundant MD files. 
 12. **No Title Case** - Use natural English capitalisation. That means only capitalising the first word of sentences and proper nouns (like "Peter van Lunteren", "Utrecht", "MegaDetector", "SpeciesNet", "Today, I was walking in the park.",  "Things I love about Amsterdam.", "Cities visited"). Do capitalize the first letter of headers (e.g., "Detections per 100 trap-days", "Species selection", "Observations"). 
 13. **Use built in features if possible** - Always check whether the required functionality is already available through built-in features. If so, prefer that over writing custom code. If a built-in option is close but does not fully meet the requirement, stop and discuss the pros and cons before proceeding.
+14. **No em dashes** - Never use em dashes (—) or double hyphens (--) in text. Use commas, colons, semicolons, or separate sentences instead.
+15. **Write like a person, not an LLM** - 
