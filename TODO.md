@@ -1,5 +1,5 @@
 ## Priority 1
-- [ ] The tests on github keep on failing. Perhaps just remove the tests for now. We might restore later, but for now just not test on github actions. We'll just test tem locally ourselves. 
+- [x] The tests on github keep on failing. Perhaps just remove the tests for now. We might restore later, but for now just not test on github actions. We'll just test tem locally ourselves.
 - [ ] use icon "calendar-days" for trap days in dashboard card. 
 
 ## Priority 2
