@@ -59,7 +59,10 @@ def _filters_to_dict(filters: SimilarityFilters) -> dict[str, Any]:
     """Convert Pydantic SimilarityFilters to a JSON-safe dict."""
     d: dict[str, Any] = {}
     if filters.labels:
-        d["labels"] = filters.labels
+        # Strip :unspecified suffix from rolled-up taxonomy leaf IDs
+        d["labels"] = [
+            s.removesuffix(":unspecified") for s in filters.labels
+        ]
     if filters.site_ids:
         d["site_ids"] = filters.site_ids
     if filters.date_from is not None:

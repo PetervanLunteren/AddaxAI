@@ -23,6 +23,7 @@ from app.api.schemas.event import (
 )
 from app.api.schemas.file import FileWithDetections
 from app.db.base import get_db
+from app.models import Project
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -51,6 +52,20 @@ def _parse_filter_params(
         min_confidence=min_confidence,
         max_confidence=max_confidence,
     )
+
+
+def _apply_project_threshold(
+    filters: dict, project_id: str, db: Session,
+) -> dict:
+    """Raise min_confidence to the project's detection threshold."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return filters
+    threshold = project.detection_threshold
+    current_min = filters.get("min_confidence")
+    if current_min is None or current_min < threshold:
+        filters["min_confidence"] = threshold
+    return filters
 
 
 @router.post("/generate", response_model=GenerateEventsResponse)
@@ -118,9 +133,13 @@ def list_events(
 ):
     """List event summaries for a project with optional filters."""
     filters = _parse_filter_params(
-        site_ids, date_from, date_to, labels, verification, min_confidence, max_confidence
+        site_ids, date_from, date_to, labels, verification,
+        min_confidence, max_confidence,
     )
-    return event_crud.get_events_by_project(db, project_id, skip=skip, limit=limit, **filters)
+    _apply_project_threshold(filters, project_id, db)
+    return event_crud.get_events_by_project(
+        db, project_id, skip=skip, limit=limit, **filters,
+    )
 
 
 @router.get("/count")
@@ -137,9 +156,13 @@ def get_event_count(
 ):
     """Get total event count for a project with optional filters."""
     filters = _parse_filter_params(
-        site_ids, date_from, date_to, labels, verification, min_confidence, max_confidence
+        site_ids, date_from, date_to, labels, verification,
+        min_confidence, max_confidence,
     )
-    count = event_crud.get_event_count_by_project(db, project_id, **filters)
+    _apply_project_threshold(filters, project_id, db)
+    count = event_crud.get_event_count_by_project(
+        db, project_id, **filters,
+    )
     return {"count": count}
 
 
@@ -165,7 +188,10 @@ def get_verification_stats(
         min_confidence,
         max_confidence,
     )
-    return event_crud.get_event_verification_stats(db, project_id, **filters)
+    _apply_project_threshold(filters, project_id, db)
+    return event_crud.get_event_verification_stats(
+        db, project_id, **filters,
+    )
 
 
 @router.get("/{event_id}", response_model=EventWithFiles)
@@ -213,7 +239,11 @@ def get_adjacent_events(
 ):
     """Get adjacent event IDs for navigation, scoped to filtered set."""
     filters = _parse_filter_params(
-        site_ids, date_from, date_to, labels, verification, min_confidence, max_confidence
+        site_ids, date_from, date_to, labels, verification,
+        min_confidence, max_confidence,
     )
-    result = event_crud.get_adjacent_events(db, event_id, project_id, **filters)
+    _apply_project_threshold(filters, project_id, db)
+    result = event_crud.get_adjacent_events(
+        db, event_id, project_id, **filters,
+    )
     return result

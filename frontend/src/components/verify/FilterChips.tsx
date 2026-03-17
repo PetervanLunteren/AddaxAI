@@ -16,6 +16,12 @@ interface FilterChipsProps {
   siteNames: Record<string, string>;
 }
 
+/** Format a raw label ID for display (e.g. "artiodactyla:unspecified" -> "Artiodactyla"). */
+function formatLabel(raw: string): string {
+  const name = raw.replace(/:unspecified$/, "").replace(/_/g, " ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 const VERIFICATION_LABELS: Record<string, string> = {
   none_verified: "None verified",
   not_fully_verified: "Partially verified",
@@ -78,7 +84,7 @@ export function FilterChips({
       for (const lbl of filters.labels) {
         chips.push({
           key: `label-${lbl}`,
-          label: lbl,
+          label: formatLabel(lbl),
           onRemove: () => {
             const next = filters.labels!.filter((s) => s !== lbl);
             onChange({ ...filters, labels: next.length ? next : undefined });
