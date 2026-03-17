@@ -51,9 +51,9 @@ def _make_project_with_detections(db, label_list, model_id=MODEL_ID):
 
 
 def test_ensure_builtin_labels_creates_rows(db):
-    """Seeds person and vehicle rows."""
+    """Seeds animal, person, and vehicle rows."""
     count = ensure_builtin_labels(db)
-    assert count == 2
+    assert count == 3
 
     rows = (
         db.query(LabelTaxonomy)
@@ -61,7 +61,7 @@ def test_ensure_builtin_labels_creates_rows(db):
         .all()
     )
     names = {r.name for r in rows}
-    assert names == {"person", "vehicle"}
+    assert names == {"animal", "person", "vehicle"}
 
     for r in rows:
         assert r.level == "none"
@@ -73,7 +73,7 @@ def test_ensure_builtin_labels_idempotent(db):
     """Calling twice doesn't duplicate rows."""
     count1 = ensure_builtin_labels(db)
     count2 = ensure_builtin_labels(db)
-    assert count1 == 2
+    assert count1 == 3
     assert count2 == 0
 
     total = (
@@ -81,7 +81,7 @@ def test_ensure_builtin_labels_idempotent(db):
         .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .count()
     )
-    assert total == 2
+    assert total == 3
 
 
 # ---------- link_detections_to_taxonomy ----------
@@ -195,24 +195,57 @@ def test_link_detections_cross_project_isolation(db):
     assert dets2[0].label_taxonomy_id is None
 
 
-def test_link_detections_null_label_skipped(db):
-    """Detections with label=NULL are not linked."""
+def test_link_detections_null_label_linked_by_category(db):
+    """Detections with label=NULL are linked by category to builtins."""
+    ensure_builtin_labels(db)
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(
+        db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0)
+    )
 
-    det_with = make_detection(db, file_id=f.id, label="leopard", label_confidence=0.8)
-    det_without = make_detection(db, file_id=f.id, label=None)
+    det_with = make_detection(
+        db, file_id=f.id, label="leopard", label_confidence=0.8
+    )
+    det_without = make_detection(
+        db, file_id=f.id, label=None, category="animal"
+    )
 
     _add_taxonomy(db, "leopard", "species")
 
     count = link_detections_to_taxonomy(p.id, db)
-    assert count == 1
+    assert count == 2
 
     db.expire_all()
     assert det_with.label_taxonomy_id is not None
-    assert det_without.label_taxonomy_id is None
+    assert det_without.label_taxonomy_id is not None
+
+
+def test_link_detections_by_category(db):
+    """Detection-only project: label=NULL detections linked by category."""
+    ensure_builtin_labels(db)
+    p = make_project(db, classification_model_id=None)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    f = make_file(
+        db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0)
+    )
+
+    det_animal = make_detection(
+        db, file_id=f.id, label=None, category="animal"
+    )
+    det_person = make_detection(
+        db, file_id=f.id, label=None, category="person"
+    )
+    db.flush()
+
+    count = link_detections_to_taxonomy(p.id, db)
+    assert count == 2
+
+    db.expire_all()
+    assert det_animal.label_taxonomy_id is not None
+    assert det_person.label_taxonomy_id is not None
 
 
 def test_link_detections_no_model(db):
@@ -220,7 +253,9 @@ def test_link_detections_no_model(db):
     p = make_project(db, classification_model_id=None)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(
+        db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0)
+    )
 
     det = make_detection(db, file_id=f.id, label="person")
     db.flush()

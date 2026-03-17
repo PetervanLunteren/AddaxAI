@@ -16,7 +16,7 @@ import {
   Legend,
   type ChartOptions,
 } from "chart.js";
-import { Maximize, FileImage, Layers, FolderOpen, MapPin, Calendar } from "lucide-react";
+import { Maximize, FileImage, Layers, FolderOpen, MapPin, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
@@ -98,7 +98,7 @@ export default function DashboardPage() {
   const summaryCards = [
     { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
     { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
-    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: Calendar, color: "#0f6064" },
+    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: CalendarDays, color: "#0f6064" },
     { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
     { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
     { title: "Detections", value: overview?.total_detections ?? 0, icon: Maximize, color: "#0f6064" },

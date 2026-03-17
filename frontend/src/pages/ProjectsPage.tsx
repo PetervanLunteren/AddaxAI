@@ -56,7 +56,7 @@ export function ProjectsPage() {
 
   // Helper to get classification model name by ID
   const getClassificationModelName = (modelId: string | null) => {
-    if (!modelId || modelId === "none") return "None";
+    if (!modelId || modelId === "none") return "∅ Detection only";
     const model = classificationModels.find((m) => m.model_id === modelId);
     return model ? `${model.emoji} ${model.friendly_name}` : modelId;
   };

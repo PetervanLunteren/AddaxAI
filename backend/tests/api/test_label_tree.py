@@ -112,11 +112,62 @@ def test_build_tree_with_labels_and_rollups(db):
     assert "felidae:unspecified" in felidae_child_ids
 
 
-def test_build_tree_no_model(db):
-    """Returns None when project has no classification model."""
+def test_build_tree_no_model_no_detections(db):
+    """Returns None when project has no model and no detections."""
     p = make_project(db, classification_model_id=None)
     result = build_label_filter_tree(p.id, db)
     assert result is None
+
+
+def test_build_tree_detection_only(db):
+    """Detection-only project gets a tree from categories."""
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    ensure_builtin_labels(db)
+
+    p = make_project(db, classification_model_id=None)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+
+    for cat in ["animal", "person", "vehicle"]:
+        ev = make_event_with_files(
+            db,
+            deployment_id=d.id,
+            start_time=datetime(2024, 6, 1, 12, 0),
+        )
+        from app.models.event import event_files as ef_table
+
+        file_row = db.execute(
+            ef_table.select().where(ef_table.c.event_id == ev.id)
+        ).first()
+        make_detection(
+            db,
+            file_id=file_row.file_id,
+            label=None,
+            category=cat,
+        )
+
+    db.flush()
+
+    result = build_label_filter_tree(p.id, db)
+    assert result is not None
+    assert "tree" in result
+
+    leaf_ids = result["all_leaf_ids"]
+    assert "animal" in leaf_ids
+    assert "person" in leaf_ids
+    assert "vehicle" in leaf_ids
+
+    # All three should be under the "other" node
+    tree = result["tree"]
+    other_node = next(
+        (n for n in tree if n["id"] == "other"), None
+    )
+    assert other_node is not None
+    other_child_ids = [c["id"] for c in other_node["children"]]
+    assert "animal" in other_child_ids
+    assert "person" in other_child_ids
+    assert "vehicle" in other_child_ids
 
 
 def test_build_tree_no_detections(db):
@@ -127,11 +178,16 @@ def test_build_tree_no_detections(db):
 
 
 def test_build_tree_no_taxonomy_rows(db):
-    """Returns None when label_taxonomy table has no matching rows."""
+    """Labels without taxonomy rows appear under 'other'."""
     p = _setup_project_with_detections(db, ["leopard"])
     # Don't add any taxonomy rows
     result = build_label_filter_tree(p.id, db)
-    assert result is None
+    assert result is not None
+    assert "leopard" in result["all_leaf_ids"]
+    other_node = next(
+        (n for n in result["tree"] if n["id"] == "other"), None
+    )
+    assert other_node is not None
 
 
 def test_build_tree_with_event_counts(db):

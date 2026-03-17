@@ -248,6 +248,7 @@ def add_rollup_taxonomy_entry(
 BUILTIN_MODEL_ID = "__builtin__"
 
 BUILTIN_LABELS = [
+    {"name": "animal", "category": "animal"},
     {"name": "person", "category": "person"},
     {"name": "vehicle", "category": "vehicle"},
 ]
@@ -321,7 +322,9 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
         .subquery()
     )
 
-    # Get distinct label names with unlinked detections
+    total_linked = 0
+
+    # --- Pass 1: link by Detection.label (classified detections) ---
     unlinked_labels = (
         db.query(func.distinct(Detection.label))
         .filter(
@@ -333,79 +336,117 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     )
     label_names = [row[0] for row in unlinked_labels]
 
-    if not label_names:
-        return 0
+    if label_names:
+        # Build lookup: label name -> taxonomy ID
+        # Priority: model-level > custom > builtin
+        name_to_taxonomy_id: dict[str, str] = {}
 
-    # Build lookup: label name -> taxonomy ID
-    # Priority: model-level > custom > builtin
-    name_to_taxonomy_id: dict[str, str] = {}
+        # 1. Model-level taxonomy (if model exists)
+        if model_id:
+            model_rows = (
+                db.query(LabelTaxonomy.id, LabelTaxonomy.name)
+                .filter(
+                    LabelTaxonomy.classification_model_id == model_id,
+                    LabelTaxonomy.project_id.is_(None),
+                    LabelTaxonomy.name.in_(label_names),
+                )
+                .all()
+            )
+            for tid, name in model_rows:
+                name_to_taxonomy_id[name] = tid
 
-    # 1. Model-level taxonomy (if model exists)
-    if model_id:
-        model_rows = (
+        # 2. Custom labels for this project
+        custom_rows = (
             db.query(LabelTaxonomy.id, LabelTaxonomy.name)
             .filter(
-                LabelTaxonomy.classification_model_id == model_id,
-                LabelTaxonomy.project_id.is_(None),
+                LabelTaxonomy.project_id == project_id,
+                LabelTaxonomy.is_custom == True,  # noqa: E712
                 LabelTaxonomy.name.in_(label_names),
             )
             .all()
         )
-        for tid, name in model_rows:
-            name_to_taxonomy_id[name] = tid
+        for tid, name in custom_rows:
+            if name not in name_to_taxonomy_id:
+                name_to_taxonomy_id[name] = tid
 
-    # 2. Custom labels for this project
-    custom_rows = (
-        db.query(LabelTaxonomy.id, LabelTaxonomy.name)
-        .filter(
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
-            LabelTaxonomy.name.in_(label_names),
-        )
-        .all()
-    )
-    for tid, name in custom_rows:
-        if name not in name_to_taxonomy_id:
-            name_to_taxonomy_id[name] = tid
-
-    # 3. Builtin labels (person, vehicle)
-    builtin_rows = (
-        db.query(LabelTaxonomy.id, LabelTaxonomy.name)
-        .filter(
-            LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-            LabelTaxonomy.name.in_(label_names),
-        )
-        .all()
-    )
-    for tid, name in builtin_rows:
-        if name not in name_to_taxonomy_id:
-            name_to_taxonomy_id[name] = tid
-
-    if not name_to_taxonomy_id:
-        return 0
-
-    # Bulk-update: one UPDATE per label
-    total_linked = 0
-    for label_name, taxonomy_id in name_to_taxonomy_id.items():
-        count = (
-            db.query(Detection)
+        # 3. Builtin labels (animal, person, vehicle)
+        builtin_rows = (
+            db.query(LabelTaxonomy.id, LabelTaxonomy.name)
             .filter(
-                Detection.file_id.in_(db.query(project_file_ids.c.id)),
-                Detection.label == label_name,
-                Detection.label_taxonomy_id.is_(None),
+                LabelTaxonomy.classification_model_id
+                == BUILTIN_MODEL_ID,
+                LabelTaxonomy.name.in_(label_names),
             )
-            .update(
-                {Detection.label_taxonomy_id: taxonomy_id},
-                synchronize_session=False,
-            )
+            .all()
         )
-        total_linked += count
+        for tid, name in builtin_rows:
+            if name not in name_to_taxonomy_id:
+                name_to_taxonomy_id[name] = tid
+
+        # Bulk-update: one UPDATE per label
+        for label_name, taxonomy_id in name_to_taxonomy_id.items():
+            count = (
+                db.query(Detection)
+                .filter(
+                    Detection.file_id.in_(
+                        db.query(project_file_ids.c.id)
+                    ),
+                    Detection.label == label_name,
+                    Detection.label_taxonomy_id.is_(None),
+                )
+                .update(
+                    {Detection.label_taxonomy_id: taxonomy_id},
+                    synchronize_session=False,
+                )
+            )
+            total_linked += count
+
+    # --- Pass 2: link by Detection.category (detection-only) ---
+    # For detections with label=NULL, match category against builtins.
+    unlinked_categories = (
+        db.query(func.distinct(Detection.category))
+        .filter(
+            Detection.file_id.in_(db.query(project_file_ids.c.id)),
+            Detection.label.is_(None),
+            Detection.label_taxonomy_id.is_(None),
+        )
+        .all()
+    )
+    category_names = [row[0] for row in unlinked_categories if row[0]]
+
+    if category_names:
+        builtin_cat_rows = (
+            db.query(LabelTaxonomy.id, LabelTaxonomy.name)
+            .filter(
+                LabelTaxonomy.classification_model_id
+                == BUILTIN_MODEL_ID,
+                LabelTaxonomy.name.in_(category_names),
+            )
+            .all()
+        )
+        for tid, cat_name in builtin_cat_rows:
+            count = (
+                db.query(Detection)
+                .filter(
+                    Detection.file_id.in_(
+                        db.query(project_file_ids.c.id)
+                    ),
+                    Detection.label.is_(None),
+                    Detection.category == cat_name,
+                    Detection.label_taxonomy_id.is_(None),
+                )
+                .update(
+                    {Detection.label_taxonomy_id: tid},
+                    synchronize_session=False,
+                )
+            )
+            total_linked += count
 
     if total_linked:
         db.commit()
         logger.info(
             f"Linked {total_linked} detections to taxonomy "
-            f"({len(name_to_taxonomy_id)} labels) in project {project_id}"
+            f"in project {project_id}"
         )
 
     return total_linked

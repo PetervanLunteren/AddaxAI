@@ -92,7 +92,7 @@ import { cn } from "../lib/utils";
 
 const settingsSchema = z.object({
   detection_model_id: z.string().min(1, "Detection model is required"),
-  classification_model_id: z.string().min(1, "Classification model is required"),
+  classification_model_id: z.string().nullable(),
   embedding_model_id: z.string().optional().nullable(),
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
@@ -204,6 +204,9 @@ export default function SettingsPage() {
     newInterval: number;
   } | null>(null);
 
+  // Classification model removal confirmation
+  const [removeClsConfirmOpen, setRemoveClsConfirmOpen] = useState(false);
+
   // Re-embed confirmation + progress state
   const [reEmbedConfirmOpen, setReEmbedConfirmOpen] = useState(false);
   const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
@@ -249,7 +252,7 @@ export default function SettingsPage() {
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       detection_model_id: "MD5A-0-0",
-      classification_model_id: "",
+      classification_model_id: null,
       embedding_model_id: "DINOV2-VITB14",
       excluded_classes: [],
       country_code: null,
@@ -269,7 +272,7 @@ export default function SettingsPage() {
     if (project) {
       const values: SettingsFormData = {
         detection_model_id: project.detection_model_id,
-        classification_model_id: project.classification_model_id || "",
+        classification_model_id: project.classification_model_id ?? null,
         embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
@@ -301,14 +304,15 @@ export default function SettingsPage() {
   const embeddingModelId = form.watch("embedding_model_id");
   const countryCode = form.watch("country_code");
 
-  // Check if current model is SpeciesNet
+  // Check if a classification model is selected and if it's SpeciesNet
+  const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
   const isSpeciesNet = classificationModelId?.toLowerCase().includes("speciesnet");
 
   // Fetch taxonomy for selected classification model (non-SpeciesNet only)
   const { data: taxonomy } = useQuery({
     queryKey: ["taxonomy", classificationModelId],
     queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
-    enabled: !!classificationModelId && !isSpeciesNet,
+    enabled: !!classificationModelId && classificationModelId !== "none" && !isSpeciesNet,
   });
 
   // Fetch locations for SpeciesNet models
@@ -673,7 +677,7 @@ export default function SettingsPage() {
     if (project) {
       form.reset({
         detection_model_id: project.detection_model_id,
-        classification_model_id: project.classification_model_id || "",
+        classification_model_id: project.classification_model_id ?? null,
         embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
@@ -843,15 +847,32 @@ export default function SettingsPage() {
                       <div className="space-y-2">
                         <div className="flex gap-2 items-stretch">
                           <Select
-                            key={field.value}
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            defaultValue={field.value}
+                            key={field.value ?? "none"}
+                            onValueChange={(val) => {
+                              // Show confirmation when removing classification model
+                              if (val === "none" && field.value && field.value !== "none") {
+                                setRemoveClsConfirmOpen(true);
+                              } else {
+                                field.onChange(val);
+                              }
+                            }}
+                            value={field.value ?? "none"}
+                            defaultValue={field.value ?? "none"}
                           >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select classification model">
-                                  {field.value && (() => {
+                                  {(() => {
+                                    if (!field.value || field.value === "none") {
+                                      return (
+                                        <div className="flex flex-col items-start py-1">
+                                          <div>∅ No classification model</div>
+                                          <div className="text-xs text-muted-foreground">
+                                            Run detector only, identify species manually
+                                          </div>
+                                        </div>
+                                      );
+                                    }
                                     const selectedModel = classificationModels.find(
                                       (m) => m.model_id === field.value
                                     );
@@ -873,6 +894,11 @@ export default function SettingsPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
+                              <SelectItem value="none">
+                                ∅ No classification model
+                                <br />
+                                <span className="text-xs text-muted-foreground">Run detector only, identify species manually</span>
+                              </SelectItem>
                               {classificationModels
                                 .filter((model) => model.model_id !== "none")
                                 .map((model) => (
@@ -896,12 +922,12 @@ export default function SettingsPage() {
                                   variant="outline"
                                   className="px-3"
                                   onClick={() => {
-                                    if (field.value) {
+                                    if (field.value && field.value !== "none") {
                                       setSelectedModelId(field.value);
                                       setShowModelInfo(true);
                                     }
                                   }}
-                                  disabled={!field.value}
+                                  disabled={!field.value || field.value === "none"}
                                 >
                                   <InfoIcon className="h-4 w-4" />
                                 </Button>
@@ -909,7 +935,7 @@ export default function SettingsPage() {
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>
-                                {field.value
+                                {field.value && field.value !== "none"
                                   ? "View model information"
                                   : "Select a classification model to view details"}
                               </p>
@@ -1035,7 +1061,7 @@ export default function SettingsPage() {
             </Card>
 
             {/* Card 2: Geographic location (SpeciesNet) OR Label selection (other models) */}
-            {classificationModelId && isSpeciesNet && locations && (
+            {hasClassificationModel && isSpeciesNet && locations && (
               <Card>
                 <CardHeader>
                   <CardTitle>Geographic location</CardTitle>
@@ -1185,7 +1211,7 @@ export default function SettingsPage() {
               </Card>
             )}
 
-            {classificationModelId && !isSpeciesNet && taxonomy && (
+            {hasClassificationModel && !isSpeciesNet && taxonomy && (
               <Card>
                 <CardHeader>
                   <CardTitle>Label selection</CardTitle>
@@ -1335,8 +1361,8 @@ export default function SettingsPage() {
                   )}
                 />
 
-                {/* Event Smoothing */}
-                <FormField
+                {/* Event Smoothing (only when classification model is selected) */}
+                {hasClassificationModel && <FormField
                   control={form.control}
                   name="event_smoothing"
                   render={() => (
@@ -1373,10 +1399,10 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   )}
-                />
+                />}
 
-                {/* Taxonomic Rollup */}
-                <FormField
+                {/* Taxonomic Rollup (only when classification model is selected) */}
+                {hasClassificationModel && <FormField
                   control={form.control}
                   name="taxonomic_rollup"
                   render={({ field }) => (
@@ -1395,7 +1421,7 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   )}
-                />
+                />}
 
               </CardContent>
             </Card>
@@ -1455,7 +1481,7 @@ export default function SettingsPage() {
                         updateMutation.isPending ||
                         !!saveJobId ||
                         detectionModelStatus?.status !== "ready" ||
-                        classificationModelStatus?.status !== "ready" ||
+                        (hasClassificationModel && classificationModelStatus?.status !== "ready") ||
                         (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
                       }
                     >
@@ -1464,7 +1490,7 @@ export default function SettingsPage() {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {(detectionModelStatus?.status !== "ready" || classificationModelStatus?.status !== "ready" || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
+                {(detectionModelStatus?.status !== "ready" || (hasClassificationModel && classificationModelStatus?.status !== "ready") || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
                   <TooltipContent>
                     <p>Model needs preparing first</p>
                   </TooltipContent>
@@ -1634,6 +1660,27 @@ export default function SettingsPage() {
               </AlertDialogCancel>
               <AlertDialogAction onClick={handleConfirmReEmbed}>
                 Yes, re-embed
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Classification Model Removal Confirmation */}
+        <AlertDialog open={removeClsConfirmOpen} onOpenChange={setRemoveClsConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove classification model?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Existing classifications will remain, but no new ones will be generated for future deployments. You can re-enable classification at any time.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => {
+                form.setValue("classification_model_id", "none", { shouldDirty: true });
+                setRemoveClsConfirmOpen(false);
+              }}>
+                Remove model
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

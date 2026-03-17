@@ -33,34 +33,45 @@ def build_label_filter_tree(
         Dict with tree, all_leaf_ids, label_event_counts, count_unit; or None if no taxonomy.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
-    if not project or not project.classification_model_id:
+    if not project:
         return None
 
     model_id = project.classification_model_id
+    threshold = project.detection_threshold
 
-    # Get detected labels + counts (events or detections)
+    # Use COALESCE so detection-only projects (label=NULL) fall back
+    # to category ("animal", "person", "vehicle").
+    effective_label = func.coalesce(Detection.label, Detection.category)
+
+    # Get detected labels + counts (events or detections).
+    # Only count detections at or above the project's confidence threshold
+    # so the tree matches what the verify page actually displays.
     if count_by == "detection":
         label_count_rows = (
-            db.query(Detection.label, func.count(Detection.id))
+            db.query(effective_label, func.count(Detection.id))
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
-            .filter(Detection.label.isnot(None))
-            .group_by(Detection.label)
+            .filter(effective_label.isnot(None))
+            .filter(Detection.confidence >= threshold)
+            .group_by(effective_label)
             .all()
         )
     else:
         label_count_rows = (
-            db.query(Detection.label, func.count(func.distinct(Event.id)))
+            db.query(
+                effective_label, func.count(func.distinct(Event.id))
+            )
             .join(File, File.id == Detection.file_id)
             .join(event_files, event_files.c.file_id == File.id)
             .join(Event, Event.id == event_files.c.event_id)
             .join(Deployment, Deployment.id == Event.deployment_id)
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
-            .filter(Detection.label.isnot(None))
-            .group_by(Detection.label)
+            .filter(effective_label.isnot(None))
+            .filter(Detection.confidence >= threshold)
+            .group_by(effective_label)
             .all()
         )
 
@@ -83,27 +94,36 @@ def build_label_filter_tree(
         )
         .subquery()
     )
-    fk_rows = (
-        db.query(LabelTaxonomy)
-        .filter(LabelTaxonomy.id.in_(db.query(linked_taxonomy_ids.c[0])))
-        .all()
-    )
+    fk_rows = [
+        r for r in (
+            db.query(LabelTaxonomy)
+            .filter(LabelTaxonomy.id.in_(
+                db.query(linked_taxonomy_ids.c[0])
+            ))
+            .all()
+        )
+        if r.name in detected_labels
+    ]
     fk_label_names = {r.name for r in fk_rows}
 
     # String-match fallback for unlinked detections (label_taxonomy_id IS NULL)
     unlinked_labels = detected_labels - fk_label_names
     fallback_rows: list[LabelTaxonomy] = []
     if unlinked_labels:
-        model_rows = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == model_id,
-                LabelTaxonomy.project_id.is_(None),
-                LabelTaxonomy.name.in_(unlinked_labels),
+        if model_id:
+            model_rows = (
+                db.query(LabelTaxonomy)
+                .filter(
+                    LabelTaxonomy.classification_model_id == model_id,
+                    LabelTaxonomy.project_id.is_(None),
+                    LabelTaxonomy.name.in_(unlinked_labels),
+                )
+                .all()
             )
-            .all()
-        )
-        model_label_names = {r.name.lower() for r in model_rows}
+            model_label_names = {r.name.lower() for r in model_rows}
+        else:
+            model_rows = []
+            model_label_names = set()
 
         custom_rows = (
             db.query(LabelTaxonomy)
@@ -114,17 +134,33 @@ def build_label_filter_tree(
             )
             .all()
         )
-        custom_rows = [r for r in custom_rows if r.name.lower() not in model_label_names]
+        custom_rows = [
+            r for r in custom_rows
+            if r.name.lower() not in model_label_names
+        ]
         fallback_rows = model_rows + custom_rows
 
     taxonomy_rows = fk_rows + fallback_rows
 
-    if not taxonomy_rows:
-        return None
+    # Rows with no taxonomy fields go to "Other" instead of root
+    has_taxonomy = []
+    no_taxonomy_names: set[str] = set()
+    for row in taxonomy_rows:
+        if any([
+            row.taxon_class, row.taxon_order,
+            row.taxon_family, row.taxon_genus,
+        ]):
+            has_taxonomy.append(row)
+        else:
+            no_taxonomy_names.add(row.name)
+    taxonomy_rows = has_taxonomy
 
     # Build sets for matched vs unmatched labels
     matched_labels = {row.name for row in taxonomy_rows}
-    unmatched_labels = detected_labels - matched_labels
+    unmatched_labels = (detected_labels - matched_labels) | no_taxonomy_names
+
+    if not taxonomy_rows and not unmatched_labels:
+        return None
 
     # Build hierarchical tree
     root: dict = {}
@@ -208,7 +244,7 @@ def build_label_filter_tree(
             display = (
                 row.name.replace("_", " ").title()
                 if is_formal_taxon
-                else row.name.replace("_", " ")
+                else row.name.replace("_", " ").capitalize()
             )
             leaf_node = {
                 "id": leaf_id,
@@ -231,7 +267,7 @@ def build_label_filter_tree(
             leaf_id = label_name
             other_children[leaf_id] = {
                 "id": leaf_id,
-                "name": label_name.replace("_", " "),
+                "name": label_name.replace("_", " ").capitalize(),
                 "count": count,
                 "children": {},
                 "is_leaf": True,
@@ -239,7 +275,7 @@ def build_label_filter_tree(
             }
         root[other_key] = {
             "id": "other",
-            "name": "other",
+            "name": "Other",
             "children": other_children,
             "is_leaf": False,
         }

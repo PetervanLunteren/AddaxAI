@@ -46,12 +46,14 @@ def _apply_event_filters(
 
     if labels:
         # EXISTS subquery: event has at least one file with a detection matching labels
+        # Use COALESCE to fall back to category when label is null (detection-only projects)
+        effective_label = func.coalesce(Detection.label, Detection.category)
         label_subq = (
             select(event_files.c.event_id)
             .join(File, File.id == event_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
-            .where(Detection.label.in_(labels))
+            .where(effective_label.in_(labels))
         )
         if min_confidence is not None:
             label_subq = label_subq.where(Detection.confidence >= min_confidence)
@@ -349,16 +351,14 @@ def get_events_by_project(
             key=lambda f: f.timestamp,
         )
 
-        # Collect unique labels across all files
+        # Collect unique labels across all files (fall back to category for detection-only)
         label_set: set[str] = set()
         for f in sorted_files:
             for d in f.detections:
-                if (
-                    d.label
-                    and (min_confidence is None or d.confidence >= min_confidence)
-                    and (max_confidence is None or d.confidence <= max_confidence)
+                if (min_confidence is None or d.confidence >= min_confidence) and (
+                    max_confidence is None or d.confidence <= max_confidence
                 ):
-                    label_set.add(d.label)
+                    label_set.add(d.label if d.label is not None else d.category)
 
         # Determine dominant observation type (animal > human > vehicle > blank)
         obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
@@ -645,32 +645,32 @@ def get_event_verification_stats(
 def get_filter_options(db: Session, project_id: str) -> dict:
     """Get available filter options for a project (distinct labels, date range)."""
     # Distinct labels across all detections in project
+    # Use COALESCE to fall back to category when label is null (detection-only projects)
+    effective_label = func.coalesce(Detection.label, Detection.category)
     label_rows = (
-        db.query(Detection.label)
+        db.query(effective_label)
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
-        .filter(Detection.label.isnot(None))
         .distinct()
         .all()
     )
-    label_list = sorted([row[0] for row in label_rows])
+    label_list = sorted([row[0] for row in label_rows if row[0]])
 
     # Count distinct events per label
     label_count_rows = (
-        db.query(Detection.label, func.count(func.distinct(Event.id)))
+        db.query(effective_label, func.count(func.distinct(Event.id)))
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .join(Event, Event.id == event_files.c.event_id)
         .join(Deployment, Deployment.id == Event.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
-        .filter(Detection.label.isnot(None))
-        .group_by(Detection.label)
+        .group_by(effective_label)
         .all()
     )
-    label_event_counts = {name: count for name, count in label_count_rows}
+    label_event_counts = {name: count for name, count in label_count_rows if name}
 
     # Date range from events
     date_row = (

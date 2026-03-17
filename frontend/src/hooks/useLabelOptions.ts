@@ -31,7 +31,8 @@ export function useLabelOptions(
 ) {
   const isSpeciesNet =
     classificationModelId?.toUpperCase().includes("SPECIESNET") ?? false;
-  const hasTaxonomyModel = !!classificationModelId && !isSpeciesNet;
+  const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
+  const hasTaxonomyModel = hasClassificationModel && !isSpeciesNet;
 
   // Taxonomy-based models (EUR-DF, NAM-ADS, etc.)
   const {
@@ -50,7 +51,7 @@ export function useLabelOptions(
   } = useQuery({
     queryKey: ["project-label-stats", projectId],
     queryFn: () => projectsApi.getLabelStats(projectId),
-    enabled: isSpeciesNet,
+    enabled: hasClassificationModel && isSpeciesNet,
   });
 
   // Custom labels added by the user for this project
@@ -71,7 +72,10 @@ export function useLabelOptions(
   const options = useMemo(() => {
     const result: LabelOption[] = [...GENERAL_OPTIONS];
 
-    if (hasTaxonomyModel && taxonomy?.all_classes) {
+    if (!hasClassificationModel) {
+      // Detection-only projects: add "animal" alongside "person" and "vehicle"
+      result.push({ value: "animal", category: "animal", label: null });
+    } else if (hasTaxonomyModel && taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
         result.push({ value: cls, category: "animal", label: cls });
       }
@@ -105,7 +109,7 @@ export function useLabelOptions(
     }
 
     return result;
-  }, [hasTaxonomyModel, taxonomy, isSpeciesNet, labelStats, customLabels]);
+  }, [hasClassificationModel, hasTaxonomyModel, taxonomy, isSpeciesNet, labelStats, customLabels]);
 
   return { options, isLoading };
 }

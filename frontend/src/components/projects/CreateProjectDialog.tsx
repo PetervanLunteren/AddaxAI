@@ -72,12 +72,7 @@ const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
   description: z.string().max(500, "Description too long").optional(),
   detection_model_id: z.literal("MD5A-0-0"),
-  classification_model_id: z
-    .string()
-    .min(1, "Please select a classification model")
-    .refine((val) => val !== "none", {
-      message: "Please select a classification model",
-    }),
+  classification_model_id: z.string().nullable().optional(),
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
@@ -148,7 +143,7 @@ export function CreateProjectDialog({
       name: "",
       description: "",
       detection_model_id: "MD5A-0-0",
-      classification_model_id: "",
+      classification_model_id: null,
       embedding_model_id: null,
       excluded_classes: [],
       country_code: null,
@@ -359,13 +354,24 @@ export function CreateProjectDialog({
                     </FormLabel>
                     <div className="flex gap-2 items-stretch">
                       <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
+                        defaultValue={field.value ?? "none"}
+                        value={field.value ?? "none"}
                       >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select classification model">
-                            {field.value && (() => {
+                            {(() => {
+                              if (!field.value || field.value === "none") {
+                                return (
+                                  <div className="flex flex-col items-start py-1">
+                                    <div>∅ No classification model</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Run detector only, identify species manually
+                                    </div>
+                                  </div>
+                                );
+                              }
                               const selectedModel = classificationModels.find(
                                 (m) => m.model_id === field.value
                               );
@@ -387,6 +393,11 @@ export function CreateProjectDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="none">
+                          ∅ No classification model
+                          <br />
+                          <span className="text-xs text-muted-foreground">Run detector only, identify species manually</span>
+                        </SelectItem>
                         {classificationModels
                           .filter((model) => model.model_id !== "none")
                           .map((model) => (
@@ -409,8 +420,8 @@ export function CreateProjectDialog({
                             type="button"
                             variant="outline"
                             className="px-3"
-                            onClick={() => field.value && setShowModelInfo(true)}
-                            disabled={!field.value}
+                            onClick={() => field.value && field.value !== "none" && setShowModelInfo(true)}
+                            disabled={!field.value || field.value === "none"}
                           >
                             <InfoIcon className="h-4 w-4" />
                           </Button>
@@ -611,14 +622,14 @@ export function CreateProjectDialog({
                         type="submit"
                         disabled={
                           createMutation.isPending ||
-                          modelStatus?.status !== "ready"
+                          (!!classificationModelId && classificationModelId !== "none" && modelStatus?.status !== "ready")
                         }
                       >
                         {createMutation.isPending ? "Creating..." : "Create project"}
                       </Button>
                     </span>
                   </TooltipTrigger>
-                  {modelStatus?.status !== "ready" && (
+                  {!!classificationModelId && classificationModelId !== "none" && modelStatus?.status !== "ready" && (
                     <TooltipContent>
                       <p>Model needs preparing first</p>
                     </TooltipContent>

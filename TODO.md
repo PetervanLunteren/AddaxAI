@@ -1,16 +1,18 @@
 ## Priority 1
-- [x] The tests on github keep on failing. Perhaps just remove the tests for now. We might restore later, but for now just not test on github actions. We'll just test tem locally ourselves.
-- [ ] use icon "calendar-days" for trap days in dashboard card. 
+- [ ] 
 
 ## Priority 2
-- [ ] Make sure a classification model is not required for a project. User can also just go with a megadetector version, and then do the identificaiton themselves. 
+- [ ] TEST: Make sure a classification model is not required for a project. User can also just go with a megadetector version, and then do the identificaiton themselves. 
+- [ ] when adding a label, it should also finish what you were trying to do. SO for example if I relabel 10 detections and say "Add label for .... tiger", i add the label, and click OK, then it should relabel them to Tiger. Now i have to relabel them again ans select the just created label. 
+- [ ] in the verification dropdown where you see all the labels of the project, it should show the taxonomy in small caption below the common names (class>order> etc). 
+- [ ] Add dividers to the pbar modal for analysis between the pbars for more vertical breathing room.
+- [ ] We used to have texts like "Starting up" and "Finalising" with small teal spinner for when a process started but was not further than 0%, or if already 100% but not finsihed yet. Can we get these back? They were very helpful, good UX UI. Please check the git history for how that worked, or implement it frpo sratch again, whatever is easiest. 
+- [ ] add stats to the project cards in the project grid view. Stats like n_files, n_detecitons, trap nights, etc. 
+- [ ] how are trap nights calculated? If I have 10 cameras in paralel from 1 to 10 march, then nothing until we deploy 10 cameras in paralel again from 1 april to 10 april. How many nights do we have? explain the calculation.  
+- [ ] In the slideout for adding a custom model, should we make it clear that they can also save without taxonomy? Perhaps by making the button "Save without taxonomy" if not set, and otherwise "Save with taxonomy"? Or somehting like that? What do you propose? Also explain in the caption. 
 
 ## Priority 3
 - [ ] 
-
-## Installer
-- [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
-- [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
 
 ## Features
 - [ ] TIME OFFSET - add a feature that allows datetime offset. This should happen at the "new deployment" options. Perhaps something that says "your data spans X days/weeks, etc. " Click here to see the burned in pixel dates (show a few images / frames) and show the extracted datetime next to it. Then users can add an offset to all data in the deployment. Add fast options to switch from AM to PM etc. +12:00 and -12:00. 
@@ -24,3 +26,11 @@
 - [ ] MAP - check AddaxAI Connect and copy the map from there. 
 - [ ] EXPORT OPTIONS - check AddaxAI Connect and copy from there. 
 - [ ]
+
+
+
+
+
+## Installer
+- [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
+- [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
