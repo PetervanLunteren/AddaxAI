@@ -4,7 +4,8 @@
  * Fetches labels from the classification model's taxonomy (or from
  * project label stats for SpeciesNet), merges in any project-specific
  * custom labels, and combines them with the always-available "person"
- * and "vehicle" options.
+ * and "vehicle" options. Each option is annotated with a taxonomy
+ * string (e.g. "mammalia › carnivora › felidae") when available.
  */
 
 import { useMemo } from "react";
@@ -18,12 +19,36 @@ export interface LabelOption {
   label: string | null;
   isCustom?: boolean;
   customId?: string;
+  /** Taxonomy string for display, e.g. "mammalia › carnivora › felidae" */
+  taxonomyCaption?: string | null;
 }
 
 const GENERAL_OPTIONS: LabelOption[] = [
   { value: "person", category: "person", label: null },
   { value: "vehicle", category: "vehicle", label: null },
 ];
+
+/** Build a display string from taxonomy fields, joining non-empty ranks with " › ". */
+function buildTaxonomyCaption(
+  entry: {
+    taxon_class: string | null;
+    taxon_order: string | null;
+    taxon_family: string | null;
+    taxon_genus: string | null;
+    taxon_species: string | null;
+  } | undefined,
+): string | null {
+  if (!entry) return null;
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const parts = [
+    entry.taxon_class,
+    entry.taxon_order,
+    entry.taxon_family,
+    entry.taxon_genus,
+    entry.taxon_species,
+  ].filter(Boolean).map((s) => capitalize(s as string));
+  return parts.length > 0 ? parts.join(" › ") : null;
+}
 
 export function useLabelOptions(
   classificationModelId: string | null,
@@ -64,20 +89,37 @@ export function useLabelOptions(
     enabled: !!projectId,
   });
 
+  // Taxonomy fields for all labels (model + custom)
+  const {
+    data: taxonomyMap,
+  } = useQuery({
+    queryKey: ["label-taxonomy-map", projectId],
+    queryFn: () => projectsApi.getLabelTaxonomyMap(projectId),
+    enabled: !!projectId,
+  });
+
   const isLoading =
     (hasTaxonomyModel && taxonomyLoading) ||
     (isSpeciesNet && statsLoading) ||
     (!!projectId && customLoading);
 
   const options = useMemo(() => {
-    const result: LabelOption[] = [...GENERAL_OPTIONS];
+    const result: LabelOption[] = GENERAL_OPTIONS.map((o) => ({
+      ...o,
+      taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[o.value]),
+    }));
 
     if (!hasClassificationModel) {
       // Detection-only projects: add "animal" alongside "person" and "vehicle"
       result.push({ value: "animal", category: "animal", label: null });
     } else if (hasTaxonomyModel && taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
-        result.push({ value: cls, category: "animal", label: cls });
+        result.push({
+          value: cls,
+          category: "animal",
+          label: cls,
+          taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cls]),
+        });
       }
     } else if (isSpeciesNet && labelStats) {
       for (const stat of labelStats) {
@@ -86,6 +128,7 @@ export function useLabelOptions(
             value: stat.label,
             category: "animal",
             label: stat.label,
+            taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[stat.label]),
           });
         }
       }
@@ -102,6 +145,7 @@ export function useLabelOptions(
             label: cl.name,
             isCustom: true,
             customId: cl.id,
+            taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cl.name]),
           });
           existingNames.add(cl.name.toLowerCase());
         }
@@ -109,7 +153,7 @@ export function useLabelOptions(
     }
 
     return result;
-  }, [hasClassificationModel, hasTaxonomyModel, taxonomy, isSpeciesNet, labelStats, customLabels]);
+  }, [hasClassificationModel, hasTaxonomyModel, taxonomy, isSpeciesNet, labelStats, customLabels, taxonomyMap]);
 
   return { options, isLoading };
 }

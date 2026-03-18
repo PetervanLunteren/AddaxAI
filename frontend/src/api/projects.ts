@@ -100,6 +100,18 @@ export const projectsApi = {
     ),
 
   /**
+   * Get taxonomy fields for all labels in a project (model + custom)
+   */
+  getLabelTaxonomyMap: (projectId: string) =>
+    api.get<Record<string, {
+      taxon_class: string | null;
+      taxon_order: string | null;
+      taxon_family: string | null;
+      taxon_genus: string | null;
+      taxon_species: string | null;
+    }>>(`/api/projects/${projectId}/label-taxonomy-map`),
+
+  /**
    * List custom labels for a project
    */
   getCustomLabels: (projectId: string) =>

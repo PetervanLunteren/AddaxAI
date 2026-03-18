@@ -2,7 +2,7 @@
 - [ ] 
 
 ## Priority 2
-- [ ] in the verification dropdown where you see all the labels of the project, it should show the taxonomy in small caption below the common names (class>order> etc). 
+
 - [ ] Add dividers to the pbar modal for analysis between the pbars for more vertical breathing room.
 - [ ] We used to have texts like "Starting up" and "Finalising" with small teal spinner for when a process started but was not further than 0%, or if already 100% but not finsihed yet. Can we get these back? They were very helpful, good UX UI. Please check the git history for how that worked, or implement it frpo sratch again, whatever is easiest. 
 - [ ] add stats to the project cards in the project grid view. Stats like n_files, n_detecitons, trap nights, etc. 

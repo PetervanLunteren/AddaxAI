@@ -181,6 +181,14 @@ def gbif_suggest(q: str) -> list[GBIFSuggestion]:
         if key in seen:
             continue
         seen.add(key)
+        # GBIF returns species as a full binomial ("Urechis caupo").
+        # Strip the genus prefix so we store just the epithet ("caupo"),
+        # consistent with the CSV/JSON taxonomy convention.
+        gbif_genus = r.get("genus") or ""
+        gbif_species = r.get("species") or ""
+        if gbif_genus and gbif_species.lower().startswith(gbif_genus.lower()):
+            gbif_species = gbif_species[len(gbif_genus):].strip()
+
         suggestions.append(GBIFSuggestion(
             gbif_key=r.get("key", 0),
             scientific_name=r.get("scientificName", canonical),
@@ -190,7 +198,7 @@ def gbif_suggest(q: str) -> list[GBIFSuggestion]:
             taxon_order=r.get("order"),
             taxon_family=r.get("family"),
             taxon_genus=r.get("genus"),
-            taxon_species=r.get("species"),
+            taxon_species=gbif_species or None,
         ))
         if len(suggestions) >= 5:
             break
@@ -551,6 +559,50 @@ async def reprocess_classifications(
     ws_manager.register_start(job.id, lambda jid=job.id: process_postprocessing_job(jid))
 
     return {"message": "Postprocessing started", "job_id": job.id}
+
+
+@router.get("/{project_id}/label-taxonomy-map")
+def get_label_taxonomy_map(
+    project_id: str, db: Session = Depends(get_db)
+) -> dict[str, dict[str, str | None]]:
+    """
+    Return taxonomy fields for every label in a project.
+
+    Merges model-level taxonomy entries with project-scoped custom
+    labels. The result is keyed by label name, with each value
+    containing the five taxonomy ranks (nullable).
+    """
+    project = crud_project.get_project(db, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    model_id = project.classification_model_id
+
+    rows = (
+        db.query(LabelTaxonomy)
+        .filter(
+            (LabelTaxonomy.classification_model_id == model_id)
+            | (
+                (LabelTaxonomy.project_id == project_id)
+                & (LabelTaxonomy.is_custom == True)  # noqa: E712
+            )
+        )
+        .all()
+    )
+
+    result: dict[str, dict[str, str | None]] = {}
+    for row in rows:
+        result[row.name] = {
+            "taxon_class": row.taxon_class,
+            "taxon_order": row.taxon_order,
+            "taxon_family": row.taxon_family,
+            "taxon_genus": row.taxon_genus,
+            "taxon_species": row.taxon_species,
+        }
+    return result
 
 
 @router.get("/{project_id}/custom-labels", response_model=list[CustomLabelResponse])

@@ -27,6 +27,20 @@ import { TaxonomySheet } from "./TaxonomySheet";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { CustomLabelResponse } from "../../api/types";
 
+/** Clean up a label for display: replace underscores, capitalize first letter. */
+function formatLabel(name: string): string {
+  const cleaned = name.replace(/[_-]+/g, " ").trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function TaxonomyCaption({ caption }: { caption?: string | null }) {
+  return (
+    <span className="text-[10px] text-muted-foreground truncate">
+      {caption ?? "no taxonomy"}
+    </span>
+  );
+}
+
 interface PinnedOption {
   key: number;
   option: LabelOption;
@@ -174,7 +188,7 @@ export function LabelPicker({
 
   // Trigger button
   const currentOption = options.find((o) => o.value === value);
-  const displayLabel = value ?? "Select label...";
+  const displayLabel = value ? formatLabel(value) : "Select label...";
   const dotColor = currentOption
     ? getCategoryColor(currentOption.category)
     : undefined;
@@ -223,6 +237,7 @@ export function LabelPicker({
                       key={`pinned-${key}`}
                       value={`${key}-${opt.value}`}
                       onSelect={() => handleSelect(opt)}
+                      className="odd:bg-muted/40"
                     >
                       <code className="bg-zinc-100 text-zinc-500 px-1 rounded text-[10px] mr-1.5">
                         {key}
@@ -233,10 +248,13 @@ export function LabelPicker({
                           backgroundColor: getCategoryColor(opt.category),
                         }}
                       />
-                      {opt.value}
+                      <div className="flex flex-col min-w-0">
+                        <span>{formatLabel(opt.value)}</span>
+                        <TaxonomyCaption caption={opt.taxonomyCaption} />
+                      </div>
                       <Check
                         className={cn(
-                          "ml-auto h-3 w-3",
+                          "ml-auto h-3 w-3 shrink-0",
                           value === opt.value ? "opacity-100" : "opacity-0"
                         )}
                       />
@@ -253,6 +271,7 @@ export function LabelPicker({
                       key={opt.value}
                       value={opt.value}
                       onSelect={() => handleSelect(opt)}
+                      className="odd:bg-muted/40"
                     >
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
@@ -260,10 +279,13 @@ export function LabelPicker({
                           backgroundColor: getCategoryColor(opt.category),
                         }}
                       />
-                      {opt.value}
+                      <div className="flex flex-col min-w-0">
+                        <span>{formatLabel(opt.value)}</span>
+                        <TaxonomyCaption caption={opt.taxonomyCaption} />
+                      </div>
                       <Check
                         className={cn(
-                          "ml-auto h-3 w-3",
+                          "ml-auto h-3 w-3 shrink-0",
                           value === opt.value ? "opacity-100" : "opacity-0"
                         )}
                       />
@@ -274,12 +296,13 @@ export function LabelPicker({
 
               {/* Model labels */}
               {filteredModelLabels.length > 0 && (
-                <CommandGroup heading="Labels">
+                <CommandGroup heading="Model labels">
                   {filteredModelLabels.map((opt) => (
                     <CommandItem
                       key={opt.value}
                       value={opt.value}
                       onSelect={() => handleSelect(opt)}
+                      className="odd:bg-muted/40"
                     >
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
@@ -287,10 +310,13 @@ export function LabelPicker({
                           backgroundColor: getCategoryColor(opt.category),
                         }}
                       />
-                      {opt.value}
+                      <div className="flex flex-col min-w-0">
+                        <span>{formatLabel(opt.value)}</span>
+                        <TaxonomyCaption caption={opt.taxonomyCaption} />
+                      </div>
                       <Check
                         className={cn(
-                          "ml-auto h-3 w-3",
+                          "ml-auto h-3 w-3 shrink-0",
                           value === opt.value ? "opacity-100" : "opacity-0"
                         )}
                       />
@@ -307,7 +333,7 @@ export function LabelPicker({
                       key={opt.value}
                       value={opt.value}
                       onSelect={() => handleSelect(opt)}
-                      className="group"
+                      className="group odd:bg-muted/40"
                     >
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
@@ -315,8 +341,11 @@ export function LabelPicker({
                           backgroundColor: getCategoryColor(opt.category),
                         }}
                       />
-                      {opt.value}
-                      <span className="ml-auto flex items-center gap-0.5">
+                      <div className="flex flex-col min-w-0">
+                        <span>{formatLabel(opt.value)}</span>
+                        <TaxonomyCaption caption={opt.taxonomyCaption} />
+                      </div>
+                      <span className="ml-auto flex items-center gap-0.5 shrink-0">
                         <button
                           type="button"
                           className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
