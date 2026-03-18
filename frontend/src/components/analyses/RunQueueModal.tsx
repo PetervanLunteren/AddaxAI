@@ -32,8 +32,9 @@ interface PhaseRowProps {
 
 function PhaseRow({ label, phaseName, progress, currentPhase, phaseProgress, metrics, computeDevice }: PhaseRowProps) {
   const isActive = phaseName === currentPhase;
-  const hasValidMetrics = isActive && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total;
-  const isStartingUp = isActive && !hasValidMetrics && (phaseProgress === undefined || phaseProgress < 1.0);
+  const isFinalizing = isActive && progress >= 100;
+  const hasValidMetrics = isActive && !isFinalizing && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total;
+  const isStartingUp = isActive && !isFinalizing && !hasValidMetrics && (phaseProgress === undefined || phaseProgress < 1.0);
 
   const unit = metrics?.unit || "items";
   const capitalizedUnit = unit.charAt(0).toUpperCase() + unit.slice(1);
@@ -79,10 +80,17 @@ function PhaseRow({ label, phaseName, progress, currentPhase, phaseProgress, met
         </div>
       )}
 
-      {isStartingUp && !hasValidMetrics && (
+      {isStartingUp && (
         <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
           <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#156065' }} />
           <span>Starting up...</span>
+        </div>
+      )}
+
+      {isFinalizing && (
+        <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
+          <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#156065' }} />
+          <span>Finalizing...</span>
         </div>
       )}
     </div>
@@ -228,7 +236,7 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
                   {/* Progress bars card */}
                   <div className="border rounded-lg p-4 space-y-4">
                     {/* Deployment count badge */}
-                    <div className="flex items-center gap-2 pb-2">
+                    <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-gray-600">Deployment</span>
                       <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
                         {deploymentContext.deploymentIndex} of {deploymentContext.totalDeployments}
