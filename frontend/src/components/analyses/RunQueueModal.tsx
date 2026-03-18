@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import { useTaskProgress, type TqdmMetrics } from "@/hooks/useTaskProgress";
 
 interface PhaseRowProps {
@@ -225,30 +226,30 @@ export function RunQueueModal({ open, onOpenChange, queueCount, jobIds, onAnalys
               {!showSpinner && deploymentContext && (
                 <>
                   {/* Progress bars card */}
-                  <div className="border rounded-lg p-4 space-y-3">
+                  <div className="border rounded-lg p-4 space-y-4">
                     {/* Deployment count badge */}
-                    <div className="flex items-center gap-2 pb-2 border-b">
+                    <div className="flex items-center gap-2 pb-2">
                       <span className="text-xs font-medium text-gray-600">Deployment</span>
                       <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
                         {deploymentContext.deploymentIndex} of {deploymentContext.totalDeployments}
                       </span>
                     </div>
 
-                    {deploymentContext.videoCount > 0 && (
-                      <PhaseRow label="Video detection" phaseName="video_detection" progress={getPhaseProgress("video_detection")} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
-                    )}
-                    {deploymentContext.videoCount > 0 && deploymentContext.hasClassifier && (
-                      <PhaseRow label="Video classification" phaseName="video_classification" progress={getPhaseProgress("video_classification")} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
-                    )}
-                    {deploymentContext.imageCount > 0 && (
-                      <PhaseRow label="Image detection" phaseName="image_detection" progress={getPhaseProgress("image_detection")} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
-                    )}
-                    {deploymentContext.imageCount > 0 && deploymentContext.hasClassifier && (
-                      <PhaseRow label="Image classification" phaseName="image_classification" progress={getPhaseProgress("image_classification")} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
-                    )}
-                    {deploymentContext.hasEmbedding && (
-                      <PhaseRow label="Embedding" phaseName="embedding" progress={getPhaseProgress("embedding")} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
-                    )}
+                    {[
+                      deploymentContext.videoCount > 0 && { label: "Video detection", phase: "video_detection" },
+                      deploymentContext.videoCount > 0 && deploymentContext.hasClassifier && { label: "Video classification", phase: "video_classification" },
+                      deploymentContext.imageCount > 0 && { label: "Image detection", phase: "image_detection" },
+                      deploymentContext.imageCount > 0 && deploymentContext.hasClassifier && { label: "Image classification", phase: "image_classification" },
+                      deploymentContext.hasEmbedding && { label: "Embedding", phase: "embedding" },
+                    ].filter(Boolean).map((entry, i) => {
+                      const { label: phaseLabel, phase: phaseName } = entry as { label: string; phase: string };
+                      return (
+                        <div key={phaseName}>
+                          <Separator className="mb-4" />
+                          <PhaseRow label={phaseLabel} phaseName={phaseName} progress={getPhaseProgress(phaseName)} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}

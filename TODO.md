@@ -2,16 +2,14 @@
 - [ ] 
 
 ## Priority 2
-
-- [ ] Add dividers to the pbar modal for analysis between the pbars for more vertical breathing room.
 - [ ] We used to have texts like "Starting up" and "Finalising" with small teal spinner for when a process started but was not further than 0%, or if already 100% but not finsihed yet. Can we get these back? They were very helpful, good UX UI. Please check the git history for how that worked, or implement it frpo sratch again, whatever is easiest. 
 - [ ] add stats to the project cards in the project grid view. Stats like n_files, n_detecitons, trap nights, etc. 
+- [ ] Can we have a image option at the project cards? See how its done in this project (/Users/peter/Documents/Repos/AddaxAI-Connect/). Users should be able to add one when creating the project (non mandatory), and show placeholder if not used. If not used, but there are images in the project, it should take the best image from the project on every startup. (no need to do complex stuff, just only on startup. No complex stuff, this is just a nice-to-have feature). Best image is the one with the highest detection confidence and the largest bounding box. Makes sense? 
 - [ ] how are trap nights calculated? If I have 10 cameras in paralel from 1 to 10 march, then nothing until we deploy 10 cameras in paralel again from 1 april to 10 april. How many nights do we have? explain the calculation.  
 - [ ] In the slideout for adding a custom model, should we make it clear that they can also save without taxonomy? Perhaps by making the button "Save without taxonomy" if not set, and otherwise "Save with taxonomy"? Or somehting like that? What do you propose? Also explain in the caption. 
 - [ ] In the dashboard, lets rethink the "Taxonomic rank" filter a bit more. If we choose a rank, we exclude all other classes, right? Is that what people want? Maybe yes, what do you think? But if we choose "raw label", it should also show persons, vehicles, bait, custom labels without taxonomy, etc. Right? Or should we add a checkbox for this behaviour, something like "Include labels without taxonomy"? What do you think?
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 
 - [ ] dashboard verification vard, explenation text "Detections are individual animal, person, or vehicle bounding boxes within files." bounding box is jargon. Make it "observations" or somehting like that. Same with "bounding boxes " in the lines after that. 
-- [ ] the pbar of "Image classification" and "video classifciation" drops breifly to 0% after finishing to 100%. Try to find out if you can find out why, and otherwise add some debug lines so I can run a test deployment and I can copy paste the console.log back to you. 
 - [ ] the dropdown widgets in the project settings page are not the same width as the other widgets. This makes it look off. Make it easy on the eyes. How? What would you porpose for UI? 
 
 ## Priority 3

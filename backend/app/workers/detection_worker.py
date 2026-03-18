@@ -1183,9 +1183,10 @@ async def run_classification_on_json(
                 f"{len(results)} results, {len(class_names)} classes, device={compute_device}"
             )
 
-            # Send compute device info
+            # Send compute device info (at phase_progress=1.0 to avoid
+            # resetting the progress bar after classification finishes)
             if progress_callback and compute_device:
-                sync_cls_progress("Classifying...", 0.0, {"compute_device": compute_device})
+                sync_cls_progress("Classifying...", 1.0, {"compute_device": compute_device})
 
             # Merge results back into md_results JSON
             name_to_id = {name: class_id for class_id, name in class_names.items()}
