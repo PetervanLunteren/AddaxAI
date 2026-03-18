@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       info:
-        description: "Here you can manually trigger the build. ➡️ It will automatically fetch the latest release tag. ➡️ Selecting branch 'main' will upload to the official Azure bucket. ➡️ Any other branch will upload to the beta-versions bucket."
+        description: "Here you can manually trigger the build. ➡️ It will automatically fetch the latest release tag. ➡️ Selecting branch 'main' will upload to the official GitHub Release. ➡️ Any other branch will upload to the beta release."
         required: false
         default: "[dummy input field - no need to fill in]"
   release:
@@ -35,16 +35,12 @@ jobs:
           echo RELEASE_VERSION: $RELEASE_VERSION
           echo "RELEASE_VERSION=${{ steps.release_info.outputs.release }}" >> $GITHUB_ENV
 
-      - name: Set BUCKET_NAME based on chosen branch
+      - name: Set upload target
         run: |
-          echo "BRANCH_NAME is $BRANCH_NAME"
-          if [ "$BRANCH_NAME" = "main" ]; then
-            BUCKET_NAME="github-zips"
-          else
-            BUCKET_NAME="github-zips-beta"
-          fi
-          echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV 
-          echo "BUCKET_NAME is $BUCKET_NAME"
+          echo "UPLOAD_TAG=${{ env.RELEASE_VERSION }}" >> $GITHUB_ENV
+
+      - name: Override release version for testing
+        run: echo "UPLOAD_TAG=test-migration" >> $GITHUB_ENV
 
       - name: Install Miniconda
         run: |
@@ -96,25 +92,14 @@ jobs:
           ### remove folder but keep .tar.xz
           rm -r "env-speciesnet"
 
-      - name: Upload pinned version of env-speciesnet.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-speciesnet.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-speciesnet to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ github.workspace }}/temp/env-speciesnet.tar.xz"
+          echo "SIZE_SPECIESNET=$(stat -f%z "$FILE")" >> $GITHUB_ENV
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-speciesnet.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-speciesnet.tar.xz" --clobber
 
       - name: Remove env-speciesnet.tar.xz
         run: |
@@ -166,25 +151,14 @@ jobs:
           ### remove folder but keep .tar.xz
           rm -r "env-tensorflow-v1"
 
-      - name: Upload pinned version of env-tensorflow-v1.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-tensorflow-v1.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-tensorflow-v1 to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ github.workspace }}/temp/env-tensorflow-v1.tar.xz"
+          echo "SIZE_TF_V1=$(stat -f%z "$FILE")" >> $GITHUB_ENV
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-tensorflow-v1.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-tensorflow-v1.tar.xz" --clobber
 
       - name: Remove env-tensorflow-v1.tar.xz
         run: |
@@ -250,25 +224,14 @@ jobs:
           ### remove folder but keep .tar.xz
           rm -r "env-tensorflow-v2"
 
-      - name: Upload pinned version of env-tensorflow-v2.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-tensorflow-v2.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-tensorflow-v2 to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ github.workspace }}/temp/env-tensorflow-v2.tar.xz"
+          echo "SIZE_TF_V2=$(stat -f%z "$FILE")" >> $GITHUB_ENV
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-tensorflow-v2.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-tensorflow-v2.tar.xz" --clobber
 
       - name: Remove env-tensorflow-v2.tar.xz
         run: |
@@ -329,25 +292,14 @@ jobs:
           ### remove folder but keep .tar.xz
           rm -r "env-pytorch"
 
-      - name: Upload pinned version of env-pytorch.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-pytorch.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-pytorch to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ github.workspace }}/temp/env-pytorch.tar.xz"
+          echo "SIZE_PYTORCH=$(stat -f%z "$FILE")" >> $GITHUB_ENV
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-pytorch.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-pytorch.tar.xz" --clobber
 
       - name: Remove env-pytorch.tar.xz
         run: |
@@ -399,25 +351,14 @@ jobs:
           ### remove folder but keep .tar.xz
           rm -r "env-pywildlife"
 
-      - name: Upload pinned version of env-pywildlife.tar.xz 
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos/envs
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Upload latest version of env-pywildlife.tar.xz
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/temp
-          destination_folder: latest/macos/envs
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload env-pywildlife to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ github.workspace }}/temp/env-pywildlife.tar.xz"
+          echo "SIZE_PYWILDLIFE=$(stat -f%z "$FILE")" >> $GITHUB_ENV
+          cp "$FILE" "${{ github.workspace }}/temp/macos-env-pywildlife.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ github.workspace }}/temp/macos-env-pywildlife.tar.xz" --clobber
 
       - name: Remove env-pywildlife.tar.xz
         run: |
@@ -557,25 +498,36 @@ jobs:
           echo "HOME=$HOME" >> $GITHUB_ENV
           echo "HOME is $HOME"
 
-      - name: Uploading pinned version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.HOME }}/base-install
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos
-          is_recursive: false
-          delete_if_exists: true
+      - name: Upload base-install to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ env.HOME }}/base-install/base-install.tar.xz"
+          echo "SIZE_BASE_INSTALL=$(stat -f%z "$FILE")" >> $GITHUB_ENV
+          cp "$FILE" "${{ env.HOME }}/base-install/macos-base-install.tar.xz"
+          gh release upload "${{ env.UPLOAD_TAG }}" "${{ env.HOME }}/base-install/macos-base-install.tar.xz" --clobber
 
-      - name: Uploading latest version of base install
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ env.HOME }}/base-install
-          destination_folder: latest/macos
-          is_recursive: false
-          delete_if_exists: true
+      - name: Generate and upload macos-manifest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+          import json, os
+          manifest = {}
+          assets = {
+              'macos-env-speciesnet.tar.xz': int(os.environ['SIZE_SPECIESNET']),
+              'macos-env-tensorflow-v1.tar.xz': int(os.environ['SIZE_TF_V1']),
+              'macos-env-tensorflow-v2.tar.xz': int(os.environ['SIZE_TF_V2']),
+              'macos-env-pytorch.tar.xz': int(os.environ['SIZE_PYTORCH']),
+              'macos-env-pywildlife.tar.xz': int(os.environ['SIZE_PYWILDLIFE']),
+              'macos-base-install.tar.xz': int(os.environ['SIZE_BASE_INSTALL']),
+          }
+          for name, size in assets.items():
+              manifest[name] = {'parts': [name], 'total_size': size}
+          with open('macos-manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          "
+          gh release upload "${{ env.UPLOAD_TAG }}" macos-manifest.json --clobber
 
       # - name: Get the release body
       #   id: get_release
@@ -616,7 +568,7 @@ jobs:
           echo "VERSION=\"${{ env.RELEASE_VERSION }}\"" > newFile.sh
 
           # Append the URL line
-          echo "URL=\"https://addaxaipremiumstorage.blob.core.windows.net/${{ env.BUCKET_NAME }}/${{ env.RELEASE_VERSION }}/macos/base-install.tar.xz\"" >> newFile.sh
+          echo "URL=\"https://github.com/PetervanLunteren/AddaxAI/releases/download/${{ env.UPLOAD_TAG }}/macos-base-install.tar.xz\"" >> newFile.sh
       
           # Append the original file's content
           cat "$FILE_PATH" >> newFile.sh
@@ -631,79 +583,14 @@ jobs:
       - name: Compress the macOS installer
         run: |
           cd "${{ github.workspace }}/install_files/macos"
-          zip -r "MacOS-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
+          zip -r "macos-installer.zip" "AddaxAI-${{ env.RELEASE_VERSION }}-installer.app"
 
-          # copy to a private dir so that it can be uploaded with Action-AzureBlobUpload@v2
           mkdir -p temp
-          mv "MacOS-installer.zip" temp/
+          mv "macos-installer.zip" temp/
 
-      - name: Get Upload URL for Release
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        id: get_upload_url
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ env.RELEASE_VERSION }}',
-            });
-            // Write the upload URL to the environment file
-            const fs = require('fs');
-            fs.appendFileSync(process.env.GITHUB_ENV, `UPLOAD_URL=${release.data.upload_url}\n`);
-
-      - name: Authenticate GitHub CLI
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Remove existing asset if present
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        run: |
-          # List all assets in the release
-          release_info=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }}
-            )
-          
-          # Extract asset ID by matching the name
-          asset_id=$(echo $release_info | jq -r '.assets[] | select(.name == "MacOS-installer-${{ env.RELEASE_VERSION }}.zip") | .id')
-          echo "asset_id is $asset_id"
-          
-          # Check if the asset exists and delete it
-          if [ ! -z "$asset_id" ]; then
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id"
-          else
-            echo "Asset not found. Continue with upload..."
-          fi
-  
-      - name: Upload Asset to GitHub Release
-        if: ${{ env.BRANCH_NAME == 'main' }}
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: "${{ github.workspace }}/install_files/macos/temp/MacOS-installer.zip"
-          asset_name: "MacOS-installer-${{ env.RELEASE_VERSION }}.zip"
-          asset_content_type: application/octet-stream
+      - name: Upload MacOS installer to release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Uploading pinned version of installer app
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/install_files/macos/temp
-          destination_folder: ${{ env.RELEASE_VERSION }}/macos
-          is_recursive: false
-          delete_if_exists: true
-
-      - name: Uploading latest version of installer app
-        uses: LanceMcCarthy/Action-AzureBlobUpload@v2
-        with:
-          connection_string: ${{ secrets.AZURE_CONNECTION_STRING }}
-          container_name: ${{ env.BUCKET_NAME }}
-          source_folder: ${{ github.workspace }}/install_files/macos/temp
-          destination_folder: latest/macos
-          is_recursive: false
-          delete_if_exists: true
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ env.UPLOAD_TAG }}" \
+            "${{ github.workspace }}/install_files/macos/temp/macos-installer.zip" --clobber
