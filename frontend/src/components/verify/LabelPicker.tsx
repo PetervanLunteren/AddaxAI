@@ -7,9 +7,10 @@
  * slideout for creating a new custom label with optional GBIF lookup.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, Pencil, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { getCategoryColor } from "../../lib/detection-utils";
 import { projectsApi } from "../../api/projects";
@@ -60,7 +61,7 @@ export function LabelPicker({
   const [search, setSearch] = useState("");
   const [taxonomyLabel, setTaxonomyLabel] = useState<CustomLabelResponse | null>(null);
   const [taxonomySheetOpen, setTaxonomySheetOpen] = useState(false);
-  const [pendingOption, setPendingOption] = useState<LabelOption | null>(null);
+  const pendingOptionRef = useRef<LabelOption | null>(null);
   const [createName, setCreateName] = useState("");
   const queryClient = useQueryClient();
 
@@ -145,8 +146,10 @@ export function LabelPicker({
         category: "animal",
         label: created.name,
       };
-      // Defer onSelect until sheet close to avoid unmount issues
-      setPendingOption(option);
+      // Store in both state and ref. The ref is read by
+      // handleTaxonomySheetClose in the same tick (before React
+      // re-renders), so the close handler always sees the latest value.
+      pendingOptionRef.current = option;
     },
     [projectId, queryClient]
   );
@@ -157,14 +160,16 @@ export function LabelPicker({
         setTaxonomySheetOpen(false);
         setTaxonomyLabel(null);
         setCreateName("");
-        if (pendingOption) {
-          onSelect(pendingOption);
-          setPendingOption(null);
+        const pending = pendingOptionRef.current;
+        if (pending) {
+          onSelect(pending);
+          toast.success(`Label "${pending.value}" created and applied`);
+          pendingOptionRef.current = null;
         }
         onOpenChange?.(false);
       }
     },
-    [pendingOption, onSelect, onOpenChange]
+    [onSelect, onOpenChange]
   );
 
   // Trigger button

@@ -176,7 +176,9 @@ export function TaxonomySheet({
       return updated;
     },
     onSuccess: (created) => {
-      toast.success(`Label "${created.name}" created`);
+      if (!onCreated) {
+        toast.success(`Label "${created.name}" created`);
+      }
       queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
       onCreated?.(created);

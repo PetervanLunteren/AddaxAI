@@ -2,7 +2,6 @@
 - [ ] 
 
 ## Priority 2
-- [ ] when adding a label, it should also finish what you were trying to do. SO for example if I relabel 10 detections and say "Add label for .... tiger", i add the label, and click OK, then it should relabel them to Tiger. Now i have to relabel them again ans select the just created label. 
 - [ ] in the verification dropdown where you see all the labels of the project, it should show the taxonomy in small caption below the common names (class>order> etc). 
 - [ ] Add dividers to the pbar modal for analysis between the pbars for more vertical breathing room.
 - [ ] We used to have texts like "Starting up" and "Finalising" with small teal spinner for when a process started but was not further than 0%, or if already 100% but not finsihed yet. Can we get these back? They were very helpful, good UX UI. Please check the git history for how that worked, or implement it frpo sratch again, whatever is easiest. 
@@ -13,6 +12,7 @@
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 
 - [ ] dashboard verification vard, explenation text "Detections are individual animal, person, or vehicle bounding boxes within files." bounding box is jargon. Make it "observations" or somehting like that. Same with "bounding boxes " in the lines after that. 
 - [ ] the pbar of "Image classification" and "video classifciation" drops breifly to 0% after finishing to 100%. Try to find out if you can find out why, and otherwise add some debug lines so I can run a test deployment and I can copy paste the console.log back to you. 
+- [ ] the dropdown widgets in the project settings page are not the same width as the other widgets. This makes it look off. Make it easy on the eyes. How? What would you porpose for UI? 
 
 ## Priority 3
 - [ ] 
