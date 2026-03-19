@@ -9,6 +9,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { Info, AlertTriangle } from "lucide-react";
 import { projectsApi, type ProjectUpdate, type ProjectResponse } from "../../api/projects";
+import { API_BASE_URL } from "../../lib/api-client";
+import { ImageDropZone } from "./ImageDropZone";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -57,6 +59,8 @@ export function EditProjectDialog({
   onOpenChange,
 }: EditProjectDialogProps) {
   const queryClient = useQueryClient();
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
@@ -76,17 +80,29 @@ export function EditProjectDialog({
     });
   }, [project, form]);
 
-  // Reset delete confirmation when dialog opens/closes
+  // Reset state when dialog opens/closes
   useEffect(() => {
     if (!open) {
       setShowDeleteConfirm(false);
       setDeleteConfirmText("");
+      setImageFile(null);
+      setRemoveImage(false);
     }
   }, [open]);
 
   const updateMutation = useMutation({
     mutationFn: (data: ProjectUpdate) => projectsApi.update(project.id, data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      try {
+        if (removeImage && !imageFile) {
+          await projectsApi.deleteThumbnail(project.id);
+        }
+        if (imageFile) {
+          await projectsApi.uploadThumbnail(project.id, imageFile);
+        }
+      } catch (e) {
+        console.error("Failed to update project image:", e);
+      }
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["projects", project.id] });
       onOpenChange(false);
@@ -98,6 +114,9 @@ export function EditProjectDialog({
     },
   });
 
+  const existingThumbnailUrl = project.thumbnail_path && !removeImage
+    ? `${API_BASE_URL}/api/projects/${project.id}/thumbnail`
+    : null;
 
   const onSubmit = (data: ProjectUpdate) => {
     updateMutation.mutate(data);
@@ -105,7 +124,7 @@ export function EditProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit project</DialogTitle>
           <DialogDescription>
@@ -181,6 +200,16 @@ export function EditProjectDialog({
                     </div>
                   </FormItem>
                 )}
+              />
+
+              <ImageDropZone
+                value={imageFile}
+                existingUrl={existingThumbnailUrl}
+                onChange={setImageFile}
+                onRemove={() => {
+                  setRemoveImage(true);
+                  setImageFile(null);
+                }}
               />
 
               <div className="rounded-lg border bg-muted/50 p-4">

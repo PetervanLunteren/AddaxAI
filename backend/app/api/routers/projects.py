@@ -8,9 +8,11 @@ Following DEVELOPERS.md principles:
 """
 
 import shutil
+from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -37,15 +39,32 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
 
-@router.get("", response_model=list[ProjectResponse])
-def list_projects(db: Session = Depends(get_db)) -> list[ProjectResponse]:
+@router.get("", response_model=list[ProjectWithStats])
+def list_projects(db: Session = Depends(get_db)) -> list[ProjectWithStats]:
     """
-    List all projects.
+    List all projects with statistics.
 
     Returns empty list if no projects exist.
+    Each project includes counts for sites, deployments, files,
+    detections, and trap nights.
     """
     projects = crud_project.get_projects(db)
-    return [ProjectResponse.model_validate(p) for p in projects]
+    all_stats = crud_project.get_all_projects_stats(db)
+
+    result: list[ProjectWithStats] = []
+    empty_stats = {
+        "site_count": 0,
+        "deployment_count": 0,
+        "file_count": 0,
+        "detection_count": 0,
+        "trap_nights": 0,
+    }
+    for p in projects:
+        project_dict = ProjectResponse.model_validate(p).model_dump()
+        project_dict.update(all_stats.get(p.id, empty_stats))
+        result.append(ProjectWithStats(**project_dict))
+
+    return result
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -352,6 +371,16 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
             shutil.rmtree(project_artifacts)
             logger.info(f"Cleaned up artifacts: {project_artifacts}")
 
+    # Clean up thumbnail files
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    for subdir in ("project-images", "thumbnails"):
+        thumb = settings.user_data_dir / subdir / f"{project_id}.jpg"
+        if thumb.exists():
+            thumb.unlink()
+            logger.info(f"Deleted thumbnail: {thumb}")
+
     logger.info(f"Deleted project: {project_id} (cascaded to all related data)")
 
 
@@ -384,6 +413,128 @@ def get_project_stats(
     project_dict.update(stats)
 
     return ProjectWithStats(**project_dict)
+
+
+@router.get("/{project_id}/thumbnail")
+def get_project_thumbnail(
+    project_id: str, db: Session = Depends(get_db)
+) -> FileResponse:
+    """Serve the project card thumbnail image."""
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    if not db_project.thumbnail_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No thumbnail set for this project",
+        )
+
+    thumb = Path(db_project.thumbnail_path)
+    if not thumb.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thumbnail file missing from disk",
+        )
+
+    return FileResponse(
+        path=str(thumb),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+_MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
+
+
+@router.post("/{project_id}/thumbnail")
+def upload_project_thumbnail(
+    project_id: str,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Upload a project card thumbnail image.
+
+    Accepts JPEG or PNG, max 5 MB. Resizes to 512px wide and saves
+    as JPEG.
+    """
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    if file.content_type not in _ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPEG and PNG images are accepted",
+        )
+
+    contents = file.file.read()
+    if len(contents) > _MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image must be smaller than 5 MB",
+        )
+
+    from app.core.config import get_settings
+    from app.services.thumbnail_service import generate_thumbnail
+
+    settings = get_settings()
+    upload_dir = settings.user_data_dir / "project-images"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save uploaded file to a temp location, then generate thumbnail
+    raw_path = upload_dir / f"{project_id}_raw.tmp"
+    raw_path.write_bytes(contents)
+
+    try:
+        dest = upload_dir / f"{project_id}.jpg"
+        generate_thumbnail(raw_path, dest)
+    finally:
+        raw_path.unlink(missing_ok=True)
+
+    # Remove any old auto-generated thumbnail
+    auto_thumb = settings.user_data_dir / "thumbnails" / f"{project_id}.jpg"
+    if auto_thumb.exists():
+        auto_thumb.unlink()
+
+    db_project.thumbnail_path = str(dest)
+    db_project.updated_at = datetime.utcnow()
+    db.commit()
+
+    logger.info(f"Uploaded thumbnail for project {project_id}")
+    return {"message": "Thumbnail uploaded"}
+
+
+@router.delete(
+    "/{project_id}/thumbnail",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_project_thumbnail(
+    project_id: str, db: Session = Depends(get_db)
+) -> None:
+    """Remove the project card thumbnail."""
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    if db_project.thumbnail_path:
+        thumb = Path(db_project.thumbnail_path)
+        if thumb.exists():
+            thumb.unlink()
+        db_project.thumbnail_path = None
+        db_project.updated_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"Deleted thumbnail for project {project_id}")
 
 
 @router.get("/{project_id}/detection-stats")

@@ -22,14 +22,14 @@ export type { ProjectCreate, ProjectResponse, ProjectUpdate, ProjectWithStats };
 
 export const projectsApi = {
   /**
-   * List all projects
+   * List all projects with statistics
    */
-  getProjects: () => api.get<ProjectResponse[]>("/api/projects"),
+  getProjects: () => api.get<ProjectWithStats[]>("/api/projects"),
 
   /**
-   * List all projects (alias for getProjects)
+   * List all projects with statistics (alias for getProjects)
    */
-  list: () => api.get<ProjectResponse[]>("/api/projects"),
+  list: () => api.get<ProjectWithStats[]>("/api/projects"),
 
   /**
    * Create a new project
@@ -134,6 +134,18 @@ export const projectsApi = {
    */
   deleteCustomLabel: (projectId: string, labelId: string) =>
     api.delete<void>(`/api/projects/${projectId}/custom-labels/${labelId}`),
+
+  /**
+   * Upload a project card thumbnail image
+   */
+  uploadThumbnail: (id: string, file: File) =>
+    api.upload<{ message: string }>(`/api/projects/${id}/thumbnail`, file),
+
+  /**
+   * Remove the project card thumbnail
+   */
+  deleteThumbnail: (id: string) =>
+    api.delete<void>(`/api/projects/${id}/thumbnail`),
 
   /**
    * Search GBIF for species suggestions by vernacular name

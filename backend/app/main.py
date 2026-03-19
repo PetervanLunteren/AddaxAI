@@ -42,6 +42,37 @@ setup_logging()
 logger = get_logger(__name__)
 
 
+async def auto_generate_thumbnails() -> None:
+    """Background task to auto-select thumbnails for projects without one.
+
+    Runs non-blocking during startup. Projects that already have a
+    thumbnail (user-uploaded or previously auto-selected) are skipped.
+    """
+    try:
+        settings = get_settings()
+        thumbnails_dir = settings.user_data_dir / "thumbnails"
+        thumbnails_dir.mkdir(parents=True, exist_ok=True)
+
+        from app.db.base import get_session_factory
+        from app.services.thumbnail_service import (
+            auto_select_project_thumbnails,
+        )
+
+        def _run() -> None:
+            session_factory = get_session_factory()
+            db = session_factory()
+            try:
+                auto_select_project_thumbnails(db, thumbnails_dir)
+            finally:
+                db.close()
+
+        await asyncio.to_thread(_run)
+    except Exception as e:
+        logger.error(
+            f"Auto-thumbnail generation failed: {e}", exc_info=True
+        )
+
+
 async def update_model_catalog(app: FastAPI) -> None:
     """
     Background task to sync model catalog.
@@ -87,19 +118,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise
 
-    # Start model catalog sync in background (non-blocking)
+    # Start background tasks (non-blocking)
     sync_task = asyncio.create_task(update_model_catalog(app))
+    thumbnail_task = asyncio.create_task(auto_generate_thumbnails())
 
     yield
 
-    # Shutdown
-    # Cancel catalog sync if still running
-    if not sync_task.done():
-        sync_task.cancel()
-        try:
-            await sync_task
-        except asyncio.CancelledError:
-            pass
+    # Shutdown: cancel background tasks if still running
+    for task in (sync_task, thumbnail_task):
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     logger.info("Shutting down AddaxAI Backend")
 

@@ -107,6 +107,11 @@ class Project(Base):
         String(64), nullable=True
     )
 
+    # Project card thumbnail (absolute path to resized JPEG on disk)
+    thumbnail_path: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+
     # Relationships
     sites: Mapped[list["Site"]] = relationship(
         "Site", back_populates="project", cascade="all, delete-orphan"

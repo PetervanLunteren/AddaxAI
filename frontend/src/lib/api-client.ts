@@ -27,12 +27,15 @@ async function apiFetch<T>(
   logger.info(`API ${method} ${endpoint}`);
 
   try {
+    // Skip Content-Type for FormData (browser sets multipart boundary)
+    const isFormData = options?.body instanceof FormData;
+    const headers = isFormData
+      ? { ...options?.headers }
+      : { "Content-Type": "application/json", ...options?.headers };
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
     });
 
     // Handle non-2xx responses
@@ -118,5 +121,14 @@ export const api = {
    */
   delete: <T>(endpoint: string): Promise<T> => {
     return apiFetch<T>(endpoint, { method: "DELETE" });
+  },
+
+  /**
+   * Upload a file via multipart form data
+   */
+  upload: <T>(endpoint: string, file: File, fieldName = "file"): Promise<T> => {
+    const formData = new FormData();
+    formData.append(fieldName, file);
+    return apiFetch<T>(endpoint, { method: "POST", body: formData });
   },
 };

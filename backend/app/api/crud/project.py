@@ -10,8 +10,9 @@ Following DEVELOPERS.md principles:
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.crud.statistics import get_trap_nights
 from app.api.schemas.project import ProjectCreate, ProjectUpdate
-from app.models import Deployment, File, Project, Site
+from app.models import Deployment, Detection, File, Project, Site
 
 
 def get_projects(db: Session) -> list[Project]:
@@ -103,7 +104,7 @@ def delete_project(db: Session, project_id: str) -> bool:
 
 def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
     """
-    Get statistics for a project.
+    Get statistics for a single project.
 
     Returns dict with counts, or None if project doesn't exist.
     """
@@ -112,7 +113,12 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         return None
 
     # Count sites
-    site_count = db.scalar(select(func.count(Site.id)).where(Site.project_id == project_id)) or 0
+    site_count = (
+        db.scalar(
+            select(func.count(Site.id)).where(Site.project_id == project_id)
+        )
+        or 0
+    )
 
     # Count deployments
     deployment_count = (
@@ -135,12 +141,68 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         or 0
     )
 
-    # TODO: Count detections (model not implemented yet)
-    detection_count = 0
+    # Count detections
+    detection_count = (
+        db.scalar(
+            select(func.count(Detection.id))
+            .join(File)
+            .join(Deployment)
+            .join(Site)
+            .where(Site.project_id == project_id)
+        )
+        or 0
+    )
+
+    trap_nights = get_trap_nights(db, project_id)
 
     return {
         "site_count": site_count,
         "deployment_count": deployment_count,
         "file_count": file_count,
         "detection_count": detection_count,
+        "trap_nights": trap_nights,
     }
+
+
+def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
+    """
+    Get statistics for all projects in bulk.
+
+    Returns a dict keyed by project_id, each containing counts for
+    sites, deployments, files, detections, and trap nights.
+    """
+    # Single query for site, deployment, file, and detection counts per project
+    rows = db.execute(
+        select(
+            Site.project_id,
+            func.count(func.distinct(Site.id)).label("site_count"),
+            func.count(func.distinct(Deployment.id)).label("deployment_count"),
+            func.count(func.distinct(File.id)).label("file_count"),
+            func.count(Detection.id).label("detection_count"),
+        )
+        .select_from(Site)
+        .outerjoin(Deployment, Deployment.site_id == Site.id)
+        .outerjoin(File, File.deployment_id == Deployment.id)
+        .outerjoin(Detection, Detection.file_id == File.id)
+        .group_by(Site.project_id)
+    ).all()
+
+    stats: dict[str, dict[str, int]] = {}
+    project_ids_with_sites: list[str] = []
+
+    for row in rows:
+        project_id = row.project_id
+        project_ids_with_sites.append(project_id)
+        stats[project_id] = {
+            "site_count": row.site_count,
+            "deployment_count": row.deployment_count,
+            "file_count": row.file_count,
+            "detection_count": row.detection_count,
+            "trap_nights": 0,
+        }
+
+    # Compute trap nights per project (reuses existing calculation)
+    for project_id in project_ids_with_sites:
+        stats[project_id]["trap_nights"] = get_trap_nights(db, project_id)
+
+    return stats

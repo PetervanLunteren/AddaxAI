@@ -126,6 +126,7 @@ class ProjectResponse(ProjectBase):
     created_at: datetime
     updated_at: datetime
     postprocessing_settings_hash: str | None = None
+    thumbnail_path: str | None = None
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
 
@@ -141,6 +142,7 @@ class ProjectWithStats(ProjectResponse):
     deployment_count: int = Field(0, description="Number of deployments in this project")
     file_count: int = Field(0, description="Total number of files in this project")
     detection_count: int = Field(0, description="Total number of detections in this project")
+    trap_nights: int = Field(0, description="Total trap nights across all deployments")
 
 
 class CustomLabelCreate(BaseModel):

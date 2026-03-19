@@ -9,17 +9,20 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Plus, MoreVertical, Pencil, Copy, Trash2 } from "lucide-react";
-import { projectsApi, type ProjectResponse } from "../api/projects";
+import { Plus, MoreVertical, Pencil, Trash2, ImageIcon } from "lucide-react";
+import { projectsApi, type ProjectWithStats } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { logger } from "../lib/logger";
+import { API_BASE_URL } from "../lib/api-client";
 import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import { formatCompact } from "../lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,15 +31,14 @@ import {
 } from "../components/ui/dropdown-menu";
 import { CreateProjectDialog } from "../components/projects/CreateProjectDialog";
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
-import { DuplicateProjectDialog } from "../components/projects/DuplicateProjectDialog";
+
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<ProjectResponse | null>(null);
-  const [duplicatingProject, setDuplicatingProject] = useState<ProjectResponse | null>(null);
-  const [deletingProject, setDeletingProject] = useState<ProjectResponse | null>(null);
+  const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(null);
+  const [deletingProject, setDeletingProject] = useState<ProjectWithStats | null>(null);
 
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ["projects"],
@@ -116,7 +118,7 @@ export function ProjectsPage() {
           </div>
         ) : projects && projects.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project: ProjectResponse) => (
+            {projects.map((project: ProjectWithStats) => (
               <Card
                 key={project.id}
                 className="transition-shadow hover:shadow-lg cursor-pointer"
@@ -127,59 +129,62 @@ export function ProjectsPage() {
                   navigate(`/projects/${project.id}/analyses`);
                 }}
               >
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <CardTitle>{project.name}</CardTitle>
+                <div className="relative">
+                  {project.thumbnail_path ? (
+                    <div className="aspect-video overflow-hidden rounded-t-lg">
+                      <img
+                        src={`${API_BASE_URL}/api/projects/${project.id}/thumbnail?v=${project.updated_at}`}
+                        alt={project.name}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            logger.info(`User opened edit dialog for project: ${project.name}`);
-                            setEditingProject(project);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            logger.info(`User opened duplicate dialog for project: ${project.name}`);
-                            setDuplicatingProject(project);
-                          }}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            logger.info(`User opened delete dialog for project: ${project.name}`);
-                            setDeletingProject(project);
-                          }}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                  ) : (
+                    <div className="aspect-video rounded-t-lg bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
+                      <ImageIcon className="h-10 w-10 text-slate-300" />
+                    </div>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="absolute top-2 right-2 h-7 w-7 rounded-full opacity-80 hover:opacity-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          logger.info(`User opened edit dialog for project: ${project.name}`);
+                          setEditingProject(project);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          logger.info(`User opened delete dialog for project: ${project.name}`);
+                          setDeletingProject(project);
+                        }}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <CardHeader className="pb-3">
+                  <CardTitle>{project.name}</CardTitle>
                 </CardHeader>
                 <div className="border-t border-border/50 mx-6 mb-3" />
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 pb-3">
                   {project.description && (
                     <>
                       <p className="text-sm text-muted-foreground line-clamp-4">
@@ -190,7 +195,7 @@ export function ProjectsPage() {
                   )}
 
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">
+                    <p className="text-sm text-muted-foreground">
                       {getClassificationModelName(project.classification_model_id)}
                     </p>
 
@@ -212,6 +217,18 @@ export function ProjectsPage() {
                     )}
                   </div>
                 </CardContent>
+                <div className="border-t border-border/50 mx-6" />
+                <CardFooter className="pt-3 pb-4 px-6">
+                  <p className="text-xs text-muted-foreground">
+                    {formatCompact(project.file_count)} files
+                    {" · "}
+                    {formatCompact(project.detection_count)} detections
+                    {" · "}
+                    {formatCompact(project.deployment_count)} deployments
+                    {" · "}
+                    {formatCompact(project.trap_nights)} trap nights
+                  </p>
+                </CardFooter>
               </Card>
             ))}
           </div>
@@ -242,12 +259,6 @@ export function ProjectsPage() {
           onOpenChange={(open) => !open && setEditingProject(null)}
         />
       )}
-
-      <DuplicateProjectDialog
-        project={duplicatingProject}
-        open={!!duplicatingProject}
-        onOpenChange={(open) => !open && setDuplicatingProject(null)}
-      />
 
       <DeleteProjectDialog
         project={deletingProject}

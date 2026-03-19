@@ -70,6 +70,7 @@ export interface ProjectResponse {
   min_cluster_size: number;
   min_samples: number;
   postprocessing_settings_hash: string | null;
+  thumbnail_path: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -79,6 +80,7 @@ export interface ProjectWithStats extends ProjectResponse {
   deployment_count: number;
   file_count: number;
   detection_count: number;
+  trap_nights: number;
 }
 
 // Custom label types

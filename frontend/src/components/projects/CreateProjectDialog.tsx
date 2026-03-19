@@ -13,7 +13,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { Info, Check, ChevronsUpDown, InfoIcon } from "lucide-react";
-import { projectsApi, type ProjectCreate } from "../../api/projects";
+import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
+import { ImageDropZone } from "./ImageDropZone";
 import { modelsApi } from "../../api/models";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { ModelStatusBadge } from "./ModelStatusBadge";
@@ -120,6 +121,7 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [countryOpen, setCountryOpen] = useState(false);
   const [stateOpen, setStateOpen] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
@@ -203,14 +205,22 @@ export function CreateProjectDialog({
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => projectsApi.create(data),
-    onSuccess: () => {
+    onSuccess: async (newProject: ProjectResponse) => {
+      if (imageFile) {
+        try {
+          await projectsApi.uploadThumbnail(newProject.id, imageFile);
+        } catch (e) {
+          // Project was created, image upload failed. Not critical.
+          console.error("Failed to upload project image:", e);
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       form.reset();
+      setImageFile(null);
       onOpenChange(false);
     },
     onError: (error: Error) => {
       console.error("Failed to create project:", error);
-      // Set form error
       form.setError("root", {
         message: error.message || "Failed to create project",
       });
@@ -449,6 +459,12 @@ export function CreateProjectDialog({
                   isPreparing={stage === "preparing"}
                 />
               )}
+
+              <ImageDropZone
+                value={imageFile}
+                existingUrl={null}
+                onChange={setImageFile}
+              />
 
               {/* Country Selection (SpeciesNet only) */}
               {isSpeciesNet && locations && (
