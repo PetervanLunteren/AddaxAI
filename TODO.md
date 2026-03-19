@@ -1,9 +1,7 @@
 ## Priority 1
-- [ ] 
+- [ ] MaxN in events? 
 
 ## Priority 2
-- [ ] how are trap nights calculated? If I have 10 cameras in paralel from 1 to 10 march, then nothing until we deploy 10 cameras in paralel again from 1 april to 10 april. How many nights do we have? explain the calculation.  
-- [ ] In the slideout for adding a custom model, should we make it clear that they can also save without taxonomy? Perhaps by making the button "Save without taxonomy" if not set, and otherwise "Save with taxonomy"? Or somehting like that? What do you propose? Also explain in the caption. 
 - [ ] In the dashboard, lets rethink the "Taxonomic rank" filter a bit more. If we choose a rank, we exclude all other classes, right? Is that what people want? Maybe yes, what do you think? But if we choose "raw label", it should also show persons, vehicles, bait, custom labels without taxonomy, etc. Right? Or should we add a checkbox for this behaviour, something like "Include labels without taxonomy"? What do you think?
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 
 - [ ] dashboard verification vard, explenation text "Detections are individual animal, person, or vehicle bounding boxes within files." bounding box is jargon. Make it "observations" or somehting like that. Same with "bounding boxes " in the lines after that. 

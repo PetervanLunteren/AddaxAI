@@ -81,6 +81,7 @@ export function TaxonomySheet({
 
   const isCreateMode = customLabel === null;
   const isEditing = hasTaxonomy(customLabel);
+  const hasTaxonomyFields = !!(taxonClass || taxonOrder || taxonFamily || taxonGenus || taxonSpecies);
   const gbifInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when customLabel changes or sheet opens in create mode
@@ -221,8 +222,8 @@ export function TaxonomySheet({
           </SheetTitle>
           <SheetDescription>
             {isCreateMode
-              ? "Create a new custom label. Search GBIF to fill in taxonomy automatically, or enter fields manually. If this label has no taxonomy (e.g. \"bait\" or \"setup\"), leave all fields blank."
-              : "Add taxonomic information to your custom label. Search GBIF to fill in the fields automatically, or enter them manually. Scientific names often give better search results. If this label has no taxonomy (e.g. \"bait\" or \"setup\"), leave all fields blank."}
+              ? "Create a new custom label. Taxonomy is optional: use GBIF to look it up, or enter it manually. Scientific names often give better results (e.g., \"Panthera leo\" instead of \"lion\"). Labels like \"bait\" or \"setup\" work fine without it."
+              : "Edit your custom label. Taxonomy is optional: use GBIF to look it up, or enter it manually. Scientific names often give better results (e.g., \"Panthera leo\" instead of \"lion\"). Labels like \"bait\" or \"setup\" work fine without taxonomy."}
           </SheetDescription>
         </SheetHeader>
 
@@ -347,7 +348,7 @@ export function TaxonomySheet({
                   ) : (
                     <div className="flex items-center gap-2 rounded-md bg-zinc-50 border border-zinc-200 px-3 py-2">
                       <span className="text-sm text-muted-foreground">
-                        Taxonomy not set
+                        No taxonomy (optional)
                       </span>
                       <button
                         type="button"
@@ -413,11 +414,14 @@ export function TaxonomySheet({
           <Button
             onClick={handleSave}
             disabled={isPending || !labelName.trim()}
+            className="min-w-[220px]"
           >
             {isPending && (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             )}
-            {isCreateMode ? "Create" : "Save"}
+            {isCreateMode
+              ? (hasTaxonomyFields ? "Create with taxonomy" : "Create without taxonomy")
+              : (hasTaxonomyFields ? "Save with taxonomy" : "Save without taxonomy")}
           </Button>
         </SheetFooter>
       </SheetContent>

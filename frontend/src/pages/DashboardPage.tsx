@@ -41,7 +41,7 @@ export default function DashboardPage() {
     endDate: null,
   });
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
-  const [taxonomicRank, setTaxonomicRank] = useState("species");
+  const [taxonomicRank, setTaxonomicRank] = useState("all");
 
   // Derive comma-separated site IDs for API calls
   const siteIdsParam = selectedSiteIds.length > 0 ? selectedSiteIds.join(",") : undefined;

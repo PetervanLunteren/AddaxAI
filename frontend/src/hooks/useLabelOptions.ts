@@ -134,11 +134,22 @@ export function useLabelOptions(
       }
     }
 
-    // Append custom labels, deduplicating against already-present names
+    // Merge custom labels: if a custom label name already exists (e.g. from
+    // model taxonomy or SpeciesNet label stats), mark that entry as custom
+    // so it appears in the "Custom labels" section with an edit button.
+    // Otherwise, append it as a new entry.
     if (customLabels) {
-      const existingNames = new Set(result.map((o) => o.value.toLowerCase()));
+      const existingByName = new Map(result.map((o, i) => [o.value.toLowerCase(), i]));
       for (const cl of customLabels) {
-        if (!existingNames.has(cl.name.toLowerCase())) {
+        const idx = existingByName.get(cl.name.toLowerCase());
+        if (idx !== undefined) {
+          result[idx] = {
+            ...result[idx],
+            isCustom: true,
+            customId: cl.id,
+            taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cl.name]) ?? result[idx].taxonomyCaption,
+          };
+        } else {
           result.push({
             value: cl.name,
             category: "animal",
@@ -147,7 +158,7 @@ export function useLabelOptions(
             customId: cl.id,
             taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cl.name]),
           });
-          existingNames.add(cl.name.toLowerCase());
+          existingByName.set(cl.name.toLowerCase(), result.length - 1);
         }
       }
     }

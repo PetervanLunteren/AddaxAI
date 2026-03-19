@@ -53,7 +53,7 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
 
     if filters.get("labels"):
         placeholders = ",".join("?" for _ in filters["labels"])
-        clauses.append(f"d.label IN ({placeholders})")
+        clauses.append(f"COALESCE(d.label, d.category) IN ({placeholders})")
         params.extend(filters["labels"])
 
     if filters.get("site_ids"):

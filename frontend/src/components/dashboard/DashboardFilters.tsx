@@ -12,12 +12,12 @@ import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import type { DateRange } from "./index";
 
 const TAXONOMIC_RANKS = [
+  { value: "all", label: "All labels" },
   { value: "species", label: "Species" },
   { value: "genus", label: "Genus" },
   { value: "family", label: "Family" },
   { value: "order", label: "Order" },
   { value: "class", label: "Class" },
-  { value: "raw", label: "Raw label" },
 ];
 
 interface DashboardFiltersProps {
@@ -64,12 +64,12 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
     selectedSiteIds.length +
     (dateRange.startDate ? 1 : 0) +
     (dateRange.endDate ? 1 : 0) +
-    (taxonomicRank !== "species" ? 1 : 0);
+    (taxonomicRank !== "all" ? 1 : 0);
 
   const clearAll = () => {
     onSiteIdsChange([]);
     onDateRangeChange({ startDate: null, endDate: null });
-    onTaxonomicRankChange("species");
+    onTaxonomicRankChange("all");
   };
 
   return (

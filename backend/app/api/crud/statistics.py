@@ -66,20 +66,24 @@ _RANK_COLUMNS = {
 def _resolve_taxon_label(
     taxonomic_rank: str | None,
 ) -> tuple:
-    """Return (label_column, needs_taxonomy_join) for the given rank.
+    """Return (label_column, needs_taxonomy_join, animals_only) for the rank.
 
-    When rank is None or "raw", we use Detection.label directly.
-    Otherwise we join LabelTaxonomy and coalesce(rank_column, Detection.label).
+    "all" or None: shows all categories (except empty) using the raw label
+    with Detection.category as fallback for person/vehicle detections.
+
+    Any taxonomic rank: joins LabelTaxonomy and returns the rank column
+    directly (no coalesce fallback), restricted to animal detections with
+    a non-null value at that rank.
     """
-    if not taxonomic_rank or taxonomic_rank == "raw":
-        return Detection.label, False
+    if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
+        return func.coalesce(Detection.label, Detection.category), False, False
 
     col_name = _RANK_COLUMNS.get(taxonomic_rank)
     if not col_name:
-        return Detection.label, False
+        return func.coalesce(Detection.label, Detection.category), False, False
 
     rank_col = getattr(LabelTaxonomy, col_name)
-    return func.coalesce(rank_col, Detection.label), True
+    return rank_col, True, True
 
 
 # ---------------------------------------------------------------------------
@@ -259,8 +263,13 @@ def get_species_distribution(
     date_to: str | None = None,
     taxonomic_rank: str | None = None,
 ) -> list[SpeciesCount]:
-    """Top 10 animal species by detection count."""
-    label_col, needs_join = _resolve_taxon_label(taxonomic_rank)
+    """Top 10 labels by detection count.
+
+    "All labels" mode includes person/vehicle (excludes empty).
+    Taxonomic rank modes only include animal detections that have
+    a non-null value at the requested rank.
+    """
+    label_col, needs_join, animals_only = _resolve_taxon_label(taxonomic_rank)
 
     query = (
         select(
@@ -271,17 +280,22 @@ def get_species_distribution(
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
-        .where(Detection.category == "animal")
-        .where(Detection.label.isnot(None))
         .group_by(label_col)
         .order_by(func.count(Detection.id).desc())
         .limit(10)
     )
 
+    if animals_only:
+        query = query.where(Detection.category == "animal")
+        query = query.where(Detection.label.isnot(None))
+    else:
+        query = query.where(Detection.category != "empty")
+
     if needs_join:
         query = query.outerjoin(
             LabelTaxonomy, Detection.label_taxonomy_id == LabelTaxonomy.id
         )
+        query = query.where(label_col.isnot(None))
 
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
@@ -320,7 +334,7 @@ def get_activity_pattern(
     )
 
     if species:
-        label_col, needs_join = _resolve_taxon_label(taxonomic_rank)
+        label_col, needs_join, _ = _resolve_taxon_label(taxonomic_rank)
         if needs_join:
             query = query.outerjoin(
                 LabelTaxonomy, Detection.label_taxonomy_id == LabelTaxonomy.id
@@ -370,7 +384,7 @@ def get_detection_trend(
     )
 
     if species:
-        label_col, needs_join = _resolve_taxon_label(taxonomic_rank)
+        label_col, needs_join, _ = _resolve_taxon_label(taxonomic_rank)
         if needs_join:
             query = query.outerjoin(
                 LabelTaxonomy, Detection.label_taxonomy_id == LabelTaxonomy.id
