@@ -99,7 +99,7 @@ Move functions with no tkinter dependency into proper modules:
 - [x] 1.9: `analysis/plots.py` — chart utilities (fig2img, overlay, time span)
 - [x] 1.10: `processing/postprocess.py` — file separation, confidence sorting
 - [x] 1.11: `models/deploy.py` — subprocess management, YOLOv5 switching, synthetic detection
-- [ ] 1.12: `models/registry.py` — model discovery and download
+- [x] 1.12: `models/registry.py` — model discovery, setup, environment checks
 
 ### Phase 2: Extract Localization
 - [ ] 2.1: Create i18n JSON files from inline translation arrays
@@ -167,10 +167,10 @@ Every extraction step follows this workflow:
 ## Current Status
 
 **Branch:** `refactor/modularize`
-**Tests:** 100 collected, 97 passing, 3 skipped (optional deps: cv2, matplotlib)
+**Tests:** 135 collected, 132 passing, 3 skipped (optional deps: cv2, matplotlib)
 **Python:** `C:\Users\Topam\AppData\Local\Python\bin\python.exe` (3.14)
-**Installed test deps:** pytest, Pillow, numpy, pandas
+**Installed test deps:** pytest, Pillow, numpy, pandas, requests
 
-**Phase 1 progress:** 9 of 12 modules extracted. Remaining: postprocess, deploy, registry.
+**Phase 1 complete!** All 12 modules extracted. Next: Phase 2 (localization) or wiring extracted modules into AddaxAI_GUI.py.
 
 **Important:** `AddaxAI_GUI.py` is NOT modified yet. All extracted modules are new files. The original monolith still works as-is. Wiring (replacing original functions with imports) happens after all extractions are complete.
