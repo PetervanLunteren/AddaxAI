@@ -1,5 +1,15 @@
 # Developer Documentation
 
+## After cloning
+
+Activate the commit-msg hook that strips auto-generated co-author lines:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This only needs to be run once per clone.
+
 ## Logging & Debugging
 
 **Log files:** All logs (backend + frontend) are written to `~/AddaxAI/logs/backend.log`

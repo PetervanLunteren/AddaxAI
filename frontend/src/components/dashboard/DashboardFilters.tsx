@@ -12,7 +12,7 @@ import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import type { DateRange } from "./index";
 
 const TAXONOMIC_RANKS = [
-  { value: "all", label: "All labels" },
+  { value: "all", label: "Raw label" },
   { value: "species", label: "Species" },
   { value: "genus", label: "Genus" },
   { value: "family", label: "Family" },

@@ -1,8 +1,38 @@
 ## Priority 1
-- [ ] MaxN in events? 
+- [ ] Is there currently a mechanis that calculates MaxN in events? Or how do we count occurance? If we have an event with 10 images, each with 10 cows, and one with 20, do we count 110 cows? Or do we count maxN=20, so 20 cows? How does this work currently.  And how do the settings "Independence interval" and "Event smoothing" affect that? Investigate. Also, how do other platforms do this? 
+
+How do similar camera trap management systems like Agouti, Camelot, Wildlife insights, TrapTagger, WildTrax, TRAPPER AI, eMammal do it? See below stadards to keep in mind. Please thoroughly investigate. I'm not in a rush. You can webquery to find the most up to date information. 
+- GBIF camera trap best practices - https://docs.gbif.org/camera-trap-guide/en/ - Guidance on managing, structuring, validating, and publishing camera trap data at scale.
+- Camtrap-DP (TDWG camera trap data package) - https://camtrap-dp.tdwg.org/ - The de facto data standard for camera trap datasets, defining tables, fields, relationships, and controlled vocabularies.
+- Darwin Core (TDWG) - https://dwc.tdwg.org/ - A widely used biodiversity data standard enabling interoperability with GBIF and other biodiversity infrastructures.
+- FAIR data principles - https://www.go-fair.org/fair-principles/ - Principles for making data findable, accessible, interoperable, and reusable.
+- MegaDetector documentation (Microsoft AI for Earth) - https://github.com/microsoft/CameraTraps - Standards and conventions for animal detection models commonly used in camera trap workflows.
+- eMammal camera trap protocols - https://emammal.si.edu/protocols - Best practices for camera deployment, metadata capture, QA/QC, and long-term monitoring.
+- WCAG accessibility standards - https://www.w3.org/WAI/standards-guidelines/wcag/ - Accessibility guidelines applicable to research dashboards and annotation tools.
+- Nielsen Norman Group usability heuristics - https://www.nngroup.com/articles/ten-usability-heuristics/ - Core UX principles for evaluating interface and workflow usability.
+- OCI (Operational Camera Trap Metadata Standard) - https://github.com/tdwg/camtrap-dp/blob/main/metadata/README.md - Guidance for consistent camera trap metadata capture across projects.
+- Open Geospatial Consortium standards (OGC) - https://www.ogc.org/standards - Standards for spatial metadata and georeferencing, relevant when publishing precise camera trap locations.
+- Snapshot Safari / Zooniverse project design guidelines - https://help.zooniverse.org/kb/ - Guidance on annotation UI/UX, workflow design, and volunteer engagement for large-scale projects.
+
+Instructions:
+* Switch to plan mode, I want this task to be done with "plan mode on"
+* Read all MD file in root to get a understanding of the project. 
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+* Ask me clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. The minimum number of questions to ask me is 10
+
+
+
+
+
+
+
+- [ ] There is something weird going on. If I vcerify all detections as "Spotted bird" via similarity verification, i still see other labels in the dashboard. Why? Are you not taking the settings detection threshold into account? Check the DB for http://localhost:5173/projects/dc6f3a78-5a8b-4b8c-a959-cd1ade3c481a/dashboard
+ 
 
 ## Priority 2
-- [ ] In the dashboard, lets rethink the "Taxonomic rank" filter a bit more. If we choose a rank, we exclude all other classes, right? Is that what people want? Maybe yes, what do you think? But if we choose "raw label", it should also show persons, vehicles, bait, custom labels without taxonomy, etc. Right? Or should we add a checkbox for this behaviour, something like "Include labels without taxonomy"? What do you think?
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 
 - [ ] dashboard verification vard, explenation text "Detections are individual animal, person, or vehicle bounding boxes within files." bounding box is jargon. Make it "observations" or somehting like that. Same with "bounding boxes " in the lines after that. 
 - [ ] the dropdown widgets in the project settings page are not the same width as the other widgets. This makes it look off. Make it easy on the eyes. How? What would you porpose for UI? 

@@ -6,7 +6,7 @@ All queries are scoped to a project via the join chain:
 
 from datetime import date, datetime
 
-from sqlalchemy import Integer, Select, case, distinct, func, select
+from sqlalchemy import Integer, Select, case, distinct, func, literal, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.statistics import (
@@ -62,28 +62,50 @@ _RANK_COLUMNS = {
     "species": "taxon_species",
 }
 
+HIGHER_LEVEL_TAXA = "Higher-level taxa"
+NO_TAXONOMY = "No taxonomy"
 
-def _resolve_taxon_label(
-    taxonomic_rank: str | None,
-) -> tuple:
-    """Return (label_column, needs_taxonomy_join, animals_only) for the rank.
 
-    "all" or None: shows all categories (except empty) using the raw label
-    with Detection.category as fallback for person/vehicle detections.
+def _rank_display_label(taxonomic_rank: str | None):
+    """Return (label_expr, needs_join) for the given taxonomic rank.
 
-    Any taxonomic rank: joins LabelTaxonomy and returns the rank column
-    directly (no coalesce fallback), restricted to animal detections with
-    a non-null value at that rank.
+    Raw / all / None:
+        label_expr = coalesce(Detection.label, Detection.category)
+        needs_join  = False
+
+    Any taxonomic rank (species/genus/family/order/class):
+        label_expr = CASE expression that maps each detection to:
+            - non-animals: Detection.category (person, vehicle)
+            - animals with a value at the rank: that taxonomy value
+            - animals with taxonomy but not at this rank: "Higher-level taxa"
+            - animals with no taxonomy (bait, custom labels, etc.): "No taxonomy"
+        needs_join  = True
     """
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-        return func.coalesce(Detection.label, Detection.category), False, False
+        return (
+            func.coalesce(Detection.label, Detection.category),
+            False,
+        )
 
     col_name = _RANK_COLUMNS.get(taxonomic_rank)
     if not col_name:
-        return func.coalesce(Detection.label, Detection.category), False, False
+        return (
+            func.coalesce(Detection.label, Detection.category),
+            False,
+        )
 
     rank_col = getattr(LabelTaxonomy, col_name)
-    return rank_col, True, True
+    # taxon_class is the broadest rank; if it's populated, the row has
+    # real taxonomy. Rows with all-null fields (level "unknown"/"none")
+    # are treated as having no taxonomy.
+    has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+    label_expr = case(
+        (Detection.category != "animal", Detection.category),
+        (rank_col.isnot(None), rank_col),
+        (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
+        else_=literal(NO_TAXONOMY),
+    )
+    return label_expr, True
 
 
 # ---------------------------------------------------------------------------
@@ -265,42 +287,41 @@ def get_species_distribution(
 ) -> list[SpeciesCount]:
     """Top 10 labels by detection count.
 
-    "All labels" mode includes person/vehicle (excludes empty).
-    Taxonomic rank modes only include animal detections that have
-    a non-null value at the requested rank.
+    Raw mode: shows raw labels with category fallback (excludes empty).
+    Taxonomic rank modes: aggregates animals by the requested rank,
+    keeps non-animals (person, vehicle) as-is, and groups animals
+    without a value at the rank into "Higher-level taxa".
     """
-    label_col, needs_join, animals_only = _resolve_taxon_label(taxonomic_rank)
+    label_expr, needs_join = _rank_display_label(taxonomic_rank)
 
     query = (
         select(
-            label_col.label("species"),
+            label_expr.label("species"),
             func.count(Detection.id).label("count"),
         )
         .select_from(Detection)
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
-        .group_by(label_col)
+        .where(Detection.category != "empty")
+        .group_by(label_expr)
         .order_by(func.count(Detection.id).desc())
         .limit(10)
     )
 
-    if animals_only:
-        query = query.where(Detection.category == "animal")
-        query = query.where(Detection.label.isnot(None))
-    else:
-        query = query.where(Detection.category != "empty")
-
     if needs_join:
         query = query.outerjoin(
-            LabelTaxonomy, Detection.label_taxonomy_id == LabelTaxonomy.id
+            LabelTaxonomy,
+            Detection.label_taxonomy_id == LabelTaxonomy.id,
         )
-        query = query.where(label_col.isnot(None))
 
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
     rows = db.execute(query).all()
-    return [SpeciesCount(species=row.species, count=row.count) for row in rows]
+    return [
+        SpeciesCount(species=row.species, count=row.count)
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -334,12 +355,13 @@ def get_activity_pattern(
     )
 
     if species:
-        label_col, needs_join, _ = _resolve_taxon_label(taxonomic_rank)
+        label_expr, needs_join = _rank_display_label(taxonomic_rank)
         if needs_join:
             query = query.outerjoin(
-                LabelTaxonomy, Detection.label_taxonomy_id == LabelTaxonomy.id
+                LabelTaxonomy,
+                Detection.label_taxonomy_id == LabelTaxonomy.id,
             )
-        query = query.where(label_col == species)
+        query = query.where(label_expr == species)
 
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
@@ -347,7 +369,10 @@ def get_activity_pattern(
     counts_by_hour = {row.hour: row.count for row in rows}
 
     # Fill all 24 hours, inserting 0 for missing ones
-    hours = [HourlyCount(hour=h, count=counts_by_hour.get(h, 0)) for h in range(24)]
+    hours = [
+        HourlyCount(hour=h, count=counts_by_hour.get(h, 0))
+        for h in range(24)
+    ]
     total = sum(hc.count for hc in hours)
 
     return ActivityPatternResponse(hours=hours, total_detections=total)
@@ -384,17 +409,21 @@ def get_detection_trend(
     )
 
     if species:
-        label_col, needs_join, _ = _resolve_taxon_label(taxonomic_rank)
+        label_expr, needs_join = _rank_display_label(taxonomic_rank)
         if needs_join:
             query = query.outerjoin(
-                LabelTaxonomy, Detection.label_taxonomy_id == LabelTaxonomy.id
+                LabelTaxonomy,
+                Detection.label_taxonomy_id == LabelTaxonomy.id,
             )
-        query = query.where(label_col == species)
+        query = query.where(label_expr == species)
 
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
     rows = db.execute(query).all()
-    return [DetectionTrendPoint(date=row.date, count=row.count) for row in rows]
+    return [
+        DetectionTrendPoint(date=row.date, count=row.count)
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
