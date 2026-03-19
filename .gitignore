@@ -3,3 +3,5 @@
 global_vars.json
 **/__pycache__/
 .idea
+.venv/
+.pytest_cache/
