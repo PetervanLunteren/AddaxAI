@@ -96,7 +96,7 @@ Move functions with no tkinter dependency into proper modules:
 - [x] 1.6: `utils/images.py` — image corruption, blur, timestamps, burst detection
 - [x] 1.7: `processing/annotations.py` — Pascal VOC, COCO, XML conversion
 - [x] 1.8: `processing/export.py` — CSV/XLSX/COCO export helpers
-- [ ] 1.9: `analysis/plots.py` — charts and maps
+- [x] 1.9: `analysis/plots.py` — chart utilities (fig2img, overlay, time span)
 - [ ] 1.10: `processing/postprocess.py` — file separation, postprocessing
 - [ ] 1.11: `models/deploy.py` — model deployment orchestration
 - [ ] 1.12: `models/registry.py` — model discovery and download
