@@ -144,10 +144,33 @@ python -m venv .venv
 # upstream = PetervanLunteren/AddaxAI (original — pull updates from here)
 ```
 
-## Conventions
+## Development Methodology
 
+### Test-Driven Development (TDD)
+Every extraction step follows this workflow:
+1. **Write tests first** in `tests/test_<module>.py` with top-level imports
+2. **Implement the module** to make all tests pass
+3. **Run the full test suite** (`python -m pytest tests/ -v`) to verify no regressions
+4. **Commit with a conventional commit message** (feat/fix/refactor prefix)
+5. **Push immediately** so work is recoverable
+
+### Conventions
 - Each extraction step = one commit, immediately pushable
-- When extracting a function: move it to new module, add import in `AddaxAI_GUI.py` at the old location so nothing breaks
-- Run smoke tests after each extraction before committing
+- When extracting a function: parameterize globals (e.g. `var_choose_folder.get()` → `base_folder` parameter)
+- Run full test suite after each extraction before committing
 - Do not change behavior during extraction — pure mechanical moves only
 - Keep `AddaxAI_GUI.py` working at every commit (it's the only entry point until Phase 3)
+- Test imports go at top of file, not inside each test function
+- Optional heavy dependencies (cv2, matplotlib) use `pytest.mark.skipif` so tests degrade gracefully
+- Fix bugs discovered in original code during extraction (document in commit message)
+
+## Current Status
+
+**Branch:** `refactor/modularize`
+**Tests:** 100 collected, 97 passing, 3 skipped (optional deps: cv2, matplotlib)
+**Python:** `C:\Users\Topam\AppData\Local\Python\bin\python.exe` (3.14)
+**Installed test deps:** pytest, Pillow, numpy, pandas
+
+**Phase 1 progress:** 9 of 12 modules extracted. Remaining: postprocess, deploy, registry.
+
+**Important:** `AddaxAI_GUI.py` is NOT modified yet. All extracted modules are new files. The original monolith still works as-is. Wiring (replacing original functions with imports) happens after all extractions are complete.
