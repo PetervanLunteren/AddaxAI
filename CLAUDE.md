@@ -98,7 +98,7 @@ Move functions with no tkinter dependency into proper modules:
 - [x] 1.8: `processing/export.py` — CSV/XLSX/COCO export helpers
 - [x] 1.9: `analysis/plots.py` — chart utilities (fig2img, overlay, time span)
 - [x] 1.10: `processing/postprocess.py` — file separation, confidence sorting
-- [ ] 1.11: `models/deploy.py` — model deployment orchestration
+- [x] 1.11: `models/deploy.py` — subprocess management, YOLOv5 switching, synthetic detection
 - [ ] 1.12: `models/registry.py` — model discovery and download
 
 ### Phase 2: Extract Localization
