@@ -75,12 +75,16 @@ addaxai/
 
 ## Execution Plan
 
-### Phase 0: Foundation (current)
+### Phase 0: Foundation (DONE)
 - [x] Create feature branch `refactor/modularize`
 - [x] Create this CLAUDE.md
-- [ ] Create `addaxai/` package directory structure
-- [ ] Add pytest + smoke tests
-- [ ] Initial commit and push
+- [x] Create `addaxai/` package directory structure (13 subpackages)
+- [x] Add pytest + smoke tests (13 passing)
+- [x] Set up `.venv/` with pytest
+- [x] Fork repo to `TeodoroTopa/AddaxAI`
+- [x] Configure remotes: `origin` = fork, `upstream` = original
+- [x] Add `.venv/` and `.pytest_cache/` to `.gitignore`
+- [x] Initial commit and push
 
 ### Phase 1: Extract Pure Backend (~3,000 lines, zero UI risk)
 Move functions with no tkinter dependency into proper modules:
@@ -117,6 +121,28 @@ Move functions with no tkinter dependency into proper modules:
 - [ ] 5.1: Type hints on extracted modules
 - [ ] 5.2: Replace print() with proper logging
 - [ ] 5.3: CI setup (lint + smoke tests)
+
+## Dev Setup
+
+```bash
+# Clone your fork
+git clone https://github.com/TeodoroTopa/AddaxAI.git
+cd AddaxAI
+git checkout refactor/modularize
+
+# Create venv and install dev dependencies
+python -m venv .venv
+.venv/Scripts/pip install pytest    # Windows
+# .venv/bin/pip install pytest      # Mac/Linux
+
+# Run tests
+.venv/Scripts/python -m pytest tests/ -v    # Windows
+# .venv/bin/python -m pytest tests/ -v      # Mac/Linux
+
+# Remotes
+# origin   = TeodoroTopa/AddaxAI (your fork — push here)
+# upstream = PetervanLunteren/AddaxAI (original — pull updates from here)
+```
 
 ## Conventions
 
