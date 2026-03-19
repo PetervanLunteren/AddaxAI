@@ -94,7 +94,7 @@ Move functions with no tkinter dependency into proper modules:
 - [x] 1.4: `utils/files.py` — file utilities
 - [x] 1.5: `utils/json_ops.py` — JSON manipulation
 - [x] 1.6: `utils/images.py` — image corruption, blur, timestamps, burst detection
-- [ ] 1.7: `processing/annotations.py` — Pascal VOC, COCO, XML conversion
+- [x] 1.7: `processing/annotations.py` — Pascal VOC, COCO, XML conversion
 - [ ] 1.8: `processing/export.py` — CSV/XLSX generation
 - [ ] 1.9: `analysis/plots.py` — charts and maps
 - [ ] 1.10: `processing/postprocess.py` — file separation, postprocessing
