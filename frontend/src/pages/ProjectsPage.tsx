@@ -222,7 +222,7 @@ export function ProjectsPage() {
                   <p className="text-xs text-muted-foreground">
                     {formatCompact(project.file_count)} files
                     {" · "}
-                    {formatCompact(project.detection_count)} detections
+                    {formatCompact(project.observation_count)} observations
                     {" · "}
                     {formatCompact(project.deployment_count)} deployments
                     {" · "}

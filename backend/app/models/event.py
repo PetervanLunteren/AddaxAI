@@ -18,6 +18,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from .deployment import Deployment
+    from .event_observation import EventObservation
     from .file import File
 
 
@@ -52,7 +53,6 @@ class Event(Base):
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    representative_file_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -61,6 +61,11 @@ class Event(Base):
     deployment: Mapped["Deployment"] = relationship("Deployment", back_populates="events")
     files: Mapped[list["File"]] = relationship(
         "File", secondary=event_files, back_populates="events"
+    )
+    observations: Mapped[list["EventObservation"]] = relationship(
+        "EventObservation",
+        back_populates="event",
+        cascade="all, delete-orphan",
     )
 
     # Indexes

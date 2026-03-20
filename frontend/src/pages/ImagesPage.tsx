@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import type { FileResponse, FileWithDetections } from "../api/types";
-import { getCategoryColor, getDetectionLabel, getObservationBadge } from "../lib/detection-utils";
+import { getDetectionColor, getDetectionLabel, getObservationBadge } from "../lib/detection-utils";
 
 export default function ImagesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -215,7 +215,7 @@ function ImageViewer({ file, detectionThreshold }: { file: FileWithDetections; d
             const y = detection.bbox_y * (file.height_px || 1);
             const width = detection.bbox_width * (file.width_px || 1);
             const height = detection.bbox_height * (file.height_px || 1);
-            const color = getCategoryColor(detection.category);
+            const color = getDetectionColor(detection);
             const label = getDetectionLabel(detection);
 
             return (
@@ -265,12 +265,12 @@ function ImageViewer({ file, detectionThreshold }: { file: FileWithDetections; d
             <div
               key={idx}
               className="flex items-center justify-between text-sm p-2 rounded border"
-              style={{ borderColor: getCategoryColor(detection.category) }}
+              style={{ borderColor: getDetectionColor(detection) }}
             >
               <div className="flex items-center gap-2">
                 <div
                   className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: getCategoryColor(detection.category) }}
+                  style={{ backgroundColor: getDetectionColor(detection) }}
                 />
                 {detection.label ? (
                   <>

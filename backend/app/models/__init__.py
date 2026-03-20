@@ -6,6 +6,7 @@ from .deployment_queue import DeploymentQueue
 from .detection import Detection
 from .detection_embedding import DetectionEmbedding
 from .event import Event, event_files
+from .event_observation import EventObservation
 from .file import File
 from .job import Job
 from .label_taxonomy import LabelTaxonomy
@@ -19,6 +20,7 @@ __all__ = [
     "Detection",
     "DetectionEmbedding",
     "Event",
+    "EventObservation",
     "File",
     "Job",
     "Project",

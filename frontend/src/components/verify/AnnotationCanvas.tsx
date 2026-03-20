@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circle, Group } from "react-konva";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
-import { getCategoryColor } from "../../lib/detection-utils";
+import { getDetectionColor } from "../../lib/detection-utils";
 import {
   roundedRectPath,
   computePillLayout,
@@ -587,7 +587,7 @@ export function AnnotationCanvas({
             const y = normToPixel(detection.bbox_y, imgHeight);
             const w = normToPixel(detection.bbox_width, imgWidth);
             const h = normToPixel(detection.bbox_height, imgHeight);
-            const color = getCategoryColor(detection.category);
+            const color = getDetectionColor(detection);
             const isSelected = selectedDetectionId === detection.id;
             const pill = computePillLayout(detection);
 

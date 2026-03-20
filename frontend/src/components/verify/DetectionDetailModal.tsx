@@ -36,7 +36,7 @@ interface DetectionDetailModalProps {
   onActionComplete: () => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** Optimistic verify callback so parent can patch local state before navigating. */
-  onVerify?: (detectionId: string) => void;
+  onVerify?: (detectionId: string, verified?: boolean) => void;
   /** Navigate to adjacent detection. Return false if at boundary. */
   onNavigate?: (direction: "prev" | "next" | "nextUnverified") => boolean;
   /** Current position, e.g. "3 / 48" */
@@ -94,6 +94,7 @@ export function DetectionDetailModal({
     mutationFn: () =>
       detectionsApi.verify(detection!.detection_id, !detection!.verified),
     onSuccess: () => {
+      onVerify?.(detection!.detection_id, !detection!.verified);
       onActionComplete();
     },
     onError: (err: Error) => toast.error(err.message),

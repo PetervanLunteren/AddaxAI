@@ -1,7 +1,7 @@
 /**
  * Stats toolbar for the Events tab showing verification progress.
  *
- * Displays representative and file verification progress bars,
+ * Displays MaxN frame and file verification progress bars,
  * plus a help button. Visual style matches the Similarity toolbar.
  */
 
@@ -16,9 +16,9 @@ interface EventsStatsToolbarProps {
 export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarProps) {
   if (!stats) return null;
 
-  const repPct =
-    stats.total_representatives > 0
-      ? (stats.verified_representatives / stats.total_representatives) * 100
+  const maxnPct =
+    stats.total_max_n_frames > 0
+      ? (stats.verified_max_n_frames / stats.total_max_n_frames) * 100
       : 0;
   const filePct =
     stats.total_files > 0
@@ -40,10 +40,10 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
           <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full transition-all duration-500 ease-out rounded-full"
-              style={{ width: `${repPct}%`, backgroundColor: "#0f6064" }}
+              style={{ width: `${maxnPct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {Math.round(repPct)}% representatives verified
+          {Math.round(maxnPct)}% MaxN frames verified
         </div>
         <div className="h-4 w-px bg-border" />
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -53,7 +53,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
               style={{ width: `${filePct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {Math.round(filePct)}% files verified
+          {Math.round(filePct)}% all files verified
         </div>
       </div>
     </div>

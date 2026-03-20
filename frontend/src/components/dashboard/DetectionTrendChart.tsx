@@ -19,8 +19,10 @@ import {
   Filler,
   type ChartOptions,
 } from "chart.js";
+import { Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { statisticsApi } from "../../api/statistics";
 import { normalizeLabel } from "../../utils/labels";
 import { getSpeciesColor, getSpeciesColorWithAlpha } from "../../utils/species-colors";
@@ -237,9 +239,21 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">Detection trend</CardTitle>
+            <div className="flex items-center gap-1.5">
+              <CardTitle className="text-lg">Detection trend</CardTitle>
+              <TooltipProvider delayDuration={200}>
+                <UITooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-sm p-3">
+                    <p>Shows the total number of observations per day over the survey period. Use the species filter to see trends for a single species.</p>
+                  </TooltipContent>
+                </UITooltip>
+              </TooltipProvider>
+            </div>
             <p className="text-sm text-muted-foreground">
-              Detections over time
+              Observations over time
             </p>
           </div>
           <div className="flex items-center gap-2">

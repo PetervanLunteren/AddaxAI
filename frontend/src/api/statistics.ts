@@ -12,7 +12,7 @@ import { api } from "../lib/api-client";
 
 export interface DashboardOverview {
   total_files: number;
-  total_detections: number;
+  total_observations: number;
   total_events: number;
   total_deployments: number;
   total_sites: number;
@@ -33,7 +33,7 @@ export interface HourlyCount {
 
 export interface ActivityPatternResponse {
   hours: HourlyCount[];
-  total_detections: number;
+  total_observations: number;
 }
 
 export interface DetectionTrendPoint {
@@ -89,9 +89,10 @@ export const statisticsApi = {
   /**
    * Species distribution (species name + detection count)
    */
-  getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string, taxonomicRank?: string) => {
+  getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string, taxonomicRank?: string, countMode?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo, taxonomicRank });
-    return api.get<SpeciesCount[]>(`/api/statistics/species?${query}`);
+    const modeParam = countMode ? `&count_mode=${countMode}` : "";
+    return api.get<SpeciesCount[]>(`/api/statistics/species?${query}${modeParam}`);
   },
 
   /**

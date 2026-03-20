@@ -141,7 +141,7 @@ class ProjectWithStats(ProjectResponse):
     site_count: int = Field(0, description="Number of sites in this project")
     deployment_count: int = Field(0, description="Number of deployments in this project")
     file_count: int = Field(0, description="Total number of files in this project")
-    detection_count: int = Field(0, description="Total number of detections in this project")
+    observation_count: int = Field(0, description="Total observations (MaxN sum) in this project")
     trap_nights: int = Field(0, description="Total trap nights across all deployments")
 
 

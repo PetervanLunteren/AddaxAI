@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from app.api.crud.event import generate_events_for_project
 from app.ml.json_pipeline import load_json_to_database
-from app.models import Event, File
+from app.models import Event
 
 from .conftest import (
     build_detection_json,
@@ -60,7 +60,7 @@ def _load_images_with_timestamps(s: dict, timestamps: list[datetime]) -> None:
 
 
 def test_full_pipeline_to_events(deployment_scaffold):
-    """JSON → load → generate events: correct event count, times, file_count, representative."""
+    """JSON → load → generate events: correct event count, times, file_count, MaxN observations."""
     s = deployment_scaffold
     db = s["db"]
 
@@ -76,10 +76,8 @@ def test_full_pipeline_to_events(deployment_scaffold):
     assert event.file_count == 3
     assert event.start_time == base
     assert event.end_time == timestamps[-1]
-    assert event.representative_file_id is not None
-    # Representative must be a valid file
-    rep = db.query(File).filter(File.id == event.representative_file_id).one()
-    assert rep.deployment_id == s["deployment"].id
+    # MaxN observations should be computed
+    assert len(event.observations) > 0
 
 
 def test_events_with_mixed_content(deployment_scaffold):

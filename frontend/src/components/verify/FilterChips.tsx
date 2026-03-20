@@ -25,8 +25,8 @@ function formatLabel(raw: string): string {
 const VERIFICATION_LABELS: Record<string, string> = {
   none_verified: "None verified",
   not_fully_verified: "Partially verified",
-  unverified_representative: "Representative not verified",
-  verified_representative: "Representative verified",
+  unverified_maxn: "MaxN frames not verified",
+  verified_maxn: "MaxN frames verified",
   fully_verified: "Fully verified",
 };
 

@@ -736,17 +736,17 @@ export default function SettingsPage() {
                   Models used to detect objects and classify labels. Changes apply to new analyses only and do not reprocess existing results.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-0 divide-y">
+              <CardContent className="space-y-0 divide-y border-t">
                 {/* Detection Model */}
                 <FormField
                   control={form.control}
                   name="detection_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection model</FormLabel>
                         <FormDescription className="text-sm">
-                          Used to find animals, people, and vehicles.
+                          The first step in the pipeline. Scans each image or video frame and draws bounding boxes around animals, people, and vehicles. Everything downstream (classification, embedding, statistics) depends on what the detection model finds.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -838,11 +838,11 @@ export default function SettingsPage() {
                   control={form.control}
                   name="classification_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
-                          Used to classify detected animals.
+                          The second step. After the detection model finds an animal, the classification model identifies the species by analyzing the cropped region. People and vehicles are not classified further. Optional, select "none" for detection-only projects.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -963,11 +963,11 @@ export default function SettingsPage() {
                   control={form.control}
                   name="embedding_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Embedding model</FormLabel>
                         <FormDescription className="text-sm">
-                          Computes feature vectors for each detection crop. Used for similarity search and clustering.
+                          The third step. Computes a visual fingerprint for each detected animal. Used to sort and search detections by visual similarity.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1070,13 +1070,13 @@ export default function SettingsPage() {
                     Select the location used for SpeciesNet predictions. Changes apply to new analyses only and do not reprocess existing results.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-0 divide-y">
-                  {/* Country Selection */}
+                <CardContent className="space-y-0 divide-y border-t">
+                  {/* Country selection */}
                   <FormField
                     control={form.control}
                     name="country_code"
                     render={({ field }) => (
-                      <div className="grid grid-cols-2 gap-8 py-6">
+                      <div className="grid grid-cols-2 items-center gap-8 py-6">
                         <div className="space-y-1">
                           <FormLabel>Country</FormLabel>
                           <FormDescription className="text-sm">
@@ -1145,7 +1145,7 @@ export default function SettingsPage() {
                       control={form.control}
                       name="state_code"
                       render={({ field }) => (
-                        <div className="grid grid-cols-2 gap-8 py-6">
+                        <div className="grid grid-cols-2 items-center gap-8 py-6">
                           <div className="space-y-1">
                             <FormLabel>State</FormLabel>
                             <FormDescription className="text-sm">
@@ -1220,15 +1220,15 @@ export default function SettingsPage() {
                     Control which labels can be predicted
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-8">
+                <CardContent className="space-y-0 divide-y border-t">
+                  <div className="grid grid-cols-2 items-center gap-8 py-6">
                     <div className="space-y-1">
                       <FormLabel>Label selection</FormLabel>
                       <FormDescription className="text-sm">
                         Limit predictions to labels expected in your project area to reduce false positives.
                       </FormDescription>
                     </div>
-                    <div className="space-y-1">
+                    <div>
                       <Button
                         type="button"
                         variant="outline"
@@ -1257,13 +1257,13 @@ export default function SettingsPage() {
                   Control how detections are filtered, grouped, and aggregated. Changes apply to all analyses (past and future) and affect how data is interpreted, not the underlying detections.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-0 divide-y">
+              <CardContent className="space-y-0 divide-y border-t">
                 {/* Video Frame Rate */}
                 <FormField
                   control={form.control}
                   name="video_fps"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Video frame rate</FormLabel>
                         <FormDescription className="text-sm">
@@ -1277,7 +1277,7 @@ export default function SettingsPage() {
                           onValueChange={(val) => field.onChange(parseFloat(val))}
                         >
                           <FormControl>
-                            <SelectTrigger className="max-w-xs">
+                            <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                           </FormControl>
@@ -1300,11 +1300,11 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_threshold"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Detection confidence threshold</FormLabel>
                         <FormDescription className="text-sm">
-                          Hide and exclude detections below this value. Applies to existing and new analyses.
+                          Hide detections below this confidence score. Only affects unverified images. Verified observations are always included. Applies retroactively to all statistics and exports.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1330,11 +1330,11 @@ export default function SettingsPage() {
                   control={form.control}
                   name="independence_interval"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Independence interval</FormLabel>
                         <FormDescription className="text-sm">
-                          Group detections into one event when they occur within this time gap.
+                          Consecutive detections at the same camera within this window are merged into one independent event. The count for each event uses MaxN, the peak number of individuals visible in a single image within that event. Affects all statistics retroactively.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1344,7 +1344,7 @@ export default function SettingsPage() {
                           onValueChange={(val) => field.onChange(parseInt(val))}
                         >
                           <FormControl>
-                            <SelectTrigger className="max-w-xs">
+                            <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                           </FormControl>
@@ -1367,14 +1367,14 @@ export default function SettingsPage() {
                   control={form.control}
                   name="event_smoothing"
                   render={() => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
-                        <FormLabel>Event smoothing</FormLabel>
+                        <FormLabel>Smoothing</FormLabel>
                         <FormDescription className="text-sm">
-                          Reduce noisy labels within an event by averaging predictions.
+                          Cleans up classification labels in two steps. Image-level smoothing picks the dominant species when multiple detections in the same image disagree. Event-level smoothing then looks across all images in an event and overwrites outlier labels with the dominant species, based on the strength setting below. Taxonomic relationships are considered when resolving conflicts, so labels within the same family are treated more leniently than cross-family disagreements.
                         </FormDescription>
                       </div>
-                      <div className="flex items-center">
+                      <div className="space-y-2">
                         <Select
                           value={form.watch("event_smoothing") ? form.watch("smoothing_strength") : "off"}
                           onValueChange={(value) => {
@@ -1387,7 +1387,7 @@ export default function SettingsPage() {
                             }
                           }}
                         >
-                          <SelectTrigger className="max-w-xs">
+                          <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1407,14 +1407,14 @@ export default function SettingsPage() {
                   control={form.control}
                   name="taxonomic_rollup"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 gap-8 py-6">
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
                         <FormLabel>Taxonomic rollup</FormLabel>
                         <FormDescription className="text-sm">
-                          If the model's confidence at the species level is below 0.65, it rolls up to the next higher taxonomic level at which the summed confidence reaches 0.65.
+                          When the model is not confident enough at the species level, it sums probabilities up the taxonomy tree (species, genus, family, order, class) and picks the most specific level where the combined confidence reaches 0.65. For example, a detection uncertain between "lion" and "leopard" may roll up to "felidae" if the family-level confidence is high enough.
                         </FormDescription>
                       </div>
-                      <div className="flex items-center">
+                      <div className="space-y-2">
                         <Switch
                           checked={field.value}
                           onCheckedChange={field.onChange}

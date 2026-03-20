@@ -104,6 +104,7 @@ def init_db() -> None:
         detection,
         detection_embedding,
         event,
+        event_observation,
         file,
         job,
         label_taxonomy,

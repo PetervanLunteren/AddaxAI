@@ -443,6 +443,8 @@ export function SimilarityTab({
           results: searchResult.results.map(patchFn),
         });
       }
+      // Keep the detail modal in sync
+      setDetailDetection((prev) => (prev ? patchFn(prev) : prev));
     },
     [viewMode, sortResult, searchResult]
   );
@@ -871,7 +873,7 @@ export function SimilarityTab({
                         style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
                       />
                     </div>
-                    {Math.round(verifiedPct)}% detections verified
+                    {Math.round(verifiedPct)}% all detections verified
                   </div>
                   <div className="h-4 w-px bg-border" />
                   <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
@@ -1049,9 +1051,9 @@ export function SimilarityTab({
               : d
           );
         }}
-        onVerify={(detectionId) => {
+        onVerify={(detectionId, verified = true) => {
           patchLocalDetections((d) =>
-            d.detection_id === detectionId ? { ...d, verified: true } : d
+            d.detection_id === detectionId ? { ...d, verified } : d
           );
         }}
         position={

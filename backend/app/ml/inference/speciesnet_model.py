@@ -66,10 +66,13 @@ class SpeciesNetClassificationModel(ClassificationModel):
             env_full_name = f"env-{env_name}"
             self.python_path = env_manager.get_python(env_full_name)
             logger.info(
-                f"SpeciesNet model initialized: {model_dir.name} using Python: {self.python_path}"
+                f"SpeciesNet model initialized: {model_dir.name} "
+                f"using Python: {self.python_path}"
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to get Python environment '{env_full_name}': {e}") from e
+            raise RuntimeError(
+                f"Failed to get Python environment '{env_full_name}': {e}"
+            ) from e
 
         logger.info(f"SpeciesNet model ready: {model_dir.name}")
 
@@ -107,7 +110,9 @@ class SpeciesNetClassificationModel(ClassificationModel):
             )
 
         if not detection_json_path.exists():
-            raise FileNotFoundError(f"Detection JSON not found: {detection_json_path}")
+            raise FileNotFoundError(
+                f"Detection JSON not found: {detection_json_path}"
+            )
 
         # Create output file path
         output_file = detection_json_path.parent / (
@@ -161,7 +166,19 @@ class SpeciesNetClassificationModel(ClassificationModel):
             )
 
         try:
-            # Run subprocess with progress streaming
+            # SpeciesNet's run_md_and_speciesnet subprocess does not emit
+            # incremental progress during inference. Its only tqdm bar
+            # tracks enqueueing images (instant), while the real inference
+            # happens silently between "Finished waiting for input queue"
+            # and "Finished waiting for workers". We parse milestone lines
+            # to show status, and report the image count so the frontend
+            # can display context.
+            import os
+            import time
+
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -171,23 +188,24 @@ class SpeciesNetClassificationModel(ClassificationModel):
                 universal_newlines=True,
             )
 
-            # Stream output and parse progress
-            last_progress = 0.0
-            last_total = 0
-            output_lines = []  # Capture all output for error reporting
+            output_lines: list[str] = []
             device_detected = False
+            image_count = 0
+            inference_started = False
 
             for line in process.stdout:
                 line = line.strip()
-                output_lines.append(line)  # Save for error reporting
-
-                # Log output
+                if not line:
+                    continue
+                output_lines.append(line)
                 logger.debug(f"[SpeciesNet] {line}")
 
-                # Parse device info from stdout (appears once during init)
+                # Parse device info (appears once during init)
                 if not device_detected:
                     if "PTDetector using device" in line:
-                        raw = line.split("PTDetector using device")[-1].strip()
+                        raw = line.split(
+                            "PTDetector using device"
+                        )[-1].strip()
                         device_name = self._format_device_name(raw)
                         device_detected = True
                         if progress_callback:
@@ -220,60 +238,120 @@ class SpeciesNetClassificationModel(ClassificationModel):
                                 {"compute_device": device_name},
                             )
 
-                # Parse progress from tqdm or similar output
-                # Look for patterns like: "45/100" or "45%"
-                progress_match = re.search(r"(\d+)/(\d+)", line)
-                if progress_match and progress_callback:
-                    current, total = map(int, progress_match.groups())
-                    last_total = total
-                    phase_progress = current / total
-
-                    # Only update if progress changed significantly (reduce spam)
-                    if phase_progress - last_progress >= 0.01:
-                        # Parse full TQDM metrics from the line
-                        metrics = self._parse_tqdm_metrics(line)
-
+                # Parse image count from "loaded detection results for N images"
+                count_match = re.search(
+                    r"loaded detection results for (\d+) images", line
+                )
+                if count_match:
+                    image_count = int(count_match.group(1))
+                    if progress_callback:
                         progress_callback(
-                            line,  # Send full TQDM line
+                            f"Classifying {image_count} images...",
                             0.0,
                             "classification",
-                            phase_progress,
-                            metrics,  # Send parsed metrics
+                            0.05,
+                            {
+                                "raw_line": (
+                                    f"Classifying {image_count} images..."
+                                ),
+                                "total": image_count,
+                                "unit": "image",
+                            },
                         )
-                        last_progress = phase_progress
+
+                # "Finished waiting for input queue" = images enqueued,
+                # inference is running in workers
+                if "Finished waiting for input queue" in line:
+                    inference_started = True
+                    if progress_callback:
+                        progress_callback(
+                            f"Running inference on {image_count} images...",
+                            0.0,
+                            "classification",
+                            0.5,
+                            {
+                                "raw_line": (
+                                    f"Running inference on "
+                                    f"{image_count} images..."
+                                ),
+                                "total": image_count,
+                                "unit": "image",
+                            },
+                        )
+
+                # "Finished waiting for workers" = inference done
+                if "Finished waiting for workers" in line:
+                    if progress_callback:
+                        progress_callback(
+                            f"Classified {image_count} images",
+                            0.0,
+                            "classification",
+                            0.9,
+                            {
+                                "raw_line": (
+                                    f"Classified {image_count} images"
+                                ),
+                                "current": image_count,
+                                "total": image_count,
+                                "unit": "image",
+                            },
+                        )
+
+                # "Processing complete" = fully done
+                elapsed_match = re.search(
+                    r"Processing complete in ([\d.]+) seconds", line
+                )
+                if elapsed_match:
+                    elapsed = float(elapsed_match.group(1))
+                    elapsed_str = (
+                        f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
+                    )
+                    rate = (
+                        image_count / elapsed if elapsed > 0 else 0
+                    )
+                    if progress_callback:
+                        progress_callback(
+                            f"Classified {image_count} images",
+                            0.0,
+                            "classification",
+                            1.0,
+                            {
+                                "raw_line": (
+                                    f"Classified {image_count} images "
+                                    f"in {elapsed_str}"
+                                ),
+                                "current": image_count,
+                                "total": image_count,
+                                "elapsed": elapsed_str,
+                                "rate": rate,
+                                "unit": "image",
+                            },
+                        )
 
             process.stdout.close()
             return_code = process.wait()
-
-            # Send final 100% update if we didn't already
-            # (handles case where last update was <1% change)
-            if progress_callback and last_total > 0 and last_progress < 1.0:
-                progress_callback(
-                    f"Classification: {last_total}/{last_total} images processed",
-                    0.0,
-                    "classification",
-                    1.0,
-                )
-                logger.info(f"Sent final progress update: {last_total}/{last_total}")
+            logger.info(
+                f"[SpeciesNet] Subprocess done. return_code={return_code}"
+            )
 
             if return_code != 0:
-                # Log all subprocess output on error
                 logger.error("SpeciesNet subprocess failed. Full output:")
-                for line in output_lines:
-                    logger.error(f"  {line}")
+                for out_line in output_lines:
+                    logger.error(f"  {out_line}")
 
-                error_msg = f"SpeciesNet classification failed with exit code {return_code}"
+                error_msg = (
+                    "SpeciesNet classification failed "
+                    f"with exit code {return_code}"
+                )
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
 
             # Replace original JSON with SpeciesNet output
             if not output_file.exists():
-                raise RuntimeError("SpeciesNet output file was not created")
+                raise RuntimeError(
+                    "SpeciesNet output file was not created"
+                )
 
-            # Backup original (optional - for debugging)
-            # detection_json_path.rename(detection_json_path.with_suffix('.json.backup'))
-
-            # Replace original with SpeciesNet output
             detection_json_path.unlink()
             output_file.rename(detection_json_path)
 
@@ -289,11 +367,19 @@ class SpeciesNetClassificationModel(ClassificationModel):
                 )
 
         except subprocess.SubprocessError as e:
-            logger.error(f"SpeciesNet subprocess error: {e}", exc_info=True)
-            raise RuntimeError(f"SpeciesNet subprocess failed: {e}") from e
+            logger.error(
+                f"SpeciesNet subprocess error: {e}", exc_info=True
+            )
+            raise RuntimeError(
+                f"SpeciesNet subprocess failed: {e}"
+            ) from e
         except Exception as e:
-            logger.error(f"SpeciesNet classification error: {e}", exc_info=True)
-            raise RuntimeError(f"SpeciesNet classification failed: {e}") from e
+            logger.error(
+                f"SpeciesNet classification error: {e}", exc_info=True
+            )
+            raise RuntimeError(
+                f"SpeciesNet classification failed: {e}"
+            ) from e
 
     @staticmethod
     def _format_device_name(raw: str) -> str:
@@ -304,56 +390,6 @@ class SpeciesNetClassificationModel(ClassificationModel):
         if "cuda" in r:
             return "GPU (NVIDIA)"
         return "CPU"
-
-    def _parse_tqdm_metrics(self, line: str) -> dict | None:
-        """
-        Parse full tqdm metrics from output line.
-
-        Similar to MegaDetector._parse_tqdm_metrics.
-        """
-        import re
-
-        try:
-            metrics = {"raw_line": line}
-
-            # Extract current/total: "45/100"
-            progress_match = re.search(r"(\d+)/(\d+)", line)
-            if progress_match:
-                metrics["current"] = int(progress_match.group(1))
-                metrics["total"] = int(progress_match.group(2))
-
-            # Extract rate and unit
-            # Handle both formats: "2.3it/s" (rate) and "5.67s/it" (time per item)
-            rate_match = re.search(r"(\d+\.?\d*)([\w]+)/s", line)
-            if rate_match:
-                metrics["rate"] = float(rate_match.group(1))
-                metrics["unit"] = rate_match.group(2)
-            else:
-                # Try inverse format: "5.67s/it" -> convert to rate
-                inverse_match = re.search(r"(\d+\.?\d*)s/([\w]+)", line)
-                if inverse_match:
-                    time_per_item = float(inverse_match.group(1))
-                    if time_per_item > 0:
-                        metrics["rate"] = 1.0 / time_per_item
-                        metrics["unit"] = inverse_match.group(2)
-
-            # Extract elapsed time
-            time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)
-            if time_match:
-                metrics["elapsed"] = time_match.group(1)
-
-            # Extract remaining time
-            remaining_match = re.search(r"<(\d{2}:\d{2}(?::\d{2})?)", line)
-            if remaining_match:
-                metrics["remaining"] = remaining_match.group(1)
-
-            if "current" in metrics and "total" in metrics:
-                return metrics
-
-        except (ValueError, IndexError, AttributeError):
-            pass
-
-        return None
 
     def classify(
         self,
@@ -387,7 +423,9 @@ class SpeciesNetClassificationModel(ClassificationModel):
         Returns:
             Empty dict - SpeciesNet handles class names internally
         """
-        logger.debug("get_class_names() called on SpeciesNet (not applicable)")
+        logger.debug(
+            "get_class_names() called on SpeciesNet (not applicable)"
+        )
         return {}
 
     def __enter__(self):

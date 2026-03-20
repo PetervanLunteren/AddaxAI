@@ -9,6 +9,14 @@ from pydantic import BaseModel
 from app.api.schemas.file import FileWithDetections
 
 
+class MaxNFrame(BaseModel):
+    """A MaxN frame reference for filmstrip badges."""
+
+    file_id: str
+    label: str
+    max_n: int
+
+
 class EventSummary(BaseModel):
     """Event summary for browse card display."""
 
@@ -17,7 +25,8 @@ class EventSummary(BaseModel):
     start_time: datetime
     end_time: datetime
     file_count: int
-    representative_file_id: str | None
+    thumbnail_file_id: str | None
+    max_n_frames: list[MaxNFrame]
     site_name: str | None
     labels: list[str]
     observation_type: str
@@ -37,7 +46,7 @@ class EventWithFiles(BaseModel):
     start_time: datetime
     end_time: datetime
     file_count: int
-    representative_file_id: str | None = None
+    max_n_frames: list[MaxNFrame]
     created_at: datetime
     site_name: str | None = None
     files: list[FileWithDetections]
@@ -81,9 +90,9 @@ class EventVerificationStats(BaseModel):
 
     total_files: int
     verified_files: int
-    total_representatives: int
-    verified_representatives: int
-    total_detections: int
+    total_max_n_frames: int
+    verified_max_n_frames: int
+    total_observations: int
     verified_detections: int
 
 

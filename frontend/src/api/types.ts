@@ -79,7 +79,7 @@ export interface ProjectWithStats extends ProjectResponse {
   site_count: number;
   deployment_count: number;
   file_count: number;
-  detection_count: number;
+  observation_count: number;
   trap_nights: number;
 }
 
@@ -269,8 +269,8 @@ export type VerificationFilter =
   | "all"
   | "fully_verified"
   | "not_fully_verified"
-  | "unverified_representative"
-  | "verified_representative"
+  | "unverified_maxn"
+  | "verified_maxn"
   | "none_verified";
 
 export interface EventFilterParams {
@@ -289,6 +289,13 @@ export interface EventFilterOptions {
   label_event_counts: Record<string, number>;
 }
 
+// MaxN frame reference
+export interface MaxNFrame {
+  file_id: string;
+  label: string;
+  max_n: number;
+}
+
 // Event types
 export interface EventSummary {
   id: string;
@@ -296,7 +303,8 @@ export interface EventSummary {
   start_time: string;
   end_time: string;
   file_count: number;
-  representative_file_id: string | null;
+  thumbnail_file_id: string | null;
+  max_n_frames: MaxNFrame[];
   site_name: string | null;
   labels: string[];
   observation_type: string;
@@ -314,7 +322,7 @@ export interface EventWithFiles {
   start_time: string;
   end_time: string;
   file_count: number;
-  representative_file_id: string | null;
+  max_n_frames: MaxNFrame[];
   created_at: string;
   site_name: string | null;
   files: FileWithDetections[];
@@ -323,9 +331,9 @@ export interface EventWithFiles {
 export interface EventVerificationStats {
   total_files: number;
   verified_files: number;
-  total_representatives: number;
-  verified_representatives: number;
-  total_detections: number;
+  total_max_n_frames: number;
+  verified_max_n_frames: number;
+  total_observations: number;
   verified_detections: number;
 }
 

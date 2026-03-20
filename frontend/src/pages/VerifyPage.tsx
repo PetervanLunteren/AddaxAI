@@ -19,7 +19,7 @@ import { API_BASE_URL } from "../lib/api-client";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { getCategoryColor, getObservationBadge } from "../lib/detection-utils";
+import { getDetectionColor, getObservationBadge } from "../lib/detection-utils";
 import { setSpeciesContext, getSpeciesColor, getSpeciesTextColor } from "../utils/species-colors";
 import type { EventSummary, EventFilterParams, VerificationFilter } from "../api/types";
 
@@ -427,16 +427,17 @@ function EventCard({
       ? `${fmtDate(startTime)} · ${fmtTime(startTime)} – ${fmtTime(endTime)}`
       : `${fmtDate(startTime)} ${fmtTime(startTime)} – ${fmtDate(endTime)} ${fmtTime(endTime)}`;
 
-  const thumbnailUrl = event.representative_file_id
-    ? `${API_BASE_URL}/api/files/${event.representative_file_id}/image`
+  const thumbnailUrl = event.thumbnail_file_id
+    ? `${API_BASE_URL}/api/files/${event.thumbnail_file_id}/image`
     : undefined;
 
-  // Fetch representative file detections for overlay
-  const { data: repFile } = useQuery({
-    queryKey: ["file", event.representative_file_id],
-    queryFn: ({ signal }) => filesApi.get(event.representative_file_id!, { signal }),
-    enabled: !!event.representative_file_id,
+  // Fetch thumbnail file detections for overlay
+  const { data: thumbFile } = useQuery({
+    queryKey: ["file", event.thumbnail_file_id],
+    queryFn: ({ signal }) => filesApi.get(event.thumbnail_file_id!, { signal }),
+    enabled: !!event.thumbnail_file_id,
   });
+
 
   return (
     <Card
@@ -460,13 +461,13 @@ function EventCard({
           </div>
         )}
         {/* Detection overlay */}
-        {repFile && (() => {
-          const dets = repFile.detections.filter(
+        {thumbFile && (() => {
+          const dets = thumbFile.detections.filter(
             (d) => d.confidence >= detectionThreshold
           );
           if (dets.length === 0) return null;
-          const imgW = repFile.width_px || 1;
-          const imgH = repFile.height_px || 1;
+          const imgW = thumbFile.width_px || 1;
+          const imgH = thumbFile.height_px || 1;
           // Use a fixed reference size for 16:9 viewBox
           const VW = 320;
           const VH = 180;
@@ -475,13 +476,13 @@ function EventCard({
           const dh = imgH * scale;
           const ox = (VW - dw) / 2;
           const oy = (VH - dh) / 2;
-          const maskId = `m-card-${event.representative_file_id}`;
+          const maskId = `m-card-${event.thumbnail_file_id}`;
           const boxes = dets.map((det) => {
             const bx = ox + det.bbox_x * dw;
             const by = oy + det.bbox_y * dh;
             const bw = det.bbox_width * dw;
             const bh = det.bbox_height * dh;
-            const color = getCategoryColor(det.category);
+            const color = getDetectionColor(det);
             return { bx, by, bw, bh, color };
           });
           return (
@@ -579,14 +580,9 @@ function EventCard({
         <div className="text-xs text-muted-foreground">{dateTimeStr}</div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            Rep. {repFile?.verified ? "verified" : "unverified"}
-            {repFile?.verified ? (
-              <div className="bg-primary rounded-full p-0.5">
-                <Check className="h-2.5 w-2.5 text-primary-foreground" />
-              </div>
-            ) : (
-              <Circle className="h-3 w-3" />
-            )}
+            {event.max_n_frames.length > 0
+              ? `${event.max_n_frames.length} MaxN frame${event.max_n_frames.length !== 1 ? "s" : ""}`
+              : "No MaxN"}
           </span>
           <span className="flex items-center gap-1">
             Files {event.verified_count}/{event.total_count} verified

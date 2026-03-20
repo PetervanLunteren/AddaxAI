@@ -56,7 +56,7 @@ def list_projects(db: Session = Depends(get_db)) -> list[ProjectWithStats]:
         "site_count": 0,
         "deployment_count": 0,
         "file_count": 0,
-        "detection_count": 0,
+        "observation_count": 0,
         "trap_nights": 0,
     }
     for p in projects:
@@ -297,6 +297,12 @@ def update_project(
             except Exception as e:
                 logger.warning(f"Could not validate excluded_classes: {e}")
 
+    # Check if detection_threshold is being changed (affects MaxN)
+    threshold_changing = (
+        project.detection_threshold is not None
+        and project.model_dump(exclude_unset=True).get("detection_threshold") is not None
+    )
+
     try:
         db_project = crud_project.update_project(db, project_id, project)
         if db_project is None:
@@ -305,6 +311,14 @@ def update_project(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project with id '{project_id}' not found",
             )
+
+        # Recalculate MaxN if threshold changed
+        if threshold_changing:
+            from app.api.crud.event_observation import recalculate_max_n_for_project
+
+            recalculate_max_n_for_project(db, project_id)
+            db.commit()
+
         logger.info(f"Updated project: {project_id}")
         return ProjectResponse.model_validate(db_project)
     except IntegrityError as e:

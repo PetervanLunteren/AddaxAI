@@ -6,6 +6,12 @@
 
 import type React from "react";
 import type { DetectionResponse } from "../api/types";
+import { getSpeciesColor } from "../utils/species-colors";
+
+/** Get color for a detection: species color if labeled, category color otherwise. */
+export function getDetectionColor(detection: { label?: string | null; category: string }): string {
+  return detection.label ? getSpeciesColor(detection.label) : getCategoryColor(detection.category);
+}
 
 /** Get color for a detection category. */
 export function getCategoryColor(category: string): string {

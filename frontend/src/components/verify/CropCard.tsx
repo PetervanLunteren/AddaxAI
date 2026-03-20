@@ -9,7 +9,7 @@
 import { memo } from "react";
 import { Check } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getCategoryColor } from "../../lib/detection-utils";
+import { getDetectionColor } from "../../lib/detection-utils";
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import {
   BBOX_STROKE_WIDTH,
@@ -93,7 +93,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
               height={detection.crop_bbox.h * 200}
               rx={BBOX_CORNER_RADIUS}
               fill="none"
-              stroke={getCategoryColor(detection.category)}
+              stroke={getDetectionColor(detection)}
               strokeWidth={BBOX_STROKE_WIDTH}
               opacity={BBOX_OPACITY}
             />

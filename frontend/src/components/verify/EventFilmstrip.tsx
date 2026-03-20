@@ -8,8 +8,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getCategoryColor } from "../../lib/detection-utils";
-import type { FileWithDetections } from "../../api/types";
+import { getDetectionColor } from "../../lib/detection-utils";
+import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
+import type { FileWithDetections, MaxNFrame } from "../../api/types";
 
 const THUMB_W = 96;
 const THUMB_H = 64;
@@ -19,7 +20,7 @@ interface EventFilmstripProps {
   selectedIndex: number;
   onSelectIndex: (index: number, shiftKey: boolean) => void;
   detectionThreshold: number;
-  representativeFileId: string | null;
+  maxNFrames: MaxNFrame[];
   bulkSelection?: Set<number>;
 }
 
@@ -28,11 +29,22 @@ export function EventFilmstrip({
   selectedIndex,
   onSelectIndex,
   detectionThreshold,
-  representativeFileId,
+  maxNFrames,
   bulkSelection,
 }: EventFilmstripProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
+
+  // Build lookup: file_id -> list of MaxN labels for that file
+  const maxNByFile = useMemo(() => {
+    const map = new Map<string, MaxNFrame[]>();
+    for (const frame of maxNFrames) {
+      const existing = map.get(frame.file_id);
+      if (existing) existing.push(frame);
+      else map.set(frame.file_id, [frame]);
+    }
+    return map;
+  }, [maxNFrames]);
 
   // Count unique source videos in this event
   const videoCount = useMemo(() => {
@@ -61,7 +73,7 @@ export function EventFilmstrip({
         {files.map((file, index) => {
           const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
           const isSelected = index === selectedIndex;
-          const isRepresentative = file.id === representativeFileId;
+          const fileMaxNFrames = maxNByFile.get(file.id);
 
           return (
             <button
@@ -109,7 +121,7 @@ export function EventFilmstrip({
                   const by = oy + det.bbox_y * dh;
                   const bw = det.bbox_width * dw;
                   const bh = det.bbox_height * dh;
-                  const color = getCategoryColor(det.category);
+                  const color = getDetectionColor(det);
                   return { bx, by, bw, bh, color };
                 });
                 return (
@@ -149,11 +161,19 @@ export function EventFilmstrip({
                   <Check className="h-2.5 w-2.5 text-white" />
                 </div>
               )}
-              {/* Representative chip */}
-              {isRepresentative && (
-                <span className="absolute top-0.5 left-0.5 bg-primary text-white text-[11px] leading-none font-medium px-1.5 py-1 rounded-sm">
-                  Rep.
-                </span>
+              {/* MaxN badges */}
+              {fileMaxNFrames && (
+                <div className="absolute top-0.5 left-0.5 flex flex-col gap-0.5">
+                  {fileMaxNFrames.map((frame) => (
+                    <span
+                      key={frame.label}
+                      className="text-[9px] leading-none font-semibold px-1 py-0.5 rounded-sm shadow-sm"
+                      style={{ backgroundColor: getSpeciesColor(frame.label), color: getSpeciesTextColor(frame.label) }}
+                    >
+                      MaxN
+                    </span>
+                  ))}
+                </div>
               )}
               {/* Bulk selection overlay */}
               {bulkSelection?.has(index) && !isSelected && (

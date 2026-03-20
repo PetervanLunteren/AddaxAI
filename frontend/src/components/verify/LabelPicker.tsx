@@ -13,6 +13,7 @@ import { Check, ChevronsUpDown, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { getCategoryColor } from "../../lib/detection-utils";
+import { getSpeciesColor } from "../../utils/species-colors";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -26,6 +27,11 @@ import {
 import { TaxonomySheet } from "./TaxonomySheet";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { CustomLabelResponse } from "../../api/types";
+
+/** Get the dot color for a label option: species color for labels, category color for general. */
+function getLabelDotColor(opt: LabelOption): string {
+  return opt.label ? getSpeciesColor(opt.value) : getCategoryColor(opt.category);
+}
 
 /** Clean up a label for display: replace underscores, capitalize first letter. */
 function formatLabel(name: string): string {
@@ -190,7 +196,7 @@ export function LabelPicker({
   const currentOption = options.find((o) => o.value === value);
   const displayLabel = value ? formatLabel(value) : "Select label...";
   const dotColor = currentOption
-    ? getCategoryColor(currentOption.category)
+    ? getLabelDotColor(currentOption)
     : undefined;
 
   return (
@@ -245,7 +251,7 @@ export function LabelPicker({
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
                         style={{
-                          backgroundColor: getCategoryColor(opt.category),
+                          backgroundColor: getLabelDotColor(opt),
                         }}
                       />
                       <div className="flex flex-col min-w-0">
@@ -276,7 +282,7 @@ export function LabelPicker({
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
                         style={{
-                          backgroundColor: getCategoryColor(opt.category),
+                          backgroundColor: getLabelDotColor(opt),
                         }}
                       />
                       <div className="flex flex-col min-w-0">
@@ -307,7 +313,7 @@ export function LabelPicker({
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
                         style={{
-                          backgroundColor: getCategoryColor(opt.category),
+                          backgroundColor: getLabelDotColor(opt),
                         }}
                       />
                       <div className="flex flex-col min-w-0">
@@ -338,7 +344,7 @@ export function LabelPicker({
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
                         style={{
-                          backgroundColor: getCategoryColor(opt.category),
+                          backgroundColor: getLabelDotColor(opt),
                         }}
                       />
                       <div className="flex flex-col min-w-0">

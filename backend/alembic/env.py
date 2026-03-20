@@ -21,6 +21,7 @@ from app.models import (  # noqa: F401
     Detection,
     DetectionEmbedding,
     Event,
+    EventObservation,
     File,
     Job,
     Project,

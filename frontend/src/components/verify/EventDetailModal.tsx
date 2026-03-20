@@ -75,7 +75,7 @@ export function EventDetailModal({
   const queryClient = useQueryClient();
   const [, setSearchParams] = useSearchParams();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
-  const [navScope, setNavScope] = useState<"event" | "file">("event");
+  const [navScope, setNavScope] = useState<"maxn" | "file">("maxn");
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
     null
   );
@@ -171,23 +171,81 @@ export function EventDetailModal({
     [projectId]
   );
 
-  // When event changes, open to the representative file — unless we got
-  // here by stepping through files (file-level nav), in which case start
-  // at the first file to continue the sequential flow.
+  // Compute MaxN file IDs set for navigation
+  const maxNFileIds = useMemo(() => {
+    if (!event?.max_n_frames) return new Set<string>();
+    return new Set(event.max_n_frames.map((f) => f.file_id));
+  }, [event?.max_n_frames]);
+
+  // When event changes, open to the first unverified MaxN frame (in MaxN mode)
+  // or the first file (in file mode). If navigating via file-level nav,
+  // continue the sequential flow.
   useEffect(() => {
     if (fileNavRef.current) {
       const dir = fileNavRef.current;
       fileNavRef.current = null;
-      setSelectedFileIndex(
-        dir === "backward" && event?.files.length ? event.files.length - 1 : 0
-      );
+      if (navScope === "maxn" && event?.files.length) {
+        // Find the appropriate MaxN frame in the new event
+        const maxNIds = new Set(event.max_n_frames?.map((f) => f.file_id) ?? []);
+        if (dir === "backward") {
+          // Last MaxN frame in event
+          for (let i = event.files.length - 1; i >= 0; i--) {
+            if (maxNIds.has(event.files[i].id)) {
+              setSelectedFileIndex(i);
+              break;
+            }
+          }
+        } else {
+          // First unverified MaxN frame, or first MaxN frame
+          let found = false;
+          for (let i = 0; i < event.files.length; i++) {
+            if (maxNIds.has(event.files[i].id) && !event.files[i].verified) {
+              setSelectedFileIndex(i);
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            for (let i = 0; i < event.files.length; i++) {
+              if (maxNIds.has(event.files[i].id)) {
+                setSelectedFileIndex(i);
+                found = true;
+                break;
+              }
+            }
+          }
+          if (!found) setSelectedFileIndex(0);
+        }
+      } else {
+        setSelectedFileIndex(
+          dir === "backward" && event?.files.length ? event.files.length - 1 : 0
+        );
+      }
     } else if (!event) {
       setSelectedFileIndex(0);
+    } else if (navScope === "maxn") {
+      // Default: first unverified MaxN frame, else first MaxN frame, else 0
+      const maxNIds = new Set(event.max_n_frames?.map((f) => f.file_id) ?? []);
+      let found = false;
+      for (let i = 0; i < event.files.length; i++) {
+        if (maxNIds.has(event.files[i].id) && !event.files[i].verified) {
+          setSelectedFileIndex(i);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        for (let i = 0; i < event.files.length; i++) {
+          if (maxNIds.has(event.files[i].id)) {
+            setSelectedFileIndex(i);
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) setSelectedFileIndex(0);
     } else {
-      const repIdx = event.representative_file_id
-        ? event.files.findIndex((f) => f.id === event.representative_file_id)
-        : -1;
-      setSelectedFileIndex(repIdx >= 0 ? repIdx : 0);
+      setSelectedFileIndex(0);
     }
     setSelectedDetectionId(null);
     setViewMode("frame");
@@ -205,6 +263,12 @@ export function EventDetailModal({
     brightness !== 50 || contrast !== 50
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
       : undefined;
+
+  // MaxN frames for the currently selected file (for badge display)
+  const currentFileMaxNFrames = useMemo(() => {
+    if (!currentFile || !event?.max_n_frames) return [];
+    return event.max_n_frames.filter((f) => f.file_id === currentFile.id);
+  }, [currentFile, event?.max_n_frames]);
 
   // Derive list of unique source videos from the event's files
   const sourceVideos = useMemo(() => {
@@ -434,55 +498,77 @@ export function EventDetailModal({
     []
   );
 
-  // Context-aware navigation (file-level vs event-level)
+  // Context-aware navigation (MaxN vs file-level)
   const nextUnverifiedFileIndex = useMemo(() => {
-    for (let i = selectedFileIndex + 1; i < files.length; i++) {
-      if (!files[i].verified) return i;
+    if (navScope === "maxn") {
+      // Next unverified MaxN frame after current position
+      for (let i = selectedFileIndex + 1; i < files.length; i++) {
+        if (maxNFileIds.has(files[i].id) && !files[i].verified) return i;
+      }
+    } else {
+      for (let i = selectedFileIndex + 1; i < files.length; i++) {
+        if (!files[i].verified) return i;
+      }
     }
     return -1;
-  }, [files, selectedFileIndex]);
+  }, [files, selectedFileIndex, navScope, maxNFileIds]);
 
   const handlePrev = useCallback(() => {
     if (navScope === "file") {
       if (selectedFileIndex > 0) {
         setSelectedFileIndex((i) => i - 1);
       } else if (adjacent?.previous_id) {
-        // At first file — advance to previous event
         fileNavRef.current = "backward";
         navigateEvent(adjacent.previous_id);
       }
-    } else {
-      navigateEvent(adjacent?.previous_id);
+    } else if (navScope === "maxn") {
+      // Find previous MaxN frame
+      for (let i = selectedFileIndex - 1; i >= 0; i--) {
+        if (maxNFileIds.has(files[i].id)) {
+          setSelectedFileIndex(i);
+          return;
+        }
+      }
+      // No more MaxN frames in this event — go to previous event
+      if (adjacent?.previous_id) {
+        fileNavRef.current = "backward";
+        navigateEvent(adjacent.previous_id);
+      }
     }
-  }, [navScope, selectedFileIndex, adjacent, navigateEvent]);
+  }, [navScope, selectedFileIndex, adjacent, navigateEvent, files, maxNFileIds]);
 
   const handleNext = useCallback(() => {
     if (navScope === "file") {
       if (selectedFileIndex < files.length - 1) {
         setSelectedFileIndex((i) => i + 1);
       } else if (adjacent?.next_id) {
-        // At last file — advance to next event
         fileNavRef.current = "forward";
         navigateEvent(adjacent.next_id);
       }
-    } else {
-      navigateEvent(adjacent?.next_id);
+    } else if (navScope === "maxn") {
+      // Find next MaxN frame
+      for (let i = selectedFileIndex + 1; i < files.length; i++) {
+        if (maxNFileIds.has(files[i].id)) {
+          setSelectedFileIndex(i);
+          return;
+        }
+      }
+      // No more MaxN frames in this event — go to next event
+      if (adjacent?.next_id) {
+        fileNavRef.current = "forward";
+        navigateEvent(adjacent.next_id);
+      }
     }
-  }, [navScope, selectedFileIndex, files.length, adjacent, navigateEvent]);
+  }, [navScope, selectedFileIndex, files, adjacent, navigateEvent, maxNFileIds]);
 
   const handleNextUnverified = useCallback(() => {
-    if (navScope === "file") {
-      if (nextUnverifiedFileIndex >= 0) {
-        setSelectedFileIndex(nextUnverifiedFileIndex);
-      } else if (adjacent?.next_unverified_id) {
-        // No more unverified files in event — jump to next unverified event
-        fileNavRef.current = "forward";
-        navigateEvent(adjacent.next_unverified_id);
-      }
-    } else {
-      navigateEvent(adjacent?.next_unverified_id);
+    if (nextUnverifiedFileIndex >= 0) {
+      setSelectedFileIndex(nextUnverifiedFileIndex);
+    } else if (adjacent?.next_unverified_id) {
+      fileNavRef.current = "forward";
+      navigateEvent(adjacent.next_unverified_id);
     }
-  }, [navScope, nextUnverifiedFileIndex, adjacent, navigateEvent]);
+  }, [nextUnverifiedFileIndex, adjacent, navigateEvent]);
 
   const handleFilmstripSelect = useCallback((index: number, shiftKey: boolean) => {
     if (shiftKey && files.length > 1) {
@@ -498,18 +584,23 @@ export function EventDetailModal({
     setSelectedDetectionId(null);
   }, [selectedFileIndex, files.length]);
 
-  const prevDisabled =
-    navScope === "file"
-      ? selectedFileIndex === 0 && !adjacent?.previous_id
-      : !adjacent?.previous_id;
-  const nextDisabled =
-    navScope === "file"
-      ? selectedFileIndex >= files.length - 1 && !adjacent?.next_id
-      : !adjacent?.next_id;
-  const nextUnverifiedDisabled =
-    navScope === "file"
-      ? nextUnverifiedFileIndex < 0 && !adjacent?.next_unverified_id
-      : !adjacent?.next_unverified_id;
+  const prevDisabled = (() => {
+    if (navScope === "file") return selectedFileIndex === 0 && !adjacent?.previous_id;
+    if (navScope === "maxn") {
+      const hasPrevMaxN = files.slice(0, selectedFileIndex).some((f) => maxNFileIds.has(f.id));
+      return !hasPrevMaxN && !adjacent?.previous_id;
+    }
+    return !adjacent?.previous_id;
+  })();
+  const nextDisabled = (() => {
+    if (navScope === "file") return selectedFileIndex >= files.length - 1 && !adjacent?.next_id;
+    if (navScope === "maxn") {
+      const hasNextMaxN = files.slice(selectedFileIndex + 1).some((f) => maxNFileIds.has(f.id));
+      return !hasNextMaxN && !adjacent?.next_id;
+    }
+    return !adjacent?.next_id;
+  })();
+  const nextUnverifiedDisabled = nextUnverifiedFileIndex < 0 && !adjacent?.next_unverified_id;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1166,7 +1257,7 @@ export function EventDetailModal({
                 files={files}
                 selectedIndex={selectedFileIndex}
                 detectionThreshold={detectionThreshold}
-                representativeFileId={event?.representative_file_id ?? null}
+                maxNFrames={event?.max_n_frames ?? []}
                 onSelectIndex={handleFilmstripSelect}
                 bulkSelection={bulkSelection}
               />
@@ -1180,13 +1271,13 @@ export function EventDetailModal({
                 {/* Nav scope selector */}
                 <Select
                   value={navScope}
-                  onValueChange={(v) => setNavScope(v as "event" | "file")}
+                  onValueChange={(v) => setNavScope(v as "maxn" | "file")}
                 >
                   <SelectTrigger className="h-7 min-h-0 w-auto text-xs gap-1 px-2 py-0 mr-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="event">Navigate by event</SelectItem>
+                    <SelectItem value="maxn">Navigate by MaxN</SelectItem>
                     <SelectItem value="file">Navigate by file</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1234,9 +1325,19 @@ export function EventDetailModal({
             {/* File metadata card */}
             {currentFile && (
               <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
-                <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
-                  {currentFile.file_type === "frame" ? "Video" : "Image"}
-                </h3>
+                <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+                  <h3 className="text-sm font-semibold">
+                    {currentFile.file_type === "frame" ? "Video" : "Image"}
+                  </h3>
+                  {currentFileMaxNFrames.map((frame) => (
+                    <span
+                      key={frame.label}
+                      className="bg-primary text-white text-[10px] leading-none font-medium px-1.5 py-0.5 rounded-sm capitalize"
+                    >
+                      MaxN: {frame.label}
+                    </span>
+                  ))}
+                </div>
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
                     {currentFile.file_type === "frame"

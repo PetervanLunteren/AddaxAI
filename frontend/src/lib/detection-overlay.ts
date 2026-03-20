@@ -6,6 +6,7 @@
  */
 
 import { getCategoryColor } from "./detection-utils";
+import { getSpeciesColor } from "../utils/species-colors";
 import type { DetectionResponse } from "../api/types";
 
 // ── Layout constants ──────────────────────────────────────────────
@@ -90,7 +91,9 @@ export interface PillLayout {
 }
 
 export function computePillLayout(detection: DetectionResponse): PillLayout {
-  const color = getCategoryColor(detection.category);
+  const color = detection.label
+    ? getSpeciesColor(detection.label)
+    : getCategoryColor(detection.category);
   const hasLabel = !!detection.label;
 
   const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;

@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
 from app.api.crud import file as file_crud
+from app.api.crud.event_observation import (
+    get_event_ids_for_detections,
+    get_project_threshold_for_detections,
+    recalculate_max_n_for_events,
+)
 from app.api.schemas.detection import (
     DetectionCreateHuman,
     DetectionResponse,
@@ -24,6 +29,16 @@ from app.models import Detection
 from app.services.crop_service import get_or_create_crop, invalidate_crop_cache
 
 router = APIRouter(prefix="/api/detections", tags=["detections"])
+
+
+def _recalculate_max_n(db: Session, detection_ids: list[str]) -> None:
+    """Recalculate MaxN for events affected by the given detections."""
+    event_ids = get_event_ids_for_detections(db, detection_ids)
+    if not event_ids:
+        return
+    threshold = get_project_threshold_for_detections(db, detection_ids)
+    recalculate_max_n_for_events(db, event_ids, threshold)
+    db.commit()
 
 
 @router.post("", response_model=DetectionResponse, status_code=201)
@@ -38,6 +53,7 @@ def create_detection(
     """
     detection = detection_crud.create_human_detection(db, data)
     file_crud.recalculate_observation_type(db, data.file_id)
+    _recalculate_max_n(db, [detection.id])
     return detection
 
 
@@ -68,6 +84,7 @@ def update_detection(
     ):
         invalidate_crop_cache(detection_id)
 
+    _recalculate_max_n(db, [detection_id])
     return detection
 
 
@@ -77,8 +94,19 @@ def delete_detections_by_file(
     db: Session = Depends(get_db),
 ):
     """Delete all detections for a file."""
+    # Capture affected events and threshold before deletion
+    det_ids = [
+        d.id for d in db.query(Detection.id).filter(
+            Detection.file_id == file_id
+        ).all()
+    ]
+    affected_event_ids = get_event_ids_for_detections(db, det_ids) if det_ids else []
+    threshold = get_project_threshold_for_detections(db, det_ids) if det_ids else 0.0
     count = detection_crud.delete_detections_by_file(db, file_id)
     file_crud.recalculate_observation_type(db, file_id)
+    if affected_event_ids:
+        recalculate_max_n_for_events(db, affected_event_ids, threshold)
+        db.commit()
     return {"deleted_count": count}
 
 
@@ -94,8 +122,14 @@ def delete_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
 
     file_id = detection.file_id
+    # Capture event IDs and threshold before deletion
+    affected_event_ids = get_event_ids_for_detections(db, [detection_id])
+    threshold = get_project_threshold_for_detections(db, [detection_id])
     detection_crud.delete_detection(db, detection_id)
     file_crud.recalculate_observation_type(db, file_id)
+    if affected_event_ids:
+        recalculate_max_n_for_events(db, affected_event_ids, threshold)
+        db.commit()
 
 
 # --- Crop endpoint ---
@@ -157,6 +191,7 @@ def verify_detection(
     detection.verified_at = datetime.utcnow() if body.verified else None
     db.commit()
     db.refresh(detection)
+    _recalculate_max_n(db, [detection_id])
     return detection
 
 
@@ -176,6 +211,7 @@ def bulk_verify_detections(
         )
     )
     db.commit()
+    _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": updated}
 
 
@@ -217,4 +253,5 @@ def bulk_relabel_detections(
         for fid in file_ids:
             file_crud.recalculate_observation_type(db, fid)
 
+    _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": len(detections)}

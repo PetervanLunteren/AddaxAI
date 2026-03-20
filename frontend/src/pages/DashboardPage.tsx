@@ -16,8 +16,10 @@ import {
   Legend,
   type ChartOptions,
 } from "chart.js";
-import { Maximize, FileImage, Layers, FolderOpen, MapPin, CalendarDays } from "lucide-react";
+import { Eye, FileImage, Info, Layers, FolderOpen, MapPin, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
 import { normalizeLabel } from "../utils/labels";
@@ -42,6 +44,7 @@ export default function DashboardPage() {
   });
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
   const [taxonomicRank, setTaxonomicRank] = useState("all");
+  const [speciesCountMode, setSpeciesCountMode] = useState<"events" | "max_n">("events");
 
   // Derive comma-separated site IDs for API calls
   const siteIdsParam = selectedSiteIds.length > 0 ? selectedSiteIds.join(",") : undefined;
@@ -68,9 +71,9 @@ export default function DashboardPage() {
 
   // Fetch species distribution
   const { data: species, isLoading: speciesLoading } = useQuery({
-    queryKey: ["statistics", "species", projectId, siteIdsParam, dateRange.startDate, dateRange.endDate, taxonomicRank],
+    queryKey: ["statistics", "species", projectId, siteIdsParam, dateRange.startDate, dateRange.endDate, taxonomicRank, speciesCountMode],
     queryFn: () =>
-      statisticsApi.getSpeciesDistribution(projectId!, siteIdsParam, dateRange.startDate ?? undefined, dateRange.endDate ?? undefined, taxonomicRank),
+      statisticsApi.getSpeciesDistribution(projectId!, siteIdsParam, dateRange.startDate ?? undefined, dateRange.endDate ?? undefined, taxonomicRank, speciesCountMode),
     enabled: !!projectId,
   });
 
@@ -101,15 +104,19 @@ export default function DashboardPage() {
     { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: CalendarDays, color: "#0f6064" },
     { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
     { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
-    { title: "Detections", value: overview?.total_detections ?? 0, icon: Maximize, color: "#0f6064" },
+    { title: "Observations", value: overview?.total_observations ?? 0, icon: Eye, color: "#0f6064" },
   ];
 
-  // Species bar chart (normalized)
+  // Species bar chart
+  const speciesAxisLabel = speciesCountMode === "events"
+    ? "Independent events per 100 trap nights"
+    : "Observations (MaxN) per 100 trap nights";
+
   const speciesData = {
     labels: species?.map((s) => normalizeLabel(s.species)) ?? [],
     datasets: [
       {
-        label: "Per 100 trap nights",
+        label: speciesAxisLabel,
         data: species?.map((s) => norm(s.count)) ?? [],
         backgroundColor: species?.map((s) => getSpeciesColorWithAlpha(s.species, 0.8)) ?? [],
         borderColor: species?.map((s) => getSpeciesColor(s.species)) ?? [],
@@ -129,7 +136,7 @@ export default function DashboardPage() {
     scales: {
       x: {
         beginAtZero: true,
-        title: { display: true, text: "Per 100 trap nights" },
+        title: { display: true, text: speciesAxisLabel },
       },
     },
   };
@@ -141,7 +148,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Project overview with statistics and trends
+            Project overview with statistics and trends. Observation counts are based on MaxN per event, the peak number of individuals per species visible in a single image within an event, summed across all events.
           </p>
         </div>
         <DashboardFilters
@@ -182,10 +189,41 @@ export default function DashboardPage() {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Taxa detected</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Top 10 most frequently observed
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <CardTitle className="text-lg">Taxa detected</CardTitle>
+                  <TooltipProvider delayDuration={200}>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-sm p-3 space-y-2">
+                        <p><span className="font-semibold">Frequency</span> counts how many independent events a species appeared in, regardless of how many individuals were in each event. A single cow in one event counts the same as 20 cows in another. It answers &ldquo;how often does this species show up?&rdquo;</p>
+                        <p><span className="font-semibold">Abundance</span> sums the MaxN values, so it reflects how many individuals were observed. 20 cows in one event contributes 20 to the total. It answers &ldquo;how many individuals were observed?&rdquo;</p>
+                        <p>Both are standard metrics in camera trap ecology. Frequency (event count) is what RAI is based on.</p>
+                      </TooltipContent>
+                    </UITooltip>
+                  </TooltipProvider>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {speciesCountMode === "events"
+                    ? "Top 10 by number of independent events"
+                    : "Top 10 by total observations (MaxN sum)"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={speciesCountMode} onValueChange={(v) => setSpeciesCountMode(v as "events" | "max_n")}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="events">Frequency</SelectItem>
+                    <SelectItem value="max_n">Abundance</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="h-72">

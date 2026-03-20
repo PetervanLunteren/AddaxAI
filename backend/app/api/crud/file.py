@@ -8,7 +8,19 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.schemas.file import FileUpdate
-from app.models import Deployment, Detection, File
+from app.models import Deployment, Detection, File, Project, Site
+
+
+def _get_detection_threshold(db: Session, file: File) -> float:
+    """Get the project's detection threshold for a file."""
+    row = (
+        db.query(Project.detection_threshold)
+        .join(Site, Site.project_id == Project.id)
+        .join(Deployment, Deployment.site_id == Site.id)
+        .filter(Deployment.id == file.deployment_id)
+        .first()
+    )
+    return row[0] if row else 0.0
 
 
 def get_files(
@@ -127,10 +139,17 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
             now = datetime.utcnow()
             file.verified = True
             file.verified_at = now
-            db.query(Detection).filter(
+            # Only verify detections above the project's detection threshold
+            # (below-threshold detections are not visible to the user)
+            threshold = _get_detection_threshold(db, file)
+            det_filter = [
                 Detection.file_id == file_id,
-                Detection.verified == False,
-            ).update({"verified": True, "verified_at": now})
+                Detection.verified == False,  # noqa: E712
+                Detection.confidence >= threshold,
+            ]
+            db.query(Detection).filter(*det_filter).update(
+                {"verified": True, "verified_at": now}
+            )
         elif not update.verified and file.verified:
             file.verified = False
             file.verified_at = None

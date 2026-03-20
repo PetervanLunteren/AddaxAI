@@ -21,6 +21,7 @@ from app.api.schemas.statistics import (
 from app.models.deployment import Deployment
 from app.models.detection import Detection
 from app.models.event import Event
+from app.models.event_observation import EventObservation
 from app.models.file import File
 from app.models.label_taxonomy import LabelTaxonomy
 from app.models.project import Project
@@ -228,8 +229,6 @@ def get_dashboard_overview(
     date_to: str | None = None,
 ) -> DashboardOverview:
     """Aggregate counts for the top-level dashboard cards."""
-    threshold = _get_detection_threshold(db, project_id)
-
     # Files and date range (not filtered by threshold)
     file_stats_query = (
         select(
@@ -246,19 +245,18 @@ def get_dashboard_overview(
     )
     file_stats = db.execute(file_stats_query).one()
 
-    # Detection count (threshold-filtered)
-    det_count_query = (
-        select(func.count(Detection.id))
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .join(Deployment, File.deployment_id == Deployment.id)
+    # Observation count (sum of MaxN across all events)
+    obs_count_query = (
+        select(func.coalesce(func.sum(EventObservation.max_n), 0))
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
+        .where(Site.project_id == project_id)
     )
-    det_count_query = _apply_threshold(det_count_query, threshold)
-    det_count_query = _apply_filters(
-        det_count_query, project_id, site_ids, date_from, date_to,
-    )
-    total_detections = db.execute(det_count_query).scalar() or 0
+    if site_ids:
+        obs_count_query = obs_count_query.where(Site.id.in_(site_ids))
+    total_observations = db.execute(obs_count_query).scalar() or 0
 
     # Events count (Event -> Deployment -> Site)
     events_query = (
@@ -297,7 +295,7 @@ def get_dashboard_overview(
 
     return DashboardOverview(
         total_files=file_stats.total_files or 0,
-        total_detections=total_detections,
+        total_observations=total_observations,
         total_events=total_events,
         total_deployments=total_deployments,
         total_sites=total_sites,
@@ -319,40 +317,64 @@ def get_species_distribution(
     date_from: str | None = None,
     date_to: str | None = None,
     taxonomic_rank: str | None = None,
+    count_mode: str = "events",
 ) -> list[SpeciesCount]:
-    """Top 10 labels by detection count.
+    """Top 10 labels by event count or MaxN sum.
 
-    Raw mode: shows raw labels with category fallback (excludes empty).
-    Taxonomic rank modes: aggregates animals by the requested rank,
-    keeps non-animals (person, vehicle) as-is, and groups animals
-    without a value at the rank into "Higher-level taxa".
+    count_mode="events": number of independent events per label.
+    count_mode="max_n": sum of MaxN across events per label.
+
+    Taxonomic rank modes: aggregates by the requested rank using
+    the label_taxonomy join on EventObservation.label.
     """
-    threshold = _get_detection_threshold(db, project_id)
-    label_expr, needs_join = _rank_display_label(taxonomic_rank)
+    # Build label expression for taxonomic aggregation
+    if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
+        label_expr = EventObservation.label
+        needs_join = False
+    else:
+        col_name = _RANK_COLUMNS.get(taxonomic_rank)
+        if not col_name:
+            label_expr = EventObservation.label
+            needs_join = False
+        else:
+            rank_col = getattr(LabelTaxonomy, col_name)
+            has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+            label_expr = case(
+                (EventObservation.category != "animal", EventObservation.category),
+                (rank_col.isnot(None), rank_col),
+                (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
+                else_=literal(NO_TAXONOMY),
+            )
+            needs_join = True
+
+    if count_mode == "max_n":
+        count_expr = func.sum(EventObservation.max_n)
+    else:
+        count_expr = func.count(distinct(Event.id))
 
     query = (
         select(
             label_expr.label("species"),
-            func.count(Detection.id).label("count"),
+            count_expr.label("count"),
         )
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .join(Deployment, File.deployment_id == Deployment.id)
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
-        .where(Detection.category != "empty")
+        .where(Site.project_id == project_id)
         .group_by(label_expr)
-        .order_by(func.count(Detection.id).desc())
+        .order_by(count_expr.desc())
         .limit(10)
     )
 
     if needs_join:
         query = query.outerjoin(
             LabelTaxonomy,
-            Detection.label_taxonomy_id == LabelTaxonomy.id,
+            LabelTaxonomy.name == EventObservation.label,
         )
 
-    query = _apply_threshold(query, threshold)
-    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
+    if site_ids:
+        query = query.where(Site.id.in_(site_ids))
 
     rows = db.execute(query).all()
     return [
@@ -375,34 +397,47 @@ def get_activity_pattern(
     date_to: str | None = None,
     taxonomic_rank: str | None = None,
 ) -> ActivityPatternResponse:
-    """Hourly detection counts (0-23) for activity-pattern charts."""
-    threshold = _get_detection_threshold(db, project_id)
-    hour_expr = func.cast(func.strftime("%H", File.timestamp), Integer)
+    """Hourly observation counts (MaxN sum, 0-23) for activity-pattern charts."""
+    hour_expr = func.cast(func.strftime("%H", Event.start_time), Integer)
 
     query = (
         select(
             hour_expr.label("hour"),
-            func.count(Detection.id).label("count"),
+            func.sum(EventObservation.max_n).label("count"),
         )
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .join(Deployment, File.deployment_id == Deployment.id)
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
+        .where(Site.project_id == project_id)
         .group_by(hour_expr)
         .order_by(hour_expr)
     )
 
     if species:
-        label_expr, needs_join = _rank_display_label(taxonomic_rank)
-        if needs_join:
-            query = query.outerjoin(
-                LabelTaxonomy,
-                Detection.label_taxonomy_id == LabelTaxonomy.id,
-            )
-        query = query.where(label_expr == species)
+        if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
+            query = query.where(EventObservation.label == species)
+        else:
+            col_name = _RANK_COLUMNS.get(taxonomic_rank)
+            if col_name:
+                rank_col = getattr(LabelTaxonomy, col_name)
+                has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+                label_expr = case(
+                    (EventObservation.category != "animal", EventObservation.category),
+                    (rank_col.isnot(None), rank_col),
+                    (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
+                    else_=literal(NO_TAXONOMY),
+                )
+                query = query.outerjoin(
+                    LabelTaxonomy,
+                    LabelTaxonomy.name == EventObservation.label,
+                )
+                query = query.where(label_expr == species)
+            else:
+                query = query.where(EventObservation.label == species)
 
-    query = _apply_threshold(query, threshold)
-    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
+    if site_ids:
+        query = query.where(Site.id.in_(site_ids))
 
     rows = db.execute(query).all()
     counts_by_hour = {row.hour: row.count for row in rows}
@@ -414,7 +449,7 @@ def get_activity_pattern(
     ]
     total = sum(hc.count for hc in hours)
 
-    return ActivityPatternResponse(hours=hours, total_detections=total)
+    return ActivityPatternResponse(hours=hours, total_observations=total)
 
 
 # ---------------------------------------------------------------------------
@@ -431,34 +466,47 @@ def get_detection_trend(
     date_to: str | None = None,
     taxonomic_rank: str | None = None,
 ) -> list[DetectionTrendPoint]:
-    """Daily detection counts for trend charts."""
-    threshold = _get_detection_threshold(db, project_id)
-    date_expr = func.strftime("%Y-%m-%d", File.timestamp)
+    """Daily observation counts (MaxN sum) for trend charts."""
+    date_expr = func.strftime("%Y-%m-%d", Event.start_time)
 
     query = (
         select(
             date_expr.label("date"),
-            func.count(Detection.id).label("count"),
+            func.sum(EventObservation.max_n).label("count"),
         )
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .join(Deployment, File.deployment_id == Deployment.id)
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
+        .where(Site.project_id == project_id)
         .group_by(date_expr)
         .order_by(date_expr.asc())
     )
 
     if species:
-        label_expr, needs_join = _rank_display_label(taxonomic_rank)
-        if needs_join:
-            query = query.outerjoin(
-                LabelTaxonomy,
-                Detection.label_taxonomy_id == LabelTaxonomy.id,
-            )
-        query = query.where(label_expr == species)
+        if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
+            query = query.where(EventObservation.label == species)
+        else:
+            col_name = _RANK_COLUMNS.get(taxonomic_rank)
+            if col_name:
+                rank_col = getattr(LabelTaxonomy, col_name)
+                has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+                label_expr = case(
+                    (EventObservation.category != "animal", EventObservation.category),
+                    (rank_col.isnot(None), rank_col),
+                    (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
+                    else_=literal(NO_TAXONOMY),
+                )
+                query = query.outerjoin(
+                    LabelTaxonomy,
+                    LabelTaxonomy.name == EventObservation.label,
+                )
+                query = query.where(label_expr == species)
+            else:
+                query = query.where(EventObservation.label == species)
 
-    query = _apply_threshold(query, threshold)
-    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
+    if site_ids:
+        query = query.where(Site.id.in_(site_ids))
 
     rows = db.execute(query).all()
     return [
@@ -479,23 +527,37 @@ def get_detection_categories(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> DetectionCategories:
-    """Count detections by category plus blank-file count."""
-    threshold = _get_detection_threshold(db, project_id)
-
-    # Detection category counts
+    """Count observations (MaxN sum) by category plus blank-file count."""
+    # Category counts from EventObservation (MaxN-based)
     category_query = (
         select(
-            func.sum(case((Detection.category == "animal", 1), else_=0)).label("animal_count"),
-            func.sum(case((Detection.category == "person", 1), else_=0)).label("person_count"),
-            func.sum(case((Detection.category == "vehicle", 1), else_=0)).label("vehicle_count"),
+            func.coalesce(
+                func.sum(case(
+                    (EventObservation.category == "animal", EventObservation.max_n),
+                    else_=0,
+                )), 0
+            ).label("animal_count"),
+            func.coalesce(
+                func.sum(case(
+                    (EventObservation.category == "person", EventObservation.max_n),
+                    else_=0,
+                )), 0
+            ).label("person_count"),
+            func.coalesce(
+                func.sum(case(
+                    (EventObservation.category == "vehicle", EventObservation.max_n),
+                    else_=0,
+                )), 0
+            ).label("vehicle_count"),
         )
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .join(Deployment, File.deployment_id == Deployment.id)
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
+        .where(Site.project_id == project_id)
     )
-    category_query = _apply_threshold(category_query, threshold)
-    category_query = _apply_filters(category_query, project_id, site_ids, date_from, date_to)
+    if site_ids:
+        category_query = category_query.where(Site.id.in_(site_ids))
     cat_row = db.execute(category_query).one()
 
     # Empty (blank) file count

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class DashboardOverview(BaseModel):
     total_files: int
-    total_detections: int
+    total_observations: int
     total_events: int
     total_deployments: int
     total_sites: int
@@ -26,7 +26,7 @@ class HourlyCount(BaseModel):
 
 class ActivityPatternResponse(BaseModel):
     hours: list[HourlyCount]
-    total_detections: int
+    total_observations: int
 
 
 class DetectionTrendPoint(BaseModel):

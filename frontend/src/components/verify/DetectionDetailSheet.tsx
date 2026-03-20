@@ -21,7 +21,7 @@ import { Progress } from "../ui/progress";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getCategoryColor } from "../../lib/detection-utils";
+import { getDetectionColor } from "../../lib/detection-utils";
 import type { DetectionSummary } from "../../api/types";
 
 interface DetectionDetailSheetProps {
@@ -184,7 +184,7 @@ export function DetectionDetailSheet({
                   width={fullDetection.bbox_width * imgW}
                   height={fullDetection.bbox_height * imgH}
                   fill="none"
-                  stroke={getCategoryColor(fullDetection.category)}
+                  stroke={getDetectionColor(fullDetection)}
                   strokeWidth={Math.max(imgW, imgH) * 0.003}
                   rx={2}
                 />

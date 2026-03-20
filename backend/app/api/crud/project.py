@@ -7,12 +7,13 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud.statistics import get_trap_nights
 from app.api.schemas.project import ProjectCreate, ProjectUpdate
-from app.models import Deployment, Detection, File, Project, Site
+from app.models import Deployment, Event, File, Project, Site
+from app.models.event_observation import EventObservation
 
 
 def get_projects(db: Session) -> list[Project]:
@@ -141,21 +142,14 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         or 0
     )
 
-    # Count detections (respect project threshold; verified always included)
-    threshold = db_project.detection_threshold or 0.0
-    detection_count = (
+    # Count observations (sum of MaxN from event_observations)
+    observation_count = (
         db.scalar(
-            select(func.count(Detection.id))
-            .join(File)
-            .join(Deployment)
-            .join(Site)
+            select(func.coalesce(func.sum(EventObservation.max_n), 0))
+            .join(Event, Event.id == EventObservation.event_id)
+            .join(Deployment, Event.deployment_id == Deployment.id)
+            .join(Site, Deployment.site_id == Site.id)
             .where(Site.project_id == project_id)
-            .where(
-                or_(
-                    Detection.confidence >= threshold,
-                    Detection.verified == True,  # noqa: E712
-                )
-            )
         )
         or 0
     )
@@ -166,7 +160,7 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         "site_count": site_count,
         "deployment_count": deployment_count,
         "file_count": file_count,
-        "detection_count": detection_count,
+        "observation_count": observation_count,
         "trap_nights": trap_nights,
     }
 
@@ -178,33 +172,17 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
     Returns a dict keyed by project_id, each containing counts for
     sites, deployments, files, detections, and trap nights.
     """
-    # Single query for site, deployment, file, and detection counts per project.
-    # Detection count respects each project's threshold; verified always included.
-    meets_threshold = case(
-        (
-            or_(
-                Detection.confidence >= func.coalesce(
-                    Project.detection_threshold, 0.0
-                ),
-                Detection.verified == True,  # noqa: E712
-            ),
-            1,
-        ),
-        else_=0,
-    )
+    # Query 1: site, deployment, file counts per project
     rows = db.execute(
         select(
             Site.project_id,
             func.count(func.distinct(Site.id)).label("site_count"),
             func.count(func.distinct(Deployment.id)).label("deployment_count"),
             func.count(func.distinct(File.id)).label("file_count"),
-            func.sum(meets_threshold).label("detection_count"),
         )
         .select_from(Site)
-        .join(Project, Project.id == Site.project_id)
         .outerjoin(Deployment, Deployment.site_id == Site.id)
         .outerjoin(File, File.deployment_id == Deployment.id)
-        .outerjoin(Detection, Detection.file_id == File.id)
         .group_by(Site.project_id)
     ).all()
 
@@ -218,11 +196,27 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
             "site_count": row.site_count,
             "deployment_count": row.deployment_count,
             "file_count": row.file_count,
-            "detection_count": int(row.detection_count or 0),
+            "observation_count": 0,
             "trap_nights": 0,
         }
 
-    # Compute trap nights per project (reuses existing calculation)
+    # Query 2: observation counts (MaxN sum) per project
+    obs_rows = db.execute(
+        select(
+            Site.project_id,
+            func.coalesce(func.sum(EventObservation.max_n), 0).label("obs_count"),
+        )
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
+        .join(Site, Deployment.site_id == Site.id)
+        .group_by(Site.project_id)
+    ).all()
+    for row in obs_rows:
+        if row.project_id in stats:
+            stats[row.project_id]["observation_count"] = int(row.obs_count)
+
+    # Compute trap nights per project
     for project_id in project_ids_with_sites:
         stats[project_id]["trap_nights"] = get_trap_nights(db, project_id)
 

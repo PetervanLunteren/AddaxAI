@@ -7,14 +7,13 @@ Events are time-clustered groups of files within a deployment.
 import uuid
 from datetime import datetime, time
 
-import cv2
 from sqlalchemy import Integer, and_, delete, exists, func, insert, or_, select
-from sqlalchemy.orm import Session, aliased, joinedload, subqueryload
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
-from app.ml.scoring import compute_sharpness, pick_best_candidate, score_detections
 from app.models import Deployment, Detection, Event, File, Project, Site
 from app.models.event import event_files
+from app.models.event_observation import EventObservation
 
 logger = get_logger(__name__)
 
@@ -97,28 +96,32 @@ def _apply_event_filters(
                 .where(File.verified == False)  # noqa: E712
             )
             query = query.filter(exists(unverified_subq))
-        elif verification == "unverified_representative":
-            # Representative file is unverified
-            RepFile = aliased(File)
+        elif verification == "unverified_maxn":
+            # Event has at least one MaxN frame that is unverified
+            MaxNFile = aliased(File)
             query = query.filter(
                 exists(
-                    select(RepFile.id).where(
+                    select(EventObservation.id)
+                    .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
+                    .where(
                         and_(
-                            RepFile.id == Event.representative_file_id,
-                            RepFile.verified == False,  # noqa: E712
+                            EventObservation.event_id == Event.id,
+                            MaxNFile.verified == False,  # noqa: E712
                         )
                     )
                 )
             )
-        elif verification == "verified_representative":
-            # Representative file is verified
-            RepFile = aliased(File)
+        elif verification == "verified_maxn":
+            # Event has at least one MaxN frame that is verified
+            MaxNFile = aliased(File)
             query = query.filter(
                 exists(
-                    select(RepFile.id).where(
+                    select(EventObservation.id)
+                    .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
+                    .where(
                         and_(
-                            RepFile.id == Event.representative_file_id,
-                            RepFile.verified == True,  # noqa: E712
+                            EventObservation.event_id == Event.id,
+                            MaxNFile.verified == True,  # noqa: E712
                         )
                     )
                 )
@@ -134,73 +137,6 @@ def _apply_event_filters(
             query = query.filter(~exists(verified_subq))
 
     return query
-
-
-def _select_representative_file(files: list[File]) -> str | None:
-    """
-    Pick the best representative file from an event's files using shared scoring.
-
-    Uses detection confidence as primary signal and image sharpness as tiebreaker.
-    """
-    if not files:
-        return None
-
-    # Build detection tuples: (file_id, confidence, bbox)
-    det_tuples = [
-        (file.id, det.confidence, (det.bbox_x, det.bbox_y, det.bbox_width, det.bbox_height))
-        for file in files
-        for det in file.detections
-    ]
-
-    scores = score_detections(det_tuples)
-
-    total_dets = sum(len(f.detections) for f in files)
-    logger.debug(
-        f"Representative selection: {len(files)} files, "
-        f"{total_dets} total detections, {len(det_tuples)} with bbox, "
-        f"{len(scores)} scored above threshold"
-    )
-
-    # Build sharpness callback that reads images from disk
-    def get_sharpest(keys: list[str]) -> str:
-        file_map = {f.id: f for f in files}
-        best_key = keys[0]
-        best_sharpness = -1.0
-
-        for key in keys:
-            f = file_map.get(key)
-            if not f:
-                continue
-
-            # For video files, use the extracted best frame; for images, use the file itself
-            image_path = f.best_frame_path if f.file_type == "video" else f.file_path
-            if not image_path:
-                continue
-
-            try:
-                img = cv2.imread(image_path)
-                if img is None:
-                    continue
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                sharpness = compute_sharpness(img_rgb)
-                if sharpness > best_sharpness:
-                    best_sharpness = sharpness
-                    best_key = key
-            except Exception:
-                continue
-
-        return best_key
-
-    fallback_keys = [f.id for f in files]
-
-    result = pick_best_candidate(
-        scores,
-        get_sharpest=get_sharpest,
-        fallback_keys=fallback_keys,
-    )
-
-    # Ultimate fallback
-    return result if result is not None else files[0].id
 
 
 def generate_events_for_project(db: Session, project_id: str) -> int:
@@ -239,7 +175,6 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     for deployment in deployments:
         files = (
             db.query(File)
-            .options(subqueryload(File.detections))
             .filter(File.deployment_id == deployment.id)
             .filter(File.file_type.in_(["image", "frame"]))
             .order_by(File.timestamp.asc())
@@ -268,21 +203,25 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
             _create_event(db, deployment.id, current_event_files)
             total_events += 1
 
+    db.flush()
+
+    # Calculate MaxN observations for all events
+    from app.api.crud.event_observation import recalculate_max_n_for_project
+
+    recalculate_max_n_for_project(db, project_id)
+
     db.commit()
     return total_events
 
 
 def _create_event(db: Session, deployment_id: str, files: list[File]) -> Event:
     """Create an event with its junction table entries."""
-    representative_file_id = _select_representative_file(files)
-
     event = Event(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
         start_time=files[0].timestamp,
         end_time=files[-1].timestamp,
         file_count=len(files),
-        representative_file_id=representative_file_id,
     )
     db.add(event)
     db.flush()  # Get event.id assigned
@@ -347,6 +286,14 @@ def get_events_by_project(
             seen_ids.add(event.id)
             unique_events.append(event)
 
+    # Batch-load MaxN frames for all events in this page
+    from app.api.crud.event_observation import get_max_n_frames
+
+    event_ids = [e.id for e in unique_events]
+    max_n_by_event: dict[str, list[dict]] = {}
+    for eid in event_ids:
+        max_n_by_event[eid] = get_max_n_frames(db, eid)
+
     summaries = []
     for event in unique_events:
         # Sort files by sequence within event
@@ -394,6 +341,12 @@ def get_events_by_project(
         )
         verified_count = sum(1 for f in sorted_files if f.verified)
 
+        # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
+        max_n_frames = max_n_by_event.get(event.id, [])
+        thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
+            sorted_files[0].id if sorted_files else None
+        )
+
         summaries.append(
             {
                 "id": event.id,
@@ -401,7 +354,8 @@ def get_events_by_project(
                 "start_time": event.start_time,
                 "end_time": event.end_time,
                 "file_count": event.file_count,
-                "representative_file_id": event.representative_file_id,
+                "thumbnail_file_id": thumbnail_file_id,
+                "max_n_frames": max_n_frames,
                 "site_name": event.deployment.site.name
                 if event.deployment and event.deployment.site
                 else None,
@@ -619,27 +573,36 @@ def get_event_verification_stats(
         .one()
     )
 
-    # Query 2: representative file counts
-    RepFile = aliased(File)
-    rep_stats = (
+    # Query 2: MaxN frame counts (distinct max_n_file_ids and their verification)
+    MaxNFile = aliased(File)
+    maxn_stats = (
         db.query(
-            func.count(Event.representative_file_id),
-            func.sum(func.cast(RepFile.verified, Integer)),
+            func.count(func.distinct(EventObservation.max_n_file_id)),
+            func.sum(
+                func.cast(MaxNFile.verified, Integer)
+            ),
         )
-        .select_from(Event)
-        .join(Deployment, Deployment.id == Event.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .outerjoin(RepFile, RepFile.id == Event.representative_file_id)
-        .filter(Site.project_id == project_id)
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
         .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .filter(Event.representative_file_id.isnot(None))
+        .filter(EventObservation.max_n_file_id.isnot(None))
         .one()
     )
 
-    # Query 3: detection-level counts (threshold-filtered)
-    det_q = (
+    # Query 3: observation counts (MaxN-based from event_observations)
+    obs_q = (
         db.query(
-            func.count(Detection.id),
+            func.coalesce(func.sum(EventObservation.max_n), 0),
+        )
+        .join(Event, Event.id == EventObservation.event_id)
+        .filter(Event.id.in_(select(event_ids_subq.c.id)))
+    )
+    total_observations = obs_q.scalar() or 0
+
+    # Verified detection count (still useful for verification progress)
+    det_verified_q = (
+        db.query(
             func.sum(func.cast(Detection.verified, Integer)),
         )
         .join(File, File.id == Detection.file_id)
@@ -647,18 +610,18 @@ def get_event_verification_stats(
         .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
     )
     if min_confidence is not None:
-        det_q = det_q.filter(
+        det_verified_q = det_verified_q.filter(
             or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
         )
-    det_stats = det_q.one()
+    verified_detections = int(det_verified_q.scalar() or 0)
 
     return {
         "total_files": file_stats[0] or 0,
         "verified_files": int(file_stats[1] or 0),
-        "total_representatives": rep_stats[0] or 0,
-        "verified_representatives": int(rep_stats[1] or 0),
-        "total_detections": det_stats[0] or 0,
-        "verified_detections": int(det_stats[1] or 0),
+        "total_max_n_frames": maxn_stats[0] or 0,
+        "verified_max_n_frames": int(maxn_stats[1] or 0),
+        "total_observations": total_observations,
+        "verified_detections": verified_detections,
     }
 
 

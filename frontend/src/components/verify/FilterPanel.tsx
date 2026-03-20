@@ -38,8 +38,8 @@ const VERIFICATION_OPTIONS: { value: VerificationFilter | "all"; label: string }
   { value: "all", label: "All" },
   { value: "none_verified", label: "None verified" },
   { value: "not_fully_verified", label: "Partially verified" },
-  { value: "unverified_representative", label: "Representative not verified" },
-  { value: "verified_representative", label: "Representative verified" },
+  { value: "unverified_maxn", label: "MaxN frames not verified" },
+  { value: "verified_maxn", label: "MaxN frames verified" },
   { value: "fully_verified", label: "Fully verified" },
 ];
 

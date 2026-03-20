@@ -1049,8 +1049,6 @@ async def run_classification_on_json(
         def sync_speciesnet_progress(message, progress, phase, phase_progress, metrics=None):
             """Sync adapter that schedules async callback from executor thread"""
             if progress_callback:
-                if metrics and "unit" in metrics:
-                    metrics["unit"] = "video"
                 asyncio.run_coroutine_threadsafe(
                     progress_callback(message, phase_progress, metrics), loop
                 )

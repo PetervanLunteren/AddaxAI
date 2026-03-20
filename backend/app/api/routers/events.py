@@ -211,13 +211,17 @@ def get_event(
     if event.deployment and event.deployment.site:
         site_name = event.deployment.site.name
 
+    from app.api.crud.event_observation import get_max_n_frames
+
+    max_n_frames = get_max_n_frames(db, event_id)
+
     return EventWithFiles(
         id=event.id,
         deployment_id=event.deployment_id,
         start_time=event.start_time,
         end_time=event.end_time,
         file_count=event.file_count,
-        representative_file_id=event.representative_file_id,
+        max_n_frames=max_n_frames,
         created_at=event.created_at,
         site_name=site_name,
         files=[FileWithDetections.model_validate(f, from_attributes=True) for f in sorted_files],

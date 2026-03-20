@@ -73,7 +73,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 This tab verifies at the file level. When you
                 press Enter, the current file and all its detections are marked
                 as verified. The progress bars in the toolbar track how many
-                representative files and total files have been verified. This is
+                MaxN frames and total files have been verified. This is
                 the primary workflow for reviewing events image by image.
               </p>
             </div>
@@ -86,12 +86,12 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
                 Each event groups images and videos captured close together in
-                time. The event opens to its representative image or frame,
-                scored by number of detections, how much of the frame they
-                fill, and image sharpness. The representative is tagged with
-                a <code className="bg-primary text-white px-1 py-0.5 rounded-sm text-xs">Rep.</code> chip
+                time. The event opens to its first unverified MaxN frame — the
+                image where the peak count for each species was observed. MaxN
+                frames are tagged with
+                a <code className="bg-primary text-white px-1 py-0.5 rounded-sm text-xs">MaxN: species</code> badge
                 in the filmstrip. You don't need to verify every file;
-                verifying the representative is generally enough to get accurate
+                verifying the MaxN frames is generally enough to get accurate
                 statistics. If you wish to verify all files, you can by setting
                 the navigation dropdown
                 to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">file</code>.
@@ -99,7 +99,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               <p>
                 For video files, verification works at the frame level defined
                 by the project setting "Video frame rate" (default 1 frame per
-                second). It works the same as images: the representative frame
+                second). It works the same as images: the MaxN frame
                 is shown first, but you can view and verify all analyzed frames.
                 Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">P</code> to
                 toggle between frame view and video playback.

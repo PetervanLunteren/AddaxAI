@@ -44,10 +44,12 @@ def species_distribution(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     taxonomic_rank: str | None = Query(None),
+    count_mode: str = Query("events"),
     db: Session = Depends(get_db),
 ) -> list[SpeciesCount]:
     return stats_crud.get_species_distribution(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
+        db, project_id, _parse_site_ids(site_ids), date_from, date_to,
+        taxonomic_rank, count_mode,
     )
 
 

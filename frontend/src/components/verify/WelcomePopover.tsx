@@ -20,8 +20,8 @@ export function WelcomePopover({ open, onDismiss }: WelcomePopoverProps) {
         <h2 className="text-lg font-semibold">Welcome to Verification</h2>
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>
-            Each event opens to its representative image, the clearest image
-            with the most individuals. Confirm or correct the labels, then
+            Each event opens to its MaxN frame, the image where the peak count
+            for each species was observed. Confirm or correct the labels, then
             press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to verify and advance.
           </p>
           <p>
