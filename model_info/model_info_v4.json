@@ -1,8 +1,79 @@
 {
     "cls": {
+        "Hawaiʻi, USA - AI Puaʻa v1.0": {
+            "model_fname": "final-20260317.pt",
+            "description": "The AI Puaʻa Initiative develops artificial intelligence models to automatically classify wildlife species in camera trap imagery collected across Hawaiʻi, with a focus on introduced and managed species.The initiative is led through a collaboration between The Nature Conservancy (TNC), the USDA Forest Service Pacific Southwest Research Station, Institute of Pacific Islands Forestry (IPIF), the University of Hawaiʻi at Mānoa Wildlife Ecology and Management Lab, the Hawaiʻi Division of Forestry and Wildlife (DOFAW), and Addax Data Science, with contributions from conservation practitioners and community-based monitoring efforts.The AI Puaʻa models are trained on datasets collectively pooled and curated from camera trap deployments across the State of Hawaiʻi, representing the variation in species encountered in local monitoring efforts. These models improve classification accuracy for species that are often underrepresented or inconsistently identified in generalized wildlife models trained outside of Hawaiʻi. Models developed through this initiative are accessible through the Addax AI platform, providing a cost-effective and user-friendly solution for processing and analyzing camera trap data without requiring advanced technical expertise or reliance on expensive proprietary or subscription-based software.\n\nNew versions of the model will be released as additional data become available, improving classification performance and expanding species coverage over time.",
+            "developer": "Addax Data Science",
+            "owner": "USDA Forest Service – Pacific Southwest Research Station, Institute of Pacific Islands Forestry (IPIF) & The Nature Conservancy (TNC)",
+            "env": "pytorch",
+            "type": "addax-sppnet",
+            "download_info": [
+                [
+                    "https://huggingface.co/Addax-Data-Science/HWI-ADS-v1/resolve/main/always_crop_99710272_22x8_v12_epoch_00148.pt?download=true",
+                    "always_crop_99710272_22x8_v12_epoch_00148.pt"
+                ],
+                [
+                    "https://huggingface.co/Addax-Data-Science/HWI-ADS-v1/resolve/main/final-20260317.pt?download=true",
+                    "final-20260317.pt"
+                ],
+                [
+                    "https://huggingface.co/Addax-Data-Science/HWI-ADS-v1/resolve/main/taxon-mapping.csv?download=true",
+                    "taxon-mapping.csv"
+                ]
+            ],
+            "citation": "",
+            "license": "https://creativecommons.org/licenses/by-nc/4.0/deed.en",
+            "total_download_size": "",
+            "info_url": "500 MB",
+            "all_classes": [
+                "axis deer",
+                "bird",
+                "cat",
+                "cow",
+                "dog",
+                "donkey",
+                "false detection",
+                "goat",
+                "horse",
+                "mongoose",
+                "mule deer",
+                "rock wallaby",
+                "rodent",
+                "sheep",
+                "wild pig"
+            ],
+            "selected_classes": [
+                "axis deer",
+                "bird",
+                "cat",
+                "cow",
+                "dog",
+                "donkey",
+                "false detection",
+                "goat",
+                "horse",
+                "mongoose",
+                "mule deer",
+                "rock wallaby",
+                "rodent",
+                "sheep",
+                "wild pig"
+            ],
+            "var_cls_detec_thresh": "0.40",
+            "var_cls_class_thresh": "0.30",
+            "var_cls_detec_thresh_default": "0.40",
+            "var_cls_class_thresh_default": "0.30",
+            "var_smooth_cls_animal": false,
+            "min_version": "6.30",
+            "var_tax_levels_idx": 0,
+            "var_tax_fallback": true,
+            "var_tax_fallback_default": true,
+            "full_image_cls": false,
+            "taxon_mapping_csv": "https://huggingface.co/Addax-Data-Science/HWI-ADS-v1/resolve/main/taxon-mapping.csv?download=true"
+        },
         "Neotropical region - TropiCam-AI v1.0": {
             "model_fname": "TropiCam_AI_TensorFlow_model.h5",
-            "description": "TropiCam-AI is a Convolutional Neural Network (CNN) trained to classify arboreal mammal and bird species in the Neotropical region from camera-traps deployed in the tree canopy. It was trained using a ConvNeXt-Base architecture on ~189.000 camera-trap images from several deployments in Neotropical countries (Brazil, Peru, French Guiana, Costa Rica) and augmented with ~54.000 citizen-science images gathered from the iNaturalist platform. It is designed to work in conjunction with the MegaDetector algorithm, in the well-established two-stage detection and classification pipeline. TropiCam-AI can recognize a total of 84 taxa, and it was optimized with a taxonomic aggregation strategy to return classification at multiple levels of the taxonomy hierarchy (e.g. species, genus, family, class and order) to enhance accuracy, flexibility and generalizability to unseen locations and species. TropiCam-AI was released with the publication “Introducing TropiCam-AI: A taxonomically flexible automated classifier of Neotropical arboreal mammals and birds from camera-trap data” (placeholder for the DOI, soon to come). Further information can be found on the dedicated GitHub repository (https://github.com/andrewzamp/TropiCam-AI).",
+            "description": "TropiCam-AI is a Convolutional Neural Network (CNN) trained to classify arboreal mammal and bird species in the Neotropical region from camera-traps deployed in the tree canopy. It was trained using a ConvNeXt-Base architecture on ~189.000 camera-trap images from several deployments in Neotropical countries (Brazil, Peru, French Guiana, Costa Rica) and augmented with ~54.000 citizen-science images gathered from the iNaturalist platform. It is designed to work in conjunction with the MegaDetector algorithm, in the well-established two-stage detection and classification pipeline. TropiCam-AI can recognize a total of 84 taxa, and it was optimized with a taxonomic aggregation strategy to return classification at multiple levels of the taxonomy hierarchy (e.g. species, genus, family, class and order) to enhance accuracy, flexibility and generalizability to unseen locations and species. TropiCam-AI was released with the publication “Introducing TropiCam-AI: A taxonomically flexible automated classifier of Neotropical arboreal mammals and birds from camera-trap data” (https://doi.org/10.1111/2041-210x.70213). Further information can be found on the dedicated GitHub repository (https://github.com/andrewzamp/TropiCam-AI).",
             "developer": "Andrea Zampetti, National Museum of Natural Sciences (MNCN-CSIC), Madrid, Spain",
             "env": "tensorflow-v1",
             "type": "andrea-anpc",
@@ -225,8 +296,8 @@
                 ]
             ],
             "citation": "",
-            "license": "https://www.apache.org/licenses/LICENSE-2.0",
-            "total_download_size": "",
+            "license": "https://huggingface.co/Addax-Data-Science/VIC-ADS-v1/blob/main/LICENSE.txt",
+            "total_download_size": "500 MB",
             "info_url": "https://www.parks.vic.gov.au/get-into-nature/conservation-and-science/science-and-research",
             "all_classes": [
                 "agile antechinus",
@@ -3875,7 +3946,7 @@
             "description": "MegaDetector 5b differs from 5a only in its training data and is also an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
             "developer": "Dan Morris",
             "type": "base",
-            "download_info": [ 
+            "download_info": [
                 [
                     "https://github.com/agentmorris/MegaDetector/releases/download/v5.0/md_v5b.0.0.pt",
                     "md_v5b.0.0.pt"
