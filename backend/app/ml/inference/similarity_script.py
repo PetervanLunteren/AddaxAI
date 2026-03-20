@@ -70,7 +70,7 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
         params.append(filters["date_to"])
 
     if filters.get("min_confidence") is not None:
-        clauses.append("d.confidence >= ?")
+        clauses.append("(d.confidence >= ? OR d.verified = 1)")
         params.append(filters["min_confidence"])
 
     if filters.get("category"):

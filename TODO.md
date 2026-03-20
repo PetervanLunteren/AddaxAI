@@ -26,8 +26,9 @@ Instructions:
 
 
 
+- [ ] bug: similarity verification: if I double click a verifed detection, clicking the "unverify" button doesnt do anything. It doesnt update the modal. But if I esc the modal, it does show up as non verified, so it obviously does something, but just not to the modal itself. 
 
-
+- [ ] bug: when doing an analysis, the 'image classification' pbar goes from 0 to 100 without showing any stats like the other pbars. Then the 'finalizing...' part takes long. I get the sense that eveything happens in the 'finalizing...' phase. Could that be true? Investigate. 
 
 - [ ] There is something weird going on. If I vcerify all detections as "Spotted bird" via similarity verification, i still see other labels in the dashboard. Why? Are you not taking the settings detection threshold into account? Check the DB for http://localhost:5173/projects/dc6f3a78-5a8b-4b8c-a959-cd1ade3c481a/dashboard
  

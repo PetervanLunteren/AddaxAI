@@ -9,7 +9,7 @@ Created by Claude Code on 2026-02-14
 
 from pathlib import Path
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.crud import event as event_crud
@@ -221,6 +221,9 @@ async def process_postprocessing_job(job_id: str) -> None:
         # Auto-regenerate events (independence_interval may have changed)
         event_count = event_crud.generate_events_for_project(db, project_id)
         logger.info(f"Postprocessing job {job_id}: Regenerated {event_count} events")
+
+        db.execute(text("ANALYZE"))
+        db.commit()
 
         job_crud.update_job_status(db, job_id, "completed")
         await ws_manager.send_progress(job_id, message, 1.0)

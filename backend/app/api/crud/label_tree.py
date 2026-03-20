@@ -6,7 +6,7 @@ annotated with event counts. Replaces the frontend's two-query + client-side
 pruning approach.
 """
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
@@ -54,7 +54,7 @@ def build_label_filter_tree(
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
             .filter(effective_label.isnot(None))
-            .filter(Detection.confidence >= threshold)
+            .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
             .group_by(effective_label)
             .all()
         )
@@ -70,7 +70,7 @@ def build_label_filter_tree(
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
             .filter(effective_label.isnot(None))
-            .filter(Detection.confidence >= threshold)
+            .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
             .group_by(effective_label)
             .all()
         )

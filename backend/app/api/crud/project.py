@@ -7,7 +7,7 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.crud.statistics import get_trap_nights
@@ -141,7 +141,8 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         or 0
     )
 
-    # Count detections
+    # Count detections (respect project threshold; verified always included)
+    threshold = db_project.detection_threshold or 0.0
     detection_count = (
         db.scalar(
             select(func.count(Detection.id))
@@ -149,6 +150,12 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
             .join(Deployment)
             .join(Site)
             .where(Site.project_id == project_id)
+            .where(
+                or_(
+                    Detection.confidence >= threshold,
+                    Detection.verified == True,  # noqa: E712
+                )
+            )
         )
         or 0
     )
@@ -171,16 +178,30 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
     Returns a dict keyed by project_id, each containing counts for
     sites, deployments, files, detections, and trap nights.
     """
-    # Single query for site, deployment, file, and detection counts per project
+    # Single query for site, deployment, file, and detection counts per project.
+    # Detection count respects each project's threshold; verified always included.
+    meets_threshold = case(
+        (
+            or_(
+                Detection.confidence >= func.coalesce(
+                    Project.detection_threshold, 0.0
+                ),
+                Detection.verified == True,  # noqa: E712
+            ),
+            1,
+        ),
+        else_=0,
+    )
     rows = db.execute(
         select(
             Site.project_id,
             func.count(func.distinct(Site.id)).label("site_count"),
             func.count(func.distinct(Deployment.id)).label("deployment_count"),
             func.count(func.distinct(File.id)).label("file_count"),
-            func.count(Detection.id).label("detection_count"),
+            func.sum(meets_threshold).label("detection_count"),
         )
         .select_from(Site)
+        .join(Project, Project.id == Site.project_id)
         .outerjoin(Deployment, Deployment.site_id == Site.id)
         .outerjoin(File, File.deployment_id == Deployment.id)
         .outerjoin(Detection, Detection.file_id == File.id)
@@ -197,7 +218,7 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
             "site_count": row.site_count,
             "deployment_count": row.deployment_count,
             "file_count": row.file_count,
-            "detection_count": row.detection_count,
+            "detection_count": int(row.detection_count or 0),
             "trap_nights": 0,
         }
 

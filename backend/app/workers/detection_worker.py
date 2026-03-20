@@ -17,6 +17,8 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import text
+
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import event as event_crud
@@ -675,6 +677,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         # Auto-generate events for the project
         event_count = event_crud.generate_events_for_project(db, project_id)
         logger.info(f"Batch job {job_id}: Auto-generated {event_count} events")
+
+        # Refresh SQLite query planner statistics after bulk inserts
+        db.execute(text("ANALYZE"))
+        db.commit()
 
         # Mark job as completed
         job_crud.update_job_status(db, job_id, "completed")

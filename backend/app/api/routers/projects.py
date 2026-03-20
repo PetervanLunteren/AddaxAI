@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ from app.api.schemas.project import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.models import Deployment, Detection, File, Job, Site
+from app.models import Deployment, Detection, File, Job, Project, Site
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.label_taxonomy import LabelTaxonomy
 
@@ -543,14 +543,18 @@ def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
     Get detection category statistics for a project.
 
     Returns counts by category (animal, person, vehicle).
+    Respects project detection threshold; verified detections always included.
     """
-    # Query detection counts grouped by category
+    project = db.query(Project).filter(Project.id == project_id).first()
+    threshold = project.detection_threshold if project else 0.0
+
     stats = (
         db.query(Detection.category, func.count(Detection.id).label("count"))
         .join(File)
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
+        .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
         .group_by(Detection.category)
         .all()
     )
@@ -578,7 +582,7 @@ def get_detection_count(
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
-        .filter(Detection.confidence >= threshold)
+        .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
         .scalar()
     ) or 0
     return {"count": count}
@@ -606,7 +610,9 @@ def get_label_stats(
         .filter(Detection.label.isnot(None))
     )
     if threshold > 0:
-        query = query.filter(Detection.confidence >= threshold)
+        query = query.filter(
+            or_(Detection.confidence >= threshold, Detection.verified == True)  # noqa: E712
+        )
     stats = (
         query
         .group_by(Detection.label)
@@ -649,7 +655,7 @@ def get_independent_event_stats(
             JOIN sites s ON dep.site_id = s.id
             WHERE s.project_id = :project_id
               AND d.label IS NOT NULL
-              AND (:threshold <= 0 OR d.confidence >= :threshold)
+              AND (:threshold <= 0 OR d.confidence >= :threshold OR d.verified = 1)
         ),
         events AS (
             SELECT label

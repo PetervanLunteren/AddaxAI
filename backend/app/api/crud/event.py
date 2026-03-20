@@ -8,12 +8,12 @@ import uuid
 from datetime import datetime, time
 
 import cv2
-from sqlalchemy import Integer, and_, delete, exists, func, insert, select
+from sqlalchemy import Integer, and_, delete, exists, func, insert, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload, subqueryload
 
 from app.core.logging_config import get_logger
 from app.ml.scoring import compute_sharpness, pick_best_candidate, score_detections
-from app.models import Deployment, Detection, Event, File, Site
+from app.models import Deployment, Detection, Event, File, Project, Site
 from app.models.event import event_files
 
 logger = get_logger(__name__)
@@ -56,7 +56,9 @@ def _apply_event_filters(
             .where(effective_label.in_(labels))
         )
         if min_confidence is not None:
-            label_subq = label_subq.where(Detection.confidence >= min_confidence)
+            label_subq = label_subq.where(
+                or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
+            )
         if max_confidence is not None:
             label_subq = label_subq.where(Detection.confidence <= max_confidence)
         query = query.filter(exists(label_subq))
@@ -69,7 +71,9 @@ def _apply_event_filters(
             .where(event_files.c.event_id == Event.id)
         )
         if min_confidence is not None:
-            conf_subq = conf_subq.where(Detection.confidence >= min_confidence)
+            conf_subq = conf_subq.where(
+                or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
+            )
         if max_confidence is not None:
             conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
         query = query.filter(exists(conf_subq))
@@ -355,7 +359,12 @@ def get_events_by_project(
         label_set: set[str] = set()
         for f in sorted_files:
             for d in f.detections:
-                if (min_confidence is None or d.confidence >= min_confidence) and (
+                meets_confidence = (
+                    min_confidence is None
+                    or d.confidence >= min_confidence
+                    or d.verified
+                )
+                if meets_confidence and (
                     max_confidence is None or d.confidence <= max_confidence
                 ):
                     label_set.add(d.label if d.label is not None else d.category)
@@ -522,13 +531,20 @@ def get_adjacent_events(
         .first()
     )
 
-    # 4. Next unverified (older, with at least one unverified file)
+    # 4. Next unverified (older, with at least one unverified file).
+    # Uses base() so all active filters (labels, sites, dates) are respected.
+    unv_file = aliased(File)
+    unv_subq = (
+        select(event_files.c.event_id)
+        .join(unv_file, unv_file.id == event_files.c.file_id)
+        .where(event_files.c.event_id == Event.id)
+        .where(unv_file.verified == False)  # noqa: E712
+        .correlate(Event)
+    )
     nxt_unv = (
         base()
-        .join(event_files, Event.id == event_files.c.event_id)
-        .join(File, File.id == event_files.c.file_id)
         .filter((Event.start_time < ct) | ((Event.start_time == ct) & (Event.id < cid)))
-        .filter(File.verified == False)  # noqa: E712
+        .filter(exists(unv_subq))
         .order_by(Event.start_time.desc(), Event.id.desc())
         .first()
     )
@@ -620,8 +636,8 @@ def get_event_verification_stats(
         .one()
     )
 
-    # Query 3: detection-level counts
-    det_stats = (
+    # Query 3: detection-level counts (threshold-filtered)
+    det_q = (
         db.query(
             func.count(Detection.id),
             func.sum(func.cast(Detection.verified, Integer)),
@@ -629,8 +645,12 @@ def get_event_verification_stats(
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
-        .one()
     )
+    if min_confidence is not None:
+        det_q = det_q.filter(
+            or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
+        )
+    det_stats = det_q.one()
 
     return {
         "total_files": file_stats[0] or 0,
@@ -643,9 +663,21 @@ def get_event_verification_stats(
 
 
 def get_filter_options(db: Session, project_id: str) -> dict:
-    """Get available filter options for a project (distinct labels, date range)."""
-    # Distinct labels across all detections in project
-    # Use COALESCE to fall back to category when label is null (detection-only projects)
+    """Get available filter options for a project (distinct labels, date range).
+
+    Respects the project's detection threshold so only labels with
+    at least one visible detection appear as options.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    threshold = project.detection_threshold if project else 0.0
+
+    # Threshold clause: confidence >= threshold OR verified
+    threshold_clause = or_(
+        Detection.confidence >= threshold,
+        Detection.verified == True,  # noqa: E712
+    )
+
+    # Distinct labels across threshold-passing detections
     effective_label = func.coalesce(Detection.label, Detection.category)
     label_rows = (
         db.query(effective_label)
@@ -653,12 +685,13 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         .join(Deployment, Deployment.id == File.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
+        .filter(threshold_clause)
         .distinct()
         .all()
     )
     label_list = sorted([row[0] for row in label_rows if row[0]])
 
-    # Count distinct events per label
+    # Count distinct events per label (threshold-filtered)
     label_count_rows = (
         db.query(effective_label, func.count(func.distinct(Event.id)))
         .join(File, File.id == Detection.file_id)
@@ -667,6 +700,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         .join(Deployment, Deployment.id == Event.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
+        .filter(threshold_clause)
         .group_by(effective_label)
         .all()
     )

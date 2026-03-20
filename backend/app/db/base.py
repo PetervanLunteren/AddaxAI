@@ -42,6 +42,7 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
+    cursor.execute("PRAGMA optimize")  # Auto-ANALYZE when planner stats are stale
     cursor.close()
 
 
@@ -117,7 +118,10 @@ def init_db() -> None:
         Base.metadata.create_all(bind=engine)
         _migrate_missing_columns(engine)
         _seed_builtin_labels()
-        logger.info("Database tables created successfully")
+        with engine.connect() as conn:
+            conn.execute(text("ANALYZE"))
+            conn.commit()
+        logger.info("Database initialized")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize database: {e}") from e

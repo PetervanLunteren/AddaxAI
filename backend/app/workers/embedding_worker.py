@@ -10,6 +10,8 @@ import asyncio
 import json as _json
 from pathlib import Path
 
+from sqlalchemy import text
+
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
@@ -222,6 +224,9 @@ async def process_re_embedding_job(job_id: str) -> None:
         message = f"Re-embedded {total_embedded} detections across {total} deployments"
         if total_errors:
             message += f" ({total_errors} errors)"
+
+        db.execute(text("ANALYZE"))
+        db.commit()
 
         job_crud.update_job_status(db, job_id, "completed")
         await ws_manager.send_progress(job_id, message, 1.0)

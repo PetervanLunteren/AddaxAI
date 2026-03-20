@@ -23,6 +23,7 @@ from app.models.detection import Detection
 from app.models.event import Event
 from app.models.file import File
 from app.models.label_taxonomy import LabelTaxonomy
+from app.models.project import Project
 from app.models.site import Site
 
 # ---------------------------------------------------------------------------
@@ -48,6 +49,25 @@ def _apply_filters(
         query = query.where(File.timestamp <= date_to)
 
     return query
+
+
+def _get_detection_threshold(db: Session, project_id: str) -> float:
+    """Look up the project's detection confidence threshold."""
+    threshold = db.query(Project.detection_threshold).filter(
+        Project.id == project_id
+    ).scalar()
+    return threshold if threshold is not None else 0.0
+
+
+def _apply_threshold(query: Select, threshold: float) -> Select:
+    """Exclude detections below threshold, but always keep verified ones."""
+    from sqlalchemy import or_
+    return query.where(
+        or_(
+            Detection.confidence >= threshold,
+            Detection.verified == True,  # noqa: E712
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -208,22 +228,37 @@ def get_dashboard_overview(
     date_to: str | None = None,
 ) -> DashboardOverview:
     """Aggregate counts for the top-level dashboard cards."""
+    threshold = _get_detection_threshold(db, project_id)
 
-    # Files, detections, and date range in one query
+    # Files and date range (not filtered by threshold)
     file_stats_query = (
         select(
             func.count(distinct(File.id)).label("total_files"),
-            func.count(distinct(Detection.id)).label("total_detections"),
             func.min(File.timestamp).label("first_file_date"),
             func.max(File.timestamp).label("last_file_date"),
         )
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
-        .outerjoin(Detection, Detection.file_id == File.id)
     )
-    file_stats_query = _apply_filters(file_stats_query, project_id, site_ids, date_from, date_to)
+    file_stats_query = _apply_filters(
+        file_stats_query, project_id, site_ids, date_from, date_to,
+    )
     file_stats = db.execute(file_stats_query).one()
+
+    # Detection count (threshold-filtered)
+    det_count_query = (
+        select(func.count(Detection.id))
+        .select_from(Detection)
+        .join(File, Detection.file_id == File.id)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .join(Site, Deployment.site_id == Site.id)
+    )
+    det_count_query = _apply_threshold(det_count_query, threshold)
+    det_count_query = _apply_filters(
+        det_count_query, project_id, site_ids, date_from, date_to,
+    )
+    total_detections = db.execute(det_count_query).scalar() or 0
 
     # Events count (Event -> Deployment -> Site)
     events_query = (
@@ -262,7 +297,7 @@ def get_dashboard_overview(
 
     return DashboardOverview(
         total_files=file_stats.total_files or 0,
-        total_detections=file_stats.total_detections or 0,
+        total_detections=total_detections,
         total_events=total_events,
         total_deployments=total_deployments,
         total_sites=total_sites,
@@ -292,6 +327,7 @@ def get_species_distribution(
     keeps non-animals (person, vehicle) as-is, and groups animals
     without a value at the rank into "Higher-level taxa".
     """
+    threshold = _get_detection_threshold(db, project_id)
     label_expr, needs_join = _rank_display_label(taxonomic_rank)
 
     query = (
@@ -315,6 +351,7 @@ def get_species_distribution(
             Detection.label_taxonomy_id == LabelTaxonomy.id,
         )
 
+    query = _apply_threshold(query, threshold)
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
     rows = db.execute(query).all()
@@ -339,6 +376,7 @@ def get_activity_pattern(
     taxonomic_rank: str | None = None,
 ) -> ActivityPatternResponse:
     """Hourly detection counts (0-23) for activity-pattern charts."""
+    threshold = _get_detection_threshold(db, project_id)
     hour_expr = func.cast(func.strftime("%H", File.timestamp), Integer)
 
     query = (
@@ -363,6 +401,7 @@ def get_activity_pattern(
             )
         query = query.where(label_expr == species)
 
+    query = _apply_threshold(query, threshold)
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
     rows = db.execute(query).all()
@@ -393,6 +432,7 @@ def get_detection_trend(
     taxonomic_rank: str | None = None,
 ) -> list[DetectionTrendPoint]:
     """Daily detection counts for trend charts."""
+    threshold = _get_detection_threshold(db, project_id)
     date_expr = func.strftime("%Y-%m-%d", File.timestamp)
 
     query = (
@@ -417,6 +457,7 @@ def get_detection_trend(
             )
         query = query.where(label_expr == species)
 
+    query = _apply_threshold(query, threshold)
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
     rows = db.execute(query).all()
@@ -439,6 +480,7 @@ def get_detection_categories(
     date_to: str | None = None,
 ) -> DetectionCategories:
     """Count detections by category plus blank-file count."""
+    threshold = _get_detection_threshold(db, project_id)
 
     # Detection category counts
     category_query = (
@@ -452,6 +494,7 @@ def get_detection_categories(
         .join(Deployment, File.deployment_id == Deployment.id)
         .join(Site, Deployment.site_id == Site.id)
     )
+    category_query = _apply_threshold(category_query, threshold)
     category_query = _apply_filters(category_query, project_id, site_ids, date_from, date_to)
     cat_row = db.execute(category_query).one()
 

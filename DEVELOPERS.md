@@ -87,6 +87,35 @@ Coverage is collected automatically (`--cov=app` in `pyproject.toml`).
 
 **Writing tests:** Use the factory helpers in `tests/conftest.py` (`make_project`, `make_site`, `make_deployment`, `make_file`, `make_detection`, `make_event_with_files`) to build test data. Use the `client` fixture for API tests and the `db` fixture for direct DB tests.
 
+## Detection threshold and verified override
+
+Every project has a `detection_threshold` (e.g. 0.5). Detections below this confidence are hidden from the UI. However, verified detections always pass, regardless of confidence. A human verification is a stronger signal than a model score.
+
+**The rule:** anywhere you query detections and the result is user-facing, apply:
+
+```python
+or_(Detection.confidence >= threshold, Detection.verified == True)
+```
+
+This must be applied consistently across every module that counts, lists, filters, or displays detections. The places where this is currently enforced:
+
+| Module | What it covers |
+|--------|---------------|
+| `crud/statistics.py` | Dashboard stats (overview, species, activity, trend, categories) |
+| `crud/label_tree.py` | Label filter tree counts (detection and event modes) |
+| `crud/event.py` | Event label filter, standalone confidence filter, verification stats, filter options |
+| `crud/project.py` | Project card detection counts (single and bulk) |
+| `routers/projects.py` | Detection count, label stats, category stats, independent event stats |
+| `ml/inference/similarity_script.py` | Similarity sort/search (raw SQL) |
+
+**When adding a new query that touches detections**, check whether the result is user-facing. If yes, apply the threshold with the verified override. If you skip this, detection counts and filter options will be inconsistent with what the user sees in the verification grid.
+
+**Two exceptions where `OR verified` does not apply:**
+1. **User-driven confidence range filters** (e.g. a max_confidence ceiling). When a user explicitly sets a confidence range, respect it literally. The override only applies to the project's threshold floor, not to user-specified ceilings.
+2. **Per-file detection lists** (`crud/detection.py`). These serve the file detail view where the caller controls what to show. Not tied to the project threshold.
+
+**Common mistake:** writing `Detection.confidence >= threshold` without `OR Detection.verified == True`. This silently drops verified low-confidence detections from counts, filters, and charts. The result is that users see different numbers on different pages.
+
 ## Best frame selection (videos)
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:

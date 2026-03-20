@@ -151,7 +151,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
         jobIds={jobIds}
         onAnalysisComplete={() => {
           // Invalidate all project-related caches so Images, Dashboard,
-          // Review pages show fresh data without a hard reload.
+          // Verify pages show fresh data without a hard reload.
           queryClient.invalidateQueries({ queryKey: ["files", projectId] });
           queryClient.invalidateQueries({ queryKey: ["file"] });
           queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
@@ -162,6 +162,9 @@ export function QueueCard({ projectId }: QueueCardProps) {
           queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
           queryClient.invalidateQueries({ queryKey: ["events"] });
           queryClient.invalidateQueries({ queryKey: ["event-count"] });
+          queryClient.invalidateQueries({ queryKey: ["statistics"] });
+          queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+          queryClient.invalidateQueries({ queryKey: ["project-label-stats"] });
         }}
       />
     </>

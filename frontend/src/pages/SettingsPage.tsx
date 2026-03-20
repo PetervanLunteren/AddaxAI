@@ -477,11 +477,12 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
       queryClient.invalidateQueries({ queryKey: ["observation-type-stats", projectId] });
       queryClient.invalidateQueries({ queryKey: ["files", projectId] });
-      // Invalidate individual file detail queries (label annotations)
       queryClient.invalidateQueries({ queryKey: ["file"] });
-      // Invalidate events (auto-regenerated after postprocessing)
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["event-count"] });
+      queryClient.invalidateQueries({ queryKey: ["statistics"] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["project-label-stats"] });
 
       // Fetch after-stats now that reprocessing is done
       const pending = pendingBeforeStats.current;
