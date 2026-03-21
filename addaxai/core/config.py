@@ -5,8 +5,11 @@ All functions take an explicit base_path parameter instead of relying on globals
 """
 
 import json
+import logging
 import os
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def load_global_vars(base_path: str) -> Dict[str, Any]:
@@ -42,7 +45,7 @@ def write_global_vars(base_path: str, new_values: Optional[Dict[str, Any]] = Non
             if key in variables:
                 variables[key] = value
             else:
-                print(f"Warning: Variable {key} not found in the loaded model variables.")
+                logger.warning("Variable %s not found in the loaded model variables.", key)
 
     var_file = os.path.join(base_path, "AddaxAI", "global_vars.json")
     with open(var_file, 'w') as file:

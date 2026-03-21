@@ -41,18 +41,20 @@ def test_write_global_vars_updates_existing_keys(tmp_path):
     assert result["lang_idx"] == 0  # unchanged
 
 
-def test_write_global_vars_ignores_unknown_keys(tmp_path, capsys):
+def test_write_global_vars_ignores_unknown_keys(tmp_path, caplog):
     """write_global_vars should warn and skip keys not in the existing file."""
+    import logging
     addaxai_dir = tmp_path / "AddaxAI"
     addaxai_dir.mkdir()
     vars_file = addaxai_dir / "global_vars.json"
     vars_file.write_text(json.dumps({"lang_idx": 0}))
 
-    write_global_vars(str(tmp_path), {"nonexistent_key": 42})
+    with caplog.at_level(logging.WARNING, logger="addaxai.core.config"):
+        write_global_vars(str(tmp_path), {"nonexistent_key": 42})
 
     result = load_global_vars(str(tmp_path))
     assert "nonexistent_key" not in result
-    assert "Warning" in capsys.readouterr().out
+    assert "nonexistent_key" in caplog.text
 
 
 def test_write_global_vars_no_changes(tmp_path):

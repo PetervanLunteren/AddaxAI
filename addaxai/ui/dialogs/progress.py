@@ -126,7 +126,7 @@ class ProgressWindow:
             self.img_det_hwa_val = _CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"")
             self.img_det_hwa_val.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_det_hwa_val.grid_remove()
-            self.img_det_can_btn = CancelButton(master = self.img_det_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.img_det_can_btn = CancelButton(master = self.img_det_sub_frm, text = "Cancel", command = lambda: None)
             self.img_det_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.img_det_can_btn.grid_remove()
 
@@ -177,7 +177,7 @@ class ProgressWindow:
             self.img_cls_hwa_val = _CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"")
             self.img_cls_hwa_val.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_cls_hwa_val.grid_remove()
-            self.img_cls_can_btn = CancelButton(master = self.img_cls_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.img_cls_can_btn = CancelButton(master = self.img_cls_sub_frm, text = "Cancel", command = lambda: None)
             self.img_cls_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.img_cls_can_btn.grid_remove()
 
@@ -228,7 +228,7 @@ class ProgressWindow:
             self.vid_det_hwa_val = _CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"")
             self.vid_det_hwa_val.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_det_hwa_val.grid_remove()
-            self.vid_det_can_btn = CancelButton(master = self.vid_det_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.vid_det_can_btn = CancelButton(master = self.vid_det_sub_frm, text = "Cancel", command = lambda: None)
             self.vid_det_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.vid_det_can_btn.grid_remove()
 
@@ -279,7 +279,7 @@ class ProgressWindow:
             self.vid_cls_hwa_val = _CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"")
             self.vid_cls_hwa_val.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_cls_hwa_val.grid_remove()
-            self.vid_cls_can_btn = CancelButton(master = self.vid_cls_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.vid_cls_can_btn = CancelButton(master = self.vid_cls_sub_frm, text = "Cancel", command = lambda: None)
             self.vid_cls_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.vid_cls_can_btn.grid_remove()
 
@@ -312,7 +312,7 @@ class ProgressWindow:
             self.img_pst_rem_val = _CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"")
             self.img_pst_rem_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.img_pst_rem_val.grid_remove()
-            self.img_pst_can_btn = CancelButton(master = self.img_pst_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.img_pst_can_btn = CancelButton(master = self.img_pst_sub_frm, text = "Cancel", command = lambda: None)
             self.img_pst_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.img_pst_can_btn.grid_remove()
 
@@ -345,7 +345,7 @@ class ProgressWindow:
             self.vid_pst_rem_val = _CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"")
             self.vid_pst_rem_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.vid_pst_rem_val.grid_remove()
-            self.vid_pst_can_btn = CancelButton(master = self.vid_pst_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.vid_pst_can_btn = CancelButton(master = self.vid_pst_sub_frm, text = "Cancel", command = lambda: None)
             self.vid_pst_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.vid_pst_can_btn.grid_remove()
 
@@ -378,7 +378,7 @@ class ProgressWindow:
             self.plt_rem_val = _CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"")
             self.plt_rem_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.plt_rem_val.grid_remove()
-            self.plt_can_btn = CancelButton(master = self.plt_sub_frm, text = "Cancel", command = lambda: print(""))
+            self.plt_can_btn = CancelButton(master = self.plt_sub_frm, text = "Cancel", command = lambda: None)
             self.plt_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.plt_can_btn.grid_remove()
 

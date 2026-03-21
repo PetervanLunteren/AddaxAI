@@ -1,4 +1,5 @@
 """SpeciesNetOutputWindow — output window for SpeciesNet deployment."""
+import logging
 import os
 import signal
 import tkinter as tk
@@ -7,6 +8,8 @@ from subprocess import Popen
 from typing import Any, Callable, Optional
 
 from addaxai.utils.files import remove_ansi_escape_sequences
+
+logger = logging.getLogger(__name__)
 
 
 class SpeciesNetOutputWindow:
@@ -36,7 +39,7 @@ class SpeciesNetOutputWindow:
         if process is not None:
             self.process = process
         if text.strip():
-            print(text)
+            logger.debug(text.rstrip())
 
             clean_text = remove_ansi_escape_sequences(text)
 

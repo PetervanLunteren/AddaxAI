@@ -5,12 +5,15 @@ and bounding-box blurring. Requires Pillow; OpenCV only for blur_box.
 """
 
 import datetime
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional
 
 import PIL.ExifTags
 from PIL import Image, ImageFile
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +70,7 @@ def fix_images(image_paths: List[str]) -> None:
                     img_copy.save(image_path, format=img.format,
                                  exif=img.info.get('exif'))
             except Exception as e:
-                print(f"Could not fix image: {e}")
+                logger.warning("Could not fix image: %s", e)
 
 
 # ---------------------------------------------------------------------------
