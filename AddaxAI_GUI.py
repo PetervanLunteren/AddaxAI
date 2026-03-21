@@ -255,11 +255,11 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
     # check if user is not in the middle of an annotation session
     if data_type == "img" and get_hitl_var_in_json(recognition_file) == "in-progress":
         if not mb.askyesno(["Verification session in progress", "Sesión de verificación en curso", "Session de vérification en cours"][lang_idx],
-                           [f"Your verification session is not yet done. You can finish the session by clicking 'Continue' at '{lbl_hitl_main_txt[lang_idx]}', "
+                           [f"Your verification session is not yet done. You can finish the session by clicking 'Continue' at '{t('lbl_hitl_main')}', "
                             "or just continue to post-process with the results as they are now.\n\nDo you want to continue to post-process?",
-                            f"La sesión de verificación aún no ha finalizado. Puede finalizarla haciendo clic en 'Continuar' en '{lbl_hitl_main_txt[lang_idx]}', "
+                            f"La sesión de verificación aún no ha finalizado. Puede finalizarla haciendo clic en 'Continuar' en '{t('lbl_hitl_main')}', "
                             "o simplemente continuar con el posprocesamiento con los resultados tal como están ahora.\n\n¿Quieres continuar con el posprocesamiento?",
-                            f"Votre session de vérification n'est pas encore terminée. Vous pouvez la compléter en cliquant sur '{lbl_hitl_main_txt[lang_idx]}', "
+                            f"Votre session de vérification n'est pas encore terminée. Vous pouvez la compléter en cliquant sur '{t('lbl_hitl_main')}', "
                             "ou juste continuer le post-traitement avec les résultats actuels.\n\nSouhaitez-vous continuer le post-traitement?"][lang_idx]):
             return
 
@@ -354,15 +354,15 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                          ["The XLSX file you are trying to create is too large!\n\nThe maximum number of rows in an XSLX file is "
                           f"1048576, while you are trying to create a sheet with {max(n_rows_files, n_rows_detections)} rows.\n\nIf"
                           " you require the results in XLSX format, please run the process on smaller chunks so that it doesn't "
-                          f"exceed Microsoft's row limit. Or choose CSV as {lbl_exp_format_txt[lang_idx]} in advanced mode.", 
+                          f"exceed Microsoft's row limit. Or choose CSV as {t('lbl_exp_format')} in advanced mode.", 
                           "¡El archivo XLSX que está intentando crear es demasiado grande!\n\nEl número máximo de filas en un archivo"
                           f" XSLX es 1048576, mientras que usted está intentando crear una hoja con {max(n_rows_files, n_rows_detections)}"
                           " filas.\n\nSi necesita los resultados en formato XLSX, ejecute el proceso en trozos más pequeños para que no "
-                          f"supere el límite de filas de Microsoft. O elija CSV como {lbl_exp_format_txt[lang_idx]} en modo avanzado.",
+                          f"supere el límite de filas de Microsoft. O elija CSV como {t('lbl_exp_format')} en modo avanzado.",
                           "Le fichier XLSX que vous tenter de créer est trop long!\n\nLe nombre maximum de lignes dans un fichier XSLX est "
                           f"1048576, alors que vous tenter de créer une feuille avec {max(n_rows_files, n_rows_detections)} lignes.\n\nSi"
                           " vous souhaitez des résultats sous format XLSX, svp exécuter le processus sur de plus petites portions de sorte à ne pas "
-                          f"excéder la limite de lignes de Microsoft. Ou choisissez le format CSV comme {lbl_exp_format_txt[lang_idx]} dans le mode avancé."][lang_idx])
+                          f"excéder la limite de lignes de Microsoft. Ou choisissez le format CSV comme {t('lbl_exp_format')} dans le mode avancé."][lang_idx])
             return
 
     # loop through images
@@ -3215,15 +3215,15 @@ def start_deploy(simple_mode = False):
         else:
             mb.showerror(["No data found", "No se han encontrado datos", "Aucune donnée trouvée"][lang_idx],
                             message=[f"There are no images nor videos found, or you selected not to search for them. If there is indeed data to be "
-                                    f"processed, make sure the '{t('lbl_process_img')}' and/or '{lbl_process_vid_txt[lang_idx]}' options "
+                                    f"processed, make sure the '{t('lbl_process_img')}' and/or '{t('lbl_process_vid')}' options "
                                     f"are selected. You must select at least one of these.\n\nAddaxAI accepts images in the format {IMG_EXTENSIONS}."
                                     f"\n\nIt accepts videos in the format {VIDEO_EXTENSIONS}.",
                                     f"No se han encontrado imágenes ni vídeos, o ha seleccionado no buscarlos. Si efectivamente hay datos para procesar,"
-                                    f" asegúrese de que las opciones '{t('lbl_process_img')}' y/o '{lbl_process_vid_txt[lang_idx]}' están seleccionadas."
+                                    f" asegúrese de que las opciones '{t('lbl_process_img')}' y/o '{t('lbl_process_vid')}' están seleccionadas."
                                     f" Debe seleccionar al menos una de ellas.\n\nAddaxAI acepta imágenes en formato {IMG_EXTENSIONS}."
                                     f"\n\nAcepta vídeos en formato {VIDEO_EXTENSIONS}.",
                                     f"Aucune image ou vidéo trouvé, ou vous avez sélectionné de ne pas faire de recherche pour ces derniers. Si des données à traiter "
-                                    f"existent, assurez-vous que les options'{t('lbl_process_img')}' et/ou '{lbl_process_vid_txt[lang_idx]}' "
+                                    f"existent, assurez-vous que les options'{t('lbl_process_img')}' et/ou '{t('lbl_process_vid')}' "
                                     f"sont sélectionnées. Vous devez sélectionner au moins l'une d'entre elles.\n\nAddaxAI accepte des images au format {IMG_EXTENSIONS}."
                                     f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][lang_idx])
         btn_start_deploy.configure(state=NORMAL)
@@ -3520,13 +3520,13 @@ def start_deploy(simple_mode = False):
         # check if the nth frame entry is valid
         if var_not_all_frames.get() and not is_valid_float(var_nth_frame.get()):
             if mb.askyesno(t('invalid_value'),
-                           [f"Invalid input for '{lbl_nth_frame_txt[lang_idx]}'. Please enter a numeric value (e.g., '1', '1.5', '0.3', '7')."
+                           [f"Invalid input for '{t('lbl_nth_frame')}'. Please enter a numeric value (e.g., '1', '1.5', '0.3', '7')."
                             " Non-numeric values like 'two' or '1,2' are not allowed.\n\nWould you like to proceed with the default value"
                             " of 1?\n\nThis means the program will only process 1 frame every second.", "Entrada no válida para "
-                            f"'{lbl_nth_frame_txt[lang_idx]}'. Introduzca un valor numérico (por ejemplo, 1, 1.5, 0.3). Valores no numéricos como"
+                            f"'{t('lbl_nth_frame')}'. Introduzca un valor numérico (por ejemplo, 1, 1.5, 0.3). Valores no numéricos como"
                             " 'dos' o '1,2' no están permitidos.\n\n¿Desea continuar con el valor predeterminado de 1?\n\nEsto significa que"
                             " el programa solo procesará 1 fotograma cada segundo.",
-                            f"Entrée invalide pour '{lbl_nth_frame_txt[lang_idx]}'. SVP entrer une valeur numérique (par ex.: '1', '1.5', '0.3', '7')."
+                            f"Entrée invalide pour '{t('lbl_nth_frame')}'. SVP entrer une valeur numérique (par ex.: '1', '1.5', '0.3', '7')."
                             " Les valeurs non-numérique comme 'deux' ou '1,2' ne sont pas permises.\n\nVoulez-vous continuer avec la valeur par défaut "
                             " de 1?\n\nCela signifie que le programme ne traitera qu'une seule image par seconde."][lang_idx]):
                 var_nth_frame.set('1')
@@ -8138,28 +8138,28 @@ def set_language():
     lbl_checkpoint_freq.configure(text="        ↳ " + t('lbl_checkpoint_freq'))
     update_ent_text(ent_checkpoint_freq, t('eg') + ": 500")
     lbl_cont_checkpnt.configure(text="     " + t('lbl_cont_checkpnt'))
-    lbl_process_vid.configure(text=lbl_process_vid_txt[lang_idx])
-    vid_frame.configure(text=" ↳ " + vid_frame_txt[lang_idx] + " ")
-    lbl_not_all_frames.configure(text="     " + lbl_not_all_frames_txt[lang_idx])
-    lbl_nth_frame.configure(text="        ↳ " + lbl_nth_frame_txt[lang_idx])
+    lbl_process_vid.configure(text=t('lbl_process_vid'))
+    vid_frame.configure(text=" ↳ " + t('vid_frame') + " ")
+    lbl_not_all_frames.configure(text="     " + t('lbl_not_all_frames'))
+    lbl_nth_frame.configure(text="        ↳ " + t('lbl_nth_frame'))
     update_ent_text(ent_nth_frame, t('eg') + ": 1")
     btn_start_deploy.configure(text=t('btn_start_deploy'))
     trd_step.configure(text=" " + t('trd_step') + " ")
-    lbl_hitl_main.configure(text=lbl_hitl_main_txt[lang_idx])
+    lbl_hitl_main.configure(text=t('lbl_hitl_main'))
     btn_hitl_main.configure(text=["Start", "Iniciar", "Démarrer"][lang_idx])
     fth_step.configure(text=" " + t('fth_step') + " ")
-    lbl_output_dir.configure(text=lbl_output_dir_txt[lang_idx])
+    lbl_output_dir.configure(text=t('lbl_output_dir'))
     btn_output_dir.configure(text=t('browse'))
-    lbl_separate_files.configure(text=lbl_separate_files_txt[lang_idx])
-    sep_frame.configure(text=" ↳ " + sep_frame_txt[lang_idx] + " ")
-    lbl_file_placement.configure(text="     " + lbl_file_placement_txt[lang_idx])
+    lbl_separate_files.configure(text=t('lbl_separate_files'))
+    sep_frame.configure(text=" ↳ " + t('sep_frame') + " ")
+    lbl_file_placement.configure(text="     " + t('lbl_file_placement'))
     rad_file_placement_move.configure(text=["Copy", "Copiar", "Copier"][lang_idx])
     rad_file_placement_copy.configure(text=["Move", "Mover", "Déplacer"][lang_idx])
-    lbl_sep_conf.configure(text="     " + lbl_sep_conf_txt[lang_idx])
-    lbl_keep_series.configure(text=lbl_keep_series_txt[lang_idx])
-    keep_series_frame.configure(text=" ↳ " + keep_series_frame_txt[lang_idx] + " ")
-    lbl_keep_series_seconds.configure(text="     " + lbl_keep_series_seconds_txt[lang_idx])
-    lbl_keep_series_species.configure(text="     " + lbl_keep_series_species_txt[lang_idx])
+    lbl_sep_conf.configure(text="     " + t('lbl_sep_conf'))
+    lbl_keep_series.configure(text=t('lbl_keep_series'))
+    keep_series_frame.configure(text=" ↳ " + t('keep_series_frame') + " ")
+    lbl_keep_series_seconds.configure(text="     " + t('lbl_keep_series_seconds'))
+    lbl_keep_series_species.configure(text="     " + t('lbl_keep_series_species'))
     btn_keep_series_species.configure(text=t('select'))
     try:
         if len(global_vars.get('var_keep_series_species', []) or []) == 0:
@@ -8168,18 +8168,18 @@ def set_language():
             dsp_keep_series_species.configure(text=str(len(global_vars.get('var_keep_series_species', []))))
     except Exception:
         pass
-    lbl_vis_files.configure(text=lbl_vis_files_txt[lang_idx])
-    lbl_crp_files.configure(text=lbl_crp_files_txt[lang_idx])
-    lbl_exp.configure(text=lbl_exp_txt[lang_idx])
-    exp_frame.configure(text=" ↳ " + exp_frame_txt[lang_idx] + " ")
-    vis_frame.configure(text=" ↳ " + vis_frame_txt[lang_idx] + " ")
-    lbl_exp_format.configure(text="     " + lbl_exp_format_txt[lang_idx])
-    lbl_plt.configure(text=lbl_plt_txt[lang_idx])
-    lbl_thresh.configure(text=lbl_thresh_txt[lang_idx])
-    btn_start_postprocess.configure(text=btn_start_postprocess_txt[lang_idx])
-    lbl_vis_size.configure(text="        ↳ " + lbl_vis_size_txt[lang_idx])
-    lbl_vis_bbox.configure(text="     " + lbl_vis_bbox_txt[lang_idx])
-    lbl_vis_blur.configure(text="     " + lbl_vis_blur_txt[lang_idx])
+    lbl_vis_files.configure(text=t('lbl_vis_files'))
+    lbl_crp_files.configure(text=t('lbl_crp_files'))
+    lbl_exp.configure(text=t('lbl_exp'))
+    exp_frame.configure(text=" ↳ " + t('exp_frame') + " ")
+    vis_frame.configure(text=" ↳ " + t('vis_frame') + " ")
+    lbl_exp_format.configure(text="     " + t('lbl_exp_format'))
+    lbl_plt.configure(text=t('lbl_plt'))
+    lbl_thresh.configure(text=t('lbl_thresh'))
+    btn_start_postprocess.configure(text=t('btn_start_postprocess'))
+    lbl_vis_size.configure(text="        ↳ " + t('lbl_vis_size'))
+    lbl_vis_bbox.configure(text="     " + t('lbl_vis_bbox'))
+    lbl_vis_blur.configure(text="     " + t('lbl_vis_blur'))
     var_vis_size.set(dpd_options_vis_size[lang_idx][global_vars['var_vis_size_idx']])
 
     # update texts of help tab
@@ -8194,7 +8194,7 @@ def set_language():
 
     # top buttons
     adv_btn_switch_mode.configure(text = t('adv_btn_switch_mode'))
-    sim_btn_switch_mode.configure(text = sim_btn_switch_mode_txt[lang_idx])
+    sim_btn_switch_mode.configure(text = t('sim_btn_switch_mode'))
     sim_btn_switch_lang.configure(text = languages_available[next_lang_idx])
     adv_btn_switch_lang.configure(text = languages_available[next_lang_idx])
     adv_btn_sponsor.configure(text = t('adv_btn_sponsor'))
@@ -8207,13 +8207,13 @@ def set_language():
     sim_abo_lbl.configure(text=t('adv_abo_lbl'))
 
     # simple mode
-    sim_dir_lbl.configure(text = sim_dir_lbl_txt[lang_idx])
+    sim_dir_lbl.configure(text = t('sim_dir_lbl'))
     sim_dir_btn.configure(text = t('browse'))
-    sim_dir_pth.configure(text = sim_dir_pth_txt[lang_idx])
-    sim_mdl_lbl.configure(text = sim_mdl_lbl_txt[lang_idx])
+    sim_dir_pth.configure(text = t('sim_dir_pth'))
+    sim_mdl_lbl.configure(text = t('sim_mdl_lbl'))
     update_sim_mdl_dpd()
-    sim_spp_lbl.configure(text = sim_spp_lbl_txt[lang_idx])
-    sim_run_btn.configure(text = sim_run_btn_txt[lang_idx])
+    sim_spp_lbl.configure(text = t('sim_spp_lbl'))
+    sim_run_btn.configure(text = t('sim_run_btn'))
 
 # update frame states
 def update_frame_states():
@@ -9283,9 +9283,8 @@ chb_cont_checkpnt = Checkbutton(img_frame, variable=var_cont_checkpnt, state=DIS
 chb_cont_checkpnt.grid(row=row_cont_checkpnt, column=1, sticky='nesw', padx=5)
 
 # process videos
-lbl_process_vid_txt = ["Process videos, if present", "Si está presente, procesa todos los vídeos", "Traiter les vidéos, si présent"]
 row_process_vid = 10
-lbl_process_vid = Label(snd_step, text=lbl_process_vid_txt[lang_idx], width=1, anchor="w")
+lbl_process_vid = Label(snd_step, text=t('lbl_process_vid'), width=1, anchor="w")
 lbl_process_vid.grid(row=row_process_vid, sticky='nesw', pady=2)
 var_process_vid = BooleanVar()
 var_process_vid.set(global_vars['var_process_vid'])
@@ -9293,9 +9292,8 @@ chb_process_vid = Checkbutton(snd_step, variable=var_process_vid, command=toggle
 chb_process_vid.grid(row=row_process_vid, column=1, sticky='nesw', padx=5)
 
 ## video option frame (disabled by default)
-vid_frame_txt = ["Video options", "Opciones de vídeo", "Options des vidéos"]
 vid_frame_row = 11
-vid_frame = LabelFrame(snd_step, text=" ↳ " + vid_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+vid_frame = LabelFrame(snd_step, text=" ↳ " + t('vid_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 vid_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 vid_frame.grid(row=vid_frame_row, column=0, columnspan=2, sticky='ew')
 vid_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
@@ -9303,9 +9301,8 @@ vid_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correctio
 vid_frame.grid_forget()
 
 # dont process all frames
-lbl_not_all_frames_txt = ["Don't process every frame", "No procesar cada fotograma", "Ne pas traiter toutes les trames"]
 row_not_all_frames = 0
-lbl_not_all_frames = Label(vid_frame, text="     " + lbl_not_all_frames_txt[lang_idx], pady=2, state=DISABLED, width=1, anchor="w")
+lbl_not_all_frames = Label(vid_frame, text="     " + t('lbl_not_all_frames'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_not_all_frames.grid(row=row_not_all_frames, sticky='nesw')
 var_not_all_frames = BooleanVar()
 var_not_all_frames.set(global_vars['var_not_all_frames'])
@@ -9313,9 +9310,8 @@ chb_not_all_frames = Checkbutton(vid_frame, variable=var_not_all_frames, command
 chb_not_all_frames.grid(row=row_not_all_frames, column=1, sticky='nesw', padx=5)
 
 # process every nth frame
-lbl_nth_frame_txt = ["Sample frames every N seconds", "Muestreo de tramas cada N segundos", "Échantillonner les trames à chaque N secondes"]
 row_nth_frame = 1
-lbl_nth_frame = tk.Label(vid_frame, text="        ↳ " + lbl_nth_frame_txt[lang_idx], pady=2, state=DISABLED, width=1, anchor="w")
+lbl_nth_frame = tk.Label(vid_frame, text="        ↳ " + t('lbl_nth_frame'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_nth_frame.grid(row=row_nth_frame, sticky='nesw')
 var_nth_frame = StringVar()
 var_nth_frame.set(global_vars['var_nth_frame'])
@@ -9343,9 +9339,8 @@ trd_step.columnconfigure(0, weight=1, minsize=label_width)
 trd_step.columnconfigure(1, weight=1, minsize=widget_width)
 
 # human-in-the-loop 
-lbl_hitl_main_txt = ["Manually verify results", "Verificar manualmente los resultados", "Vérifier les résultats manuellement"]
 row_hitl_main = 0
-lbl_hitl_main = Label(master=trd_step, text=lbl_hitl_main_txt[lang_idx], width=1, anchor="w")
+lbl_hitl_main = Label(master=trd_step, text=t('lbl_hitl_main'), width=1, anchor="w")
 lbl_hitl_main.grid(row=row_hitl_main, sticky='nesw', pady=2)
 btn_hitl_main = Button(master=trd_step, text=["Start", "Iniciar", "Démarrer"][lang_idx], width=1, command = start_or_continue_hitl)
 btn_hitl_main.grid(row=row_hitl_main, column=1, sticky='nesw', padx=5)
@@ -9359,9 +9354,8 @@ fth_step.columnconfigure(0, weight=1, minsize=label_width)
 fth_step.columnconfigure(1, weight=1, minsize=widget_width)
 
 # folder for results
-lbl_output_dir_txt = ["Destination folder", "Carpeta de destino", "Dossier de destination"]
 row_output_dir = 0
-lbl_output_dir = Label(master=fth_step, text=lbl_output_dir_txt[lang_idx], width=1, anchor="w")
+lbl_output_dir = Label(master=fth_step, text=t('lbl_output_dir'), width=1, anchor="w")
 lbl_output_dir.grid(row=row_output_dir, sticky='nesw', pady=2)
 var_output_dir = StringVar()
 var_output_dir.set("")
@@ -9371,9 +9365,8 @@ btn_output_dir = Button(master=fth_step, text=t('browse'), width=1, command=lamb
 btn_output_dir.grid(row=row_output_dir, column=1, sticky='nesw', padx=5)
 
 # separate files
-lbl_separate_files_txt = ["Separate files into subdirectories", "Separar archivos en subcarpetas", "Classer les fichiers dans des sous-dossiers"]
 row_separate_files = 1
-lbl_separate_files = Label(fth_step, text=lbl_separate_files_txt[lang_idx], width=1, anchor="w")
+lbl_separate_files = Label(fth_step, text=t('lbl_separate_files'), width=1, anchor="w")
 lbl_separate_files.grid(row=row_separate_files, sticky='nesw', pady=2)
 var_separate_files = BooleanVar()
 var_separate_files.set(global_vars['var_separate_files'])
@@ -9381,9 +9374,8 @@ chb_separate_files = Checkbutton(fth_step, variable=var_separate_files, command=
 chb_separate_files.grid(row=row_separate_files, column=1, sticky='nesw', padx=5)
 
 ## separation frame
-sep_frame_txt = ["Separation options", "Opciones de separación", "Options de classement"]
 sep_frame_row = 2
-sep_frame = LabelFrame(fth_step, text=" ↳ " + sep_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+sep_frame = LabelFrame(fth_step, text=" ↳ " + t('sep_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 sep_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 sep_frame.grid(row=sep_frame_row, column=0, columnspan=2, sticky = 'ew')
 sep_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
@@ -9391,9 +9383,8 @@ sep_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correctio
 sep_frame.grid_forget()
 
 # method of file placement
-lbl_file_placement_txt = ["Method of file placement", "Método de desplazamiento de archivo", "Type de classement"]
 row_file_placement = 0
-lbl_file_placement = Label(sep_frame, text="     " + lbl_file_placement_txt[lang_idx], pady=2, width=1, anchor="w")
+lbl_file_placement = Label(sep_frame, text="     " + t('lbl_file_placement'), pady=2, width=1, anchor="w")
 lbl_file_placement.grid(row=row_file_placement, sticky='nesw')
 var_file_placement = IntVar()
 var_file_placement.set(global_vars['var_file_placement'])
@@ -9403,9 +9394,8 @@ rad_file_placement_copy = Radiobutton(sep_frame, text=["Move", "Mover", "Déplac
 rad_file_placement_copy.grid(row=row_file_placement, column=1, sticky='e', padx=5)
 
 # separate per confidence
-lbl_sep_conf_txt = ["Sort results based on confidence", "Clasificar resultados basados en confianza", "Trier les résultats à partir du score de confiance"]
 row_sep_conf = 1
-lbl_sep_conf = Label(sep_frame, text="     " + lbl_sep_conf_txt[lang_idx], width=1, anchor="w")
+lbl_sep_conf = Label(sep_frame, text="     " + t('lbl_sep_conf'), width=1, anchor="w")
 lbl_sep_conf.grid(row=row_sep_conf, sticky='nesw', pady=2)
 var_sep_conf = BooleanVar()
 var_sep_conf.set(global_vars['var_sep_conf'])
@@ -9414,9 +9404,8 @@ chb_sep_conf.grid(row=row_sep_conf, column=1, sticky='nesw', padx=5)
 
 
 # keep series files (only affects separation)
-lbl_keep_series_txt = ["Keep series (if animal detected in one image)", "Conservar series (si se detecta un animal en una imagen)", "Conserver les séries (si un animal est détecté dans une image)"]
 row_keep_series = 2
-lbl_keep_series = Label(sep_frame, text="     " + lbl_keep_series_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series = Label(sep_frame, text="     " + t('lbl_keep_series'), width=1, anchor="w")
 lbl_keep_series.grid(row=row_keep_series, sticky='nesw', pady=2)
 var_keep_series = BooleanVar()
 var_keep_series.set(global_vars['var_keep_series'])
@@ -9424,9 +9413,8 @@ chb_keep_series = Checkbutton(sep_frame, variable=var_keep_series, command=toggl
 chb_keep_series.grid(row=row_keep_series, column=1, sticky='nesw', padx=5)
 
 ## keep_series frame (nested under separation options)
-keep_series_frame_txt = ["Keep series options", "Opciones de conservación de series", "Options de conservation des séries"]
 keep_series_frame_row = 3
-keep_series_frame = LabelFrame(sep_frame, text="        ↳ " + keep_series_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+keep_series_frame = LabelFrame(sep_frame, text="        ↳ " + t('keep_series_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 keep_series_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 keep_series_frame.grid(row=keep_series_frame_row, column=0, columnspan=2, sticky = 'ew')
 keep_series_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
@@ -9434,9 +9422,8 @@ keep_series_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_c
 keep_series_frame.grid_forget()
 
 # keep series seconds - only visible if keep series is checked
-lbl_keep_series_seconds_txt = ["Seconds", "Segundos", "Secondes"]
 row_keep_series_seconds = 0
-lbl_keep_series_seconds = Label(keep_series_frame, text="     " + lbl_keep_series_seconds_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series_seconds = Label(keep_series_frame, text="     " + t('lbl_keep_series_seconds'), width=1, anchor="w")
 lbl_keep_series_seconds.grid(row=row_keep_series_seconds, sticky='nesw', pady=2)
 var_keep_series_seconds = DoubleVar()
 var_keep_series_seconds.set(global_vars['var_keep_series_seconds'])
@@ -9447,9 +9434,8 @@ dsp_keep_series_seconds.configure(fg=green_primary)
 dsp_keep_series_seconds.grid(row=row_keep_series_seconds, column=0, sticky='e', padx=0)
 
 # keep series species - optional trigger filter
-lbl_keep_series_species_txt = ["Select species", "Seleccionar especies", "Sélectionner des espèces"]
 row_keep_series_species = 1
-lbl_keep_series_species = Label(keep_series_frame, text="     " + lbl_keep_series_species_txt[lang_idx], width=1, anchor="w")
+lbl_keep_series_species = Label(keep_series_frame, text="     " + t('lbl_keep_series_species'), width=1, anchor="w")
 lbl_keep_series_species.grid(row=row_keep_series_species, sticky='nesw', pady=2)
 
 # display: show how many triggers are selected (empty = any)
@@ -9465,9 +9451,8 @@ btn_keep_series_species.grid(row=row_keep_series_species, column=1, sticky='w', 
 
 
 ## visualize images
-lbl_vis_files_txt = ["Visualise detections and blur people", "Mostrar detecciones y difuminar personas", "Visualiser les détections et anonymiser les personnes"]
 row_vis_files = 3
-lbl_vis_files = Label(fth_step, text=lbl_vis_files_txt[lang_idx], width=1, anchor="w")
+lbl_vis_files = Label(fth_step, text=t('lbl_vis_files'), width=1, anchor="w")
 lbl_vis_files.grid(row=row_vis_files, sticky='nesw', pady=2)
 var_vis_files = BooleanVar()
 var_vis_files.set(global_vars['var_vis_files'])
@@ -9475,9 +9460,8 @@ chb_vis_files = Checkbutton(fth_step, variable=var_vis_files, anchor="w", comman
 chb_vis_files.grid(row=row_vis_files, column=1, sticky='nesw', padx=5)
 
 ## visualization options
-vis_frame_txt = ["Visualization options", "Opciones de visualización", "Options de visualisation"]
 vis_frame_row = 4
-vis_frame = LabelFrame(fth_step, text=" ↳ " + vis_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+vis_frame = LabelFrame(fth_step, text=" ↳ " + t('vis_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 vis_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 vis_frame.grid(row=vis_frame_row, column=0, columnspan=2, sticky = 'ew')
 vis_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
@@ -9485,9 +9469,8 @@ vis_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correctio
 vis_frame.grid_forget()
 
 ## draw bboxes 
-lbl_vis_bbox_txt = ["Draw bounding boxes and confidences", "Dibujar contornos y confianzas", "Dessiner les coutours des détections et les scores "] 
 row_vis_bbox = 0
-lbl_vis_bbox = Label(vis_frame, text="     " + lbl_vis_bbox_txt[lang_idx], width=1, anchor="w")
+lbl_vis_bbox = Label(vis_frame, text="     " + t('lbl_vis_bbox'), width=1, anchor="w")
 lbl_vis_bbox.grid(row=row_vis_bbox, sticky='nesw', pady=2)
 var_vis_bbox = BooleanVar()
 var_vis_bbox.set(global_vars['var_vis_bbox'])
@@ -9495,9 +9478,8 @@ chb_vis_bbox = Checkbutton(vis_frame, variable=var_vis_bbox, anchor="w")
 chb_vis_bbox.grid(row=row_vis_bbox, column=1, sticky='nesw', padx=5)
 
 # line size
-lbl_vis_size_txt = ["Select line width and font size", "Ancho de línea y tamaño de fuente", "Sélectionner la largeur de ligne et la taille de police"]
 row_vis_size = 1
-lbl_vis_size = Label(vis_frame, text="        ↳ " + lbl_vis_size_txt[lang_idx], pady=2, width=1, anchor="w")
+lbl_vis_size = Label(vis_frame, text="        ↳ " + t('lbl_vis_size'), pady=2, width=1, anchor="w")
 lbl_vis_size.grid(row=row_vis_size, sticky='nesw')
 dpd_options_vis_size = [["Extra small", "Small", "Medium", "Large", "Extra large"],
                         ["Extra pequeño", "Pequeño", "Mediano", "Grande", "Extra grande"],
@@ -9509,9 +9491,8 @@ dpd_vis_size.configure(width=1)
 dpd_vis_size.grid(row=row_vis_size, column=1, sticky='nesw', padx=5)
 
 ## blur people
-lbl_vis_blur_txt = ["Blur people", "Desenfocar a la gente", "Anonymiser (appliquer un flou) les personnes"]
 row_vis_blur = 2
-lbl_vis_blur = Label(vis_frame, text="     " + lbl_vis_blur_txt[lang_idx], width=1, anchor="w")
+lbl_vis_blur = Label(vis_frame, text="     " + t('lbl_vis_blur'), width=1, anchor="w")
 lbl_vis_blur.grid(row=row_vis_blur, sticky='nesw', pady=2)
 var_vis_blur = BooleanVar()
 var_vis_blur.set(global_vars['var_vis_blur'])
@@ -9519,9 +9500,8 @@ chb_vis_blur = Checkbutton(vis_frame, variable=var_vis_blur, anchor="w")
 chb_vis_blur.grid(row=row_vis_blur, column=1, sticky='nesw', padx=5)
 
 ## crop images
-lbl_crp_files_txt = ["Crop detections", "Recortar detecciones", "Rogner les détection"]
 row_crp_files = 5
-lbl_crp_files = Label(fth_step, text=lbl_crp_files_txt[lang_idx], width=1, anchor="w")
+lbl_crp_files = Label(fth_step, text=t('lbl_crp_files'), width=1, anchor="w")
 lbl_crp_files.grid(row=row_crp_files, sticky='nesw', pady=2)
 var_crp_files = BooleanVar()
 var_crp_files.set(global_vars['var_crp_files'])
@@ -9529,9 +9509,8 @@ chb_crp_files = Checkbutton(fth_step, variable=var_crp_files, anchor="w")
 chb_crp_files.grid(row=row_crp_files, column=1, sticky='nesw', padx=5)
 
 # plot
-lbl_plt_txt = ["Create maps and graphs", "Crear mapas y gráficos", "Créer les cartes et graphiques"]
 row_plt = 6
-lbl_plt = Label(fth_step, text=lbl_plt_txt[lang_idx], width=1, anchor="w")
+lbl_plt = Label(fth_step, text=t('lbl_plt'), width=1, anchor="w")
 lbl_plt.grid(row=row_plt, sticky='nesw', pady=2)
 var_plt = BooleanVar()
 var_plt.set(global_vars['var_plt'])
@@ -9539,9 +9518,8 @@ chb_plt = Checkbutton(fth_step, variable=var_plt, anchor="w")
 chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
 
 # export results
-lbl_exp_txt = ["Export results and retrieve metadata", "Exportar resultados y recuperar metadatos", "Exporter les résultats and récupérer les métadonnées"]
 row_exp = 7
-lbl_exp = Label(fth_step, text=lbl_exp_txt[lang_idx], width=1, anchor="w")
+lbl_exp = Label(fth_step, text=t('lbl_exp'), width=1, anchor="w")
 lbl_exp.grid(row=row_exp, sticky='nesw', pady=2)
 var_exp = BooleanVar()
 var_exp.set(global_vars['var_exp'])
@@ -9549,9 +9527,8 @@ chb_exp = Checkbutton(fth_step, variable=var_exp, anchor="w", command=toggle_exp
 chb_exp.grid(row=row_exp, column=1, sticky='nesw', padx=5)
 
 ## exportation options
-exp_frame_txt = ["Export options", "Opciones de exportación", "Options d'exportation"]
 exp_frame_row = 8
-exp_frame = LabelFrame(fth_step, text=" ↳ " + exp_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+exp_frame = LabelFrame(fth_step, text=" ↳ " + t('exp_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 exp_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 exp_frame.grid(row=exp_frame_row, column=0, columnspan=2, sticky = 'ew')
 exp_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
@@ -9559,9 +9536,8 @@ exp_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correctio
 exp_frame.grid_forget()
 
 # export format
-lbl_exp_format_txt = ["Output file format", "Formato del archivo de salida", "Format du fichier de sortie"]
 row_exp_format = 0
-lbl_exp_format = Label(exp_frame, text="     " + lbl_exp_format_txt[lang_idx], pady=2, width=1, anchor="w")
+lbl_exp_format = Label(exp_frame, text="     " + t('lbl_exp_format'), pady=2, width=1, anchor="w")
 lbl_exp_format.grid(row=row_exp_format, sticky='nesw')
 dpd_options_exp_format = [["XLSX", "CSV", "COCO", "Sensing Clues (TSV)"], ["XLSX", "CSV", "COCO", "Sensing Clues (TSV)"], ["XLSX", "CSV", "COCO", "Sensing Clues (TSV)"]]
 var_exp_format = StringVar(exp_frame)
@@ -9571,9 +9547,8 @@ dpd_exp_format.configure(width=1)
 dpd_exp_format.grid(row=row_exp_format, column=1, sticky='nesw', padx=5)
 
 # threshold
-lbl_thresh_txt = ["Confidence threshold", "Umbral de confianza", "Seuil de confiance"]
 row_lbl_thresh = 9
-lbl_thresh = Label(fth_step, text=lbl_thresh_txt[lang_idx], width=1, anchor="w")
+lbl_thresh = Label(fth_step, text=t('lbl_thresh'), width=1, anchor="w")
 lbl_thresh.grid(row=row_lbl_thresh, sticky='nesw', pady=2)
 var_thresh = DoubleVar()
 var_thresh.set(global_vars['var_thresh'])
@@ -9584,9 +9559,8 @@ dsp_thresh.configure(fg=green_primary)
 dsp_thresh.grid(row=row_lbl_thresh, column=0, sticky='e', padx=0)
 
 # postprocessing button
-btn_start_postprocess_txt = ["Start post-processing", "Iniciar el postprocesamiento", "Démarrer le post-traitement"]
 row_start_postprocess = 10
-btn_start_postprocess = Button(fth_step, text=btn_start_postprocess_txt[lang_idx], command=start_postprocess)
+btn_start_postprocess = Button(fth_step, text=t('btn_start_postprocess'), command=start_postprocess)
 btn_start_postprocess.grid(row=row_start_postprocess, column=0, columnspan = 2, sticky='ew')
 
 # set minsize for all rows inside labelframes...
@@ -9931,18 +9905,18 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # don't process every frame
-    help_text.insert(END, f"{lbl_not_all_frames_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_not_all_frames')}\n")
     help_text.insert(END,["When processing every frame of a video, it can take a long time to finish. Here, you can specify whether you want to analyse only a selection of frames."
-                    f" At '{lbl_nth_frame_txt[lang_idx]}' you can specify how many frames you want to be analysed.\n\n",
+                    f" At '{t('lbl_nth_frame')}' you can specify how many frames you want to be analysed.\n\n",
                      "Procesar todos los fotogramas de un vídeo puede llevar mucho tiempo. Aquí puede especificar si desea analizar sólo una selección de fotogramas. "
-                    f"En '{lbl_nth_frame_txt[lang_idx]}' puedes especificar cuántos fotogramas quieres que se analicen.\n\n",
+                    f"En '{t('lbl_nth_frame')}' puedes especificar cuántos fotogramas quieres que se analicen.\n\n",
                     "Le traitement de chaque image d'une vidéo peut prendre un certain temps. Vous pouvez ici spécifier si vous souhaitez analyser uniquement une sélection d'images."
-                    f" L'option « {lbl_nth_frame_txt[lang_idx]} » permet de spécifier combien de trames (images) vous souhaitez analyser.\n\n"][lang_idx])
+                    f" L'option « {t('lbl_nth_frame')} » permet de spécifier combien de trames (images) vous souhaitez analyser.\n\n"][lang_idx])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # analyse every nth frame
-    help_text.insert(END, f"{lbl_nth_frame_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_nth_frame')}\n")
     help_text.insert(END, ["Specify the frame sampling rate you'd like to use. For example, entering '1' will process one frame per second. Typically, sampling one frame per second is sufficient and can significantly reduce processing time. The exact time savings depend on the video's frame rate. Most camera traps record at 30 frames per second, meaning this approach can reduce processing time by 97% compared to processing every frame.\n\n",
                     "Especifica la tasa de muestreo de fotogramas que deseas utilizar. Por ejemplo, ingresar '1' procesará un fotograma por segundo. Generalmente, muestrear un fotograma por segundo es suficiente y puede reducir significativamente el tiempo de procesamiento. El ahorro exacto de tiempo depende de la tasa de fotogramas del video. La mayoría de las cámaras trampa graban a 30 fotogramas por segundo, lo que significa que este enfoque puede reducir el tiempo de procesamiento aproximadamente en un 97% en comparación con procesar todos los fotogramas.\n\n",
                     "Spécifiez la fréquence d'échantillonnage d'images que vous souhaitez utiliser. Par exemple, saisir « 1 » traitera une image par seconde. En général, un échantillonnage d'une image par seconde est suffisant et peut réduire considérablement le temps de traitement. Le gain de temps exact dépend de la fréquence d'images de la vidéo. La plupart des pièges photographiques enregistrent à 30 images par seconde, ce qui signifie que cette approche peut réduire le temps de traitement de 97 % par rapport au traitement de chaque image.\n\n"][lang_idx])
@@ -9954,7 +9928,7 @@ def write_help_tab():
     help_text.tag_add('frame', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
 
     # human verification
-    help_text.insert(END, f"{lbl_hitl_main_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_hitl_main')}\n")
     help_text.insert(END, ["This feature lets you verify the results of the model. You can use it to create training data or to double-check the results. When starting a new "
                            "session, you will first be directed to a window where you can select which images you would like to verify. For instance, someone might be only "
                            "interested in creating training data for 'class A' to unbalance his training dataset or only want to double-check detections with medium-sure "
@@ -9990,7 +9964,7 @@ def write_help_tab():
     help_text.tag_add('frame', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
 
     # destination folder
-    help_text.insert(END, f"{lbl_output_dir_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_output_dir')}\n")
     help_text.insert(END, ["Here you can browse for a folder in which the results of the post-processing features will be placed. If nothing is selected, the folder "
                     "chosen at step one will be used as the destination folder.\n\n",
                     "Aquí puede buscar una carpeta en la que se colocarán los resultados de las funciones de postprocesamiento. Si no se selecciona nada, la carpeta "
@@ -10001,7 +9975,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # separate files
-    help_text.insert(END, f"{lbl_separate_files_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_separate_files')}\n")
     help_text.insert(END, ["This function divides the files into subdirectories based on their detections. Please be warned that this will be done automatically. "
                     "There will not be an option to review and adjust the detections before the images will be moved. If you want that (a human in the loop), take a look at ",
                     "Esta función divide los archivos en subdirectorios en función de sus detecciones. Tenga en cuenta que esto se hará automáticamente. No habrá opción de "
@@ -10023,7 +9997,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # method of file placement
-    help_text.insert(END, f"{lbl_file_placement_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_file_placement')}\n")
     help_text.insert(END, ["Here you can choose whether to move the files into subdirectories, or copy them so that the originals remain untouched.\n\n",
                            "Aquí puedes elegir si quieres mover los archivos a subdirectorios o copiarlos de forma que los originales permanezcan intactos.\n\n",
                            "Ici, vous pouvez choisir de DÉPLACER les fichiers dans des sous-répertoires ou de les COPIER afin que les originaux restent intacts.\n\n"][lang_idx])
@@ -10031,7 +10005,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # sort results based on confidence
-    help_text.insert(END, f"{lbl_sep_conf_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_sep_conf')}\n")
     help_text.insert(END, ["This feature will further separate the files based on its confidence value (in tenth decimal intervals). That means that each class will"
                         " have subdirectories like e.g. 'conf_0.6-0.7', 'conf_0.7-0.8', 'conf_0.8-0.9', etc.\n\n",
                         "Esta función separará aún más los archivos en función de su valor de confianza (en intervalos decimales). Esto significa que cada clase tendrá"
@@ -10042,7 +10016,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # visualize files
-    help_text.insert(END, f"{lbl_vis_files_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_vis_files')}\n")
     help_text.insert(END, ["This functionality draws boxes around the detections and prints their confidence values. This can be useful to visually check the results."
                     " Videos can't be visualized using this tool. Please be aware that this action is permanent and cannot be undone. Be wary when using this on original images.\n\n",
                     "Esta funcionalidad dibuja recuadros alrededor de las detecciones e imprime sus valores de confianza. Esto puede ser útil para comprobar visualmente los "
@@ -10054,7 +10028,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # crop files
-    help_text.insert(END, f"{lbl_crp_files_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_crp_files')}\n")
     help_text.insert(END, ["This feature will crop the detections and save them as separate images. Not applicable for videos.\n\n",
                            "Esta función recortará las detecciones y las guardará como imágenes separadas. No es aplicable a los vídeos.\n\n",
                            "Cette fonctionnalité recadre les détections et les enregistre sous forme d'images distinctes. Non applicable aux vidéos.\n\n"][lang_idx])
@@ -10062,7 +10036,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # plot graphs
-    help_text.insert(END, f"{lbl_plt_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_plt')}\n")
     help_text.insert(END, ["Here you can select to create activity patterns, bar charts, pie charts and temporal heatmaps. The time unit (year, month, "
                            "week or day) will be chosen automatically based on the time period of your data. If more than 100 units are needed to "
                            "visualize, they will be skipped due to long processing times. Each visualization results in a static PNG file and a dynamic"
@@ -10084,7 +10058,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # export results
-    help_text.insert(END, f"{lbl_exp_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_exp')}\n")
     help_text.insert(END, ["Here you can select whether you want to export the results to other file formats. It will additionally try to fetch image metadata, like "
                            "timestamps, locations, and more.\n\n", "Aquí puede seleccionar si desea exportar los resultados a otros formatos de archivo. Además, "
                            "intentará obtener metadatos de la imagen, como marcas de tiempo, ubicaciones, etc. \n\n",
@@ -10094,25 +10068,25 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # postprocess confidence threshold
-    help_text.insert(END, f"{lbl_thresh_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_thresh')}\n")
     help_text.insert(END, ["Detections below this value will not be post-processed. To adjust the threshold value, you can drag the slider or press either sides next to "
                     "the slider for a 0.01 reduction or increment. Confidence values are within the [0.01, 1] interval. If you set the confidence threshold too high, "
                     "you will miss some detections. On the other hand, if you set the threshold too low, you will get false positives. When choosing a threshold for your "
-                    f"project, it is important to choose a threshold based on your own data. My advice is to first visualize your data ('{lbl_vis_files_txt[lang_idx]}') with a low "
+                    f"project, it is important to choose a threshold based on your own data. My advice is to first visualize your data ('{t('lbl_vis_files')}') with a low "
                     "threshold to get a feeling of the confidence values in your data. This will show you how sure the model is about its detections and will give you an "
                     "insight into which threshold will work best for you. If you really don't know, 0.2 is probably a conservative threshold for most projects.\n\n",
                     "Las detecciones por debajo de este valor no se postprocesarán. Para ajustar el valor del umbral, puede arrastrar el control deslizante o pulsar "
                     "cualquiera de los lados junto al control deslizante para una reducción o incremento de 0,01. Los valores de confianza están dentro del intervalo "
                     "[0,01, 1]. Si ajusta el umbral de confianza demasiado alto, pasará por alto algunas detecciones. Por otro lado, si fija el umbral demasiado bajo, "
                     "obtendrá falsos positivos. Al elegir un umbral para su proyecto, es importante elegir un umbral basado en sus propios datos. Mi consejo es que primero"
-                    f" visualice sus datos ('{lbl_vis_files_txt[lang_idx]}') con un umbral bajo para hacerse una idea de los valores de confianza de sus datos. Esto le mostrará lo "
+                    f" visualice sus datos ('{t('lbl_vis_files')}') con un umbral bajo para hacerse una idea de los valores de confianza de sus datos. Esto le mostrará lo "
                     "seguro que está el modelo sobre sus detecciones y le dará una idea de qué umbral funcionará mejor para usted. Si realmente no lo sabe, 0,2 es "
                     "probablemente un umbral conservador para la mayoría de los proyectos.\n\n",
                     "Les détections inférieures à cette valeur ne seront pas traitées ultérieurement. Pour ajuster la valeur seuil, faites glisser le curseur ou appuyez sur l'un "
                     "des côtés de la barre de défilement par incrément ou décrément de 0.01. Les valeurs de confiance sont comprises entre [0,01 et 1]. Si le seuil de confiance "
                     "est trop élevé, vous manquerez certaines détections. En revanche, si vous définissez un seuil trop bas, vous obtiendrez des faux positifs. Lorsque vous "
                     "choisissez un seuil pour votre projet, il est important de choisir un seuil en fonction de vos propres données. Je vous conseille de commencer par visualiser "
-                    f"vos données ('{lbl_vis_files_txt[lang_idx]}') avec un seuil bas pour obtenir une idée du niveau de confiance dans vos données. Cela vous montrera à quel "
+                    f"vos données ('{t('lbl_vis_files')}') avec un seuil bas pour obtenir une idée du niveau de confiance dans vos données. Cela vous montrera à quel "
                     "point le modèle est sûr de ses détections et vous donnera une intuition du seuil le plus adapté à vos besoins. Si vous ne le savez pas vraiment, 0,2 est "
                     "probablement un seuil prudent pour la plupart des projets..\n\n"][lang_idx])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
@@ -10216,8 +10190,7 @@ sim_top_banner = customtkinter.CTkImage(PIL_logo_incl_text, size=(LOGO_WIDTH, LO
 customtkinter.CTkLabel(simple_main_frame, text="", image = sim_top_banner).grid(column=0, row=0, columnspan=2, sticky='ew', pady=(PADY, 0), padx=0)
 
 # top buttons
-sim_btn_switch_mode_txt = ["To advanced mode", "Al modo avanzado", "Mode avancé"]
-sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = sim_btn_switch_mode_txt[lang_idx], command = switch_mode)
+sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = t('sim_btn_switch_mode'), command = switch_mode)
 sim_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
 sim_btn_switch_lang = GreyTopButton(master = simple_main_frame, text = "Switch language", command = set_language)
 sim_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
@@ -10233,8 +10206,7 @@ sim_dir_img_widget = customtkinter.CTkLabel(sim_dir_frm_1, text="", image = dir_
 sim_dir_img_widget.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
 sim_dir_frm = MySubFrame(master=sim_dir_frm_1)
 sim_dir_frm.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_dir_lbl_txt = ["Which folder do you want to analyse?", "¿Qué carpeta quieres analizar?", "Quel dossier voulez-vous analyser?"]
-sim_dir_lbl = customtkinter.CTkLabel(sim_dir_frm, text=sim_dir_lbl_txt[lang_idx], font = main_label_font)
+sim_dir_lbl = customtkinter.CTkLabel(sim_dir_frm, text=t('sim_dir_lbl'), font = main_label_font)
 sim_dir_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
 sim_dir_inf = InfoButton(master = sim_dir_frm, text = "?", command = sim_dir_show_info)
 sim_dir_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
@@ -10242,8 +10214,7 @@ sim_dir_btn = customtkinter.CTkButton(sim_dir_frm, text=t('browse'), width = 1, 
 sim_dir_btn.grid(row=1, column=0, padx=(PADX, PADX/2), pady=(0, PADY), sticky="nswe")
 sim_dir_pth_frm = MySubSubFrame(master=sim_dir_frm)
 sim_dir_pth_frm.grid(row=1, column=1, padx=(PADX/2, PADX), pady=(0, PADY), sticky="nesw")
-sim_dir_pth_txt = ["no folder selected", "no hay carpeta seleccionada", "aucun dossier sélectionné"]
-sim_dir_pth = customtkinter.CTkLabel(sim_dir_pth_frm, text=sim_dir_pth_txt[lang_idx], text_color = "grey")
+sim_dir_pth = customtkinter.CTkLabel(sim_dir_pth_frm, text=t('sim_dir_pth'), text_color = "grey")
 sim_dir_pth.pack()
 
 # choose model
@@ -10253,8 +10224,7 @@ sim_mdl_img_widget = customtkinter.CTkLabel(sim_mdl_frm_1, text="", image = mdl_
 sim_mdl_img_widget.grid(row=1, column=0, padx=PADX, pady=PADY, sticky="nswe")
 sim_mdl_frm = MySubFrame(master=sim_mdl_frm_1)
 sim_mdl_frm.grid(row=1, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_mdl_lbl_txt = ["Which species identification model do you want to use?", "¿Qué modelo de identificación de especies quiere utilizar?", "Quel modèle de classification d'espèces souhaitez-vous utiliser?"]
-sim_mdl_lbl = customtkinter.CTkLabel(sim_mdl_frm, text=sim_mdl_lbl_txt[lang_idx], font = main_label_font)
+sim_mdl_lbl = customtkinter.CTkLabel(sim_mdl_frm, text=t('sim_mdl_lbl'), font = main_label_font)
 sim_mdl_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
 sim_mdl_inf = InfoButton(master = sim_mdl_frm, text = "?", command = sim_mdl_show_info)
 sim_mdl_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
@@ -10271,8 +10241,7 @@ sim_spp_img_widget = customtkinter.CTkLabel(sim_spp_frm_1, text="", image = spp_
 sim_spp_img_widget.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nswe")
 sim_spp_frm = MySubFrame(master=sim_spp_frm_1, width=1000)
 sim_spp_frm.grid(row=2, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_spp_lbl_txt = ["Which species are present in your project area?", "¿Qué especies están presentes en la zona de su proyecto?", "Quelles espèces sont présentes dans la zone d'étude de votre projet?"]
-sim_spp_lbl = customtkinter.CTkLabel(sim_spp_frm, text=sim_spp_lbl_txt[lang_idx], font = main_label_font, text_color = 'grey')
+sim_spp_lbl = customtkinter.CTkLabel(sim_spp_frm, text=t('sim_spp_lbl'), font = main_label_font, text_color = 'grey')
 sim_spp_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
 sim_spp_inf = InfoButton(master = sim_spp_frm, text = "?", command = sim_spp_show_info)
 sim_spp_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
@@ -10288,8 +10257,7 @@ sim_run_img_widget = customtkinter.CTkLabel(sim_run_frm_1, text="", image = run_
 sim_run_img_widget.grid(row=3, column=0, padx=PADX, pady=PADY, sticky="nswe")
 sim_run_frm = MySubFrame(master=sim_run_frm_1, width=1000)
 sim_run_frm.grid(row=3, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_run_btn_txt = ["Start processing", "Empezar a procesar", "Démarrer le traitement"]
-sim_run_btn = customtkinter.CTkButton(sim_run_frm, text=sim_run_btn_txt[lang_idx], command=lambda: start_deploy(simple_mode = True))
+sim_run_btn = customtkinter.CTkButton(sim_run_frm, text=t('sim_run_btn'), command=lambda: start_deploy(simple_mode = True))
 sim_run_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe", columnspan = 2)
 
 # about
