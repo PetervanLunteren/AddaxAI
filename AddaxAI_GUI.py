@@ -1255,11 +1255,7 @@ def start_postprocess():
     if os.path.isfile(os.path.join(src_dir, "video_recognition_file.json")):
         vid_json = True
     if not img_json and not vid_json:
-        mb.showerror(t('error'), ["No model output file present. Make sure you run step 2 before post-processing the files.",
-                                       "No hay archivo de salida del modelo. Asegúrese de ejecutar el paso 2 antes de postprocesar"
-                                       " los archivos.", 
-                                       "Aucun fichier de sortie du modèle présent. Assurez-vous d'exécuter l'étape 2 avant le "
-                                       "post-traitement des fichiers"][lang_idx])
+        mb.showerror(t('error'), t('msg_no_model_output'))
         return
     
     # check if destination dir is valid and set to input dir if not
@@ -1288,11 +1284,11 @@ def start_postprocess():
     if sep and file_placement == 1 and vis:
         if not mb.askyesno(t('msg_original_images_overwritten'), 
                       [f"WARNING! You specified to visualize the original images. Visualizing is permanent and cannot be undone. If you don't want to visualize the original "
-                      f"images, please select 'Copy' as '{lbl_file_placement_txt}'. Are you sure you want to continue with the current settings?",
+                      f"images, please select 'Copy' as '{t('lbl_file_placement')}'. Are you sure you want to continue with the current settings?",
                       "ATENCIÓN. Ha especificado visualizar las imágenes originales. La visualización es permanente y no puede deshacerse. Si no desea visualizar las "
-                      f"imágenes originales, seleccione 'Copiar' como '{lbl_file_placement_txt}'. ¿Está seguro de que desea continuar con la configuración actual?",
+                      f"imágenes originales, seleccione 'Copiar' como '{t('lbl_file_placement')}'. ¿Está seguro de que desea continuar con la configuración actual?",
                       "ATTENTION ! Vous avez spécifié de visualiser les images originales. La visualisation est définitive et irréversible. Si vous ne souhaitez pas visualiser les images originales, "
-                      f"sélectionnez « Copier » au format « {lbl_file_placement_txt} ». Voulez-vous vraiment conserver les paramètres actuels ?"][lang_idx]):
+                      f"sélectionnez « Copier » au format « {t('lbl_file_placement')} ». Voulez-vous vraiment conserver les paramètres actuels ?"][lang_idx]):
             return
 
     # initialise progress window with processes
@@ -2321,7 +2317,7 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
                               [f"Do you want to copy or move the images to\n'{dst_dir}'?",
                               f"¿Quieres copiar o mover las imágenes a\n'{dst_dir}'?",
                               f"Voulez-vous COPIER ou DÉPLACER les images vers\n'{dst_dir}'"][lang_idx],
-                              [t('move'), t('copy'), ["Cancel", "Cancelar", "Annuler"][lang_idx]])
+                              [t('move'), t('copy'), t('cancel')])
     user_input = window.run()
     if user_input == "Cancel" or user_input == "Cancelar" or user_input == "Annuler":
         return
@@ -2464,7 +2460,7 @@ def start_or_continue_hitl():
     
     # start new session
     elif status == "done":
-        if mb.askyesno(["Previous session is done", "Sesión anterior terminada.", "Dernière session complétée."][lang_idx], ["It seems like you have completed the previous manual "
+        if mb.askyesno(t('msg_previous_session_done'), ["It seems like you have completed the previous manual "
                         "verification session. Do you want to start a new session?", "Parece que has completado la sesión de verificación manual "
                         "anterior. ¿Quieres iniciar una nueva sesión?",
                         "Il semble que vous ayez déjà complété la dernière session de vérification. Souhaitez-vous démarrer un nouvelle session?"][lang_idx]):
@@ -2960,7 +2956,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             
             # catch model errors
             if line.startswith("No image files found"):
-                mb.showerror(["No images found", "No se han encontrado imágenes", "Aucune image trouvée"][lang_idx],
+                mb.showerror(t('msg_no_images_found'),
                             [f"There are no images found in '{chosen_folder}'. \n\nAre you sure you specified the correct folder?"
                             f" If the files are in subdirectories, make sure you don't tick '{t('lbl_exclude_subs')}'.",
                             f"No se han encontrado imágenes en '{chosen_folder}'. \n\n¿Está seguro de haber especificado la carpeta correcta?"
@@ -2969,13 +2965,13 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][lang_idx])
                 return
             if line.startswith("No videos found"):
-                mb.showerror(["No videos found", "No se han encontrado vídeos", "Aucun vidéo trouvé"][lang_idx],
+                mb.showerror(t('msg_no_videos_found'),
                             line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{t('lbl_exclude_subs')}'.",
                                     f"\n\n¿Está seguro de haber especificado la carpeta correcta? Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{t('lbl_exclude_subs')}'.",
                                     f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][lang_idx])
                 return
             if line.startswith("No frames extracted"):
-                mb.showerror(["Could not extract frames", "No se pueden extraer fotogramas", "Impossible d'extraire les images"][lang_idx],
+                mb.showerror(t('msg_could_not_extract_frames'),
                             line + ["\n\nConverting the videos to .mp4 might fix the issue.",
                                     "\n\nConvertir los vídeos a .mp4 podría solucionar el problema.",
                                     "\n\nConvertir les vidéos au format .mp4 pourrait régler le problème."][lang_idx])
@@ -3205,7 +3201,7 @@ def start_deploy(simple_mode = False):
     # check if user selected to process either images or videos
     if not img_present and not vid_present:
         if simple_mode:
-            mb.showerror(["No data found", "No se han encontrado datos", "Aucune donnée trouvée"][lang_idx],
+            mb.showerror(t('msg_no_data_found'),
                             message=[f"There are no images nor videos found.\n\nAddaxAI accepts images in the format {IMG_EXTENSIONS}."
                                      f"\n\nIt accepts videos in the format {VIDEO_EXTENSIONS}.",
                                      f"No se han encontrado imágenes ni vídeos.\n\nAddaxAI acepta imágenes en formato {IMG_EXTENSIONS}."
@@ -3213,7 +3209,7 @@ def start_deploy(simple_mode = False):
                                      f"Aucune image ou vidéo trouvé.\n\nAddaxAI accepte des images au format {IMG_EXTENSIONS}."
                                      f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][lang_idx])
         else:
-            mb.showerror(["No data found", "No se han encontrado datos", "Aucune donnée trouvée"][lang_idx],
+            mb.showerror(t('msg_no_data_found'),
                             message=[f"There are no images nor videos found, or you selected not to search for them. If there is indeed data to be "
                                     f"processed, make sure the '{t('lbl_process_img')}' and/or '{t('lbl_process_vid')}' options "
                                     f"are selected. You must select at least one of these.\n\nAddaxAI accepts images in the format {IMG_EXTENSIONS}."
@@ -3235,7 +3231,7 @@ def start_deploy(simple_mode = False):
         
         # if simple mode, tell user to use the advanced mode
         if simple_mode:
-            mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible", "SpeciesNet non-disponible"][lang_idx],
+            mb.showerror(t('msg_sppnet_not_available'),
                             message=[f"SpeciesNet is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
                                         f"SpeciesNet no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet.",
                                         f"SpeciesNet n'est pas disponible en mode simple. SVP choisir le mode avancé pour utiliser SpeciesNet."][lang_idx])
@@ -3247,7 +3243,7 @@ def start_deploy(simple_mode = False):
         
         # if videos present, tell users that Species net cannot process them
         if vid_present:
-            mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible", "SpeciesNet non-disponible"][lang_idx],
+            mb.showerror(t('msg_sppnet_not_available'),
                             message=[f"Video support for SpeciesNet will be available in a future AddaxAI release, please uncheck 'process videos'.",
                                         f"El soporte de video para SpeciesNet estará disponible en una futura versión de AddaxAI, por favor desmarque 'procesar videos'.",
                                         f"Le support pour vidéo avec SpeciesNet sera disponible dans une version future d'AddaxAI, svp décocher la case 'traiter les vidéos'."][lang_idx])
@@ -3602,7 +3598,7 @@ def start_deploy(simple_mode = False):
                                     "Abrir el archivo de registro y revisar las rutas de archivo probelmáticas"],
                                 ["Continuer avec les chemins de fichiers tels quels",
                                 "Ouvrez le fichier journal et examinez les fichiers problématiques"]][lang_idx]
-        special_char_popup = TextButtonWindow(title = ["Special characters found", "Caracteres especiales encontrados", "Caractères spéciaux détectés"][lang_idx],
+        special_char_popup = TextButtonWindow(title = t('msg_special_characters_found'),
                                             text = ["Special characters can be problematic during analysis, resulting in files being skipped.\n"
                                                     f"With your current folder structure, there are a total of {total_saved_images} files that will be potentially skipped.\n"
                                                     f"If you want to make sure these images will be analysed, you would need to manually adjust the names of {n_special_chars} folders.\n"
@@ -4966,7 +4962,7 @@ def sim_mdl_dpd_callback(self):
     
     # this means the user chose SpeciesNet in simple mode, so tell user to use the advanced mode
     if self == "Global - SpeciesNet - Google":
-        mb.showerror(["SpeciesNet not available", "SpeciesNet no disponible", "SpeciesNet non-disponible"][lang_idx],
+        mb.showerror(t('msg_sppnet_not_available'),
                         message=[f"'Global - SpeciesNet - Google' is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
                                     f"'Global - SpeciesNet - Google' no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet.",
                                     f"'Global - SpeciesNet - Google' n'est pas disponible en mode simple. SVP utilisez le mode avancé pour utiliser SpeciesNet."][lang_idx])
