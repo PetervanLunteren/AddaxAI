@@ -8096,8 +8096,9 @@ def set_language():
     # log
     print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
 
-    # set the global variable to the new language
+    # set the global variable and i18n module to the new language
     lang_idx = to_lang_idx
+    i18n_set_language(lang_idx)
     write_global_vars(AddaxAI_files, {"lang_idx": lang_idx})
 
     # update tab texts
