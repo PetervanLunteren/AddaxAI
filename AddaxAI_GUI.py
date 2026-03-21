@@ -2831,7 +2831,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     if simple_mode:
         det_model_fpath = os.path.join(DET_DIR, "MegaDetector 5a", "md_v5a.0.0.pt")
         switch_yolov5_version("old models", AddaxAI_files)
-    elif var_det_model.get() != dpd_options_model[i18n_lang_idx()][-1]: # if not chosen the last option, which is "custom model"
+    elif var_det_model.get() != state.dpd_options_model[i18n_lang_idx()][-1]: # if not chosen the last option, which is "custom model"
         det_model_fname = load_model_vars("det")["model_fname"]
         det_model_fpath = os.path.join(DET_DIR, var_det_model.get(), det_model_fname)
         switch_yolov5_version("old models", AddaxAI_files)
@@ -3338,11 +3338,11 @@ def start_deploy(simple_mode = False):
             processes.append("vid_det")
             if var_cls_model.get() != t('none'):
                 processes.append("vid_cls")
-        if not timelapse_mode and img_present:
+        if not state.timelapse_mode and img_present:
             processes.append("img_pst")
-        if not timelapse_mode and vid_present:
+        if not state.timelapse_mode and vid_present:
             processes.append("vid_pst")
-        if not timelapse_mode:
+        if not state.timelapse_mode:
             processes.append("plt")
     else:
         processes = []
@@ -3428,7 +3428,7 @@ def start_deploy(simple_mode = False):
     # save simple settings for next time
     write_global_vars(AddaxAI_files, {
         "lang_idx": i18n_lang_idx(),
-        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
+        "var_cls_model_idx": state.dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get()),
     })
 
@@ -3437,7 +3437,7 @@ def start_deploy(simple_mode = False):
     
     # simple_mode and advanced mode shared video settings
     additional_vid_options = ["--json_confidence_threshold=0.01"]
-    if timelapse_mode:
+    if state.timelapse_mode:
         additional_vid_options.append("--include_all_processed_frames")
     temp_frame_folder_created = False
     if vid_present:
@@ -3463,7 +3463,7 @@ def start_deploy(simple_mode = False):
     else:
         # save advanced settings for next time
         write_global_vars(AddaxAI_files, {
-            "var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
+            "var_det_model_idx": state.dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
             "var_det_model_path": var_det_model_path.get(),
             "var_det_model_short": var_det_model_short.get(),
             "var_exclude_subs": var_exclude_subs.get(),
@@ -3535,7 +3535,7 @@ def start_deploy(simple_mode = False):
         if var_use_checkpnts.get():
             additional_img_options.append("--checkpoint_frequency=" + var_checkpoint_freq.get())
         if var_cont_checkpnt.get() and check_checkpnt():
-            additional_img_options.append("--resume_from_checkpoint=" + loc_chkpnt_file)
+            additional_img_options.append("--resume_from_checkpoint=" + state.loc_chkpnt_file)
         if var_use_custom_img_size_for_deploy.get():
             additional_img_options.append("--image_size=" + var_image_size_for_deploy.get())
 
@@ -3639,7 +3639,7 @@ def start_deploy(simple_mode = False):
             deploy_model(chosen_folder, additional_vid_options, data_type = "vid", simple_mode = simple_mode)
         
         # if deployed through simple mode, add predefined postprocess directly after deployment and classification
-        if simple_mode and not timelapse_mode:
+        if simple_mode and not state.timelapse_mode:
 
                 # FIX: For videos in simple mode, convert frame results to video results BEFORE postprocess
                 # This ensures the classification updates from .frames.json are applied to .json
@@ -3766,7 +3766,7 @@ def start_deploy(simple_mode = False):
         
             # convert frame results to video results
             options = FrameToVideoOptions()
-            if timelapse_mode:
+            if state.timelapse_mode:
                 options.include_all_processed_frames = True
             else:
                 options.include_all_processed_frames = False
@@ -3788,7 +3788,7 @@ def start_deploy(simple_mode = False):
             os.remove(exif_data_json)
         
         # prepare for Timelapse use
-        if timelapse_mode:
+        if state.timelapse_mode:
             # merge json
             if var_cls_model.get() != t('none'):
                 # if a classification model is selected
@@ -3863,7 +3863,7 @@ def start_deploy(simple_mode = False):
         root.update()
 
         # show results
-        if timelapse_mode:
+        if state.timelapse_mode:
             mb.showinfo("Analysis done!", f"Recognition file created at \n\n{timelapse_json}\n\nTo use it in Timelapse, return to "
                                             "Timelapse with the relevant image set open, select the menu item 'Recognition > Import "
                                             "recognition data for this image set' and navigate to the file above.")
@@ -4612,7 +4612,7 @@ def verification_status(xml):
 def on_toplevel_close():
     write_global_vars(AddaxAI_files, {
         "lang_idx": i18n_lang_idx(),
-        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
+        "var_cls_model_idx": state.dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
         })
     root.destroy()
@@ -4716,14 +4716,14 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     # save settings for next time
     write_global_vars(AddaxAI_files, {
         "lang_idx": i18n_lang_idx(),
-        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
+        "var_cls_model_idx": state.dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
     })
     
     # save advanced settings for next time
     if not simple_mode:
         write_global_vars(AddaxAI_files, {
-            "var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
+            "var_det_model_idx": state.dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
             "var_det_model_path": var_det_model_path.get(),
             "var_det_model_short": var_det_model_short.get(),
             "var_exclude_subs": var_exclude_subs.get(),
@@ -4890,7 +4890,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
         make_json_relative(recognition_file, var_choose_folder.get())
     
     # if in timelapse mode, change name of recognition file
-    if timelapse_mode:
+    if state.timelapse_mode:
         timelapse_json = os.path.join(chosen_folder, "timelapse_recognition_file.json")
         os.rename(recognition_file, timelapse_json)
         mb.showinfo("Analysis done!", f"Recognition file created at \n\n{timelapse_json}\n\nTo use it in Timelapse, return to "
@@ -4959,7 +4959,7 @@ def sim_mdl_dpd_callback(self):
                                     f"'Global - SpeciesNet - Google' no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet.",
                                     f"'Global - SpeciesNet - Google' n'est pas disponible en mode simple. SVP utilisez le mode avancé pour utiliser SpeciesNet."][i18n_lang_idx()])
     
-    var_cls_model.set(dpd_options_cls_model[i18n_lang_idx()][sim_dpd_options_cls_model[i18n_lang_idx()].index(self)])
+    var_cls_model.set(state.dpd_options_cls_model[i18n_lang_idx()][sim_state.dpd_options_cls_model[i18n_lang_idx()].index(self)])
     model_cls_animal_options(var_cls_model.get())
 
 
@@ -5124,7 +5124,6 @@ conf_dirs = {0.0 : "conf_0.0",
 
 # check if checkpoint file is present and assign global variable
 def check_checkpnt():
-    global loc_chkpnt_file
     loc_chkpnt_files = []
     for filename in os.listdir(var_choose_folder.get()):
         if re.search('^md_checkpoint_\d+\.json$', filename):
@@ -5136,9 +5135,9 @@ def check_checkpnt():
                         "Aucun fichier de point de contrôle trouvé. La poursuite à partir d'un point de contrôle est impossible."][i18n_lang_idx()])
         return False
     if len(loc_chkpnt_files) == 1:
-        loc_chkpnt_file = os.path.join(var_choose_folder.get(), loc_chkpnt_files[0])
+        state.loc_chkpnt_file = os.path.join(var_choose_folder.get(), loc_chkpnt_files[0])
     elif len(loc_chkpnt_files) > 1:
-        loc_chkpnt_file = os.path.join(var_choose_folder.get(), sort_checkpoint_files(loc_chkpnt_files)[0])
+        state.loc_chkpnt_file = os.path.join(var_choose_folder.get(), sort_checkpoint_files(loc_chkpnt_files)[0])
     return True
 
 
@@ -5166,8 +5165,7 @@ def browse_dir(var, var_short, dsp, cut_off_length, n_row, n_column, str_sticky,
     
     # also update simple mode if it regards the source dir
     if source_dir:
-        global sim_dir_pth
-        sim_dir_pth.configure(text = dsp_chosen_dir, text_color = "black")
+        state.sim_dir_pth.configure(text = dsp_chosen_dir, text_color = "black")
 
 # choose a custom classifier for animals
 def model_cls_animal_options(self):
@@ -5175,7 +5173,7 @@ def model_cls_animal_options(self):
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # set simple mode cls dropdown to the same index for its own dpd list
-    sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][dpd_options_cls_model[i18n_lang_idx()].index(self)])
+    state.sim_mdl_dpd.set(state.sim_dpd_options_cls_model[i18n_lang_idx()][state.dpd_options_cls_model[i18n_lang_idx()].index(self)])
 
     # remove or show widgets
     if self != t('none'):
@@ -5184,7 +5182,6 @@ def model_cls_animal_options(self):
         cls_frame.grid_forget()
     
     # get model specific variable values
-    global sim_spp_scr
     model_vars = load_model_vars()
     if self != t('none') and self != "Global - SpeciesNet - Google": # normal procedure for all classifiers other than speciesnet
         
@@ -5218,15 +5215,15 @@ def model_cls_animal_options(self):
 
         # adjust simple_mode window
         sim_spp_lbl.configure(text_color = "black")
-        sim_spp_scr.grid_forget()
-        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm,
+        state.sim_spp_scr.grid_forget()
+        state.sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm,
                                             height=sim_spp_scr_height,
                                             all_classes=model_vars['all_classes'],
                                             selected_classes=model_vars['selected_classes'],
                                             command = on_spp_selection,
                                             pady=PADY)
-        sim_spp_scr._scrollbar.configure(height=0)
-        sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
+        state.sim_spp_scr._scrollbar.configure(height=0)
+        state.sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     elif self == "Global - SpeciesNet - Google": # special procedure for speciesnet
         
@@ -5264,22 +5261,22 @@ def model_cls_animal_options(self):
         
         # set selection frame to dummy spp again
         sim_spp_lbl.configure(text_color = "grey")
-        sim_spp_scr.grid_forget()
-        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
-        sim_spp_scr._scrollbar.configure(height=0)
-        sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
+        state.sim_spp_scr.grid_forget()
+        state.sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
+        state.sim_spp_scr._scrollbar.configure(height=0)
+        state.sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     else:
         # set selection frame to dummy spp again
         sim_spp_lbl.configure(text_color = "grey")
-        sim_spp_scr.grid_forget()
-        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
-        sim_spp_scr._scrollbar.configure(height=0)
-        sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
+        state.sim_spp_scr.grid_forget()
+        state.sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
+        state.sim_spp_scr._scrollbar.configure(height=0)
+        state.sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     # save settings
     write_global_vars(AddaxAI_files, {
-        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),  # write index instead of value
+        "var_cls_model_idx": state.dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),  # write index instead of value
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get()),  # write index instead of value
         })
  
@@ -5378,7 +5375,7 @@ def model_options(self):
                     dsp_model,
                     [("Yolov5 model","*.pt")],
                     30,
-                    dpd_options_model[i18n_lang_idx()],
+                    state.dpd_options_model[i18n_lang_idx()],
                     row_model)
 
     else:
@@ -5386,7 +5383,7 @@ def model_options(self):
         var_det_model_path.set("")
 
     # save settings
-    write_global_vars(AddaxAI_files, {"var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()), # write index instead of value
+    write_global_vars(AddaxAI_files, {"var_det_model_idx": state.dpd_options_model[i18n_lang_idx()].index(var_det_model.get()), # write index instead of value
                         "var_det_model_short": var_det_model_short.get(),
                         "var_det_model_path": var_det_model_path.get()})
 
@@ -5471,11 +5468,9 @@ def load_model_vars(model_type = "cls"):
 
 
 # union of all classes across all supported models (det + cls)
-_ALL_SUPPORTED_MODEL_CLASSES_CACHE = None
 def get_all_supported_model_classes(force_refresh: bool = False):
-    global _ALL_SUPPORTED_MODEL_CLASSES_CACHE
-    if _ALL_SUPPORTED_MODEL_CLASSES_CACHE is not None and not force_refresh:
-        return _ALL_SUPPORTED_MODEL_CLASSES_CACHE
+    if state._all_supported_model_classes_cache is not None and not force_refresh:
+        return state._all_supported_model_classes_cache
 
     all_classes = set()
     for model_type in ["cls"]:
@@ -5495,8 +5490,8 @@ def get_all_supported_model_classes(force_refresh: bool = False):
                 if c:
                     all_classes.add(c)
 
-    _ALL_SUPPORTED_MODEL_CLASSES_CACHE = sorted(all_classes, key=lambda s: s.lower())
-    return _ALL_SUPPORTED_MODEL_CLASSES_CACHE
+    state._all_supported_model_classes_cache = sorted(all_classes, key=lambda s: s.lower())
+    return state._all_supported_model_classes_cache
 
 
 
@@ -6493,15 +6488,15 @@ def callback(url):
 
 
 def on_spp_selection():
-    selected_classes = sim_spp_scr.get_checked_items()
-    all_classes = sim_spp_scr.get_all_items()
+    selected_classes = state.sim_spp_scr.get_checked_items()
+    all_classes = state.sim_spp_scr.get_all_items()
     write_model_vars(new_values = {"selected_classes": selected_classes})
     dsp_choose_classes.configure(text = f"{len(selected_classes)} of {len(all_classes)}")
 
 
 
 def checkbox_frame_event():
-    print(f"checkbox frame modified: {sim_spp_scr.get_checked_items()}")
+    print(f"checkbox frame modified: {state.sim_spp_scr.get_checked_items()}")
 
 
 
@@ -6771,17 +6766,17 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
 # make sure the latest updated models also are listed in the dpd menu
 def update_model_dropdowns():
-    global dpd_options_cls_model
     cls_models = fetch_known_models(CLS_DIR)
-    dpd_options_cls_model = [["None"] + cls_models, ["Ninguno"] + cls_models, ["Aucun"] + cls_models]
+    state.dpd_options_cls_model = [["None"] + cls_models, ["Ninguno"] + cls_models, ["Aucun"] + cls_models]
+    dpd_options_cls_model = state.dpd_options_cls_model
     update_dpd_options(dpd_cls_model, snd_step, var_cls_model, dpd_options_cls_model, model_cls_animal_options, row_cls_model, lbl_cls_model, i18n_lang_idx())
-    global dpd_options_model
     det_models = fetch_known_models(DET_DIR)
-    dpd_options_model = [det_models + ["Custom model"], det_models + ["Otro modelo"], det_models + ["Modèle personnalisé"]]
+    state.dpd_options_model = [det_models + ["Custom model"], det_models + ["Otro modelo"], det_models + ["Modèle personnalisé"]]
+    dpd_options_model = state.dpd_options_model
     update_dpd_options(dpd_model, snd_step, var_det_model, dpd_options_model, model_options, row_model, lbl_model, i18n_lang_idx())
     model_cls_animal_options(var_cls_model.get())
-    global sim_dpd_options_cls_model
-    sim_dpd_options_cls_model = [[item[0] + suffixes_for_sim_none[i], *item[1:]] for i, item in enumerate(dpd_options_cls_model)]
+    state.sim_dpd_options_cls_model = [[item[0] + suffixes_for_sim_none[i], *item[1:]] for i, item in enumerate(dpd_options_cls_model)]
+    sim_dpd_options_cls_model = state.sim_dpd_options_cls_model
     update_sim_mdl_dpd()
     root.update_idletasks()
 
@@ -7019,11 +7014,10 @@ def update_dpd_options(dpd, master, var, options, cmd, row, lbl, from_lang_idx):
 
 # special refresh function for the model seleciton dropdown in simple mode because customtkinter works a bit different
 def update_sim_mdl_dpd():
-    global sim_mdl_dpd
-    sim_mdl_dpd.grid_forget()
-    sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=sim_dpd_options_cls_model[i18n_lang_idx()], command=sim_mdl_dpd_callback, width = 1)
-    sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get())])
-    sim_mdl_dpd.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="nswe", columnspan = 2)
+    state.sim_mdl_dpd.grid_forget()
+    state.sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=state.sim_dpd_options_cls_model[i18n_lang_idx()], command=sim_mdl_dpd_callback, width = 1)
+    state.sim_mdl_dpd.set(state.sim_dpd_options_cls_model[i18n_lang_idx()][state.dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get())])
+    state.sim_mdl_dpd.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="nswe", columnspan = 2)
 
 # refresh ent texts
 def update_ent_text(var, string):
@@ -7165,7 +7159,7 @@ def set_language():
     # simple mode
     sim_dir_lbl.configure(text = t('sim_dir_lbl'))
     sim_dir_btn.configure(text = t('browse'))
-    sim_dir_pth.configure(text = t('sim_dir_pth'))
+    state.sim_dir_pth.configure(text = t('sim_dir_pth'))
     sim_mdl_lbl.configure(text = t('sim_mdl_lbl'))
     update_sim_mdl_dpd()
     sim_spp_lbl.configure(text = t('sim_spp_lbl'))
@@ -7213,7 +7207,7 @@ def update_frame_states():
         disable_frame(trd_step)
     
     # if in timelapse mode, always disable trd and fth step
-    if timelapse_mode:
+    if state.timelapse_mode:
         disable_frame(trd_step)
         disable_frame(fth_step)    
 
@@ -7285,10 +7279,8 @@ def enable_widgets(frame):
             child.configure(state=NORMAL)
 
 # show warning for absolute paths option
-shown_abs_paths_warning = True
 def abs_paths_warning():
-    global shown_abs_paths_warning
-    if var_abs_paths.get() and shown_abs_paths_warning:
+    if var_abs_paths.get() and state.shown_abs_paths_warning:
         mb.showinfo(t('warning'), ["It is not recommended to use absolute paths in the output file. Third party software (such "
                     "as Timelapse) will not be able to read the json file if the paths are absolute. Only enable"
                     " this option if you know what you are doing.",
@@ -7298,7 +7290,7 @@ def abs_paths_warning():
                     "Il n'est pas recommandé d'utiliser des chemin absolus dans le fichier de sortie. Des logiciels tiers (tel "
                     "que Timelapse) ne seront pas en mesure de lire le fichier JSON si les chemins sont absolus. N'activer cette "
                     "option que si vous savez ce que vous faites."][i18n_lang_idx()])
-        shown_abs_paths_warning = False
+        state.shown_abs_paths_warning = False
 
 # toggle image size entry box
 def toggle_image_size_for_deploy():
@@ -7432,10 +7424,7 @@ def toggle_vid_frame():
 
 # convert frame to completed
 def complete_frame(frame):
-    global check_mark_one_row
-    global check_mark_two_rows
-
-    # check which frame 
+    # check which frame
     any_step = frame.cget('text').startswith(' ' + t('step'))
     fst_step = frame.cget('text').startswith(' ' + t('step') + ' 1')
     snd_step = frame.cget('text').startswith(' ' + t('step') + ' 2')
@@ -7453,8 +7442,8 @@ def complete_frame(frame):
 
     if trd_step or fst_step:
         # add check mark
-        lbl_check_mark = Label(frame, image=check_mark_one_row)
-        lbl_check_mark.image = check_mark_one_row
+        lbl_check_mark = Label(frame, image=state.check_mark_one_row)
+        lbl_check_mark.image = state.check_mark_one_row
         lbl_check_mark.grid(row=0, column=0, rowspan=15, columnspan=2, sticky='nesw')
         if trd_step:
             btn_hitl_main.configure(text=t('new_session'), state = NORMAL)
@@ -7471,8 +7460,8 @@ def complete_frame(frame):
             frame.configure(fg=green_primary)
 
         # add check mark
-        lbl_check_mark = Label(frame, image=check_mark_two_rows)
-        lbl_check_mark.image = check_mark_two_rows
+        lbl_check_mark = Label(frame, image=state.check_mark_two_rows)
+        lbl_check_mark.image = state.check_mark_two_rows
         lbl_check_mark.grid(row=0, column=0, rowspan=15, columnspan=2, sticky='nesw')
 
         # add buttons
@@ -7608,31 +7597,25 @@ def resize_canvas_to_content():
 
 # functions to delete the grey text in the entry boxes for the...
 # ... image size for deploy
-image_size_for_deploy_init = True
 def image_size_for_deploy_focus_in(_):
-    global image_size_for_deploy_init
-    if image_size_for_deploy_init and not var_image_size_for_deploy.get().isdigit():
+    if state.image_size_for_deploy_init and not var_image_size_for_deploy.get().isdigit():
         ent_image_size_for_deploy.delete(0, tk.END)
         ent_image_size_for_deploy.configure(fg='black')
-    image_size_for_deploy_init = False
+    state.image_size_for_deploy_init = False
 
 # ... checkpoint frequency
-checkpoint_freq_init = True
 def checkpoint_freq_focus_in(_):
-    global checkpoint_freq_init
-    if checkpoint_freq_init and not var_checkpoint_freq.get().isdigit():
+    if state.checkpoint_freq_init and not var_checkpoint_freq.get().isdigit():
         ent_checkpoint_freq.delete(0, tk.END)
         ent_checkpoint_freq.configure(fg='black')
-    checkpoint_freq_init = False
+    state.checkpoint_freq_init = False
 
 # ... nth frame
-nth_frame_init = True
 def nth_frame_focus_in(_):
-    global nth_frame_init
-    if nth_frame_init and not var_nth_frame.get().isdigit():
+    if state.nth_frame_init and not var_nth_frame.get().isdigit():
         ent_nth_frame.delete(0, tk.END)
         ent_nth_frame.configure(fg='black')
-    nth_frame_init = False
+    state.nth_frame_init = False
 
 # check current status, switch to opposite and save
 def switch_mode():
@@ -7693,7 +7676,7 @@ def reset_values():
     var_exp_format.set(t('dpd_exp_format')[global_vars['var_exp_format_idx']])
     
     write_global_vars(AddaxAI_files, {
-        "var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
+        "var_det_model_idx": state.dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
         "var_det_model_path": var_det_model_path.get(),
         "var_det_model_short": var_det_model_short.get(),
         "var_exclude_subs": var_exclude_subs.get(),
@@ -7933,10 +7916,10 @@ adv_spacer_bottom = customtkinter.CTkFrame(advanc_main_frame, height=PADY, fg_co
 adv_spacer_bottom.grid(column=0, row=5, columnspan=2, sticky='ew')
 
 # prepare check mark for later use
-check_mark_one_row = PIL_checkmark.resize((20, 20), Image.Resampling.LANCZOS)
-check_mark_one_row = ImageTk.PhotoImage(check_mark_one_row)
-check_mark_two_rows = PIL_checkmark.resize((45, 45), Image.Resampling.LANCZOS)
-check_mark_two_rows = ImageTk.PhotoImage(check_mark_two_rows)
+state.check_mark_one_row = PIL_checkmark.resize((20, 20), Image.Resampling.LANCZOS)
+state.check_mark_one_row = ImageTk.PhotoImage(state.check_mark_one_row)
+state.check_mark_two_rows = PIL_checkmark.resize((45, 45), Image.Resampling.LANCZOS)
+state.check_mark_two_rows = ImageTk.PhotoImage(state.check_mark_two_rows)
 
 # grey top buttons
 adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_switch_mode'), command = switch_mode, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
@@ -8009,15 +7992,16 @@ snd_step.columnconfigure(1, weight=1, minsize=widget_width)
 # check which detectors are installed
 det_models = fetch_known_models(DET_DIR)
 dpd_options_model = [det_models + ["Custom model"], det_models + ["Otro modelo"], det_models + ["Modèle personnalisé"]]
+state.dpd_options_model = dpd_options_model
 
 # choose detector
 row_model = 0
 lbl_model = Label(master=snd_step, text=t('lbl_model'), width=1, anchor="w")
 lbl_model.grid(row=row_model, sticky='nesw', pady=2)
-var_det_model.set(dpd_options_model[i18n_lang_idx()][global_vars["var_det_model_idx"]]) # take idx instead of string
+var_det_model.set(state.dpd_options_model[i18n_lang_idx()][global_vars["var_det_model_idx"]]) # take idx instead of string
 var_det_model_short.set(global_vars["var_det_model_short"])
 var_det_model_path.set(global_vars["var_det_model_path"])
-dpd_model = OptionMenu(snd_step, var_det_model, *dpd_options_model[i18n_lang_idx()], command=model_options)
+dpd_model = OptionMenu(snd_step, var_det_model, *state.dpd_options_model[i18n_lang_idx()], command=model_options)
 dpd_model.configure(width=1)
 dpd_model.grid(row=row_model, column=1, sticky='nesw', padx=5)
 dsp_model = Label(master=snd_step, textvariable=var_det_model_short, fg=green_primary)
@@ -8027,13 +8011,14 @@ if var_det_model_short.get() != "":
 # check if user has classifiers installed
 cls_models = fetch_known_models(CLS_DIR)
 dpd_options_cls_model = [["None"] + cls_models, ["Ninguno"] + cls_models, ["Aucun"] + cls_models]
+state.dpd_options_cls_model = dpd_options_cls_model
 
 # use classifier
 row_cls_model = 1
 lbl_cls_model = Label(snd_step, text=t('lbl_cls_model'), width=1, anchor="w")
 lbl_cls_model.grid(row=row_cls_model, sticky='nesw', pady=2)
-var_cls_model.set(dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_model_idx"]]) # take idx instead of string
-dpd_cls_model = OptionMenu(snd_step, var_cls_model, *dpd_options_cls_model[i18n_lang_idx()], command=model_cls_animal_options)
+var_cls_model.set(state.dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_model_idx"]]) # take idx instead of string
+dpd_cls_model = OptionMenu(snd_step, var_cls_model, *state.dpd_options_cls_model[i18n_lang_idx()], command=model_cls_animal_options)
 dpd_cls_model.configure(width=1, state=DISABLED)
 dpd_cls_model.grid(row=row_cls_model, column=1, sticky='nesw', padx=5, pady=2)
 
@@ -8575,14 +8560,18 @@ sim_btn_reset_values = _sim['btn_reset_values']
 sim_dir_lbl = _sim['dir_lbl']
 sim_dir_btn = _sim['dir_btn']
 sim_dir_pth = _sim['dir_pth']
+state.sim_dir_pth = sim_dir_pth
 sim_mdl_lbl = _sim['mdl_lbl']
 sim_mdl_dpd = _sim['mdl_dpd']
+state.sim_mdl_dpd = sim_mdl_dpd
 sim_mdl_frm = _sim['mdl_frm']
 sim_spp_lbl = _sim['spp_lbl']
 sim_spp_scr = _sim['spp_scr']
+state.sim_spp_scr = sim_spp_scr
 sim_spp_frm = _sim['spp_frm']
 sim_spp_scr_height = _sim['spp_scr_height']
 sim_dpd_options_cls_model = _sim['dpd_options_cls_model']
+state.sim_dpd_options_cls_model = sim_dpd_options_cls_model
 sim_run_btn = _sim['run_btn']
 state.sim_run_btn = sim_run_btn
 sim_abo_lbl = _sim['abo_lbl']
@@ -8597,16 +8586,14 @@ def main():
     parser = argparse.ArgumentParser(description="AddaxAI GUI")
     parser.add_argument('--timelapse-path', type=str, help="Path to the timelapse folder")
     args = parser.parse_args()
-    global timelapse_mode
-    global timelapse_path
-    timelapse_mode = False
-    timelapse_path = ""
+    state.timelapse_mode = False
+    state.timelapse_path = ""
     if args.timelapse_path:
-        timelapse_mode = True
-        timelapse_path = os.path.normpath(args.timelapse_path)
-        var_choose_folder.set(timelapse_path)
-        dsp_timelapse_path = shorten_path(timelapse_path, 25)
-        sim_dir_pth.configure(text = dsp_timelapse_path, text_color = "black")
+        state.timelapse_mode = True
+        state.timelapse_path = os.path.normpath(args.timelapse_path)
+        var_choose_folder.set(state.timelapse_path)
+        dsp_timelapse_path = shorten_path(state.timelapse_path, 25)
+        state.sim_dir_pth.configure(text = dsp_timelapse_path, text_color = "black")
         var_choose_folder_short.set(dsp_timelapse_path)
         dsp_choose_folder.grid(column=0, row=row_choose_folder, sticky="w")
 
@@ -8628,7 +8615,7 @@ def main():
     switch_mode()
 
     # update frame states if we already have a timelapse path
-    if timelapse_mode:
+    if state.timelapse_mode:
         update_frame_states()
 
     if scale_factor != 1.0:
