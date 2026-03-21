@@ -16,7 +16,7 @@ import sys
 from subprocess import Popen
 
 
-def cancel_subprocess(process):
+def cancel_subprocess(process: Popen) -> None:
     """Kill a running subprocess in an OS-appropriate way.
 
     Args:
@@ -28,7 +28,7 @@ def cancel_subprocess(process):
         os.killpg(os.getpgid(process.pid), signal.SIGTERM)
 
 
-def switch_yolov5_version(model_type, base_path):
+def switch_yolov5_version(model_type: str, base_path: str) -> None:
     """Switch YOLOv5 version by modifying Python import paths.
 
     Args:
@@ -56,7 +56,7 @@ def switch_yolov5_version(model_type, base_path):
         os.environ["PYTHONPATH"] = prefix + current_pythonpath
 
 
-def imitate_object_detection_for_full_image_classifier(chosen_folder):
+def imitate_object_detection_for_full_image_classifier(chosen_folder: str) -> None:
     """Create a synthetic detection JSON for full-image classifiers.
 
     Generates an image_recognition_file.json where every image has a

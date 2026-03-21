@@ -9,11 +9,12 @@ import json
 import os
 import platform
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import requests
 
 
-def fetch_known_models(root_dir):
+def fetch_known_models(root_dir: str) -> List[str]:
     """List known model subdirectories, sorted alphabetically.
 
     Args:
@@ -28,7 +29,7 @@ def fetch_known_models(root_dir):
     ])
 
 
-def set_up_unknown_model(title, model_dict, model_type, base_path):
+def set_up_unknown_model(title: str, model_dict: Dict[str, Any], model_type: str, base_path: str) -> None:
     """Create a model directory and write its variables.json.
 
     Does not download the model weights — just registers the model
@@ -62,7 +63,7 @@ def set_up_unknown_model(title, model_dict, model_type, base_path):
                 pass
 
 
-def distribute_individual_model_jsons(model_info_fpath, base_path):
+def distribute_individual_model_jsons(model_info_fpath: str, base_path: str) -> None:
     """Read a master model_info.json and create per-model directories.
 
     For each model in the "det" and "cls" sections, calls
@@ -86,7 +87,7 @@ def distribute_individual_model_jsons(model_info_fpath, base_path):
             )
 
 
-def is_first_startup(base_path):
+def is_first_startup(base_path: str) -> bool:
     """Check whether this is the first startup since install.
 
     Args:
@@ -98,7 +99,7 @@ def is_first_startup(base_path):
     return os.path.exists(os.path.join(base_path, "first-startup.txt"))
 
 
-def remove_first_startup_file(base_path):
+def remove_first_startup_file(base_path: str) -> None:
     """Delete the first-startup sentinel file.
 
     Args:
@@ -110,7 +111,7 @@ def remove_first_startup_file(base_path):
     os.remove(os.path.join(base_path, "first-startup.txt"))
 
 
-def environment_needs_downloading(model_vars, base_path):
+def environment_needs_downloading(model_vars: Dict[str, Any], base_path: str) -> Tuple[bool, str]:
     """Check whether a model's conda environment needs downloading.
 
     Resolves the OS-specific environment name from model_vars, then
