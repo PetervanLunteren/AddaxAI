@@ -206,6 +206,7 @@ from addaxai.ui.dialogs.info_frames import ModelInfoFrame as model_info_frame, D
 from addaxai.ui.dialogs.progress import ProgressWindow
 from addaxai.ui.advanced.help_tab import HyperlinkManager, write_help_tab
 from addaxai.ui.advanced.about_tab import write_about_tab
+from addaxai.ui.simple.simple_window import build_simple_mode, sim_dir_show_info, sim_spp_show_info, sim_mdl_show_info
 
 # log pythonpath
 print(sys.path)
@@ -6508,30 +6509,10 @@ def open_keep_series_species_selection():
 
 
 
-def sim_dir_show_info():
-    mb.showinfo(title = t('information'),
-                message = ["Select the images to analyse", "Seleccionar las imágenes a analizar", "Sélectionner les images à analyser"][i18n_lang_idx()],
-                detail = ["Here you can select a folder containing camera trap images. It will process all images it can find, also in subfolders."
-                          " Switch to advanced mode for more options.", " Aquí puede seleccionar una carpeta que contenga imágenes de cámaras trampa."
-                          " Procesará todas las imágenes que encuentre, también en las subcarpetas. Cambia al modo avanzado para más opciones.",
-                          "Ici vous pouvez choisir un dossier contenant les images des pièges photographiques. Toutes les images trouvées, incluant celles "
-                          "dans les sous-dossiers seront traitées. Utiliser le mode avancé pour plus d'options."][i18n_lang_idx()])
 
 def callback(url):
     webbrowser.open_new(url)
 
-def sim_spp_show_info():
-    mb.showinfo(title = t('information'),
-                message = ["Select the species that are present", "Seleccione las especies presentes", "Sélection des espèces présentes"][i18n_lang_idx()],
-                detail = ["Here, you can select and deselect the animals categories that are present in your project"
-                          " area. If the animal category is not selected, it will be excluded from the results. The "
-                          "category list will update according to the model selected.", "Aquí puede seleccionar y anular"
-                          " la selección de las categorías de animales presentes en la zona de su proyecto. Si la "
-                          "categoría de animales no está seleccionada, quedará excluida de los resultados. La lista de "
-                          "categorías se actualizará según el modelo seleccionado.",
-                          "Ici, vous pouvez sélectionner/désélectionner les catégories d'espèces présentes dans la zone de votre projet."
-                          " Si une catégorie n'est pas sélectionnée, elle sera exclue des résultats. La liste de catégories sera mise-à-jour en "
-                          "fonction du modèle sélectionné."][i18n_lang_idx()])
 
 def on_spp_selection():
     selected_classes = sim_spp_scr.get_checked_items()
@@ -6539,20 +6520,6 @@ def on_spp_selection():
     write_model_vars(new_values = {"selected_classes": selected_classes})
     dsp_choose_classes.configure(text = f"{len(selected_classes)} of {len(all_classes)}")
 
-def sim_mdl_show_info():
-    if var_cls_model.get() == t('none'):
-        mb.showinfo(title = t('information'),
-                    message = ["Select the model to identify animals", "Seleccione el modelo para identificar animales", "Sélectionner le modèle d'identification d'animaux"][i18n_lang_idx()],
-                    detail = ["Here, you can choose a model that can identify your target species. If you select ‘None’, it will find vehicles,"
-                              " people, and animals, but will not further identify them. When a model is selected, press this button again to "
-                              "read more about the model in question.", "Aquí, puede elegir un modelo que pueda identificar su especie objetivo."
-                              " Si selecciona 'Ninguno', encontrará vehículos, personas y animales, pero no los identificará más. Cuando haya "
-                              "seleccionado un modelo, vuelva a pulsar este botón para obtener más información sobre el modelo en cuestión.",
-                              "Ici, vous pouvez choisir un modèle qui identifie les espèces cibles. Si vous sélectionnez ‘Aucun’, il trouvera les "
-                              "véhicules, les personnes et les animaux, mais sans les identifier. Lorsqu'un modèle est sélectionné, cliquer sur ce "
-                              "bouton à nouveau pour obtenir plus d'information sur ce dernier."][i18n_lang_idx()])
-    else:
-        show_model_info()
 
 
 def checkbox_frame_event():
@@ -8590,111 +8557,52 @@ hyperlink = HyperlinkManager(about_text)
 
 write_about_tab(about_text, hyperlink, text_font=text_font, scroll=scroll)
 
-# SIMPLE MODE WINDOW 
-dir_image = customtkinter.CTkImage(PIL_dir_image, size=(ICON_SIZE, ICON_SIZE))
-mdl_image = customtkinter.CTkImage(PIL_mdl_image, size=(ICON_SIZE, ICON_SIZE))
-spp_image = customtkinter.CTkImage(PIL_spp_image, size=(ICON_SIZE, ICON_SIZE))
-run_image = customtkinter.CTkImage(PIL_run_image, size=(ICON_SIZE, ICON_SIZE))
-
+# SIMPLE MODE WINDOW
 # set the global appearance for the app
 customtkinter.set_appearance_mode("light")
 customtkinter.set_default_color_theme(os.path.join(AddaxAI_files, "AddaxAI", "themes", "addaxai.json"))
 
-# set up window
-simple_mode_win = customtkinter.CTkToplevel(root)
-simple_mode_win.title(f"AddaxAI v{current_AA_version} - "+t('simple_mode'))
-simple_mode_win.geometry("+20+20")
-simple_mode_win.protocol("WM_DELETE_WINDOW", on_toplevel_close)
-simple_mode_win.columnconfigure(0, weight=1, minsize=500)
-main_label_font = customtkinter.CTkFont(family='CTkFont', size=14, weight = 'bold')
-simple_bg_image = customtkinter.CTkImage(PIL_sidebar, size=(SIM_WINDOW_WIDTH, SIM_WINDOW_HEIGHT))
-simple_bg_image_label = customtkinter.CTkLabel(simple_mode_win, image=simple_bg_image)
-simple_bg_image_label.grid(row=0, column=0)
-simple_main_frame = customtkinter.CTkFrame(simple_mode_win, corner_radius=0, fg_color = 'transparent')
-simple_main_frame.grid(row=0, column=0, sticky="ns")
-simple_mode_win.withdraw() # only show when all widgets are loaded
-
-# logo
-sim_top_banner = customtkinter.CTkImage(PIL_logo_incl_text, size=(LOGO_WIDTH, LOGO_HEIGHT))
-customtkinter.CTkLabel(simple_main_frame, text="", image = sim_top_banner).grid(column=0, row=0, columnspan=2, sticky='ew', pady=(PADY, 0), padx=0)
-
-# top buttons
-sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = t('sim_btn_switch_mode'), command = switch_mode, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
-sim_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
-sim_btn_switch_lang = GreyTopButton(master = simple_main_frame, text = "Switch language", command = set_language, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
-sim_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
-sim_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = t('adv_btn_reset_values'), command = reset_values, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
-sim_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
-
-# choose folder
-sim_dir_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
-sim_dir_frm_1.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nswe")
-sim_dir_img_widget = customtkinter.CTkLabel(sim_dir_frm_1, text="", image = dir_image, compound = 'left')
-sim_dir_img_widget.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
-sim_dir_frm = MySubFrame(master=sim_dir_frm_1)
-sim_dir_frm.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_dir_lbl = customtkinter.CTkLabel(sim_dir_frm, text=t('sim_dir_lbl'), font = main_label_font)
-sim_dir_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
-sim_dir_inf = InfoButton(master = sim_dir_frm, text = "?", command = sim_dir_show_info)
-sim_dir_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
-sim_dir_btn = customtkinter.CTkButton(sim_dir_frm, text=t('browse'), width = 1, command = lambda: [browse_dir(var_choose_folder, var_choose_folder_short, dsp_choose_folder, 25, row_choose_folder, 0, 'w', source_dir = True), update_frame_states()])
-sim_dir_btn.grid(row=1, column=0, padx=(PADX, PADX/2), pady=(0, PADY), sticky="nswe")
-sim_dir_pth_frm = MySubSubFrame(master=sim_dir_frm)
-sim_dir_pth_frm.grid(row=1, column=1, padx=(PADX/2, PADX), pady=(0, PADY), sticky="nesw")
-sim_dir_pth = customtkinter.CTkLabel(sim_dir_pth_frm, text=t('sim_dir_pth'), text_color = "grey")
-sim_dir_pth.pack()
-
-# choose model
-sim_mdl_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
-sim_mdl_frm_1.grid(row=3, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-sim_mdl_img_widget = customtkinter.CTkLabel(sim_mdl_frm_1, text="", image = mdl_image, compound = 'left')
-sim_mdl_img_widget.grid(row=1, column=0, padx=PADX, pady=PADY, sticky="nswe")
-sim_mdl_frm = MySubFrame(master=sim_mdl_frm_1)
-sim_mdl_frm.grid(row=1, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_mdl_lbl = customtkinter.CTkLabel(sim_mdl_frm, text=t('sim_mdl_lbl'), font = main_label_font)
-sim_mdl_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
-sim_mdl_inf = InfoButton(master = sim_mdl_frm, text = "?", command = sim_mdl_show_info)
-sim_mdl_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
-# convert to more elaborate dpd value for the 'None' simple mode option
-sim_dpd_options_cls_model = [[item[0] + suffixes_for_sim_none[i], *item[1:]] for i, item in enumerate(dpd_options_cls_model)]
-sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=sim_dpd_options_cls_model[i18n_lang_idx()], command=sim_mdl_dpd_callback, width = 1)
-sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_model_idx"]]) # take idx instead of string
-sim_mdl_dpd.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="nswe", columnspan = 2)
-
-# select animals
-sim_spp_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
-sim_spp_frm_1.grid(row=4, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-sim_spp_img_widget = customtkinter.CTkLabel(sim_spp_frm_1, text="", image = spp_image, compound = 'left')
-sim_spp_img_widget.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nswe")
-sim_spp_frm = MySubFrame(master=sim_spp_frm_1, width=1000)
-sim_spp_frm.grid(row=2, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_spp_lbl = customtkinter.CTkLabel(sim_spp_frm, text=t('sim_spp_lbl'), font = main_label_font, text_color = 'grey')
-sim_spp_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
-sim_spp_inf = InfoButton(master = sim_spp_frm, text = "?", command = sim_spp_show_info)
-sim_spp_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
-sim_spp_scr_height = 238
-sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
-sim_spp_scr._scrollbar.configure(height=0)
-sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
-
-# deploy button
-sim_run_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
-sim_run_frm_1.grid(row=5, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-sim_run_img_widget = customtkinter.CTkLabel(sim_run_frm_1, text="", image = run_image, compound = 'left')
-sim_run_img_widget.grid(row=3, column=0, padx=PADX, pady=PADY, sticky="nswe")
-sim_run_frm = MySubFrame(master=sim_run_frm_1, width=1000)
-sim_run_frm.grid(row=3, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-sim_run_btn = customtkinter.CTkButton(sim_run_frm, text=t('sim_run_btn'), command=lambda: start_deploy(simple_mode = True))
-sim_run_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe", columnspan = 2)
-
-# about
-sim_abo_lbl = tk.Label(simple_main_frame, text=t('adv_abo_lbl'), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
-sim_abo_lbl.grid(row=6, column=0, columnspan = 2, sticky="")
-sim_abo_lbl_link = tk.Label(simple_main_frame, text="addaxdatascience.com", cursor="hand2", font = Font(size = ADDAX_TXT_SIZE, underline=1), fg=green_primary, bg =yellow_primary)
-sim_abo_lbl_link.grid(row=7, column=0, columnspan = 2, sticky="", pady=(0, PADY))
-sim_abo_lbl_link.bind("<Button-1>", lambda e: callback("http://addaxdatascience.com"))
+_sim = build_simple_mode(
+    root=root, version=current_AA_version, addaxai_files=AddaxAI_files,
+    scale_factor=scale_factor, padx=PADX, pady=PADY,
+    yellow_primary=yellow_primary, green_primary=green_primary,
+    icon_size=ICON_SIZE, logo_width=LOGO_WIDTH, logo_height=LOGO_HEIGHT,
+    sim_window_width=SIM_WINDOW_WIDTH, sim_window_height=SIM_WINDOW_HEIGHT,
+    addax_txt_size=ADDAX_TXT_SIZE,
+    pil_sidebar=PIL_sidebar, pil_logo_incl_text=PIL_logo_incl_text,
+    pil_dir_image=PIL_dir_image, pil_mdl_image=PIL_mdl_image,
+    pil_spp_image=PIL_spp_image, pil_run_image=PIL_run_image,
+    on_toplevel_close=on_toplevel_close, switch_mode=switch_mode,
+    set_language=set_language, sponsor_project=sponsor_project,
+    reset_values=reset_values, browse_dir_func=browse_dir,
+    update_frame_states=update_frame_states,
+    start_deploy_func=start_deploy, sim_mdl_dpd_callback=sim_mdl_dpd_callback,
+    var_choose_folder=var_choose_folder, var_choose_folder_short=var_choose_folder_short,
+    dsp_choose_folder=dsp_choose_folder, row_choose_folder=row_choose_folder,
+    dpd_options_cls_model=dpd_options_cls_model, suffixes_for_sim_none=suffixes_for_sim_none,
+    global_vars=global_vars, var_cls_model=var_cls_model,
+    show_model_info_func=show_model_info,
+    yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary,
+    grey_button_border_width=GREY_BUTTON_BORDER_WIDTH,
+)
+simple_mode_win = _sim['window']
+sim_btn_switch_mode = _sim['btn_switch_mode']
+sim_btn_switch_lang = _sim['btn_switch_lang']
+sim_btn_sponsor = _sim['btn_sponsor']
+sim_btn_reset_values = _sim['btn_reset_values']
+sim_dir_lbl = _sim['dir_lbl']
+sim_dir_btn = _sim['dir_btn']
+sim_dir_pth = _sim['dir_pth']
+sim_mdl_lbl = _sim['mdl_lbl']
+sim_mdl_dpd = _sim['mdl_dpd']
+sim_mdl_frm = _sim['mdl_frm']
+sim_spp_lbl = _sim['spp_lbl']
+sim_spp_scr = _sim['spp_scr']
+sim_spp_frm = _sim['spp_frm']
+sim_spp_scr_height = _sim['spp_scr_height']
+sim_dpd_options_cls_model = _sim['dpd_options_cls_model']
+sim_run_btn = _sim['run_btn']
+sim_abo_lbl = _sim['abo_lbl']
 
 # resize deploy tab to content
 resize_canvas_to_content()
