@@ -102,12 +102,13 @@ Extracted 58 functions (~1,378 lines) into 12 modules, then wired them back in:
 - [x] 2.5: Update `set_language()` to call `i18n_set_language()` so `t()` works
 - [x] 2.6: Remove `lang_idx` global — all language state goes through `addaxai.i18n`
 
-### Phase 3: Restructure UI
-- [ ] 3.1: Extract dialog classes (ProgressWindow, etc.)
-- [ ] 3.2: Extract reusable widgets
-- [ ] 3.3: Extract advanced mode tabs
-- [ ] 3.4: Extract simple mode window
-- [ ] 3.5: Create AppWindow class wrapping module-level UI code
+### Phase 3: Restructure UI (DONE)
+- [x] 3.1: Extract widget classes to `addaxai/ui/widgets/`
+- [x] 3.2: Extract dialog classes to `addaxai/ui/dialogs/`
+- [x] 3.3: Extract ProgressWindow to `addaxai/ui/dialogs/progress.py`
+- [x] 3.4: Extract help tab content to `addaxai/ui/advanced/help_tab.py`
+- [x] 3.5: Extract about tab content to `addaxai/ui/advanced/about_tab.py`
+- [x] 3.6: Extract simple mode window to `addaxai/ui/simple/simple_window.py`
 
 ### Phase 4: Kill Global State
 - [ ] 4.1: Create AppState class holding all tkinter variables
@@ -249,19 +250,19 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 ## Current Status
 
 **Branch:** `refactor/modularize`
-**Tests:** 152 passing, 3 skipped (optional deps: cv2, matplotlib)
+**Tests:** 205 passing, 3 skipped (optional deps: cv2, matplotlib)
 **Python (tests):** `C:\Users\Topam\AppData\Local\Python\bin\python.exe` (3.14)
 **Python (GUI):** `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe`
 **Installed test deps:** pytest, Pillow, numpy, pandas, requests
 
-**Phase 2 fully complete!** AddaxAI_GUI.py reduced from 10,414 → 10,323 lines.
-- `lang_idx` global eliminated — all language state in `addaxai.i18n`
-- 110 JSON keys in `en.json` / `es.json` / `fr.json`
-- All `_txt` arrays, `dpd_options_*` arrays, and major inline arrays replaced with `t()`
-- Remaining `[i18n_lang_idx()]` patterns: complex help-text paragraphs, download dialog,
-  deploy-progress local arrays — these use the index but are dynamically constructed
+**Phase 3 fully complete!** AddaxAI_GUI.py reduced from 10,323 → 8,624 lines (~1,700 lines removed).
+- 7 widget/dialog/tab classes extracted to `addaxai/ui/widgets/`, `addaxai/ui/dialogs/`, `addaxai/ui/advanced/`, `addaxai/ui/simple/`
+- All extracted classes importable and testable without customtkinter (stub base class pattern)
+- `SpeciesNetOutputWindow` (325 lines, deeply entangled) remains in `AddaxAI_GUI.py` — deferred to Phase 4
+- GUI smoke test passes at every step; language switching and mode switching work
 
-**Next:** Phase 3 (restructure UI) — extract dialog classes, tabs, widgets.
+**Next:** Phase 4 (kill global state) — create AppState class, pass to components, remove `global` declarations.
+See "Phase 4: Kill Global State" above for steps.
 
 ## Phase 2: Localization — Detailed Implementation Plan
 
@@ -543,3 +544,649 @@ After all `[lang_idx]` usages are replaced with `t()` calls:
 - All translations live in 3 JSON files (~300 keys each)
 - Adding a 4th language = adding one JSON file + one entry in `_LANG_CODES`
 - `lang_idx` global eliminated
+
+## Phase 3: Restructure UI — Detailed Implementation Plan
+
+### Overview
+
+Phase 3 extracts UI classes from the 10,323-line `AddaxAI_GUI.py` into the `addaxai/ui/` package.
+The goal is **mechanical extraction only** — move existing classes/code to separate files, parameterize
+any globals they reference, then import them back. No behavioral changes.
+
+**Current state of `addaxai/ui/`:**
+```
+ui/
+├── __init__.py          (empty)
+├── advanced/
+│   └── __init__.py      (empty)
+├── dialogs/
+│   └── __init__.py      (empty)
+├── simple/
+│   └── __init__.py      (empty)
+└── widgets/
+    └── __init__.py      (empty)
+```
+
+### Key Globals Referenced by UI Classes
+
+All classes currently access these module-level variables from `AddaxAI_GUI.py`. When extracting,
+each must be passed as a parameter (typically to `__init__`) or imported:
+
+| Variable | What it is | Used by |
+|----------|-----------|---------|
+| `root` | Main `customtkinter.CTk()` window | All dialog classes (parent window) |
+| `scale_factor` | DPI scaling multiplier (float) | `MyMainFrame`, `EnvDownloadProgressWindow`, `ModelDownloadProgressWindow`, `ProgressWindow`, `model_info_frame`, `donation_popup_frame` |
+| `PADX`, `PADY` | Padding constants (ints) | All widget/dialog classes |
+| `green_primary` | Color hex string | `EnvDownloadProgressWindow`, `ModelDownloadProgressWindow`, `ProgressWindow` |
+| `yellow_primary`, `yellow_secondary`, `yellow_tertiary` | Color hex strings | `GreyTopButton` |
+| `GREY_BUTTON_BORDER_WIDTH` | Border width int | `GreyTopButton` |
+| `i18n_lang_idx()`, `t()` | Localization functions | `EnvDownloadProgressWindow`, `ModelDownloadProgressWindow`, `ProgressWindow`, `PatienceDialog`, `SpeciesSelectionFrame` |
+| `CancelButton` | Button class | `ProgressWindow` (uses it internally) |
+| `bring_window_to_top_but_not_for_ever()` | Utility function | `TextButtonWindow`, `show_result_info()` |
+
+### Strategy: Pass Globals as Parameters
+
+**For constants** (`PADX`, `PADY`, `scale_factor`, colors): Create a `UIConstants` namedtuple or
+simple class and pass it to constructors. This avoids 6+ individual parameters.
+
+```python
+# addaxai/ui/widgets/constants.py
+from collections import namedtuple
+
+UIConstants = namedtuple('UIConstants', [
+    'PADX', 'PADY', 'scale_factor',
+    'green_primary', 'yellow_primary', 'yellow_secondary', 'yellow_tertiary',
+    'GREY_BUTTON_BORDER_WIDTH',
+])
+```
+
+**For `root`**: Pass as the `master` / first positional argument (already done for most classes).
+
+**For `t()` and `i18n_lang_idx()`**: Import directly from `addaxai.i18n` — these are already a module.
+
+### Step-by-Step Execution
+
+---
+
+#### Step 3.1: Extract Widget Classes → `addaxai/ui/widgets/` (1 commit)
+
+**What to extract** (all from `AddaxAI_GUI.py`):
+
+| Class | Lines | Description |
+|-------|-------|-------------|
+| `MyMainFrame` | 6492–6500 | CTkFrame with 2-column layout, respects `scale_factor` |
+| `MySubFrame` | 6502–6506 | CTkFrame with 2×250px columns |
+| `MySubSubFrame` | 6508–6510 | Plain CTkFrame subclass |
+| `InfoButton` | 6512–6519 | Styled CTkButton (grey, no hover, small) |
+| `CancelButton` | 7309–7316 | Styled CTkButton for cancel actions |
+| `GreyTopButton` | 8730–8738 | Styled CTkButton for top toolbar |
+| `SpeciesSelectionFrame` | 6572–6599 | Scrollable checkbox list for species |
+
+**Target files:**
+
+1. `addaxai/ui/widgets/constants.py` — `UIConstants` namedtuple
+2. `addaxai/ui/widgets/frames.py` — `MyMainFrame`, `MySubFrame`, `MySubSubFrame`
+3. `addaxai/ui/widgets/buttons.py` — `InfoButton`, `CancelButton`, `GreyTopButton`
+4. `addaxai/ui/widgets/species_selection.py` — `SpeciesSelectionFrame`
+
+**Detailed instructions for each class:**
+
+**`MyMainFrame`** (lines 6492–6500):
+```python
+# BEFORE in AddaxAI_GUI.py:
+class MyMainFrame(customtkinter.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        if scale_factor != 1.0:  # <-- references global scale_factor
+            self.columnconfigure(0, weight=1, minsize=70 * round(scale_factor * 1.35, 2))
+            self.columnconfigure(1, weight=1, minsize=350 * round(scale_factor * 1.35, 2))
+        else:
+            self.columnconfigure(0, weight=1, minsize=70)
+            self.columnconfigure(1, weight=1, minsize=350)
+
+# AFTER in addaxai/ui/widgets/frames.py:
+import customtkinter
+
+class MyMainFrame(customtkinter.CTkFrame):
+    def __init__(self, master, scale_factor=1.0, **kwargs):
+        super().__init__(master, **kwargs)
+        if scale_factor != 1.0:
+            self.columnconfigure(0, weight=1, minsize=70 * round(scale_factor * 1.35, 2))
+            self.columnconfigure(1, weight=1, minsize=350 * round(scale_factor * 1.35, 2))
+        else:
+            self.columnconfigure(0, weight=1, minsize=70)
+            self.columnconfigure(1, weight=1, minsize=350)
+```
+
+**`MySubFrame`** (lines 6502–6506): No globals — move as-is.
+
+**`MySubSubFrame`** (lines 6508–6510): No globals — move as-is.
+
+**`InfoButton`** (lines 6512–6519): No globals — move as-is.
+
+**`CancelButton`** (lines 7309–7316): No globals — move as-is.
+
+**`GreyTopButton`** (lines 8730–8738):
+```python
+# BEFORE: references yellow_secondary, yellow_tertiary, GREY_BUTTON_BORDER_WIDTH globals
+class GreyTopButton(customtkinter.CTkButton):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.configure(fg_color = (yellow_secondary, "#333333"),
+                       hover_color = (yellow_tertiary, "#2B2B2B"),
+                       text_color = ("black", "white"),
+                       height = 10, width = 140,
+                       border_width=GREY_BUTTON_BORDER_WIDTH)
+
+# AFTER: add color params with defaults
+class GreyTopButton(customtkinter.CTkButton):
+    def __init__(self, master, yellow_secondary="#F5E6A3", yellow_tertiary="#EBD98A",
+                 border_width=0, **kwargs):
+        super().__init__(master, **kwargs)
+        self.configure(fg_color = (yellow_secondary, "#333333"),
+                       hover_color = (yellow_tertiary, "#2B2B2B"),
+                       text_color = ("black", "white"),
+                       height = 10, width = 140,
+                       border_width=border_width)
+```
+NOTE: Look up the actual color hex values for `yellow_secondary` and `yellow_tertiary` in
+`AddaxAI_GUI.py` (search for `yellow_secondary =` near the top). Use those as defaults.
+
+**`SpeciesSelectionFrame`** (lines 6572–6599): References `i18n_lang_idx()` and `PADY`:
+```python
+# AFTER in addaxai/ui/widgets/species_selection.py:
+import customtkinter
+from addaxai.i18n import lang_idx as i18n_lang_idx
+
+class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
+    def __init__(self, master, all_classes=[], selected_classes=[], command=None,
+                 dummy_spp=False, pady=2, **kwargs):
+        super().__init__(master, **kwargs)
+        self.dummy_spp = dummy_spp
+        if dummy_spp:
+            all_classes = [f"{['Species', 'Especies', 'Espèces'][i18n_lang_idx()]} {i + 1}" for i in range(10)]
+        self.command = command
+        self.checkbox_list = []
+        self.selected_classes = selected_classes
+        for item in all_classes:
+            self.add_item(item, pady)
+    # ... rest of methods, pass pady through
+```
+
+**Wiring back in `AddaxAI_GUI.py`:**
+```python
+# At top of file, add:
+from addaxai.ui.widgets.frames import MyMainFrame, MySubFrame, MySubSubFrame
+from addaxai.ui.widgets.buttons import InfoButton, CancelButton, GreyTopButton
+from addaxai.ui.widgets.species_selection import SpeciesSelectionFrame
+
+# Delete the original class definitions (lines 6492–6519, 6572–6599, 7309–7316, 8730–8738)
+
+# Update MyMainFrame calls to pass scale_factor:
+#   MyMainFrame(master=simple_main_frame) → MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
+# Update GreyTopButton calls to pass colors:
+#   GreyTopButton(master=...) → GreyTopButton(master=..., yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
+```
+
+**Tests** (`tests/test_ui_widgets.py`):
+- Import all 7 classes without error (no tkinter needed — just verify import)
+- Verify `MyMainFrame.__init__` accepts `scale_factor` keyword
+- Verify `GreyTopButton.__init__` accepts color keywords
+- Verify `SpeciesSelectionFrame.__init__` accepts `dummy_spp` keyword
+
+**Commit**: `refactor: extract widget classes to addaxai/ui/widgets/ (Phase 3.1)`
+
+---
+
+#### Step 3.2: Extract Dialog Classes → `addaxai/ui/dialogs/` (1 commit)
+
+**What to extract:**
+
+| Class | Lines | Globals Referenced |
+|-------|-------|--------------------|
+| `TextButtonWindow` | 7121–7155 | `root`, `bring_window_to_top_but_not_for_ever()` |
+| `PatienceDialog` | 7158–7187 | `root`, `t()` |
+| `CustomWindow` | 7190–7208 | `root` |
+| `EnvDownloadProgressWindow` | 6605–6677 | `root`, `scale_factor`, `PADX`, `PADY`, `i18n_lang_idx()`, `green_primary`, `CancelButton`, `open_nosleep_page()` |
+| `ModelDownloadProgressWindow` | 6680–6721 | Same as above minus nosleep |
+| `model_info_frame` | 6980–6984 | `scale_factor` |
+| `donation_popup_frame` | 6987–6990 | `scale_factor` |
+| `SpeciesNetOutputWindow` | 4632–4957 | Complex — many globals. **SKIP for now.** |
+
+**SKIP `SpeciesNetOutputWindow`** — it's 325 lines with deep entanglement (references
+`deploy_speciesnet`, subprocess management, `progress_window`, multiple tkinter vars). Extract
+it in Phase 4 when global state is being killed.
+
+**Target files:**
+
+1. `addaxai/ui/dialogs/text_button.py` — `TextButtonWindow`
+2. `addaxai/ui/dialogs/patience.py` — `PatienceDialog`
+3. `addaxai/ui/dialogs/custom_window.py` — `CustomWindow`
+4. `addaxai/ui/dialogs/download_progress.py` — `EnvDownloadProgressWindow`, `ModelDownloadProgressWindow`
+5. `addaxai/ui/dialogs/info_frames.py` — `model_info_frame`, `donation_popup_frame`
+
+**Detailed instructions:**
+
+**`TextButtonWindow`** (lines 7121–7155): References `root` and `bring_window_to_top_but_not_for_ever`.
+```python
+# AFTER in addaxai/ui/dialogs/text_button.py:
+import customtkinter
+import tkinter as tk
+
+class TextButtonWindow:
+    def __init__(self, title, text, buttons, master=None, bring_to_top_func=None):
+        self.root = customtkinter.CTkToplevel(master)
+        self.root.title(title)
+        self.root.geometry("+10+10")
+        if bring_to_top_func:
+            bring_to_top_func(self.root)
+        # ... rest identical ...
+```
+
+**`PatienceDialog`** (lines 7158–7187): References `root` and `t()`.
+```python
+# AFTER in addaxai/ui/dialogs/patience.py:
+import customtkinter
+import tkinter as tk
+from tkinter import ttk
+import math
+from addaxai.i18n import t
+
+class PatienceDialog:
+    def __init__(self, total, text, master=None):
+        self.root = customtkinter.CTkToplevel(master)
+        self.root.title(t('be_patient'))
+        # ... rest identical ...
+```
+
+**`CustomWindow`** (lines 7190–7208): References `root`.
+```python
+# AFTER: add master parameter
+class CustomWindow:
+    def __init__(self, title="", text="", master=None):
+        self.title = title
+        self.text = text
+        self._master = master
+        self.root = None
+
+    def open(self):
+        self.root = customtkinter.CTkToplevel(self._master)
+        # ... rest identical ...
+```
+
+**`EnvDownloadProgressWindow`** (lines 6605–6677) and **`ModelDownloadProgressWindow`** (lines 6680–6721):
+These two are similar. Both reference `root`, `scale_factor`, `PADX`, `PADY`, `i18n_lang_idx()`,
+`green_primary`, and `CancelButton`.
+
+```python
+# AFTER in addaxai/ui/dialogs/download_progress.py:
+import customtkinter
+from addaxai.i18n import lang_idx as i18n_lang_idx
+from addaxai.ui.widgets.buttons import CancelButton
+
+class EnvDownloadProgressWindow:
+    def __init__(self, env_title, total_size_str, master=None, scale_factor=1.0,
+                 padx=5, pady=2, green_primary="#00A86B", open_nosleep_func=None):
+        self.dm_root = customtkinter.CTkToplevel(master)
+        # Replace PADX/PADY with padx/pady params
+        # Replace scale_factor global with param
+        # Replace green_primary global with param
+        # Replace open_nosleep_page with open_nosleep_func param
+        # ... rest of __init__ identical but using params ...
+```
+
+Apply the same pattern for `ModelDownloadProgressWindow`.
+
+**`model_info_frame`** and **`donation_popup_frame`** (lines 6980–6990):
+```python
+# AFTER in addaxai/ui/dialogs/info_frames.py:
+import customtkinter
+
+class ModelInfoFrame(customtkinter.CTkFrame):  # Renamed to PascalCase
+    def __init__(self, master, scale_factor=1.0, **kwargs):
+        super().__init__(master, **kwargs)
+        self.columnconfigure(0, weight=1, minsize=120 * scale_factor)
+        self.columnconfigure(1, weight=1, minsize=500 * scale_factor)
+
+class DonationPopupFrame(customtkinter.CTkFrame):  # Renamed to PascalCase
+    def __init__(self, master, scale_factor=1.0, **kwargs):
+        super().__init__(master, **kwargs)
+        self.columnconfigure(0, weight=1, minsize=500 * scale_factor)
+```
+
+**Wiring back in `AddaxAI_GUI.py`:**
+```python
+# Add imports at top:
+from addaxai.ui.dialogs.text_button import TextButtonWindow
+from addaxai.ui.dialogs.patience import PatienceDialog
+from addaxai.ui.dialogs.custom_window import CustomWindow
+from addaxai.ui.dialogs.download_progress import EnvDownloadProgressWindow, ModelDownloadProgressWindow
+from addaxai.ui.dialogs.info_frames import ModelInfoFrame as model_info_frame, DonationPopupFrame as donation_popup_frame
+
+# Delete original class definitions
+# Update all constructor calls to pass required params:
+#   TextButtonWindow(title, text, buttons) → TextButtonWindow(title, text, buttons, master=root, bring_to_top_func=bring_window_to_top_but_not_for_ever)
+#   PatienceDialog(total, text) → PatienceDialog(total, text, master=root)
+#   CustomWindow(title, text) → CustomWindow(title, text, master=root)
+#   EnvDownloadProgressWindow(env_title, size) → EnvDownloadProgressWindow(env_title, size, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary, open_nosleep_func=open_nosleep_page)
+#   ModelDownloadProgressWindow(model_title, size) → ModelDownloadProgressWindow(model_title, size, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary)
+#   model_info_frame(master) → model_info_frame(master, scale_factor=scale_factor)
+#   donation_popup_frame(master) → donation_popup_frame(master, scale_factor=scale_factor)
+```
+
+**Tests** (`tests/test_ui_dialogs.py`):
+- Import all classes without error
+- Verify each `__init__` signature accepts `master` keyword
+- Verify `EnvDownloadProgressWindow.__init__` accepts `scale_factor`, `padx`, `pady`, `green_primary` keywords
+- Verify `ModelInfoFrame` and `DonationPopupFrame` accept `scale_factor` keyword
+
+**Commit**: `refactor: extract dialog classes to addaxai/ui/dialogs/ (Phase 3.2)`
+
+---
+
+#### Step 3.3: Extract ProgressWindow → `addaxai/ui/dialogs/progress.py` (1 commit)
+
+This is separated from 3.2 because `ProgressWindow` (lines 7319–8037) is ~718 lines — the single
+largest class in the file. It creates up to 7 process panels (img_det, img_cls, vid_det, vid_cls,
+img_pst, vid_pst, plt) each with progress bars, labels, and cancel buttons.
+
+**Globals referenced:**
+- `root` (implicitly — `CTkToplevel()` with no parent, add `master` param)
+- `scale_factor`, `PADX`, `PADY`, `green_primary` (layout/colors)
+- `i18n_lang_idx()`, `t()` (translations)
+- `CancelButton` class (now imported from `addaxai.ui.widgets.buttons`)
+
+**Target file**: `addaxai/ui/dialogs/progress.py`
+
+**Extraction approach:**
+```python
+# addaxai/ui/dialogs/progress.py
+import customtkinter
+from addaxai.i18n import t, lang_idx as i18n_lang_idx
+from addaxai.ui.widgets.buttons import CancelButton
+
+class ProgressWindow:
+    def __init__(self, processes, master=None, scale_factor=1.0, padx=5, pady=2,
+                 green_primary="#00A86B"):
+        self.progress_top_level_window = customtkinter.CTkToplevel(master)
+        # Replace all bare PADX/PADY with self.padx/self.pady (already stored as self.padx_progress_window etc.)
+        # Replace scale_factor global with param
+        # Replace green_primary global with param
+        # ... rest of __init__ is identical but parameterized ...
+
+    def update_values(self, ...):
+        # This method is ~350 lines. Move as-is.
+        # It only references i18n_lang_idx() and self.* attributes — no additional globals.
+        pass
+
+    def update_progress(self, ...):
+        # Move as-is — references green_primary for color changes
+        pass
+
+    def close(self):
+        self.progress_top_level_window.destroy()
+```
+
+**IMPORTANT**: The `ProgressWindow.__init__` has local translation arrays like
+`in_queue_txt = ['In queue', 'En cola', ...]` that use `[i18n_lang_idx()]`. These are NOT yet
+migrated to `t()` (Phase 2 left complex local arrays alone). Move them as-is for now — they work
+via `i18n_lang_idx()` import.
+
+Similarly, `update_values()` has ~12 local translation arrays. Move them as-is.
+
+**Wiring:**
+```python
+# In AddaxAI_GUI.py, replace the class with:
+from addaxai.ui.dialogs.progress import ProgressWindow
+
+# Update the 2 places ProgressWindow is instantiated:
+#   ProgressWindow(processes) → ProgressWindow(processes, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary)
+# Search for "ProgressWindow(" to find all call sites.
+```
+
+**Tests** (`tests/test_ui_progress.py`):
+- Import `ProgressWindow` without error
+- Verify `__init__` signature accepts `master`, `scale_factor`, `padx`, `pady`, `green_primary`
+- Verify class has `update_values`, `update_progress`, `close` methods
+
+**Commit**: `refactor: extract ProgressWindow to addaxai/ui/dialogs/progress.py (Phase 3.3)`
+
+---
+
+#### Step 3.4: Extract Help Tab → `addaxai/ui/advanced/help_tab.py` (1 commit)
+
+**What to extract:** The `write_help_tab()` function (lines 9601–10088) which populates the help
+tab with formatted text and hyperlinks. Also the `HyperlinkManager` class (lines 8302–8330).
+
+**Globals referenced by `write_help_tab()`:**
+- `help_text` (the `tk.Text` widget — created at ~line 9003, passed via global)
+- `help_tab` (the tab frame)
+- `HyperlinkManager` class
+- `i18n_lang_idx()` — used extensively for help text language selection
+- `text_font` — font name string
+- `callback()` (line 6530) — opens URLs in browser
+
+**Globals referenced by `HyperlinkManager`:** None — it's self-contained.
+
+**Target file**: `addaxai/ui/advanced/help_tab.py`
+
+```python
+# addaxai/ui/advanced/help_tab.py
+import tkinter as tk
+import webbrowser
+from addaxai.i18n import lang_idx as i18n_lang_idx
+
+class HyperlinkManager:
+    # Move lines 8302-8330 as-is — no globals needed
+    pass
+
+def write_help_tab(help_text_widget, text_font="TkDefaultFont"):
+    """Populate the help tab text widget with formatted content.
+
+    Args:
+        help_text_widget: tk.Text widget to write into
+        text_font: Font family name string
+    """
+    # Move the body of write_help_tab() (lines 9602-10088)
+    # Replace bare `help_text` with `help_text_widget` parameter
+    # Replace `callback` with inline `webbrowser.open_new`
+    # i18n_lang_idx() is imported from addaxai.i18n
+    pass
+```
+
+**Wiring:**
+```python
+# In AddaxAI_GUI.py:
+from addaxai.ui.advanced.help_tab import write_help_tab, HyperlinkManager
+
+# Delete the HyperlinkManager class (lines 8302-8330)
+# Delete write_help_tab function definition (lines 9601-10088)
+# The call at line ~9601 becomes:
+#   write_help_tab(help_text, text_font=text_font)
+# (The call site already exists — just update the function reference)
+```
+
+**Tests** (`tests/test_ui_help_tab.py`):
+- Import `HyperlinkManager` and `write_help_tab` without error
+- Verify `write_help_tab` accepts `help_text_widget` and `text_font` params
+- Verify `HyperlinkManager.__init__` accepts a `text` param
+
+**Commit**: `refactor: extract help tab to addaxai/ui/advanced/help_tab.py (Phase 3.4)`
+
+---
+
+#### Step 3.5: Extract About Tab → `addaxai/ui/advanced/about_tab.py` (1 commit)
+
+**What to extract:** The `write_about_tab()` function (lines 10101–10152).
+
+**Globals referenced:**
+- `about_text` (tk.Text widget)
+- `i18n_lang_idx()`
+- `text_font`, `current_AA_version`
+- `callback()` — opens URLs
+
+**Target file**: `addaxai/ui/advanced/about_tab.py`
+
+```python
+# addaxai/ui/advanced/about_tab.py
+import webbrowser
+from addaxai.i18n import lang_idx as i18n_lang_idx
+
+def write_about_tab(about_text_widget, version="", text_font="TkDefaultFont"):
+    """Populate the about tab text widget with formatted content."""
+    # Move body of write_about_tab() (lines 10102-10152)
+    # Replace bare `about_text` with `about_text_widget` parameter
+    # Replace `current_AA_version` with `version` parameter
+    pass
+```
+
+**Wiring:**
+```python
+from addaxai.ui.advanced.about_tab import write_about_tab
+
+# Delete write_about_tab function definition
+# Update call: write_about_tab() → write_about_tab(about_text, version=current_AA_version, text_font=text_font)
+```
+
+**Tests** (`tests/test_ui_about_tab.py`):
+- Import `write_about_tab` without error
+- Verify signature accepts `about_text_widget`, `version`, `text_font`
+
+**Commit**: `refactor: extract about tab to addaxai/ui/advanced/about_tab.py (Phase 3.5)`
+
+---
+
+#### Step 3.6: Extract Simple Mode → `addaxai/ui/simple/simple_window.py` (1 commit)
+
+**What to extract:** The simple mode window construction code (lines 10154–10258) and the
+3 info-button callback functions that are simple-mode-specific:
+- `sim_dir_show_info()` (line 6521)
+- `sim_spp_show_info()` (line 6533)
+- `sim_mdl_show_info()` (line 6552)
+
+**This is the highest-risk step** because the simple mode widget construction is module-level code
+(not inside a function/class), and the resulting widgets are referenced by other functions
+(`set_language`, `switch_mode`, `update_frame_states`, `start_deploy`, `sim_mdl_dpd_callback`).
+
+**Strategy:** Wrap in a `build_simple_mode(master, ...)` function that constructs all widgets and
+returns them as a namespace/dict. The caller stores the result and updates the global references.
+
+```python
+# addaxai/ui/simple/simple_window.py
+import os
+import customtkinter
+import tkinter as tk
+from tkinter.font import Font
+from addaxai.i18n import t, lang_idx as i18n_lang_idx
+from addaxai.ui.widgets.frames import MyMainFrame, MySubFrame, MySubSubFrame
+from addaxai.ui.widgets.buttons import InfoButton, GreyTopButton
+from addaxai.ui.widgets.species_selection import SpeciesSelectionFrame
+
+def sim_dir_show_info():
+    # Move lines 6521-6528
+    pass
+
+def sim_spp_show_info():
+    # Move lines 6533-6545
+    pass
+
+def sim_mdl_show_info():
+    # Move lines 6552-6567
+    pass
+
+def build_simple_mode(root, version, addaxai_files, scale_factor, padx, pady,
+                      yellow_primary, green_primary, icon_size, logo_width, logo_height,
+                      sim_window_width, sim_window_height, addax_txt_size,
+                      pil_sidebar, pil_logo_incl_text, pil_dir_image, pil_mdl_image,
+                      pil_spp_image, pil_run_image,
+                      on_toplevel_close, switch_mode, set_language, sponsor_project,
+                      reset_values, browse_dir_func, update_frame_states,
+                      start_deploy_func, sim_mdl_dpd_callback,
+                      var_choose_folder, var_choose_folder_short, dsp_choose_folder,
+                      row_choose_folder, dpd_options_cls_model, suffixes_for_sim_none,
+                      global_vars):
+    """Build the simple mode window and all its widgets.
+
+    Returns a dict of all widget references that other code needs.
+    """
+    # Move lines 10154-10258, parameterizing all globals
+    # Return dict with keys for every widget referenced elsewhere:
+    # 'window', 'main_frame', 'btn_switch_mode', 'btn_switch_lang', 'btn_sponsor',
+    # 'btn_reset_values', 'dir_lbl', 'dir_btn', 'dir_pth', 'mdl_lbl', 'mdl_dpd',
+    # 'spp_lbl', 'spp_scr', 'run_btn', 'abo_lbl'
+    pass
+```
+
+**IMPORTANT — why this is risky:** The simple mode widgets are referenced in at least these places:
+- `set_language()` (~line 8088) — reconfigures `sim_btn_switch_mode`, `sim_dir_lbl`, `sim_mdl_lbl`, etc.
+- `switch_mode()` (line 8706) — calls `simple_mode_win.deiconify()` / `.withdraw()`
+- `update_frame_states()` (line 8213) — updates `sim_dir_pth`, `sim_spp_lbl`, `sim_spp_scr`
+- `start_deploy()` — references `sim_run_btn`
+- `sim_mdl_dpd_callback()` — references `sim_spp_scr`, `sim_spp_lbl`
+- `update_sim_mdl_dpd()` — references `sim_mdl_dpd`
+- `main()` — references `sim_dir_pth`
+
+After `build_simple_mode()` returns the widget dict, assign each to the existing global names:
+```python
+# In AddaxAI_GUI.py, replace lines 10154-10258 with:
+_sim = build_simple_mode(root=root, version=current_AA_version, ...)
+simple_mode_win = _sim['window']
+sim_btn_switch_mode = _sim['btn_switch_mode']
+sim_dir_lbl = _sim['dir_lbl']
+# ... etc for every widget referenced elsewhere ...
+```
+
+This preserves all existing global references so `set_language()`, `switch_mode()`, etc. continue
+working unchanged.
+
+**Tests** (`tests/test_ui_simple.py`):
+- Import `build_simple_mode`, `sim_dir_show_info`, `sim_spp_show_info`, `sim_mdl_show_info` without error
+- Verify `build_simple_mode` signature has all required params (use `inspect.signature`)
+- Verify `sim_dir_show_info` is callable
+
+**Commit**: `refactor: extract simple mode to addaxai/ui/simple/simple_window.py (Phase 3.6)`
+
+---
+
+### Verification After Each Step
+
+1. `.venv/Scripts/python -m pytest tests/ -v` — all tests pass (Python 3.14)
+2. `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_smoke.py -v` — GUI starts without crash
+3. Manual: launch via `dev_launch.py`, verify:
+   - Advanced mode renders correctly (all 3 tabs)
+   - Simple mode renders correctly
+   - Language switching works (cycle EN→ES→FR→EN)
+   - Mode switching works (advanced ↔ simple)
+   - Progress window appears when running a deploy (if possible to test)
+
+### Risk Assessment
+
+| Step | Risk | Reason |
+|------|------|--------|
+| 3.1 (widgets) | **Low** | Self-contained classes, minimal globals, clear boundaries |
+| 3.2 (dialogs) | **Low** | Self-contained classes, `master` param is standard pattern |
+| 3.3 (ProgressWindow) | **Medium** | Large class (718 lines), many translation arrays, but well-encapsulated |
+| 3.4 (help tab) | **Low** | Single function, clear inputs/outputs |
+| 3.5 (about tab) | **Low** | Single function, very small |
+| 3.6 (simple mode) | **High** | Module-level code, widgets referenced by 7+ other functions, complex wiring |
+
+**Mitigation:** Each step is one commit. If the GUI breaks, `git revert` the last commit.
+Do steps 3.1–3.5 first (low risk) to build confidence before tackling 3.6 (high risk).
+
+### Expected Outcome
+
+- `AddaxAI_GUI.py` loses ~1,200–1,500 lines of class/function definitions
+- 18 classes → 11 remain in `AddaxAI_GUI.py` (the 7 extracted + `SpeciesNetOutputWindow` stays)
+- `addaxai/ui/` goes from 5 empty `__init__.py` files to 12+ populated modules
+- All UI components are importable and testable independently
+- No behavioral changes — the app works identically
+
+### What Phase 3 Does NOT Do
+
+- Does NOT extract the deploy tab widget construction (~1,100 lines, lines 9014–9574). This is
+  deeply entangled with dozens of globals (tkinter vars, callback functions, model lists). It will
+  be handled in Phase 4 alongside global state elimination.
+- Does NOT extract `set_language()`, `switch_mode()`, `update_frame_states()`, or other functions
+  that orchestrate across multiple windows. These stay in `AddaxAI_GUI.py` until Phase 4.
+- Does NOT rename `model_info_frame`/`donation_popup_frame` to PascalCase in `AddaxAI_GUI.py` —
+  uses `import ... as` aliases to preserve existing call sites.
