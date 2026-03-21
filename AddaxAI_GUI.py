@@ -209,9 +209,13 @@ from addaxai.ui.advanced.help_tab import HyperlinkManager, write_help_tab
 from addaxai.ui.advanced.about_tab import write_about_tab
 from addaxai.ui.simple.simple_window import build_simple_mode, sim_dir_show_info, sim_spp_show_info, sim_mdl_show_info
 from addaxai.core.state import AppState
+from addaxai.core.logging import setup_logging
+
+import logging
+logger = logging.getLogger("addaxai.gui")
 
 # log pythonpath
-print(sys.path)
+logger.debug("sys.path: %s", sys.path)
 
 # set DPI awareness on Windows
 scale_factor = 1.0
@@ -243,7 +247,7 @@ suffixes_for_sim_none = [" - just show me where the animals are",
 # post-process files
 def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type, keep_series_species=None):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # update progress window
     state.progress_window.update_values(process = f"{data_type}_pst", status = "load")
@@ -1216,7 +1220,7 @@ dpd_options_sppnet_location = countries
 # open progress window and initiate the post-process progress window
 def start_postprocess():
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # save settings for next time
     write_global_vars(AddaxAI_files, {
@@ -2318,7 +2322,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
 # get the images and xmls from annotation session and store them with unique filename
 def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file, hitl_final_window):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # choose destination
     dst_dir = filedialog.askdirectory()
@@ -2585,7 +2589,7 @@ def fetch_taxon_mapping_df():
 # take MD json and classify detections
 def classify_detections(json_fpath, data_type, simple_mode = False):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # show user it's loading
     state.progress_window.update_values(process = f"{data_type}_cls", status = "load")
@@ -2785,7 +2789,7 @@ def cancel_deployment(process):
 # deploy model and create json output files
 def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode = False):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
     
     # note if user is video analysing without smoothing
     if (var_cls_model.get() != t('none')) and \
@@ -3161,7 +3165,7 @@ def model_needs_downloading(model_vars, model_type):
 # open progress window and initiate the model deployment
 def start_deploy(simple_mode = False):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # check if there are any images or videos in the folder
     chosen_folder = var_choose_folder.get()
@@ -4251,7 +4255,7 @@ def fetch_confs_per_class(json_fpath):
 # open the human-in-the-loop settings window
 def open_hitl_settings_window():
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # TODO: this window pops up behind the main AddaxAI window on windows OS. place in front, or hide AddaxAI frame.
 
@@ -4638,7 +4642,7 @@ def on_toplevel_close():
 # temporary function to deploy speciesnet
 def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
     
     # prepare variables
     chosen_folder = str(Path(chosen_folder))
@@ -4954,7 +4958,7 @@ def browse_file(var, var_short, var_path, dsp, filetype, cut_off_length, options
 # extract label map from custom model
 def extract_label_map_from_model(model_file):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # import module from cameratraps dir
     from cameratraps.megadetector.detection.pytorch_detector import PTDetector
@@ -5077,7 +5081,7 @@ def check_checkpnt():
 # browse directory
 def browse_dir(var, var_short, dsp, cut_off_length, n_row, n_column, str_sticky, source_dir = False):    
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # choose directory
     chosen_dir = filedialog.askdirectory()
@@ -5102,7 +5106,7 @@ def browse_dir(var, var_short, dsp, cut_off_length, n_row, n_column, str_sticky,
 # choose a custom classifier for animals
 def model_cls_animal_options(self):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # set simple mode cls dropdown to the same index for its own dpd list
     state.sim_mdl_dpd.set(state.sim_dpd_options_cls_model[i18n_lang_idx()][state.dpd_options_cls_model[i18n_lang_idx()].index(self)])
@@ -5295,7 +5299,7 @@ def toggle_tax_levels_dpd_options():
 # load a custom yolov5 model
 def model_options(self):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
    
     # if custom model is selected
     if var_det_model.get() == t('custom_model'):
@@ -5322,7 +5326,7 @@ def model_options(self):
 # view results after processing
 def view_results(frame):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
     print(f"frame text: {frame.cget('text')}\n")
     
     # convert path separators
@@ -5346,7 +5350,7 @@ def view_results(frame):
 # open file or folder
 def open_file_or_folder(path, show_error = True):
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
     
     # set language var
     error_opening_results_txt = ["Error opening results", "Error al abrir los resultados"]
@@ -5435,7 +5439,7 @@ def get_all_supported_model_classes(force_refresh: bool = False):
 def create_pie_chart(file_path, looks, st_angle = 45):
 
     # log
-    print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     df = pd.read_excel(file_path, sheet_name='summary')
     labels = df['label']
@@ -5483,7 +5487,7 @@ def create_pie_chart(file_path, looks, st_angle = 45):
 # this function downloads a json with model info and tells the user is there is a new model
 def fetch_latest_model_info():
     # log
-    print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # if this is the first time starting, take the existing model info file in the repo and use that
     # no need to download th same file again
@@ -6978,7 +6982,7 @@ def set_language():
     next_lang_idx = 0 if to_lang_idx + 1 >= len(languages_available) else to_lang_idx + 1
 
     # log
-    print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # update i18n module to the new language and persist
     i18n_set_language(to_lang_idx)
@@ -7190,7 +7194,7 @@ def remove_widgets_based_on_location(master, rows, cols):
 # set cancel variable to true
 def cancel():
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     state.cancel_var = True
 
@@ -7311,7 +7315,7 @@ def on_chb_smooth_cls_animal_change():
 # toggle classification subframe
 def toggle_cls_frame(): 
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # check the state of snd_step
     snd_step_enabled = False if snd_step.cget('fg') == 'grey80' else True
@@ -7553,7 +7557,7 @@ def nth_frame_focus_in(_):
 def switch_mode():
 
     # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
 
     # load
     advanced_mode = load_global_vars(AddaxAI_files)["advanced_mode"]
@@ -8559,6 +8563,9 @@ def main():
                  f"L'interface utilisateur d'AddaxAI est conçue pour une échelle de 100 %. Cependant, les paramètres de votre écran sont définis sur {int(scale_factor * 100)}%. Nous avons veillé à maintenir une apparence cohérente entre les différents paramètres d'échelle, mais cela peut néanmoins affecter l'apparence de l'application, entraînant une taille disproportionnée de certains éléments (comme les cases à cocher ou les fenêtres). Notez que ces différences visuelles n'affectent pas les fonctionnalités de l'application.\n\nCet avertissement n'apparaîtra qu'une seule fois."][i18n_lang_idx()]
             )
         write_global_vars(AddaxAI_files, {"var_scale_warning_shown": True})
+
+    # configure logging (writes to AddaxAI_files/addaxai.log)
+    setup_logging(log_dir=AddaxAI_files)
 
     # run
     root.mainloop()
