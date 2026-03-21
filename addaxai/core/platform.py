@@ -5,9 +5,10 @@ OS detection, Python interpreter lookup, and DPI awareness.
 
 import os
 import platform as _platform
+from typing import Optional
 
 
-def get_python_interpreter(base_path, env_name, system=None):
+def get_python_interpreter(base_path: str, env_name: str, system: Optional[str] = None) -> str:
     """Return the path to the Python interpreter for a given conda environment.
 
     Args:

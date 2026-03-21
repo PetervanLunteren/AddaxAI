@@ -6,9 +6,10 @@ All functions take an explicit base_path parameter instead of relying on globals
 
 import json
 import os
+from typing import Any, Dict, Optional
 
 
-def load_global_vars(base_path):
+def load_global_vars(base_path: str) -> Dict[str, Any]:
     """Load global variables from AddaxAI/global_vars.json.
 
     Args:
@@ -25,7 +26,7 @@ def load_global_vars(base_path):
         return json.load(file)
 
 
-def write_global_vars(base_path, new_values=None):
+def write_global_vars(base_path: str, new_values: Optional[Dict[str, Any]] = None) -> None:
     """Update global variables in AddaxAI/global_vars.json.
 
     Reads the existing file, merges new_values (if provided), and writes back.
@@ -48,7 +49,7 @@ def write_global_vars(base_path, new_values=None):
         json.dump(variables, file, indent=4)
 
 
-def load_model_vars_for(base_path, model_type, model_dir):
+def load_model_vars_for(base_path: str, model_type: str, model_dir: str) -> Dict[str, Any]:
     """Load variables.json for a specific model.
 
     Args:
