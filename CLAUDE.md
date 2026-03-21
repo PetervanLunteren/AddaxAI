@@ -94,13 +94,13 @@ Extracted 58 functions (~1,378 lines) into 12 modules, then wired them back in:
 - [x] 1.15: Wire Batch 3 — 7 functions needing `base_folder=var_choose_folder.get()`
 - [x] 1.16: Wire Batch 4 — 2 special cases (`cancel_subprocess` UI wrapper, `csv_to_coco` version arg)
 
-### Phase 2: Extract Localization
-- [ ] 2.1: Build i18n JSON files and `t()` function
-- [ ] 2.2: Replace module-level `_txt` variables with `t()` calls
-- [ ] 2.3: Replace `dpd_options_*` translation arrays with `t()` calls
-- [ ] 2.4: Replace inline anonymous `["En","Es","Fr"][lang_idx]` arrays with `t()` calls
-- [ ] 2.5: Update `set_language()` to use `t()` instead of array indexing
-- [ ] 2.6: Remove `lang_idx` global (replaced by `i18n.set_language()`)
+### Phase 2: Extract Localization (DONE)
+- [x] 2.1: Build i18n JSON files and `t()` function
+- [x] 2.2: Replace module-level `_txt` variables with `t()` calls (2.2a–2.2e)
+- [x] 2.3: Replace `dpd_options_*` translation arrays with `t()` calls
+- [x] 2.4: Replace inline anonymous `["En","Es","Fr"][lang_idx]` arrays with `t()` calls
+- [x] 2.5: Update `set_language()` to call `i18n_set_language()` so `t()` works
+- [x] 2.6: Remove `lang_idx` global — all language state goes through `addaxai.i18n`
 
 ### Phase 3: Restructure UI
 - [ ] 3.1: Extract dialog classes (ProgressWindow, etc.)
@@ -249,15 +249,19 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 ## Current Status
 
 **Branch:** `refactor/modularize`
-**Tests:** 133 passing, 3 skipped (optional deps: cv2, matplotlib)
+**Tests:** 152 passing, 3 skipped (optional deps: cv2, matplotlib)
 **Python (tests):** `C:\Users\Topam\AppData\Local\Python\bin\python.exe` (3.14)
 **Python (GUI):** `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe`
 **Installed test deps:** pytest, Pillow, numpy, pandas, requests
 
-**Phase 1 fully complete and wired!** AddaxAI_GUI.py reduced from 11,174 → 10,414 lines.
-58 functions now imported from `addaxai/` modules. GUI tested and working via `dev_launch.py`.
+**Phase 2 fully complete!** AddaxAI_GUI.py reduced from 10,414 → 10,323 lines.
+- `lang_idx` global eliminated — all language state in `addaxai.i18n`
+- 110 JSON keys in `en.json` / `es.json` / `fr.json`
+- All `_txt` arrays, `dpd_options_*` arrays, and major inline arrays replaced with `t()`
+- Remaining `[i18n_lang_idx()]` patterns: complex help-text paragraphs, download dialog,
+  deploy-progress local arrays — these use the index but are dynamically constructed
 
-**Next:** Phase 2 (localization) — extract ~662 `[lang_idx]` translation lookups into i18n system.
+**Next:** Phase 3 (restructure UI) — extract dialog classes, tabs, widgets.
 
 ## Phase 2: Localization — Detailed Implementation Plan
 
