@@ -7,7 +7,6 @@ later phase.
 """
 
 import io
-import os
 from typing import Any, Tuple
 
 from PIL import Image

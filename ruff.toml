@@ -1,0 +1,10 @@
+target-version = "py38"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W"]  # basic errors, pyflakes, warnings
+ignore = ["E501"]  # line length — not enforced yet
+
+[lint.per-file-ignores]
+"addaxai/ui/*" = ["E402", "E702"]  # late imports and semicolons OK in UI modules
+"addaxai/ui/**/*" = ["E402", "E702"]

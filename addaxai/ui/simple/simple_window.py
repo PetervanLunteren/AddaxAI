@@ -1,6 +1,5 @@
 """Simple mode window construction for AddaxAI."""
 
-import os
 import webbrowser
 import tkinter as tk
 from tkinter.font import Font

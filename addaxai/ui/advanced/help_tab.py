@@ -2,7 +2,7 @@
 
 import webbrowser
 from functools import partial
-from tkinter import END, INSERT, CURRENT, NORMAL, DISABLED
+from tkinter import END, INSERT, CURRENT, DISABLED
 from typing import Any, Dict, Optional, Tuple
 
 from addaxai.i18n import t, lang_idx as i18n_lang_idx
@@ -40,7 +40,7 @@ class HyperlinkManager:
 
 
 def write_help_tab(help_text_widget: Any, hyperlink: Any, text_font: str = "TkDefaultFont", scroll: Optional[Any] = None) -> None:
-    line_number = 1 
+    line_number = 1
 
     # intro sentence
     help_text_widget.insert(END, ["Below you can find detailed documentation for each setting. If you have any questions, feel free to contact me on ",
@@ -78,7 +78,7 @@ def write_help_tab(help_text_widget: Any, hyperlink: Any, text_font: str = "TkDe
         "it still needs community testing. Use it if you're willing to explore cutting-edge performance. 'MDv1000-spruce' is a smaller, faster model, but only use it if speed is a key requirement "
         "and you're confident about its trade-offs. In general, speed is rarely a bottleneck anymore, since even modest hardware can process tens of thousands of images per day. "
         "More info about MegaDetector models ",
-        
+
         "AddaxAI utiliza una combinación de un modelo de detección y un modelo de clasificación para identificar animales. El modelo de detección localizará al animal, mientras que el modelo de "
         "clasificación identificará a qué especie pertenece. Aquí puede seleccionar el modelo de detección que desea utilizar. Si selecciona la opción desplegable 'Modelo personalizado', se le "
         "pedirá que seleccione un archivo de modelo YOLOv5 personalizado. Los modelos 'MegaDetector' precargados detectan animales, personas y vehículos en imágenes de cámaras trampa. "
@@ -108,7 +108,7 @@ def write_help_tab(help_text_widget: Any, hyperlink: Any, text_font: str = "TkDe
     help_text_widget.insert(END, ["AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate the animal, whereas the "
                            "classification model will identify which species the animal belongs to. Here, you can select the classification model that you want to use. Each "
                            "classification model is developed for a specific area. Explore which model suits your data best, but please note that models developed for other biomes "
-                           "or projects do not necessarily perform equally well in other ecosystems. Always investigate the model’s accuracy on your data before accepting any results.", 
+                           "or projects do not necessarily perform equally well in other ecosystems. Always investigate the model’s accuracy on your data before accepting any results.",
                            "AddaxAI utiliza una combinación de un modelo de detección y un modelo de clasificación para identificar animales. El modelo de detección localizará al "
                            "animal, mientras que el modelo de clasificación identificará a qué especie pertenece el animal. Aquí puede seleccionar el modelo de clasificación que desea "
                            "utilizar. Cada modelo de clasificación se desarrolla para un área específica. Explore qué modelo se adapta mejor a sus datos, pero tenga en cuenta que los "
@@ -200,7 +200,7 @@ def write_help_tab(help_text_widget: Any, hyperlink: Any, text_font: str = "TkDe
         "This can improve overall prediction accuracy by avoiding uncertain species-level classifications. Note that some categories may not have species-level predictions at all — "
         "for example, if the model was trained on a broader class like 'bird', it will never predict individual bird species. "
         "This option is only available in models that have been adjusted to support taxonomic fallback.",
-        
+
         "Si está activado, el modelo recurrirá automáticamente a un nivel taxonómico superior (por ejemplo, género o familia) cuando su confianza en el nivel de especie sea baja. "
         "Esto puede mejorar la precisión general al evitar clasificaciones inciertas a nivel de especie. Tenga en cuenta que algunas categorías no tienen predicciones a nivel de especie — "
         "por ejemplo, si el modelo fue entrenado en una clase amplia como 'ave', nunca predecirá especies individuales de aves. "
@@ -226,7 +226,7 @@ def write_help_tab(help_text_widget: Any, hyperlink: Any, text_font: str = "TkDe
         "but may result in some predictions being skipped entirely if they don’t meet the threshold. "
         "Note that the availability of certain taxonomic levels (e.g., class, genus, species) depends on how the model was trained. If a level is not available for a given detection, "
         "the model will fall back to the closest broader category.",
-        
+
         "Esta opción le permite controlar el nivel de detalle de las predicciones del modelo. Por defecto, el modelo elegirá automáticamente el nivel taxonómico más adecuado "
         "(por ejemplo, especie, género o familia), en función de su confianza y de cómo se entrenó el modelo. También puede optar por forzar las predicciones a un nivel específico, "
         "como predecir siempre a nivel de familia o género, si están disponibles. Esto puede ser útil en aplicaciones en las que no se necesita una clasificación precisa "

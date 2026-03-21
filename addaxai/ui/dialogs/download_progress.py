@@ -85,7 +85,7 @@ class EnvDownloadProgressWindow:
         self.pbr_download.set(0)
         self.pbr_download.grid(row=2, column=0, padx=padx, pady=pady, sticky="nsew")
 
-        self.per_download = _CTkLabel(self.frm, text=f" 0% ", height=5,
+        self.per_download = _CTkLabel(self.frm, text=" 0% ", height=5,
                                       fg_color=("#949BA2", "#4B4D50"), text_color="white")
         self.per_download.grid(row=2, column=0, padx=padx, pady=pady, sticky="")
 
@@ -99,7 +99,7 @@ class EnvDownloadProgressWindow:
         self.pbr_extraction.set(0)
         self.pbr_extraction.grid(row=4, column=0, padx=padx, pady=pady, sticky="nsew")
 
-        self.per_extraction = _CTkLabel(self.frm, text=f" 0% ", height=5,
+        self.per_extraction = _CTkLabel(self.frm, text=" 0% ", height=5,
                                         fg_color=("#949BA2", "#4B4D50"), text_color="white")
         self.per_extraction.grid(row=4, column=0, padx=padx, pady=pady, sticky="")
 
@@ -168,7 +168,7 @@ class ModelDownloadProgressWindow:
         self.pbr.set(0)
         self.pbr.grid(row=1, column=0, padx=padx, pady=pady, sticky="nsew")
 
-        self.per = _CTkLabel(self.frm, text=f" 0% ", height=5,
+        self.per = _CTkLabel(self.frm, text=" 0% ", height=5,
                              fg_color=("#949BA2", "#4B4D50"), text_color="white")
         self.per.grid(row=1, column=0, padx=padx, pady=pady, sticky="")
 

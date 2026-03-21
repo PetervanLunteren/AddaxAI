@@ -32,3 +32,17 @@ jobs:
             --ignore=tests/test_gui_smoke.py \
             --ignore=tests/test_gui_integration.py \
             --ignore=tests/gui_test_runner.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install ruff
+
+      - name: Lint addaxai/
+        run: ruff check addaxai/

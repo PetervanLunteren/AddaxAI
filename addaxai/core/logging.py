@@ -2,7 +2,6 @@
 import logging
 import os
 import sys
-from typing import Optional
 
 
 def setup_logging(log_dir: str = "", level: int = logging.INFO) -> None:
