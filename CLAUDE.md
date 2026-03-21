@@ -127,11 +127,11 @@ Extracted 58 functions (~1,378 lines) into 12 modules, then wired them back in:
 - [x] 5.1d: Type hints — models/ modules
 - [x] 5.1e: Type hints — analysis/, i18n/, hitl/ modules
 - [x] 5.1f: Type hints — ui/ modules
-- [ ] 5.2a: Logging infrastructure (`addaxai/core/logging.py`)
-- [ ] 5.2b: Replace prints in addaxai/ modules
-- [ ] 5.2c: Replace debug trace prints in AddaxAI_GUI.py
-- [ ] 5.2d: Replace remaining prints in AddaxAI_GUI.py
-- [ ] 5.2e: Verify zero print() calls remain
+- [x] 5.2a: Logging infrastructure (`addaxai/core/logging.py`)
+- [x] 5.2b: Replace prints in addaxai/ modules
+- [x] 5.2c: Replace debug trace prints in AddaxAI_GUI.py
+- [x] 5.2d: Replace remaining prints in AddaxAI_GUI.py
+- [x] 5.2e: Verify zero print() calls remain
 - [ ] 5.3a: GitHub Actions workflow for unit tests
 - [ ] 5.3b: Add ruff linting to CI
 - [ ] 5.3c: Add mypy type checking to CI
@@ -267,7 +267,7 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 ## Current Status
 
 **Branch:** `refactor/modularize`
-**Unit tests:** 319 passing, 9 skipped (optional deps: cv2, matplotlib, customtkinter) — run with `.venv` Python 3.14
+**Unit tests:** 325 passing, 9 skipped (optional deps: cv2, matplotlib, customtkinter) — run with `.venv` Python 3.14
 **Integration tests:** 8 passing (Tier 1 + Tier 2) — run with env-base Python 3.8
 **GUI smoke test:** 1 passing — run with env-base Python 3.8
 **Python (tests):** `C:\Users\Topam\AppData\Local\Python\bin\python.exe` (3.14)
@@ -282,8 +282,9 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 - `SpeciesNetOutputWindow` extracted to `addaxai/ui/dialogs/speciesnet_output.py` (Phase 4.7)
 
 **Phase 5.1 complete** — all 39 `addaxai/` modules fully annotated with type hints (Python 3.8 compatible, `typing` module).
+**Phase 5.2 complete** — zero `print()` calls remain; all output goes through `logging`; `addaxai.log` written to `AddaxAI_files/` during GUI runs.
 
-**Next:** Phase 5.2a — logging infrastructure (`addaxai/core/logging.py`).
+**Next:** Phase 5.3a — GitHub Actions CI workflow for unit tests.
 
 ## Why AddaxAI_GUI.py Is Still ~8,570 Lines
 
