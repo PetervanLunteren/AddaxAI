@@ -216,8 +216,7 @@ global_vars = load_global_vars(AddaxAI_files)
 
 # language settings
 languages_available = ['English', 'Español', 'Français']
-lang_idx = global_vars["lang_idx"]
-i18n_init(lang_idx)
+i18n_init(global_vars["lang_idx"])
 # NOTE: suffixes_for_sim_none deferred to Step 2.3 (used in enumerate(dpd_options_cls_model))
 suffixes_for_sim_none = [" - just show me where the animals are",
                          " - muéstrame dónde están los animales",
@@ -260,7 +259,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                             f"La sesión de verificación aún no ha finalizado. Puede finalizarla haciendo clic en 'Continuar' en '{t('lbl_hitl_main')}', "
                             "o simplemente continuar con el posprocesamiento con los resultados tal como están ahora.\n\n¿Quieres continuar con el posprocesamiento?",
                             f"Votre session de vérification n'est pas encore terminée. Vous pouvez la compléter en cliquant sur '{t('lbl_hitl_main')}', "
-                            "ou juste continuer le post-traitement avec les résultats actuels.\n\nSouhaitez-vous continuer le post-traitement?"][lang_idx]):
+                            "ou juste continuer le post-traitement avec les résultats actuels.\n\nSouhaitez-vous continuer le post-traitement?"][i18n_lang_idx()]):
             return
 
     # init vars
@@ -362,7 +361,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                           "Le fichier XLSX que vous tenter de créer est trop long!\n\nLe nombre maximum de lignes dans un fichier XSLX est "
                           f"1048576, alors que vous tenter de créer une feuille avec {max(n_rows_files, n_rows_detections)} lignes.\n\nSi"
                           " vous souhaitez des résultats sous format XLSX, svp exécuter le processus sur de plus petites portions de sorte à ne pas "
-                          f"excéder la limite de lignes de Microsoft. Ou choisissez le format CSV comme {t('lbl_exp_format')} dans le mode avancé."][lang_idx])
+                          f"excéder la limite de lignes de Microsoft. Ou choisissez le format CSV comme {t('lbl_exp_format')} dans le mode avancé."][i18n_lang_idx()])
             return
 
     # loop through images
@@ -1209,7 +1208,7 @@ def start_postprocess():
 
     # save settings for next time
     write_global_vars(AddaxAI_files, {
-        "lang_idx": lang_idx,
+        "lang_idx": i18n_lang_idx(),
         "var_separate_files": var_separate_files.get(),
         "var_keep_series": var_keep_series.get(),
         "var_keep_series_seconds": var_keep_series_seconds.get(),
@@ -1266,7 +1265,7 @@ def start_postprocess():
                         "Carpeta de destino no establecida. No ha especificado dónde deben colocarse los resultados del postprocesamiento o la "
                         "carpeta establecida no existe. Esto opción es obligatoria.",
                         "Le répertoire de sortie n'est pas spécifié. Vous n'avez pas spécifié l'emplacement où enregistrer les résultats du post-traitement "
-                        "ou le répertoire n'existe pas. Ceci est obligatoire."][lang_idx])
+                        "ou le répertoire n'existe pas. Ceci est obligatoire."][i18n_lang_idx()])
         return
 
     # warn user if the original files will be overwritten with visualized files
@@ -1277,7 +1276,7 @@ def start_postprocess():
                       f"ATENCIÓN. Las imágenes visualizadas se colocarán en la carpeta con los datos originales: '{src_dir}'. Al hacer esto, se sobrescribirán las imágenes "
                       "originales con las visualizadas. La visualización es permanente y no se puede deshacer. ¿Está seguro de que desea continuar?",
                       f"ATTENTION ! Les images visualisées seront placées dans le dossier contenant les données d'origine : « {src_dir} ». Ce faisant, vous écraserez les images d'origine par celles visualisées. "
-                      "La visualisation est définitive et irréversible. Voulez-vous vraiment continuer ? "][lang_idx]):
+                      "La visualisation est définitive et irréversible. Voulez-vous vraiment continuer ? "][i18n_lang_idx()]):
             return
     
     # warn user if images will be moved and visualized
@@ -1288,7 +1287,7 @@ def start_postprocess():
                       "ATENCIÓN. Ha especificado visualizar las imágenes originales. La visualización es permanente y no puede deshacerse. Si no desea visualizar las "
                       f"imágenes originales, seleccione 'Copiar' como '{t('lbl_file_placement')}'. ¿Está seguro de que desea continuar con la configuración actual?",
                       "ATTENTION ! Vous avez spécifié de visualiser les images originales. La visualisation est définitive et irréversible. Si vous ne souhaitez pas visualiser les images originales, "
-                      f"sélectionnez « Copier » au format « {t('lbl_file_placement')} ». Voulez-vous vraiment conserver les paramètres actuels ?"][lang_idx]):
+                      f"sélectionnez « Copier » au format « {t('lbl_file_placement')} ». Voulez-vous vraiment conserver les paramètres actuels ?"][i18n_lang_idx()]):
             return
 
     # initialise progress window with processes
@@ -1322,7 +1321,7 @@ def start_postprocess():
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
                                                 f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
                                                 "Un ou plusieurs fichiers n'ont pas pu être analysés par le modèle (par exemple, des fichiers corrompus) et seront"
-                                                f"ignorés lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'info."][lang_idx])
+                                                f"ignorés lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'info."][i18n_lang_idx()])
 
         # close progress window
         progress_window.close()
@@ -1960,7 +1959,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
                      "seleccionados. Utilice el botón 'Actualizar recuentos' para ver cuántas imágenes necesita verificar con "
                      "los criterios seleccionados.",
                      "Il n'y a aucune image à vérifier selon les critères sélectionnés. Utilisez le bouton « Mettre à jour le nombre » pour " 
-                     "voir le nombre d'images à vérifier selon les critères sélectionnés."][lang_idx])
+                     "voir le nombre d'images à vérifier selon les critères sélectionnés."][i18n_lang_idx()])
         return
 
     # check number of images to verify
@@ -1975,7 +1974,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
                      "seleccionados. Utilice el botón 'Actualizar recuentos' para ver cuántas imágenes necesita verificar con "
                      "los criterios seleccionados.",
                      "Il n'y a aucune image à vérifier selon les critères sélectionnés. Utilisez le bouton « Mettre à jour le nombre » pour " 
-                     "voir le nombre d'images à vérifier selon les critères sélectionnés."][lang_idx])
+                     "voir le nombre d'images à vérifier selon les critères sélectionnés."][i18n_lang_idx()])
         return
     
     # TODO: progressbars are not in front of other windows
@@ -1987,7 +1986,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
             if mb.askyesno(t('msg_corrupted_images'),
                             [f"There are {len(corrupted_images)} images corrupted. Do you want to repair?",
                             f"Hay {len(corrupted_images)} imágenes corruptas. Quieres repararlas?",
-                            f"{len(corrupted_images)} images sont corrompues. Voulez-vous les réparer?"][lang_idx]):
+                            f"{len(corrupted_images)} images sont corrompues. Voulez-vous les réparer?"][i18n_lang_idx()]):
                 fix_images(corrupted_images)
 
     # read label map from json
@@ -2058,7 +2057,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
                                             "les images sont correctement étiquetées. Cela inclut également les classes que vous n'avez pas sélectionnées, mais qui "
                                             "se trouvent sur l'image par hasard. Si une image est vérifiée, vous devrez en informer AddaxAI en appuyant sur la barre "
                                             "d'espacement. Si toutes les images sont vérifiées et à jour, vous pouvez fermer la fenêtre. AddaxAI vous invitera à effectuer "
-                                            "la dernière étape. Vous pouvez également fermer la fenêtre et continuer ultérieurement."][lang_idx])
+                                            "la dernière étape. Vous pouvez également fermer la fenêtre et continuer ultérieurement."][i18n_lang_idx()])
     text_hitl_explanation_frame.tag_add('explanation', '1.0', '1.end')
 
     # shortcuts frame
@@ -2072,8 +2071,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # shortcuts label
     shortcut_labels = [["Next image:", "Previous image:", "Create box:", "Edit box:", "Delete box:", "Verify, save, and next image:"],
                        ["Imagen siguiente:", "Imagen anterior:", "Crear cuadro:", "Editar cuadro:", "Eliminar cuadro:", "Verificar, guardar, y siguiente imagen:"],
-                       ["Image suivante :", "Image précédente :", "Créer une zone :", "Modifier la zone :", "Supprimer la zone :", "Vérifier, enregistrer et image suivante :" ]][lang_idx]
-    shortcut_values = ["d", "a", "w", "s", "del", ["space", "espacio", "espace"][lang_idx]]
+                       ["Image suivante :", "Image précédente :", "Créer une zone :", "Modifier la zone :", "Supprimer la zone :", "Vérifier, enregistrer et image suivante :" ]][i18n_lang_idx()]
+    shortcut_values = ["d", "a", "w", "s", "del", ["space", "espacio", "espace"][i18n_lang_idx()]]
     for i in range(len(shortcut_labels)):
         ttk.Label(master=hitl_shortcuts_frame, text=shortcut_labels[i]).grid(column=0, row=i, columnspan=1, sticky='w')
         ttk.Label(master=hitl_shortcuts_frame, text=shortcut_values[i]).grid(column=1, row=i, columnspan=1, sticky='e')
@@ -2258,7 +2257,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
                                 "verification session and proceed to the final step?", "Todas las imágenes están verificadas y "
                                 "'image_recognition_file.json' está actualizado.\n\n¿Quieres cerrar esta sesión de verificación"
                                 " y continuar con el paso final?", "Toutes les images ont été vérifiées et le fichier 'image_recognition_file.json' "
-                                "est à jour.\n\nVoulez-vous quitter cette session de vérification et procéder à l'étape finale?"][lang_idx]):
+                                "est à jour.\n\nVoulez-vous quitter cette session de vérification et procéder à l'étape finale?"][i18n_lang_idx()]):
             # close window
             hitl_progress_window.destroy()
             bind_scroll_to_deploy_canvas()
@@ -2278,7 +2277,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
             # button frame
             hitl_final_actions_frame = LabelFrame(hitl_final_window, text=[" Do you want to export these verified images as training data? ",
                                                                            " ¿Quieres exportar estas imágenes verificadas como datos de entrenamiento? ",
-                                                                           " Voulez-vous exporter ces images vérifiées à titre de données d'entraînement?"][lang_idx],
+                                                                           " Voulez-vous exporter ces images vérifiées à titre de données d'entraînement?"][i18n_lang_idx()],
                                                                            pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, labelanchor = 'n')
             hitl_final_actions_frame.configure(font=(text_font, 15, "bold"))
             hitl_final_actions_frame.grid(column=0, row=3, columnspan=2, sticky='ew')
@@ -2288,14 +2287,14 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
             # buttons
             btn_hitl_final_export_y = Button(master=hitl_final_actions_frame, text=["Yes - choose folder and create training data",
                                                                                     "Sí - elija la carpeta y crear datos de entrenamiento",
-                                                                                    "Oui - choisir un dossier et créer données d'entraînement"][lang_idx], 
+                                                                                    "Oui - choisir un dossier et créer données d'entraînement"][i18n_lang_idx()], 
                                     width=1, command = lambda: [uniquify_and_move_img_and_xml_from_filelist(file_list_txt = file_list_txt, recognition_file = recognition_file, hitl_final_window = hitl_final_window),
                                                                 update_frame_states()])
             btn_hitl_final_export_y.grid(row=0, column=0, rowspan=1, sticky='nesw', padx=5)
 
             btn_hitl_final_export_n = Button(master=hitl_final_actions_frame, text=["No - go back to the main AddaxAI window",
                                                                                     "No - regrese a la ventana principal de AddaxAI",
-                                                                                    "Non - retourner à la fenêtre principale AddaxAI"][lang_idx], 
+                                                                                    "Non - retourner à la fenêtre principale AddaxAI"][i18n_lang_idx()], 
                                     width=1, command = lambda: [delete_temp_folder(file_list_txt),
                                                                 hitl_final_window.destroy(),
                                                                 change_hitl_var_in_json(recognition_file, "done"),
@@ -2316,7 +2315,7 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
     window = TextButtonWindow(t('msg_method_of_file_placement'),
                               [f"Do you want to copy or move the images to\n'{dst_dir}'?",
                               f"¿Quieres copiar o mover las imágenes a\n'{dst_dir}'?",
-                              f"Voulez-vous COPIER ou DÉPLACER les images vers\n'{dst_dir}'"][lang_idx],
+                              f"Voulez-vous COPIER ou DÉPLACER les images vers\n'{dst_dir}'"][i18n_lang_idx()],
                               [t('move'), t('copy'), t('cancel')])
     user_input = window.run()
     if user_input == "Cancel" or user_input == "Cancelar" or user_input == "Annuler":
@@ -2398,7 +2397,7 @@ def start_or_continue_hitl():
                                             f"JSON es muy grande ({get_size(path_to_image_json)}). Esto puede hacer que el paso de verificación"
                                             " funcione muy lentamente. Funcionará, pero tendrás que tener paciencia. ",
                                             f"Le fichier JSON est très volumineux ({get_size(path_to_image_json)}). Ceci peut causer un ralentissement"
-                                            " de l'étape de vérification. Cela devrait toutefois fonctionner. SVP veuillez patienter. "][lang_idx])
+                                            " de l'étape de vérification. Cela devrait toutefois fonctionner. SVP veuillez patienter. "][i18n_lang_idx()])
 
     # check requirements
     check_json_presence_and_warn_user(t('verify'),
@@ -2437,7 +2436,7 @@ def start_or_continue_hitl():
         if not mb.askyesno(t('msg_verification_session_in_progress'),
                             ["Do you want to continue with the previous verification session? If you press 'No', you will start a new session.", 
                             "¿Quieres continuar con la sesión de verificación anterior? Si presiona 'No', iniciará una nueva sesión.",
-                            "Voulez-vous reprendre la dernière session de vérification? Si vous choisissez 'Non', une nouvelle session démarrera."][lang_idx]):
+                            "Voulez-vous reprendre la dernière session de vérification? Si vous choisissez 'Non', une nouvelle session démarrera."][i18n_lang_idx()]):
             delete_temp_folder(annotation_arguments['file_list_txt'])
             change_hitl_var_in_json(path_to_image_json, "never-started") # if user closes window, it can start fresh next time
             open_hitl_settings_window()
@@ -2463,7 +2462,7 @@ def start_or_continue_hitl():
         if mb.askyesno(t('msg_previous_session_done'), ["It seems like you have completed the previous manual "
                         "verification session. Do you want to start a new session?", "Parece que has completado la sesión de verificación manual "
                         "anterior. ¿Quieres iniciar una nueva sesión?",
-                        "Il semble que vous ayez déjà complété la dernière session de vérification. Souhaitez-vous démarrer un nouvelle session?"][lang_idx]):
+                        "Il semble que vous ayez déjà complété la dernière session de vérification. Souhaitez-vous démarrer un nouvelle session?"][i18n_lang_idx()]):
             open_hitl_settings_window()
 
 # open xml and check if the data is already in the json
@@ -2704,7 +2703,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
                                                 " de confianza de detección en alto.",
                                                 "Aucune détection d'animal ne rencontre les critères. Vous avez soit sélectionner "
                                                 "des images sans animaux présents, ou vous avez régler le seuil de confiance "
-                                                "de détection trop haut."][lang_idx])
+                                                "de détection trop haut."][i18n_lang_idx()])
             elapsed_time = "00:00",
             time_left = "00:00",
             current_im = "0",
@@ -2803,7 +2802,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             "Typiquement, un vidéo peut contenir plusieurs images d'un même animal, ce qui augmente les chances qu'au moins un "
                             f"des labels puisse être une fausse prédiction. Avec '{t('lbl_smooth_cls_animal')}' activé, toute"
                             " les prédictions d'un seul vidéo seront moyennées, résultant en un seul label par vidéo. Souhaitez-vous"
-                            " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][lang_idx]):
+                            " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][i18n_lang_idx()]):
                             return
     
     # display loading window
@@ -2827,7 +2826,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     if simple_mode:
         det_model_fpath = os.path.join(DET_DIR, "MegaDetector 5a", "md_v5a.0.0.pt")
         switch_yolov5_version("old models", AddaxAI_files)
-    elif var_det_model.get() != dpd_options_model[lang_idx][-1]: # if not chosen the last option, which is "custom model"
+    elif var_det_model.get() != dpd_options_model[i18n_lang_idx()][-1]: # if not chosen the last option, which is "custom model"
         det_model_fname = load_model_vars("det")["model_fname"]
         det_model_fpath = os.path.join(DET_DIR, var_det_model.get(), det_model_fname)
         switch_yolov5_version("old models", AddaxAI_files)
@@ -2900,7 +2899,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                                 " macOS. Proceder sin GPU desactivada.",
                                 "La désactivation du traitement par GPU est uniquement supportée sur les dispositifs CUDA sous "
                                 "Linux et Windows, pas sous MacOS. Poursuite du traitement sans désactiver le GPU."
-                                ""][lang_idx])
+                                ""][i18n_lang_idx()])
                 var_disable_GPU.set(False)
             else: # linux
                 command = "CUDA_VISIBLE_DEVICES='' " + command
@@ -2933,7 +2932,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
         subprocess_output = ""
         previous_processed_img = ["There is no previously processed image. The problematic character is in the first image to analyse.",
                                 "No hay ninguna imagen previamente procesada. El personaje problemático está en la primera imagen a analizar.",
-                                "Il n'y a aucune image traitée précédemment. Le caractère problématique est dans la première image à analyser."][lang_idx]
+                                "Il n'y a aucune image traitée précédemment. Le caractère problématique est dans la première image à analyser."][i18n_lang_idx()]
         extracting_frames_mode = False
         
         # check if the unit shown should be frame or video
@@ -2962,19 +2961,19 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             f"No se han encontrado imágenes en '{chosen_folder}'. \n\n¿Está seguro de haber especificado la carpeta correcta?"
                             f" Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{t('lbl_exclude_subs')}'.",
                             f"Aucune image trouvée dans '{chosen_folder}'. \n\nAvez-vous spécifié le bon dossier?"
-                            f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][lang_idx])
+                            f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][i18n_lang_idx()])
                 return
             if line.startswith("No videos found"):
                 mb.showerror(t('msg_no_videos_found'),
                             line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{t('lbl_exclude_subs')}'.",
                                     f"\n\n¿Está seguro de haber especificado la carpeta correcta? Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{t('lbl_exclude_subs')}'.",
-                                    f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][lang_idx])
+                                    f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][i18n_lang_idx()])
                 return
             if line.startswith("No frames extracted"):
                 mb.showerror(t('msg_could_not_extract_frames'),
                             line + ["\n\nConverting the videos to .mp4 might fix the issue.",
                                     "\n\nConvertir los vídeos a .mp4 podría solucionar el problema.",
-                                    "\n\nConvertir les vidéos au format .mp4 pourrait régler le problème."][lang_idx])
+                                    "\n\nConvertir les vidéos au format .mp4 pourrait régler le problème."][i18n_lang_idx()])
                 return
             if line.startswith("UnicodeEncodeError:"):
                 mb.showerror("Unparsable special character",
@@ -2990,7 +2989,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                             f"{line}\n\nIl semble y avoir un caractère spécial non-reconnu dans le nom d'un fichier. Malheureusement, il est"
                             " impossible d'identifier le fichier directement, cependant la dernière images correctement analysée était "
                             f" \n\n{previous_processed_img}\n\nLe caractère problématique devrait être dans le nom de fichier ou de dossier de "
-                            "la prochaine image, alphabetiquement. SVP remplacer tout caractère spécial du chemin et du nom de fichier et réessayer."][lang_idx])
+                            "la prochaine image, alphabetiquement. SVP remplacer tout caractère spécial du chemin et du nom de fichier et réessayer."][i18n_lang_idx()])
                 return
             if line.startswith("Processing image "):
                 previous_processed_img = line.replace("Processing image ", "")
@@ -3103,11 +3102,11 @@ def show_update_info(model_vars, model_name):
     su_root.columnconfigure(0, weight=1, minsize=300)
     su_root.columnconfigure(1, weight=1, minsize=300)
     lbl1 = customtkinter.CTkLabel(su_root, text=[f"Update required for model {model_name}", f"Actualización requerida para el modelo {model_name}",
-                                                 f"Mise-à-jour requise pour le modèle {model_name}"][lang_idx], font = main_label_font)
+                                                 f"Mise-à-jour requise pour le modèle {model_name}"][i18n_lang_idx()], font = main_label_font)
     lbl1.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), columnspan = 2, sticky="nsew")
     lbl2 = customtkinter.CTkLabel(su_root, text=[f"Minimum AddaxAI version required is v{model_vars['min_version']}, while your current version is v{current_AA_version}.",
                                                  f"La versión mínima de AddaxAI requerida es v{model_vars['min_version']}, mientras que su versión actual es v{current_AA_version}.",
-                                                 f"La version minimale d'AddaxAI requise est v{model_vars['min_version']}, tandis que la version courante est v{current_AA_version}."][lang_idx])
+                                                 f"La version minimale d'AddaxAI requise est v{model_vars['min_version']}, tandis que la version courante est v{current_AA_version}."][i18n_lang_idx()])
     lbl2.grid(row=1, column=0, padx=PADX, pady=(0, PADY), columnspan = 2, sticky="nsew")
 
     # define functions
@@ -3207,7 +3206,7 @@ def start_deploy(simple_mode = False):
                                      f"No se han encontrado imágenes ni vídeos.\n\nAddaxAI acepta imágenes en formato {IMG_EXTENSIONS}."
                                      f"\n\nAcepta vídeos en formato {VIDEO_EXTENSIONS}.",
                                      f"Aucune image ou vidéo trouvé.\n\nAddaxAI accepte des images au format {IMG_EXTENSIONS}."
-                                     f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][lang_idx])
+                                     f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][i18n_lang_idx()])
         else:
             mb.showerror(t('msg_no_data_found'),
                             message=[f"There are no images nor videos found, or you selected not to search for them. If there is indeed data to be "
@@ -3221,7 +3220,7 @@ def start_deploy(simple_mode = False):
                                     f"Aucune image ou vidéo trouvé, ou vous avez sélectionné de ne pas faire de recherche pour ces derniers. Si des données à traiter "
                                     f"existent, assurez-vous que les options'{t('lbl_process_img')}' et/ou '{t('lbl_process_vid')}' "
                                     f"sont sélectionnées. Vous devez sélectionner au moins l'une d'entre elles.\n\nAddaxAI accepte des images au format {IMG_EXTENSIONS}."
-                                    f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][lang_idx])
+                                    f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][i18n_lang_idx()])
         btn_start_deploy.configure(state=NORMAL)
         sim_run_btn.configure(state=NORMAL)
         return
@@ -3234,7 +3233,7 @@ def start_deploy(simple_mode = False):
             mb.showerror(t('msg_sppnet_not_available'),
                             message=[f"SpeciesNet is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
                                         f"SpeciesNet no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet.",
-                                        f"SpeciesNet n'est pas disponible en mode simple. SVP choisir le mode avancé pour utiliser SpeciesNet."][lang_idx])
+                                        f"SpeciesNet n'est pas disponible en mode simple. SVP choisir le mode avancé pour utiliser SpeciesNet."][i18n_lang_idx()])
             
             # reset
             btn_start_deploy.configure(state=NORMAL)
@@ -3246,7 +3245,7 @@ def start_deploy(simple_mode = False):
             mb.showerror(t('msg_sppnet_not_available'),
                             message=[f"Video support for SpeciesNet will be available in a future AddaxAI release, please uncheck 'process videos'.",
                                         f"El soporte de video para SpeciesNet estará disponible en una futura versión de AddaxAI, por favor desmarque 'procesar videos'.",
-                                        f"Le support pour vidéo avec SpeciesNet sera disponible dans une version future d'AddaxAI, svp décocher la case 'traiter les vidéos'."][lang_idx])
+                                        f"Le support pour vidéo avec SpeciesNet sera disponible dans une version future d'AddaxAI, svp décocher la case 'traiter les vidéos'."][i18n_lang_idx()])
             # reset
             btn_start_deploy.configure(state=NORMAL)
             sim_run_btn.configure(state=NORMAL)
@@ -3318,7 +3317,7 @@ def start_deploy(simple_mode = False):
                             "Typiquement, un vidéo peut contenir plusieurs images d'un même animal, ce qui augmente les chances qu'au moins un "
                             f"des labels puisse être une fausse prédiction. Avec '{t('lbl_smooth_cls_animal')}' activé, toute"
                             " les prédictions d'un seul vidéo seront moyennées, résultant en un seul label par vidéo. Souhaitez-vous"
-                            " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][lang_idx]):
+                            " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][i18n_lang_idx()]):
                             return
     
     # de not allow full image classifier to process videos
@@ -3422,15 +3421,15 @@ def start_deploy(simple_mode = False):
         mb.showerror(t('error'),
             message=["Please specify a directory with data to be processed.",
                      "Por favor, especifique un directorio con los datos a procesar.",
-                     "SVP spécifier un répertoire avec des données à traiter."][lang_idx])
+                     "SVP spécifier un répertoire avec des données à traiter."][i18n_lang_idx()])
         btn_start_deploy.configure(state=NORMAL)
         sim_run_btn.configure(state=NORMAL)
         return
 
     # save simple settings for next time
     write_global_vars(AddaxAI_files, {
-        "lang_idx": lang_idx,
-        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
+        "lang_idx": i18n_lang_idx(),
+        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get()),
     })
 
@@ -3466,7 +3465,7 @@ def start_deploy(simple_mode = False):
     else:
         # save advanced settings for next time
         write_global_vars(AddaxAI_files, {
-            "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
+            "var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
             "var_det_model_path": var_det_model_path.get(),
             "var_det_model_short": var_det_model_short.get(),
             "var_exclude_subs": var_exclude_subs.get(),
@@ -3491,7 +3490,7 @@ def start_deploy(simple_mode = False):
                         "Ha introducido un valor no válido para el tamaño de la imagen o no ha introducido ninguno. "
                         "Sólo puede introducir caracteres numéricos.",
                         "Vous avez saisi une valeur invalide pour les dimensions de l'image, ou aucune valeur du tout.. Vous ne pouvez "
-                        "que saisir des caractères numériques."][lang_idx])
+                        "que saisir des caractères numériques."][i18n_lang_idx()])
             btn_start_deploy.configure(state=NORMAL)
             sim_run_btn.configure(state=NORMAL)
             return
@@ -3504,7 +3503,7 @@ def start_deploy(simple_mode = False):
                             "Ha introducido un valor no válido para la frecuencia del punto de control o no ha introducido ninguno. "
                             "Sólo puede introducir caracteres numéricos.\n\n¿Desea continuar con el valor por defecto 500?",
                             "Vous avez saisi une valeur invalide pour la fréquence des points de contrôle, ou aucune valeur du tout. Vous ne pouvez "
-                            "que saisir des caractères numériques.\n\nSouhaitez-vous utiliser la valeur par défaut de 500?"][lang_idx]):
+                            "que saisir des caractères numériques.\n\nSouhaitez-vous utiliser la valeur par défaut de 500?"][i18n_lang_idx()]):
                 var_checkpoint_freq.set('500')
                 ent_checkpoint_freq.configure(fg='black')
             else:
@@ -3524,7 +3523,7 @@ def start_deploy(simple_mode = False):
                             " el programa solo procesará 1 fotograma cada segundo.",
                             f"Entrée invalide pour '{t('lbl_nth_frame')}'. SVP entrer une valeur numérique (par ex.: '1', '1.5', '0.3', '7')."
                             " Les valeurs non-numérique comme 'deux' ou '1,2' ne sont pas permises.\n\nVoulez-vous continuer avec la valeur par défaut "
-                            " de 1?\n\nCela signifie que le programme ne traitera qu'une seule image par seconde."][lang_idx]):
+                            " de 1?\n\nCela signifie que le programme ne traitera qu'une seule image par seconde."][i18n_lang_idx()]):
                 var_nth_frame.set('1')
                 ent_nth_frame.configure(fg='black')
             else:
@@ -3597,7 +3596,7 @@ def start_deploy(simple_mode = False):
                                 ["Continuar con las rutas de archivo tal y como están ahora",
                                     "Abrir el archivo de registro y revisar las rutas de archivo probelmáticas"],
                                 ["Continuer avec les chemins de fichiers tels quels",
-                                "Ouvrez le fichier journal et examinez les fichiers problématiques"]][lang_idx]
+                                "Ouvrez le fichier journal et examinez les fichiers problématiques"]][i18n_lang_idx()]
         special_char_popup = TextButtonWindow(title = t('msg_special_characters_found'),
                                             text = ["Special characters can be problematic during analysis, resulting in files being skipped.\n"
                                                     f"With your current folder structure, there are a total of {total_saved_images} files that will be potentially skipped.\n"
@@ -3617,7 +3616,7 @@ def start_deploy(simple_mode = False):
                                                     "Vous pouvez trouver un aperçu des caractères problématiques et des chemins de fichiers dans le fichier journal :\n\n"
                                                     f"'{model_special_char_log}'\n\n"
                                                     f"Vous pouvez également décider de continuer avec les chemins de fichiers tels qu'ils sont actuellement, avec le risque d'exclure "
-                                                    "{total_saved_images} fichiers."][lang_idx],
+                                                    "{total_saved_images} fichiers."][i18n_lang_idx()],
                                             buttons = special_char_popup_btns)
         
         # run option window and check user input
@@ -3842,13 +3841,13 @@ def start_deploy(simple_mode = False):
         if os.path.isfile(model_error_log):
             mb.showerror(t('error'), [f"There were one or more model errors. See\n\n'{model_error_log}'\n\nfor more information.",
                                             f"Se han producido uno o más errores de modelo. Consulte\n\n'{model_error_log}'\n\npara obtener más información.",
-                                            f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][lang_idx])
+                                            f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
 
         # show model warning pop up window
         if os.path.isfile(model_warning_log):
             mb.showerror(t('error'), [f"There were one or more model warnings. See\n\n'{model_warning_log}'\n\nfor more information.",
                                         f"Se han producido uno o más advertencias de modelo. Consulte\n\n'{model_warning_log}'\n\npara obtener más información.",
-                                        f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][lang_idx])
+                                        f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
 
         # show postprocessing warning log
         global postprocessing_error_log
@@ -3859,7 +3858,7 @@ def start_deploy(simple_mode = False):
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
                                                 f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
                                                 f"Un ou plusieurs fichiers n'ont pas pu être analysés par le modèle (par exemple, des fichiers corrompus) et seront ignorés "
-                                                f"lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'informations."][lang_idx])
+                                                f"lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
 
         # enable button
         btn_start_deploy.configure(state=NORMAL)
@@ -3887,7 +3886,7 @@ def start_deploy(simple_mode = False):
         else:
             # show error
             mb.showerror(title=t('error'),
-                        message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
+                        message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][i18n_lang_idx()] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=subprocess_output + "\n" + traceback.format_exc())
             
             # close window
@@ -3929,7 +3928,7 @@ def produce_graph(file_list_txt = None, dir = None):
         counts = list(count_dict.values())
         fig = plt.figure(figsize = (10, 5))
         plt.bar(classes, counts, width = 0.4, color=green_primary)
-        plt.ylabel(["No. of instances verified", "No de instancias verificadas", "No. de l'instance vérifiée"][lang_idx])
+        plt.ylabel(["No. of instances verified", "No de instancias verificadas", "No. de l'instance vérifiée"][i18n_lang_idx()])
         plt.close()
 
         # return results
@@ -3941,7 +3940,7 @@ def produce_graph(file_list_txt = None, dir = None):
 def select_detections(selection_dict, prepare_files):
 
     # open patience window
-    steps_progress = PatienceDialog(total = 8, text = [f"Loading...", f"Cargando...", f"Chargement..."][lang_idx])
+    steps_progress = PatienceDialog(total = 8, text = [f"Loading...", f"Cargando...", f"Chargement..."][i18n_lang_idx()])
     steps_progress.open()
     current_step = 1
     steps_progress.update_progress(current_step);current_step += 1
@@ -4081,11 +4080,11 @@ def select_detections(selection_dict, prepare_files):
                 ent_per_var = float(ent_per_var)
             except:
                 invalid_value_warning([f"percentage of images for class '{category}'", f"porcentaje de imágenes para la clase '{category}'",
-                                       f"pourcentage d'images pour la classe '{category}'"][lang_idx])
+                                       f"pourcentage d'images pour la classe '{category}'"][i18n_lang_idx()])
                 return
             if ent_per_var == "" or ent_per_var < 0 or ent_per_var > 100:
                 invalid_value_warning([f"percentage of images for class '{category}'", f"porcentaje de imágenes para la clase '{category}'",
-                                       f"pourcentage d'images pour la classe '{category}'"][lang_idx])
+                                       f"pourcentage d'images pour la classe '{category}'"][i18n_lang_idx()])
                 return
             
             # randomly select percentage of images
@@ -4103,11 +4102,11 @@ def select_detections(selection_dict, prepare_files):
                 ent_amt_var = float(ent_amt_var)
             except:
                 invalid_value_warning([f"number of images for class '{category}'", f"número de imágenes para la clase '{category}'",
-                                       f"nombre d'images pour la classe '{category}'"][lang_idx])
+                                       f"nombre d'images pour la classe '{category}'"][i18n_lang_idx()])
                 return
             if ent_amt_var == "":
                 invalid_value_warning([f"number of images for class '{category}'", f"número de imágenes para la clase '{category}'",
-                                       f"nombre d'images pour la classe '{category}'"][lang_idx])
+                                       f"nombre d'images pour la classe '{category}'"][i18n_lang_idx()])
                 return
 
             # randomly select specified number of images
@@ -4126,7 +4125,7 @@ def select_detections(selection_dict, prepare_files):
 
             # open patience window
             patience_dialog = PatienceDialog(total = n_imgs, text = [f"Preparing files for {category}...", f"Preparando archivos para {category}...",
-                                                                     f"Préparation des fichiers pour {category}..."][lang_idx])
+                                                                     f"Préparation des fichiers pour {category}..."][i18n_lang_idx()])
             patience_dialog.open()
             current = 1
             
@@ -4182,7 +4181,7 @@ def select_detections(selection_dict, prepare_files):
                     f.write(line + '\n')
         
     # update total number of images
-    lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][lang_idx])
+    lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][i18n_lang_idx()])
     
     if prepare_files:
 
@@ -4218,7 +4217,7 @@ def select_detections(selection_dict, prepare_files):
             
             # show error
             mb.showerror(title=t('error'),
-                        message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
+                        message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][i18n_lang_idx()] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=traceback.format_exc())
 
     # change json paths back, if converted earlier
@@ -4267,7 +4266,7 @@ def open_hitl_settings_window():
 
     # init window
     hitl_settings_window = customtkinter.CTkToplevel(root)
-    hitl_settings_window.title(["Verification selection settings", "Configuración de selección de verificación", "Vérification des paramètres de configuration"][lang_idx])
+    hitl_settings_window.title(["Verification selection settings", "Configuración de selección de verificación", "Vérification des paramètres de configuration"][i18n_lang_idx()])
     hitl_settings_window.geometry("+10+10")
     hitl_settings_window.maxsize(width=ADV_WINDOW_WIDTH, height=800)
 
@@ -4301,7 +4300,7 @@ def open_hitl_settings_window():
     hitl_settings_main_frame = LabelFrame(hitl_settings_canvas)
 
     # img selection frame
-    hitl_img_selection_frame = LabelFrame(hitl_settings_main_frame, text=[" Image selection criteria ", " Criterios de selección de imágenes ", "Critères de sélection d'images "][lang_idx],
+    hitl_img_selection_frame = LabelFrame(hitl_settings_main_frame, text=[" Image selection criteria ", " Criterios de selección de imágenes ", "Critères de sélection d'images "][i18n_lang_idx()],
                                             pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, labelanchor = 'n')
     hitl_img_selection_frame.configure(font=(text_font, 15, "bold"))
     hitl_img_selection_frame.grid(column=0, row=1, columnspan=2, sticky='ew')
@@ -4354,18 +4353,18 @@ def open_hitl_settings_window():
                                                     "vérification basé sur les critères choisis, cliquer sur le bouton “M-à-j. des comptes” ci-dessous. Au besoin, vous pouvez spéficier "
                                                     "une méthode de sélection aléatoire qui choisira un sous-ensemble basé sur un pourcentage ou une valeur absolue. Le résultat "
                                                     "sera ajusté dans le fichier JSON de sortie. Vous pourrez par la suite poursuivre l'utilisation d'AddaxAI avec les résultats "
-                                                    "vérifiés et effectuer le post-traitement comme à l'habitude."][lang_idx])
+                                                    "vérifiés et effectuer le post-traitement comme à l'habitude."][i18n_lang_idx()])
     text_hitl_img_selection_explanation.tag_add('explanation', '1.0', '1.end')
 
     # img table headers
     ttk.Label(master=hitl_img_selection_frame, text="").grid(column=0, row=1)
-    ttk.Label(master=hitl_img_selection_frame, text=["Class", "Clases", "Classes"][lang_idx], font=f'{text_font} 13 bold').grid(column=1, row=1)
-    ttk.Label(master=hitl_img_selection_frame, text=["Confidence range", "Rango de confianza", "Plage de confiance"][lang_idx], font=f'{text_font} 13 bold').grid(column=2, row=1)
-    ttk.Label(master=hitl_img_selection_frame, text=["Selection method", "Método de selección", "Méthode de sélection"][lang_idx], font=f'{text_font} 13 bold').grid(column=3, row=1)
-    ttk.Label(master=hitl_img_selection_frame, text=["Number of images", "Número de imagenes", "Nombre d'images"][lang_idx], font=f'{text_font} 13 bold').grid(column=4, row=1)
+    ttk.Label(master=hitl_img_selection_frame, text=["Class", "Clases", "Classes"][i18n_lang_idx()], font=f'{text_font} 13 bold').grid(column=1, row=1)
+    ttk.Label(master=hitl_img_selection_frame, text=["Confidence range", "Rango de confianza", "Plage de confiance"][i18n_lang_idx()], font=f'{text_font} 13 bold').grid(column=2, row=1)
+    ttk.Label(master=hitl_img_selection_frame, text=["Selection method", "Método de selección", "Méthode de sélection"][i18n_lang_idx()], font=f'{text_font} 13 bold').grid(column=3, row=1)
+    ttk.Label(master=hitl_img_selection_frame, text=["Number of images", "Número de imagenes", "Nombre d'images"][i18n_lang_idx()], font=f'{text_font} 13 bold').grid(column=4, row=1)
 
     # ann selection frame
-    hitl_ann_selection_frame = LabelFrame(hitl_settings_main_frame, text=[" Annotation selection criteria ", " Criterios de selección de anotaciones ", " Critères de sélection d'annotations "][lang_idx],
+    hitl_ann_selection_frame = LabelFrame(hitl_settings_main_frame, text=[" Annotation selection criteria ", " Criterios de selección de anotaciones ", " Critères de sélection d'annotations "][i18n_lang_idx()],
                                             pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, labelanchor = 'n')
     hitl_ann_selection_frame.configure(font=(text_font, 15, "bold"))
     hitl_ann_selection_frame.grid(column=0, row=2, columnspan=2, sticky='ew')
@@ -4392,7 +4391,7 @@ def open_hitl_settings_window():
                                               "images. Pendant le processus de vérifications, toutes les instances de toutes les classes doivent être identifiées. Pour cette "
                                               "raison, vous voudrez afficher toutes les annotations au-dessus d'un seuil de confiance raisonnable. Vous pouvez sélectionner un "
                                               "seuil générique ou un seuil basé sur la classe. En cas de doute, conserver la valeur par défaut. Un seuil de 0.2 est probablement "
-                                              "conservateur pour la majorité des projets."][lang_idx])
+                                              "conservateur pour la majorité des projets."][i18n_lang_idx()])
     text_hitl_ann_selection_explanation.tag_add('explanation', '1.0', '1.end')
 
     # ann same thresh
@@ -4400,14 +4399,14 @@ def open_hitl_settings_window():
     rad_ann_var.set(1)
     rad_ann_same = Radiobutton(hitl_ann_selection_frame, text=["Same annotation confidence threshold for all classes",
                                                                "Mismo umbral de confianza para todas las clases",
-                                                               "Même seuil d'annotation pour toutes les classes"][lang_idx],
+                                                               "Même seuil d'annotation pour toutes les classes"][i18n_lang_idx()],
                                 variable=rad_ann_var, value=1, command=lambda: toggle_hitl_ann_selection(rad_ann_var, hitl_ann_selection_frame))
     rad_ann_same.grid(row=1, column=1, columnspan=2, sticky='w')
     frame_ann_same = LabelFrame(hitl_ann_selection_frame, text="", pady=2, padx=5, relief=RAISED)
     frame_ann_same.grid(column=3, row=1, columnspan=2, sticky='ew')
     frame_ann_same.columnconfigure(0, weight=1, minsize=200)
     frame_ann_same.columnconfigure(1, weight=1, minsize=200)
-    lbl_ann_same = ttk.Label(master=frame_ann_same, text=["All classes", "Todas las clases", "Toutes les classes"][lang_idx])
+    lbl_ann_same = ttk.Label(master=frame_ann_same, text=["All classes", "Todas las clases", "Toutes les classes"][i18n_lang_idx()])
     lbl_ann_same.grid(row=0, column=0, sticky='w')
     scl_ann_var_generic = DoubleVar()
     scl_ann_var_generic.set(0.60)
@@ -4419,7 +4418,7 @@ def open_hitl_settings_window():
     # ann specific thresh
     rad_ann_gene = Radiobutton(hitl_ann_selection_frame, text=["Class-specific annotation confidence thresholds",
                                                                "Umbrales de confianza específicas de clase",
-                                                               "Seuils de confiance pour chacune des classes"][lang_idx],
+                                                               "Seuils de confiance pour chacune des classes"][i18n_lang_idx()],
                                 variable=rad_ann_var, value=2, command=lambda: toggle_hitl_ann_selection(rad_ann_var, hitl_ann_selection_frame))
     rad_ann_gene.grid(row=2, column=1, columnspan=2, sticky='w')
 
@@ -4452,11 +4451,11 @@ def open_hitl_settings_window():
         rsl = RangeSliderH(frame, [min_conf, max_conf], padX=11, digit_precision='.2f', bgColor = '#ececec', Width = 180, font_size = 10, font_family = text_font)
         rad_var = IntVar()
         rad_var.set(1)
-        rad_all = Radiobutton(frame, text=["All images in range", "Todo dentro del rango", "Toutes les images de la plage"][lang_idx],
+        rad_all = Radiobutton(frame, text=["All images in range", "Todo dentro del rango", "Toutes les images de la plage"][i18n_lang_idx()],
                                 variable=rad_var, value=1, state=DISABLED, command=lambda e=row:enable_amt_per_ent(e))
-        rad_per = Radiobutton(frame, text=["Subset percentage", "Subconjunto %", "Pourcentage du sous-ensemble"][lang_idx],
+        rad_per = Radiobutton(frame, text=["Subset percentage", "Subconjunto %", "Pourcentage du sous-ensemble"][i18n_lang_idx()],
                                 variable=rad_var, value=2, state=DISABLED, command=lambda e=row:enable_amt_per_ent(e))
-        rad_amt = Radiobutton(frame, text=["Subset number", "Subconjunto no.", "No. du sous-ensemble"][lang_idx],
+        rad_amt = Radiobutton(frame, text=["Subset number", "Subconjunto no.", "No. du sous-ensemble"][i18n_lang_idx()],
                                 variable=rad_var, value=3, state=DISABLED, command=lambda e=row:enable_amt_per_ent(e))
         ent_per_var = StringVar()
         ent_per = tk.Entry(frame, textvariable=ent_per_var, width=4, state=DISABLED)
@@ -4540,7 +4539,7 @@ def open_hitl_settings_window():
     lbl_n_total_imgs.grid(row = 1, column = 4)
 
     # button frame
-    hitl_test_frame = LabelFrame(hitl_settings_main_frame, text=[" Actions ", " Acciones ", "Actions"][lang_idx],
+    hitl_test_frame = LabelFrame(hitl_settings_main_frame, text=[" Actions ", " Acciones ", "Actions"][i18n_lang_idx()],
                                     pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, labelanchor = 'n')
     hitl_test_frame.configure(font=(text_font, 15, "bold"))
     hitl_test_frame.grid(column=0, row=3, columnspan=2, sticky='ew')
@@ -4550,13 +4549,13 @@ def open_hitl_settings_window():
 
     # shorten texts for linux
     if sys.platform == "linux" or sys.platform == "linux2":
-        btn_hitl_update_txt = ["Update counts", "La actualización cuenta", "M-à-j. des comptes"][lang_idx]
-        btn_hitl_show_txt = ["Show / hide annotation", "Mostrar / ocultar anotaciones", "Afficher / cacher annotations"][lang_idx]
-        btn_hitl_start_txt = ["Start review process", "Iniciar proceso de revisión", "Démarrer la révision"][lang_idx]
+        btn_hitl_update_txt = ["Update counts", "La actualización cuenta", "M-à-j. des comptes"][i18n_lang_idx()]
+        btn_hitl_show_txt = ["Show / hide annotation", "Mostrar / ocultar anotaciones", "Afficher / cacher annotations"][i18n_lang_idx()]
+        btn_hitl_start_txt = ["Start review process", "Iniciar proceso de revisión", "Démarrer la révision"][i18n_lang_idx()]
     else:
-        btn_hitl_update_txt = ["Update counts", "La actualización cuenta", "Mise-à-jour des comptes"][lang_idx]
-        btn_hitl_show_txt = ["Show / hide annotation selection criteria", "Mostrar / ocultar criterios de anotaciones", "Afficher / cacher les critères d'annotations"][lang_idx]
-        btn_hitl_start_txt = ["Start review process with selected criteria", "Iniciar proceso de revisión", "Démarrer le processus de révision"][lang_idx]
+        btn_hitl_update_txt = ["Update counts", "La actualización cuenta", "Mise-à-jour des comptes"][i18n_lang_idx()]
+        btn_hitl_show_txt = ["Show / hide annotation selection criteria", "Mostrar / ocultar criterios de anotaciones", "Afficher / cacher les critères d'annotations"][i18n_lang_idx()]
+        btn_hitl_start_txt = ["Start review process with selected criteria", "Iniciar proceso de revisión", "Démarrer le processus de révision"][i18n_lang_idx()]
 
     # buttons
     btn_hitl_update = Button(master=hitl_test_frame, text=btn_hitl_update_txt, width=1, command=lambda: select_detections(selection_dict = selection_dict, prepare_files = False))
@@ -4570,15 +4569,15 @@ def open_hitl_settings_window():
     lbl_hitl_file_order_txt = ["\n   During validation, how would you like the files to be sorted?", "\n   Durante la validación, ¿cómo desea que se ordenen los archivos?",
                                "\n   Lors de la validation, comment souhaitez-vous que les fichiers soient triés ?"]
     row_hitl_file_order = 1
-    lbl_hitl_file_order = Label(hitl_test_frame, text="     " + lbl_hitl_file_order_txt[lang_idx], pady=2, width=1, anchor="w")
+    lbl_hitl_file_order = Label(hitl_test_frame, text="     " + lbl_hitl_file_order_txt[i18n_lang_idx()], pady=2, width=1, anchor="w")
     lbl_hitl_file_order.grid(row=row_hitl_file_order, columnspan=3, sticky='nesw')
     var_hitl_file_order = IntVar()
     var_hitl_file_order.set(global_vars.get("var_hitl_file_order", 2))
     rad_hitl_file_order_class = Radiobutton(hitl_test_frame, text=["Group by class: first all images of class A, then B, etc.", "Agrupar por clases: primero todas las imágenes de la especie A, luego B, etc.",
-                                                                   "Regrouper par classe: d'abord toutes les images de la classe A, puis B, etc."][lang_idx], variable=var_hitl_file_order, value=2)
+                                                                   "Regrouper par classe: d'abord toutes les images de la classe A, puis B, etc."][i18n_lang_idx()], variable=var_hitl_file_order, value=2)
     rad_hitl_file_order_class.grid(row=row_hitl_file_order+2, columnspan=3, sticky='nsw', padx=25)
     rad_hitl_file_order_alpha = Radiobutton(hitl_test_frame, text=["Alphabetical by file name: keeps sequences and locations together.", "Alfabético por nombre de archivo: mantiene juntas las secuencias o ubicaciones.",
-                                                                   "Alphabétique par nom de fichier: conserve les séquences et les emplacements ensemble."][lang_idx], variable=var_hitl_file_order, value=1)
+                                                                   "Alphabétique par nom de fichier: conserve les séquences et les emplacements ensemble."][i18n_lang_idx()], variable=var_hitl_file_order, value=1)
     rad_hitl_file_order_alpha.grid(row=row_hitl_file_order+1, columnspan=3, sticky='nsw', padx=25)
     def trace_callback(*args): # no idea why this is needed, but if not, the value is not saved
         write_global_vars(AddaxAI_files, {"var_hitl_file_order": var_hitl_file_order.get()})
@@ -4615,8 +4614,8 @@ def verification_status(xml):
 # make sure the program quits when simple or advanced window is closed
 def on_toplevel_close():
     write_global_vars(AddaxAI_files, {
-        "lang_idx": lang_idx,
-        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
+        "lang_idx": i18n_lang_idx(),
+        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
         })
     root.destroy()
@@ -4722,15 +4721,15 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
 
     # save settings for next time
     write_global_vars(AddaxAI_files, {
-        "lang_idx": lang_idx,
-        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
+        "lang_idx": i18n_lang_idx(),
+        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
     })
     
     # save advanced settings for next time
     if not simple_mode:
         write_global_vars(AddaxAI_files, {
-            "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
+            "var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
             "var_det_model_path": var_det_model_path.get(),
             "var_det_model_short": var_det_model_short.get(),
             "var_exclude_subs": var_exclude_subs.get(),
@@ -4965,9 +4964,9 @@ def sim_mdl_dpd_callback(self):
         mb.showerror(t('msg_sppnet_not_available'),
                         message=[f"'Global - SpeciesNet - Google' is not available in simple mode. Please switch to advanced mode to use SpeciesNet.",
                                     f"'Global - SpeciesNet - Google' no está disponible en modo simple. Cambie al modo avanzado para usar SpeciesNet.",
-                                    f"'Global - SpeciesNet - Google' n'est pas disponible en mode simple. SVP utilisez le mode avancé pour utiliser SpeciesNet."][lang_idx])
+                                    f"'Global - SpeciesNet - Google' n'est pas disponible en mode simple. SVP utilisez le mode avancé pour utiliser SpeciesNet."][i18n_lang_idx()])
     
-    var_cls_model.set(dpd_options_cls_model[lang_idx][sim_dpd_options_cls_model[lang_idx].index(self)])
+    var_cls_model.set(dpd_options_cls_model[i18n_lang_idx()][sim_dpd_options_cls_model[i18n_lang_idx()].index(self)])
     model_cls_animal_options(var_cls_model.get())
 
 
@@ -5050,11 +5049,11 @@ def extract_label_map_from_model(model_file):
         # show error
         mb.showerror(title=t('error'),
                      message=["An error has occurred when trying to extract classes", "Se ha producido un error al intentar extraer las clases",
-                              "Une erreur est survenue lors de l'extraction des classes"][lang_idx] +
+                              "Une erreur est survenue lors de l'extraction des classes"][i18n_lang_idx()] +
                                 " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'" +
                                 [".\n\nWill try to proceed and produce the output json file, but post-processing features of AddaxAI will not work.",
                                  ".\n\nIntentará continuar y producir el archivo json de salida, pero las características de post-procesamiento de AddaxAI no funcionarán.",
-                                 ".\n\nUne tentative de poursuivre et de générer le fichier de sortie JSON sera effecutée, mais les fonctionnalités de post-traitement d'AddaxAI ne fonctionneront pas."][lang_idx],
+                                 ".\n\nUne tentative de poursuivre et de générer le fichier de sortie JSON sera effecutée, mais les fonctionnalités de post-traitement d'AddaxAI ne fonctionneront pas."][i18n_lang_idx()],
                      detail=traceback.format_exc())
     
     # delete and free up memory
@@ -5095,7 +5094,7 @@ def check_json_presence_and_warn_user(infinitive, continuous, noun):
         if vid_json:
             mb.showerror(t('error'), [f"{noun.capitalize()} is not supported for videos.",
                                            f"{noun.capitalize()} no es compatible con vídeos.",
-                                           f"{noun.capitalize()} n'est pas supporté avec les vidéos."][lang_idx])
+                                           f"{noun.capitalize()} n'est pas supporté avec les vidéos."][i18n_lang_idx()])
             return True
         if not vid_json:
             mb.showerror(t('error'), [f"No model output file present. Make sure you run step 2 before {continuous} the files. {noun.capitalize()} "
@@ -5103,13 +5102,13 @@ def check_json_presence_and_warn_user(infinitive, continuous, noun):
                                            f"No hay archivos de salida del modelo. Asegúrese de ejecutar el paso 2 antes de {continuous} los archivos. "
                                            f"{noun.capitalize()} sólo es compatible con imágenes",
                                            f"Aucun fichier de sortie du modèle présent. Assurez-vous d'exécuter l'étape 2 avant de {continuous} les fichiers."
-                                           f"{noun.capitalize()} est supporté uniquement pour les images.",][lang_idx])
+                                           f"{noun.capitalize()} est supporté uniquement pour les images.",][i18n_lang_idx()])
             return True
     if img_json:
         if vid_json:
             mb.showinfo(t('warning'), [f"{noun.capitalize()} is not supported for videos. Will continue to only {infinitive} the images...",
                                             f"No se admiten {noun.capitalize()} para los vídeos. Continuará sólo {infinitive} las imágenes...",
-                                            f"{noun.capitalize()} n'est pas supporté pour les vidéos. AddaxAI continuera de {infinitive} les images uniquement..."][lang_idx])
+                                            f"{noun.capitalize()} n'est pas supporté pour les vidéos. AddaxAI continuera de {infinitive} les images uniquement..."][i18n_lang_idx()])
 
 # dir names for when separating on confidence
 conf_dirs = {0.0 : "conf_0.0",
@@ -5138,10 +5137,10 @@ def check_checkpnt():
         if re.search('^md_checkpoint_\d+\.json$', filename):
             loc_chkpnt_files.append(filename)
     if len(loc_chkpnt_files) == 0:
-        mb.showinfo(["No checkpoint file found", "No se ha encontrado ningún archivo de puntos de control", "Aucun point de contrôle trouvé"][lang_idx],
+        mb.showinfo(["No checkpoint file found", "No se ha encontrado ningún archivo de puntos de control", "Aucun point de contrôle trouvé"][i18n_lang_idx()],
                         ["There is no checkpoint file found. Cannot continue from checkpoint file...",
                         "No se ha encontrado ningún archivo de punto de control. No se puede continuar desde el archivo de punto de control...",
-                        "Aucun fichier de point de contrôle trouvé. La poursuite à partir d'un point de contrôle est impossible."][lang_idx])
+                        "Aucun fichier de point de contrôle trouvé. La poursuite à partir d'un point de contrôle est impossible."][i18n_lang_idx()])
         return False
     if len(loc_chkpnt_files) == 1:
         loc_chkpnt_file = os.path.join(var_choose_folder.get(), loc_chkpnt_files[0])
@@ -5183,7 +5182,7 @@ def model_cls_animal_options(self):
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # set simple mode cls dropdown to the same index for its own dpd list
-    sim_mdl_dpd.set(sim_dpd_options_cls_model[lang_idx][dpd_options_cls_model[lang_idx].index(self)])
+    sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][dpd_options_cls_model[i18n_lang_idx()].index(self)])
 
     # remove or show widgets
     if self != t('none'):
@@ -5286,7 +5285,7 @@ def model_cls_animal_options(self):
 
     # save settings
     write_global_vars(AddaxAI_files, {
-        "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),  # write index instead of value
+        "var_cls_model_idx": dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get()),  # write index instead of value
         "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get()),  # write index instead of value
         })
  
@@ -5347,7 +5346,7 @@ def toggle_tax_levels_dpd_options():
     dpd_options_tax_levels = fetch_taxon_dpd_options()
 
     # language safety: fold back to 0 if index not present in returned options
-    safe_lang_idx = lang_idx if lang_idx < len(dpd_options_tax_levels) else 0
+    safe_lang_idx = i18n_lang_idx() if i18n_lang_idx() < len(dpd_options_tax_levels) else 0
 
     # delete the old options
     menu = dpd_tax_levels["menu"]
@@ -5385,7 +5384,7 @@ def model_options(self):
                     dsp_model,
                     [("Yolov5 model","*.pt")],
                     30,
-                    dpd_options_model[lang_idx],
+                    dpd_options_model[i18n_lang_idx()],
                     row_model)
 
     else:
@@ -5393,7 +5392,7 @@ def model_options(self):
         var_det_model_path.set("")
 
     # save settings
-    write_global_vars(AddaxAI_files, {"var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()), # write index instead of value
+    write_global_vars(AddaxAI_files, {"var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()), # write index instead of value
                         "var_det_model_short": var_det_model_short.get(),
                         "var_det_model_path": var_det_model_path.get()})
 
@@ -5435,17 +5434,17 @@ def open_file_or_folder(path, show_error = True):
             subprocess.call(('open', path))
         except:
             if show_error:
-                mb.showerror(error_opening_results_txt[lang_idx], [f"Could not open '{path}'. You'll have to find it yourself...",
+                mb.showerror(error_opening_results_txt[i18n_lang_idx()], [f"Could not open '{path}'. You'll have to find it yourself...",
                                                             f"No se ha podido abrir '{path}'. Tendrás que encontrarlo tú mismo...",
-                                                            f"Échec de l'ouverture de '{path}'. Vous devrez le spécifier manuellement..."][lang_idx])
+                                                            f"Échec de l'ouverture de '{path}'. Vous devrez le spécifier manuellement..."][i18n_lang_idx()])
     elif platform.system() == 'Windows': # windows
         try:
             os.startfile(path)
         except:
             if show_error:
-                mb.showerror(error_opening_results_txt[lang_idx], [f"Could not open '{path}'. You'll have to find it yourself...",
+                mb.showerror(error_opening_results_txt[i18n_lang_idx()], [f"Could not open '{path}'. You'll have to find it yourself...",
                                                             f"No se ha podido abrir '{path}'. Tendrás que encontrarlo tú mismo...",
-                                                            f"Échec de l'ouverture de '{path}'. Vous devrez le spécifier manuellement..."][lang_idx])
+                                                            f"Échec de l'ouverture de '{path}'. Vous devrez le spécifier manuellement..."][i18n_lang_idx()])
     else: # linux
         try:
             subprocess.call(('xdg-open', path))
@@ -5454,12 +5453,12 @@ def open_file_or_folder(path, show_error = True):
                 subprocess.call(('gnome-open', path))
             except:
                 if show_error:
-                    mb.showerror(error_opening_results_txt[lang_idx], [f"Could not open '{path}'. Neither the 'xdg-open' nor 'gnome-open' command worked. "
+                    mb.showerror(error_opening_results_txt[i18n_lang_idx()], [f"Could not open '{path}'. Neither the 'xdg-open' nor 'gnome-open' command worked. "
                                                                 "You'll have to find it yourself...",
                                                                 f"No se ha podido abrir '{path}'. Ni el comando 'xdg-open' ni el 'gnome-open' funcionaron. "
                                                                 "Tendrá que encontrarlo usted mismo...",
                                                                 f"Échec de l'ouverture de '{path}'. Ni la commande 'xdg-open' ni 'gnome-open' n'a fonctionné. "
-                                                                "Vous devrez le chercher manuellement..."][lang_idx])
+                                                                "Vous devrez le chercher manuellement..."][i18n_lang_idx()])
 
 # retrieve model specific variables from file 
 def load_model_vars(model_type = "cls"):
@@ -5782,12 +5781,12 @@ def download_model(model_dir, skip_ask=False):
     try:          
         # check if the user wants to download
         if not skip_ask:
-            if not mb.askyesno(["Download required", "Descarga necesaria", "Téléchargement requis"][lang_idx],
+            if not mb.askyesno(["Download required", "Descarga necesaria", "Téléchargement requis"][i18n_lang_idx()],
                             [f"The model {model_title} is not downloaded yet. It will take {total_download_size}"
                             f" of storage. Do you want to download?", f"El modelo {model_title} aún no se ha descargado."
                             f" Ocupará {total_download_size} de almacenamiento. ¿Desea descargarlo?",
                             f"Le modèle {model_title} n'a pas encore été téléchargé. Il occupera {total_download_size}"
-                            f" d'espace disque. Souhaitez-vous le télécharger?"][lang_idx]):
+                            f" d'espace disque. Souhaitez-vous le télécharger?"][i18n_lang_idx()]):
                 return False
 
         # set headers to trick host to thinking we are a browser
@@ -5906,12 +5905,12 @@ def download_environment(env_name, model_vars, skip_ask=False):
 
         # check if the user wants to download
         if not skip_ask:
-            if not mb.askyesno(["Download required", "Descarga necesaria", "Téléchargement requis"][lang_idx],
+            if not mb.askyesno(["Download required", "Descarga necesaria", "Téléchargement requis"][i18n_lang_idx()],
                             [f"The model you selected needs the virtual environment '{env_name}', which is not downloaded yet. It will take {format_size(total_size)}"
                             f" of storage. Do you want to download?", f"El envo {env_name} aún no se ha descargado."
                             f" Ocupará {format_size(total_size)} de almacenamiento. ¿Desea descargarlo?",
                             f"Le modèle sélectionné requiert un environnement virtuel '{env_name}', qui n'est pas encore téléchargé. Il occupera {format_size(total_size)}"
-                            f" d'espace disque. Souhaitez-vous le télécharger?"][lang_idx]):
+                            f" d'espace disque. Souhaitez-vous le télécharger?"][i18n_lang_idx()]):
                 return False
 
         # if yes, initiate download and show progress
@@ -6027,7 +6026,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
     
     # create window
     de_root = customtkinter.CTkToplevel(root)
-    de_root.title(["Download error", "Error de descarga", "Erreur de téléchargement"][lang_idx])
+    de_root.title(["Download error", "Error de descarga", "Erreur de téléchargement"][i18n_lang_idx()])
     de_root.geometry("+10+10")
     bring_window_to_top_but_not_for_ever(de_root)
 
@@ -6038,7 +6037,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
                                                  "several causes.", "Algo salió mal al intentar descargar el modelo. Esto "
                                                  "puede tener varias causas.",
                                                  "Quelque chose a mal tourné lors du téléchargement du modèle. Plusieurs "
-                                                 "causes sont possibles."][lang_idx])
+                                                 "causes sont possibles."][i18n_lang_idx()])
     lbl2.grid(row=1, column=0, padx=PADX, pady=(0, PADY/2), columnspan = 2, sticky="nswe")
 
     # internet connection frame
@@ -6048,7 +6047,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
     int_frm_2 = customtkinter.CTkFrame(master=int_frm_1)
     int_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     int_frm_2.columnconfigure(0, weight=1, minsize=700)
-    int_lbl = customtkinter.CTkLabel(int_frm_1, text=[" 1. Internet connection", " 1. Conexión a Internet", " 1. Connexion Internet"][lang_idx], font = main_label_font)
+    int_lbl = customtkinter.CTkLabel(int_frm_1, text=[" 1. Internet connection", " 1. Conexión a Internet", " 1. Connexion Internet"][i18n_lang_idx()], font = main_label_font)
     int_lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
     int_txt_1 = customtkinter.CTkTextbox(master=int_frm_2, corner_radius=10, height = 55, wrap = "word", fg_color = "transparent")
     int_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), sticky="nswe")
@@ -6060,7 +6059,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
                            "puede funcionar.",
                            "Vérifiez si votre connexion Internet est stable. Si possible, réessayer avec une connexion "
                            "sur fibre optique ou sur un réseau Wi-Fi plus puissant. Parfois, la connexion à un réseau ouvert "
-                           "tel qu'un point d'accès mobile peut solutionner le problème."][lang_idx])
+                           "tel qu'un point d'accès mobile peut solutionner le problème."][i18n_lang_idx()])
 
     # protection software frame
     pro_frm_1 = customtkinter.CTkFrame(master=de_root)
@@ -6069,7 +6068,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
     pro_frm_2 = customtkinter.CTkFrame(master=pro_frm_1)
     pro_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     pro_frm_2.columnconfigure(0, weight=1, minsize=700)
-    pro_lbl = customtkinter.CTkLabel(pro_frm_1, text=[" 2. Protection software", " 2. Software de protección", " 2. Logiciel de sécurité"][lang_idx], font = main_label_font)
+    pro_lbl = customtkinter.CTkLabel(pro_frm_1, text=[" 2. Protection software", " 2. Software de protección", " 2. Logiciel de sécurité"][i18n_lang_idx()], font = main_label_font)
     pro_lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
     pro_txt_1 = customtkinter.CTkTextbox(master=pro_frm_2, corner_radius=10, height = 55, wrap = "word", fg_color = "transparent")
     pro_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), sticky="nswe")
@@ -6078,13 +6077,13 @@ def show_download_error_window(model_title, model_dir, model_vars):
                            "bloquear la conexión a Internet. Inténtalo de nuevo con este software de protección "
                            "desactivado.",
                            "Certains réglages de parefeux, de serveurs mandataires (proxy) ou de VPN peuvent bloquer la"
-                           "connexion à Internet. Réessayer après avoir désactivé le logiciel de sécurité."][lang_idx])
+                           "connexion à Internet. Réessayer après avoir désactivé le logiciel de sécurité."][i18n_lang_idx()])
 
     # try internet connection again 
     btns_frm1 = customtkinter.CTkFrame(master=de_root)
     btns_frm1.columnconfigure(0, weight=1, minsize=10)
     btns_frm1.grid(row=4, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    tryag_btn = customtkinter.CTkButton(btns_frm1, text=["Try internet connection again", "Prueba de nuevo la conexión a Internet", "Ré-essayer de vous connecter à Internet"][lang_idx], command=try_again)
+    tryag_btn = customtkinter.CTkButton(btns_frm1, text=["Try internet connection again", "Prueba de nuevo la conexión a Internet", "Ré-essayer de vous connecter à Internet"][i18n_lang_idx()], command=try_again)
     tryag_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
 
     # manual download frame
@@ -6094,7 +6093,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
     pro_frm_2 = customtkinter.CTkFrame(master=pro_frm_1)
     pro_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     pro_frm_2.columnconfigure(0, weight=1, minsize=700)
-    pro_lbl1 = customtkinter.CTkLabel(pro_frm_1, text=[" 3. Manual download", " 3. Descarga manual", " 3. Téléchargement manuel"][lang_idx], font = main_label_font)
+    pro_lbl1 = customtkinter.CTkLabel(pro_frm_1, text=[" 3. Manual download", " 3. Descarga manual", " 3. Téléchargement manuel"][i18n_lang_idx()], font = main_label_font)
     pro_lbl1.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
     pro_lbl2 = customtkinter.CTkLabel(pro_frm_2, text=["If the above suggestions don't work, it might be easiest to manually"
                                                        " download the file(s) and place them in the appropriate folder.", 
@@ -6103,7 +6102,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
                                                        "la carpeta adecuada.",
                                                        "Si les suggestions ci-dessus ne fonctionnent pas, il peut être plus "
                                                        "facile de télécharger le(s) fichier(s) manuellement et de le placer "
-                                                       "dans le dossier approprié."][lang_idx])
+                                                       "dans le dossier approprié."][i18n_lang_idx()])
     pro_lbl2.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), sticky="nsw")
 
     # download instructions are dependent on their host
@@ -6114,20 +6113,20 @@ def show_download_error_window(model_title, model_dir, model_vars):
         main_url = download_info[0][0].replace("/resolve/main/namib_desert_v1.pt?download=true", "/tree/main")
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Go to website:",
                                                            f" {step_n}. Ir al sitio web:",
-                                                           f" {step_n}. Visiter le site web:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Visiter le site web:"][i18n_lang_idx()]);step_n += 1
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text=main_url, cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
         pro_lbl4.bind("<Button-1>", lambda e: callback(main_url))
         pro_lbl5 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_info[0][1]}'.",
                                                            f" {step_n}. Descarga el archivo '{download_info[0][1]}'.",
-                                                           f" {step_n}. Télécharger le fichier '{download_info[0][1]}'."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Télécharger le fichier '{download_info[0][1]}'."][i18n_lang_idx()]);step_n += 1
         pro_lbl5.grid(row=4, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
     elif download_info[0][0].startswith("https://huggingface.co/Addax-Data-Science/"):
         main_url = download_info[0][0].replace(f"/resolve/main/{download_info[0][1]}?download=true", "/tree/main")
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Go to website:",
                                                            f" {step_n}. Ir al sitio web:",
-                                                           f" {step_n}. Visiter le site web:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Visiter le site web:"][i18n_lang_idx()]);step_n += 1
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text=main_url, cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
@@ -6135,64 +6134,64 @@ def show_download_error_window(model_title, model_dir, model_vars):
         for download_file in download_info:
             pro_lbl5 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_file[1]}'.",
                                                             f" {step_n}. Descarga el archivo '{download_file[1]}'.",
-                                                            f" {step_n}. Télécharger le fichier '{download_file[1]}'."][lang_idx]);step_n += 1
+                                                            f" {step_n}. Télécharger le fichier '{download_file[1]}'."][i18n_lang_idx()]);step_n += 1
             pro_lbl5.grid(row=pro_lbl5_row, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
             pro_lbl5_row += 1
     elif download_info[0][0].startswith("https://zenodo.org/records/"):
         main_url = download_info[0][0].replace(f"/files/{download_info[0][1]}?download=1", "")
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Go to website:",
                                                            f" {step_n}. Ir al sitio web:",
-                                                           f" {step_n}. Visiter le site web:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Visiter le site web:"][i18n_lang_idx()]);step_n += 1
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text=main_url, cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
         pro_lbl4.bind("<Button-1>", lambda e: callback(main_url))
         pro_lbl5 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_info[0][1]}'.",
                                                            f" {step_n}. Descarga el archivo '{download_info[0][1]}'.",
-                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][i18n_lang_idx()]);step_n += 1
         pro_lbl5.grid(row=4, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
     elif model_title == "Tasmania - University of Tasmania":
         main_url = download_info[1][0].replace("/resolve/main/class_list.yaml?download=true", "/tree/main")
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Go to website:",
                                                            f" {step_n}. Ir al sitio web:",
-                                                           f" {step_n}. Visiter le site web:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Visiter le site web:"][i18n_lang_idx()]);step_n += 1
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text=main_url, cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
         pro_lbl4.bind("<Button-1>", lambda e: callback(main_url))
         pro_lbl5 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_info[0][1]}'.",
                                                            f" {step_n}. Descarga el archivo '{download_info[0][1]}'.",
-                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][i18n_lang_idx()]);step_n += 1
         pro_lbl5.grid(row=4, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl6 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_info[1][1]}'.",
                                                            f" {step_n}. Descarga el archivo '{download_info[1][1]}'.",
-                                                           f" {step_n}. Télécharger le fichier '{download_file[1][1]}'."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Télécharger le fichier '{download_file[1][1]}'."][i18n_lang_idx()]);step_n += 1
         pro_lbl6.grid(row=5, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
     elif model_title == "MegaDetector 5a" or model_title == "MegaDetector 5b":
         main_url = "https://github.com/agentmorris/MegaDetector/releases/tag/v5.0"
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Go to website:",
                                                            f" {step_n}. Ir al sitio web:",
-                                                           f" {step_n}. Visiter le site web:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Visiter le site web:"][i18n_lang_idx()]);step_n += 1
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text=main_url, cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
         pro_lbl4.bind("<Button-1>", lambda e: callback(main_url))
         pro_lbl5 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_info[0][1]}'.",
                                                            f" {step_n}. Descarga el archivo '{download_info[0][1]}'.",
-                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][i18n_lang_idx()]);step_n += 1
         pro_lbl5.grid(row=4, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
     elif model_title == "Europe - DeepFaune v1.1":
         main_url = "https://pbil.univ-lyon1.fr/software/download/deepfaune/v1.1"
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Go to website:",
                                                            f" {step_n}. Ir al sitio web:",
-                                                           f" {step_n}. Visiter le site web:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Visiter le site web:"][i18n_lang_idx()]);step_n += 1
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text=main_url, cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
         pro_lbl4.bind("<Button-1>", lambda e: callback(main_url))
         pro_lbl5 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Download file '{download_info[0][1]}'.",
                                                            f" {step_n}. Descarga el archivo '{download_info[0][1]}'.",
-                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Télécharger le fichier '{download_file[0][1]}'."][i18n_lang_idx()]);step_n += 1
         pro_lbl5.grid(row=4, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
     else:
         pro_lbl3 = customtkinter.CTkLabel(pro_frm_2, text=[f" (!) No manual steps provided. Please take a screenshot of this"
@@ -6200,7 +6199,7 @@ def show_download_error_window(model_title, model_dir, model_vars):
                                                            "manuales. Por favor, tome una captura de pantalla de esta ventana"
                                                            " y enviar un correo electrónico a",
                                                            f" (!) Aucun étape manuelle fournie. SVP faire une capture d'écran de "
-                                                           "cette fenêtre et l'envoyer par courriel à"][lang_idx])
+                                                           "cette fenêtre et l'envoyer par courriel à"][i18n_lang_idx()])
         pro_lbl3.grid(row=2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl4 = customtkinter.CTkLabel(pro_frm_2, text="peter@addaxdatascience.com", cursor="hand2", font = url_label_font)
         pro_lbl4.grid(row=3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
@@ -6211,24 +6210,24 @@ def show_download_error_window(model_title, model_dir, model_vars):
         # general steps
         pro_lbl7 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Make sure you can view hidden files in your file explorer.", 
                                                            f" {step_n}. Asegúrate de que puedes ver los archivos ocultos en tu explorador de archivos.",
-                                                           f" {step_n}. Assurez-vous de faire afficher les fichiers cachés dans l'explorateur de fichiers."][lang_idx]);step_n += 1
+                                                           f" {step_n}. Assurez-vous de faire afficher les fichiers cachés dans l'explorateur de fichiers."][i18n_lang_idx()]);step_n += 1
         pro_lbl7.grid(row=pro_lbl5_row + 1, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl8 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Move the downloaded file(s) into the folder:",
                                                            f" {step_n}. Mueva los archivos descargados a la carpeta:",
-                                                           f" {step_n}. Déplacer le(s) fichier(s) téléchargé(s) dans le dossier:"][lang_idx]);step_n += 1
+                                                           f" {step_n}. Déplacer le(s) fichier(s) téléchargé(s) dans le dossier:"][i18n_lang_idx()]);step_n += 1
         pro_lbl8.grid(row=pro_lbl5_row + 2, column=0, padx=PADX, pady=(0, 0), sticky="nsw")
         pro_lbl9 = customtkinter.CTkLabel(pro_frm_2, text=f"'{model_dir}'")
         pro_lbl9.grid(row=pro_lbl5_row + 3, column=0, padx=(PADX * 4, PADX), pady=(PADY/8, PADY/8), sticky="nsw")
         pro_lbl10 = customtkinter.CTkLabel(pro_frm_2, text=[f" {step_n}. Close AddaxAI and try again.",
                                                             f" {step_n}. Cierre AddaxAI e inténtelo de nuevo.",
-                                                            f" {step_n}. Fermer AddaxAI et réessayer."][lang_idx]);step_n += 1
+                                                            f" {step_n}. Fermer AddaxAI et réessayer."][i18n_lang_idx()]);step_n += 1
         pro_lbl10.grid(row=pro_lbl5_row + 4, column=0, padx=PADX, pady=(PADY/8, PADY/8), sticky="nsw")
 
         # close AddaxAI
         btns_frm2 = customtkinter.CTkFrame(master=de_root)
         btns_frm2.columnconfigure(0, weight=1, minsize=10)
         btns_frm2.grid(row=6, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-        close_btn = customtkinter.CTkButton(btns_frm2, text=["Close AddaxAI", "Cerrar AddaxAI", "Fermer AddaxAI"][lang_idx], command=on_toplevel_close)
+        close_btn = customtkinter.CTkButton(btns_frm2, text=["Close AddaxAI", "Cerrar AddaxAI", "Fermer AddaxAI"][i18n_lang_idx()], command=on_toplevel_close)
         close_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
 
 # open window with env info
@@ -6236,7 +6235,7 @@ def show_download_error_window_env(model_title, model_dir, model_vars):
     
     # create window
     de_root = customtkinter.CTkToplevel(root)
-    de_root.title(["Download error", "Error de descarga", "Erreur de téléchargement"][lang_idx])
+    de_root.title(["Download error", "Error de descarga", "Erreur de téléchargement"][i18n_lang_idx()])
     de_root.geometry("+10+10")
     bring_window_to_top_but_not_for_ever(de_root)
 
@@ -6247,7 +6246,7 @@ def show_download_error_window_env(model_title, model_dir, model_vars):
                                                  "several causes.", "Algo salió mal al intentar descargar el modelo. Esto "
                                                  "puede tener varias causas.",
                                                  "Quelque chose a mal tourné lors du téléchargement de l'environnement virtuel. Cela "
-                                                 "peut avoir plusieurs causes."][lang_idx])
+                                                 "peut avoir plusieurs causes."][i18n_lang_idx()])
     lbl2.grid(row=1, column=0, padx=PADX, pady=(0, PADY/2), columnspan = 2, sticky="nswe")
 
     # internet connection frame
@@ -6257,7 +6256,7 @@ def show_download_error_window_env(model_title, model_dir, model_vars):
     int_frm_2 = customtkinter.CTkFrame(master=int_frm_1)
     int_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     int_frm_2.columnconfigure(0, weight=1, minsize=700)
-    int_lbl = customtkinter.CTkLabel(int_frm_1, text=[" 1. Internet connection", " 1. Conexión a Internet", " 1. Connexion Internet"][lang_idx], font = main_label_font)
+    int_lbl = customtkinter.CTkLabel(int_frm_1, text=[" 1. Internet connection", " 1. Conexión a Internet", " 1. Connexion Internet"][i18n_lang_idx()], font = main_label_font)
     int_lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
     int_txt_1 = customtkinter.CTkTextbox(master=int_frm_2, corner_radius=10, height = 55, wrap = "word", fg_color = "transparent")
     int_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), sticky="nswe")
@@ -6269,7 +6268,7 @@ def show_download_error_window_env(model_title, model_dir, model_vars):
                            "puede funcionar.",
                            "Vérifiez si votre connexion Internet est stable. Si possible, réessayer avec une connexion "
                            "sur fibre optique ou sur un réseau Wi-Fi plus puissant. Parfois, la connexion à un réseau ouvert "
-                           "tel qu'un point d'accès mobile peut solutionner le problème."][lang_idx])
+                           "tel qu'un point d'accès mobile peut solutionner le problème."][i18n_lang_idx()])
 
     # protection software frame
     pro_frm_1 = customtkinter.CTkFrame(master=de_root)
@@ -6278,7 +6277,7 @@ def show_download_error_window_env(model_title, model_dir, model_vars):
     pro_frm_2 = customtkinter.CTkFrame(master=pro_frm_1)
     pro_frm_2.grid(row=2, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     pro_frm_2.columnconfigure(0, weight=1, minsize=700)
-    pro_lbl = customtkinter.CTkLabel(pro_frm_1, text=[" 2. Protection software", " 2. Software de protección" ," 2. Logiciel de sécurité"][lang_idx], font = main_label_font)
+    pro_lbl = customtkinter.CTkLabel(pro_frm_1, text=[" 2. Protection software", " 2. Software de protección" ," 2. Logiciel de sécurité"][i18n_lang_idx()], font = main_label_font)
     pro_lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nsw")
     pro_txt_1 = customtkinter.CTkTextbox(master=pro_frm_2, corner_radius=10, height = 55, wrap = "word", fg_color = "transparent")
     pro_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), sticky="nswe")
@@ -6287,7 +6286,7 @@ def show_download_error_window_env(model_title, model_dir, model_vars):
                            "bloquear la conexión a Internet. Inténtalo de nuevo con este software de protección "
                            "desactivado.",
                            "Certains réglages de parefeux, de serveurs mandataires (proxy) ou de VPN peuvent bloquer la"
-                           "connexion à Internet. Réessayer après avoir désactivé le logiciel de sécurité."][lang_idx])
+                           "connexion à Internet. Réessayer après avoir désactivé le logiciel de sécurité."][i18n_lang_idx()])
 
 # open frame to select species for advanc mode
 def open_species_selection():
@@ -6308,7 +6307,7 @@ def open_species_selection():
     # on seleciton change
     def on_selection():
         selected_classes = scrollable_checkbox_frame.get_checked_items()
-        lbl2.configure(text = f"{['Selected', 'Seleccionadas', 'Sélection de'][lang_idx]} {len(selected_classes)} {['of', 'de', 'de'][lang_idx]} {len(all_classes)}")
+        lbl2.configure(text = f"{['Selected', 'Seleccionadas', 'Sélection de'][i18n_lang_idx()]} {len(selected_classes)} {['of', 'de', 'de'][i18n_lang_idx()]} {len(all_classes)}")
 
     # create window
     ss_root = customtkinter.CTkToplevel(root)
@@ -6321,7 +6320,7 @@ def open_species_selection():
     spp_frm.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
     lbl1 = customtkinter.CTkLabel(spp_frm, text=["Which species are present in your project area?", 
                                                  "¿Qué especies están presentes en la zona de su proyecto?",
-                                                 "Quelles espèces sont présentes dans la zone de votre projet"][lang_idx],
+                                                 "Quelles espèces sont présentes dans la zone de votre projet"][i18n_lang_idx()],
                                                  font = main_label_font)
     lbl1.grid(row=0, column=0, padx=2*PADX, pady=PADY, columnspan = 2, sticky="nsw")
     lbl2 = customtkinter.CTkLabel(spp_frm, text="")
@@ -6345,7 +6344,7 @@ def open_species_selection():
 def open_keep_series_species_selection():
 
     def t(en, es, fr):
-        return [en, es, fr][lang_idx]
+        return [en, es, fr][i18n_lang_idx()]
 
     # Full universe of valid classes across all installed cls models
     all_supported = get_all_supported_model_classes()  # sorted list :contentReference[oaicite:2]{index=2}
@@ -6521,19 +6520,19 @@ class InfoButton(customtkinter.CTkButton):
 
 def sim_dir_show_info():
     mb.showinfo(title = t('information'),
-                message = ["Select the images to analyse", "Seleccionar las imágenes a analizar", "Sélectionner les images à analyser"][lang_idx],
+                message = ["Select the images to analyse", "Seleccionar las imágenes a analizar", "Sélectionner les images à analyser"][i18n_lang_idx()],
                 detail = ["Here you can select a folder containing camera trap images. It will process all images it can find, also in subfolders."
                           " Switch to advanced mode for more options.", " Aquí puede seleccionar una carpeta que contenga imágenes de cámaras trampa."
                           " Procesará todas las imágenes que encuentre, también en las subcarpetas. Cambia al modo avanzado para más opciones.",
                           "Ici vous pouvez choisir un dossier contenant les images des pièges photographiques. Toutes les images trouvées, incluant celles "
-                          "dans les sous-dossiers seront traitées. Utiliser le mode avancé pour plus d'options."][lang_idx])
+                          "dans les sous-dossiers seront traitées. Utiliser le mode avancé pour plus d'options."][i18n_lang_idx()])
 
 def callback(url):
     webbrowser.open_new(url)
 
 def sim_spp_show_info():
     mb.showinfo(title = t('information'),
-                message = ["Select the species that are present", "Seleccione las especies presentes", "Sélection des espèces présentes"][lang_idx],
+                message = ["Select the species that are present", "Seleccione las especies presentes", "Sélection des espèces présentes"][i18n_lang_idx()],
                 detail = ["Here, you can select and deselect the animals categories that are present in your project"
                           " area. If the animal category is not selected, it will be excluded from the results. The "
                           "category list will update according to the model selected.", "Aquí puede seleccionar y anular"
@@ -6542,7 +6541,7 @@ def sim_spp_show_info():
                           "categorías se actualizará según el modelo seleccionado.",
                           "Ici, vous pouvez sélectionner/désélectionner les catégories d'espèces présentes dans la zone de votre projet."
                           " Si une catégorie n'est pas sélectionnée, elle sera exclue des résultats. La liste de catégories sera mise-à-jour en "
-                          "fonction du modèle sélectionné."][lang_idx])
+                          "fonction du modèle sélectionné."][i18n_lang_idx()])
 
 def on_spp_selection():
     selected_classes = sim_spp_scr.get_checked_items()
@@ -6553,7 +6552,7 @@ def on_spp_selection():
 def sim_mdl_show_info():
     if var_cls_model.get() == t('none'):
         mb.showinfo(title = t('information'),
-                    message = ["Select the model to identify animals", "Seleccione el modelo para identificar animales", "Sélectionner le modèle d'identification d'animaux"][lang_idx],
+                    message = ["Select the model to identify animals", "Seleccione el modelo para identificar animales", "Sélectionner le modèle d'identification d'animaux"][i18n_lang_idx()],
                     detail = ["Here, you can choose a model that can identify your target species. If you select ‘None’, it will find vehicles,"
                               " people, and animals, but will not further identify them. When a model is selected, press this button again to "
                               "read more about the model in question.", "Aquí, puede elegir un modelo que pueda identificar su especie objetivo."
@@ -6561,7 +6560,7 @@ def sim_mdl_show_info():
                               "seleccionado un modelo, vuelva a pulsar este botón para obtener más información sobre el modelo en cuestión.",
                               "Ici, vous pouvez choisir un modèle qui identifie les espèces cibles. Si vous sélectionnez ‘Aucun’, il trouvera les "
                               "véhicules, les personnes et les animaux, mais sans les identifier. Lorsqu'un modèle est sélectionné, cliquer sur ce "
-                              "bouton à nouveau pour obtenir plus d'information sur ce dernier."][lang_idx])
+                              "bouton à nouveau pour obtenir plus d'information sur ce dernier."][i18n_lang_idx()])
     else:
         show_model_info()
 
@@ -6575,7 +6574,7 @@ class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
         super().__init__(master, **kwargs)
         self.dummy_spp = dummy_spp
         if dummy_spp:
-            all_classes = [f"{['Species', 'Especies', 'Espèces'][lang_idx]} {i + 1}" for i in range(10)]
+            all_classes = [f"{['Species', 'Especies', 'Espèces'][i18n_lang_idx()]} {i + 1}" for i in range(10)]
         self.command = command
         self.checkbox_list = []
         self.selected_classes = selected_classes
@@ -6614,20 +6613,20 @@ class EnvDownloadProgressWindow:
         
         self.lbl = customtkinter.CTkLabel(self.dm_root, text=[f"Downloading environment '{env_title}' ({total_size_str})",
                                                               f"Descargar entorno '{env_title}' ({total_size_str})",
-                                                              f"Téléchargement de l'environnement '{env_title}' ({total_size_str})"][lang_idx], 
+                                                              f"Téléchargement de l'environnement '{env_title}' ({total_size_str})"][i18n_lang_idx()], 
                                           font = customtkinter.CTkFont(family='CTkFont', size=14, weight = 'bold'))
         self.lbl.grid(row=0, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
         
         self.war = customtkinter.CTkLabel(self.dm_root, text=["Please prevent computer from sleeping during the download.",
                                                               "Por favor, evite que el ordenador se duerma durante la descarga.",
-                                                              "SVP empêcher l'ordinateur de tomber en mode veille lors du téléchargement."][lang_idx])
+                                                              "SVP empêcher l'ordinateur de tomber en mode veille lors du téléchargement."][i18n_lang_idx()])
         self.war.grid(row=1, column=0, padx=PADX, pady=0, sticky="nswe")
         
-        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  ", "  Prévenir la mise en veille avec un outil en ligne "][lang_idx], command=open_nosleep_page)
+        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  ", "  Prévenir la mise en veille avec un outil en ligne "][i18n_lang_idx()], command=open_nosleep_page)
         self.but.grid(row=2, column=0, padx=PADX, pady=(PADY/2, 0), sticky="")
         
         # Label for Downloading Progress
-        self.lbl_download = customtkinter.CTkLabel(self.frm, text=["Downloading...", "Descargando...", "Téléchargement..."][lang_idx])
+        self.lbl_download = customtkinter.CTkLabel(self.frm, text=["Downloading...", "Descargando...", "Téléchargement..."][i18n_lang_idx()])
         self.lbl_download.grid(row=1, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
 
         # Progress bar for downloading
@@ -6639,7 +6638,7 @@ class EnvDownloadProgressWindow:
         self.per_download.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="")
 
         # Label for Extraction Progress
-        self.lbl_extraction = customtkinter.CTkLabel(self.frm, text=["Extracting...", "Extrayendo...", "Extraction..."][lang_idx])
+        self.lbl_extraction = customtkinter.CTkLabel(self.frm, text=["Extracting...", "Extrayendo...", "Extraction..."][i18n_lang_idx()])
         self.lbl_extraction.grid(row=3, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
 
         # Progress bar for extraction
@@ -6688,14 +6687,14 @@ class ModelDownloadProgressWindow:
         self.frm.columnconfigure(0, weight=1, minsize=500 * scale_factor)
         self.lbl = customtkinter.CTkLabel(self.dm_root, text=[f"Downloading model '{model_title}' ({total_size_str})",
                                                               f"Descargar modelo '{model_title}' ({total_size_str})",
-                                                              f"Téléchargement du modèle '{model_title}' ({total_size_str})"][lang_idx], 
+                                                              f"Téléchargement du modèle '{model_title}' ({total_size_str})"][i18n_lang_idx()], 
                                           font = customtkinter.CTkFont(family='CTkFont', size=14, weight = 'bold'))
         self.lbl.grid(row=0, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
         self.war = customtkinter.CTkLabel(self.dm_root, text=["Please prevent computer from sleeping during the download.",
                                                           "Por favor, evite que el ordenador se duerma durante la descarga.",
-                                                          "SVP empêcher l'ordinateur de tomber en mode veille pendant le téléchargement."][lang_idx])
+                                                          "SVP empêcher l'ordinateur de tomber en mode veille pendant le téléchargement."][i18n_lang_idx()])
         self.war.grid(row=1, column=0, padx=PADX, pady=0, sticky="nswe")
-        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  ", "  Prévenir la mise en veille avec un outil en ligne "][lang_idx], command=open_nosleep_page)
+        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  ", "  Prévenir la mise en veille avec un outil en ligne "][i18n_lang_idx()], command=open_nosleep_page)
         self.but.grid(row=2, column=0, padx=PADX, pady=(PADY/2, 0), sticky="")
         self.pbr = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
         self.pbr.set(0)
@@ -6791,7 +6790,7 @@ def show_donation_popup():
 
     # create window
     do_root = customtkinter.CTkToplevel(root)
-    do_root.title(["Model information", "Información del modelo", "Informations sur le modèle"][lang_idx])
+    do_root.title(["Model information", "Información del modelo", "Informations sur le modèle"][i18n_lang_idx()])
     do_root.geometry("+10+10")
     bring_window_to_top_but_not_for_ever(do_root)
 
@@ -6799,14 +6798,14 @@ def show_donation_popup():
     row_idx = 1
     frm_1 = donation_popup_frame(master=do_root)
     frm_1.grid(row=row_idx, padx=PADX, pady=PADY, sticky="nswe")
-    title_lbl_1 = customtkinter.CTkLabel(frm_1, text=title_text[lang_idx], font=customtkinter.CTkFont(family='CTkFont', size=18, weight = 'bold'))
+    title_lbl_1 = customtkinter.CTkLabel(frm_1, text=title_text[i18n_lang_idx()], font=customtkinter.CTkFont(family='CTkFont', size=18, weight = 'bold'))
     title_lbl_1.grid(row=0, padx=PADX, pady=(PADY, PADY/2), sticky="nswe")
     descr_txt_1 = customtkinter.CTkTextbox(master=frm_1, corner_radius=10, height=90, wrap="word", fg_color="transparent")
     descr_txt_1.grid(row=1, padx=PADX, pady=(0, 0), sticky="nswe")
     descr_txt_1.tag_config("center", justify="center")
-    descr_txt_1.insert("0.0", donation_text[lang_idx], "center")
+    descr_txt_1.insert("0.0", donation_text[i18n_lang_idx()], "center")
     descr_txt_1.configure(state="disabled")
-    title_lbl_2 = customtkinter.CTkLabel(frm_1, text=subtitle_text[lang_idx], font=main_label_font)
+    title_lbl_2 = customtkinter.CTkLabel(frm_1, text=subtitle_text[i18n_lang_idx()], font=main_label_font)
     title_lbl_2.grid(row=2, padx=PADX, pady=(0, PADY), sticky="nswe")
 
     # buttons frame
@@ -6814,11 +6813,11 @@ def show_donation_popup():
     btns_frm.columnconfigure(0, weight=1, minsize=400)
     btns_frm.columnconfigure(1, weight=1, minsize=400)
     btns_frm.grid(row=3, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    btn_1 = customtkinter.CTkButton(btns_frm, text=btn_1_txt[lang_idx], command=lambda: open_link("https://buy.stripe.com/00g8xx3aI93lb4c9AI"))
+    btn_1 = customtkinter.CTkButton(btns_frm, text=btn_1_txt[i18n_lang_idx()], command=lambda: open_link("https://buy.stripe.com/00g8xx3aI93lb4c9AI"))
     btn_1.grid(row=1, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="we")
-    btn_2 = customtkinter.CTkButton(btns_frm, text=btn_2_txt[lang_idx], command=lambda: open_link("https://paymentlink.mollie.com/payment/al7x0Z6k2XWvEcdTwB5c7/"))
+    btn_2 = customtkinter.CTkButton(btns_frm, text=btn_2_txt[i18n_lang_idx()], command=lambda: open_link("https://paymentlink.mollie.com/payment/al7x0Z6k2XWvEcdTwB5c7/"))
     btn_2.grid(row=1, column=1, padx=(0, PADX), pady=PADY, sticky="we")
-    btn_lbl_2 = customtkinter.CTkLabel(btns_frm, text=questions_text[lang_idx], font=italic_label_font)
+    btn_lbl_2 = customtkinter.CTkLabel(btns_frm, text=questions_text[i18n_lang_idx()], font=italic_label_font)
     btn_lbl_2.grid(row=2, columnspan=4, padx=PADX, pady=(PADY/2, 0), sticky="nswe")
     btn_lbl_4 = customtkinter.CTkLabel(btns_frm, text=email_text, cursor="hand2", font=url_label_font)
     btn_lbl_4.grid(row=3, columnspan=4, padx=PADX, pady=(0, PADY/2), sticky="nswe")
@@ -6848,11 +6847,11 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     if needs_EA_update_bool:
         update_var = [f"Your current AddaxAI version (v{current_AA_version}) will not be able to run this model. An update is required.",
                       f"La versión actual de AddaxAI (v{current_AA_version}) no podrá ejecutar este modelo. Se requiere una actualización.",
-                      f"La version courante d'AddaxAI (v{current_AA_version}) ne pourra pas utiliser ce modèle. Une mise-à-jour est requise."][lang_idx]
+                      f"La version courante d'AddaxAI (v{current_AA_version}) ne pourra pas utiliser ce modèle. Une mise-à-jour est requise."][i18n_lang_idx()]
     else:
         update_var = [f"Current version of AddaxAI (v{current_AA_version}) is able to use this model. No update required.",
                       f"La versión actual de AddaxAI (v{current_AA_version}) puede usar este modelo. No requiere actualización.",
-                      f"La version courante d'AddaxAI (v{current_AA_version}) est en mesure d'utiliser ce modèle. Aucune mise-à-jour requise."][lang_idx]
+                      f"La version courante d'AddaxAI (v{current_AA_version}) est en mesure d'utiliser ce modèle. Aucune mise-à-jour requise."][i18n_lang_idx()]
     
     # define functions
     def close():
@@ -6868,13 +6867,13 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
     # create window
     nm_root = customtkinter.CTkToplevel(root)
-    nm_root.title(["Model information", "Información sobre el modelo", "Informations sur le modèle"][lang_idx])
+    nm_root.title(["Model information", "Información sobre el modelo", "Informations sur le modèle"][i18n_lang_idx()])
     nm_root.geometry("+10+10")
     bring_window_to_top_but_not_for_ever(nm_root)
 
     # new model label
     if new_model:
-        lbl = customtkinter.CTkLabel(nm_root, text=["New model available!", "¡Nuevo modelo disponible!", "Nouveau modèle disponible!"][lang_idx], font = main_label_font)
+        lbl = customtkinter.CTkLabel(nm_root, text=["New model available!", "¡Nuevo modelo disponible!", "Nouveau modèle disponible!"][i18n_lang_idx()], font = main_label_font)
         lbl.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/4), columnspan = 2, sticky="nswe")
 
     # title frame
@@ -6883,7 +6882,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     title_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=PADY, sticky="nswe")
     title_frm_2 = model_info_frame(master=title_frm_1)
     title_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-    title_lbl_1 = customtkinter.CTkLabel(title_frm_1, text=["Title", "Título", "Titre"][lang_idx], font = main_label_font)
+    title_lbl_1 = customtkinter.CTkLabel(title_frm_1, text=["Title", "Título", "Titre"][i18n_lang_idx()], font = main_label_font)
     title_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     title_lbl_2 = customtkinter.CTkLabel(title_frm_2, text=title)
     title_lbl_2.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
@@ -6895,7 +6894,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
         owner_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
         owner_frm_2 = model_info_frame(master=owner_frm_1)
         owner_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-        owner_lbl_1 = customtkinter.CTkLabel(owner_frm_1, text=["Owner", "Dueño", "Propriétaire"][lang_idx], font = main_label_font)
+        owner_lbl_1 = customtkinter.CTkLabel(owner_frm_1, text=["Owner", "Dueño", "Propriétaire"][i18n_lang_idx()], font = main_label_font)
         owner_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
         owner_lbl_2 = customtkinter.CTkLabel(owner_frm_2, text=owner_var)
         owner_lbl_2.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
@@ -6906,7 +6905,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     devop_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     devop_frm_2 = model_info_frame(master=devop_frm_1)
     devop_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-    devop_lbl_1 = customtkinter.CTkLabel(devop_frm_1, text=["Developer", "Desarrollador", "Développeur"][lang_idx], font = main_label_font)
+    devop_lbl_1 = customtkinter.CTkLabel(devop_frm_1, text=["Developer", "Desarrollador", "Développeur"][i18n_lang_idx()], font = main_label_font)
     devop_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     devop_lbl_2 = customtkinter.CTkLabel(devop_frm_2, text=developer_var)
     devop_lbl_2.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
@@ -6917,7 +6916,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     descr_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     descr_frm_2 = model_info_frame(master=descr_frm_1)
     descr_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-    descr_lbl_1 = customtkinter.CTkLabel(descr_frm_1, text=["Description", "Descripción", "Description"][lang_idx], font = main_label_font)
+    descr_lbl_1 = customtkinter.CTkLabel(descr_frm_1, text=["Description", "Descripción", "Description"][i18n_lang_idx()], font = main_label_font)
     descr_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     descr_txt_1 = customtkinter.CTkTextbox(master=descr_frm_2, corner_radius=10, height = 150, wrap = "word", fg_color = "transparent")
     descr_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), columnspan = 2, sticky="nswe")
@@ -6930,7 +6929,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     class_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     class_frm_2 = model_info_frame(master=class_frm_1)
     class_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-    class_lbl_1 = customtkinter.CTkLabel(class_frm_1, text=["Classes", "Clases", "Classes"][lang_idx], font = main_label_font)
+    class_lbl_1 = customtkinter.CTkLabel(class_frm_1, text=["Classes", "Clases", "Classes"][i18n_lang_idx()], font = main_label_font)
     class_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     class_txt_1 = customtkinter.CTkTextbox(master=class_frm_2, corner_radius=10, height = 150, wrap = "word", fg_color = "transparent")
     class_txt_1.grid(row=0, column=0, padx=PADX/4, pady=(0, PADY/4), columnspan = 2, sticky="nswe")
@@ -6944,7 +6943,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     updat_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     updat_frm_2 = model_info_frame(master=updat_frm_1)
     updat_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-    updat_lbl_1 = customtkinter.CTkLabel(updat_frm_1, text=["Update", "Actualizar", "Mise-à-jour"][lang_idx], font = main_label_font)
+    updat_lbl_1 = customtkinter.CTkLabel(updat_frm_1, text=["Update", "Actualizar", "Mise-à-jour"][i18n_lang_idx()], font = main_label_font)
     updat_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     updat_lbl_2 = customtkinter.CTkLabel(updat_frm_2, text=update_var)
     updat_lbl_2.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
@@ -6959,21 +6958,21 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     for col in range(0, n_btns):
         btns_frm.columnconfigure(col, weight=1, minsize=10)
     btns_frm.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    close_btn = customtkinter.CTkButton(btns_frm, text=["Close", "Cerca", "Fermer"][lang_idx], command=close)
+    close_btn = customtkinter.CTkButton(btns_frm, text=["Close", "Cerca", "Fermer"][i18n_lang_idx()], command=close)
     close_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
-    lmore_btn = customtkinter.CTkButton(btns_frm, text=["Learn more", "Más información", "En savoir plus"][lang_idx], command=read_more)
+    lmore_btn = customtkinter.CTkButton(btns_frm, text=["Learn more", "Más información", "En savoir plus"][i18n_lang_idx()], command=read_more)
     lmore_btn.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nwse")
     ncol = 2
     if needs_EA_update_bool:
-        updat_btn = customtkinter.CTkButton(btns_frm, text=["Update", "Actualizar", "Mise-à-jour"][lang_idx], command=update)
+        updat_btn = customtkinter.CTkButton(btns_frm, text=["Update", "Actualizar", "Mise-à-jour"][i18n_lang_idx()], command=update)
         updat_btn.grid(row=0, column=ncol, padx=(0, PADX), pady=PADY, sticky="nwse")
         ncol += 1
     if citation_present:
-        citat_btn = customtkinter.CTkButton(btns_frm, text=["Cite", "Citar", "Citer"][lang_idx], command=cite)
+        citat_btn = customtkinter.CTkButton(btns_frm, text=["Cite", "Citar", "Citer"][i18n_lang_idx()], command=cite)
         citat_btn.grid(row=0, column=ncol, padx=(0, PADX), pady=PADY, sticky="nwse")
         ncol += 1
     if license_present:
-        licen_btn = customtkinter.CTkButton(btns_frm, text=["License", "Licencia", "Licence"][lang_idx], command=see_license)
+        licen_btn = customtkinter.CTkButton(btns_frm, text=["License", "Licencia", "Licence"][i18n_lang_idx()], command=see_license)
         licen_btn.grid(row=0, column=ncol, padx=(0, PADX), pady=PADY, sticky="nwse")
         ncol += 1
 
@@ -6995,11 +6994,11 @@ def update_model_dropdowns():
     global dpd_options_cls_model
     cls_models = fetch_known_models(CLS_DIR)
     dpd_options_cls_model = [["None"] + cls_models, ["Ninguno"] + cls_models, ["Aucun"] + cls_models]
-    update_dpd_options(dpd_cls_model, snd_step, var_cls_model, dpd_options_cls_model, model_cls_animal_options, row_cls_model, lbl_cls_model, lang_idx)
+    update_dpd_options(dpd_cls_model, snd_step, var_cls_model, dpd_options_cls_model, model_cls_animal_options, row_cls_model, lbl_cls_model, i18n_lang_idx())
     global dpd_options_model
     det_models = fetch_known_models(DET_DIR)
     dpd_options_model = [det_models + ["Custom model"], det_models + ["Otro modelo"], det_models + ["Modèle personnalisé"]]
-    update_dpd_options(dpd_model, snd_step, var_det_model, dpd_options_model, model_options, row_model, lbl_model, lang_idx)
+    update_dpd_options(dpd_model, snd_step, var_det_model, dpd_options_model, model_options, row_model, lbl_model, i18n_lang_idx())
     model_cls_animal_options(var_cls_model.get())
     global sim_dpd_options_cls_model
     sim_dpd_options_cls_model = [[item[0] + suffixes_for_sim_none[i], *item[1:]] for i, item in enumerate(dpd_options_cls_model)]
@@ -7055,13 +7054,13 @@ def show_result_info(file_path):
     result_main_frame.grid(row=0, column=0, sticky="ns")
 
     # label
-    lbl1 = customtkinter.CTkLabel(result_main_frame, text=["The images are processed!", "¡Las imágenes están procesadas!", "Les images ont été traitées!"][lang_idx], font = main_label_font, height=20)
+    lbl1 = customtkinter.CTkLabel(result_main_frame, text=["The images are processed!", "¡Las imágenes están procesadas!", "Les images ont été traitées!"][i18n_lang_idx()], font = main_label_font, height=20)
     lbl1.grid(row=0, column=0, padx=PADX, pady=(PADY, PADY/4), columnspan = 2, sticky="nswe")
     lbl2 = customtkinter.CTkLabel(result_main_frame, text=[f"The results and graphs are saved at '{os.path.dirname(file_path)}'.", f"Los resultados y gráficos se guardan en '{os.path.dirname(file_path)}'.",
-                                                           f"Les résultats et graphiques sont enregistrés sous '{os.path.dirname(file_path)}'."][lang_idx], height=20)
+                                                           f"Les résultats et graphiques sont enregistrés sous '{os.path.dirname(file_path)}'."][i18n_lang_idx()], height=20)
     lbl2.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY/4), columnspan = 2, sticky="nswe")
     lbl3 = customtkinter.CTkLabel(result_main_frame, text=[f"You can find a quick overview of the results below.", f"A continuación encontrará un resumen de los resultados.",
-                                                           f"Un aperçu des résultats est présenté ci-dessous."][lang_idx], height=20)
+                                                           f"Un aperçu des résultats est présenté ci-dessous."][i18n_lang_idx()], height=20)
     lbl3.grid(row=2, column=0, padx=PADX, pady=(PADY/4, PADY/4), columnspan = 2, sticky="nswe")
 
     # graph frame
@@ -7069,7 +7068,7 @@ def show_result_info(file_path):
     graph_frm_1.grid(row=3, column=0, padx=PADX, pady=PADY, sticky="nswe")
     graph_frm_2 = model_info_frame(master=graph_frm_1)
     graph_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
-    graph_lbl_1 = customtkinter.CTkLabel(graph_frm_1, text=["Graph", "Gráfico", "Graphique"][lang_idx], font = main_label_font)
+    graph_lbl_1 = customtkinter.CTkLabel(graph_frm_1, text=["Graph", "Gráfico", "Graphique"][i18n_lang_idx()], font = main_label_font)
     graph_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     graph_img = customtkinter.CTkImage(graph_img, size=(600, 300))
     graph_lbl_2 = customtkinter.CTkLabel(graph_frm_2, text="", image = graph_img)
@@ -7078,13 +7077,13 @@ def show_result_info(file_path):
     # table frame
     table_frm_1 = model_info_frame(master=result_main_frame)
     table_frm_1.grid(row=4, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    table_lbl_1 = customtkinter.CTkLabel(table_frm_1, text=["Table", "Tabla", "Table"][lang_idx], font = main_label_font)
+    table_lbl_1 = customtkinter.CTkLabel(table_frm_1, text=["Table", "Tabla", "Table"][i18n_lang_idx()], font = main_label_font)
     table_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
     table_scr_frm = customtkinter.CTkScrollableFrame(table_frm_1, width = RESULTS_TABLE_WIDTH)
     table_scr_frm.grid(row=0, column=1, columnspan = 3, padx=(0, PADX), pady=PADY, sticky="nesw")
     table_header = CTkTable(master=table_scr_frm,
                       column=3,
-                      values=[[["Species", "Especie", "Espèces"][lang_idx], ["Count", "Cuenta", "Compte"][lang_idx], ["Percentage", "Porcentaje", "Pourcentage"][lang_idx]]],
+                      values=[[["Species", "Especie", "Espèces"][i18n_lang_idx()], ["Count", "Cuenta", "Compte"][i18n_lang_idx()], ["Percentage", "Porcentaje", "Pourcentage"][i18n_lang_idx()]]],
                       font = main_label_font,
                       color_phase = "horizontal",
                       header_color = customtkinter.ThemeManager.theme["CTkFrame"]["top_fg_color"],
@@ -7105,7 +7104,7 @@ def show_result_info(file_path):
     btns_frm.columnconfigure(1, weight=1, minsize=10)
     btns_frm.columnconfigure(2, weight=1, minsize=10)
     btns_frm.columnconfigure(3, weight=1, minsize=10)
-    close_btn = customtkinter.CTkButton(btns_frm, text=["Close window", "Cerrar ventana", "Fermer la fenêtre"][lang_idx], command=close)
+    close_btn = customtkinter.CTkButton(btns_frm, text=["Close window", "Cerrar ventana", "Fermer la fenêtre"][i18n_lang_idx()], command=close)
     close_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
     openf_btn = customtkinter.CTkButton(btns_frm, text=t('see_results'), command=lambda: open_file_or_folder(file_path))
     openf_btn.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nwse")
@@ -7360,7 +7359,7 @@ class ProgressWindow:
             self.img_det_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.img_det_frm.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             img_det_ttl_txt = [f'Locating animals{img_det_extra_string}...', f'Localización de animales{img_det_extra_string}...', f'Localisation des animaux{img_det_extra_string}...']
-            self.img_det_ttl = customtkinter.CTkLabel(self.img_det_frm, text=img_det_ttl_txt[lang_idx], font = ttl_font)
+            self.img_det_ttl = customtkinter.CTkLabel(self.img_det_frm, text=img_det_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.img_det_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.img_det_sub_frm = customtkinter.CTkFrame(master=self.img_det_frm)
             self.img_det_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7370,33 +7369,33 @@ class ProgressWindow:
             self.img_det_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.img_det_per = customtkinter.CTkLabel(self.img_det_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.img_det_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.img_det_wai_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=checking_fpaths_txt[lang_idx])
+            self.img_det_wai_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=checking_fpaths_txt[i18n_lang_idx()])
             self.img_det_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.img_det_num_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{processing_image_txt[lang_idx]}:")
+            self.img_det_num_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{processing_image_txt[i18n_lang_idx()]}:")
             self.img_det_num_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_det_num_lbl.grid_remove()
             self.img_det_num_val = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"")
             self.img_det_num_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_det_num_val.grid_remove()
-            self.img_det_ela_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.img_det_ela_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.img_det_ela_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_det_ela_lbl.grid_remove()
             self.img_det_ela_val = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"")
             self.img_det_ela_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.img_det_ela_val.grid_remove()
-            self.img_det_rem_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.img_det_rem_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.img_det_rem_lbl.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_det_rem_lbl.grid_remove()
             self.img_det_rem_val = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"")
             self.img_det_rem_val.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_det_rem_val.grid_remove()
-            self.img_det_spe_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{images_per_second_txt[lang_idx]}:")
+            self.img_det_spe_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{images_per_second_txt[i18n_lang_idx()]}:")
             self.img_det_spe_lbl.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_det_spe_lbl.grid_remove()
             self.img_det_spe_val = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"")
             self.img_det_spe_val.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_det_spe_val.grid_remove()
-            self.img_det_hwa_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{running_on_txt[lang_idx]}:")
+            self.img_det_hwa_lbl = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"{running_on_txt[i18n_lang_idx()]}:")
             self.img_det_hwa_lbl.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_det_hwa_lbl.grid_remove()
             self.img_det_hwa_val = customtkinter.CTkLabel(self.img_det_sub_frm, height = lbl_height, text=f"")
@@ -7411,7 +7410,7 @@ class ProgressWindow:
             self.img_cls_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.img_cls_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             img_cls_ttl_txt = [f'Identifying animals{img_det_extra_string}...', f'Identificación de animales{img_det_extra_string}...', f'Identification des animaux{img_det_extra_string}...']
-            self.img_cls_ttl = customtkinter.CTkLabel(self.img_cls_frm, text=img_cls_ttl_txt[lang_idx], font = ttl_font)
+            self.img_cls_ttl = customtkinter.CTkLabel(self.img_cls_frm, text=img_cls_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.img_cls_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.img_cls_sub_frm = customtkinter.CTkFrame(master=self.img_cls_frm)
             self.img_cls_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7421,33 +7420,33 @@ class ProgressWindow:
             self.img_cls_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.img_cls_per = customtkinter.CTkLabel(self.img_cls_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.img_cls_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.img_cls_wai_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=in_queue_txt[lang_idx])
+            self.img_cls_wai_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=in_queue_txt[i18n_lang_idx()])
             self.img_cls_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.img_cls_num_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{processing_animal_txt[lang_idx]}:")
+            self.img_cls_num_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{processing_animal_txt[i18n_lang_idx()]}:")
             self.img_cls_num_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_cls_num_lbl.grid_remove()
             self.img_cls_num_val = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"")
             self.img_cls_num_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_cls_num_val.grid_remove()
-            self.img_cls_ela_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.img_cls_ela_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.img_cls_ela_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_cls_ela_lbl.grid_remove()
             self.img_cls_ela_val = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"")
             self.img_cls_ela_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.img_cls_ela_val.grid_remove()
-            self.img_cls_rem_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.img_cls_rem_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.img_cls_rem_lbl.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_cls_rem_lbl.grid_remove()
             self.img_cls_rem_val = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"")
             self.img_cls_rem_val.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_cls_rem_val.grid_remove()
-            self.img_cls_spe_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{animals_per_second_txt[lang_idx]}:")
+            self.img_cls_spe_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{animals_per_second_txt[i18n_lang_idx()]}:")
             self.img_cls_spe_lbl.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_cls_spe_lbl.grid_remove()
             self.img_cls_spe_val = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"")
             self.img_cls_spe_val.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.img_cls_spe_val.grid_remove()
-            self.img_cls_hwa_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{running_on_txt[lang_idx]}:")
+            self.img_cls_hwa_lbl = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"{running_on_txt[i18n_lang_idx()]}:")
             self.img_cls_hwa_lbl.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_cls_hwa_lbl.grid_remove()
             self.img_cls_hwa_val = customtkinter.CTkLabel(self.img_cls_sub_frm, height = lbl_height, text=f"")
@@ -7462,7 +7461,7 @@ class ProgressWindow:
             self.vid_det_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.vid_det_frm.grid(row=2, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             vid_det_ttl_txt = [f'Locating animals{vid_det_extra_string}...', f'Localización de animales{vid_det_extra_string}...', f'Localisation des animaux{vid_det_extra_string}...']
-            self.vid_det_ttl = customtkinter.CTkLabel(self.vid_det_frm, text=vid_det_ttl_txt[lang_idx], font = ttl_font)
+            self.vid_det_ttl = customtkinter.CTkLabel(self.vid_det_frm, text=vid_det_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.vid_det_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.vid_det_sub_frm = customtkinter.CTkFrame(master=self.vid_det_frm)
             self.vid_det_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7472,33 +7471,33 @@ class ProgressWindow:
             self.vid_det_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.vid_det_per = customtkinter.CTkLabel(self.vid_det_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.vid_det_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.vid_det_wai_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=in_queue_txt[lang_idx])
+            self.vid_det_wai_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=in_queue_txt[i18n_lang_idx()])
             self.vid_det_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.vid_det_num_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{processing_unknown_txt[lang_idx]}:")
+            self.vid_det_num_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{processing_unknown_txt[i18n_lang_idx()]}:")
             self.vid_det_num_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_det_num_lbl.grid_remove()
             self.vid_det_num_val = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"")
             self.vid_det_num_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_det_num_val.grid_remove()
-            self.vid_det_ela_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.vid_det_ela_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.vid_det_ela_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_det_ela_lbl.grid_remove()
             self.vid_det_ela_val = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"")
             self.vid_det_ela_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.vid_det_ela_val.grid_remove()
-            self.vid_det_rem_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.vid_det_rem_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.vid_det_rem_lbl.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_det_rem_lbl.grid_remove()
             self.vid_det_rem_val = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"")
             self.vid_det_rem_val.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_det_rem_val.grid_remove()
-            self.vid_det_spe_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{frames_per_second_txt[lang_idx]}:")
+            self.vid_det_spe_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{frames_per_second_txt[i18n_lang_idx()]}:")
             self.vid_det_spe_lbl.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_det_spe_lbl.grid_remove()
             self.vid_det_spe_val = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"")
             self.vid_det_spe_val.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_det_spe_val.grid_remove()
-            self.vid_det_hwa_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{running_on_txt[lang_idx]}:")
+            self.vid_det_hwa_lbl = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"{running_on_txt[i18n_lang_idx()]}:")
             self.vid_det_hwa_lbl.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_det_hwa_lbl.grid_remove()
             self.vid_det_hwa_val = customtkinter.CTkLabel(self.vid_det_sub_frm, height = lbl_height, text=f"")
@@ -7513,7 +7512,7 @@ class ProgressWindow:
             self.vid_cls_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.vid_cls_frm.grid(row=3, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             vid_cls_ttl_txt = [f'Identifying animals{vid_det_extra_string}...', f'Identificación de animales{vid_det_extra_string}...', f'Identification des animaux{vid_det_extra_string}...']
-            self.vid_cls_ttl = customtkinter.CTkLabel(self.vid_cls_frm, text=vid_cls_ttl_txt[lang_idx], font = ttl_font)
+            self.vid_cls_ttl = customtkinter.CTkLabel(self.vid_cls_frm, text=vid_cls_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.vid_cls_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.vid_cls_sub_frm = customtkinter.CTkFrame(master=self.vid_cls_frm)
             self.vid_cls_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7523,33 +7522,33 @@ class ProgressWindow:
             self.vid_cls_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.vid_cls_per = customtkinter.CTkLabel(self.vid_cls_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.vid_cls_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.vid_cls_wai_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=in_queue_txt[lang_idx])
+            self.vid_cls_wai_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=in_queue_txt[i18n_lang_idx()])
             self.vid_cls_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.vid_cls_num_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{processing_animal_txt[lang_idx]}:")
+            self.vid_cls_num_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{processing_animal_txt[i18n_lang_idx()]}:")
             self.vid_cls_num_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_cls_num_lbl.grid_remove()
             self.vid_cls_num_val = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"")
             self.vid_cls_num_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_cls_num_val.grid_remove()
-            self.vid_cls_ela_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.vid_cls_ela_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.vid_cls_ela_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_cls_ela_lbl.grid_remove()
             self.vid_cls_ela_val = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"")
             self.vid_cls_ela_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.vid_cls_ela_val.grid_remove()
-            self.vid_cls_rem_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.vid_cls_rem_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.vid_cls_rem_lbl.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_cls_rem_lbl.grid_remove()
             self.vid_cls_rem_val = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"")
             self.vid_cls_rem_val.grid(row=4, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_cls_rem_val.grid_remove()
-            self.vid_cls_spe_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{animals_per_second_txt[lang_idx]}:")
+            self.vid_cls_spe_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{animals_per_second_txt[i18n_lang_idx()]}:")
             self.vid_cls_spe_lbl.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_cls_spe_lbl.grid_remove()
             self.vid_cls_spe_val = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"")
             self.vid_cls_spe_val.grid(row=5, padx=self.padx_progress_window, pady=0, sticky="nse")
             self.vid_cls_spe_val.grid_remove()
-            self.vid_cls_hwa_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{running_on_txt[lang_idx]}:")
+            self.vid_cls_hwa_lbl = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"{running_on_txt[i18n_lang_idx()]}:")
             self.vid_cls_hwa_lbl.grid(row=6, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_cls_hwa_lbl.grid_remove()
             self.vid_cls_hwa_val = customtkinter.CTkLabel(self.vid_cls_sub_frm, height = lbl_height, text=f"")
@@ -7564,7 +7563,7 @@ class ProgressWindow:
             self.img_pst_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.img_pst_frm.grid(row=4, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             img_pst_ttl_txt = [f'Postprocessing{img_pst_extra_string}...', f'Postprocesado{img_pst_extra_string}...', f'Post-traitement des{img_pst_extra_string}...']
-            self.img_pst_ttl = customtkinter.CTkLabel(self.img_pst_frm, text=img_pst_ttl_txt[lang_idx], font = ttl_font)
+            self.img_pst_ttl = customtkinter.CTkLabel(self.img_pst_frm, text=img_pst_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.img_pst_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.img_pst_sub_frm = customtkinter.CTkFrame(master=self.img_pst_frm)
             self.img_pst_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7574,15 +7573,15 @@ class ProgressWindow:
             self.img_pst_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.img_pst_per = customtkinter.CTkLabel(self.img_pst_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.img_pst_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.img_pst_wai_lbl = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=in_queue_txt[lang_idx])
+            self.img_pst_wai_lbl = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=in_queue_txt[i18n_lang_idx()])
             self.img_pst_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.img_pst_ela_lbl = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.img_pst_ela_lbl = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.img_pst_ela_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_pst_ela_lbl.grid_remove()
             self.img_pst_ela_val = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"")
             self.img_pst_ela_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.img_pst_ela_val.grid_remove()
-            self.img_pst_rem_lbl = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.img_pst_rem_lbl = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.img_pst_rem_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.img_pst_rem_lbl.grid_remove()
             self.img_pst_rem_val = customtkinter.CTkLabel(self.img_pst_sub_frm, height = lbl_height, text=f"")
@@ -7597,7 +7596,7 @@ class ProgressWindow:
             self.vid_pst_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.vid_pst_frm.grid(row=5, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             vid_pst_ttl_txt = [f'Postprocessing{vid_pst_extra_string}...', f'Postprocesado{vid_pst_extra_string}...', f'Post-traitement des{vid_pst_extra_string}...']
-            self.vid_pst_ttl = customtkinter.CTkLabel(self.vid_pst_frm, text=vid_pst_ttl_txt[lang_idx], font = ttl_font)
+            self.vid_pst_ttl = customtkinter.CTkLabel(self.vid_pst_frm, text=vid_pst_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.vid_pst_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.vid_pst_sub_frm = customtkinter.CTkFrame(master=self.vid_pst_frm)
             self.vid_pst_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7607,15 +7606,15 @@ class ProgressWindow:
             self.vid_pst_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.vid_pst_per = customtkinter.CTkLabel(self.vid_pst_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.vid_pst_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.vid_pst_wai_lbl = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=in_queue_txt[lang_idx])
+            self.vid_pst_wai_lbl = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=in_queue_txt[i18n_lang_idx()])
             self.vid_pst_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.vid_pst_ela_lbl = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.vid_pst_ela_lbl = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.vid_pst_ela_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_pst_ela_lbl.grid_remove()
             self.vid_pst_ela_val = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"")
             self.vid_pst_ela_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.vid_pst_ela_val.grid_remove()
-            self.vid_pst_rem_lbl = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.vid_pst_rem_lbl = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.vid_pst_rem_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.vid_pst_rem_lbl.grid_remove()
             self.vid_pst_rem_val = customtkinter.CTkLabel(self.vid_pst_sub_frm, height = lbl_height, text=f"")
@@ -7630,7 +7629,7 @@ class ProgressWindow:
             self.plt_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
             self.plt_frm.grid(row=6, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
             plt_ttl_txt = [f'Creating graphs...', f'Creando gráficos...', f'Création des graphiques...']
-            self.plt_ttl = customtkinter.CTkLabel(self.plt_frm, text=plt_ttl_txt[lang_idx], font = ttl_font)
+            self.plt_ttl = customtkinter.CTkLabel(self.plt_frm, text=plt_ttl_txt[i18n_lang_idx()], font = ttl_font)
             self.plt_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan = 2, sticky="nsw")
             self.plt_sub_frm = customtkinter.CTkFrame(master=self.plt_frm)
             self.plt_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
@@ -7640,15 +7639,15 @@ class ProgressWindow:
             self.plt_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
             self.plt_per = customtkinter.CTkLabel(self.plt_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
             self.plt_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
-            self.plt_wai_lbl = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=in_queue_txt[lang_idx])
+            self.plt_wai_lbl = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=in_queue_txt[i18n_lang_idx()])
             self.plt_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
-            self.plt_ela_lbl = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.plt_ela_lbl = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"{elapsed_time_txt[i18n_lang_idx()]}:")
             self.plt_ela_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.plt_ela_lbl.grid_remove()
             self.plt_ela_val = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"")
             self.plt_ela_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")     
             self.plt_ela_val.grid_remove()
-            self.plt_rem_lbl = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.plt_rem_lbl = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"{remaining_time_txt[i18n_lang_idx()]}:")
             self.plt_rem_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
             self.plt_rem_lbl.grid_remove()
             self.plt_rem_val = customtkinter.CTkLabel(self.plt_sub_frm, height = lbl_height, text=f"")
@@ -7693,7 +7692,7 @@ class ProgressWindow:
         # detection of images
         if process == "img_det":
             if status == "load":
-                self.img_det_wai_lbl.configure(text = algorithm_starting_txt[lang_idx])
+                self.img_det_wai_lbl.configure(text = algorithm_starting_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -7721,7 +7720,7 @@ class ProgressWindow:
                 self.img_det_num_val.configure(text = f"{cur_it} of {tot_it}")
                 self.img_det_ela_val.configure(text = time_ela)
                 self.img_det_rem_val.configure(text = time_rem)
-                self.img_det_spe_lbl.configure(text = image_per_second_txt[lang_idx] if "it/s" in speed else seconds_per_image_txt[lang_idx])
+                self.img_det_spe_lbl.configure(text = image_per_second_txt[i18n_lang_idx()] if "it/s" in speed else seconds_per_image_txt[i18n_lang_idx()])
                 parsed_speed = speed.replace("it/s", "").replace("s/it", "")
                 self.img_det_spe_val.configure(text = parsed_speed)
                 self.img_det_hwa_val.configure(text = hware)
@@ -7743,7 +7742,7 @@ class ProgressWindow:
         # classification of images
         elif process == "img_cls":
             if status == "load":
-                self.img_cls_wai_lbl.configure(text = algorithm_starting_txt[lang_idx])
+                self.img_cls_wai_lbl.configure(text = algorithm_starting_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -7771,7 +7770,7 @@ class ProgressWindow:
                 self.img_cls_num_val.configure(text = f"{cur_it} of {tot_it}")
                 self.img_cls_ela_val.configure(text = time_ela)
                 self.img_cls_rem_val.configure(text = time_rem)
-                self.img_cls_spe_lbl.configure(text = animals_per_second_txt[lang_idx] if "it/s" in speed else seconds_per_animal_txt[lang_idx])
+                self.img_cls_spe_lbl.configure(text = animals_per_second_txt[i18n_lang_idx()] if "it/s" in speed else seconds_per_animal_txt[i18n_lang_idx()])
                 parsed_speed = speed.replace("it/s", "").replace("s/it", "")
                 self.img_cls_spe_val.configure(text = parsed_speed)
                 self.img_cls_hwa_val.configure(text = hware)
@@ -7788,7 +7787,7 @@ class ProgressWindow:
                 self.img_cls_spe_lbl.grid_remove()
                 self.img_cls_spe_val.grid_remove()
                 self.img_cls_wai_lbl.grid()
-                self.img_cls_wai_lbl.configure(text = smoothing_txt[lang_idx])
+                self.img_cls_wai_lbl.configure(text = smoothing_txt[i18n_lang_idx()])
             elif status == "done":
                 self.img_cls_num_lbl.grid_remove()
                 self.img_cls_num_val.grid_remove()
@@ -7807,10 +7806,10 @@ class ProgressWindow:
         # detection of videos
         if process == "vid_det":
             if status == "load":
-                self.vid_det_wai_lbl.configure(text = algorithm_starting_txt[lang_idx])
+                self.vid_det_wai_lbl.configure(text = algorithm_starting_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "extracting frames":
-                self.vid_det_wai_lbl.configure(text = extracting_frames_txt[lang_idx])
+                self.vid_det_wai_lbl.configure(text = extracting_frames_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -7836,16 +7835,16 @@ class ProgressWindow:
                 else:
                     self.vid_det_per.configure(fg_color=("#949BA2", "#4B4D50"))
                 if frame_video_choice == "frame":
-                    self.vid_det_num_lbl.configure(text = processing_frames_txt[lang_idx])
+                    self.vid_det_num_lbl.configure(text = processing_frames_txt[i18n_lang_idx()])
                 else:
-                    self.vid_det_num_lbl.configure(text = processing_videos_txt[lang_idx])
+                    self.vid_det_num_lbl.configure(text = processing_videos_txt[i18n_lang_idx()])
                 self.vid_det_num_val.configure(text = f"{cur_it} of {tot_it}")
                 self.vid_det_ela_val.configure(text = time_ela)
                 self.vid_det_rem_val.configure(text = time_rem)
                 if frame_video_choice == "frame":
-                    self.vid_det_spe_lbl.configure(text = frames_per_second_txt[lang_idx] if "it/s" in speed else seconds_per_frame_txt[lang_idx])
+                    self.vid_det_spe_lbl.configure(text = frames_per_second_txt[i18n_lang_idx()] if "it/s" in speed else seconds_per_frame_txt[i18n_lang_idx()])
                 else:
-                    self.vid_det_spe_lbl.configure(text = videos_per_second_txt[lang_idx] if "it/s" in speed else seconds_per_video_txt[lang_idx])
+                    self.vid_det_spe_lbl.configure(text = videos_per_second_txt[i18n_lang_idx()] if "it/s" in speed else seconds_per_video_txt[i18n_lang_idx()])
                 parsed_speed = speed.replace("it/s", "").replace("s/it", "")
                 self.vid_det_spe_val.configure(text = parsed_speed)
                 self.vid_det_hwa_val.configure(text = hware)
@@ -7867,7 +7866,7 @@ class ProgressWindow:
         # classification of videos
         elif process == "vid_cls":
             if status == "load":
-                self.vid_cls_wai_lbl.configure(text = algorithm_starting_txt[lang_idx])
+                self.vid_cls_wai_lbl.configure(text = algorithm_starting_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -7895,7 +7894,7 @@ class ProgressWindow:
                 self.vid_cls_num_val.configure(text = f"{cur_it} of {tot_it}")
                 self.vid_cls_ela_val.configure(text = time_ela)
                 self.vid_cls_rem_val.configure(text = time_rem)
-                self.vid_cls_spe_lbl.configure(text = animals_per_second_txt[lang_idx] if "it/s" in speed else seconds_per_animal_txt[lang_idx])
+                self.vid_cls_spe_lbl.configure(text = animals_per_second_txt[i18n_lang_idx()] if "it/s" in speed else seconds_per_animal_txt[i18n_lang_idx()])
                 parsed_speed = speed.replace("it/s", "").replace("s/it", "")
                 self.vid_cls_spe_val.configure(text = parsed_speed)
                 self.vid_cls_hwa_val.configure(text = hware)
@@ -7912,7 +7911,7 @@ class ProgressWindow:
                 self.vid_cls_spe_lbl.grid_remove()
                 self.vid_cls_spe_val.grid_remove()
                 self.vid_cls_wai_lbl.grid()
-                self.vid_cls_wai_lbl.configure(text = smoothing_txt[lang_idx])
+                self.vid_cls_wai_lbl.configure(text = smoothing_txt[i18n_lang_idx()])
             elif status == "done":
                 self.vid_cls_num_lbl.grid_remove()
                 self.vid_cls_num_val.grid_remove()
@@ -7931,7 +7930,7 @@ class ProgressWindow:
         # postprocessing of images
         elif process == "img_pst":
             if status == "load":
-                self.img_pst_wai_lbl.configure(text = starting_up_txt[lang_idx])
+                self.img_pst_wai_lbl.configure(text = starting_up_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -7964,7 +7963,7 @@ class ProgressWindow:
         # postprocessing of videos
         elif process == "vid_pst":
             if status == "load":
-                self.vid_pst_wai_lbl.configure(text = starting_up_txt[lang_idx])
+                self.vid_pst_wai_lbl.configure(text = starting_up_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -7997,7 +7996,7 @@ class ProgressWindow:
         # postprocessing of videos
         elif process == "plt":
             if status == "load":
-                self.plt_wai_lbl.configure(text = starting_up_txt[lang_idx])
+                self.plt_wai_lbl.configure(text = starting_up_txt[i18n_lang_idx()])
                 self.just_shown_load_screen = True
             elif status == "running":
                 if self.just_shown_load_screen:
@@ -8042,11 +8041,11 @@ def update_dpd_options(dpd, master, var, options, cmd, row, lbl, from_lang_idx):
     # recreate new option menu with updated options
     dpd.grid_forget()
     index = options[from_lang_idx].index(var.get()) # get dpd index
-    var.set(options[lang_idx][index]) # set to previous index
+    var.set(options[i18n_lang_idx()][index]) # set to previous index
     if cmd:
-        dpd = OptionMenu(master, var, *options[lang_idx], command=cmd)
+        dpd = OptionMenu(master, var, *options[i18n_lang_idx()], command=cmd)
     else:
-        dpd = OptionMenu(master, var, *options[lang_idx])
+        dpd = OptionMenu(master, var, *options[i18n_lang_idx()])
     dpd.configure(width=1)
     dpd.grid(row=row, column=1, sticky='nesw', padx=5)
 
@@ -8062,8 +8061,8 @@ def update_dpd_options(dpd, master, var, options, cmd, row, lbl, from_lang_idx):
 def update_sim_mdl_dpd():
     global sim_mdl_dpd
     sim_mdl_dpd.grid_forget()
-    sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=sim_dpd_options_cls_model[lang_idx], command=sim_mdl_dpd_callback, width = 1)
-    sim_mdl_dpd.set(sim_dpd_options_cls_model[lang_idx][dpd_options_cls_model[lang_idx].index(var_cls_model.get())])
+    sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=sim_dpd_options_cls_model[i18n_lang_idx()], command=sim_mdl_dpd_callback, width = 1)
+    sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][dpd_options_cls_model[i18n_lang_idx()].index(var_cls_model.get())])
     sim_mdl_dpd.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="nswe", columnspan = 2)
 
 # refresh ent texts
@@ -8088,18 +8087,16 @@ def set_lang_buttons(lang_idx):
 # change language
 def set_language():
     # calculate indeces
-    global lang_idx
-    from_lang_idx = lang_idx
+    from_lang_idx = i18n_lang_idx()
     to_lang_idx = 0 if from_lang_idx + 1 >= len(languages_available) else from_lang_idx + 1
     next_lang_idx = 0 if to_lang_idx + 1 >= len(languages_available) else to_lang_idx + 1
 
     # log
     print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
 
-    # set the global variable and i18n module to the new language
-    lang_idx = to_lang_idx
-    i18n_set_language(lang_idx)
-    write_global_vars(AddaxAI_files, {"lang_idx": lang_idx})
+    # update i18n module to the new language and persist
+    i18n_set_language(to_lang_idx)
+    write_global_vars(AddaxAI_files, {"lang_idx": i18n_lang_idx()})
 
     # update tab texts
     tabControl.tab(deploy_tab, text=t('deploy_tab'))
@@ -8268,9 +8265,9 @@ def no_user_input(var):
 # show warning if not valid input
 def invalid_value_warning(str, numeric = True):
     string = [f"You either entered an invalid value for the {str}, or none at all.", f"Ingresó un valor no válido para {str} o ninguno.",
-              f"Vous avez soit saisi un valeur invalide pour {str}, ou aucune valeur du tout."][lang_idx] 
+              f"Vous avez soit saisi un valeur invalide pour {str}, ou aucune valeur du tout."][i18n_lang_idx()] 
     if numeric:
-        string += [" You can only enter numeric characters.", " Solo puede ingresar caracteres numéricos.", "Vous pouvez uniquement saisir des caractères numériques."][lang_idx]
+        string += [" You can only enter numeric characters.", " Solo puede ingresar caracteres numéricos.", "Vous pouvez uniquement saisir des caractères numériques."][i18n_lang_idx()]
     mb.showerror(t('invalid_value'), string)
 
 # disable widgets based on row and col indeces
@@ -8368,7 +8365,7 @@ def abs_paths_warning():
                     " que está haciendo.",
                     "Il n'est pas recommandé d'utiliser des chemin absolus dans le fichier de sortie. Des logiciels tiers (tel "
                     "que Timelapse) ne seront pas en mesure de lire le fichier JSON si les chemins sont absolus. N'activer cette "
-                    "option que si vous savez ce que vous faites."][lang_idx])
+                    "option que si vous savez ce que vous faites."][i18n_lang_idx()])
         shown_abs_paths_warning = False
 
 # toggle image size entry box
@@ -8453,7 +8450,7 @@ def on_chb_smooth_cls_animal_change():
                                                "Cette fonctionnalité fait la moyenne les scores de confiance pour éliminer du aberrations statistiques. "
                                                "Notez qu'il est considéré qu'une seule espèce par séquence ou vidéo est présente et devrait donc uniquement "
                                                "être utilisé si les séquences multi-espèces sont rares. Cela n'affecte pas les détections de véhicules ou "
-                                               "de personnnes à côté des animaux."][lang_idx])
+                                               "de personnnes à côté des animaux."][i18n_lang_idx()])
 
 # toggle classification subframe
 def toggle_cls_frame(): 
@@ -8773,7 +8770,7 @@ def reset_values():
     var_exp_format.set(t('dpd_exp_format')[global_vars['var_exp_format_idx']])
     
     write_global_vars(AddaxAI_files, {
-        "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
+        "var_det_model_idx": dpd_options_model[i18n_lang_idx()].index(var_det_model.get()),
         "var_det_model_path": var_det_model_path.get(),
         "var_det_model_short": var_det_model_short.get(),
         "var_exclude_subs": var_exclude_subs.get(),
@@ -9050,12 +9047,12 @@ row_model = 0
 lbl_model = Label(master=snd_step, text=t('lbl_model'), width=1, anchor="w")
 lbl_model.grid(row=row_model, sticky='nesw', pady=2)
 var_det_model = StringVar(snd_step)
-var_det_model.set(dpd_options_model[lang_idx][global_vars["var_det_model_idx"]]) # take idx instead of string
+var_det_model.set(dpd_options_model[i18n_lang_idx()][global_vars["var_det_model_idx"]]) # take idx instead of string
 var_det_model_short = StringVar()
 var_det_model_short.set(global_vars["var_det_model_short"])
 var_det_model_path = StringVar()
 var_det_model_path.set(global_vars["var_det_model_path"])
-dpd_model = OptionMenu(snd_step, var_det_model, *dpd_options_model[lang_idx], command=model_options)
+dpd_model = OptionMenu(snd_step, var_det_model, *dpd_options_model[i18n_lang_idx()], command=model_options)
 dpd_model.configure(width=1)
 dpd_model.grid(row=row_model, column=1, sticky='nesw', padx=5)
 dsp_model = Label(master=snd_step, textvariable=var_det_model_short, fg=green_primary)
@@ -9071,8 +9068,8 @@ row_cls_model = 1
 lbl_cls_model = Label(snd_step, text=t('lbl_cls_model'), width=1, anchor="w")
 lbl_cls_model.grid(row=row_cls_model, sticky='nesw', pady=2)
 var_cls_model = StringVar(snd_step)
-var_cls_model.set(dpd_options_cls_model[lang_idx][global_vars["var_cls_model_idx"]]) # take idx instead of string
-dpd_cls_model = OptionMenu(snd_step, var_cls_model, *dpd_options_cls_model[lang_idx], command=model_cls_animal_options)
+var_cls_model.set(dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_model_idx"]]) # take idx instead of string
+dpd_cls_model = OptionMenu(snd_step, var_cls_model, *dpd_options_cls_model[i18n_lang_idx()], command=model_cls_animal_options)
 dpd_cls_model.configure(width=1, state=DISABLED)
 dpd_cls_model.grid(row=row_cls_model, column=1, sticky='nesw', padx=5, pady=2)
 
@@ -9608,9 +9605,9 @@ def write_help_tab():
     # intro sentence
     help_text.insert(END, ["Below you can find detailed documentation for each setting. If you have any questions, feel free to contact me on ",
                            "A continuación encontrarás documentación detallada sobre cada ajuste. Si tienes alguna pregunta, no dudes en ponerte en contacto conmigo en ",
-                           "Ci-dessous, vous trouverez la documentation détaillée pour chaque paramètre. Si vous avez des questions, n'hésitez pas à me contacter (anglais) à l'adresse "][lang_idx])
+                           "Ci-dessous, vous trouverez la documentation détaillée pour chaque paramètre. Si vous avez des questions, n'hésitez pas à me contacter (anglais) à l'adresse "][i18n_lang_idx()])
     help_text.insert(INSERT, "peter@addaxdatascience.com", hyperlink1.add(partial(webbrowser.open, "mailto:peter@addaxdatascience.com")))
-    help_text.insert(END, [" or raise an issue on the ", " o plantear una incidencia en ", " ou à rapporter un incident sur la "][lang_idx])
+    help_text.insert(END, [" or raise an issue on the ", " o plantear una incidencia en ", " ou à rapporter un incident sur la "][i18n_lang_idx()])
     help_text.insert(INSERT, t('github_page'), hyperlink1.add(partial(webbrowser.open, "https://github.com/PetervanLunteren/AddaxAI/issues")))
     help_text.insert(END, ".\n\n")
     help_text.tag_add('intro', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9621,7 +9618,7 @@ def write_help_tab():
     help_text.insert(END, t('browse') + "\n")
     help_text.insert(END, ["Here you can browse for a folder which contains images and/or video\'s. The model will be deployed on this directory, as well as the post-processing analyses.\n\n",
                            "Aquí puede buscar una carpeta que contenga imágenes y/o vídeos. El modelo se desplegará en este directorio, así como los análisis de post-procesamiento.\n\n",
-                           "Ici vous pouvez spécifier un dossier contenant des images et/ou des vidéos. La détection, l'identifications et les analyses de post-traitement s'effectueront sur le contenu de ce répertoire.\n\n"][lang_idx])
+                           "Ici vous pouvez spécifier un dossier contenant des images et/ou des vidéos. La détection, l'identifications et les analyses de post-traitement s'effectueront sur le contenu de ce répertoire.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9660,7 +9657,7 @@ def write_help_tab():
         "Utilisez-le si vous souhaitez expérimenter des performances de pointe. 'MDv1000-spruce' est plus petit et plus rapide, mais n’est recommandé que si la vitesse est une exigence importante et que vous en acceptez les compromis. "
         "De manière générale, la vitesse n'est presque jamais un facteur limitant, car même du matériel modeste peut traiter des dizaines de milliers d'images par jour. "
         "Plus d'informations sur les modèles MegaDetector "
-    ][lang_idx])
+    ][i18n_lang_idx()])
     help_text.insert(INSERT, t('here'), hyperlink1.add(partial(webbrowser.open, "https://github.com/ecologize/CameraTraps/blob/main/megadetector.md#megadetector-v50-20220615")))
     help_text.insert(END, ".\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 1
@@ -9681,14 +9678,14 @@ def write_help_tab():
                            "que le modèle de classification identifie l'espèce à laquelle il appartient. Vous pouvez sélectionner ici le modèle de classification que vous souhaitez "
                            "utiliser. Chaque modèle de classification est développé pour une zone spécifique. Découvrez quel modèle est le plus adapté à vos données, mais veuillez "
                            "noter que les modèles développés pour d'autres biomes ou projets ne sont pas nécessairement aussi performants dans d'autres écosystèmes. Vérifiez toujours "
-                           "la précision du modèle sur vos données avant d'accepter les résultats."][lang_idx])
+                           "la précision du modèle sur vos données avant d'accepter les résultats."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # cls model info
     help_text.insert(END, f"{t('lbl_model_info')}\n")
-    help_text.insert(END, ["This will open a window with model information.", "Esto abrirá una ventana con información sobre el modelo.", "Ceci ouvrira une fenêtre avec des informations sur le modèle."][lang_idx])
+    help_text.insert(END, ["This will open a window with model information.", "Esto abrirá una ventana con información sobre el modelo.", "Ceci ouvrira une fenêtre avec des informations sur le modèle."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9703,7 +9700,7 @@ def write_help_tab():
                           "categorías se actualizará según el modelo seleccionado.",
                           "Ici, vous pouvez sélectionner et désélectionner les catégories d'animaux présentes dans "
                           "la zone d'étude de votre projet. Si la catégorie d'animal n'est pas sélectionnée, elle sera "
-                          "exclue des résultats. La liste des catégories sera mise à jour en fonction du modèle sélectionné."][lang_idx])
+                          "exclue des résultats. La liste des catégories sera mise à jour en fonction du modèle sélectionné."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9718,7 +9715,7 @@ def write_help_tab():
                            "confianza define qué animales detectados se pasarán al modelo de clasificación para su posterior identificación.",
                            "AddaxAI utilise une combinaison de modèles de détection et de classification pour identifier les animaux. Le modèle de détection "
                            "localise l'animal, tandis que le modèle de classification identifie son espèce. Ce seuil de confiance définit les détections "
-                           "d'animaux qui seront transmises au modèle de classification pour une identification plus approfondie."][lang_idx])
+                           "d'animaux qui seront transmises au modèle de classification pour une identification plus approfondie."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9732,7 +9729,7 @@ def write_help_tab():
                            " identificará a qué especie pertenece el animal. Este umbral de confianza define qué identificaciones de animales se aceptarán.",
                            "AddaxAI utilise une combinaison de modèles de détection et de classification pour identifier les animaux. Le modèle de détection "
                            "localise l'animal, tandis que le modèle de classification identifie son espèce. Ce seuil de confiance définit les classifications "
-                           "d'animaux qui seront considérées valides."][lang_idx])
+                           "d'animaux qui seront considérées valides."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9751,7 +9748,7 @@ def write_help_tab():
                            "aberrations statistiques. Cela améliore la précision en fournissant des résultats plus stables grâce à la combinaison des "
                            "informations de plusieurs images. Notez que ce lissage suppose une seule espèce par séquence et ne doit donc être utilisé "
                            "que si les séquences multi-espèces sont rares. Il n'affecte pas les détections de véhicules ou de personnes à proximité "
-                           "d'animaux."][lang_idx])
+                           "d'animaux."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9774,7 +9771,7 @@ def write_help_tab():
         "catégories peuvent ne pas avoir de prédictions au niveau de l'espèce du tout — par exemple, si le modèle a été entraîné sur une classe plus large comme « oiseau », "
         "il ne prédira jamais les espèces d'oiseaux individuelles. Cette option est uniquement disponible dans les modèles qui ont été ajustés pour prendre en charge l'aggrégation "
         "taxonomique."
-    ][lang_idx])
+    ][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
@@ -9805,7 +9802,7 @@ def write_help_tab():
         "catégories ayant un nombre minimum d'échantillons d'apprentissage (par exemple, ≥ 10 000). Cela permet de réduire les erreurs causées par des catégories sous-représentées, mais peut entraîner "
         "l'abandon complet de certaines prédictions si elles n'atteignent pas le seuil. Notez que la disponibilité de certains niveaux taxonomiques (par exemple, classe, genre, espèce) dépend de la manière "
         "dont le modèle a été entraîné. Si un niveau n'est pas disponible pour une détection donnée, le modèle reviendra à la catégorie la plus proche."
-    ][lang_idx])
+    ][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
@@ -9817,7 +9814,7 @@ def write_help_tab():
                            " the files directly in the chosen folder.\n\n", "Por defecto, AddaxAI buscará en los subdirectorios. Seleccione esta opción si "
                            "desea ignorar los subdirectorios y procesar sólo los archivos directamente en la carpeta elegida.\n\n",
                            "Par défaut, AddaxAI effectue une récursion dans les sous-répertoires. Sélectionnez cette option si vous souhaitez ignorer les "
-                           "sous-répertoires et traiter uniquement les fichiers directement dans le dossier choisi.\n\n"][lang_idx])
+                           "sous-répertoires et traiter uniquement les fichiers directement dans le dossier choisi.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9835,7 +9832,7 @@ def write_help_tab():
                     "d'image inférieure réduira le temps de traitement, mais aussi la précision de la détection. De meilleurs résultats sont obtenus en utilisant la "
                     "même taille d'image que celle utilisée pour l'entraînement du modèle. Si vous avez entraîné un modèle dans AddaxAI avec la taille d'image par "
                     "défaut, vous devez définir cette valeur sur 640 pour les modèles YOLOv5. Utilisez la valeur par défaut pour les modèles MegaDetector.\n\n"
-                    ][lang_idx])
+                    ][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9847,16 +9844,16 @@ def write_help_tab():
                     "imagen.jpg'). Esta opción se asegurará de que el archivo de salida contenga rutas absolutas, pero no se recomienda. Software de terceros (como ",
                     "Par défaut, les chemins du fichier de sortie sont relatifs (par exemple, « image.jpg ») et non absolus (par exemple, "
                     "« /chemin/vers/un/dossier/image.jpg »). Cette option garantit que le fichier de sortie contient des chemins absolus, mais elle n'est pas "
-                    "recommandée. Les logiciels tiers (tel que « "][lang_idx])
+                    "recommandée. Les logiciels tiers (tel que « "][i18n_lang_idx()])
     help_text.insert(INSERT, "Timelapse", hyperlink1.add(partial(webbrowser.open, "https://timelapse.ucalgary.ca/")))
     help_text.insert(END, [") will not be able to read the output file if the paths are absolute. Only enable this option if you know what you are doing. More information"
                     " how to use Timelapse in conjunction with MegaDetector, see the ",
                     ") no serán capaces de leer el archivo de salida si las rutas son absolutas. Solo active esta opción si sabe lo que está haciendo. Para más información"
                     " sobre cómo utilizar Timelapse junto con MegaDetector, consulte ",
                     " », de Saul Greenberg, University of Calgary) ne pourra pas lire le fichier de sortie si les chemins sont absolus. N'activez cette option que si vous savez ce que vous faites. Pour plus "
-                    "d'informations, consultez la section « Comment utiliser Timelapse avec MegaDetector ? ». "][lang_idx])
+                    "d'informations, consultez la section « Comment utiliser Timelapse avec MegaDetector ? ». "][i18n_lang_idx()])
     help_text.insert(INSERT, ["Timelapse Image Recognition Guide", "la Guía de Reconocimiento de Imágenes de Timelapse", "Guide de reconnaissance avec Timelapse (anglais)"
-    ][lang_idx], hyperlink1.add(partial(webbrowser.open, "https://timelapse.ucalgary.ca/wp-content/uploads/Guides/TimelapseImageRecognitionGuide.pdf")))
+    ][i18n_lang_idx()], hyperlink1.add(partial(webbrowser.open, "https://timelapse.ucalgary.ca/wp-content/uploads/Guides/TimelapseImageRecognitionGuide.pdf")))
     help_text.insert(END, ".\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -9868,7 +9865,7 @@ def write_help_tab():
                     "Se trata de una funcionalidad para guardar los resultados en puntos de control de forma intermitente, en caso de que surja un contratiempo técnico. "
                     "De esta forma, no tendrás que reiniciar todo el proceso de nuevo cuando éste se interrumpa.\n\n",
                     "Cette fonctionnalité permet d'enregistrer les résultats dans des points de contrôle de manière intermittente, en cas de problème technique. Ainsi, "
-                    "vous n'aurez pas à redémarrer le processus en cas d'interruption.\n\n"][lang_idx])
+                    "vous n'aurez pas à redémarrer le processus en cas d'interruption.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9879,7 +9876,7 @@ def write_help_tab():
                     "Introduzca la frecuencia con la que desea guardar los resultados en los puntos de control. El número indica el número de imágenes tras las cuales se "
                     "guardarán los puntos de control. La entrada debe contener sólo caracteres numéricos.\n\n",
                     "Indiquez la fréquence à laquelle vous souhaitez enregistrer les résultats dans les points de contrôle. Le nombre indique le nombre d'images après "
-                    "lequel les points de contrôle seront enregistrés. L'entrée doit contenir uniquement des caractères numériques.\n\n"][lang_idx])
+                    "lequel les points de contrôle seront enregistrés. L'entrée doit contenir uniquement des caractères numériques.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9893,7 +9890,7 @@ def write_help_tab():
                     "válido y se le preguntará si no puede encontrarlo.\n\n",
                     "Ici, vous pouvez choisir de continuer à partir du dernier point de contrôle enregistré afin que l'algorithme puisse reprendre là où il s'est arrêté. "
                     "Les points de contrôle sont enregistrés dans le dossier principal et ressemblent à « checkpoint_<horodatage>.json ». Lorsque vous choisissez cette "
-                    "option, l'algorithme recherche un fichier de point de contrôle valide et vous avertit s'il ne le trouve pas.\n\n"][lang_idx])
+                    "option, l'algorithme recherche un fichier de point de contrôle valide et vous avertit s'il ne le trouve pas.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9904,7 +9901,7 @@ def write_help_tab():
                      "Procesar todos los fotogramas de un vídeo puede llevar mucho tiempo. Aquí puede especificar si desea analizar sólo una selección de fotogramas. "
                     f"En '{t('lbl_nth_frame')}' puedes especificar cuántos fotogramas quieres que se analicen.\n\n",
                     "Le traitement de chaque image d'une vidéo peut prendre un certain temps. Vous pouvez ici spécifier si vous souhaitez analyser uniquement une sélection d'images."
-                    f" L'option « {t('lbl_nth_frame')} » permet de spécifier combien de trames (images) vous souhaitez analyser.\n\n"][lang_idx])
+                    f" L'option « {t('lbl_nth_frame')} » permet de spécifier combien de trames (images) vous souhaitez analyser.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9912,7 +9909,7 @@ def write_help_tab():
     help_text.insert(END, f"{t('lbl_nth_frame')}\n")
     help_text.insert(END, ["Specify the frame sampling rate you'd like to use. For example, entering '1' will process one frame per second. Typically, sampling one frame per second is sufficient and can significantly reduce processing time. The exact time savings depend on the video's frame rate. Most camera traps record at 30 frames per second, meaning this approach can reduce processing time by 97% compared to processing every frame.\n\n",
                     "Especifica la tasa de muestreo de fotogramas que deseas utilizar. Por ejemplo, ingresar '1' procesará un fotograma por segundo. Generalmente, muestrear un fotograma por segundo es suficiente y puede reducir significativamente el tiempo de procesamiento. El ahorro exacto de tiempo depende de la tasa de fotogramas del video. La mayoría de las cámaras trampa graban a 30 fotogramas por segundo, lo que significa que este enfoque puede reducir el tiempo de procesamiento aproximadamente en un 97% en comparación con procesar todos los fotogramas.\n\n",
-                    "Spécifiez la fréquence d'échantillonnage d'images que vous souhaitez utiliser. Par exemple, saisir « 1 » traitera une image par seconde. En général, un échantillonnage d'une image par seconde est suffisant et peut réduire considérablement le temps de traitement. Le gain de temps exact dépend de la fréquence d'images de la vidéo. La plupart des pièges photographiques enregistrent à 30 images par seconde, ce qui signifie que cette approche peut réduire le temps de traitement de 97 % par rapport au traitement de chaque image.\n\n"][lang_idx])
+                    "Spécifiez la fréquence d'échantillonnage d'images que vous souhaitez utiliser. Par exemple, saisir « 1 » traitera une image par seconde. En général, un échantillonnage d'une image par seconde est suffisant et peut réduire considérablement le temps de traitement. Le gain de temps exact dépend de la fréquence d'images de la vidéo. La plupart des pièges photographiques enregistrent à 30 images par seconde, ce qui signifie que cette approche peut réduire le temps de traitement de 97 % par rapport au traitement de chaque image.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9948,7 +9945,7 @@ def write_help_tab():
                            " Ceci est particulièrement pratique pour créer des données d'entraînement, car pour l'entraînement, tous les fichiers doivent se trouver dans un seul "
                            "dossier. Ainsi, les fichiers seront uniques et vous n'aurez pas de problèmes de remplacement lors de l'ajout de fichiers à vos données d'entraînement "
                            "existantes. Vous pouvez également ignorer les données d'entraînement et simplement continuer à post-traiter les résultats vérifiés. Non applicable "
-                           "aux vidéos.\n\n"][lang_idx])
+                           "aux vidéos.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9963,7 +9960,7 @@ def write_help_tab():
                     "Aquí puede buscar una carpeta en la que se colocarán los resultados de las funciones de postprocesamiento. Si no se selecciona nada, la carpeta "
                     "elegida en el primer paso se utilizará como carpeta de destino.\n\n",
                     "Vous pouvez ici sélectionner le dossier dans lequel seront placés les résultats des fonctions de post-traitement. Si rien n'est sélectionné, le "
-                    "dossier choisi à l'étape 1 sera utilisé comme dossier de destination.\n\n"][lang_idx])
+                    "dossier choisi à l'étape 1 sera utilisé comme dossier de destination.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -9975,15 +9972,15 @@ def write_help_tab():
                     "revisar y ajustar las detecciones antes de mover las imágenes. Si quieres eso (una humano en el bucle), echa un vistazo a ",
                     "Cette fonction divise les fichiers en sous-répertoires en fonction de leurs détections. Veuillez noter que cette opération sera effectuée "
                     "automatiquement. Il n'y aura pas d'option permettant de vérifier et d'ajuster les détections avant le déplacement des images. Si vous souhaitez une "
-                    "intervention humaine, consultez la section "][lang_idx])
+                    "intervention humaine, consultez la section "][i18n_lang_idx()])
     help_text.insert(INSERT, "Timelapse", hyperlink1.add(partial(webbrowser.open, "https://saul.cpsc.ucalgary.ca/timelapse/")))
     help_text.insert(END, [", which offers such a feature. More information about that ",
                            ", que ofrece tal característica. Más información al respecto ",
-                           ", qui offre une telle fonctionnalité. Plus d'informations à ce sujet "][lang_idx])
+                           ", qui offre une telle fonctionnalité. Plus d'informations à ce sujet "][i18n_lang_idx()])
     help_text.insert(INSERT, t('here'), hyperlink1.add(partial(webbrowser.open, "https://saul.cpsc.ucalgary.ca/timelapse/uploads/Guides/TimelapseImageRecognitionGuide.pdf")))
     help_text.insert(END,[" (starting on page 9). The process of importing the output file produced by AddaxAI into Timelapse is described ",
                           " (a partir de la página 9). El proceso de importación del archivo de salida producido por AddaxAI en Timelapse se describe ",
-                          " (à partir de la page 9). Le processus d'importation du fichier de sortie produit par AddaxAI dans Timelapse est décrit "][lang_idx])
+                          " (à partir de la page 9). Le processus d'importation du fichier de sortie produit par AddaxAI dans Timelapse est décrit "][i18n_lang_idx()])
     help_text.insert(INSERT, t('here'), hyperlink1.add(partial(webbrowser.open, "https://saul.cpsc.ucalgary.ca/timelapse/pmwiki.php?n=Main.DownloadMegadetector")))
     help_text.insert(END,".\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
@@ -9993,7 +9990,7 @@ def write_help_tab():
     help_text.insert(END, f"{t('lbl_file_placement')}\n")
     help_text.insert(END, ["Here you can choose whether to move the files into subdirectories, or copy them so that the originals remain untouched.\n\n",
                            "Aquí puedes elegir si quieres mover los archivos a subdirectorios o copiarlos de forma que los originales permanezcan intactos.\n\n",
-                           "Ici, vous pouvez choisir de DÉPLACER les fichiers dans des sous-répertoires ou de les COPIER afin que les originaux restent intacts.\n\n"][lang_idx])
+                           "Ici, vous pouvez choisir de DÉPLACER les fichiers dans des sous-répertoires ou de les COPIER afin que les originaux restent intacts.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -10004,7 +10001,7 @@ def write_help_tab():
                         "Esta función separará aún más los archivos en función de su valor de confianza (en intervalos decimales). Esto significa que cada clase tendrá"
                         " subdirectorios como, por ejemplo, 'conf_0.6-0.7', 'conf_0.7-0.8', 'conf_0.8-0.9', etc.\n\n",
                         "Cette fonctionnalité permet de séparer les fichiers selon leur niveau de confiance (au dixième près). Cela signifie que chaque classe aura "
-                        "des sous-répertoires tels que « conf_0.6-0.7 », « conf_0.7-0.8 », « conf_0.8-0.9 », etc.\n\n"][lang_idx])
+                        "des sous-répertoires tels que « conf_0.6-0.7 », « conf_0.7-0.8 », « conf_0.8-0.9 », etc.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -10016,7 +10013,7 @@ def write_help_tab():
                     "resultados. Los vídeos no pueden visualizarse con esta herramienta.\n\n",
                     "Cette fonctionnalité encadre les détections et affiche leurs scores de confiance. Cela peut être utile pour vérifier visuellement les résultats. Les vidéos "
                     "ne peuvent pas être visualisées avec cet outil. Veuillez noter que cette action est permanente et irréversible. Soyez prudent lorsque vous l'utilisez sur "
-                    "des images originales.\n\n"][lang_idx])
+                    "des images originales.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -10024,7 +10021,7 @@ def write_help_tab():
     help_text.insert(END, f"{t('lbl_crp_files')}\n")
     help_text.insert(END, ["This feature will crop the detections and save them as separate images. Not applicable for videos.\n\n",
                            "Esta función recortará las detecciones y las guardará como imágenes separadas. No es aplicable a los vídeos.\n\n",
-                           "Cette fonctionnalité recadre les détections et les enregistre sous forme d'images distinctes. Non applicable aux vidéos.\n\n"][lang_idx])
+                           "Cette fonctionnalité recadre les détections et les enregistre sous forme d'images distinctes. Non applicable aux vidéos.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -10045,7 +10042,7 @@ def write_help_tab():
                            "données. Si plus de 100 unités sont nécessaires à la visualisation, elles seront ignorées en raison des longs délais de "
                            "traitement. Chaque visualisation génère un fichier PNG statique et un fichier HTML dynamique pour une exploration plus "
                            "approfondie des données. Des cartes interactives supplémentaires seront générées lorsque les géotags pourront être "
-                           "récupérés à partir des métadonnées de l'image."][lang_idx])
+                           "récupérés à partir des métadonnées de l'image."][i18n_lang_idx()])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
@@ -10056,7 +10053,7 @@ def write_help_tab():
                            "timestamps, locations, and more.\n\n", "Aquí puede seleccionar si desea exportar los resultados a otros formatos de archivo. Además, "
                            "intentará obtener metadatos de la imagen, como marcas de tiempo, ubicaciones, etc. \n\n",
                            "Ici, vous pouvez choisir d'exporter les résultats vers d'autres formats de fichier. L'outil essaiera également de récupérer les "
-                           "métadonnées de l'image, comme les horodatages, les emplacements, etc.\n\n"][lang_idx])
+                           "métadonnées de l'image, comme les horodatages, les emplacements, etc.\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -10081,7 +10078,7 @@ def write_help_tab():
                     "choisissez un seuil pour votre projet, il est important de choisir un seuil en fonction de vos propres données. Je vous conseille de commencer par visualiser "
                     f"vos données ('{t('lbl_vis_files')}') avec un seuil bas pour obtenir une idée du niveau de confiance dans vos données. Cela vous montrera à quel "
                     "point le modèle est sûr de ses détections et vous donnera une intuition du seuil le plus adapté à vos besoins. Si vous ne le savez pas vraiment, 0,2 est "
-                    "probablement un seuil prudent pour la plupart des projets..\n\n"][lang_idx])
+                    "probablement un seuil prudent pour la plupart des projets..\n\n"][i18n_lang_idx()])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
@@ -10112,9 +10109,9 @@ def write_about_tab():
                            "Por favor, ayúdame también a seguir mejorando AddaxAI e infórmame de cualquier mejora, error o nueva función para que pueda mantenerlo actualizado. "
                            "Puedes ponerte en contacto conmigo en ",
                            "Merci de m'aider à améliorer AddaxAI et de me signaler toute amélioration, bogue ou nouvelle fonctionnalité afin que je puisse le maintenir à jour."
-                           " Vous pouvez me contacter à l'adresse suivante: "][lang_idx])
+                           " Vous pouvez me contacter à l'adresse suivante: "][i18n_lang_idx()])
     about_text.insert(INSERT, "peter@addaxdatascience.com", hyperlink.add(partial(webbrowser.open, "mailto:peter@addaxdatascience.com")))
-    about_text.insert(END, [" or raise an issue on the ", " o plantear un problema en ", " ou rapporter un incident sur la "][lang_idx])
+    about_text.insert(END, [" or raise an issue on the ", " o plantear un problema en ", " ou rapporter un incident sur la "][i18n_lang_idx()])
     about_text.insert(INSERT, t('github_page'), hyperlink.add(partial(webbrowser.open, "https://github.com/PetervanLunteren/AddaxAI/issues")))
     about_text.insert(END, ".\n\n")
     about_text.tag_add('title', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
@@ -10124,7 +10121,7 @@ def write_about_tab():
     about_text.insert(END, t('citation_header'))
     about_text.insert(END, ["If you used AddaxAI in your research, please use the following citations. The AddaxAI software was previously called 'EcoAssist'.\n",
                             "Si ha utilizado AddaxAI en su investigación, utilice la siguiente citas. AddaxAI se llamaba antes 'EcoAssist'.\n",
-                            "Si vous avez utilisé AddaxAI dans vos recherches, veuillez utiliser les citations suivantes. Le logiciel AddaxAI s'appelait auparavant « EcoAssist ».\n"][lang_idx])
+                            "Si vous avez utilisé AddaxAI dans vos recherches, veuillez utiliser les citations suivantes. Le logiciel AddaxAI s'appelait auparavant « EcoAssist ».\n"][i18n_lang_idx()])
     about_text.insert(END, "- van Lunteren, P., (2023). AddaxAI: A no-code platform to train and deploy custom YOLOv5 object detection models. Journal of Open Source Software, 8(88), 5581, https://doi.org/10.21105/joss.05581")
     about_text.insert(INSERT, "https://doi.org/10.21105/joss.05581", hyperlink.add(partial(webbrowser.open, "https://doi.org/10.21105/joss.05581")))
     about_text.insert(END, ".\n")
@@ -10138,11 +10135,11 @@ def write_about_tab():
     about_text.insert(END, t('development_header'))
     about_text.insert(END, ["AddaxAI is developed by ",
                             "AddaxAI ha sido desarrollado por ",
-                            "AddaxAI est développé par "][lang_idx])
+                            "AddaxAI est développé par "][i18n_lang_idx()])
     about_text.insert(INSERT, "Addax Data Science", hyperlink.add(partial(webbrowser.open, "https://addaxdatascience.com/")))
     about_text.insert(END, [" in collaboration with ",
                             " en colaboración con ",
-                            " en collaboration avec "][lang_idx])
+                            " en collaboration avec "][i18n_lang_idx()])
     about_text.insert(INSERT, "Smart Parks", hyperlink.add(partial(webbrowser.open, "https://www.smartparks.org/")))
     about_text.insert(END, ".\n\n")
     about_text.tag_add('title', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
@@ -10223,8 +10220,8 @@ sim_mdl_inf = InfoButton(master = sim_mdl_frm, text = "?", command = sim_mdl_sho
 sim_mdl_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
 # convert to more elaborate dpd value for the 'None' simple mode option
 sim_dpd_options_cls_model = [[item[0] + suffixes_for_sim_none[i], *item[1:]] for i, item in enumerate(dpd_options_cls_model)]
-sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=sim_dpd_options_cls_model[lang_idx], command=sim_mdl_dpd_callback, width = 1)
-sim_mdl_dpd.set(sim_dpd_options_cls_model[lang_idx][global_vars["var_cls_model_idx"]]) # take idx instead of string
+sim_mdl_dpd = customtkinter.CTkOptionMenu(sim_mdl_frm, values=sim_dpd_options_cls_model[i18n_lang_idx()], command=sim_mdl_dpd_callback, width = 1)
+sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_model_idx"]]) # take idx instead of string
 sim_mdl_dpd.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="nswe", columnspan = 2)
 
 # select animals
@@ -10294,7 +10291,7 @@ def main():
     disable_frame(snd_step)
     disable_frame(trd_step)
     disable_frame(fth_step)
-    set_lang_buttons(lang_idx)
+    set_lang_buttons(i18n_lang_idx())
 
     # super weird but apparently necessary, otherwise script halts at first root.update()
     switch_mode()
@@ -10307,10 +10304,10 @@ def main():
     if scale_factor != 1.0:
         if not global_vars['var_scale_warning_shown']:
             mb.showwarning(
-                [f"Scale set to {int(scale_factor * 100)}%", f"Escala fijada en {int(scale_factor * 100)}%", f"Échelle réglée à {int(scale_factor * 100)}%"][lang_idx],
+                [f"Scale set to {int(scale_factor * 100)}%", f"Escala fijada en {int(scale_factor * 100)}%", f"Échelle réglée à {int(scale_factor * 100)}%"][i18n_lang_idx()],
                 [f"The user interface of AddaxAI is designed for a scale setting of 100%. However, your screen settings are set to {int(scale_factor * 100)}%. We've worked to maintain a consistent look across different scale settings, but it may still affect the appearance of the application, causing some elements (like checkboxes or windows) to appear disproportionately large or small. Note that these visual differences won't impact the functionality of the application.\n\nThis warning will only appear once.",
                  f"La interfaz de usuario de AddaxAI está diseñada para un ajuste de escala del 100%. Sin embargo, su configuración de pantalla está establecida en {int(scale_factor * 100)}%. Hemos trabajado para mantener una apariencia consistente a través de diferentes configuraciones de escala, pero aún puede afectar la apariencia de la aplicación, causando que algunos elementos (como casillas de verificación o ventanas) aparezcan desproporcionadamente grandes o pequeñas. Tenga en cuenta que estas diferencias visuales no afectarán a la funcionalidad de la aplicación.\n\nEste aviso sólo aparecerá una vez.",
-                 f"L'interface utilisateur d'AddaxAI est conçue pour une échelle de 100 %. Cependant, les paramètres de votre écran sont définis sur {int(scale_factor * 100)}%. Nous avons veillé à maintenir une apparence cohérente entre les différents paramètres d'échelle, mais cela peut néanmoins affecter l'apparence de l'application, entraînant une taille disproportionnée de certains éléments (comme les cases à cocher ou les fenêtres). Notez que ces différences visuelles n'affectent pas les fonctionnalités de l'application.\n\nCet avertissement n'apparaîtra qu'une seule fois."][lang_idx]
+                 f"L'interface utilisateur d'AddaxAI est conçue pour une échelle de 100 %. Cependant, les paramètres de votre écran sont définis sur {int(scale_factor * 100)}%. Nous avons veillé à maintenir une apparence cohérente entre les différents paramètres d'échelle, mais cela peut néanmoins affecter l'apparence de l'application, entraînant une taille disproportionnée de certains éléments (comme les cases à cocher ou les fenêtres). Notez que ces différences visuelles n'affectent pas les fonctionnalités de l'application.\n\nCet avertissement n'apparaîtra qu'une seule fois."][i18n_lang_idx()]
             )
         write_global_vars(AddaxAI_files, {"var_scale_warning_shown": True})
 
