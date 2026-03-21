@@ -89,11 +89,24 @@ def test_switch_yolov5_version_invalid():
 
 # --- cancel_subprocess ---
 
-def test_cancel_subprocess_kills_process():
+def test_cancel_subprocess_kills_process_windows():
+    mock_process = MagicMock()
+    mock_process.pid = 12345
+
+    with patch("addaxai.models.deploy.os") as mock_os, \
+         patch("addaxai.models.deploy.Popen") as mock_popen:
+        mock_os.name = "nt"
+        cancel_subprocess(mock_process)
+        mock_popen.assert_called_once_with("TASKKILL /F /PID 12345 /T")
+
+
+def test_cancel_subprocess_kills_process_unix():
     mock_process = MagicMock()
     mock_process.pid = 12345
 
     with patch("addaxai.models.deploy.os") as mock_os:
-        mock_os.name = "nt"
-        # Just verify it doesn't crash — actual kill is OS-specific
+        mock_os.name = "posix"
+        mock_os.killpg = MagicMock()
+        mock_os.getpgid = MagicMock(return_value=12345)
         cancel_subprocess(mock_process)
+        mock_os.killpg.assert_called_once_with(12345, signal.SIGTERM)
