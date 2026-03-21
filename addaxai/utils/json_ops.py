@@ -6,16 +6,17 @@ No UI or heavy dependencies — only stdlib.
 
 import json
 import os
+from typing import Any, Dict, Optional
 
 
-def fetch_label_map_from_json(path_to_json):
+def fetch_label_map_from_json(path_to_json: str) -> Dict[str, str]:
     """Read and return the detection_categories dict from a recognition JSON."""
     with open(path_to_json, "r") as f:
         data = json.load(f)
     return data['detection_categories']
 
 
-def check_json_paths(path_to_json, base_folder):
+def check_json_paths(path_to_json: str, base_folder: str) -> str:
     """Determine whether image paths in a recognition JSON are absolute or relative.
 
     Args:
@@ -34,7 +35,7 @@ def check_json_paths(path_to_json, base_folder):
         return "relative"
 
 
-def make_json_relative(path_to_json, base_folder):
+def make_json_relative(path_to_json: str, base_folder: str) -> None:
     """Convert absolute image paths in a recognition JSON to relative paths.
 
     Args:
@@ -54,7 +55,7 @@ def make_json_relative(path_to_json, base_folder):
             json.dump(data, f, indent=1)
 
 
-def make_json_absolute(path_to_json, base_folder):
+def make_json_absolute(path_to_json: str, base_folder: str) -> None:
     """Convert relative image paths in a recognition JSON to absolute paths.
 
     Args:
@@ -74,7 +75,7 @@ def make_json_absolute(path_to_json, base_folder):
             json.dump(data, f, indent=1)
 
 
-def append_to_json(path_to_json, object_to_be_appended):
+def append_to_json(path_to_json: str, object_to_be_appended: Dict[str, Any]) -> None:
     """Add key-value pairs to the 'info' section of a recognition JSON."""
     with open(path_to_json, "r") as f:
         data = json.load(f)
@@ -85,7 +86,7 @@ def append_to_json(path_to_json, object_to_be_appended):
         json.dump(data, f, indent=1)
 
 
-def change_hitl_var_in_json(path_to_json, status):
+def change_hitl_var_in_json(path_to_json: str, status: str) -> None:
     """Set the human-in-the-loop status in a recognition JSON.
 
     Args:
@@ -101,7 +102,7 @@ def change_hitl_var_in_json(path_to_json, status):
         json.dump(data, f, indent=1)
 
 
-def get_hitl_var_in_json(path_to_json):
+def get_hitl_var_in_json(path_to_json: str) -> str:
     """Read the human-in-the-loop status from a recognition JSON.
 
     Supports both 'addaxai_metadata' and legacy 'ecoassist_metadata' keys.
@@ -120,7 +121,7 @@ def get_hitl_var_in_json(path_to_json):
     return "never-started"
 
 
-def merge_jsons(image_json, video_json, output_file_path):
+def merge_jsons(image_json: Optional[str], video_json: Optional[str], output_file_path: str) -> None:
     """Merge separate image and video recognition JSONs into a single file.
 
     Args:

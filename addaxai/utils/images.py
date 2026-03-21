@@ -7,6 +7,7 @@ and bounding-box blurring. Requires Pillow; OpenCV only for blur_box.
 import datetime
 import os
 import re
+from typing import Any, Dict, List, Optional
 
 import PIL.ExifTags
 from PIL import Image, ImageFile
@@ -16,7 +17,7 @@ from PIL import Image, ImageFile
 #  Image corruption
 # ---------------------------------------------------------------------------
 
-def is_image_corrupted(image_path):
+def is_image_corrupted(image_path: str) -> bool:
     """Check if an image file is corrupted by attempting to fully load it.
 
     Returns:
@@ -32,7 +33,7 @@ def is_image_corrupted(image_path):
         return True
 
 
-def check_images(image_list_file):
+def check_images(image_list_file: str) -> List[str]:
     """Read a file of image paths and return a list of corrupted ones.
 
     Args:
@@ -51,7 +52,7 @@ def check_images(image_list_file):
     return corrupted_images
 
 
-def fix_images(image_paths):
+def fix_images(image_paths: List[str]) -> None:
     """Attempt to fix truncated images by re-opening and re-saving them.
 
     Preserves EXIF data when possible. Prints a warning for images that
@@ -73,7 +74,7 @@ def fix_images(image_paths):
 #  Timestamp extraction
 # ---------------------------------------------------------------------------
 
-def _parse_timestamp_from_filename(filename):
+def _parse_timestamp_from_filename(filename: str) -> Optional[datetime.datetime]:
     """Try common camera filename timestamp patterns.
 
     Patterns tried: YYYYMMDDHHMMSS, YYYYMMDD_HHMMSS, YYYY-MM-DD_HHMMSS.
@@ -98,7 +99,7 @@ def _parse_timestamp_from_filename(filename):
     return None
 
 
-def get_image_timestamp(src_dir, rel_path):
+def get_image_timestamp(src_dir: str, rel_path: str) -> Optional[datetime.datetime]:
     """Return a datetime for the given image file.
 
     Uses a 3-level fallback:
@@ -157,7 +158,7 @@ def get_image_timestamp(src_dir, rel_path):
         return None
 
 
-def build_image_timestamp_index(src_dir, file_list):
+def build_image_timestamp_index(src_dir: str, file_list: List[str]) -> Dict[str, Optional[datetime.datetime]]:
     """Build a dict mapping relative paths to their timestamps.
 
     Args:
@@ -180,7 +181,7 @@ def build_image_timestamp_index(src_dir, file_list):
 #  Burst / series detection
 # ---------------------------------------------------------------------------
 
-def _camera_prefix_of_filename(filename):
+def _camera_prefix_of_filename(filename: str) -> Optional[str]:
     """Extract the camera identifier prefix from a filename.
 
     Returns the part before the first 14-digit or 8+6-digit timestamp
@@ -195,8 +196,12 @@ def _camera_prefix_of_filename(filename):
     return None
 
 
-def find_series_images(target_rel_path, timestamp_index, window_seconds=10,
-                       require_same_camera=True):
+def find_series_images(
+    target_rel_path: str,
+    timestamp_index: Dict[str, Optional[datetime.datetime]],
+    window_seconds: int = 10,
+    require_same_camera: bool = True,
+) -> List[str]:
     """Find images in the same burst as the target image.
 
     Args:
@@ -235,8 +240,15 @@ def find_series_images(target_rel_path, timestamp_index, window_seconds=10,
 #  Bounding-box blur (requires OpenCV)
 # ---------------------------------------------------------------------------
 
-def blur_box(image, bbox_left, bbox_top, bbox_right, bbox_bottom,
-             image_width, image_height):
+def blur_box(
+    image: Any,
+    bbox_left: float,
+    bbox_top: float,
+    bbox_right: float,
+    bbox_bottom: float,
+    image_width: int,
+    image_height: int,
+) -> Any:
     """Blur a rectangular region in an OpenCV image (numpy array).
 
     Used for privacy protection (e.g., blurring detected people).
