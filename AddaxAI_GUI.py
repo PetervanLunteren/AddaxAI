@@ -176,11 +176,13 @@ from addaxai.utils.images import (is_image_corrupted, check_images, fix_images,
                                    find_series_images, blur_box,
                                    _parse_timestamp_from_filename, _camera_prefix_of_filename)
 from addaxai.utils.json_ops import (fetch_label_map_from_json, append_to_json,
-                                     change_hitl_var_in_json, get_hitl_var_in_json, merge_jsons)
+                                     change_hitl_var_in_json, get_hitl_var_in_json, merge_jsons,
+                                     check_json_paths, make_json_relative, make_json_absolute)
 from addaxai.processing.annotations import (indent_xml, convert_bbox_pascal_to_yolo,
-                                              convert_xml_to_coco)
-from addaxai.processing.export import clean_line, generate_unique_id, format_datetime
-from addaxai.processing.postprocess import format_size
+                                              convert_xml_to_coco, return_xml_path,
+                                              create_pascal_voc_annotation)
+from addaxai.processing.export import clean_line, generate_unique_id, format_datetime, csv_to_coco
+from addaxai.processing.postprocess import format_size, move_files
 from addaxai.models.registry import fetch_known_models
 from addaxai.analysis.plots import fig2img, overlay_logo, calculate_time_span
 from addaxai.core.config import (load_global_vars, write_global_vars,
@@ -298,8 +300,8 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
 
     # make sure json has relative paths
     json_paths_converted = False
-    if check_json_paths(recognition_file) != "relative":
-        make_json_relative(recognition_file)
+    if check_json_paths(recognition_file, var_choose_folder.get()) != "relative":
+        make_json_relative(recognition_file, var_choose_folder.get())
         json_paths_converted = True
 
     # set cancel bool
@@ -821,7 +823,8 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
         csv_to_coco(
             detections_df=detections_df,
             files_df=files_df,
-            output_path=coco_path
+            output_path=coco_path,
+            version=str(current_AA_version)
         )
         
         # only plt needs the csv's, so if the user didn't specify plt, remove csvs
@@ -833,7 +836,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
 
     # change json paths back, if converted earlier
     if json_paths_converted:
-        make_json_absolute(recognition_file)
+        make_json_absolute(recognition_file, var_choose_folder.get())
 
     # let the user know it's done
     progress_window.update_values(process = f"{data_type}_pst", status = "done")
@@ -856,93 +859,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
 
 
 
-# convert csv to coco format
-def csv_to_coco(detections_df, files_df, output_path):
-    
-    # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}\n")
-    
-    # init coco structure
-    coco = {
-        "images": [],
-        "annotations": [],
-        "categories": [],
-        "licenses": [{
-            "id": 1,
-            "name": "Unknown",
-            "url": "NA"
-            }],
-        "info": {
-            "description": f"Object detection results exported from AddaxAI (v{str(current_AA_version)}).",
-            "url": "https://addaxdatascience.com/addaxai/",
-            "date_created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-    }
 
-    # prepare categories and category mapping
-    category_mapping = {}
-    current_category_id = 1
-
-    # assign categories from detections
-    for label in detections_df['label'].unique():
-        if label not in category_mapping:
-            category_mapping[label] = current_category_id
-            coco['categories'].append({
-                "id": current_category_id,
-                "name": label
-                })
-            current_category_id += 1
-
-    # process each image and its detections
-    annotation_id = 1
-    for _, file_info in files_df.iterrows():
-        
-        # create image entry
-        image_id = len(coco['images']) + 1
-        
-        # get date captured
-        if type(file_info['DateTimeOriginal']) == float: # means NA value
-            date_captured = "NA"
-        else:
-            date_captured = datetime.datetime.strptime(file_info['DateTimeOriginal'],
-                                                        "%d/%m/%y %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")   
-
-        # add image to coco
-        image_entry = {
-            "id": image_id,
-            "width": int(file_info['file_width']),
-            "height": int(file_info['file_height']),
-            "file_name": file_info['relative_path'],
-            "license": 1,
-            "date_captured": date_captured
-        }
-        coco['images'].append(image_entry)
-
-        # add annotations for this image
-        image_detections = detections_df[detections_df['relative_path'] == file_info['relative_path']]
-        for _, detection in image_detections.iterrows():
-            bbox_left = int(detection['bbox_left'])
-            bbox_top = int(detection['bbox_top'])
-            bbox_right = int(detection['bbox_right'])
-            bbox_bottom = int(detection['bbox_bottom'])
-
-            bbox_width = bbox_right - bbox_left
-            bbox_height = bbox_bottom - bbox_top
-
-            annotation_entry = {
-                "id": annotation_id,
-                "image_id": image_id,
-                "category_id": category_mapping[detection['label']],
-                "bbox": [bbox_left, bbox_top, bbox_width, bbox_height],
-                "area": float(bbox_width * bbox_height),
-                "iscrowd": 0
-            }
-            coco['annotations'].append(annotation_entry)
-            annotation_id += 1
-
-    # save when done
-    with open(output_path, 'w') as output_file:
-        json.dump(coco, output_file, indent=4)
 
 # set data types for csv import so that the machine doesn't run out of memory with large files (>0.5M rows)
 dtypes = {
@@ -2104,7 +2021,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         with open(file_list_txt) as f:
             for line in f:
                 img = line.rstrip()
-                annotation = return_xml_path(img)
+                annotation = return_xml_path(img, var_choose_folder.get())
 
                 # check which need converting to json
                 if check_if_img_needs_converting(img):
@@ -2284,7 +2201,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     update_frame_states()
 
     # check if the json has relative paths
-    if check_json_paths(recognition_file) == "relative":
+    if check_json_paths(recognition_file, var_choose_folder.get()) == "relative":
         json_paths_are_relative = True
     else:
         json_paths_are_relative = False
@@ -2300,7 +2217,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     with open(file_list_txt) as f:
         for line in f:
             img = line.rstrip()
-            annotation = return_xml_path(img)
+            annotation = return_xml_path(img, var_choose_folder.get())
             if check_if_img_needs_converting(img):
                 imgs_needing_converting.append(img)
     converting_patience_dialog.update_progress(current = 1)
@@ -2333,7 +2250,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         if 'manually_checked' in image:
             if image['manually_checked']:
                 # image has been manually checked in json ...
-                xml_path = return_xml_path(image_path)
+                xml_path = return_xml_path(image_path, var_choose_folder.get())
                 if os.path.isfile(xml_path):
                     # ... but not anymore in xml
                     if not verification_status(xml_path):
@@ -2463,7 +2380,7 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
 
             # uniquify annotation
             ann_rel_path = os.path.splitext(img_rel_path)[0] + ".xml"
-            src_ann = return_xml_path(os.path.join(src_dir, img_rel_path))
+            src_ann = return_xml_path(os.path.join(src_dir, img_rel_path), var_choose_folder.get())
             dst_ann = os.path.join(dst_dir, ann_rel_path)
             Path(os.path.dirname(dst_ann)).mkdir(parents=True, exist_ok=True)
             shutil.move(src_ann, dst_ann)
@@ -2569,7 +2486,7 @@ def start_or_continue_hitl():
 # open xml and check if the data is already in the json
 def check_if_img_needs_converting(img_file): 
     # open xml
-    root = ET.parse(return_xml_path(img_file)).getroot()
+    root = ET.parse(return_xml_path(img_file, var_choose_folder.get())).getroot()
 
     # read verification status
     try:
@@ -2595,7 +2512,7 @@ def check_if_img_needs_converting(img_file):
 def update_json_from_img_list(verified_images, inverted_label_map, recognition_file, patience_dialog, current): 
 
         # check if the json has relative paths
-        if check_json_paths(recognition_file) == "relative":
+        if check_json_paths(recognition_file, var_choose_folder.get()) == "relative":
             json_paths_are_relative = True
         else:
             json_paths_are_relative = False
@@ -2616,7 +2533,7 @@ def update_json_from_img_list(verified_images, inverted_label_map, recognition_f
                 current += 1
 
                 # read
-                xml = return_xml_path(image_path)
+                xml = return_xml_path(image_path, var_choose_folder.get())
                 coco, verification_status, new_class, inverted_label_map = convert_xml_to_coco(xml, inverted_label_map)
                 image['manually_checked'] = verification_status
                 if new_class:
@@ -3180,11 +3097,11 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     if data_type == "img" and os.path.isfile(image_recognition_file):
         append_to_json(image_recognition_file, addaxai_metadata)
         if var_abs_paths.get():
-            make_json_absolute(image_recognition_file)
+            make_json_absolute(image_recognition_file, var_choose_folder.get())
     if data_type == "vid" and os.path.isfile(video_recognition_file):
         append_to_json(video_recognition_file, addaxai_metadata)
         if var_abs_paths.get():
-            make_json_absolute(video_recognition_file)
+            make_json_absolute(video_recognition_file, var_choose_folder.get())
     
     # classify detections if specified by user
     if not cancel_deploy_model_pressed:
@@ -4060,7 +3977,7 @@ def produce_graph(file_list_txt = None, dir = None):
 
                 # open xml 
                 img = line.rstrip()
-                annotation = return_xml_path(img)
+                annotation = return_xml_path(img, var_choose_folder.get())
                 tree = ET.parse(annotation)
                 root = tree.getroot()
 
@@ -4085,54 +4002,7 @@ def produce_graph(file_list_txt = None, dir = None):
         # return results
         return fig
 
-# create pascal voc annotation files from a list of detections
-def create_pascal_voc_annotation(image_path, annotation_list, human_verified):
 
-    # init vars
-    image_path = Path(image_path)
-    img = np.array(Image.open(image_path).convert('RGB'))
-    annotation = ET.Element('annotation')
-
-    # set verified flag if been verified in a previous session
-    if human_verified:
-        annotation.set('verified', 'yes')
-
-    ET.SubElement(annotation, 'folder').text = str(image_path.parent.name)
-    ET.SubElement(annotation, 'filename').text = str(image_path.name)
-    ET.SubElement(annotation, 'path').text = str(image_path)
-
-    source = ET.SubElement(annotation, 'source')
-    ET.SubElement(source, 'database').text = 'Unknown'
-
-    size = ET.SubElement(annotation, 'size')
-    ET.SubElement(size, 'width').text = str(img.shape[1])
-    ET.SubElement(size, 'height').text = str(img.shape[0])
-    ET.SubElement(size, 'depth').text = str(img.shape[2])
-
-    ET.SubElement(annotation, 'segmented').text = '0'
-
-    for annot in annotation_list:
-        tmp_annot = annot.split(',')
-        cords, label = tmp_annot[0:-2], tmp_annot[-1]
-        xmin, ymin, xmax, ymax = cords[0], cords[1], cords[4], cords[5] # left, top, right, bottom
-
-        object = ET.SubElement(annotation, 'object')
-        ET.SubElement(object, 'name').text = label
-        ET.SubElement(object, 'pose').text = 'Unspecified'
-        ET.SubElement(object, 'truncated').text = '0'
-        ET.SubElement(object, 'difficult').text = '0'
-
-        bndbox = ET.SubElement(object, 'bndbox')
-        ET.SubElement(bndbox, 'xmin').text = str(xmin)
-        ET.SubElement(bndbox, 'ymin').text = str(ymin)
-        ET.SubElement(bndbox, 'xmax').text = str(xmax)
-        ET.SubElement(bndbox, 'ymax').text = str(ymax)
-
-    indent_xml(annotation)
-    tree = ET.ElementTree(annotation)
-    xml_file_name = return_xml_path(image_path)
-    Path(os.path.dirname(xml_file_name)).mkdir(parents=True, exist_ok=True)
-    tree.write(xml_file_name)
 
 # loop json and see which images and annotations fall in user-specified catgegory
 def select_detections(selection_dict, prepare_files):
@@ -4154,8 +4024,8 @@ def select_detections(selection_dict, prepare_files):
 
     # make sure json has relative paths
     json_paths_converted = False
-    if check_json_paths(recognition_file) != "relative":
-        make_json_relative(recognition_file)
+    if check_json_paths(recognition_file, var_choose_folder.get()) != "relative":
+        make_json_relative(recognition_file, var_choose_folder.get())
         json_paths_converted = True
     steps_progress.update_progress(current_step);current_step += 1
 
@@ -4347,11 +4217,11 @@ def select_detections(selection_dict, prepare_files):
                     f.close()
                 
                 # # list annotations 
-                annotation_path = return_xml_path(img)
+                annotation_path = return_xml_path(img, var_choose_folder.get())
 
                 # create xml file if not already present
                 if not os.path.isfile(annotation_path):
-                    create_pascal_voc_annotation(img, img_and_detections_dict[img]['annotations'], img_and_detections_dict[img]['human_verified'])
+                    create_pascal_voc_annotation(img, img_and_detections_dict[img]['annotations'], img_and_detections_dict[img]['human_verified'], var_choose_folder.get())
 
             # close patience window
             patience_dialog.close()      
@@ -4420,7 +4290,7 @@ def select_detections(selection_dict, prepare_files):
 
     # change json paths back, if converted earlier
     if json_paths_converted:
-        make_json_absolute(recognition_file)
+        make_json_absolute(recognition_file, var_choose_folder.get())
 
 
 
@@ -5091,8 +4961,8 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     append_to_json(recognition_file, addaxai_metadata)
     
     # get rid of absolute paths if specified
-    if check_json_paths(recognition_file) == "absolute":
-        make_json_relative(recognition_file)
+    if check_json_paths(recognition_file, var_choose_folder.get()) == "absolute":
+        make_json_relative(recognition_file, var_choose_folder.get())
     
     # if in timelapse mode, change name of recognition file
     if timelapse_mode:
@@ -5167,12 +5037,7 @@ def sim_mdl_dpd_callback(self):
     var_cls_model.set(dpd_options_cls_model[lang_idx][sim_dpd_options_cls_model[lang_idx].index(self)])
     model_cls_animal_options(var_cls_model.get())
 
-# return xml path with temp-folder squeezed in
-def return_xml_path(img_path):
-    head_path = var_choose_folder.get()
-    tail_path = os.path.splitext(os.path.relpath(img_path, head_path))
-    temp_xml_path = os.path.join(head_path, "temp-folder", tail_path[0] + ".xml")
-    return os.path.normpath(temp_xml_path)
+
 
 # temporary file which labelImg writes to notify AddaxAI that it should convert xml to coco
 class LabelImgExchangeDir:
@@ -5270,49 +5135,11 @@ def extract_label_map_from_model(model_file):
 
 
 
-# check if json paths are relative or absolute
-def check_json_paths(path_to_json): 
-    with open(path_to_json, "r") as json_file:
-        data = json.load(json_file)
-    path = os.path.normpath(data['images'][0]['file'])
-    if path.startswith(os.path.normpath(var_choose_folder.get())):
-        return "absolute"
-    else:
-        return "relative"
 
-# make json paths relative
-def make_json_relative(path_to_json):
-    if check_json_paths(path_to_json) == "absolute":
-        # open
-        with open(path_to_json, "r") as json_file:
-            data = json.load(json_file)
-        
-        # adjust
-        for image in data['images']:
-            absolute_path =  os.path.normpath(image['file'])
-            relative_path = absolute_path.replace(os.path.normpath(var_choose_folder.get()), "")[1:]
-            image['file'] = relative_path
-        
-        # write
-        with open(path_to_json, "w") as json_file:
-            json.dump(data, json_file, indent=1)
+
+
             
-# make json paths absolute
-def make_json_absolute(path_to_json):
-    if check_json_paths(path_to_json) == "relative":
-        # open
-        with open(path_to_json, "r") as json_file:
-            data = json.load(json_file)
-        
-        # adjust
-        for image in data['images']:
-            relative_path = image['file']
-            absolute_path = os.path.normpath(os.path.join(var_choose_folder.get(), relative_path))
-            image['file'] = absolute_path
-        
-        # write
-        with open(path_to_json, "w") as json_file:
-            json.dump(data, json_file, indent=1)
+
 
 
 
@@ -5366,38 +5193,7 @@ conf_dirs = {0.0 : "conf_0.0",
 
 
 
-# move files into subdirectories
-def move_files(file, detection_type, var_file_placement, max_detection_conf, var_sep_conf, dst_root, src_dir, manually_checked):
-    # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
-    # squeeze in extra dir if sorting on confidence
-    if var_sep_conf and detection_type != "empty":
-        global conf_dirs
-        if manually_checked:
-            confidence_dir = "verified"
-        else:
-            ceiled_confidence = math.ceil(max_detection_conf * 10) / 10.0
-            confidence_dir = conf_dirs[ceiled_confidence]
-        new_file = os.path.join(detection_type, confidence_dir, file)
-    else:
-        new_file = os.path.join(detection_type, file)
-    
-    # set paths
-    src = os.path.join(src_dir, file)
-    dst = os.path.join(dst_root, new_file)
-    
-    # create subfolder
-    Path(os.path.dirname(dst)).mkdir(parents=True, exist_ok=True)
-    
-    # place image or video in subfolder
-    if var_file_placement == 1: # move
-        shutil.move(src, dst)
-    elif var_file_placement == 2: # copy
-        shutil.copy2(src, dst)
-        
-    # return new relative file path
-    return(new_file)
 
 
 
