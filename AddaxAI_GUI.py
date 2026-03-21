@@ -8105,13 +8105,13 @@ def set_language():
     write_global_vars(AddaxAI_files, {"lang_idx": lang_idx})
 
     # update tab texts
-    tabControl.tab(deploy_tab, text=deploy_tab_text[lang_idx])
-    tabControl.tab(help_tab, text=help_tab_text[lang_idx])
-    tabControl.tab(about_tab, text=about_tab_text[lang_idx])
+    tabControl.tab(deploy_tab, text=t("deploy_tab"))
+    tabControl.tab(help_tab, text=t("help_tab"))
+    tabControl.tab(about_tab, text=t("about_tab"))
 
     # update texts of deploy tab
     fst_step.configure(text=" " + t("fst_step") + " ")
-    lbl_choose_folder.configure(text=lbl_choose_folder_txt[lang_idx])
+    lbl_choose_folder.configure(text=t("lbl_choose_folder"))
     btn_choose_folder.configure(text=t("browse"))
     snd_step.configure(text=" " + t("snd_step") + " ")
     lbl_model.configure(text=lbl_model_txt[lang_idx])
@@ -8193,18 +8193,18 @@ def set_language():
     write_about_tab()
 
     # top buttons
-    adv_btn_switch_mode.configure(text = adv_btn_switch_mode_txt[lang_idx])
+    adv_btn_switch_mode.configure(text = t("adv_btn_switch_mode"))
     sim_btn_switch_mode.configure(text = sim_btn_switch_mode_txt[lang_idx])
     sim_btn_switch_lang.configure(text = languages_available[next_lang_idx])
     adv_btn_switch_lang.configure(text = languages_available[next_lang_idx])
-    adv_btn_sponsor.configure(text = adv_btn_sponsor_txt[lang_idx])
-    sim_btn_sponsor.configure(text = adv_btn_sponsor_txt[lang_idx])
-    adv_btn_reset_values.configure(text = adv_btn_reset_values_txt[lang_idx])
-    sim_btn_reset_values.configure(text = adv_btn_reset_values_txt[lang_idx])
+    adv_btn_sponsor.configure(text = t("adv_btn_sponsor"))
+    sim_btn_sponsor.configure(text = t("adv_btn_sponsor"))
+    adv_btn_reset_values.configure(text = t("adv_btn_reset_values"))
+    sim_btn_reset_values.configure(text = t("adv_btn_reset_values"))
 
     # by addax text
-    adv_abo_lbl.configure(text=adv_abo_lbl_txt[lang_idx])
-    sim_abo_lbl.configure(text=adv_abo_lbl_txt[lang_idx])
+    adv_abo_lbl.configure(text=t("adv_abo_lbl"))
+    sim_abo_lbl.configure(text=t("adv_abo_lbl"))
 
     # simple mode
     sim_dir_lbl.configure(text = sim_dir_lbl_txt[lang_idx])
@@ -8975,22 +8975,17 @@ check_mark_two_rows = PIL_checkmark.resize((45, 45), Image.Resampling.LANCZOS)
 check_mark_two_rows = ImageTk.PhotoImage(check_mark_two_rows)
 
 # grey top buttons
-adv_btn_switch_mode_txt = ["To simple mode", 'Al modo simple', 'Mode simple']
-adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = adv_btn_switch_mode_txt[lang_idx], command = switch_mode)
+adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = t("adv_btn_switch_mode"), command = switch_mode)
 adv_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
 adv_btn_switch_lang = GreyTopButton(master = advanc_main_frame, text = "Switch language", command = set_language)
 adv_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-adv_btn_sponsor_txt = ["Sponsor project", "Patrocine proyecto", "Projet de financement"]
-adv_btn_sponsor = GreyTopButton(master = advanc_main_frame, text = adv_btn_sponsor_txt[lang_idx], command = sponsor_project)
+adv_btn_sponsor = GreyTopButton(master = advanc_main_frame, text = t("adv_btn_sponsor"), command = sponsor_project)
 adv_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-adv_btn_reset_values_txt = ["Reset values", 'Restablecer valores', 'Réinitialiser les valeurs']
-adv_btn_reset_values = GreyTopButton(master = advanc_main_frame, text = adv_btn_reset_values_txt[lang_idx], command = reset_values)
+adv_btn_reset_values = GreyTopButton(master = advanc_main_frame, text = t("adv_btn_reset_values"), command = reset_values)
 adv_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
 
 # about
-adv_abo_lbl_txt = ["By Addax Data Science. More conservation technology? Visit", "Creado por Addax Data Science. ¿Más tecnología de conservación? Visite",
-                   "Par Addax Data Science. Vous désirez plus de technologies de conservation? Visitez"]
-adv_abo_lbl = tk.Label(advanc_main_frame, text=adv_abo_lbl_txt[lang_idx], font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
+adv_abo_lbl = tk.Label(advanc_main_frame, text=t("adv_abo_lbl"), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
 adv_abo_lbl.grid(row=6, column=0, columnspan = 2, sticky="")
 adv_abo_lbl_link = tk.Label(advanc_main_frame, text="addaxdatascience.com", cursor="hand2", font = Font(size = ADDAX_TXT_SIZE, underline=1), fg=green_primary, bg =yellow_primary)
 adv_abo_lbl_link.grid(row=7, column=0, columnspan = 2, sticky="", pady=(0, PADY))
@@ -9000,8 +8995,7 @@ adv_abo_lbl_link.bind("<Button-1>", lambda e: callback("http://addaxdatascience.
 deploy_tab = ttk.Frame(tabControl)
 deploy_tab.columnconfigure(0, weight=1, minsize=frame_width)
 deploy_tab.columnconfigure(1, weight=1, minsize=frame_width)
-deploy_tab_text = ['Deploy', 'Despliegue', 'Traitement']
-tabControl.add(deploy_tab, text=deploy_tab_text[lang_idx])
+tabControl.add(deploy_tab, text=t("deploy_tab"))
 deploy_canvas = tk.Canvas(deploy_tab)
 deploy_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 deploy_y_scrollbar = ttk.Scrollbar(deploy_tab, orient=tk.VERTICAL, command=deploy_canvas.yview)
@@ -9013,20 +9007,17 @@ deploy_scrollable_frame.bind("<Configure>", lambda event: deploy_canvas.configur
 
 # help tab
 help_tab = ttk.Frame(tabControl)
-help_tab_text = ['Help', 'Ayuda', 'Aide']
-tabControl.add(help_tab, text=help_tab_text[lang_idx])
+tabControl.add(help_tab, text=t("help_tab"))
 
 # about tab
 about_tab = ttk.Frame(tabControl)
-about_tab_text = ['About', 'Acerca de', 'À propos']
-tabControl.add(about_tab, text=about_tab_text[lang_idx])
+tabControl.add(about_tab, text=t("about_tab"))
 
 # grid
 tabControl.grid(column=0, row=2, sticky="ns", pady = 0)
 
 #### deploy tab
 ### first step
-fst_step_txt = ['Step 1: Select folder', 'Paso 1: Seleccione carpeta', 'Étape 1: Sélectionner le dossier']
 row_fst_step = 1
 fst_step = LabelFrame(deploy_scrollable_frame, text=" " + t("fst_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 fst_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
@@ -9035,9 +9026,8 @@ fst_step.columnconfigure(0, weight=1, minsize=label_width)
 fst_step.columnconfigure(1, weight=1, minsize=widget_width)
 
 # choose folder
-lbl_choose_folder_txt = ["Source folder", "Carpeta de origen", "Dossier source"]
 row_choose_folder = 0
-lbl_choose_folder = Label(master=fst_step, text=lbl_choose_folder_txt[lang_idx], width=1, anchor="w")
+lbl_choose_folder = Label(master=fst_step, text=t("lbl_choose_folder"), width=1, anchor="w")
 lbl_choose_folder.grid(row=row_choose_folder, sticky='nesw', pady=2)
 var_choose_folder = StringVar()
 var_choose_folder.set("")
@@ -9047,7 +9037,6 @@ btn_choose_folder = Button(master=fst_step, text=t("browse"), width=1, command=l
 btn_choose_folder.grid(row=row_choose_folder, column=1, sticky='nesw', padx=5)
 
 ### second step
-snd_step_txt = ['Step 2: Analysis', 'Paso 2: Análisis', 'Étape 2: Analyse']
 row_snd_step = 2
 snd_step = LabelFrame(deploy_scrollable_frame, text=" " + t("snd_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 snd_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
@@ -9368,7 +9357,6 @@ btn_start_deploy = Button(snd_step, text=btn_start_deploy_txt[lang_idx], command
 btn_start_deploy.grid(row=row_btn_start_deploy, column=0, columnspan=2, sticky='ew')
 
 ### human-in-the-loop step
-trd_step_txt = ["Step 3: Annotation (optional)", "Paso 3: Anotación (opcional)", "Étape 3: Annotation (optionnel)"]
 trd_step_row = 1
 trd_step = LabelFrame(deploy_scrollable_frame, text=" " + t("trd_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 trd_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
@@ -9385,7 +9373,6 @@ btn_hitl_main = Button(master=trd_step, text=["Start", "Iniciar", "Démarrer"][l
 btn_hitl_main.grid(row=row_hitl_main, column=1, sticky='nesw', padx=5)
 
 ### fourth step
-fth_step_txt = ["Step 4: Post-processing (optional)", "Paso 4: Post-Procesado (opcional)", "Étape 4: Post-traitement (optionnel)"]
 fth_step_row = 2
 fth_step = LabelFrame(deploy_scrollable_frame, text=" " + t("fth_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 fth_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
@@ -10256,9 +10243,9 @@ sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = sim_btn_s
 sim_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
 sim_btn_switch_lang = GreyTopButton(master = simple_main_frame, text = "Switch language", command = set_language)
 sim_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = adv_btn_sponsor_txt[lang_idx], command = sponsor_project)
+sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = t("adv_btn_sponsor"), command = sponsor_project)
 sim_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = adv_btn_reset_values_txt[lang_idx], command = reset_values)
+sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = t("adv_btn_reset_values"), command = reset_values)
 sim_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
 
 # choose folder
@@ -10328,7 +10315,7 @@ sim_run_btn = customtkinter.CTkButton(sim_run_frm, text=sim_run_btn_txt[lang_idx
 sim_run_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe", columnspan = 2)
 
 # about
-sim_abo_lbl = tk.Label(simple_main_frame, text=adv_abo_lbl_txt[lang_idx], font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
+sim_abo_lbl = tk.Label(simple_main_frame, text=t("adv_abo_lbl"), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
 sim_abo_lbl.grid(row=6, column=0, columnspan = 2, sticky="")
 sim_abo_lbl_link = tk.Label(simple_main_frame, text="addaxdatascience.com", cursor="hand2", font = Font(size = ADDAX_TXT_SIZE, underline=1), fg=green_primary, bg =yellow_primary)
 sim_abo_lbl_link.grid(row=7, column=0, columnspan = 2, sticky="", pady=(0, PADY))
