@@ -132,9 +132,9 @@ Extracted 58 functions (~1,378 lines) into 12 modules, then wired them back in:
 - [x] 5.2c: Replace debug trace prints in AddaxAI_GUI.py
 - [x] 5.2d: Replace remaining prints in AddaxAI_GUI.py
 - [x] 5.2e: Verify zero print() calls remain
-- [ ] 5.3a: GitHub Actions workflow for unit tests
-- [ ] 5.3b: Add ruff linting to CI
-- [ ] 5.3c: Add mypy type checking to CI
+- [x] 5.3a: GitHub Actions workflow for unit tests
+- [x] 5.3b: Add ruff linting to CI
+- [x] 5.3c: Add mypy type checking to CI
 
 ## Dev Setup
 
@@ -283,8 +283,9 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 
 **Phase 5.1 complete** — all 39 `addaxai/` modules fully annotated with type hints (Python 3.8 compatible, `typing` module).
 **Phase 5.2 complete** — zero `print()` calls remain; all output goes through `logging`; `addaxai.log` written to `AddaxAI_files/` during GUI runs.
+**Phase 5.3 complete** — GitHub Actions CI runs unit tests (Python 3.9 + 3.11), ruff lint, and mypy type check on every push to `refactor/modularize` and PRs to `main`.
 
-**Next:** Phase 5.3a — GitHub Actions CI workflow for unit tests.
+**Phase 5 fully complete.** The refactoring is done.
 
 ## Why AddaxAI_GUI.py Is Still ~8,570 Lines
 
