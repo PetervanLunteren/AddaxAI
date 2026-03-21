@@ -6,7 +6,7 @@ AddaxAI helps ecologists classify camera trap images using local computer vision
 
 ## Why We're Refactoring
 
-The application originally lived in a single ~11,200-line file (`AddaxAI_GUI.py`) with no separation between business logic, UI, model deployment, data processing, and localization. All state was managed via `global` variables. Now at ~8,670 lines with ~3,500 lines extracted to `addaxai/` modules. This makes the codebase:
+The application originally lived in a single ~11,200-line file (`AddaxAI_GUI.py`) with no separation between business logic, UI, model deployment, data processing, and localization. All state was managed via `global` variables. Now at ~8,570 lines with ~3,750 lines extracted to 39 `addaxai/` modules. This makes the codebase:
 
 - Impossible to test in isolation
 - Extremely difficult to modify without introducing regressions
@@ -120,10 +120,21 @@ Extracted 58 functions (~1,378 lines) into 12 modules, then wired them back in:
 - [x] 4.7: Extract `SpeciesNetOutputWindow` → `addaxai/ui/dialogs/speciesnet_output.py`
 - [x] 4.8: Final audit — grep confirms zero `global` declarations remain
 
-### Phase 5: Polish
-- [ ] 5.1: Type hints on extracted modules
-- [ ] 5.2: Replace print() with proper logging
-- [ ] 5.3: CI setup (lint + smoke tests)
+### Phase 5: Polish (see detailed plan below)
+- [x] 5.1a: Type hints — core/ modules
+- [x] 5.1b: Type hints — utils/ modules
+- [x] 5.1c: Type hints — processing/ modules
+- [x] 5.1d: Type hints — models/ modules
+- [x] 5.1e: Type hints — analysis/, i18n/, hitl/ modules
+- [x] 5.1f: Type hints — ui/ modules
+- [ ] 5.2a: Logging infrastructure (`addaxai/core/logging.py`)
+- [ ] 5.2b: Replace prints in addaxai/ modules
+- [ ] 5.2c: Replace debug trace prints in AddaxAI_GUI.py
+- [ ] 5.2d: Replace remaining prints in AddaxAI_GUI.py
+- [ ] 5.2e: Verify zero print() calls remain
+- [ ] 5.3a: GitHub Actions workflow for unit tests
+- [ ] 5.3b: Add ruff linting to CI
+- [ ] 5.3c: Add mypy type checking to CI
 
 ## Dev Setup
 
@@ -257,20 +268,45 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 
 **Branch:** `refactor/modularize`
 **Unit tests:** 319 passing, 9 skipped (optional deps: cv2, matplotlib, customtkinter) — run with `.venv` Python 3.14
-**Integration tests:** 3 passing (language cycling, mode switching, folder selection) — run with env-base Python 3.8
+**Integration tests:** 8 passing (Tier 1 + Tier 2) — run with env-base Python 3.8
 **GUI smoke test:** 1 passing — run with env-base Python 3.8
 **Python (tests):** `C:\Users\Topam\AppData\Local\Python\bin\python.exe` (3.14)
 **Python (GUI):** `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe`
 **Installed test deps:** pytest, Pillow, numpy, pandas, requests
 
-**Phase 4 fully complete!** Zero `global` declarations remain in `AddaxAI_GUI.py`.
+**Phases 0–4 fully complete.** Zero `global` declarations remain in `AddaxAI_GUI.py`.
 - 58 backend functions extracted into 12 modules (Phase 1)
 - i18n system: 662 `[lang_idx]` occurrences → `t()` calls, 3 JSON files (~300 keys each) (Phase 2)
 - 7 widget/dialog/tab classes extracted to `addaxai/ui/` (Phase 3)
 - `AppState` class owns all mutable state; 35 `global` declarations eliminated (Phase 4)
 - `SpeciesNetOutputWindow` extracted to `addaxai/ui/dialogs/speciesnet_output.py` (Phase 4.7)
 
-**Next:** Phase 5 — polish (type hints, logging, CI).
+**Phase 5.1 complete** — all 39 `addaxai/` modules fully annotated with type hints (Python 3.8 compatible, `typing` module).
+
+**Next:** Phase 5.2a — logging infrastructure (`addaxai/core/logging.py`).
+
+## Why AddaxAI_GUI.py Is Still ~8,570 Lines
+
+After Phases 1–4, the main file is still large because what remains is **inherently GUI code** —
+the kind of code that is tightly coupled to tkinter/customtkinter widget construction, layout,
+and event wiring. Specifically:
+
+| Category | ~Lines | Why it stays |
+|----------|--------|-------------|
+| Widget construction & layout | ~3,000 | Frame/label/button/dropdown creation with `.grid()` calls. Each widget is 3–8 lines of constructor + layout + binding. This is unavoidable boilerplate for any tkinter app. |
+| Deployment orchestrator (`start_deploy`, `deploy_model`, `classify_detections`) | ~900 | Coordinates subprocess spawning, progress updates, error dialogs, cancel handling. The *pure logic* (subprocess kill, model lookup) was extracted; what remains is the UI-facing orchestration that reads tkinter vars, updates progress windows, and shows messageboxes. |
+| HITL workflow | ~700 | `open_hitl_settings_window()` alone is ~400 lines of window construction + widget binding. The data logic was extracted; the UI construction must stay near the root window. |
+| Postprocessing orchestrator | ~400 | Similar to deploy: reads UI state, calls extracted functions, updates progress. |
+| Callbacks & event handlers | ~600 | ~25 toggle/focus/browse callbacks, each 5–30 lines. These read/write tkinter vars and show/hide frames — pure UI plumbing. |
+| Model download/info dialogs | ~500 | Window construction for model info, download progress, release notes. |
+| Module-level UI setup (after `state = AppState()`) | ~1,500 | The ~1,500 lines from `state = AppState()` through `main()` that build the root window, tabs, all frames, all widgets, and wire everything together. |
+| `main()` + settings persistence | ~300 | Entry point, argparse, settings load/save, `mainloop()`. |
+
+**The extractable surface is mostly exhausted.** Further reduction requires either:
+- A future Phase 6 that moves orchestrators (`start_deploy`, `start_postprocess`, HITL) into controller classes — but these are so interleaved with messagebox calls and progress window updates that extraction would require introducing a callback/event system first.
+- Moving widget construction into declarative builders (like the `build_simple_mode()` pattern used in Phase 3) — possible but diminishing returns since each builder still needs the same number of lines.
+
+**Bottom line:** ~8,500 lines for a ~40-dialog, 3-language, multi-workflow desktop app with no UI framework abstraction layer is normal. The important metric is that every *testable* function has been extracted, globals are eliminated, and the file's complexity is now linear (read top-to-bottom) rather than tangled.
 
 ## Testing Strategy
 
@@ -301,13 +337,25 @@ removes the `if __name__ == "__main__"` block so `main()` is not called. Instead
 
 `tests/test_gui_integration.py` launches the runner as a subprocess and asserts on the JSON.
 
-### Current integration tests (Tier 1)
+### Current integration tests (8 total)
+
+**Tier 1 (basic UI state):**
 
 | Test | What it does | What it catches |
 |------|-------------|-----------------|
 | `test_language_cycling` | Calls `set_language()` 3x (EN→ES→FR→EN), checks 12 advanced + 5 simple mode widget texts per language | Missing `t()` key, widget not updating on language switch |
 | `test_mode_switching` | Toggles advanced↔simple twice, checks `advanced_mode` persisted value and window visibility | Broken mode toggle, window not showing/hiding |
 | `test_folder_selection` | Sets `var_choose_folder` to a temp dir, calls `update_frame_states()` | Crash on folder selection, broken frame state wiring |
+
+**Tier 2 (Phase 4 wiring validation):**
+
+| Test | What it does | What it catches |
+|------|-------------|-----------------|
+| `test_model_dropdown_population` | Calls `update_model_dropdowns()`, asserts `state.dpd_options_model` and `state.dpd_options_cls_model` are non-empty 3-element lists | Phase 4.5 dropdown globals→state wiring |
+| `test_toggle_frames` | Toggles `var_separate_files` and `var_vis_files` on/off, calls toggle callbacks | Broken `state.` references in toggle callbacks |
+| `test_reset_values` | Sets 5 vars to non-defaults, calls `reset_values()`, asserts all revert | Missing `state.` prefix in reset logic |
+| `test_deploy_validation` | Sets folder to empty temp dir, calls `start_deploy()` with patched `mb.showerror` | Deploy validation crashes after state migration |
+| `test_state_attributes` | Checks 15 non-tkinter attrs, 7 tkinter vars, and 2 widget refs on `state` | AppState init defaults wrong, widget refs not assigned |
 
 ### Running tests
 
@@ -325,624 +373,460 @@ C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_s
 C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/ -v
 ```
 
-### Verification after each Phase 4 step
+### Verification after each step
 
-After every commit during Phase 4, run:
+After every commit, run:
 1. `.venv/Scripts/python -m pytest tests/ -v --ignore=tests/test_gui_smoke.py --ignore=tests/test_gui_integration.py` — unit tests pass
 2. `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_integration.py -v` — integration tests pass
 3. `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_smoke.py -v` — smoke test passes
 
-If any integration test fails after a Phase 4 step, `git revert` the commit and investigate.
+If any test fails after a step, `git revert` the commit and investigate.
 
-## Phase 4: Kill Global State — Detailed Implementation Plan
+## Phase 5: Polish — Detailed Implementation Plan
 
 ### Overview
 
-`AddaxAI_GUI.py` currently has **35 `global` declarations** across its functions and **~50 tkinter
-variables** (StringVar, IntVar, BooleanVar, DoubleVar) declared at module level. All mutable state
-is accessed via `global` keywords or bare module-level names, making functions impossible to test
-in isolation and creating hidden coupling between every part of the codebase.
+Phase 5 has three independent workstreams: type hints (5.1), logging (5.2), and CI (5.3).
+They can be done in any order. Each step is one commit.
 
-Phase 4 creates an `AppState` class that owns all mutable state, then systematically passes it to
-every function that currently uses `global`. The goal is **zero `global` declarations** in
-`AddaxAI_GUI.py` by the end.
+**Current state going in:**
+- 39 modules in `addaxai/` (~3,750 lines) — only `i18n/__init__.py` has type hints
+- 73 `print()` calls in `AddaxAI_GUI.py`, 11 in `addaxai/` modules
+- No test-running CI (only PyInstaller release builds in `.github/workflows/`)
+- 337 tests (319 unit + 8 integration + 1 smoke + 9 skipped)
 
-### Current Global Variables (35 total)
+**CRITICAL: Update CLAUDE.md after every commit** — update the Current Status section and mark
+completed steps with `[x]`. This keeps future sessions oriented.
 
-**Cancel flags and deployment state (7):**
-- `cancel_var` — tkinter BooleanVar for cancellation
-- `cancel_deploy_model_pressed` — bool flag
-- `cancel_speciesnet_deploy_pressed` — bool flag
-- `btn_start_deploy` — Button widget (re-enabled on cancel)
-- `sim_run_btn` — Simple mode run button (re-enabled on cancel)
-- `subprocess_output` — captured stdout from spawned processes
-- `warn_smooth_vid` — one-time warning flag
+### Step 5.1: Type Hints on Extracted Modules
 
-**Progress and error tracking (5):**
-- `progress_window` — ProgressWindow instance
-- `postprocessing_error_log` — list of errors during postprocess
-- `model_error_log` — list of errors during deployment
-- `model_warning_log` — list of warnings during deployment
-- `model_special_char_log` — list of special character warnings
+Add type annotations to all function signatures in `addaxai/` modules. Do NOT add type hints
+to `AddaxAI_GUI.py` — it is not worth the effort for a file that is mostly UI construction code.
 
-**HITL state (6):**
-- `selection_dict` — dict of selected species for verification
-- `rad_ann_var` — IntVar for annotation radio buttons
-- `hitl_ann_selection_frame` — frame widget
-- `hitl_settings_canvas` — canvas widget
-- `hitl_settings_window` — window widget
-- `lbl_n_total_imgs` — label widget showing image count
+**Scope:** Only the 39 files under `addaxai/`. Estimated ~200 function signatures to annotate.
 
-**Simple mode widget refs (5):**
-- `sim_dir_pth` — label widget
-- `sim_mdl_dpd` — dropdown widget
-- `sim_run_btn` — button widget (also in cancel flags)
-- `sim_spp_scr` — species scrollable frame
-- `sim_dpd_options_cls_model` — dropdown options list
+**Rules:**
+- Add parameter types and return types to every `def` — no exceptions
+- Use `typing` imports only when needed (`Optional`, `List`, `Dict`, `Tuple`, `Union`)
+- For Python 3.8 compatibility: use `typing.List` not `list[str]`, `typing.Optional` not `X | None`
+- For tkinter widget params, use `Any` — do not import widget types
+- Do NOT add type hints to test files
+- Do NOT add docstrings, comments, or make any behavioral changes — type hints only
+- Run `python -m pytest tests/ -v` after each file to verify no regressions
 
-**Dropdown option lists (3):**
-- `dpd_options_cls_model` — classification model dropdown options
-- `dpd_options_model` — detection model dropdown options
-- `loc_chkpnt_file` — checkpoint file path
+**Execution order** (one commit per batch, roughly by dependency):
 
-**Initialization flags (6):**
-- `checkpoint_freq_init` — bool
-- `image_size_for_deploy_init` — bool
-- `nth_frame_init` — bool
-- `shown_abs_paths_warning` — bool
-- `check_mark_one_row` — bool
-- `check_mark_two_rows` — bool
+#### Step 5.1a: Core modules (1 commit)
 
-**Timelapse and caches (3):**
-- `timelapse_mode` — bool
-- `timelapse_path` — string
-- `_ALL_SUPPORTED_MODEL_CLASSES_CACHE` — cached model class list
-- `temp_frame_folder` — temporary folder during video processing
+Files: `core/config.py`, `core/paths.py`, `core/platform.py`, `core/state.py`
 
-### AppState Class Design
+These are the foundation — other modules depend on them.
 
+Example for `core/config.py`:
 ```python
-# addaxai/core/state.py
-import tkinter as tk
+# Before:
+def load_global_vars(base_path):
+    ...
+    return global_vars
 
+# After:
+def load_global_vars(base_path: str) -> Dict[str, Any]:
+    ...
+    return global_vars
+```
 
+Example for `core/state.py`:
+```python
+# Before:
 class AppState:
-    """Holds all mutable application state that was previously managed via globals.
-
-    Instantiated once after the root window is created (tkinter variables need
-    an active Tk instance). Passed to functions that previously used `global`.
-    """
-
     def __init__(self):
-        # ── Tkinter variables (user-facing settings) ──────────────────
-        # Folder selection
         self.var_choose_folder = tk.StringVar()
-        self.var_choose_folder_short = tk.StringVar()
-
-        # Detection model
-        self.var_det_model = tk.StringVar()
-        self.var_det_model_short = tk.StringVar()
-        self.var_det_model_path = tk.StringVar()
-
-        # Classification model
-        self.var_cls_model = tk.StringVar()
-
-        # Thresholds
-        self.var_cls_detec_thresh = tk.DoubleVar(value=0.6)
-        self.var_cls_class_thresh = tk.DoubleVar(value=0.6)
-        self.var_thresh = tk.DoubleVar(value=0.6)
-
-        # Deploy options
-        self.var_use_custom_img_size_for_deploy = tk.BooleanVar(value=False)
-        self.var_image_size_for_deploy = tk.StringVar(value="1280")
-        self.var_disable_GPU = tk.BooleanVar(value=False)
-        self.var_process_img = tk.BooleanVar(value=True)
-        self.var_use_checkpnts = tk.BooleanVar(value=False)
-        self.var_cont_checkpnt = tk.BooleanVar(value=False)
-        self.var_checkpoint_freq = tk.StringVar(value="500")
-        self.var_process_vid = tk.BooleanVar(value=False)
-        self.var_not_all_frames = tk.BooleanVar(value=False)
-        self.var_nth_frame = tk.StringVar(value="10")
-
-        # Postprocessing options
-        self.var_separate_files = tk.BooleanVar(value=False)
-        self.var_file_placement = tk.IntVar(value=2)
-        self.var_sep_conf = tk.BooleanVar(value=False)
-        self.var_vis_files = tk.BooleanVar(value=False)
-        self.var_vis_size = tk.StringVar()
-        self.var_vis_bbox = tk.BooleanVar(value=True)
-        self.var_vis_blur = tk.BooleanVar(value=False)
-        self.var_crp_files = tk.BooleanVar(value=False)
-        self.var_exp = tk.BooleanVar(value=False)
-        self.var_exp_format = tk.StringVar()
-        self.var_plt = tk.BooleanVar(value=False)
-        self.var_abs_paths = tk.BooleanVar(value=False)
-
-        # Output directory
-        self.var_output_dir = tk.StringVar()
-        self.var_output_dir_short = tk.StringVar()
-
-        # Classification extras
-        self.var_smooth_cls_animal = tk.BooleanVar(value=False)
-        self.var_keep_series_seconds = tk.DoubleVar(value=30.0)
-        self.var_tax_fallback = tk.BooleanVar(value=True)
-        self.var_exclude_subs = tk.BooleanVar(value=False)
-        self.var_tax_levels = tk.StringVar()
-        self.var_sppnet_location = tk.StringVar()
-
-        # HITL
-        self.var_hitl_file_order = tk.IntVar(value=1)
-
-        # ── Non-widget mutable state (previously `global`) ───────────
-        # Cancel/deploy
-        self.cancel_var = tk.BooleanVar(value=False)
-        self.cancel_deploy_model_pressed = False
-        self.cancel_speciesnet_deploy_pressed = False
-        self.subprocess_output = ""
-        self.warn_smooth_vid = False
-        self.temp_frame_folder = ""
-
-        # Progress and error tracking
-        self.progress_window = None
-        self.postprocessing_error_log = []
-        self.model_error_log = []
-        self.model_warning_log = []
-        self.model_special_char_log = []
-
-        # HITL state
-        self.selection_dict = {}
-
-        # Dropdown option lists (rebuilt on language change / model refresh)
-        self.dpd_options_cls_model = []
-        self.dpd_options_model = []
-        self.sim_dpd_options_cls_model = []
-        self.loc_chkpnt_file = ""
-
-        # Init flags
-        self.checkpoint_freq_init = True
-        self.image_size_for_deploy_init = True
-        self.nth_frame_init = True
-        self.shown_abs_paths_warning = False
-        self.check_mark_one_row = False
-        self.check_mark_two_rows = False
-
-        # Timelapse integration
-        self.timelapse_mode = False
-        self.timelapse_path = ""
-
-        # Caches
-        self._all_supported_model_classes_cache = None
-
-        # ── Widget references (set after UI construction) ─────────────
-        self.btn_start_deploy = None
-        self.sim_run_btn = None
-        self.sim_dir_pth = None
-        self.sim_mdl_dpd = None
-        self.sim_spp_scr = None
-        self.rad_ann_var = None  # tk.IntVar, set during HITL window build
-        self.hitl_ann_selection_frame = None
-        self.hitl_settings_canvas = None
-        self.hitl_settings_window = None
-        self.lbl_n_total_imgs = None
-```
-
-### Step-by-Step Execution
-
----
-
-#### Step 4.1: Create `AppState` class (1 commit)
-
-**File:** `addaxai/core/state.py`
-
-1. Create the `AppState` class exactly as shown above.
-2. Write tests in `tests/test_core_state.py`:
-   - `AppState` is importable without tkinter (the class definition itself doesn't call `tk.*`)
-   - Verify all expected attributes exist using `hasattr` checks against a known list
-   - With a `tk.Tk()` root: instantiate `AppState()`, verify all tkinter vars are created
-   - Verify default values: `state.cancel_deploy_model_pressed == False`,
-     `state.timelapse_mode == False`, `state.model_error_log == []`, etc.
-
-**Important:** Do NOT change `AddaxAI_GUI.py` in this step. Only create the new file and tests.
-
-**Commit:** `feat: create AppState class in addaxai/core/state.py (Phase 4.1)`
-
----
-
-#### Step 4.2: Instantiate AppState and migrate tkinter variables (1 commit)
-
-This is the largest single step. It moves all ~50 tkinter variable declarations from module-level
-code in `AddaxAI_GUI.py` into `AppState`.
-
-**Process:**
-
-1. Add import at top of `AddaxAI_GUI.py`:
-   ```python
-   from addaxai.core.state import AppState
-   ```
-
-2. Find where `root = customtkinter.CTk()` is called (around line 7700). Immediately after it, add:
-   ```python
-   state = AppState()
-   ```
-
-3. For each tkinter variable currently declared at module level (search for `= tk.StringVar`,
-   `= tk.BooleanVar`, `= tk.IntVar`, `= tk.DoubleVar`):
-   a. Delete the module-level declaration
-   b. The variable is now accessed as `state.var_name` instead of bare `var_name`
-   c. Find every reference to that variable and prefix with `state.`
-
-4. This step requires updating MANY lines. Do it in sub-batches by variable group:
-   - **4.2a:** Folder selection vars (`var_choose_folder`, `var_choose_folder_short`)
-   - **4.2b:** Detection model vars (`var_det_model`, `var_det_model_short`, `var_det_model_path`)
-   - **4.2c:** Classification model vars (`var_cls_model`)
-   - **4.2d:** Threshold vars (`var_cls_detec_thresh`, `var_cls_class_thresh`, `var_thresh`)
-   - **4.2e:** Deploy option vars (checkpoints, GPU, image processing toggles)
-   - **4.2f:** Postprocessing option vars (separate, vis, crop, export, plots)
-   - **4.2g:** Remaining vars (output dir, classification extras, HITL)
-
-**CRITICAL WARNING:** Many tkinter vars are passed to widget constructors via `textvariable=` or
-`variable=`. These MUST now reference `state.var_name`:
-```python
-# Before:
-entry_choose_folder = customtkinter.CTkEntry(master=..., textvariable=var_choose_folder)
-# After:
-entry_choose_folder = customtkinter.CTkEntry(master=..., textvariable=state.var_choose_folder)
-```
-
-**Also update:** Functions that read/write these vars via `.get()` and `.set()`:
-```python
-# Before:
-chosen_folder = var_choose_folder.get()
-# After:
-chosen_folder = state.var_choose_folder.get()
-```
-
-**Also update:** `build_simple_mode()` call — it receives several tkinter vars as params. These
-must now come from `state`:
-```python
-# Before:
-_sim = build_simple_mode(..., var_choose_folder=var_choose_folder, ...)
-# After:
-_sim = build_simple_mode(..., var_choose_folder=state.var_choose_folder, ...)
-```
-
-**Verification:** After each sub-batch:
-- `python -m pytest tests/ -v` — all tests pass
-- GUI smoke test — GUI starts without crash
-- Manual check: can still select a folder, change model dropdown, toggle checkboxes
-
-**Commit:** `refactor: migrate tkinter variables to AppState (Phase 4.2)`
-
----
-
-#### Step 4.3: Migrate cancel flags and deployment state (1 commit)
-
-Move these globals into `AppState`:
-- `cancel_var`, `cancel_deploy_model_pressed`, `cancel_speciesnet_deploy_pressed`
-- `subprocess_output`, `warn_smooth_vid`, `temp_frame_folder`
-- `btn_start_deploy` (widget ref)
-
-**Process:**
-
-1. After `state = AppState()` and after `btn_start_deploy` is created in the UI construction,
-   assign: `state.btn_start_deploy = btn_start_deploy`
-
-2. For each function that declares `global cancel_deploy_model_pressed` (etc.):
-   a. Remove the `global` declaration
-   b. Add `state` as a parameter (or use module-level `state` — see note below)
-   c. Replace bare `cancel_deploy_model_pressed` with `state.cancel_deploy_model_pressed`
-
-**Module-level `state` vs parameter passing:**
-Since `state` is a module-level singleton in `AddaxAI_GUI.py`, functions defined in the same file
-can access it directly without needing it passed as a parameter. This is acceptable for Phase 4
-because the goal is eliminating `global` declarations, not achieving full dependency injection.
-Full DI would be Phase 5+ work.
-
-So the pattern is:
-```python
-# Before:
-def cancel_deployment(process):
-    global cancel_deploy_model_pressed
-    global btn_start_deploy
-    global sim_run_btn
-    cancel_deploy_model_pressed = True
-    btn_start_deploy.configure(state=NORMAL)
-    sim_run_btn.configure(state=NORMAL)
+        ...
 
 # After:
-def cancel_deployment(process):
-    state.cancel_deploy_model_pressed = True
-    state.btn_start_deploy.configure(state=NORMAL)
-    state.sim_run_btn.configure(state=NORMAL)
+class AppState:
+    def __init__(self) -> None:
+        self.var_choose_folder: tk.StringVar = tk.StringVar()
+        ...
 ```
 
-3. Functions affected (search for `global cancel_deploy_model_pressed`, `global cancel_var`, etc.):
-   - `cancel_deployment()` — lines 2781-2792
-   - `deploy_model()` — lines 2793-3109
-   - `classify_detections()` — lines 2587-2780
-   - `start_deploy()` — lines 3172-3914
-   - `start_postprocess()` — lines 1217-1353
-   - `cancel()` — lines 7289-7296
-   - `SpeciesNetOutputWindow.cancel()` — lines 4714-4725
+**Commit:** `refactor: add type hints to core/ modules (Phase 5.1a)`
 
-**Commit:** `refactor: migrate cancel/deployment globals to AppState (Phase 4.3)`
+#### Step 5.1b: Utility modules (1 commit)
 
----
+Files: `utils/files.py`, `utils/images.py`, `utils/json_ops.py`, `utils/sorting.py`
 
-#### Step 4.4: Migrate HITL state globals (1 commit)
+These are pure functions with clear input/output types.
 
-Move these globals into `AppState`:
-- `selection_dict`, `rad_ann_var`
-- `hitl_ann_selection_frame`, `hitl_settings_canvas`, `hitl_settings_window`
-- `lbl_n_total_imgs`
-
-**Process:**
-
-1. For `selection_dict`: Replace `global selection_dict` with `state.selection_dict` in:
-   - `open_hitl_settings_window()` — line 4261
-   - `open_species_selection()` — line 6308
-   - `enable_selection_widgets()` — line 6995
-
-2. For `rad_ann_var` and the HITL widgets: These are created inside `open_hitl_settings_window()`.
-   After creation, assign to `state`:
-   ```python
-   # Inside open_hitl_settings_window():
-   state.rad_ann_var = tk.IntVar(value=1)
-   state.hitl_ann_selection_frame = ...
-   state.hitl_settings_canvas = ...
-   state.hitl_settings_window = ...
-   state.lbl_n_total_imgs = ...
-   ```
-   Then remove all `global` declarations for these variables.
-
-3. Functions affected:
-   - `open_hitl_settings_window()` — 6 globals declared
-   - `toggle_hitl_ann_selection_frame()` — reads `hitl_ann_selection_frame`
-   - `toggle_hitl_ann_selection()` — reads `rad_ann_var`, `hitl_ann_selection_frame`
-   - `select_detections()` — reads `selection_dict`
-   - `resize_canvas_to_content()` — reads `hitl_settings_canvas`
-
-**Commit:** `refactor: migrate HITL state globals to AppState (Phase 4.4)`
-
----
-
-#### Step 4.5: Migrate simple mode widget refs and dropdown options (1 commit)
-
-Move these globals into `AppState`:
-- `sim_dir_pth`, `sim_mdl_dpd`, `sim_run_btn`, `sim_spp_scr`
-- `sim_dpd_options_cls_model`
-- `dpd_options_cls_model`, `dpd_options_model`
-
-**Process:**
-
-1. After `build_simple_mode()` returns `_sim` dict, assign widget refs to `state`:
-   ```python
-   _sim = build_simple_mode(...)
-   simple_mode_win = _sim['window']
-   state.sim_dir_pth = _sim['dir_pth']
-   state.sim_mdl_dpd = _sim['mdl_dpd']
-   state.sim_run_btn = _sim['run_btn']
-   state.sim_spp_scr = _sim['spp_scr']
-   # ... etc
-   ```
-
-2. Remove all `global sim_dir_pth`, `global sim_mdl_dpd`, etc. declarations.
-
-3. Replace bare `sim_dir_pth` references with `state.sim_dir_pth` in:
-   - `browse_dir()` — line 5191
-   - `update_frame_states()` — line 7199
-   - `main()` — line 8611
-
-4. For `dpd_options_cls_model` and `dpd_options_model`: These are rebuilt dynamically in
-   `update_model_dropdowns()` (line 6795). Replace:
-   ```python
-   # Before:
-   global dpd_options_cls_model
-   dpd_options_cls_model = ...
-   # After:
-   state.dpd_options_cls_model = ...
-   ```
-
-**Commit:** `refactor: migrate simple mode and dropdown globals to AppState (Phase 4.5)`
-
----
-
-#### Step 4.6: Migrate remaining globals (1 commit)
-
-Move the init flags, timelapse state, and caches:
-- `checkpoint_freq_init`, `image_size_for_deploy_init`, `nth_frame_init`
-- `shown_abs_paths_warning`, `check_mark_one_row`, `check_mark_two_rows`
-- `timelapse_mode`, `timelapse_path`
-- `_ALL_SUPPORTED_MODEL_CLASSES_CACHE`, `loc_chkpnt_file`
-
-**Process:**
-
-1. For each init flag, find the function that declares it `global` and replace:
-   ```python
-   # Before (image_size_for_deploy_focus_in):
-   global image_size_for_deploy_init
-   if image_size_for_deploy_init:
-       image_size_for_deploy_init = False
-   # After:
-   if state.image_size_for_deploy_init:
-       state.image_size_for_deploy_init = False
-   ```
-
-2. For `timelapse_mode` and `timelapse_path`: Only set in `main()` from argparse:
-   ```python
-   # Before:
-   global timelapse_mode
-   global timelapse_path
-   timelapse_mode = args.timelapse is not None
-   # After:
-   state.timelapse_mode = args.timelapse is not None
-   state.timelapse_path = args.timelapse or ""
-   ```
-
-3. For `_ALL_SUPPORTED_MODEL_CLASSES_CACHE`: Used in `get_all_supported_model_classes()`:
-   ```python
-   # Before:
-   global _ALL_SUPPORTED_MODEL_CLASSES_CACHE
-   if _ALL_SUPPORTED_MODEL_CLASSES_CACHE is not None and not force_refresh:
-       return _ALL_SUPPORTED_MODEL_CLASSES_CACHE
-   # After:
-   if state._all_supported_model_classes_cache is not None and not force_refresh:
-       return state._all_supported_model_classes_cache
-   ```
-
-**After this step:** Run `grep -n "global " AddaxAI_GUI.py` — should return **zero** results.
-If any remain, investigate and migrate them.
-
-**Commit:** `refactor: migrate remaining globals to AppState (Phase 4.6)`
-
----
-
-#### Step 4.7: Extract SpeciesNetOutputWindow (1 commit)
-
-Now that globals are accessed via `state`, `SpeciesNetOutputWindow` can be extracted.
-
-**File:** `addaxai/ui/dialogs/speciesnet_output.py`
-
-**Current globals used by SpeciesNetOutputWindow:**
-- `root` → pass as `master` parameter
-- `cancel_speciesnet_deploy_pressed` → now `state.cancel_speciesnet_deploy_pressed`
-- `btn_start_deploy` → now `state.btn_start_deploy`
-- `sim_run_btn` → now `state.sim_run_btn`
-- `bring_window_to_top_but_not_for_ever()` → pass as callback
-- `remove_ansi_escape_sequences()` → import from `addaxai.utils.files`
-
-**Extraction:**
+Example for `utils/files.py`:
 ```python
-# addaxai/ui/dialogs/speciesnet_output.py
+# Before:
+def is_valid_float(value):
+
+# After:
+def is_valid_float(value: str) -> bool:
+```
+
+Example for `utils/images.py`:
+```python
+# Before:
+def is_image_corrupted(fpath):
+
+# After:
+def is_image_corrupted(fpath: str) -> bool:
+```
+
+**Commit:** `refactor: add type hints to utils/ modules (Phase 5.1b)`
+
+#### Step 5.1c: Processing modules (1 commit)
+
+Files: `processing/annotations.py`, `processing/export.py`, `processing/postprocess.py`
+
+Example for `processing/annotations.py`:
+```python
+# Before:
+def create_pascal_voc_annotation(folder, filename, path, width, height, depth, objs):
+
+# After:
+def create_pascal_voc_annotation(
+    folder: str, filename: str, path: str,
+    width: int, height: int, depth: int,
+    objs: List[Dict[str, Any]]
+) -> str:
+```
+
+**Commit:** `refactor: add type hints to processing/ modules (Phase 5.1c)`
+
+#### Step 5.1d: Models modules (1 commit)
+
+Files: `models/registry.py`, `models/deploy.py`
+
+Example for `models/registry.py`:
+```python
+# Before:
+def fetch_known_models(model_dir):
+
+# After:
+def fetch_known_models(model_dir: str) -> List[str]:
+```
+
+Example for `models/deploy.py`:
+```python
+# Before:
+def cancel_subprocess(process):
+
+# After:
+def cancel_subprocess(process: subprocess.Popen) -> None:
+```
+
+**Commit:** `refactor: add type hints to models/ modules (Phase 5.1d)`
+
+#### Step 5.1e: Analysis, i18n, and HITL modules (1 commit)
+
+Files: `analysis/plots.py`, `analysis/maps.py`, `i18n/__init__.py` (already partially typed),
+`hitl/session.py`, `hitl/exchange.py`
+
+Note: `i18n/__init__.py` already has hints — just verify and improve if needed.
+
+**Commit:** `refactor: add type hints to analysis/, i18n/, hitl/ modules (Phase 5.1e)`
+
+#### Step 5.1f: UI modules (1 commit)
+
+Files: All files under `ui/widgets/`, `ui/dialogs/`, `ui/advanced/`, `ui/simple/`
+
+For UI modules, many parameters are tkinter widgets — use `Any`:
+```python
+# Before:
+def build_simple_mode(master, var_choose_folder, ...):
+
+# After:
+def build_simple_mode(master: Any, var_choose_folder: Any, ...) -> Dict[str, Any]:
+```
+
+**Commit:** `refactor: add type hints to ui/ modules (Phase 5.1f)`
+
+---
+
+### Step 5.2: Replace print() With Proper Logging
+
+Replace all `print()` calls with Python's `logging` module. This affects `AddaxAI_GUI.py` (73
+calls) and `addaxai/` modules (11 calls).
+
+**Rules:**
+- Use `logging.getLogger(__name__)` at the top of each file that logs
+- Do NOT add logging to files that don't currently have `print()` calls
+- Map print categories to log levels:
+  - `print(f"EXECUTED: ...")` → `logger.debug(...)` (function entry tracing)
+  - `print(f"ERROR: ...")` → `logger.error(...)` (error messages)
+  - `print(command_args)` → `logger.debug(...)` (subprocess commands)
+  - `print(line, end='')` → `logger.info(line.rstrip())` (subprocess output)
+  - `print('This is an Apple Silicon system.')` → `logger.info(...)` (platform info)
+  - `print(sys.path)` → `logger.debug(...)` (debug info)
+- For `ui/dialogs/progress.py`: the 8 `lambda: print("")` are NOOP button command placeholders —
+  replace with `lambda: None`
+- Do NOT change any other behavior — same messages, just through logging
+- Run all tests after each commit
+
+**Execution order:**
+
+#### Step 5.2a: Set up logging infrastructure (1 commit)
+
+Create `addaxai/core/logging.py`:
+```python
+"""Logging setup for AddaxAI."""
+import logging
 import os
-import signal
-import tkinter as tk
-import customtkinter
-from subprocess import Popen
-from addaxai.utils.files import remove_ansi_escape_sequences
+import sys
 
 
-class SpeciesNetOutputWindow:
-    def __init__(self, master=None, bring_to_top_func=None, on_cancel=None):
-        """
-        Args:
-            master: parent tkinter window
-            bring_to_top_func: callable to bring window to front
-            on_cancel: callable(process) invoked when user clicks Cancel,
-                       responsible for setting cancel flags and re-enabling buttons
-        """
-        self.on_cancel = on_cancel
-        self.sppnet_output_window_root = customtkinter.CTkToplevel(master)
-        self.sppnet_output_window_root.title("SpeciesNet output")
-        self.text_area = tk.Text(self.sppnet_output_window_root, wrap=tk.WORD,
-                                 height=7, width=85)
-        self.text_area.pack(padx=10, pady=10)
-        self.close_button = tk.Button(self.sppnet_output_window_root,
-                                      text="Cancel", command=self.cancel)
-        self.close_button.pack(pady=5)
-        self.sppnet_output_window_root.protocol("WM_DELETE_WINDOW", self.close)
-        if bring_to_top_func:
-            bring_to_top_func(self.sppnet_output_window_root)
+def setup_logging(log_dir: str = "", level: int = logging.INFO) -> None:
+    """Configure root logger with console + optional file handler.
 
-    def add_string(self, text, process=None):
-        # ... move existing add_string method as-is ...
-        # Replace remove_ansi_escape_sequences with imported version
-        pass
+    Args:
+        log_dir: Directory for log file. If empty, file logging is disabled.
+        level: Logging level (default INFO).
+    """
+    root_logger = logging.getLogger("addaxai")
+    root_logger.setLevel(level)
 
-    def close(self):
-        self.sppnet_output_window_root.destroy()
+    # Console handler
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(level)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                            datefmt="%H:%M:%S")
+    console.setFormatter(fmt)
+    root_logger.addHandler(console)
 
-    def cancel(self):
-        if os.name == 'nt':
-            Popen(f"TASKKILL /F /PID {self.process.pid} /T")
-        else:
-            import os as _os
-            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-        if self.on_cancel:
-            self.on_cancel(self.process)
-        self.sppnet_output_window_root.destroy()
+    # File handler (optional)
+    if log_dir and os.path.isdir(log_dir):
+        fh = logging.FileHandler(os.path.join(log_dir, "addaxai.log"),
+                                 encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        root_logger.addHandler(fh)
 ```
 
-**Wiring in `AddaxAI_GUI.py`:**
+Write tests in `tests/test_core_logging.py`:
+- `setup_logging()` is importable
+- After calling `setup_logging()`, `logging.getLogger("addaxai")` has at least one handler
+- Log messages at INFO level appear in captured output
+
+**Commit:** `feat: add logging infrastructure in addaxai/core/logging.py (Phase 5.2a)`
+
+#### Step 5.2b: Replace prints in addaxai/ modules (1 commit)
+
+Only 11 `print()` calls across 4 files. Quick mechanical replacement:
+
+- `ui/dialogs/progress.py`: Replace 8 `lambda: print("")` with `lambda: None`
+- `ui/dialogs/speciesnet_output.py`: Add `logger = logging.getLogger(__name__)`, replace 1 print
+- `core/config.py`: Add logger, replace 1 print
+- `utils/images.py`: Add logger, replace 1 print
+
+**Commit:** `refactor: replace print() with logging in addaxai/ modules (Phase 5.2b)`
+
+#### Step 5.2c: Replace prints in AddaxAI_GUI.py — debug/trace category (1 commit)
+
+Target: All `print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")` calls.
+There are approximately 20+ of these.
+
+At top of file, add:
 ```python
-from addaxai.ui.dialogs.speciesnet_output import SpeciesNetOutputWindow
-
-# Where SpeciesNetOutputWindow is instantiated (inside deploy_speciesnet or start_deploy):
-def _on_speciesnet_cancel(process):
-    state.btn_start_deploy.configure(state=NORMAL)
-    state.sim_run_btn.configure(state=NORMAL)
-    state.cancel_speciesnet_deploy_pressed = True
-
-sppnet_output_window = SpeciesNetOutputWindow(
-    master=root,
-    bring_to_top_func=bring_window_to_top_but_not_for_ever,
-    on_cancel=_on_speciesnet_cancel,
-)
+import logging
+from addaxai.core.logging import setup_logging
+logger = logging.getLogger("addaxai.gui")
 ```
 
-**Tests** (`tests/test_ui_speciesnet_output.py`):
-- Import `SpeciesNetOutputWindow` without error
-- Verify `__init__` accepts `master`, `bring_to_top_func`, `on_cancel` keywords
-- Verify class has `add_string`, `close`, `cancel` methods
+In `main()`, before `root.mainloop()`, add:
+```python
+setup_logging(log_dir=AddaxAI_files)
+```
 
-**Commit:** `refactor: extract SpeciesNetOutputWindow to addaxai/ui/dialogs/ (Phase 4.7)`
+Replace each `EXECUTED` print:
+```python
+# Before:
+print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+
+# After:
+logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
+```
+
+Note: Remove `({locals()})` from the log message — it dumps all local variables including large
+data structures, which is too noisy even for debug. Just log the function name.
+
+**Commit:** `refactor: replace debug trace prints with logging in AddaxAI_GUI.py (Phase 5.2c)`
+
+#### Step 5.2d: Replace prints in AddaxAI_GUI.py — errors and info (1 commit)
+
+Target: All remaining `print()` calls (~50). Categories:
+
+- Error prints: `print("ERROR:\n" + str(error) ...)` → `logger.error("...", exc_info=True)`
+- Subprocess output: `print(line, end='')` → `logger.info(line.rstrip())`
+- Platform info: `print('This is an Apple Silicon system.')` → `logger.info(...)`
+- Command args: `print(command_args)` → `logger.debug("Command: %s", command_args)`
+- Debug info: `print(sys.path)` → `logger.debug("sys.path: %s", sys.path)`
+
+**Commit:** `refactor: replace remaining prints with logging in AddaxAI_GUI.py (Phase 5.2d)`
+
+#### Step 5.2e: Verify zero print() calls remain (1 commit)
+
+Run: `grep -n "print(" AddaxAI_GUI.py addaxai/**/*.py`
+
+Expected: zero matches (or only inside string literals / comments).
+
+If any remain, replace them. Update CLAUDE.md Current Status.
+
+**Commit:** `refactor: final print() audit — zero remaining (Phase 5.2e)`
 
 ---
 
-#### Step 4.8: Final audit (1 commit)
+### Step 5.3: CI Setup (Lint + Tests in GitHub Actions)
 
-1. Run: `grep -n "global " AddaxAI_GUI.py`
-   - Expected result: zero matches
-   - If any remain, migrate them to `state`
+Create a GitHub Actions workflow that runs on every push to `refactor/modularize` and on PRs
+to `main`. The CI uses `.venv` Python (latest stable) for unit tests only — GUI/integration tests
+require env-base and a display, so they cannot run in CI.
 
-2. Run: `grep -rn "global " addaxai/`
-   - Only expected matches: `addaxai/i18n/__init__.py` (the `global _current, _strings` in
-     `init()` and `set_language()` — these are acceptable module-level singletons)
+#### Step 5.3a: Create CI workflow (1 commit)
 
-3. Run full test suite: `.venv/Scripts/python -m pytest tests/ -v`
+Create `.github/workflows/test.yml`:
+```yaml
+name: Tests
 
-4. Run GUI smoke test: `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_smoke.py -v`
+on:
+  push:
+    branches: [refactor/modularize, main]
+  pull_request:
+    branches: [main]
 
-5. Manual verification:
-   - Launch via `dev_launch.py`
-   - Select a folder, choose a model, toggle checkboxes
-   - Switch languages (EN→ES→FR→EN)
-   - Switch modes (advanced ↔ simple)
-   - Open HITL settings window
-   - Start a deploy (if test images available), verify progress window works
-   - Cancel a deploy, verify buttons re-enable
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11"]
 
-**Commit:** `refactor: final audit — zero global declarations remain (Phase 4.8)`
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest numpy pandas requests Pillow
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v \
+            --ignore=tests/test_gui_smoke.py \
+            --ignore=tests/test_gui_integration.py \
+            --ignore=tests/gui_test_runner.py
+```
+
+Note: Tests that require `cv2`, `matplotlib`, or `customtkinter` will be automatically skipped
+via the existing `pytest.mark.skipif` guards.
+
+Write no new tests — just verify the workflow runs.
+
+**Commit:** `ci: add GitHub Actions workflow for unit tests (Phase 5.3a)`
+
+#### Step 5.3b: Add linting to CI (1 commit)
+
+Add `ruff` linting to the workflow. Ruff is fast, opinionated, and replaces flake8+isort+pyflakes.
+
+Add to `.github/workflows/test.yml`:
+```yaml
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - name: Lint addaxai/
+        run: ruff check addaxai/
+```
+
+Create `ruff.toml` in repo root:
+```toml
+target-version = "py38"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W"]  # basic errors, pyflakes, warnings
+ignore = ["E501"]  # line length — not enforced yet
+
+[lint.per-file-ignores]
+"addaxai/ui/*" = ["E402"]  # late imports OK in UI modules
+```
+
+Fix any lint errors that `ruff check addaxai/` flags before committing. Common fixes:
+- Unused imports → remove them
+- Undefined names → add missing imports
+- Bare `except:` → `except Exception:`
+
+Do NOT lint `AddaxAI_GUI.py` — it would produce hundreds of warnings. Scope is `addaxai/` only.
+
+**Commit:** `ci: add ruff linting for addaxai/ modules (Phase 5.3b)`
+
+#### Step 5.3c: Add type checking to CI (1 commit)
+
+Add `mypy` to the workflow in permissive mode. This catches obvious type errors without requiring
+full strictness.
+
+Add to `.github/workflows/test.yml`:
+```yaml
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install mypy
+      - name: Type check addaxai/
+        run: mypy addaxai/ --ignore-missing-imports --no-strict-optional
+```
+
+Fix any type errors mypy flags. Common fixes:
+- Missing return type on `__init__` → add `-> None`
+- Incompatible types in assignment → fix or add `# type: ignore` with explanation
+
+**Commit:** `ci: add mypy type checking for addaxai/ modules (Phase 5.3c)`
 
 ---
 
 ### Verification After Each Step
 
-1. `.venv/Scripts/python -m pytest tests/ -v` — all existing tests pass
-2. `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_smoke.py -v` — GUI starts
-3. Manual: launch via `dev_launch.py`, verify basic interactions still work
+1. `.venv/Scripts/python -m pytest tests/ -v --ignore=tests/test_gui_smoke.py --ignore=tests/test_gui_integration.py` — unit tests pass
+2. `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_integration.py -v` — integration tests pass
+3. `C:\Users\Topam\AddaxAI_files\envs\env-base\python.exe -m pytest tests/test_gui_smoke.py -v` — smoke test passes
+4. **Update CLAUDE.md** — mark completed steps with `[x]`, update Current Status section
+
+If any test fails, `git revert` the commit and investigate.
 
 ### Risk Assessment
 
 | Step | Risk | Reason |
 |------|------|--------|
-| 4.1 (create AppState) | **Low** | New file only, no changes to existing code |
-| 4.2 (tkinter vars) | **High** | Touches ~200+ lines, every widget constructor and `.get()`/`.set()` call |
-| 4.3 (cancel/deploy) | **Medium** | 7 functions affected, but pattern is mechanical (remove `global`, add `state.`) |
-| 4.4 (HITL) | **Medium** | 6 functions affected, HITL window construction is complex |
-| 4.5 (simple mode + dropdowns) | **Medium** | Wiring between `build_simple_mode()` return dict and `state` |
-| 4.6 (remaining) | **Low** | Small number of isolated globals |
-| 4.7 (SpeciesNetOutputWindow) | **Medium** | Cancel callback pattern is new, but class is self-contained |
-| 4.8 (audit) | **Low** | Verification only |
-
-**Mitigation:** Each step is one commit. If GUI breaks, `git revert` the last commit.
-Step 4.2 is the riskiest — consider splitting into the 7 sub-batches (4.2a–4.2g) listed above.
+| 5.1a–f (type hints) | **Low** | Annotations don't change behavior; tests catch import errors |
+| 5.2a (logging infra) | **Low** | New file only, no existing code changed |
+| 5.2b (module prints) | **Low** | Only 11 prints in 4 files |
+| 5.2c (GUI debug prints) | **Medium** | Touching ~20 lines across deployment/HITL functions; easy to miss one |
+| 5.2d (GUI remaining prints) | **Medium** | ~50 replacements; subprocess output logging must preserve line-by-line behavior |
+| 5.2e (print audit) | **Low** | Verification only |
+| 5.3a (CI tests) | **Low** | New file; may need to fix import paths for CI environment |
+| 5.3b (ruff lint) | **Medium** | May flag issues that need fixing before lint passes |
+| 5.3c (mypy) | **Medium** | May find type inconsistencies that need `# type: ignore` |
 
 ### Expected Outcome
 
-- **Zero `global` declarations** in `AddaxAI_GUI.py`
-- All mutable state owned by a single `AppState` instance
-- `SpeciesNetOutputWindow` extracted to `addaxai/ui/dialogs/`
-- Every function's dependencies are explicit (reads `state.x` instead of invisible `global x`)
-- Foundation for future testability: functions can be tested by constructing `AppState` with
-  mock values
+- All `addaxai/` functions have type annotations (parameter + return types)
+- Zero `print()` calls remain — all output goes through `logging`
+- Log file written to `AddaxAI_files/addaxai.log` during GUI runs
+- GitHub Actions runs unit tests + lint + type check on every push
+- CI blocks merges if tests fail or lint errors are introduced
