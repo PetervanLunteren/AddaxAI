@@ -7,7 +7,7 @@ import datetime
 import hashlib
 import json
 import math
-from typing import Any, List
+from typing import Any, Dict, List
 
 
 def clean_line(line: str) -> str:
@@ -44,7 +44,7 @@ def csv_to_coco(detections_df: Any, files_df: Any, output_path: str, version: st
         output_path: Path to write the COCO JSON output.
         version: AddaxAI version string for the info section.
     """
-    coco = {
+    coco: Dict[str, Any] = {
         "images": [],
         "annotations": [],
         "categories": [],

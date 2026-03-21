@@ -13,7 +13,7 @@ except ImportError:
             pass
 
 
-class MyMainFrame(_CTkFrame):
+class MyMainFrame(_CTkFrame):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, scale_factor: float = 1.0, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         if scale_factor != 1.0:
@@ -24,13 +24,13 @@ class MyMainFrame(_CTkFrame):
             self.columnconfigure(1, weight=1, minsize=350)
 
 
-class MySubFrame(_CTkFrame):
+class MySubFrame(_CTkFrame):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.columnconfigure(0, weight=1, minsize=250)
         self.columnconfigure(1, weight=1, minsize=250)
 
 
-class MySubSubFrame(_CTkFrame):
+class MySubSubFrame(_CTkFrame):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)

@@ -25,13 +25,13 @@ class TextButtonWindow:
         self.text_label = tk.Label(self.root, text=text)
         self.text_label.pack(padx=10, pady=10)
 
-        self.selected_button = None
+        self.selected_button: Optional[str] = None
         self.button_frame = tk.Frame(self.root)
         self.button_frame.pack(padx=10, pady=10)
 
         for button_text in buttons:
             button = tk.Button(self.button_frame, text=button_text,
-                               command=lambda btn=button_text: self._button_click(btn))
+                               command=lambda btn=button_text: self._button_click(btn))  # type: ignore[misc]
             button.pack(side=tk.LEFT, padx=5)
 
     def _button_click(self, button_text: str) -> None:

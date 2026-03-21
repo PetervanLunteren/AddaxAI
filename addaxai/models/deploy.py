@@ -14,6 +14,7 @@ import os
 import signal
 import sys
 from subprocess import Popen
+from typing import Any, Dict
 
 
 def cancel_subprocess(process: Popen) -> None:
@@ -25,7 +26,7 @@ def cancel_subprocess(process: Popen) -> None:
     if os.name == 'nt':
         Popen(f"TASKKILL /F /PID {process.pid} /T")
     else:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)  # type: ignore[attr-defined]
 
 
 def switch_yolov5_version(model_type: str, base_path: str) -> None:
@@ -72,7 +73,7 @@ def imitate_object_detection_for_full_image_classifier(chosen_folder: str) -> No
         if f.lower().endswith(('jpg', 'jpeg', 'png'))
     ]
 
-    result = {
+    result: Dict[str, Any] = {
         "images": [],
         "detection_categories": {
             "1": "animal",

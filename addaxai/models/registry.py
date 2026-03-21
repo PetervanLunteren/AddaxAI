@@ -11,7 +11,7 @@ import platform
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 
 def fetch_known_models(root_dir: str) -> List[str]:

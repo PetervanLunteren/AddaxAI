@@ -1,7 +1,7 @@
 """CustomWindow — generic pop-up window for AddaxAI."""
 
 import tkinter as tk
-from typing import Any
+from typing import Any, Optional
 
 try:
     import customtkinter
@@ -17,7 +17,7 @@ class CustomWindow:
         self.title = title
         self.text = text
         self._master = master
-        self.root = None
+        self.root: Optional[Any] = None
 
     def open(self) -> None:
         self.root = _CTkToplevel(self._master)

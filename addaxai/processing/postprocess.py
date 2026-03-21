@@ -34,6 +34,7 @@ def format_size(size: float) -> Optional[str]:
         if size < 1024.0:
             return f"{round(size)} {unit}"
         size /= 1024.0
+    return None
 
 
 def move_files(

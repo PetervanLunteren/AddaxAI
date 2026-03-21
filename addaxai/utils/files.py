@@ -29,6 +29,7 @@ def get_size(path: str) -> Optional[str]:
         return f"{round(size / pow(1024, 2), 2)} MB"
     elif size < pow(1024, 4):
         return f"{round(size / pow(1024, 3), 2)} GB"
+    return None
 
 
 def shorten_path(path: str, length: int) -> str:

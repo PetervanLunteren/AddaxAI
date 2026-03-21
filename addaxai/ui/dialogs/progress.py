@@ -10,7 +10,7 @@ try:
     _CTkLabel = customtkinter.CTkLabel
     _CTkProgressBar = customtkinter.CTkProgressBar
 except ImportError:
-    class _CTkToplevel:
+    class _CTkToplevel:  # type: ignore[no-redef]
         def __init__(self, *a, **kw): pass
         def title(self, *a): pass
         def geometry(self, *a): pass
@@ -19,19 +19,19 @@ except ImportError:
         def withdraw(self): pass
         def destroy(self): pass
         def protocol(self, *a, **kw): pass
-    class _CTkFont:
+    class _CTkFont:  # type: ignore[no-redef]
         def __init__(self, *a, **kw): pass
-    class _CTkFrame:
+    class _CTkFrame:  # type: ignore[no-redef]
         def __init__(self, *a, **kw): pass
         def grid(self, **kw): pass
         def columnconfigure(self, *a, **kw): pass
         def grid_slaves(self, *a, **kw): return []
-    class _CTkLabel:
+    class _CTkLabel:  # type: ignore[no-redef]
         def __init__(self, *a, **kw): pass
         def grid(self, **kw): pass
         def grid_remove(self): pass
         def configure(self, **kw): pass
-    class _CTkProgressBar:
+    class _CTkProgressBar:  # type: ignore[no-redef]
         def __init__(self, *a, **kw): pass
         def set(self, v): pass
         def grid(self, **kw): pass

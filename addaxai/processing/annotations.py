@@ -105,9 +105,9 @@ def convert_xml_to_coco(xml_path: str, inverted_label_map: Dict[str, str]) -> Li
             new_class = True
             highest_index = 0
             for key, value in inverted_label_map.items():
-                value = int(value)
-                if value > highest_index:
-                    highest_index = value
+                int_value = int(value)
+                if int_value > highest_index:
+                    highest_index = int_value
             inverted_label_map[name] = str(highest_index + 1)
         category = inverted_label_map[name]
 
@@ -153,16 +153,16 @@ def create_pascal_voc_annotation(
         human_verified: Whether the annotations have been human-verified.
         base_folder: Base folder for computing the XML output path.
     """
-    image_path = Path(image_path)
-    img = np.array(Image.open(image_path).convert('RGB'))
+    image_path_obj = Path(image_path)
+    img = np.array(Image.open(image_path_obj).convert('RGB'))
     annotation = ET.Element('annotation')
 
     if human_verified:
         annotation.set('verified', 'yes')
 
-    ET.SubElement(annotation, 'folder').text = str(image_path.parent.name)
-    ET.SubElement(annotation, 'filename').text = str(image_path.name)
-    ET.SubElement(annotation, 'path').text = str(image_path)
+    ET.SubElement(annotation, 'folder').text = str(image_path_obj.parent.name)
+    ET.SubElement(annotation, 'filename').text = str(image_path_obj.name)
+    ET.SubElement(annotation, 'path').text = str(image_path_obj)
 
     source = ET.SubElement(annotation, 'source')
     ET.SubElement(source, 'database').text = 'Unknown'

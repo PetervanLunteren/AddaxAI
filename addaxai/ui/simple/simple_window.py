@@ -16,19 +16,19 @@ try:
     _CTkButton = customtkinter.CTkButton
     _CTkOptionMenu = customtkinter.CTkOptionMenu
 except ImportError:
-    class _CTkToplevel:
+    class _CTkToplevel:  # type: ignore[no-redef]
         pass
-    class _CTkFrame:
+    class _CTkFrame:  # type: ignore[no-redef]
         pass
-    class _CTkFont:
+    class _CTkFont:  # type: ignore[no-redef]
         pass
-    class _CTkImage:
+    class _CTkImage:  # type: ignore[no-redef]
         pass
-    class _CTkLabel:
+    class _CTkLabel:  # type: ignore[no-redef]
         pass
-    class _CTkButton:
+    class _CTkButton:  # type: ignore[no-redef]
         pass
-    class _CTkOptionMenu:
+    class _CTkOptionMenu:  # type: ignore[no-redef]
         pass
 
 from addaxai.i18n import t, lang_idx as i18n_lang_idx
@@ -179,10 +179,10 @@ def build_simple_mode(root: Any, version: str, addaxai_files: str, scale_factor:
     sim_dir_inf.grid(row=0, column=0, padx=padx, pady=pady, sticky="e", columnspan=2)
     sim_dir_btn = _CTkButton(
         sim_dir_frm, text=t('browse'), width=1,
-        command=lambda: [browse_dir_func(var_choose_folder, var_choose_folder_short,
+        command=lambda: [browse_dir_func(var_choose_folder, var_choose_folder_short,  # type: ignore[call-arg, func-returns-value]
                                          dsp_choose_folder, 25, row_choose_folder, 0, 'w',
                                          source_dir=True),
-                         update_frame_states()])
+                         update_frame_states()])  # type: ignore[func-returns-value]
     sim_dir_btn.grid(row=1, column=0, padx=(padx, padx / 2), pady=(0, pady), sticky="nswe")
     sim_dir_pth_frm = MySubSubFrame(master=sim_dir_frm)
     sim_dir_pth_frm.grid(row=1, column=1, padx=(padx / 2, padx), pady=(0, pady), sticky="nesw")
@@ -239,7 +239,7 @@ def build_simple_mode(root: Any, version: str, addaxai_files: str, scale_factor:
     sim_run_frm = MySubFrame(master=sim_run_frm_1, width=1000)
     sim_run_frm.grid(row=3, column=1, padx=(0, padx), pady=pady, sticky="nswe")
     sim_run_btn = _CTkButton(sim_run_frm, text=t('sim_run_btn'),
-                              command=lambda: start_deploy_func(simple_mode=True))
+                              command=lambda: start_deploy_func(simple_mode=True))  # type: ignore[call-arg]
     sim_run_btn.grid(row=0, column=0, padx=padx, pady=pady, sticky="nswe", columnspan=2)
 
     # about
@@ -247,7 +247,7 @@ def build_simple_mode(root: Any, version: str, addaxai_files: str, scale_factor:
                             font=Font(size=addax_txt_size), fg="black", bg=yellow_primary)
     sim_abo_lbl.grid(row=6, column=0, columnspan=2, sticky="")
     sim_abo_lbl_link = tk.Label(simple_main_frame, text="addaxdatascience.com", cursor="hand2",
-                                 font=Font(size=addax_txt_size, underline=1),
+                                 font=Font(size=addax_txt_size, underline=True),
                                  fg=green_primary, bg=yellow_primary)
     sim_abo_lbl_link.grid(row=7, column=0, columnspan=2, sticky="", pady=(0, pady))
     sim_abo_lbl_link.bind("<Button-1>", lambda e: webbrowser.open_new("http://addaxdatascience.com"))

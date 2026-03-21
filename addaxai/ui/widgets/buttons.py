@@ -13,7 +13,7 @@ except ImportError:
             pass
 
 
-class InfoButton(_CTkButton):
+class InfoButton(_CTkButton):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.configure(fg_color=("#ebebeb", "#333333"),
@@ -23,7 +23,7 @@ class InfoButton(_CTkButton):
                        width=1)
 
 
-class CancelButton(_CTkButton):
+class CancelButton(_CTkButton):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.configure(fg_color=("#ebeaea", "#4B4D50"),
@@ -33,7 +33,7 @@ class CancelButton(_CTkButton):
                        width=120)
 
 
-class GreyTopButton(_CTkButton):
+class GreyTopButton(_CTkButton):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, yellow_secondary: str = "#F0EEDC",
                  yellow_tertiary: str = "#E4E1D0", border_width: int = 0, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)

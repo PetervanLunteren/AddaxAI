@@ -17,7 +17,7 @@ except ImportError:
 from addaxai.i18n import lang_idx as i18n_lang_idx
 
 
-class SpeciesSelectionFrame(_CTkScrollableFrame):
+class SpeciesSelectionFrame(_CTkScrollableFrame):  # type: ignore[misc, valid-type]
     def __init__(self, master: Any, all_classes: List[str] = [], selected_classes: List[str] = [],
                  command: Optional[Callable[[], None]] = None, dummy_spp: bool = False,
                  pady: int = 2, **kwargs: Any) -> None:
@@ -26,7 +26,7 @@ class SpeciesSelectionFrame(_CTkScrollableFrame):
         if dummy_spp:
             all_classes = [f"{['Species', 'Especies', 'Espèces'][i18n_lang_idx()]} {i + 1}" for i in range(10)]
         self.command = command
-        self.checkbox_list = []
+        self.checkbox_list: List[Any] = []
         self.selected_classes = selected_classes
         for item in all_classes:
             self.add_item(item, pady)

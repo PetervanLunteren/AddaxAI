@@ -93,7 +93,7 @@ class SpeciesNetOutputWindow:
         if os.name == 'nt':
             Popen(f"TASKKILL /F /PID {self.process.pid} /T")
         else:
-            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)  # type: ignore[attr-defined]
         if self.on_cancel:
             self.on_cancel()
         self.sppnet_output_window_root.destroy()
