@@ -9,10 +9,11 @@ import math
 import os
 import shutil
 from pathlib import Path
+from typing import Dict, Optional
 
 
 # Confidence bucket directory names for sorting detections by confidence
-CONF_DIRS = {
+CONF_DIRS: Dict[float, str] = {
     0.0: "conf_0.0",
     0.1: "conf_0.0-0.1",
     0.2: "conf_0.1-0.2",
@@ -27,7 +28,7 @@ CONF_DIRS = {
 }
 
 
-def format_size(size):
+def format_size(size: float) -> Optional[str]:
     """Format a byte count as a human-readable string (B, KB, MB, GB)."""
     for unit in ['B', 'KB', 'MB', 'GB']:
         if size < 1024.0:
@@ -35,8 +36,16 @@ def format_size(size):
         size /= 1024.0
 
 
-def move_files(file, detection_type, file_placement, max_detection_conf,
-               sep_conf, dst_root, src_dir, manually_checked):
+def move_files(
+    file: str,
+    detection_type: str,
+    file_placement: int,
+    max_detection_conf: float,
+    sep_conf: bool,
+    dst_root: str,
+    src_dir: str,
+    manually_checked: bool,
+) -> str:
     """Move or copy a file into a subdirectory based on detection results.
 
     Args:

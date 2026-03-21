@@ -6,12 +6,13 @@ Pascal VOC XML creation/parsing, COCO JSON conversion, and bbox utilities.
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from PIL import Image
 
 
-def indent_xml(elem, level=0):
+def indent_xml(elem: ET.Element, level: int = 0) -> None:
     """Recursively indent XML elements for pretty-printing.
 
     Modifies the element tree in place.
@@ -31,7 +32,10 @@ def indent_xml(elem, level=0):
             elem.tail = i
 
 
-def convert_bbox_pascal_to_yolo(size, box):
+def convert_bbox_pascal_to_yolo(
+    size: Tuple[int, int],
+    box: Tuple[float, float, float, float],
+) -> Tuple[float, float, float, float]:
     """Convert a Pascal VOC bounding box to YOLO format.
 
     Args:
@@ -54,7 +58,7 @@ def convert_bbox_pascal_to_yolo(size, box):
     return (x, y, w, h)
 
 
-def return_xml_path(img_path, base_folder):
+def return_xml_path(img_path: str, base_folder: str) -> str:
     """Return the corresponding XML annotation path with 'temp-folder' injected.
 
     Args:
@@ -69,7 +73,7 @@ def return_xml_path(img_path, base_folder):
     return os.path.normpath(temp_xml_path)
 
 
-def convert_xml_to_coco(xml_path, inverted_label_map):
+def convert_xml_to_coco(xml_path: str, inverted_label_map: Dict[str, str]) -> List[Any]:
     """Convert a Pascal VOC XML annotation file to COCO format.
 
     Args:
@@ -134,8 +138,12 @@ def convert_xml_to_coco(xml_path, inverted_label_map):
     return [verified_image, verification_status, new_class, inverted_label_map]
 
 
-def create_pascal_voc_annotation(image_path, annotation_list, human_verified,
-                                 base_folder):
+def create_pascal_voc_annotation(
+    image_path: str,
+    annotation_list: List[str],
+    human_verified: bool,
+    base_folder: str,
+) -> None:
     """Create a Pascal VOC XML annotation file from a list of detections.
 
     Args:

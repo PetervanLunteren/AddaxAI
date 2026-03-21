@@ -7,20 +7,21 @@ import datetime
 import hashlib
 import json
 import math
+from typing import Any, List
 
 
-def clean_line(line):
+def clean_line(line: str) -> str:
     """Remove null bytes from a string."""
     return line.replace('\0', '')
 
 
-def generate_unique_id(row):
+def generate_unique_id(row: List[str]) -> str:
     """Generate an MD5 hash from a list of string values."""
     row_str = "".join(row).encode('utf-8')
     return hashlib.md5(row_str).hexdigest()
 
 
-def format_datetime(date_str):
+def format_datetime(date_str: str) -> str:
     """Convert 'DD/MM/YY HH:MM:SS' to 'YYYY-MM-DDTHH:MM:SS'.
 
     Returns 'NA' if the date string cannot be parsed.
@@ -32,7 +33,7 @@ def format_datetime(date_str):
         return 'NA'
 
 
-def csv_to_coco(detections_df, files_df, output_path, version="unknown"):
+def csv_to_coco(detections_df: Any, files_df: Any, output_path: str, version: str = "unknown") -> None:
     """Convert detection and file DataFrames to COCO JSON format.
 
     Args:
