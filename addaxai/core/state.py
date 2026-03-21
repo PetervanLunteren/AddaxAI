@@ -77,15 +77,15 @@ class AppState:
         self.cancel_deploy_model_pressed = False
         self.cancel_speciesnet_deploy_pressed = False
         self.subprocess_output = ""
-        self.warn_smooth_vid = False
+        self.warn_smooth_vid = True   # reset to True each app start; set False after shown
         self.temp_frame_folder = ""
 
         # Progress and error tracking
         self.progress_window = None
-        self.postprocessing_error_log = []
-        self.model_error_log = []
-        self.model_warning_log = []
-        self.model_special_char_log = []
+        self.postprocessing_error_log = ""  # file path string, not a list
+        self.model_error_log = ""       # file path string
+        self.model_warning_log = ""     # file path string
+        self.model_special_char_log = ""  # file path string
 
         # HITL state
         self.selection_dict = {}

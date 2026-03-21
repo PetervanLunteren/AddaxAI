@@ -245,7 +245,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # update progress window
-    progress_window.update_values(process = f"{data_type}_pst", status = "load")
+    state.progress_window.update_values(process = f"{data_type}_pst", status = "load")
 
     # plt needs csv files so make sure to produce them, even if the user didn't specify
     # if the user didn't specify to export to csv, make sure to remove them later on
@@ -276,7 +276,6 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
             return
 
     # init vars
-    global cancel_var
     start_time = time.time()
     nloop = 1
 
@@ -304,8 +303,8 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
         json_paths_converted = True
 
     # set cancel bool
-    cancel_var = False
-    
+    state.cancel_var = False
+
     # open json file
     with open(recognition_file) as image_recognition_file_content:
         data = json.load(image_recognition_file_content)
@@ -347,9 +346,8 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                                                'WhiteBalance', 'SceneCaptureType', 'ExposureTime', 'Software', 'Sharpness', 'Saturation', 'ReferenceBlackWhite'])
             df.to_csv(csv_for_detections, encoding='utf-8', index=False)
 
-    # set global vars
-    global postprocessing_error_log
-    postprocessing_error_log = os.path.join(dst_dir, "postprocessing_error_log.txt")
+    # set error log path
+    state.postprocessing_error_log = os.path.join(dst_dir, "postprocessing_error_log.txt")
 
     # count the number of rows to make sure it doesn't exceed the limit for an excel sheet
     if exp and exp_format == t('dpd_exp_format')[0]: # if exp_format is the first option in the dropdown menu -> XLSX
@@ -381,21 +379,21 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
     for image in data['images']:
 
         # cancel process if required
-        if cancel_var:
+        if state.cancel_var:
             break
         
         # check for failure
         if "failure" in image:
             
             # write warnings to log file
-            with open(postprocessing_error_log, 'a+') as f:
+            with open(state.postprocessing_error_log, 'a+') as f:
                 f.write(f"File '{image['file']}' was skipped by post processing features because '{image['failure']}'\n")
             f.close()
 
             # calculate stats
             elapsed_time_sep = str(datetime.timedelta(seconds=round(time.time() - start_time)))
             time_left_sep = str(datetime.timedelta(seconds=round(((time.time() - start_time) * n_images / nloop) - (time.time() - start_time))))
-            progress_window.update_values(process = f"{data_type}_pst",
+            state.progress_window.update_values(process = f"{data_type}_pst",
                                             status = "running",
                                             cur_it = nloop,
                                             tot_it = n_images,
@@ -432,12 +430,12 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
 
                 # check if that image was able to be loaded
                 if im_to_vis is None:
-                    with open(postprocessing_error_log, 'a+') as f:
+                    with open(state.postprocessing_error_log, 'a+') as f:
                         f.write(f"File '{image['file']}' was skipped by post processing features. This might be due to the file being moved or deleted after analysis, or because of a special character in the file path.\n")
                     f.close()
                     elapsed_time_sep = str(datetime.timedelta(seconds=round(time.time() - start_time)))
                     time_left_sep = str(datetime.timedelta(seconds=round(((time.time() - start_time) * n_images / nloop) - (time.time() - start_time))))
-                    progress_window.update_values(process = f"{data_type}_pst",
+                    state.progress_window.update_values(process = f"{data_type}_pst",
                                                     status = "running",
                                                     cur_it = nloop,
                                                     tot_it = n_images,
@@ -713,7 +711,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
         # calculate stats
         elapsed_time_sep = str(datetime.timedelta(seconds=round(time.time() - start_time)))
         time_left_sep = str(datetime.timedelta(seconds=round(((time.time() - start_time) * n_images / nloop) - (time.time() - start_time))))
-        progress_window.update_values(process = f"{data_type}_pst",
+        state.progress_window.update_values(process = f"{data_type}_pst",
                                         status = "running",
                                         cur_it = nloop,
                                         tot_it = n_images,
@@ -838,7 +836,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
         make_json_absolute(recognition_file, var_choose_folder.get())
 
     # let the user know it's done
-    progress_window.update_values(process = f"{data_type}_pst", status = "done")
+    state.progress_window.update_values(process = f"{data_type}_pst", status = "done")
     root.update()
 
     # create graphs
@@ -1256,8 +1254,7 @@ def start_postprocess():
     exp_format = var_exp_format.get()
 
     # init cancel variable
-    global cancel_var
-    cancel_var = False
+    state.cancel_var = False
 
     # check which json files are present
     img_json = False
@@ -1311,9 +1308,8 @@ def start_postprocess():
         processes.append("plt")
     if vid_json:
         processes.append("vid_pst")
-    global progress_window
-    progress_window = ProgressWindow(processes = processes, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary)
-    progress_window.open()
+    state.progress_window = ProgressWindow(processes = processes, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary)
+    state.progress_window.open()
 
     try:
         # postprocess images
@@ -1321,23 +1317,23 @@ def start_postprocess():
             postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img", keep_series_species=keep_series_species)
 
         # postprocess videos
-        if vid_json and not cancel_var:
+        if vid_json and not state.cancel_var:
             postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid", keep_series_species=keep_series_species)
             
         # complete
         complete_frame(fth_step)
 
         # check if there are postprocessing errors written
-        if os.path.isfile(postprocessing_error_log): 
+        if os.path.isfile(state.postprocessing_error_log): 
             mb.showwarning(t('warning'), [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
-                                                f"post-processing features. See\n\n'{postprocessing_error_log}'\n\nfor more info.",
+                                                f"post-processing features. See\n\n'{state.postprocessing_error_log}'\n\nfor more info.",
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
-                                                f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
+                                                f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{state.postprocessing_error_log}'",
                                                 "Un ou plusieurs fichiers n'ont pas pu être analysés par le modèle (par exemple, des fichiers corrompus) et seront"
-                                                f"ignorés lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'info."][i18n_lang_idx()])
+                                                f"ignorés lors du post-traitement. Voir\n\n'{state.postprocessing_error_log}'\n\npour plus d'info."][i18n_lang_idx()])
 
         # close progress window
-        progress_window.close()
+        state.progress_window.close()
     
     except Exception as error:
         # log error
@@ -1349,7 +1345,7 @@ def start_postprocess():
                      detail=traceback.format_exc())
         
         # close window
-        progress_window.close()
+        state.progress_window.close()
 
 # function to produce graphs and maps
 def produce_plots(results_dir):
@@ -1358,7 +1354,7 @@ def produce_plots(results_dir):
     def update_pbar_plt():
         pbar.update(1)
         tqdm_stats = pbar.format_dict
-        progress_window.update_values(process = "plt",
+        state.progress_window.update_values(process = "plt",
                                         status = "running",
                                         cur_it = tqdm_stats['n'],
                                         tot_it = tqdm_stats['total'],
@@ -1937,18 +1933,18 @@ def produce_plots(results_dir):
 
     # create plots
     with tqdm(total=n_plots, disable=False) as pbar:
-        progress_window.update_values(process = f"plt", status = "load")
+        state.progress_window.update_values(process = f"plt", status = "load")
         if any_dates_present: create_time_plots(det_df, results_dir, temporal_units, pbar, n_obs_per_label_with_timestamps);plt.close('all')
-        if cancel_var: return
+        if state.cancel_var: return
         if data_permits_map_creation:
             create_geo_plots(det_df_geo, results_dir, pbar);plt.close('all')
-        if cancel_var: return
+        if state.cancel_var: return
         create_pie_plots_detections(det_df, results_dir, pbar);plt.close('all')
-        if cancel_var: return
+        if state.cancel_var: return
         create_pie_plots_files(fil_df, results_dir, pbar);plt.close('all')
-        if cancel_var: return
+        if state.cancel_var: return
         if any_dates_present: create_activity_patterns(det_df, results_dir, pbar);plt.close('all')
-        if cancel_var: return
+        if state.cancel_var: return
 
     # add addaxai logo
     logo_for_graphs = PIL_logo_incl_text.resize((int(LOGO_WIDTH/1.2), int(LOGO_HEIGHT/1.2)))
@@ -1959,7 +1955,7 @@ def produce_plots(results_dir):
                 overlay_logo(image_path, logo_for_graphs)
     
     # end pbar
-    progress_window.update_values(process = f"plt", status = "done")
+    state.progress_window.update_values(process = f"plt", status = "done")
 
 # open human-in-the-loop verification windows
 def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, label_map):
@@ -2590,7 +2586,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # show user it's loading
-    progress_window.update_values(process = f"{data_type}_cls", status = "load")
+    state.progress_window.update_values(process = f"{data_type}_cls", status = "load")
     root.update()
         
     # load model specific variables
@@ -2646,11 +2642,10 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
     command_args.append(str(cls_class_thresh))
     command_args.append(str(cls_animal_smooth))
     command_args.append(json_fpath)
-    try:
-        command_args.append(temp_frame_folder)
-    except NameError:
+    if state.temp_frame_folder:
+        command_args.append(state.temp_frame_folder)
+    else:
         command_args.append("None")
-        pass
     command_args.append(str(cls_tax_fallback))
     command_args.append(str(cls_tax_levels_idx))
     
@@ -2693,17 +2688,16 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
                   universal_newlines=True,
                   preexec_fn=os.setsid)
 
-    # set global vars
-    global subprocess_output
-    subprocess_output = ""
+    # reset subprocess output
+    state.subprocess_output = ""
 
     # calculate metrics while running
     status_setting = 'running'
     for line in p.stdout:
 
         # save output if something goes wrong
-        subprocess_output = subprocess_output + line
-        subprocess_output = subprocess_output[-1000:]
+        state.subprocess_output = state.subprocess_output + line
+        state.subprocess_output = state.subprocess_output[-1000:]
 
         # log
         print(line, end='')
@@ -2759,7 +2753,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
             processing_speed = re.search("(?<=,)(.*)(?=])", times)[1].strip()
 
             # print stats
-            progress_window.update_values(process = f"{data_type}_cls",
+            state.progress_window.update_values(process = f"{data_type}_cls",
                                             status = status_setting,
                                             cur_it = int(current_im),
                                             tot_it = int(total_im),
@@ -2771,7 +2765,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
         root.update()
 
     # process is done
-    progress_window.update_values(process = f"{data_type}_cls",
+    state.progress_window.update_values(process = f"{data_type}_cls",
                                        status = "done",
                                        time_ela = elapsed_time,
                                        speed = processing_speed)
@@ -2780,29 +2774,24 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
 
 # quit popen process and update UI state
 def cancel_deployment(process):
-    global cancel_deploy_model_pressed
-    global btn_start_deploy
-    global sim_run_btn
     cancel_subprocess(process)
-    btn_start_deploy.configure(state=NORMAL)
-    sim_run_btn.configure(state=NORMAL)
-    cancel_deploy_model_pressed = True
-    progress_window.close()
+    state.btn_start_deploy.configure(state=NORMAL)
+    state.sim_run_btn.configure(state=NORMAL)
+    state.cancel_deploy_model_pressed = True
+    state.progress_window.close()
 
-# deploy model and create json output files 
-warn_smooth_vid = True
+# deploy model and create json output files
 def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode = False):
     # log
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
     
     # note if user is video analysing without smoothing
-    global warn_smooth_vid
     if (var_cls_model.get() != t('none')) and \
         (var_smooth_cls_animal.get() == False) and \
             data_type == 'vid' and \
                 simple_mode == False and \
-                    warn_smooth_vid == True:
-                        warn_smooth_vid = False
+                    state.warn_smooth_vid == True:
+                        state.warn_smooth_vid = False
                         if not mb.askyesno(t('information'), ["You are about to analyze videos without smoothing the confidence scores. "
                             "Typically, a video may contain many frames of the same animal, increasing the likelihood that at least "
                             f"one of the labels could be a false prediction. With '{t('lbl_smooth_cls_animal')}' enabled, all"
@@ -2823,7 +2812,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     # display loading window
     # try to update progress window, if AttributeError, it means it tries to update the img_det and we're working with a full image classifier
     try:
-        progress_window.update_values(process = f"{data_type}_det", status = "load")
+        state.progress_window.update_values(process = f"{data_type}_det", status = "load")
     except AttributeError:
         pass 
 
@@ -2865,9 +2854,8 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
         # add argument to command call
         selected_options.append("--class_mapping_filename=" + native_model_classes_json_file)
 
-    # set global cancel bool
-    global cancel_deploy_model_pressed
-    cancel_deploy_model_pressed = False
+    # set cancel bool
+    state.cancel_deploy_model_pressed = False
 
     # if a full image classifier is selected, imitate object detection to get full bboxes
     full_image_cls = load_model_vars("cls").get("full_image_cls", False)
@@ -2942,9 +2930,8 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                     universal_newlines=True,
                     preexec_fn=os.setsid)
         
-        # set global vars
-        global subprocess_output
-        subprocess_output = ""
+        # reset subprocess output
+        state.subprocess_output = ""
         previous_processed_img = ["There is no previously processed image. The problematic character is in the first image to analyse.",
                                 "No hay ninguna imagen previamente procesada. El personaje problemático está en la primera imagen a analizar.",
                                 "Il n'y a aucune image traitée précédemment. Le caractère problématique est dans la première image à analyser."][i18n_lang_idx()]
@@ -3011,7 +2998,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
 
             # write errors to log file
             if "Exception:" in line:
-                with open(model_error_log, 'a+') as f:
+                with open(state.model_error_log, 'a+') as f:
                     f.write(f"{line}\n")
                 f.close()
 
@@ -3021,19 +3008,19 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                     and not "no metadata for unknown detector version" in line \
                     and not "using user-supplied image size" in line \
                     and not "already exists and will be overwritten" in line:
-                    with open(model_warning_log, 'a+') as f:
+                    with open(state.model_warning_log, 'a+') as f:
                         f.write(f"{line}\n")
                     f.close()
                     
             # print frame extraction progress and dont continue until done
             if "Extracting frames for folder " in line and \
                 data_type == "vid":
-                progress_window.update_values(process = f"{data_type}_det",
+                state.progress_window.update_values(process = f"{data_type}_det",
                                             status = "extracting frames")
                 extracting_frames_mode = True
             if extracting_frames_mode:
                 if '%' in line[0:4]:
-                    progress_window.update_values(process = f"{data_type}_det",
+                    state.progress_window.update_values(process = f"{data_type}_det",
                                                 status = "extracting frames",
                                                 extracting_frames_txt = [f"Extracting frames... {line[:3]}%",
                                                                         f"Extrayendo fotogramas... {line[:3]}%"])
@@ -3061,7 +3048,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                 processing_speed = re.search("(?<=,)(.*)(?=])", times)[1].strip()
 
                 # show progress
-                progress_window.update_values(process = f"{data_type}_det",
+                state.progress_window.update_values(process = f"{data_type}_det",
                                                 status = "running",
                                                 cur_it = int(current_im),
                                                 tot_it = int(total_im),
@@ -3074,7 +3061,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             root.update()
         
         # process is done
-        progress_window.update_values(process = f"{data_type}_det", status = "done")
+        state.progress_window.update_values(process = f"{data_type}_det", status = "done")
         root.update()
     
     # create addaxai metadata
@@ -3098,7 +3085,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             make_json_absolute(video_recognition_file, var_choose_folder.get())
     
     # classify detections if specified by user
-    if not cancel_deploy_model_pressed:
+    if not state.cancel_deploy_model_pressed:
         if var_cls_model.get() != t('none'):
             if data_type == "img":
                 classify_detections(os.path.join(chosen_folder, "image_recognition_file.json"), data_type, simple_mode = simple_mode)
@@ -3311,13 +3298,12 @@ def start_deploy(simple_mode = False):
             return
 
     # note if user is video analysing without smoothing
-    global warn_smooth_vid
     if (var_cls_model.get() != t('none')) and \
         (var_smooth_cls_animal.get() == False) and \
             vid_present and \
                 simple_mode == False and \
-                    warn_smooth_vid == True:
-                        warn_smooth_vid = False
+                    state.warn_smooth_vid == True:
+                        state.warn_smooth_vid = False
                         if not mb.askyesno(t('information'), ["You are about to analyze videos without smoothing the confidence scores. "
                             "Typically, a video may contain many frames of the same animal, increasing the likelihood that at least "
                             f"one of the labels could be a false prediction. With '{t('lbl_smooth_cls_animal')}' enabled, all"
@@ -3381,12 +3367,9 @@ def start_deploy(simple_mode = False):
             processes.remove("vid_pst")
     
     # redirect warnings and error to log files
-    global model_error_log
-    model_error_log = os.path.join(chosen_folder, "model_error_log.txt")
-    global model_warning_log
-    model_warning_log = os.path.join(chosen_folder, "model_warning_log.txt")
-    global model_special_char_log
-    model_special_char_log = os.path.join(chosen_folder, "model_special_char_log.txt")
+    state.model_error_log = os.path.join(chosen_folder, "model_error_log.txt")
+    state.model_warning_log = os.path.join(chosen_folder, "model_warning_log.txt")
+    state.model_special_char_log = os.path.join(chosen_folder, "model_special_char_log.txt")
 
     # set global variable
     temp_frame_folder_created = False
@@ -3458,11 +3441,10 @@ def start_deploy(simple_mode = False):
     temp_frame_folder_created = False
     if vid_present:
         if var_cls_model.get() != t('none'):
-            global temp_frame_folder
             temp_frame_folder_obj = tempfile.TemporaryDirectory()
             temp_frame_folder_created = True
-            temp_frame_folder = temp_frame_folder_obj.name
-            additional_vid_options.append("--frame_folder=" + temp_frame_folder)
+            state.temp_frame_folder = temp_frame_folder_obj.name
+            additional_vid_options.append("--frame_folder=" + state.temp_frame_folder)
             additional_vid_options.append("--keep_extracted_frames")
 
 
@@ -3564,9 +3546,8 @@ def start_deploy(simple_mode = False):
 
     
     # open progress window with frames for each process that needs to be done
-    global progress_window
-    progress_window = ProgressWindow(processes = processes, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary)
-    progress_window.open()
+    state.progress_window = ProgressWindow(processes = processes, master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary)
+    state.progress_window.open()
 
     # check the chosen folder of special characters and alert the user is there are any
     isolated_special_fpaths = {"total_saved_images": 0}
@@ -3592,14 +3573,14 @@ def start_deploy(simple_mode = False):
 
     if total_saved_images > 0:
         # write to log file 
-        if os.path.isfile(model_special_char_log):
-            os.remove(model_special_char_log)            
+        if os.path.isfile(state.model_special_char_log):
+            os.remove(state.model_special_char_log)            
         for k, v in isolated_special_fpaths.items():
             line = f"There are {str(v[0]).ljust(4)} files hidden behind the {str(v[1])} character in folder '{k}'"
             if not line.isprintable():
                 line = repr(line)
                 print(f"\nSPECIAL CHARACTER LOG: This special character is going to give an error : {line}\n")  # log
-            with open(model_special_char_log, 'a+', encoding='utf-8') as f:
+            with open(state.model_special_char_log, 'a+', encoding='utf-8') as f:
                 f.write(f"{line}\n")
         
         # log to console
@@ -3617,19 +3598,19 @@ def start_deploy(simple_mode = False):
                                                     f"With your current folder structure, there are a total of {total_saved_images} files that will be potentially skipped.\n"
                                                     f"If you want to make sure these images will be analysed, you would need to manually adjust the names of {n_special_chars} folders.\n"
                                                     "You can find an overview of the probelematic characters and filepaths in the log file:\n\n"
-                                                    f"'{model_special_char_log}'\n\n"
+                                                    f"'{state.model_special_char_log}'\n\n"
                                                     f"You can also decide to continue with the filepaths as they are now, with the risk of excluding {total_saved_images} files.", 
                                                     "Los caracteres especiales pueden ser problemáticos durante el análisis, haciendo que se omitan archivos.\n"
                                                     f"Con su actual estructura de carpetas, hay un total de {total_saved_images} archivos que serán potencialmente omitidos.\n"
                                                     f"Si desea asegurarse de que estas imágenes se analizarán, deberá ajustar manualmente los nombres de las carpetas {n_special_chars}.\n"
                                                     "Puede encontrar un resumen de los caracteres problemáticos y las rutas de los archivos en el archivo de registro:\n\n"
-                                                    f"'{model_special_char_log}'\n\n"
+                                                    f"'{state.model_special_char_log}'\n\n"
                                                     f"También puede decidir continuar con las rutas de archivo tal y como están ahora, con el riesgo de excluir archivos {total_saved_images}",
                                                     "Les caractères spéciaux peuvent être problématiques lors de l'analyse, ce qui entraîne l'omission de fichiers.\n"
                                                     f"Avec votre structure de dossiers actuelle, il y a un total de {total_saved_images} fichiers qui seront potentiellement ignorés.\n"
                                                     f"Si vous souhaitez vous assurer que ces images seront analysées, vous devrez ajuster manuellement les noms de {n_special_chars} dossiers.\n"
                                                     "Vous pouvez trouver un aperçu des caractères problématiques et des chemins de fichiers dans le fichier journal :\n\n"
-                                                    f"'{model_special_char_log}'\n\n"
+                                                    f"'{state.model_special_char_log}'\n\n"
                                                     f"Vous pouvez également décider de continuer avec les chemins de fichiers tels qu'ils sont actuellement, avec le risque d'exclure "
                                                     "{total_saved_images} fichiers."][i18n_lang_idx()],
                                             buttons = special_char_popup_btns,
@@ -3641,11 +3622,11 @@ def start_deploy(simple_mode = False):
             # user does not want to continue as is
             if user_input == special_char_popup_btns[1]:
                 # user chose to review paths, so open log file
-                open_file_or_folder(model_special_char_log)
+                open_file_or_folder(state.model_special_char_log)
             # close progressbar and fix deploy buttuns
             btn_start_deploy.configure(state=NORMAL)
             sim_run_btn.configure(state=NORMAL)
-            progress_window.close()
+            state.progress_window.close()
             return
 
     try:
@@ -3847,34 +3828,33 @@ def start_deploy(simple_mode = False):
         update_frame_states()
         
         # close progress window
-        progress_window.close()
+        state.progress_window.close()
 
         # clean up temp folder with frames
         if temp_frame_folder_created:
             temp_frame_folder_obj.cleanup()
 
         # show model error pop up window
-        if os.path.isfile(model_error_log):
-            mb.showerror(t('error'), [f"There were one or more model errors. See\n\n'{model_error_log}'\n\nfor more information.",
-                                            f"Se han producido uno o más errores de modelo. Consulte\n\n'{model_error_log}'\n\npara obtener más información.",
-                                            f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
+        if os.path.isfile(state.model_error_log):
+            mb.showerror(t('error'), [f"There were one or more model errors. See\n\n'{state.model_error_log}'\n\nfor more information.",
+                                            f"Se han producido uno o más errores de modelo. Consulte\n\n'{state.model_error_log}'\n\npara obtener más información.",
+                                            f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{state.model_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
 
         # show model warning pop up window
-        if os.path.isfile(model_warning_log):
-            mb.showerror(t('error'), [f"There were one or more model warnings. See\n\n'{model_warning_log}'\n\nfor more information.",
-                                        f"Se han producido uno o más advertencias de modelo. Consulte\n\n'{model_warning_log}'\n\npara obtener más información.",
-                                        f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
+        if os.path.isfile(state.model_warning_log):
+            mb.showerror(t('error'), [f"There were one or more model warnings. See\n\n'{state.model_warning_log}'\n\nfor more information.",
+                                        f"Se han producido uno o más advertencias de modelo. Consulte\n\n'{state.model_warning_log}'\n\npara obtener más información.",
+                                        f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{state.model_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
 
         # show postprocessing warning log
-        global postprocessing_error_log
-        postprocessing_error_log = os.path.join(chosen_folder, "postprocessing_error_log.txt")
-        if os.path.isfile(postprocessing_error_log): 
+        state.postprocessing_error_log = os.path.join(chosen_folder, "postprocessing_error_log.txt")
+        if os.path.isfile(state.postprocessing_error_log): 
             mb.showwarning(t('warning'), [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
-                                                f"post-processing features. See\n\n'{postprocessing_error_log}'\n\nfor more info.",
+                                                f"post-processing features. See\n\n'{state.postprocessing_error_log}'\n\nfor more info.",
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
-                                                f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
+                                                f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{state.postprocessing_error_log}'",
                                                 f"Un ou plusieurs fichiers n'ont pas pu être analysés par le modèle (par exemple, des fichiers corrompus) et seront ignorés "
-                                                f"lors du post-traitement. Voir\n\n'{postprocessing_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
+                                                f"lors du post-traitement. Voir\n\n'{state.postprocessing_error_log}'\n\npour plus d'informations."][i18n_lang_idx()])
 
         # enable button
         btn_start_deploy.configure(state=NORMAL)
@@ -3893,20 +3873,20 @@ def start_deploy(simple_mode = False):
     except Exception as error:
 
         # log error
-        print("\n\nERROR:\n" + str(error) + "\n\nSUBPROCESS OUTPUT:\n" + subprocess_output + "\n\nTRACEBACK:\n" + traceback.format_exc() + "\n\n")
-        print(f"cancel_deploy_model_pressed : {cancel_deploy_model_pressed}")
+        print("\n\nERROR:\n" + str(error) + "\n\nSUBPROCESS OUTPUT:\n" + state.subprocess_output + "\n\nTRACEBACK:\n" + traceback.format_exc() + "\n\n")
+        print(f"state.cancel_deploy_model_pressed : {state.cancel_deploy_model_pressed}")
 
-        if cancel_deploy_model_pressed:
+        if state.cancel_deploy_model_pressed:
             pass
         
         else:
             # show error
             mb.showerror(title=t('error'),
                         message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][i18n_lang_idx()] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
-                        detail=subprocess_output + "\n" + traceback.format_exc())
+                        detail=state.subprocess_output + "\n" + traceback.format_exc())
             
             # close window
-            progress_window.close()
+            state.progress_window.close()
 
             # enable button
             btn_start_deploy.configure(state=NORMAL)
@@ -4713,16 +4693,13 @@ class SpeciesNetOutputWindow:
         self.sppnet_output_window_root.destroy()
         
     def cancel(self):
-        global cancel_speciesnet_deploy_pressed
-        global btn_start_deploy
-        global sim_run_btn
         if os.name == 'nt':
             Popen(f"TASKKILL /F /PID {self.process.pid} /T")
         else:
             os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-        btn_start_deploy.configure(state=NORMAL)
-        sim_run_btn.configure(state=NORMAL)
-        cancel_speciesnet_deploy_pressed = True
+        state.btn_start_deploy.configure(state=NORMAL)
+        state.sim_run_btn.configure(state=NORMAL)
+        state.cancel_speciesnet_deploy_pressed = True
         self.sppnet_output_window_root.destroy()
 
 # temporary function to deploy speciesnet
@@ -4820,17 +4797,16 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
                 universal_newlines=True,
                 preexec_fn=os.setsid)
 
-    global cancel_speciesnet_deploy_pressed
-    cancel_speciesnet_deploy_pressed = False
+    state.cancel_speciesnet_deploy_pressed = False
 
     # read output
     for line in p.stdout:
-        
+
         # log
         sppnet_output_window.add_string(line, p)
-        
+
         # early exit if cancel button is pressed
-        if cancel_speciesnet_deploy_pressed:
+        if state.cancel_speciesnet_deploy_pressed:
             sppnet_output_window.add_string("\n\nCancel button pressed!")
             time.sleep(2)
             return
@@ -7290,9 +7266,8 @@ def remove_widgets_based_on_location(master, rows, cols):
 def cancel():
     # log
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
-    
-    global cancel_var
-    cancel_var = True
+
+    state.cancel_var = True
 
 # set all children of frame to disabled state
 def disable_widgets(frame):
@@ -8294,6 +8269,7 @@ ent_nth_frame.configure(state=DISABLED)
 row_btn_start_deploy = 12
 btn_start_deploy = Button(snd_step, text=t('btn_start_deploy'), command=start_deploy)
 btn_start_deploy.grid(row=row_btn_start_deploy, column=0, columnspan=2, sticky='ew')
+state.btn_start_deploy = btn_start_deploy
 
 ### human-in-the-loop step
 trd_step_row = 1
@@ -8609,6 +8585,7 @@ sim_spp_frm = _sim['spp_frm']
 sim_spp_scr_height = _sim['spp_scr_height']
 sim_dpd_options_cls_model = _sim['dpd_options_cls_model']
 sim_run_btn = _sim['run_btn']
+state.sim_run_btn = sim_run_btn
 sim_abo_lbl = _sim['abo_lbl']
 
 # resize deploy tab to content

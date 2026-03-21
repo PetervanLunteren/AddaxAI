@@ -149,7 +149,7 @@ def test_defaults_bools(state):
     assert state.cancel_var is False
     assert state.cancel_deploy_model_pressed is False
     assert state.cancel_speciesnet_deploy_pressed is False
-    assert state.warn_smooth_vid is False
+    assert state.warn_smooth_vid is True
     assert state.timelapse_mode is False
     assert state.checkpoint_freq_init is True
     assert state.image_size_for_deploy_init is True
@@ -160,10 +160,10 @@ def test_defaults_bools(state):
 
 
 def test_defaults_lists(state):
-    assert state.model_error_log == []
-    assert state.model_warning_log == []
-    assert state.model_special_char_log == []
-    assert state.postprocessing_error_log == []
+    assert state.model_error_log == ""      # file path string
+    assert state.model_warning_log == ""    # file path string
+    assert state.model_special_char_log == ""  # file path string
+    assert state.postprocessing_error_log == ""  # file path string
     assert state.dpd_options_cls_model == []
     assert state.dpd_options_model == []
     assert state.sim_dpd_options_cls_model == []
