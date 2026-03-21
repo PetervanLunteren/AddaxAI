@@ -198,6 +198,11 @@ from addaxai.i18n import init as i18n_init, t, set_language as i18n_set_language
 from addaxai.ui.widgets.frames import MyMainFrame, MySubFrame, MySubSubFrame
 from addaxai.ui.widgets.buttons import InfoButton, CancelButton, GreyTopButton
 from addaxai.ui.widgets.species_selection import SpeciesSelectionFrame
+from addaxai.ui.dialogs.text_button import TextButtonWindow
+from addaxai.ui.dialogs.patience import PatienceDialog
+from addaxai.ui.dialogs.custom_window import CustomWindow
+from addaxai.ui.dialogs.download_progress import EnvDownloadProgressWindow, ModelDownloadProgressWindow
+from addaxai.ui.dialogs.info_frames import ModelInfoFrame as model_info_frame, DonationPopupFrame as donation_popup_frame
 
 # log pythonpath
 print(sys.path)
@@ -1999,7 +2004,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # count n verified files and locate images that need converting
     n_verified_files = 0
     if get_hitl_var_in_json(recognition_file) != "never-started":
-        init_dialog = PatienceDialog(total = total_n_files, text = t('initializing'))
+        init_dialog = PatienceDialog(total = total_n_files, text = t('initializing'), master=root)
         init_dialog.open()
         init_current = 1
         imgs_needing_converting = []
@@ -2194,7 +2199,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # open patience window
     # TODO: dit moet een progresswindow worden die heen en weer gaat. Maar daar heb ik een grote json voor nodig.
     converting_patience_dialog = PatienceDialog(total = 1,
-                                                text = t('running_verification'))
+                                                text = t('running_verification'),
+                                                master=root)
     converting_patience_dialog.open()
 
     # check which images need converting
@@ -2213,7 +2219,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         n_img_in_json = len(json.load(image_recognition_file_content)['images'])
 
     # open patience window
-    patience_dialog = PatienceDialog(total = len(imgs_needing_converting) + n_img_in_json, text = t('checking_results'))
+    patience_dialog = PatienceDialog(total = len(imgs_needing_converting) + n_img_in_json, text = t('checking_results'), master=root)
     patience_dialog.open()
     current = 1
 
@@ -2319,7 +2325,8 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
                               [f"Do you want to copy or move the images to\n'{dst_dir}'?",
                               f"¿Quieres copiar o mover las imágenes a\n'{dst_dir}'?",
                               f"Voulez-vous COPIER ou DÉPLACER les images vers\n'{dst_dir}'"][i18n_lang_idx()],
-                              [t('move'), t('copy'), t('cancel')])
+                              [t('move'), t('copy'), t('cancel')],
+                              master=root, bring_to_top_func=bring_window_to_top_but_not_for_ever)
     user_input = window.run()
     if user_input == "Cancel" or user_input == "Cancelar" or user_input == "Annuler":
         return
@@ -2344,7 +2351,7 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
         f.seek(0)
 
         # open patience window
-        patience_dialog = PatienceDialog(total = n_imgs, text = t('writing_files'))
+        patience_dialog = PatienceDialog(total = n_imgs, text = t('writing_files'), master=root)
         patience_dialog.open()
         current = 1
 
@@ -3620,8 +3627,9 @@ def start_deploy(simple_mode = False):
                                                     f"'{model_special_char_log}'\n\n"
                                                     f"Vous pouvez également décider de continuer avec les chemins de fichiers tels qu'ils sont actuellement, avec le risque d'exclure "
                                                     "{total_saved_images} fichiers."][i18n_lang_idx()],
-                                            buttons = special_char_popup_btns)
-        
+                                            buttons = special_char_popup_btns,
+                                            master=root, bring_to_top_func=bring_window_to_top_but_not_for_ever)
+
         # run option window and check user input
         user_input = special_char_popup.run()
         if user_input != special_char_popup_btns[0]:
@@ -3943,7 +3951,7 @@ def produce_graph(file_list_txt = None, dir = None):
 def select_detections(selection_dict, prepare_files):
 
     # open patience window
-    steps_progress = PatienceDialog(total = 8, text = [f"Loading...", f"Cargando...", f"Chargement..."][i18n_lang_idx()])
+    steps_progress = PatienceDialog(total = 8, text = [f"Loading...", f"Cargando...", f"Chargement..."][i18n_lang_idx()], master=root)
     steps_progress.open()
     current_step = 1
     steps_progress.update_progress(current_step);current_step += 1
@@ -4128,7 +4136,7 @@ def select_detections(selection_dict, prepare_files):
 
             # open patience window
             patience_dialog = PatienceDialog(total = n_imgs, text = [f"Preparing files for {category}...", f"Preparando archivos para {category}...",
-                                                                     f"Préparation des fichiers pour {category}..."][i18n_lang_idx()])
+                                                                     f"Préparation des fichiers pour {category}..."][i18n_lang_idx()], master=root)
             patience_dialog.open()
             current = 1
             
@@ -5707,9 +5715,9 @@ def show_release_info(release):
 
     # name frame
     row_idx = 1
-    name_frm_1 = model_info_frame(master=rl_root)
+    name_frm_1 = model_info_frame(master=rl_root, scale_factor=scale_factor)
     name_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    name_frm_2 = model_info_frame(master=name_frm_1)
+    name_frm_2 = model_info_frame(master=name_frm_1, scale_factor=scale_factor)
     name_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     name_lbl_1 = customtkinter.CTkLabel(name_frm_1, text="Name", font = main_label_font)
     name_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -5718,9 +5726,9 @@ def show_release_info(release):
 
     # date frame
     row_idx += 1
-    date_frm_1 = model_info_frame(master=rl_root)
+    date_frm_1 = model_info_frame(master=rl_root, scale_factor=scale_factor)
     date_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    date_frm_2 = model_info_frame(master=date_frm_1)
+    date_frm_2 = model_info_frame(master=date_frm_1, scale_factor=scale_factor)
     date_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     date_lbl_1 = customtkinter.CTkLabel(date_frm_1, text="Release date", font = main_label_font)
     date_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -5729,9 +5737,9 @@ def show_release_info(release):
 
     # body frame
     row_idx += 1
-    body_frm_1 = model_info_frame(master=rl_root)
+    body_frm_1 = model_info_frame(master=rl_root, scale_factor=scale_factor)
     body_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    body_frm_2 = model_info_frame(master=body_frm_1)
+    body_frm_2 = model_info_frame(master=body_frm_1, scale_factor=scale_factor)
     body_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     body_lbl_1 = customtkinter.CTkLabel(body_frm_1, text="Description", font = main_label_font)
     body_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -5810,7 +5818,7 @@ def download_model(model_dir, skip_ask=False):
 
         # if yes, initiate download and show progress
         progress_bar = tqdm(total=total_size, unit='B', unit_scale=True)
-        download_popup = ModelDownloadProgressWindow(model_title = model_title, total_size_str = format_size(total_size))
+        download_popup = ModelDownloadProgressWindow(model_title = model_title, total_size_str = format_size(total_size), master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary, open_nosleep_func=open_nosleep_page)
         download_popup.open()
         for download_url, fname in download_info:
             file_path = os.path.normpath(os.path.join(model_dir, fname))
@@ -5919,7 +5927,7 @@ def download_environment(env_name, model_vars, skip_ask=False):
 
         # if yes, initiate download and show progress
         progress_bar = tqdm(total=total_size, unit='B', unit_scale=True)
-        download_popup = EnvDownloadProgressWindow(env_title = env_name, total_size_str = format_size(total_size))
+        download_popup = EnvDownloadProgressWindow(env_title = env_name, total_size_str = format_size(total_size), master=root, scale_factor=scale_factor, padx=PADX, pady=PADY, green_primary=green_primary, open_nosleep_func=open_nosleep_page)
         download_popup.open()
         file_path = os.path.join(env_dir, filename)
         with open(file_path, 'wb') as file:
@@ -6552,123 +6560,7 @@ def checkbox_frame_event():
 def open_nosleep_page():
     webbrowser.open("https://nosleep.page")
 
-# show download and extract progress for environments
-class EnvDownloadProgressWindow:
-    def __init__(self, env_title, total_size_str):
-        self.dm_root = customtkinter.CTkToplevel(root)
-        self.dm_root.title("Download progress")
-        self.dm_root.geometry("+10+10")
-        self.frm = customtkinter.CTkFrame(master=self.dm_root)
-        self.frm.grid(row=3, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nswe")
-        self.frm.columnconfigure(0, weight=1, minsize=500 * scale_factor)
-        
-        self.lbl = customtkinter.CTkLabel(self.dm_root, text=[f"Downloading environment '{env_title}' ({total_size_str})",
-                                                              f"Descargar entorno '{env_title}' ({total_size_str})",
-                                                              f"Téléchargement de l'environnement '{env_title}' ({total_size_str})"][i18n_lang_idx()], 
-                                          font = customtkinter.CTkFont(family='CTkFont', size=14, weight = 'bold'))
-        self.lbl.grid(row=0, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
-        
-        self.war = customtkinter.CTkLabel(self.dm_root, text=["Please prevent computer from sleeping during the download.",
-                                                              "Por favor, evite que el ordenador se duerma durante la descarga.",
-                                                              "SVP empêcher l'ordinateur de tomber en mode veille lors du téléchargement."][i18n_lang_idx()])
-        self.war.grid(row=1, column=0, padx=PADX, pady=0, sticky="nswe")
-        
-        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  ", "  Prévenir la mise en veille avec un outil en ligne "][i18n_lang_idx()], command=open_nosleep_page)
-        self.but.grid(row=2, column=0, padx=PADX, pady=(PADY/2, 0), sticky="")
-        
-        # Label for Downloading Progress
-        self.lbl_download = customtkinter.CTkLabel(self.frm, text=["Downloading...", "Descargando...", "Téléchargement..."][i18n_lang_idx()])
-        self.lbl_download.grid(row=1, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
 
-        # Progress bar for downloading
-        self.pbr_download = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
-        self.pbr_download.set(0)
-        self.pbr_download.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nsew")
-
-        self.per_download = customtkinter.CTkLabel(self.frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
-        self.per_download.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="")
-
-        # Label for Extraction Progress
-        self.lbl_extraction = customtkinter.CTkLabel(self.frm, text=["Extracting...", "Extrayendo...", "Extraction..."][i18n_lang_idx()])
-        self.lbl_extraction.grid(row=3, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
-
-        # Progress bar for extraction
-        self.pbr_extraction = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
-        self.pbr_extraction.set(0)
-        self.pbr_extraction.grid(row=4, column=0, padx=PADX, pady=PADY, sticky="nsew")
-
-        self.per_extraction = customtkinter.CTkLabel(self.frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
-        self.per_extraction.grid(row=4, column=0, padx=PADX, pady=PADY, sticky="")
-
-        self.dm_root.withdraw()
-
-    def open(self):
-        self.dm_root.update()
-        self.dm_root.deiconify()
-
-    def update_download_progress(self, percentage):
-        self.pbr_download.set(percentage)
-        self.per_download.configure(text=f" {round(percentage * 100)}% ")
-        if percentage > 0.5:
-            self.per_download.configure(fg_color=(green_primary, "#1F6BA5"))
-        else:
-            self.per_download.configure(fg_color=("#949BA2", "#4B4D50"))
-        self.dm_root.update()
-
-    def update_extraction_progress(self, percentage):
-        self.pbr_extraction.set(percentage)
-        self.per_extraction.configure(text=f" {round(percentage * 100)}% ")
-        if percentage > 0.5:
-            self.per_extraction.configure(fg_color=(green_primary, "#1F6BA5"))
-        else:
-            self.per_extraction.configure(fg_color=("#949BA2", "#4B4D50"))
-        self.dm_root.update()
-
-    def close(self):
-        self.dm_root.destroy()
-
-# show download progress for model files
-class ModelDownloadProgressWindow:
-    def __init__(self, model_title, total_size_str):
-        self.dm_root = customtkinter.CTkToplevel(root)
-        self.dm_root.title("Download progress")
-        self.dm_root.geometry("+10+10")
-        self.frm = customtkinter.CTkFrame(master=self.dm_root)
-        self.frm.grid(row=3, column=0, padx=PADX, pady=(PADY, PADY/2), sticky="nswe")
-        self.frm.columnconfigure(0, weight=1, minsize=500 * scale_factor)
-        self.lbl = customtkinter.CTkLabel(self.dm_root, text=[f"Downloading model '{model_title}' ({total_size_str})",
-                                                              f"Descargar modelo '{model_title}' ({total_size_str})",
-                                                              f"Téléchargement du modèle '{model_title}' ({total_size_str})"][i18n_lang_idx()], 
-                                          font = customtkinter.CTkFont(family='CTkFont', size=14, weight = 'bold'))
-        self.lbl.grid(row=0, column=0, padx=PADX, pady=(0, 0), sticky="nsew")
-        self.war = customtkinter.CTkLabel(self.dm_root, text=["Please prevent computer from sleeping during the download.",
-                                                          "Por favor, evite que el ordenador se duerma durante la descarga.",
-                                                          "SVP empêcher l'ordinateur de tomber en mode veille pendant le téléchargement."][i18n_lang_idx()])
-        self.war.grid(row=1, column=0, padx=PADX, pady=0, sticky="nswe")
-        self.but = CancelButton(self.dm_root, text=["  Prevent sleep with online tool ", "  Usar prevención de sueño en línea  ", "  Prévenir la mise en veille avec un outil en ligne "][i18n_lang_idx()], command=open_nosleep_page)
-        self.but.grid(row=2, column=0, padx=PADX, pady=(PADY/2, 0), sticky="")
-        self.pbr = customtkinter.CTkProgressBar(self.frm, orientation="horizontal", height=22, corner_radius=5, width=1)
-        self.pbr.set(0)
-        self.pbr.grid(row=1, column=0, padx=PADX, pady=PADY, sticky="nsew")
-        self.per = customtkinter.CTkLabel(self.frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
-        self.per.grid(row=1, column=0, padx=PADX, pady=PADY, sticky="")
-        self.dm_root.withdraw()
-
-    def open(self):
-        self.dm_root.update()
-        self.dm_root.deiconify()
-
-    def update_progress(self, percentage):
-        self.pbr.set(percentage)
-        self.per.configure(text = f" {round(percentage * 100)}% ")
-        if percentage > 0.5:
-            self.per.configure(fg_color=(green_primary, "#1F6BA5"))
-        else:
-            self.per.configure(fg_color=("#949BA2", "#4B4D50"))
-        self.dm_root.update()
-
-    def close(self):
-        self.dm_root.destroy()
 
 # make sure the window pops up in front initially, but does not stay on top if the users selects an other window
 def bring_window_to_top_but_not_for_ever(master):
@@ -6747,7 +6639,7 @@ def show_donation_popup():
 
     # title frame
     row_idx = 1
-    frm_1 = donation_popup_frame(master=do_root)
+    frm_1 = donation_popup_frame(master=do_root, scale_factor=scale_factor)
     frm_1.grid(row=row_idx, padx=PADX, pady=PADY, sticky="nswe")
     title_lbl_1 = customtkinter.CTkLabel(frm_1, text=title_text[i18n_lang_idx()], font=customtkinter.CTkFont(family='CTkFont', size=18, weight = 'bold'))
     title_lbl_1.grid(row=0, padx=PADX, pady=(PADY, PADY/2), sticky="nswe")
@@ -6829,9 +6721,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
     # title frame
     row_idx = 1
-    title_frm_1 = model_info_frame(master=nm_root)
+    title_frm_1 = model_info_frame(master=nm_root, scale_factor=scale_factor)
     title_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=PADY, sticky="nswe")
-    title_frm_2 = model_info_frame(master=title_frm_1)
+    title_frm_2 = model_info_frame(master=title_frm_1, scale_factor=scale_factor)
     title_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     title_lbl_1 = customtkinter.CTkLabel(title_frm_1, text=["Title", "Título", "Titre"][i18n_lang_idx()], font = main_label_font)
     title_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -6841,9 +6733,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
     # owner frame
     if owner_var != "":
         row_idx += 1
-        owner_frm_1 = model_info_frame(master=nm_root)
+        owner_frm_1 = model_info_frame(master=nm_root, scale_factor=scale_factor)
         owner_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-        owner_frm_2 = model_info_frame(master=owner_frm_1)
+        owner_frm_2 = model_info_frame(master=owner_frm_1, scale_factor=scale_factor)
         owner_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
         owner_lbl_1 = customtkinter.CTkLabel(owner_frm_1, text=["Owner", "Dueño", "Propriétaire"][i18n_lang_idx()], font = main_label_font)
         owner_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -6852,9 +6744,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
     # developer frame
     row_idx += 1
-    devop_frm_1 = model_info_frame(master=nm_root)
+    devop_frm_1 = model_info_frame(master=nm_root, scale_factor=scale_factor)
     devop_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    devop_frm_2 = model_info_frame(master=devop_frm_1)
+    devop_frm_2 = model_info_frame(master=devop_frm_1, scale_factor=scale_factor)
     devop_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     devop_lbl_1 = customtkinter.CTkLabel(devop_frm_1, text=["Developer", "Desarrollador", "Développeur"][i18n_lang_idx()], font = main_label_font)
     devop_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -6863,9 +6755,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
     # description frame
     row_idx += 1
-    descr_frm_1 = model_info_frame(master=nm_root)
+    descr_frm_1 = model_info_frame(master=nm_root, scale_factor=scale_factor)
     descr_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    descr_frm_2 = model_info_frame(master=descr_frm_1)
+    descr_frm_2 = model_info_frame(master=descr_frm_1, scale_factor=scale_factor)
     descr_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     descr_lbl_1 = customtkinter.CTkLabel(descr_frm_1, text=["Description", "Descripción", "Description"][i18n_lang_idx()], font = main_label_font)
     descr_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -6876,9 +6768,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
     # classes frame
     row_idx += 1
-    class_frm_1 = model_info_frame(master=nm_root)
+    class_frm_1 = model_info_frame(master=nm_root, scale_factor=scale_factor)
     class_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    class_frm_2 = model_info_frame(master=class_frm_1)
+    class_frm_2 = model_info_frame(master=class_frm_1, scale_factor=scale_factor)
     class_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     class_lbl_1 = customtkinter.CTkLabel(class_frm_1, text=["Classes", "Clases", "Classes"][i18n_lang_idx()], font = main_label_font)
     class_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -6890,9 +6782,9 @@ def show_model_info(title = None, model_dict = None, new_model = False):
 
     # update frame
     row_idx += 1
-    updat_frm_1 = model_info_frame(master=nm_root)
+    updat_frm_1 = model_info_frame(master=nm_root, scale_factor=scale_factor)
     updat_frm_1.grid(row=row_idx, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
-    updat_frm_2 = model_info_frame(master=updat_frm_1)
+    updat_frm_2 = model_info_frame(master=updat_frm_1, scale_factor=scale_factor)
     updat_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     updat_lbl_1 = customtkinter.CTkLabel(updat_frm_1, text=["Update", "Actualizar", "Mise-à-jour"][i18n_lang_idx()], font = main_label_font)
     updat_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -6927,18 +6819,7 @@ def show_model_info(title = None, model_dict = None, new_model = False):
         licen_btn.grid(row=0, column=ncol, padx=(0, PADX), pady=PADY, sticky="nwse")
         ncol += 1
 
-# class frame for model window
-class model_info_frame(customtkinter.CTkFrame):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.columnconfigure(0, weight=1, minsize=120 * scale_factor)
-        self.columnconfigure(1, weight=1, minsize=500 * scale_factor)
 
-# class frame for donation window
-class donation_popup_frame(customtkinter.CTkFrame):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.columnconfigure(0, weight=1, minsize=500 * scale_factor)
 
 # make sure the latest updated models also are listed in the dpd menu
 def update_model_dropdowns():
@@ -7015,9 +6896,9 @@ def show_result_info(file_path):
     lbl3.grid(row=2, column=0, padx=PADX, pady=(PADY/4, PADY/4), columnspan = 2, sticky="nswe")
 
     # graph frame
-    graph_frm_1 = model_info_frame(master=result_main_frame)
+    graph_frm_1 = model_info_frame(master=result_main_frame, scale_factor=scale_factor)
     graph_frm_1.grid(row=3, column=0, padx=PADX, pady=PADY, sticky="nswe")
-    graph_frm_2 = model_info_frame(master=graph_frm_1)
+    graph_frm_2 = model_info_frame(master=graph_frm_1, scale_factor=scale_factor)
     graph_frm_2.grid(row=0, column=1, padx=(0, PADX), pady=PADY, sticky="nswe")
     graph_lbl_1 = customtkinter.CTkLabel(graph_frm_1, text=["Graph", "Gráfico", "Graphique"][i18n_lang_idx()], font = main_label_font)
     graph_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -7026,7 +6907,7 @@ def show_result_info(file_path):
     graph_lbl_2.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
 
     # table frame
-    table_frm_1 = model_info_frame(master=result_main_frame)
+    table_frm_1 = model_info_frame(master=result_main_frame, scale_factor=scale_factor)
     table_frm_1.grid(row=4, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
     table_lbl_1 = customtkinter.CTkLabel(table_frm_1, text=["Table", "Tabla", "Table"][i18n_lang_idx()], font = main_label_font)
     table_lbl_1.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), sticky="nse")
@@ -7068,95 +6949,7 @@ def show_result_info(file_path):
     # place in front
     bring_window_to_top_but_not_for_ever(rs_root)
 
-# class for simple question with buttons
-class TextButtonWindow:
-    def __init__(self, title, text, buttons):
-        self.root = customtkinter.CTkToplevel(root)
-        self.root.title(title)
-        self.root.geometry("+10+10")
-        bring_window_to_top_but_not_for_ever(self.root)
-        self.root.protocol("WM_DELETE_WINDOW", self.user_close)
-        
-        self.text_label = tk.Label(self.root, text=text)
-        self.text_label.pack(padx=10, pady=10)
-        
-        self.selected_button = None
-        self.button_frame = tk.Frame(self.root)
-        self.button_frame.pack(padx=10, pady=10)
-        
-        for button_text in buttons:
-            button = tk.Button(self.button_frame, text=button_text, command=lambda btn=button_text: self._button_click(btn))
-            button.pack(side=tk.LEFT, padx=5)
-        
-    def _button_click(self, button_text):
-        self.selected_button = button_text
-        self.root.quit()
-        
-    def open(self):
-        self.root.mainloop()
-        
-    def user_close(self):
-        self.selected_button = "EXIT"
-        self.root.quit()
-        self.root.destroy()
 
-    def run(self):
-        self.open()
-        self.root.destroy()
-        return self.selected_button
-
-# simple window to show progressbar
-class PatienceDialog:
-    def __init__(self, total, text):
-        self.root = customtkinter.CTkToplevel(root)
-        self.root.title(t('be_patient'))
-        self.root.geometry("+10+10")
-        self.total = total
-        self.text = text
-        self.label = tk.Label(self.root, text=text)
-        self.label.pack(pady=10)
-        self.progress = ttk.Progressbar(self.root, mode='determinate', length=200)
-        self.progress.pack(pady=10, padx = 10)
-        self.root.withdraw()
-
-    def open(self):
-        self.root.update()
-        self.root.deiconify()
-
-    def update_progress(self, current, percentage = False):
-        # updating takes considerable time - only do this 100 times
-        if current % math.ceil(self.total / 100) == 0:
-            self.progress['value'] = (current / self.total) * 100
-            if percentage:
-                percentage_value = round((current/self.total) * 100)
-                self.label.configure(text = f"{self.text}\n{percentage_value}%")
-            else:
-                self.label.configure(text = f"{self.text}\n{current} of {self.total}")
-            self.root.update()
-
-    def close(self):
-        self.root.destroy()
-
-# simple window class to pop up and be closed
-class CustomWindow:
-    def __init__(self, title="", text=""):
-        self.title = title
-        self.text = text
-        self.root = None
-
-    def open(self):
-        self.root = customtkinter.CTkToplevel(root)
-        self.root.title(self.title)
-        self.root.geometry("+10+10")
-
-        label = tk.Label(self.root, text=self.text)
-        label.pack(padx=10, pady=10)
-
-        self.root.update_idletasks()
-        self.root.update()
-
-    def close(self):
-        self.root.destroy()
 
 # disable annotation frame
 def disable_ann_frame(row, hitl_ann_selection_frame):
