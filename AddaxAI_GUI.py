@@ -2031,10 +2031,11 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     change_hitl_var_in_json(recognition_file, "in-progress")
 
     # close settings window if open
-    try:
-        hitl_settings_window.destroy()
-    except NameError:
-        print('hitl_settings_window not defined -> nothing to destroy()')
+    if state.hitl_settings_window is not None:
+        try:
+            state.hitl_settings_window.destroy()
+        except Exception:
+            pass
         
     # init window
     hitl_progress_window = customtkinter.CTkToplevel(root)
@@ -3963,7 +3964,7 @@ def select_detections(selection_dict, prepare_files):
     max_confs = []
     ann_min_confs_specific = {}
     selected_files = {}
-    rad_ann_val = rad_ann_var.get()
+    rad_ann_val = state.rad_ann_var.get()
     ann_min_confs_generic = None
     steps_progress.update_progress(current_step);current_step += 1
 
@@ -4177,7 +4178,7 @@ def select_detections(selection_dict, prepare_files):
                     f.write(line + '\n')
         
     # update total number of images
-    lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][i18n_lang_idx()])
+    state.lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][i18n_lang_idx()])
     
     if prepare_files:
 
@@ -4248,20 +4249,15 @@ def open_hitl_settings_window():
     # fetch confs for histograms
     confs = fetch_confs_per_class(os.path.join(var_choose_folder.get(), 'image_recognition_file.json'))
 
-    # set global vars
-    global selection_dict
-    global rad_ann_var
-    global hitl_ann_selection_frame
-    global hitl_settings_canvas
-    global hitl_settings_window
-    global lbl_n_total_imgs
+    # HITL state stored in AppState
 
     # init vars
     selected_dir = var_choose_folder.get()
     recognition_file = os.path.join(selected_dir, 'image_recognition_file.json')
 
     # init window
-    hitl_settings_window = customtkinter.CTkToplevel(root)
+    state.hitl_settings_window = customtkinter.CTkToplevel(root)
+    hitl_settings_window = state.hitl_settings_window
     hitl_settings_window.title(["Verification selection settings", "Configuración de selección de verificación", "Vérification des paramètres de configuration"][i18n_lang_idx()])
     hitl_settings_window.geometry("+10+10")
     hitl_settings_window.maxsize(width=ADV_WINDOW_WIDTH, height=800)
@@ -4271,7 +4267,8 @@ def open_hitl_settings_window():
     hitl_settings_scroll_frame.pack(fill=BOTH, expand=1)
 
     # set canvas
-    hitl_settings_canvas = Canvas(hitl_settings_scroll_frame)
+    state.hitl_settings_canvas = Canvas(hitl_settings_scroll_frame)
+    hitl_settings_canvas = state.hitl_settings_canvas
     hitl_settings_canvas.pack(side=LEFT, fill=BOTH, expand=1)
 
     # set scrollbar
@@ -4360,8 +4357,9 @@ def open_hitl_settings_window():
     ttk.Label(master=hitl_img_selection_frame, text=["Number of images", "Número de imagenes", "Nombre d'images"][i18n_lang_idx()], font=f'{text_font} 13 bold').grid(column=4, row=1)
 
     # ann selection frame
-    hitl_ann_selection_frame = LabelFrame(hitl_settings_main_frame, text=[" Annotation selection criteria ", " Criterios de selección de anotaciones ", " Critères de sélection d'annotations "][i18n_lang_idx()],
+    state.hitl_ann_selection_frame = LabelFrame(hitl_settings_main_frame, text=[" Annotation selection criteria ", " Criterios de selección de anotaciones ", " Critères de sélection d'annotations "][i18n_lang_idx()],
                                             pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, labelanchor = 'n')
+    hitl_ann_selection_frame = state.hitl_ann_selection_frame
     hitl_ann_selection_frame.configure(font=(text_font, 15, "bold"))
     hitl_ann_selection_frame.grid(column=0, row=2, columnspan=2, sticky='ew')
     hitl_ann_selection_frame.columnconfigure(0, weight=1, minsize=50)
@@ -4391,8 +4389,9 @@ def open_hitl_settings_window():
     text_hitl_ann_selection_explanation.tag_add('explanation', '1.0', '1.end')
 
     # ann same thresh
-    rad_ann_var = IntVar()
-    rad_ann_var.set(1)
+    state.rad_ann_var = IntVar()
+    state.rad_ann_var.set(1)
+    rad_ann_var = state.rad_ann_var
     rad_ann_same = Radiobutton(hitl_ann_selection_frame, text=["Same annotation confidence threshold for all classes",
                                                                "Mismo umbral de confianza para todas las clases",
                                                                "Même seuil d'annotation pour toutes les classes"][i18n_lang_idx()],
@@ -4420,7 +4419,8 @@ def open_hitl_settings_window():
 
     # create widgets and vars for each class
     label_map = fetch_label_map_from_json(recognition_file)
-    selection_dict = {}
+    state.selection_dict = {}
+    selection_dict = state.selection_dict
     for i, [k, v] in enumerate(label_map.items()):
         
         # image selection frame
@@ -4531,7 +4531,8 @@ def open_hitl_settings_window():
     total_imgs_frame.columnconfigure(3, weight=1, minsize=200)
     total_imgs_frame.columnconfigure(4, weight=1, minsize=200)
     total_imgs_frame.grid(row = row_count, column = 0, columnspan = 5)
-    lbl_n_total_imgs = ttk.Label(master=total_imgs_frame, text="TOTAL: 0", state=NORMAL)
+    state.lbl_n_total_imgs = ttk.Label(master=total_imgs_frame, text="TOTAL: 0", state=NORMAL)
+    lbl_n_total_imgs = state.lbl_n_total_imgs
     lbl_n_total_imgs.grid(row = 1, column = 4)
 
     # button frame
@@ -6927,16 +6928,16 @@ def toggle_tax_levels():
 
 # show hide the annotation selection frame in the human-in-the-loop settings window
 def toggle_hitl_ann_selection_frame(cmd = None):
-    is_vis = hitl_ann_selection_frame.grid_info()
+    is_vis = state.hitl_ann_selection_frame.grid_info()
     if cmd == "hide":
-        hitl_ann_selection_frame.grid_remove()
+        state.hitl_ann_selection_frame.grid_remove()
     else:
         if is_vis != {}:
-            hitl_ann_selection_frame.grid_remove()
+            state.hitl_ann_selection_frame.grid_remove()
         else:
-            hitl_ann_selection_frame.grid(column=0, row=2, columnspan=2, sticky='ew')
-    hitl_settings_window.update()
-    hitl_settings_canvas.configure(scrollregion=hitl_settings_canvas.bbox("all"))
+            state.hitl_ann_selection_frame.grid(column=0, row=2, columnspan=2, sticky='ew')
+    state.hitl_settings_window.update()
+    state.hitl_settings_canvas.configure(scrollregion=state.hitl_settings_canvas.bbox("all"))
 
 # enable or disable the options in the human-in-the-loop annotation selection frame
 def toggle_hitl_ann_selection(rad_ann_var, hitl_ann_selection_frame):
@@ -6954,10 +6955,9 @@ def toggle_hitl_ann_selection(rad_ann_var, hitl_ann_selection_frame):
 
 # update counts of the subset functions of the human-in-the-loop image selection frame
 def enable_amt_per_ent(row):
-    global selection_dict
-    rad_var = selection_dict[row]['rad_var'].get()
-    ent_per = selection_dict[row]['ent_per']
-    ent_amt = selection_dict[row]['ent_amt']
+    rad_var = state.selection_dict[row]['rad_var'].get()
+    ent_per = state.selection_dict[row]['ent_per']
+    ent_amt = state.selection_dict[row]['ent_amt']
     if rad_var == 1:
         ent_per.configure(state = DISABLED)
         ent_amt.configure(state = DISABLED)      
@@ -6970,15 +6970,14 @@ def enable_amt_per_ent(row):
 
 # show or hide widgets in the human-in-the-loop image selection frame
 def enable_selection_widgets(row):
-    global selection_dict
-    frame = selection_dict[row]['frame']
-    chb_var = selection_dict[row]['chb_var'].get()
-    lbl_class = selection_dict[row]['lbl_class']
-    rsl = selection_dict[row]['range_slider_widget']
-    rad_all = selection_dict[row]['rad_all']
-    rad_per = selection_dict[row]['rad_per']
-    rad_amt = selection_dict[row]['rad_amt']
-    lbl_n_img = selection_dict[row]['lbl_n_img']
+    frame = state.selection_dict[row]['frame']
+    chb_var = state.selection_dict[row]['chb_var'].get()
+    lbl_class = state.selection_dict[row]['lbl_class']
+    rsl = state.selection_dict[row]['range_slider_widget']
+    rad_all = state.selection_dict[row]['rad_all']
+    rad_per = state.selection_dict[row]['rad_per']
+    rad_amt = state.selection_dict[row]['rad_amt']
+    lbl_n_img = state.selection_dict[row]['lbl_n_img']
     if chb_var:
         frame.configure(relief = RAISED)
         lbl_class.configure(state = NORMAL)
