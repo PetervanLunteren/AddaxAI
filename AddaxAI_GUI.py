@@ -183,6 +183,14 @@ from addaxai.processing.export import clean_line, generate_unique_id, format_dat
 from addaxai.processing.postprocess import format_size
 from addaxai.models.registry import fetch_known_models
 from addaxai.analysis.plots import fig2img, overlay_logo, calculate_time_span
+from addaxai.core.config import (load_global_vars, write_global_vars,
+                                  load_model_vars_for)
+from addaxai.core.platform import get_python_interpreter
+from addaxai.models.deploy import switch_yolov5_version
+from addaxai.models.registry import (is_first_startup, remove_first_startup_file,
+                                      environment_needs_downloading,
+                                      distribute_individual_model_jsons,
+                                      set_up_unknown_model)
 
 # log pythonpath
 print(sys.path)
@@ -200,12 +208,7 @@ if platform.system() == "Windows":
         ctypes.windll.user32.SetProcessDPIAware()
 
 # load previous settings
-def load_global_vars():
-    var_file = os.path.join(AddaxAI_files, "AddaxAI", "global_vars.json")
-    with open(var_file, 'r') as file:
-        variables = json.load(file)
-    return variables
-global_vars = load_global_vars()
+global_vars = load_global_vars(AddaxAI_files)
 
 # language settings
 languages_available = ['English', 'Español', 'Français']
@@ -1301,7 +1304,7 @@ def start_postprocess():
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # save settings for next time
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_separate_files": var_separate_files.get(),
         "var_keep_series": var_keep_series.get(),
@@ -2210,7 +2213,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # init paths
     labelImg_dir = os.path.join(AddaxAI_files, "Human-in-the-loop")
     labelImg_script = os.path.join(labelImg_dir, "labelImg.py")
-    python_executable = get_python_interprator("base")
+    python_executable = get_python_interpreter(AddaxAI_files,"base")
 
     # create command
     command_args = []
@@ -2399,12 +2402,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
                                                                 update_frame_states()])
             btn_hitl_final_export_n.grid(row=0, column=1, rowspan=1, sticky='nesw', padx=5)
 
-# os dependent python executables
-def get_python_interprator(env_name):
-    if platform.system() == 'Windows':
-        return os.path.join(AddaxAI_files, "envs", f"env-{env_name}", "python.exe")
-    else:
-        return os.path.join(AddaxAI_files, "envs", f"env-{env_name}", "bin", "python")
+
 
 # get the images and xmls from annotation session and store them with unique filename
 def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file, hitl_final_window):
@@ -2721,7 +2719,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
             cls_tax_levels_idx = model_vars["var_tax_levels_idx"] # take idx from model vars
         
     # init paths
-    python_executable = get_python_interprator(cls_model_env)
+    python_executable = get_python_interpreter(AddaxAI_files,cls_model_env)
     inference_script = os.path.join(AddaxAI_files, "AddaxAI", "classification_utils", "model_types", cls_model_type, "classify_detections.py")
 
     # create command
@@ -2925,24 +2923,24 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     process_video_py = os.path.join(AddaxAI_files, "cameratraps", "megadetector", "detection", "process_video.py")
     video_recognition_file = "--output_json_file=" + os.path.join(chosen_folder, "video_recognition_file.json")
     GPU_param = "Unknown"
-    python_executable = get_python_interprator("base")
+    python_executable = get_python_interpreter(AddaxAI_files,"base")
 
     # select model based on user input via dropdown menu, or take MDv5a for simple mode 
     custom_model_bool = False
     if simple_mode:
         det_model_fpath = os.path.join(DET_DIR, "MegaDetector 5a", "md_v5a.0.0.pt")
-        switch_yolov5_version("old models")
+        switch_yolov5_version("old models", AddaxAI_files)
     elif var_det_model.get() != dpd_options_model[lang_idx][-1]: # if not chosen the last option, which is "custom model"
         det_model_fname = load_model_vars("det")["model_fname"]
         det_model_fpath = os.path.join(DET_DIR, var_det_model.get(), det_model_fname)
-        switch_yolov5_version("old models")
+        switch_yolov5_version("old models", AddaxAI_files)
     else:
         # set model file
         det_model_fpath = var_det_model_path.get()
         custom_model_bool = True
 
         # set yolov5 git to accommodate new models (checkout depending on how you retrain MD)
-        switch_yolov5_version("new models") 
+        switch_yolov5_version("new models", AddaxAI_files) 
         
         # extract classes
         label_map = extract_label_map_from_model(det_model_fpath)
@@ -3254,23 +3252,7 @@ def model_needs_downloading(model_vars, model_type):
         # user selected none
         return [False, ""]
 
-# check if a particular environment needs downloading
-def environment_needs_downloading(model_vars):
-       
-    # find out which env is required
-    # if present take os-specific env else take general env
-    if os.name == 'nt': # windows
-        env_name = model_vars.get("env-windows", model_vars.get("env", "base"))
-    elif platform.system() == 'Darwin': # macos
-        env_name = model_vars.get("env-macos", model_vars.get("env", "base"))
-    else: # linux
-        env_name = model_vars.get("env-linux", model_vars.get("env", "base"))
-    
-    # check if that env is already present
-    if os.path.isdir(os.path.join(AddaxAI_files, "envs", f'env-{env_name}')):
-        return [False, env_name]
-    else:
-        return [True, env_name]
+
 
 
 
@@ -3422,7 +3404,7 @@ def start_deploy(simple_mode = False):
         
         # check if env-speciesnet needs to be downloaded
         model_vars = load_model_vars(model_type = "cls")
-        bool, env_name = environment_needs_downloading(model_vars)
+        bool, env_name = environment_needs_downloading(model_vars, AddaxAI_files)
         if bool: # env needs be downloaded, ask user 
             user_wants_to_download = download_environment(env_name, model_vars)
             if not user_wants_to_download:
@@ -3576,7 +3558,7 @@ def start_deploy(simple_mode = False):
         model_vars = load_model_vars(model_type = model_type)
         if model_vars == {}: # if selected model is None
             continue
-        bool, env_name = environment_needs_downloading(model_vars)
+        bool, env_name = environment_needs_downloading(model_vars, AddaxAI_files)
         if bool: # env needs be downloaded, ask user 
             user_wants_to_download = download_environment(env_name, model_vars)
             if not user_wants_to_download:
@@ -3596,7 +3578,7 @@ def start_deploy(simple_mode = False):
         return
 
     # save simple settings for next time
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),
@@ -3633,7 +3615,7 @@ def start_deploy(simple_mode = False):
     # if the user comes from the advanced mode, there are more settings to be checked
     else:
         # save advanced settings for next time
-        write_global_vars({
+        write_global_vars(AddaxAI_files, {
             "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
             "var_det_model_path": var_det_model_path.get(),
             "var_det_model_short": var_det_model_short.get(),
@@ -4377,7 +4359,7 @@ def select_detections(selection_dict, prepare_files):
     steps_progress.close()
     
     # if the user want to sort the files alphabetically
-    global_vars = load_global_vars()
+    global_vars = load_global_vars(AddaxAI_files)
     if global_vars["var_hitl_file_order"] == 1:
         
         # read all lines of the file list
@@ -4796,7 +4778,7 @@ def open_hitl_settings_window():
                                                                    "Alphabétique par nom de fichier: conserve les séquences et les emplacements ensemble."][lang_idx], variable=var_hitl_file_order, value=1)
     rad_hitl_file_order_alpha.grid(row=row_hitl_file_order+1, columnspan=3, sticky='nsw', padx=25)
     def trace_callback(*args): # no idea why this is needed, but if not, the value is not saved
-        write_global_vars({"var_hitl_file_order": var_hitl_file_order.get()})
+        write_global_vars(AddaxAI_files, {"var_hitl_file_order": var_hitl_file_order.get()})
     var_hitl_file_order.trace_add("write", trace_callback)
     
     # create scrollable canvas window
@@ -4829,7 +4811,7 @@ def verification_status(xml):
 
 # make sure the program quits when simple or advanced window is closed
 def on_toplevel_close():
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
@@ -4932,11 +4914,11 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     
     # prepare variables
     chosen_folder = str(Path(chosen_folder))
-    python_executable = get_python_interprator("speciesnet")
+    python_executable = get_python_interpreter(AddaxAI_files,"speciesnet")
     sppnet_output_file = os.path.join(chosen_folder, "sppnet_output_file.json")
 
     # save settings for next time
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
         "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
@@ -4944,7 +4926,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     
     # save advanced settings for next time
     if not simple_mode:
-        write_global_vars({
+        write_global_vars(AddaxAI_files, {
             "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
             "var_det_model_path": var_det_model_path.get(),
             "var_det_model_short": var_det_model_short.get(),
@@ -4977,7 +4959,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
         if country_code == "USA":
             state_code = var_sppnet_location.get()[4:6]
             location_args.append(f"--admin1_region={state_code}")
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
     })
 
@@ -5245,29 +5227,7 @@ def browse_file(var, var_short, var_path, dsp, filetype, cut_off_length, options
     else:
         var.set(options[0])
 
-# switches the yolov5 version by modifying the python import path
-def switch_yolov5_version(model_type):
-    # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({model_type})\n")
-    
-    # set the path to the desired version
-    base_path = os.path.join(AddaxAI_files, "yolov5_versions")
-    if model_type == "old models":
-        version_path = os.path.join(base_path, "yolov5_old", "yolov5")
-    elif model_type == "new models":
-        version_path = os.path.join(base_path, "yolov5_new", "yolov5")
-    else:
-        raise ValueError("Invalid model_type")
-        
-    # add yolov5 checkout to PATH if not already there
-    if version_path not in sys.path:
-        sys.path.insert(0, version_path)
-    
-    # add yolov5 checkout to PYTHONPATH if not already there
-    current_pythonpath = os.environ.get("PYTHONPATH", "")
-    PYTHONPATH_to_add = version_path + PYTHONPATH_separator
-    if not current_pythonpath.startswith(PYTHONPATH_to_add):
-        os.environ["PYTHONPATH"] = PYTHONPATH_to_add + current_pythonpath
+
         
 # extract label map from custom model
 def extract_label_map_from_model(model_file):
@@ -5596,7 +5556,7 @@ def model_cls_animal_options(self):
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
     # save settings
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),  # write index instead of value
         "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),  # write index instead of value
         })
@@ -5704,7 +5664,7 @@ def model_options(self):
         var_det_model_path.set("")
 
     # save settings
-    write_global_vars({"var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()), # write index instead of value
+    write_global_vars(AddaxAI_files, {"var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()), # write index instead of value
                         "var_det_model_short": var_det_model_short.get(),
                         "var_det_model_path": var_det_model_path.get()})
 
@@ -5786,14 +5746,7 @@ def load_model_vars(model_type = "cls"):
         print("DEBUG – load_model_vars failed:", e)
         return {}
 
-# read variables.json for an arbitrary model (without touching the UI dropdowns)
-def load_model_vars_for(model_type: str, model_dir: str) -> dict:
-    var_file = os.path.join(AddaxAI_files, "models", model_type, model_dir, "variables.json")
-    try:
-        with open(var_file, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    except Exception:
-        return {}
+
 
 # union of all classes across all supported models (det + cls)
 _ALL_SUPPORTED_MODEL_CLASSES_CACHE = None
@@ -5808,7 +5761,7 @@ def get_all_supported_model_classes(force_refresh: bool = False):
         if not os.path.isdir(root_dir):
             continue
         for model_dir in fetch_known_models(root_dir):
-            mv = load_model_vars_for(model_type, model_dir)
+            mv = load_model_vars_for(AddaxAI_files, model_type, model_dir)
             for c in mv.get("all_classes", []) or []:
                 if c is None:
                     continue
@@ -5823,21 +5776,7 @@ def get_all_supported_model_classes(force_refresh: bool = False):
     _ALL_SUPPORTED_MODEL_CLASSES_CACHE = sorted(all_classes, key=lambda s: s.lower())
     return _ALL_SUPPORTED_MODEL_CLASSES_CACHE
 
-# write global variables to file
-def write_global_vars(new_values = None):
-    # adjust
-    variables = load_global_vars()
-    if new_values is not None:
-        for key, value in new_values.items():
-            if key in variables:
-                variables[key] = value
-            else:
-                print(f"Warning: Variable {key} not found in the loaded model variables.")
 
-    # write
-    var_file = os.path.join(AddaxAI_files, "AddaxAI", "global_vars.json")
-    with open(var_file, 'w') as file:
-        json.dump(variables, file, indent=4)
 
 
 
@@ -5884,56 +5823,13 @@ def create_pie_chart(file_path, looks, st_angle = 45):
 
 
 
-# function to create a dir and create a model_vars.json
-# it does not yet download the model, but it will show up in the dropdown
-def set_up_unknown_model(title, model_dict, model_type):
-    model_dir = os.path.join(AddaxAI_files, "models", model_type, title)
-    Path(model_dir).mkdir(parents=True, exist_ok=True)
-    var_file = os.path.join(model_dir, "variables.json")
-    with open(var_file, "w") as vars:
-        json.dump(model_dict, vars, indent=2)
-        
-    # download taxonomy mapping csv if it is present
-    if model_dict.get("taxon_mapping_csv", None):
-        taxon_mapping_csv_url = model_dict["taxon_mapping_csv"]
-        taxon_mapping_csv_path = os.path.join(model_dir, "taxon-mapping.csv")
-        if not os.path.exists(taxon_mapping_csv_path):
-            try:
-                response = requests.get(taxon_mapping_csv_url, timeout=1)
-                if response.status_code == 200:
-                    with open(taxon_mapping_csv_path, 'wb') as file:
-                        file.write(response.content)
-                    print(f"Downloaded taxonomy mapping CSV for {title} to {taxon_mapping_csv_path}")
-                else:
-                    print(f"Failed to download taxonomy mapping CSV for {title}. Status code: {response.status_code}")
-            except requests.exceptions.RequestException as e:   
-                print(f"Error downloading taxonomy mapping CSV for {title}: {e}")
 
-# check if this is the first startup since install 
-def is_first_startup():
-    return os.path.exists(os.path.join(AddaxAI_files, "first-startup.txt"))
 
-# remove the first startup file
-def remove_first_startup_file():
-    first_startup_file = os.path.join(AddaxAI_files, "first-startup.txt")
-    os.remove(first_startup_file)
 
-# read existing model info and distribute separate jsons to all models
-# will only be executed once: at first startup
-def distribute_individual_model_jsons(model_info_fpath):
-    # log
-    print(f"EXECUTED : {sys._getframe().f_code.co_name}({locals()})\n")
 
-    # model_info = json.load(open(model_info_fpath))
-    with open(model_info_fpath, "r", encoding="utf-8") as f:
-        model_info = json.load(f)
 
-    for typ in ["det", "cls"]:
-        model_dicts = model_info[typ] 
-        all_models = list(model_dicts.keys())
-        for model_id in all_models:
-            model_dict = model_dicts[model_id]
-            set_up_unknown_model(title = model_id, model_dict = model_dict, model_type = typ)
+
+
 
 # this function downloads a json with model info and tells the user is there is a new model
 def fetch_latest_model_info():
@@ -5943,9 +5839,9 @@ def fetch_latest_model_info():
     # if this is the first time starting, take the existing model info file in the repo and use that
     # no need to download th same file again
     model_info_fpath = os.path.join(AddaxAI_files, "AddaxAI", "model_info", f"model_info_v{corresponding_model_info_version}.json")
-    if is_first_startup():
-        distribute_individual_model_jsons(model_info_fpath)
-        remove_first_startup_file()
+    if is_first_startup(AddaxAI_files):
+        distribute_individual_model_jsons(model_info_fpath, AddaxAI_files)
+        remove_first_startup_file(AddaxAI_files)
         update_model_dropdowns()
 
     # if this is not the first startup, it should try to download the latest model json version
@@ -5985,7 +5881,7 @@ def fetch_latest_model_info():
                         for model_id in unknown_models:
                             model_dict = model_dicts[model_id]
                             show_model_info(title = model_id, model_dict = model_dict, new_model = True)
-                            set_up_unknown_model(title = model_id, model_dict = model_dict, model_type = typ)
+                            set_up_unknown_model(title = model_id, model_dict = model_dict, model_type = typ, base_path = AddaxAI_files)
 
             # release info
             if release_info_response.status_code == 200:
@@ -6777,7 +6673,7 @@ def open_keep_series_species_selection():
         chosen_all = [c for c in all_supported if c in new_set]
 
         global_vars["var_keep_series_species"] = chosen_all
-        write_global_vars({"var_keep_series_species": chosen_all})
+        write_global_vars(AddaxAI_files, {"var_keep_series_species": chosen_all})
 
         # update the small counter in the keep-series frame (if it exists)
         try:
@@ -8473,7 +8369,7 @@ def set_language():
 
     # set the global variable to the new language
     lang_idx = to_lang_idx
-    write_global_vars({"lang_idx": lang_idx})
+    write_global_vars(AddaxAI_files, {"lang_idx": lang_idx})
 
     # update tab texts
     tabControl.tab(deploy_tab, text=deploy_tab_text[lang_idx])
@@ -9086,7 +8982,7 @@ def switch_mode():
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
 
     # load
-    advanced_mode = load_global_vars()["advanced_mode"]
+    advanced_mode = load_global_vars(AddaxAI_files)["advanced_mode"]
 
     # switch
     if advanced_mode:
@@ -9097,7 +8993,7 @@ def switch_mode():
         simple_mode_win.withdraw()
 
     # save
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "advanced_mode": not advanced_mode
     })
 
@@ -9146,7 +9042,7 @@ def reset_values():
     var_exp.set(True)
     var_exp_format.set(dpd_options_exp_format[lang_idx][global_vars['var_exp_format_idx']])
     
-    write_global_vars({
+    write_global_vars(AddaxAI_files, {
         "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
         "var_det_model_path": var_det_model_path.get(),
         "var_det_model_short": var_det_model_short.get(),
@@ -10757,7 +10653,7 @@ def main():
                  f"La interfaz de usuario de AddaxAI está diseñada para un ajuste de escala del 100%. Sin embargo, su configuración de pantalla está establecida en {int(scale_factor * 100)}%. Hemos trabajado para mantener una apariencia consistente a través de diferentes configuraciones de escala, pero aún puede afectar la apariencia de la aplicación, causando que algunos elementos (como casillas de verificación o ventanas) aparezcan desproporcionadamente grandes o pequeñas. Tenga en cuenta que estas diferencias visuales no afectarán a la funcionalidad de la aplicación.\n\nEste aviso sólo aparecerá una vez.",
                  f"L'interface utilisateur d'AddaxAI est conçue pour une échelle de 100 %. Cependant, les paramètres de votre écran sont définis sur {int(scale_factor * 100)}%. Nous avons veillé à maintenir une apparence cohérente entre les différents paramètres d'échelle, mais cela peut néanmoins affecter l'apparence de l'application, entraînant une taille disproportionnée de certains éléments (comme les cases à cocher ou les fenêtres). Notez que ces différences visuelles n'affectent pas les fonctionnalités de l'application.\n\nCet avertissement n'apparaîtra qu'une seule fois."][lang_idx]
             )
-        write_global_vars({"var_scale_warning_shown": True})
+        write_global_vars(AddaxAI_files, {"var_scale_warning_shown": True})
 
     # run
     root.mainloop()
