@@ -188,7 +188,8 @@ from addaxai.analysis.plots import fig2img, overlay_logo, calculate_time_span
 from addaxai.core.config import (load_global_vars, write_global_vars,
                                   load_model_vars_for)
 from addaxai.core.platform import get_python_interpreter
-from addaxai.models.deploy import switch_yolov5_version
+from addaxai.models.deploy import (switch_yolov5_version, cancel_subprocess,
+                                    imitate_object_detection_for_full_image_classifier)
 from addaxai.models.registry import (is_first_startup, remove_first_startup_file,
                                       environment_needs_downloading,
                                       distribute_individual_model_jsons,
@@ -2770,7 +2771,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
                                             time_rem = time_left,
                                             speed = processing_speed,
                                             hware = GPU_param,
-                                            cancel_func = lambda: cancel_subprocess(p))
+                                            cancel_func = lambda: cancel_deployment(p))
         root.update()
 
     # process is done
@@ -2781,15 +2782,12 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
 
     root.update()
 
-# quit popen process
-def cancel_subprocess(process):
+# quit popen process and update UI state
+def cancel_deployment(process):
     global cancel_deploy_model_pressed
     global btn_start_deploy
     global sim_run_btn
-    if os.name == 'nt':
-        Popen(f"TASKKILL /F /PID {process.pid} /T")
-    else:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    cancel_subprocess(process)
     btn_start_deploy.configure(state=NORMAL)
     sim_run_btn.configure(state=NORMAL)
     cancel_deploy_model_pressed = True
@@ -3075,7 +3073,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                                                 time_rem = time_left,
                                                 speed = processing_speed,
                                                 hware = GPU_param,
-                                                cancel_func = lambda: cancel_subprocess(p),
+                                                cancel_func = lambda: cancel_deployment(p),
                                                 frame_video_choice = frame_video_choice)
             root.update()
         
@@ -3173,54 +3171,7 @@ def model_needs_downloading(model_vars, model_type):
 
 
 
-# we run this instead of a detection model for full image classification
-def imitate_object_detection_for_full_image_classifier(chosen_folder):
-    # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
-    
-    # List all images in the chosen folder
-    image_files = [f for f in os.listdir(chosen_folder) if f.lower().endswith(('jpg', 'jpeg', 'png'))]
 
-    # Initialize the JSON structure
-    result = {
-        "images": [],
-        "detection_categories": {
-            "1": "animal",
-            "2": "person",
-            "3": "vehicle"
-        },
-        "info": {
-            "detection_completion_time": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            "format_version": "",
-            "detector": None,
-            "detector_metadata": {
-            }
-        }
-    }
-    
-    # Loop through each image in the folder and add it to the result
-    for image_file in image_files:
-        # Prepare the image's detections with the full image bounding box
-        image_data = {
-            "file": image_file,
-            "detections": [
-                {
-                    "category": "1",  # Assuming all detections are animals
-                    "conf": 1.0,  # High confidence for full-image detection
-                    "bbox": [0.0, 0.0, 1.0, 1.0]  # Full image bounding box
-                }
-            ]
-        }
-        
-        # Add image data to the images list
-        result["images"].append(image_data)
-    
-    # Save the result as a JSON file
-    json_filename = os.path.join(chosen_folder, "image_recognition_file.json")
-    with open(json_filename, "w") as json_file:
-        json.dump(result, json_file, indent=4)
-    
-    print(f"JSON file created: {json_filename}")
 
 # open progress window and initiate the model deployment
 def start_deploy(simple_mode = False):
