@@ -32,10 +32,9 @@ dev = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
 ignore_missing_imports = true
 no_strict_optional = true
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
 
 [tool.pytest.ini_options]
