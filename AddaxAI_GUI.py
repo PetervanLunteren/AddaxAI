@@ -204,6 +204,7 @@ from addaxai.ui.dialogs.custom_window import CustomWindow
 from addaxai.ui.dialogs.download_progress import EnvDownloadProgressWindow, ModelDownloadProgressWindow
 from addaxai.ui.dialogs.info_frames import ModelInfoFrame as model_info_frame, DonationPopupFrame as donation_popup_frame
 from addaxai.ui.dialogs.progress import ProgressWindow
+from addaxai.ui.dialogs.speciesnet_output import SpeciesNetOutputWindow
 from addaxai.ui.advanced.help_tab import HyperlinkManager, write_help_tab
 from addaxai.ui.advanced.about_tab import write_about_tab
 from addaxai.ui.simple.simple_window import build_simple_mode, sim_dir_show_info, sim_spp_show_info, sim_mdl_show_info
@@ -3265,7 +3266,15 @@ def start_deploy(simple_mode = False):
                 return  # user doesn't want to download
 
         # open progress window
-        sppnet_output_window = SpeciesNetOutputWindow()
+        def _on_speciesnet_cancel():
+            state.btn_start_deploy.configure(state=NORMAL)
+            state.sim_run_btn.configure(state=NORMAL)
+            state.cancel_speciesnet_deploy_pressed = True
+        sppnet_output_window = SpeciesNetOutputWindow(
+            master=root,
+            bring_to_top_func=bring_window_to_top_but_not_for_ever,
+            on_cancel=_on_speciesnet_cancel,
+        )
         sppnet_output_window.add_string("SpeciesNet is starting up...\n\n")
 
         # deploy speciesnet
@@ -4625,83 +4634,6 @@ def on_toplevel_close():
 
 
 
-# classes to open window with speciesnet output
-class SpeciesNetOutputWindow:
-    def __init__(self):
-        self.sppnet_output_window_root = customtkinter.CTkToplevel(root)
-        self.sppnet_output_window_root.title("SpeciesNet output")
-        self.text_area = tk.Text(self.sppnet_output_window_root, wrap=tk.WORD, height=7, width=85)
-        self.text_area.pack(padx=10, pady=10)
-        self.close_button = tk.Button(self.sppnet_output_window_root, text="Cancel", command=self.cancel)
-        self.close_button.pack(pady=5)
-        self.sppnet_output_window_root.protocol("WM_DELETE_WINDOW", self.close)  # Handle window close
-        bring_window_to_top_but_not_for_ever(self.sppnet_output_window_root)
-    
-    def add_string(self, text, process=None):
-        if process is not None:
-            self.process = process
-        if text.strip():
-            print(text)
-            
-            clean_text = remove_ansi_escape_sequences(text)
-
-            # Check if this is a progress bar update
-            is_pbar = "%" in clean_text
-
-            if not is_pbar:
-                # Insert non-progress-bar messages above the progress section
-                self.text_area.insert(tk.END, clean_text + "\n")  # Insert at the top
-                self.text_area.see(tk.END)
-                self.sppnet_output_window_root.update()
-                return  # Exit function early, don't process as a progress bar
-
-            # Ensure attributes exist before updating
-            if not hasattr(self, "detector_preprocess_line"):
-                self.detector_preprocess_line =   " Detector preprocess:   0%\n"
-            if not hasattr(self, "detector_predict_line"):
-                self.detector_predict_line =      " Detector predict:      0%\n"
-            if not hasattr(self, "classifier_preprocess_line"):
-                self.classifier_preprocess_line = " Classifier preprocess: 0%\n"
-            if not hasattr(self, "classifier_predict_line"):
-                self.classifier_predict_line =    " Classifier predict:    0%\n"
-            if not hasattr(self, "geolocation_line"):
-                self.geolocation_line =           " Geolocation:           0%\n"
-
-            # Update progress bar lines based on prefixes
-            if clean_text.startswith("Detector preprocess"):
-                self.detector_preprocess_line = clean_text
-            elif clean_text.startswith("Detector predict"):
-                self.detector_predict_line = clean_text
-            elif clean_text.startswith("Classifier preprocess"):
-                self.classifier_preprocess_line = clean_text
-            elif clean_text.startswith("Classifier predict"):
-                self.classifier_predict_line = clean_text
-            elif clean_text.startswith("Geolocation"):
-                self.geolocation_line = clean_text
-
-            # Insert all progress bars together to maintain order
-            self.text_area.insert(tk.END, f"\n {self.detector_preprocess_line}", "progress")
-            self.text_area.insert(tk.END, f" {self.detector_predict_line}", "progress")
-            self.text_area.insert(tk.END, f" {self.classifier_preprocess_line}", "progress")
-            self.text_area.insert(tk.END, f" {self.classifier_predict_line}", "progress")
-            self.text_area.insert(tk.END, f" {self.geolocation_line}", "progress")
-
-            # Ensure scrolling to the latest update
-            self.text_area.see(tk.END)
-            self.sppnet_output_window_root.update()
-    
-    def close(self):
-        self.sppnet_output_window_root.destroy()
-        
-    def cancel(self):
-        if os.name == 'nt':
-            Popen(f"TASKKILL /F /PID {self.process.pid} /T")
-        else:
-            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-        state.btn_start_deploy.configure(state=NORMAL)
-        state.sim_run_btn.configure(state=NORMAL)
-        state.cancel_speciesnet_deploy_pressed = True
-        self.sppnet_output_window_root.destroy()
 
 # temporary function to deploy speciesnet
 def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
