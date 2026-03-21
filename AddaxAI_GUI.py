@@ -205,6 +205,7 @@ from addaxai.ui.dialogs.download_progress import EnvDownloadProgressWindow, Mode
 from addaxai.ui.dialogs.info_frames import ModelInfoFrame as model_info_frame, DonationPopupFrame as donation_popup_frame
 from addaxai.ui.dialogs.progress import ProgressWindow
 from addaxai.ui.advanced.help_tab import HyperlinkManager, write_help_tab
+from addaxai.ui.advanced.about_tab import write_about_tab
 
 # log pythonpath
 print(sys.path)
@@ -7201,7 +7202,8 @@ def set_language():
     # update texts of about tab
     about_text.configure(state=NORMAL)
     about_text.delete('1.0', END)
-    write_about_tab()
+    hyperlink.reset()
+    write_about_tab(about_text, hyperlink, text_font=text_font, scroll=scroll)
 
     # top buttons
     adv_btn_switch_mode.configure(text = t('adv_btn_switch_mode'))
@@ -8586,59 +8588,7 @@ about_text.tag_config('info', font=f'{text_font} {int(13 * text_size_adjustment_
 about_text.tag_config('citation', font=f'{text_font} {int(13 * text_size_adjustment_factor)} normal', lmargin1=30, lmargin2=50)
 hyperlink = HyperlinkManager(about_text)
 
-# function to write text which can be called when user changes language settings
-def write_about_tab():
-    global about_text
-    text_line_number=1
-
-    # contact
-    about_text.insert(END, t('contact_header'))
-    about_text.insert(END, ["Please also help me to keep improving AddaxAI and let me know about any improvements, bugs, or new features so that I can keep it up-to-date. You can "
-                           "contact me at ",
-                           "Por favor, ayúdame también a seguir mejorando AddaxAI e infórmame de cualquier mejora, error o nueva función para que pueda mantenerlo actualizado. "
-                           "Puedes ponerte en contacto conmigo en ",
-                           "Merci de m'aider à améliorer AddaxAI et de me signaler toute amélioration, bogue ou nouvelle fonctionnalité afin que je puisse le maintenir à jour."
-                           " Vous pouvez me contacter à l'adresse suivante: "][i18n_lang_idx()])
-    about_text.insert(INSERT, "peter@addaxdatascience.com", hyperlink.add(partial(webbrowser.open, "mailto:peter@addaxdatascience.com")))
-    about_text.insert(END, [" or raise an issue on the ", " o plantear un problema en ", " ou rapporter un incident sur la "][i18n_lang_idx()])
-    about_text.insert(INSERT, t('github_page'), hyperlink.add(partial(webbrowser.open, "https://github.com/PetervanLunteren/AddaxAI/issues")))
-    about_text.insert(END, ".\n\n")
-    about_text.tag_add('title', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
-    about_text.tag_add('info', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=2
-
-    # addaxai citation
-    about_text.insert(END, t('citation_header'))
-    about_text.insert(END, ["If you used AddaxAI in your research, please use the following citations. The AddaxAI software was previously called 'EcoAssist'.\n",
-                            "Si ha utilizado AddaxAI en su investigación, utilice la siguiente citas. AddaxAI se llamaba antes 'EcoAssist'.\n",
-                            "Si vous avez utilisé AddaxAI dans vos recherches, veuillez utiliser les citations suivantes. Le logiciel AddaxAI s'appelait auparavant « EcoAssist ».\n"][i18n_lang_idx()])
-    about_text.insert(END, "- van Lunteren, P., (2023). AddaxAI: A no-code platform to train and deploy custom YOLOv5 object detection models. Journal of Open Source Software, 8(88), 5581, https://doi.org/10.21105/joss.05581")
-    about_text.insert(INSERT, "https://doi.org/10.21105/joss.05581", hyperlink.add(partial(webbrowser.open, "https://doi.org/10.21105/joss.05581")))
-    about_text.insert(END, ".\n")
-    about_text.insert(END, t('citation_plus_models'))
-    about_text.tag_add('title', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
-    about_text.tag_add('info', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
-    about_text.tag_add('citation', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
-    about_text.tag_add('citation', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=2
-
-    # development credits
-    about_text.insert(END, t('development_header'))
-    about_text.insert(END, ["AddaxAI is developed by ",
-                            "AddaxAI ha sido desarrollado por ",
-                            "AddaxAI est développé par "][i18n_lang_idx()])
-    about_text.insert(INSERT, "Addax Data Science", hyperlink.add(partial(webbrowser.open, "https://addaxdatascience.com/")))
-    about_text.insert(END, [" in collaboration with ",
-                            " en colaboración con ",
-                            " en collaboration avec "][i18n_lang_idx()])
-    about_text.insert(INSERT, "Smart Parks", hyperlink.add(partial(webbrowser.open, "https://www.smartparks.org/")))
-    about_text.insert(END, ".\n\n")
-    about_text.tag_add('title', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=1
-    about_text.tag_add('info', str(text_line_number) + '.0', str(text_line_number) + '.end');text_line_number+=2
-
-    # config about_text
-    about_text.pack(fill="both", expand=True)
-    about_text.configure(font=(text_font, 11, "bold"), state=DISABLED)
-    scroll.configure(command=about_text.yview)
-write_about_tab()
+write_about_tab(about_text, hyperlink, text_font=text_font, scroll=scroll)
 
 # SIMPLE MODE WINDOW 
 dir_image = customtkinter.CTkImage(PIL_dir_image, size=(ICON_SIZE, ICON_SIZE))
