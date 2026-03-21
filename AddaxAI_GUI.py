@@ -1342,7 +1342,7 @@ def start_postprocess():
     
     except Exception as error:
         # log error
-        print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+        logger.error("ERROR: %s", error, exc_info=True)
         
         # show error
         mb.showerror(title=t('error'),
@@ -1913,8 +1913,8 @@ def produce_plots(results_dir):
         temporal_units.append("week")
     if 1 < n_days <= max_units:
         temporal_units.append("day")
-    print(f"Years: {n_years}, Months: {n_months}, Weeks: {n_weeks}, Days: {n_days}")
-    print(f"temporal_units : {temporal_units}")
+    logger.debug("Years: %s, Months: %s, Weeks: %s, Days: %s", n_years, n_months, n_weeks, n_days)
+    logger.debug("temporal_units: %s", temporal_units)
 
     # check if we have geo tags in the data
     det_df_geo = det_df[(det_df['Latitude'].notnull()) & (det_df['Longitude'].notnull())]
@@ -2143,11 +2143,11 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # prepend os-specific commands
     platform_name = platform.system().lower()
     if platform_name == 'darwin' and 'arm64' in platform.machine():
-        print('This is an Apple Silicon system.')
+        logger.info("This is an Apple Silicon system.")
         command_args =  "arch -arm64 " + command_args
 
     # log command
-    print(command_args)
+    logger.debug("Command: %s", command_args)
 
     # run command
     p = Popen(command_args,
@@ -2159,7 +2159,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
 
     # read the output
     for line in p.stdout:
-        print(line, end='')
+        logger.info(line.rstrip())
 
         if "<EA>" in line:
             ver_diff = re.search('<EA>(.)<EA>', line).group().replace('<EA>', '')
@@ -2186,9 +2186,10 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         
         # python can throw a TclError if user closes the window because the widgets are destroyed - nothing to worry about
         except Exception as error:
-            print("\nWhen closing the annotation window, there was an error. python can throw a TclError if user closes "
-                                                "the window because the widgets are destroyed - nothing to worry about.")
-            print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+            logger.warning("When closing the annotation window, there was an error. "
+                           "python can throw a TclError if user closes the window because "
+                           "the widgets are destroyed - nothing to worry about.")
+            logger.error("ERROR: %s", error, exc_info=True)
 
     # close accompanying window
     hitl_progress_window.destroy()
@@ -2467,7 +2468,7 @@ def start_or_continue_hitl():
                                         label_map = annotation_arguments['label_map'])
             except Exception as error:
                 # log error
-                print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+                logger.error("ERROR: %s", error, exc_info=True)
                 
                 # show error
                 mb.showerror(title=t('error'),
@@ -2549,7 +2550,7 @@ def update_json_from_img_list(verified_images, inverted_label_map, recognition_f
         image_recognition_file_content.close()
 
         # write
-        print(recognition_file)
+        logger.debug("Writing recognition file: %s", recognition_file)
         with open(recognition_file, "w") as json_file:
             json.dump(data, json_file, indent=1)
         image_recognition_file_content.close()
@@ -2568,7 +2569,7 @@ def write_model_vars(model_type="cls", new_values = None):
             if key in variables:
                 variables[key] = value
             else:
-                print(f"Warning: Variable {key} not found in the loaded model variables.")
+                logger.warning("Variable %s not found in the loaded model variables.", key)
 
     # write
     model_dir = var_cls_model.get() if model_type == "cls" else var_det_model.get()
@@ -2672,7 +2673,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
             command_args = "export PYTORCH_ENABLE_MPS_FALLBACK=1 && " + command_args
 
     # log command
-    print(command_args)
+    logger.debug("Command: %s", command_args)
 
     # prepare process and cancel method per OS
     if os.name == 'nt':
@@ -2706,7 +2707,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
         state.subprocess_output = state.subprocess_output[-1000:]
 
         # log
-        print(line, end='')
+        logger.info(line.rstrip())
 
         # catch early exit if there are no detections that meet the requirmentents to classify
         if line.startswith("n_crops_to_classify is zero. Nothing to classify."):
@@ -2914,7 +2915,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                 command = "CUDA_VISIBLE_DEVICES='' " + command
 
         # log
-        print(f"command:\n\n{command}\n\n")
+        logger.debug("Command: %s", command)
             
         # prepare process and cancel method per OS
         if os.name == 'nt':
@@ -2959,8 +2960,8 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             subprocess_output = subprocess_output[-1000:]
 
             # log
-            print(line, end='')
-            
+            logger.info(line.rstrip())
+
             # catch model errors
             if line.startswith("No image files found"):
                 mb.showerror(t('msg_no_images_found'),
@@ -3298,7 +3299,7 @@ def start_deploy(simple_mode = False):
     
         except Exception as error:
             # log error
-            print("\n\nERROR:\n" + str(error) + "\n\nTRACEBACK:\n" + traceback.format_exc() + "\n\n")
+            logger.error("ERROR: %s", error, exc_info=True)
             
             # show error
             mb.showerror(title=t('error'),
@@ -3593,12 +3594,12 @@ def start_deploy(simple_mode = False):
             line = f"There are {str(v[0]).ljust(4)} files hidden behind the {str(v[1])} character in folder '{k}'"
             if not line.isprintable():
                 line = repr(line)
-                print(f"\nSPECIAL CHARACTER LOG: This special character is going to give an error : {line}\n")  # log
+                logger.warning("SPECIAL CHARACTER LOG: This special character is going to give an error: %s", line)
             with open(state.model_special_char_log, 'a+', encoding='utf-8') as f:
                 f.write(f"{line}\n")
         
         # log to console
-        print(f"\nSPECIAL CHARACTER LOG: There are {total_saved_images} files hidden behind {n_special_chars} special characters.\n")
+        logger.warning("SPECIAL CHARACTER LOG: There are %s files hidden behind %s special characters.", total_saved_images, n_special_chars)
 
         # prompt user
         special_char_popup_btns = [["Continue with filepaths as they are now",
@@ -3887,8 +3888,8 @@ def start_deploy(simple_mode = False):
     except Exception as error:
 
         # log error
-        print("\n\nERROR:\n" + str(error) + "\n\nSUBPROCESS OUTPUT:\n" + state.subprocess_output + "\n\nTRACEBACK:\n" + traceback.format_exc() + "\n\n")
-        print(f"state.cancel_deploy_model_pressed : {state.cancel_deploy_model_pressed}")
+        logger.error("ERROR: %s\nSUBPROCESS OUTPUT:\n%s", error, state.subprocess_output, exc_info=True)
+        logger.debug("state.cancel_deploy_model_pressed: %s", state.cancel_deploy_model_pressed)
 
         if state.cancel_deploy_model_pressed:
             pass
@@ -4223,7 +4224,7 @@ def select_detections(selection_dict, prepare_files):
                                     label_map = label_map)
         except Exception as error:
             # log error
-            print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+            logger.error("ERROR: %s", error, exc_info=True)
             
             # show error
             mb.showerror(title=t('error'),
@@ -4711,8 +4712,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
             command = [f"'{python_executable}' -m speciesnet.scripts.run_model --folders='{chosen_folder}' --predictions_json='{sppnet_output_file}' '{location_args}'"]
     
     # log command
-    print('command:')
-    print(json.dumps(command, indent=4))
+    logger.debug("Command: %s", json.dumps(command, indent=4))
 
     # prepare process and cancel method per OS
     if os.name == 'nt':
@@ -4973,7 +4973,7 @@ def extract_label_map_from_model(model_file):
             CUSTOM_DETECTOR_LABEL_MAP[id] = label_map_detector.model.names[id]
     except Exception as error:
         # log error
-        print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+        logger.error("ERROR: %s", error, exc_info=True)
         
         # show error
         mb.showerror(title=t('error'),
@@ -4989,7 +4989,7 @@ def extract_label_map_from_model(model_file):
     del label_map_detector
     
     # log
-    print(f"Label map: {CUSTOM_DETECTOR_LABEL_MAP})\n")
+    logger.debug("Label map: %s", CUSTOM_DETECTOR_LABEL_MAP)
 
     # return label map
     return CUSTOM_DETECTOR_LABEL_MAP
@@ -5170,9 +5170,8 @@ def model_cls_animal_options(self):
 
         # remove detection model selection
         lbl_model.grid_remove()
-        print(f"Removing detection model selection...")
+        logger.debug("Removing detection model selection...")
         dpd_model.grid_remove()
-        print(f"Removing detection model selection...")
         dsp_model.grid_remove()
         
         
@@ -5327,7 +5326,7 @@ def model_options(self):
 def view_results(frame):
     # log
     logger.debug("EXECUTED: %s", sys._getframe().f_code.co_name)
-    print(f"frame text: {frame.cget('text')}\n")
+    logger.debug("frame text: %s", frame.cget('text'))
     
     # convert path separators
     chosen_folder = os.path.normpath(var_choose_folder.get())
@@ -5398,7 +5397,7 @@ def load_model_vars(model_type = "cls"):
             variables = json.load(file)
             return variables
     except Exception as e:
-        print("DEBUG – load_model_vars failed:", e)
+        logger.debug("load_model_vars failed: %s", e)
         return {}
 
 
@@ -5516,7 +5515,7 @@ def fetch_latest_model_info():
             if model_info_response.status_code == 200:
                 with open(model_info_fpath, 'wb') as file:
                     file.write(model_info_response.content)
-                print(f"Updated model_info.json successfully.")
+                logger.info("Updated model_info.json successfully.")
 
                 # check if there is a new model available
                 # model_info = json.load(open(model_info_fpath))
@@ -5538,7 +5537,7 @@ def fetch_latest_model_info():
 
             # release info
             if release_info_response.status_code == 200:
-                print('Checking release info')
+                logger.info("Checking release info")
 
                 # check which releases are already shown
                 release_shown_json = os.path.join(AddaxAI_files, "AddaxAI", "releases_shown.json")
@@ -5566,7 +5565,7 @@ def fetch_latest_model_info():
                     newer_version = needs_EA_update(release_str)
                     already_shown = release_str in already_shown_releases
                     if newer_version and not already_shown:
-                        print(f"Found newer version: {release_str}")
+                        logger.info("Found newer version: %s", release_str)
                         release_info = {
                             "tag_name_raw": release.get('tag_name'),
                             "tag_name_clean": release_str,
@@ -5588,15 +5587,15 @@ def fetch_latest_model_info():
                     json.dump(already_shown_releases, f)
 
         except requests.exceptions.Timeout:
-            print('Request timed out. File download stopped.')
+            logger.warning("Request timed out. File download stopped.")
 
         except Exception as e:
-            print(f"Could not update model and version info: {e}")
+            logger.warning("Could not update model and version info: %s", e)
 
         # update root so that the new models show up in the dropdown menu, 
         # but also the correct species for the existing models
         update_model_dropdowns()
-        print(f"model info updated in {round(time.time() - start_time, 2)} seconds")
+        logger.info("model info updated in %s seconds", round(time.time() - start_time, 2))
 
 # open window with release info
 def show_release_info(release):
@@ -5750,15 +5749,15 @@ def download_model(model_dir, skip_ask=False):
                         download_popup.update_progress(percentage_done)
         progress_bar.close()
         download_popup.close()
-        print(f"Download successful. File saved at: {file_path}")
+        logger.info("Download successful. File saved at: %s", file_path)
         return True
 
     # catch errors
     except Exception as error:
-        print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+        logger.error("ERROR: %s", error, exc_info=True)
         try:
             # remove incomplete download
-            if os.path.isfile(file_path): 
+            if os.path.isfile(file_path):
                 os.remove(file_path)
         except UnboundLocalError:
             # file_path is not set, meaning there is no incomplete download
@@ -5854,8 +5853,8 @@ def download_environment(env_name, model_vars, skip_ask=False):
                         percentage_done = progress_bar.n / total_size
                         download_popup.update_download_progress(percentage_done)
         progress_bar.close()
-        print(f"Download successful. File saved at: {file_path}")
-        
+        logger.info("Download successful. File saved at: %s", file_path)
+
         # After download, begin extraction
         if filename.endswith(".tar.xz"):
             # Extract the .tar.xz file
@@ -5872,14 +5871,14 @@ def download_environment(env_name, model_vars, skip_ask=False):
                     download_popup.update_extraction_progress(extraction_progress_percentage)
                 extraction_progress_bar.close()
             download_popup.close()
-            print(f"Extraction successful. Files extracted to: {env_dir}")
+            logger.info("Extraction successful. Files extracted to: %s", env_dir)
 
             # Remove the .tar.xz file after extraction
             try:
                 os.remove(file_path)
-                print(f"Removed the .tar.xz file: {file_path}")
+                logger.info("Removed the .tar.xz file: %s", file_path)
             except Exception as e:
-                print(f"Error removing file: {e}")
+                logger.warning("Error removing file: %s", e)
 
         if filename.endswith(".zip"):
             import zipfile
@@ -5897,21 +5896,21 @@ def download_environment(env_name, model_vars, skip_ask=False):
                     download_popup.update_extraction_progress(extraction_progress_percentage)
                 extraction_progress_bar.close()
             download_popup.close()
-            print(f"Extraction successful. Files extracted to: {env_dir}")
-            
+            logger.info("Extraction successful. Files extracted to: %s", env_dir)
+
             # Remove the zip file after extraction
             try:
                 os.remove(file_path)
-                print(f"Removed the zip file: {file_path}")
+                logger.info("Removed the zip file: %s", file_path)
             except Exception as e:
-                print(f"Error removing file: {e}")
+                logger.warning("Error removing file: %s", e)
 
         # return success
         return True
 
     # catch errors
     except Exception as error:
-        print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
+        logger.error("ERROR: %s", error, exc_info=True)
         try:
             # remove incomplete archive
             if os.path.isfile(file_path): 
@@ -6432,7 +6431,7 @@ def on_spp_selection():
 
 
 def checkbox_frame_event():
-    print(f"checkbox frame modified: {state.sim_spp_scr.get_checked_items()}")
+    logger.debug("checkbox frame modified: %s", state.sim_spp_scr.get_checked_items())
 
 
 
@@ -6458,7 +6457,7 @@ def load_launch_count():
     with open(launch_count_file, 'r') as f:
         data = json.load(f)
         count = data.get('count', 0)
-        print(f"Launch count: {count}")
+        logger.debug("Launch count: %s", count)
         return count
 def save_launch_count(count):
     with open(launch_count_file, 'w') as f:
@@ -6735,23 +6734,23 @@ def show_result_info(file_path):
     try:
         graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 0)
     except ValueError:
-        print('ValueError - trying again with different params.')
+        logger.debug("ValueError - trying again with different params.")
         try:
             graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 23)
         except ValueError:
-            print('ValueError - trying again with different params.')
+            logger.debug("ValueError - trying again with different params.")
             try:
                 graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 45)
             except ValueError:
-                print('ValueError - trying again with different params.')
+                logger.debug("ValueError - trying again with different params.")
                 try:
                     graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 90)
                 except ValueError:
-                    print('ValueError - trying again with different params.')
+                    logger.debug("ValueError - trying again with different params.")
                     try:
                         graph_img, table_rows = create_pie_chart(file_path, looks = "simple")
                     except ValueError:
-                        print('ValueError - trying again with different params.')
+                        logger.debug("ValueError - trying again with different params.")
                         graph_img, table_rows = create_pie_chart(file_path, looks = "no-lines")
 
     # create window
