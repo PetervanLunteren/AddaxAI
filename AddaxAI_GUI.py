@@ -148,7 +148,7 @@ PIL_run_image = PIL.Image.open(os.path.join(AddaxAI_files, "AddaxAI", "imgs", "s
 launch_count_file = os.path.join(AddaxAI_files, 'launch_count.json')
 
 # insert dependencies to system variables
-cuda_toolkit_path = os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH")
+cuda_toolkit_path = os.environ.get('CUDA_HOME') or os.environ.get('CUDA_PATH')
 paths_to_add = [
     os.path.join(AddaxAI_files),
     os.path.join(AddaxAI_files, "cameratraps"),
@@ -1255,7 +1255,7 @@ def start_postprocess():
     if os.path.isfile(os.path.join(src_dir, "video_recognition_file.json")):
         vid_json = True
     if not img_json and not vid_json:
-        mb.showerror(t("error"), ["No model output file present. Make sure you run step 2 before post-processing the files.",
+        mb.showerror(t('error'), ["No model output file present. Make sure you run step 2 before post-processing the files.",
                                        "No hay archivo de salida del modelo. Asegúrese de ejecutar el paso 2 antes de postprocesar"
                                        " los archivos.", 
                                        "Aucun fichier de sortie du modèle présent. Assurez-vous d'exécuter l'étape 2 avant le "
@@ -1321,7 +1321,7 @@ def start_postprocess():
 
         # check if there are postprocessing errors written
         if os.path.isfile(postprocessing_error_log): 
-            mb.showwarning(t("warning"), [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
+            mb.showwarning(t('warning'), [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
                                                 f"post-processing features. See\n\n'{postprocessing_error_log}'\n\nfor more info.",
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
                                                 f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
@@ -1336,7 +1336,7 @@ def start_postprocess():
         print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
         
         # show error
-        mb.showerror(title=t("error"),
+        mb.showerror(title=t('error'),
                      message=["An error has occurred", "Ha ocurrido un error", "Une erreur s'est produite"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                      detail=traceback.format_exc())
         
@@ -2030,7 +2030,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     try:
         hitl_settings_window.destroy()
     except NameError:
-        print("hitl_settings_window not defined -> nothing to destroy()")
+        print('hitl_settings_window not defined -> nothing to destroy()')
         
     # init window
     hitl_progress_window = customtkinter.CTkToplevel(root)
@@ -2133,7 +2133,7 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     # prepend os-specific commands
     platform_name = platform.system().lower()
     if platform_name == 'darwin' and 'arm64' in platform.machine():
-        print("This is an Apple Silicon system.")
+        print('This is an Apple Silicon system.')
         command_args =  "arch -arm64 " + command_args
 
     # log command
@@ -2397,7 +2397,7 @@ def start_or_continue_hitl():
     # warn user if the json file is very large
     json_size = os.path.getsize(path_to_image_json)
     if json_size > 500000:
-        mb.showwarning(t("warning"), [f"The JSON file is very large ({get_size(path_to_image_json)}). This can cause the verification"
+        mb.showwarning(t('warning'), [f"The JSON file is very large ({get_size(path_to_image_json)}). This can cause the verification"
                                             " step to perform very slow. It will work, but you'll have to be patient. ", "El archivo "
                                             f"JSON es muy grande ({get_size(path_to_image_json)}). Esto puede hacer que el paso de verificación"
                                             " funcione muy lentamente. Funcionará, pero tendrás que tener paciencia. ",
@@ -2458,7 +2458,7 @@ def start_or_continue_hitl():
                 print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
                 
                 # show error
-                mb.showerror(title=t("error"),
+                mb.showerror(title=t('error'),
                             message=["An error has occurred", "Ha ocurrido un error", "Une erreur s'est produite"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                             detail=traceback.format_exc())
     
@@ -2546,7 +2546,7 @@ def update_json_from_img_list(verified_images, inverted_label_map, recognition_f
 def write_model_vars(model_type="cls", new_values = None):
         
     # exit if no cls is selected
-    if var_cls_model.get() == t("none"):
+    if var_cls_model.get() == t('none'):
         return
 
     # adjust
@@ -2700,7 +2700,7 @@ def classify_detections(json_fpath, data_type, simple_mode = False):
 
         # catch early exit if there are no detections that meet the requirmentents to classify
         if line.startswith("n_crops_to_classify is zero. Nothing to classify."):
-            mb.showinfo(t("information"), ["There are no animal detections that meet the criteria. You either "
+            mb.showinfo(t('information'), ["There are no animal detections that meet the criteria. You either "
                                                 "have selected images without any animals present, or you have set "
                                                 "your detection confidence threshold to high.", "No hay detecciones"
                                                 " de animales que cumplan los criterios. O bien ha seleccionado "
@@ -2787,25 +2787,25 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     
     # note if user is video analysing without smoothing
     global warn_smooth_vid
-    if (var_cls_model.get() != t("none")) and \
+    if (var_cls_model.get() != t('none')) and \
         (var_smooth_cls_animal.get() == False) and \
             data_type == 'vid' and \
                 simple_mode == False and \
                     warn_smooth_vid == True:
                         warn_smooth_vid = False
-                        if not mb.askyesno(t("information"), ["You are about to analyze videos without smoothing the confidence scores. "
+                        if not mb.askyesno(t('information'), ["You are about to analyze videos without smoothing the confidence scores. "
                             "Typically, a video may contain many frames of the same animal, increasing the likelihood that at least "
-                            f"one of the labels could be a false prediction. With '{lbl_smooth_cls_animal_txt[lang_idx]}' enabled, all"
+                            f"one of the labels could be a false prediction. With '{t('lbl_smooth_cls_animal')}' enabled, all"
                             " predictions from a single video will be averaged, resulting in only one label per video. Do you wish to"
                             " continue without smoothing?\n\nPress 'No' to go back.", "Estás a punto de analizar videos sin suavizado "
                             "habilitado. Normalmente, un video puede contener muchos cuadros del mismo animal, lo que aumenta la "
                             "probabilidad de que al menos una de las etiquetas pueda ser una predicción falsa. Con "
-                            f"'{lbl_smooth_cls_animal_txt[lang_idx]}' habilitado, todas las predicciones de un solo video se promediarán,"
+                            f"'{t('lbl_smooth_cls_animal')}' habilitado, todas las predicciones de un solo video se promediarán,"
                             " lo que resultará en una sola etiqueta por video. ¿Deseas continuar sin suavizado habilitado?\n\nPresiona "
                             "'No' para regresar.",
                             "Vous êtes sur le point d'analyser des vidéos sans lisser les scores de confiance. "
                             "Typiquement, un vidéo peut contenir plusieurs images d'un même animal, ce qui augmente les chances qu'au moins un "
-                            f"des labels puisse être une fausse prédiction. Avec '{lbl_smooth_cls_animal_txt[lang_idx]}' activé, toute"
+                            f"des labels puisse être une fausse prédiction. Avec '{t('lbl_smooth_cls_animal')}' activé, toute"
                             " les prédictions d'un seul vidéo seront moyennées, résultant en un seul label par vidéo. Souhaitez-vous"
                             " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][lang_idx]):
                             return
@@ -2897,7 +2897,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             if os.name == 'nt': # windows
                 command[:0] = ['set', 'CUDA_VISIBLE_DEVICES=""', '&']
             elif platform.system() == 'Darwin': # macos
-                mb.showwarning(t("warning"),
+                mb.showwarning(t('warning'),
                             ["Disabling GPU processing is currently only supported for CUDA devices on Linux and Windows "
                                 "machines, not on macOS. Proceeding without GPU disabled.", "Deshabilitar el procesamiento de "
                                 "la GPU actualmente sólo es compatible con dispositivos CUDA en máquinas Linux y Windows, no en"
@@ -2941,9 +2941,9 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
         extracting_frames_mode = False
         
         # check if the unit shown should be frame or video
-        if data_type == "vid" and var_cls_model.get() == t("none"):
+        if data_type == "vid" and var_cls_model.get() == t('none'):
             frame_video_choice = "video"
-        elif data_type == "vid" and var_cls_model.get() != t("none"):
+        elif data_type == "vid" and var_cls_model.get() != t('none'):
             frame_video_choice = "frame"
         else:
             frame_video_choice = None
@@ -2962,17 +2962,17 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             if line.startswith("No image files found"):
                 mb.showerror(["No images found", "No se han encontrado imágenes", "Aucune image trouvée"][lang_idx],
                             [f"There are no images found in '{chosen_folder}'. \n\nAre you sure you specified the correct folder?"
-                            f" If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
+                            f" If the files are in subdirectories, make sure you don't tick '{t('lbl_exclude_subs')}'.",
                             f"No se han encontrado imágenes en '{chosen_folder}'. \n\n¿Está seguro de haber especificado la carpeta correcta?"
-                            f" Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{lbl_exclude_subs_txt[lang_idx]}'.",
+                            f" Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{t('lbl_exclude_subs')}'.",
                             f"Aucune image trouvée dans '{chosen_folder}'. \n\nAvez-vous spécifié le bon dossier?"
-                            f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{lbl_exclude_subs_txt[lang_idx]}'."][lang_idx])
+                            f" Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][lang_idx])
                 return
             if line.startswith("No videos found"):
                 mb.showerror(["No videos found", "No se han encontrado vídeos", "Aucun vidéo trouvé"][lang_idx],
-                            line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{lbl_exclude_subs_txt[lang_idx]}'.",
-                                    f"\n\n¿Está seguro de haber especificado la carpeta correcta? Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{lbl_exclude_subs_txt[lang_idx]}'.",
-                                    f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{lbl_exclude_subs_txt[lang_idx]}'."][lang_idx])
+                            line + [f"\n\nAre you sure you specified the correct folder? If the files are in subdirectories, make sure you don't tick '{t('lbl_exclude_subs')}'.",
+                                    f"\n\n¿Está seguro de haber especificado la carpeta correcta? Si los archivos están en subdirectorios, asegúrese de no marcar la casilla '{t('lbl_exclude_subs')}'.",
+                                    f"\n\nAvez-vous spécifié le bon dossier? Si les fichiers sont dans des sous-dossiers, assurez-vous ne pas avoir coché '{t('lbl_exclude_subs')}'."][lang_idx])
                 return
             if line.startswith("No frames extracted"):
                 mb.showerror(["Could not extract frames", "No se pueden extraer fotogramas", "Impossible d'extraire les images"][lang_idx],
@@ -3089,7 +3089,7 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
     
     # classify detections if specified by user
     if not cancel_deploy_model_pressed:
-        if var_cls_model.get() != t("none"):
+        if var_cls_model.get() != t('none'):
             if data_type == "img":
                 classify_detections(os.path.join(chosen_folder, "image_recognition_file.json"), data_type, simple_mode = simple_mode)
             else:
@@ -3134,7 +3134,7 @@ def show_update_info(model_vars, model_name):
 # check if a particular model needs downloading
 def model_needs_downloading(model_vars, model_type):
     model_name = var_cls_model.get() if model_type == "cls" else var_det_model.get()
-    if model_name != t("none"):
+    if model_name != t('none'):
         model_fpath = os.path.join(AddaxAI_files, "models", model_type, model_name, load_model_vars(model_type)["model_fname"])
         if os.path.isfile(model_fpath):
             # the model file is already present
@@ -3215,15 +3215,15 @@ def start_deploy(simple_mode = False):
         else:
             mb.showerror(["No data found", "No se han encontrado datos", "Aucune donnée trouvée"][lang_idx],
                             message=[f"There are no images nor videos found, or you selected not to search for them. If there is indeed data to be "
-                                    f"processed, make sure the '{lbl_process_img_txt[lang_idx]}' and/or '{lbl_process_vid_txt[lang_idx]}' options "
+                                    f"processed, make sure the '{t('lbl_process_img')}' and/or '{lbl_process_vid_txt[lang_idx]}' options "
                                     f"are selected. You must select at least one of these.\n\nAddaxAI accepts images in the format {IMG_EXTENSIONS}."
                                     f"\n\nIt accepts videos in the format {VIDEO_EXTENSIONS}.",
                                     f"No se han encontrado imágenes ni vídeos, o ha seleccionado no buscarlos. Si efectivamente hay datos para procesar,"
-                                    f" asegúrese de que las opciones '{lbl_process_img_txt[lang_idx]}' y/o '{lbl_process_vid_txt[lang_idx]}' están seleccionadas."
+                                    f" asegúrese de que las opciones '{t('lbl_process_img')}' y/o '{lbl_process_vid_txt[lang_idx]}' están seleccionadas."
                                     f" Debe seleccionar al menos una de ellas.\n\nAddaxAI acepta imágenes en formato {IMG_EXTENSIONS}."
                                     f"\n\nAcepta vídeos en formato {VIDEO_EXTENSIONS}.",
                                     f"Aucune image ou vidéo trouvé, ou vous avez sélectionné de ne pas faire de recherche pour ces derniers. Si des données à traiter "
-                                    f"existent, assurez-vous que les options'{lbl_process_img_txt[lang_idx]}' et/ou '{lbl_process_vid_txt[lang_idx]}' "
+                                    f"existent, assurez-vous que les options'{t('lbl_process_img')}' et/ou '{lbl_process_vid_txt[lang_idx]}' "
                                     f"sont sélectionnées. Vous devez sélectionner au moins l'une d'entre elles.\n\nAddaxAI accepte des images au format {IMG_EXTENSIONS}."
                                     f"\n\nLes vidéos au format {VIDEO_EXTENSIONS} sont également acceptés."][lang_idx])
         btn_start_deploy.configure(state=NORMAL)
@@ -3290,7 +3290,7 @@ def start_deploy(simple_mode = False):
             print("\n\nERROR:\n" + str(error) + "\n\nTRACEBACK:\n" + traceback.format_exc() + "\n\n")
             
             # show error
-            mb.showerror(title=t("error"),
+            mb.showerror(title=t('error'),
                         message=["An error has occurred", "Ha ocurrido un error", "Une erreur s'est produite"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail= traceback.format_exc())
             
@@ -3302,25 +3302,25 @@ def start_deploy(simple_mode = False):
 
     # note if user is video analysing without smoothing
     global warn_smooth_vid
-    if (var_cls_model.get() != t("none")) and \
+    if (var_cls_model.get() != t('none')) and \
         (var_smooth_cls_animal.get() == False) and \
             vid_present and \
                 simple_mode == False and \
                     warn_smooth_vid == True:
                         warn_smooth_vid = False
-                        if not mb.askyesno(t("information"), ["You are about to analyze videos without smoothing the confidence scores. "
+                        if not mb.askyesno(t('information'), ["You are about to analyze videos without smoothing the confidence scores. "
                             "Typically, a video may contain many frames of the same animal, increasing the likelihood that at least "
-                            f"one of the labels could be a false prediction. With '{lbl_smooth_cls_animal_txt[lang_idx]}' enabled, all"
+                            f"one of the labels could be a false prediction. With '{t('lbl_smooth_cls_animal')}' enabled, all"
                             " predictions from a single video will be averaged, resulting in only one label per video. Do you wish to"
                             " continue without smoothing?\n\nPress 'No' to go back.", "Estás a punto de analizar videos sin suavizado "
                             "habilitado. Normalmente, un video puede contener muchos cuadros del mismo animal, lo que aumenta la "
                             "probabilidad de que al menos una de las etiquetas pueda ser una predicción falsa. Con "
-                            f"'{lbl_smooth_cls_animal_txt[lang_idx]}' habilitado, todas las predicciones de un solo video se promediarán,"
+                            f"'{t('lbl_smooth_cls_animal')}' habilitado, todas las predicciones de un solo video se promediarán,"
                             " lo que resultará en una sola etiqueta por video. ¿Deseas continuar sin suavizado habilitado?\n\nPresiona "
                             "'No' para regresar.",
                             "Vous êtes sur le point d'analyser des vidéos sans lisser les scores de confiance. "
                             "Typiquement, un vidéo peut contenir plusieurs images d'un même animal, ce qui augmente les chances qu'au moins un "
-                            f"des labels puisse être une fausse prédiction. Avec '{lbl_smooth_cls_animal_txt[lang_idx]}' activé, toute"
+                            f"des labels puisse être une fausse prédiction. Avec '{t('lbl_smooth_cls_animal')}' activé, toute"
                             " les prédictions d'un seul vidéo seront moyennées, résultant en un seul label par vidéo. Souhaitez-vous"
                             " continuer sans lissage?\n\nAppuyer sur 'Non' pour revenir en arrière."][lang_idx]):
                             return
@@ -3335,11 +3335,11 @@ def start_deploy(simple_mode = False):
         processes = []
         if img_present:
             processes.append("img_det")
-            if var_cls_model.get() != t("none"):
+            if var_cls_model.get() != t('none'):
                 processes.append("img_cls")
         if vid_present:
             processes.append("vid_det")
-            if var_cls_model.get() != t("none"):
+            if var_cls_model.get() != t('none'):
                 processes.append("vid_cls")
         if not timelapse_mode and img_present:
             processes.append("img_pst")
@@ -3351,11 +3351,11 @@ def start_deploy(simple_mode = False):
         processes = []
         if img_present:
             processes.append("img_det")
-            if var_cls_model.get() != t("none"):
+            if var_cls_model.get() != t('none'):
                 processes.append("img_cls")
         if vid_present:
             processes.append("vid_det")
-            if var_cls_model.get() != t("none"):
+            if var_cls_model.get() != t('none'):
                 processes.append("vid_cls")
     
     # if working with a full image classifier is selected, remove the detection processes and video stuff
@@ -3388,7 +3388,7 @@ def start_deploy(simple_mode = False):
 
     # check if models need to be downloaded
     if simple_mode:
-        var_det_model.set("MegaDetector 5a")
+        var_det_model.set('MegaDetector 5a')
     for model_type in ["cls", "det"]:
         model_vars = load_model_vars(model_type = model_type)
         if model_vars == {}: # if selected model is None
@@ -3407,7 +3407,7 @@ def start_deploy(simple_mode = False):
 
     # check if environment need to be downloaded
     if simple_mode:
-        var_det_model.set("MegaDetector 5a")
+        var_det_model.set('MegaDetector 5a')
     for model_type in ["cls", "det"]:
         model_vars = load_model_vars(model_type = model_type)
         if model_vars == {}: # if selected model is None
@@ -3423,7 +3423,7 @@ def start_deploy(simple_mode = False):
     # run some checks that make sense for both simple and advanced mode
     # check if chosen folder is valid
     if chosen_folder in ["", "/", "\\", ".", "~", ":"] or not os.path.isdir(chosen_folder):
-        mb.showerror(t("error"),
+        mb.showerror(t('error'),
             message=["Please specify a directory with data to be processed.",
                      "Por favor, especifique un directorio con los datos a procesar.",
                      "SVP spécifier un répertoire avec des données à traiter."][lang_idx])
@@ -3447,7 +3447,7 @@ def start_deploy(simple_mode = False):
         additional_vid_options.append("--include_all_processed_frames")
     temp_frame_folder_created = False
     if vid_present:
-        if var_cls_model.get() != t("none"):
+        if var_cls_model.get() != t('none'):
             global temp_frame_folder
             temp_frame_folder_obj = tempfile.TemporaryDirectory()
             temp_frame_folder_created = True
@@ -3489,7 +3489,7 @@ def start_deploy(simple_mode = False):
         
         # check if checkpoint entry is valid
         if var_use_custom_img_size_for_deploy.get() and not var_image_size_for_deploy.get().isdecimal():
-            mb.showerror(t("invalid_value"),
+            mb.showerror(t('invalid_value'),
                         ["You either entered an invalid value for the image size, or none at all. You can only "
                         "enter numeric characters.",
                         "Ha introducido un valor no válido para el tamaño de la imagen o no ha introducido ninguno. "
@@ -3502,14 +3502,14 @@ def start_deploy(simple_mode = False):
 
         # check if checkpoint entry is valid
         if var_use_checkpnts.get() and not var_checkpoint_freq.get().isdecimal():
-            if mb.askyesno(t("invalid_value"),
+            if mb.askyesno(t('invalid_value'),
                             ["You either entered an invalid value for the checkpoint frequency, or none at all. You can only "
                             "enter numeric characters.\n\nDo you want to proceed with the default value 500?",
                             "Ha introducido un valor no válido para la frecuencia del punto de control o no ha introducido ninguno. "
                             "Sólo puede introducir caracteres numéricos.\n\n¿Desea continuar con el valor por defecto 500?",
                             "Vous avez saisi une valeur invalide pour la fréquence des points de contrôle, ou aucune valeur du tout. Vous ne pouvez "
                             "que saisir des caractères numériques.\n\nSouhaitez-vous utiliser la valeur par défaut de 500?"][lang_idx]):
-                var_checkpoint_freq.set("500")
+                var_checkpoint_freq.set('500')
                 ent_checkpoint_freq.configure(fg='black')
             else:
                 btn_start_deploy.configure(state=NORMAL)
@@ -3519,7 +3519,7 @@ def start_deploy(simple_mode = False):
         
         # check if the nth frame entry is valid
         if var_not_all_frames.get() and not is_valid_float(var_nth_frame.get()):
-            if mb.askyesno(t("invalid_value"),
+            if mb.askyesno(t('invalid_value'),
                            [f"Invalid input for '{lbl_nth_frame_txt[lang_idx]}'. Please enter a numeric value (e.g., '1', '1.5', '0.3', '7')."
                             " Non-numeric values like 'two' or '1,2' are not allowed.\n\nWould you like to proceed with the default value"
                             " of 1?\n\nThis means the program will only process 1 frame every second.", "Entrada no válida para "
@@ -3529,7 +3529,7 @@ def start_deploy(simple_mode = False):
                             f"Entrée invalide pour '{lbl_nth_frame_txt[lang_idx]}'. SVP entrer une valeur numérique (par ex.: '1', '1.5', '0.3', '7')."
                             " Les valeurs non-numérique comme 'deux' ou '1,2' ne sont pas permises.\n\nVoulez-vous continuer avec la valeur par défaut "
                             " de 1?\n\nCela signifie que le programme ne traitera qu'une seule image par seconde."][lang_idx]):
-                var_nth_frame.set("1")
+                var_nth_frame.set('1')
                 ent_nth_frame.configure(fg='black')
             else:
                 btn_start_deploy.configure(state=NORMAL)
@@ -3797,7 +3797,7 @@ def start_deploy(simple_mode = False):
         # prepare for Timelapse use
         if timelapse_mode:
             # merge json
-            if var_cls_model.get() != t("none"):
+            if var_cls_model.get() != t('none'):
                 # if a classification model is selected
                 merge_jsons(image_recognition_file_original if os.path.isfile(image_recognition_file_original) else None,
                             video_recognition_file_original if os.path.isfile(video_recognition_file_original) else None,
@@ -3844,13 +3844,13 @@ def start_deploy(simple_mode = False):
 
         # show model error pop up window
         if os.path.isfile(model_error_log):
-            mb.showerror(t("error"), [f"There were one or more model errors. See\n\n'{model_error_log}'\n\nfor more information.",
+            mb.showerror(t('error'), [f"There were one or more model errors. See\n\n'{model_error_log}'\n\nfor more information.",
                                             f"Se han producido uno o más errores de modelo. Consulte\n\n'{model_error_log}'\n\npara obtener más información.",
                                             f"Une ou plusieurs erreurs ont été générées par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][lang_idx])
 
         # show model warning pop up window
         if os.path.isfile(model_warning_log):
-            mb.showerror(t("error"), [f"There were one or more model warnings. See\n\n'{model_warning_log}'\n\nfor more information.",
+            mb.showerror(t('error'), [f"There were one or more model warnings. See\n\n'{model_warning_log}'\n\nfor more information.",
                                         f"Se han producido uno o más advertencias de modelo. Consulte\n\n'{model_warning_log}'\n\npara obtener más información.",
                                         f"Un ou plusieurs avertissements ont été générés par le modèle. Voir\n\n'{model_error_log}'\n\npour plus d'informations."][lang_idx])
 
@@ -3858,7 +3858,7 @@ def start_deploy(simple_mode = False):
         global postprocessing_error_log
         postprocessing_error_log = os.path.join(chosen_folder, "postprocessing_error_log.txt")
         if os.path.isfile(postprocessing_error_log): 
-            mb.showwarning(t("warning"), [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
+            mb.showwarning(t('warning'), [f"One or more files failed to be analysed by the model (e.g., corrupt files) and will be skipped by "
                                                 f"post-processing features. See\n\n'{postprocessing_error_log}'\n\nfor more info.",
                                                 f"Uno o más archivos no han podido ser analizados por el modelo (por ejemplo, ficheros corruptos) y serán "
                                                 f"omitidos por las funciones de post-procesamiento. Para más información, véase\n\n'{postprocessing_error_log}'",
@@ -3890,7 +3890,7 @@ def start_deploy(simple_mode = False):
         
         else:
             # show error
-            mb.showerror(title=t("error"),
+            mb.showerror(title=t('error'),
                         message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=subprocess_output + "\n" + traceback.format_exc())
             
@@ -4221,7 +4221,7 @@ def select_detections(selection_dict, prepare_files):
             print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
             
             # show error
-            mb.showerror(title=t("error"),
+            mb.showerror(title=t('error'),
                         message=["An error has occurred", "Ha ocurrido un error", "Une erreur est survenue"][lang_idx] + " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'.",
                         detail=traceback.format_exc())
 
@@ -4786,7 +4786,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
             command = [f"'{python_executable}' -m speciesnet.scripts.run_model --folders='{chosen_folder}' --predictions_json='{sppnet_output_file}' '{location_args}'"]
     
     # log command
-    print("command:")
+    print('command:')
     print(json.dumps(command, indent=4))
 
     # prepare process and cancel method per OS
@@ -5052,7 +5052,7 @@ def extract_label_map_from_model(model_file):
         print("ERROR:\n" + str(error) + "\n\nDETAILS:\n" + str(traceback.format_exc()) + "\n\n")
         
         # show error
-        mb.showerror(title=t("error"),
+        mb.showerror(title=t('error'),
                      message=["An error has occurred when trying to extract classes", "Se ha producido un error al intentar extraer las clases",
                               "Une erreur est survenue lors de l'extraction des classes"][lang_idx] +
                                 " (AddaxAI v" + current_AA_version + "): '" + str(error) + "'" +
@@ -5097,12 +5097,12 @@ def check_json_presence_and_warn_user(infinitive, continuous, noun):
     # show warning
     if not img_json:
         if vid_json:
-            mb.showerror(t("error"), [f"{noun.capitalize()} is not supported for videos.",
+            mb.showerror(t('error'), [f"{noun.capitalize()} is not supported for videos.",
                                            f"{noun.capitalize()} no es compatible con vídeos.",
                                            f"{noun.capitalize()} n'est pas supporté avec les vidéos."][lang_idx])
             return True
         if not vid_json:
-            mb.showerror(t("error"), [f"No model output file present. Make sure you run step 2 before {continuous} the files. {noun.capitalize()} "
+            mb.showerror(t('error'), [f"No model output file present. Make sure you run step 2 before {continuous} the files. {noun.capitalize()} "
                                             "is only supported for images.",
                                            f"No hay archivos de salida del modelo. Asegúrese de ejecutar el paso 2 antes de {continuous} los archivos. "
                                            f"{noun.capitalize()} sólo es compatible con imágenes",
@@ -5111,7 +5111,7 @@ def check_json_presence_and_warn_user(infinitive, continuous, noun):
             return True
     if img_json:
         if vid_json:
-            mb.showinfo(t("warning"), [f"{noun.capitalize()} is not supported for videos. Will continue to only {infinitive} the images...",
+            mb.showinfo(t('warning'), [f"{noun.capitalize()} is not supported for videos. Will continue to only {infinitive} the images...",
                                             f"No se admiten {noun.capitalize()} para los vídeos. Continuará sólo {infinitive} las imágenes...",
                                             f"{noun.capitalize()} n'est pas supporté pour les vidéos. AddaxAI continuera de {infinitive} les images uniquement..."][lang_idx])
 
@@ -5190,7 +5190,7 @@ def model_cls_animal_options(self):
     sim_mdl_dpd.set(sim_dpd_options_cls_model[lang_idx][dpd_options_cls_model[lang_idx].index(self)])
 
     # remove or show widgets
-    if self != t("none"):
+    if self != t('none'):
         cls_frame.grid(row=cls_frame_row, column=0, columnspan=2, sticky = 'ew')
     else:
         cls_frame.grid_forget()
@@ -5198,7 +5198,7 @@ def model_cls_animal_options(self):
     # get model specific variable values
     global sim_spp_scr
     model_vars = load_model_vars()
-    if self != t("none") and self != "Global - SpeciesNet - Google": # normal procedure for all classifiers other than speciesnet
+    if self != t('none') and self != "Global - SpeciesNet - Google": # normal procedure for all classifiers other than speciesnet
         
         dsp_choose_classes.configure(text = f"{len(model_vars['selected_classes'])} of {len(model_vars['all_classes'])}")
         var_cls_detec_thresh.set(model_vars["var_cls_detec_thresh"])
@@ -5380,7 +5380,7 @@ def model_options(self):
     print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
    
     # if custom model is selected
-    if var_det_model.get() == t("custom_model"):
+    if var_det_model.get() == t('custom_model'):
         
         # choose, display and set global var
         browse_file(var_det_model,
@@ -5415,14 +5415,14 @@ def view_results(frame):
     video_recognition_file = os.path.join(chosen_folder, "video_recognition_file.json")
 
     # open json files at step 2
-    if frame.cget('text').startswith(f' {t("step")} 2'):
+    if frame.cget('text').startswith(' ' + t('step') + ' 2'):
         if os.path.isfile(image_recognition_file):
             open_file_or_folder(image_recognition_file)
         if os.path.isfile(video_recognition_file):
             open_file_or_folder(video_recognition_file)
     
     # open destination folder at step 4
-    if frame.cget('text').startswith(f' {t("step")} 4'):
+    if frame.cget('text').startswith(' ' + t('step') + ' 4'):
         open_file_or_folder(var_output_dir.get())
 
 # open file or folder
@@ -5467,7 +5467,7 @@ def open_file_or_folder(path, show_error = True):
 
 # retrieve model specific variables from file 
 def load_model_vars(model_type = "cls"):
-    if var_cls_model.get() == t("none") and model_type == "cls":
+    if var_cls_model.get() == t('none') and model_type == "cls":
         return {}
     model_dir = var_cls_model.get() if model_type == "cls" else var_det_model.get()
     var_file = os.path.join(AddaxAI_files, "models", model_type, model_dir, "variables.json")
@@ -5618,7 +5618,7 @@ def fetch_latest_model_info():
 
             # release info
             if release_info_response.status_code == 200:
-                print("Checking release info")
+                print('Checking release info')
 
                 # check which releases are already shown
                 release_shown_json = os.path.join(AddaxAI_files, "AddaxAI", "releases_shown.json")
@@ -5636,7 +5636,7 @@ def fetch_latest_model_info():
                 for release in releases:
 
                     # clean tag
-                    release_str = release.get("tag_name")
+                    release_str = release.get('tag_name')
                     if "v." in release_str:
                         release_str = release_str.replace("v.", "")
                     elif "v" in release_str:
@@ -5648,13 +5648,13 @@ def fetch_latest_model_info():
                     if newer_version and not already_shown:
                         print(f"Found newer version: {release_str}")
                         release_info = {
-                            "tag_name_raw": release.get("tag_name"),
+                            "tag_name_raw": release.get('tag_name'),
                             "tag_name_clean": release_str,
                             "newer_version": newer_version,
-                            "name": release.get("name"),
-                            "body": release.get("body"),
-                            "created_at": release.get("created_at"),
-                            "published_at": release.get("published_at")
+                            "name": release.get('name'),
+                            "body": release.get('body'),
+                            "created_at": release.get('created_at'),
+                            "published_at": release.get('published_at')
                         }
                         release_info_list.append(release_info)
 
@@ -5668,7 +5668,7 @@ def fetch_latest_model_info():
                     json.dump(already_shown_releases, f)
 
         except requests.exceptions.Timeout:
-            print("Request timed out. File download stopped.")
+            print('Request timed out. File download stopped.')
 
         except Exception as e:
             print(f"Could not update model and version info: {e}")
@@ -6524,7 +6524,7 @@ class InfoButton(customtkinter.CTkButton):
                        width = 1)
 
 def sim_dir_show_info():
-    mb.showinfo(title = t("information"),
+    mb.showinfo(title = t('information'),
                 message = ["Select the images to analyse", "Seleccionar las imágenes a analizar", "Sélectionner les images à analyser"][lang_idx],
                 detail = ["Here you can select a folder containing camera trap images. It will process all images it can find, also in subfolders."
                           " Switch to advanced mode for more options.", " Aquí puede seleccionar una carpeta que contenga imágenes de cámaras trampa."
@@ -6536,7 +6536,7 @@ def callback(url):
     webbrowser.open_new(url)
 
 def sim_spp_show_info():
-    mb.showinfo(title = t("information"),
+    mb.showinfo(title = t('information'),
                 message = ["Select the species that are present", "Seleccione las especies presentes", "Sélection des espèces présentes"][lang_idx],
                 detail = ["Here, you can select and deselect the animals categories that are present in your project"
                           " area. If the animal category is not selected, it will be excluded from the results. The "
@@ -6555,8 +6555,8 @@ def on_spp_selection():
     dsp_choose_classes.configure(text = f"{len(selected_classes)} of {len(all_classes)}")
 
 def sim_mdl_show_info():
-    if var_cls_model.get() == t("none"):
-        mb.showinfo(title = t("information"),
+    if var_cls_model.get() == t('none'):
+        mb.showinfo(title = t('information'),
                     message = ["Select the model to identify animals", "Seleccione el modelo para identificar animales", "Sélectionner le modèle d'identification d'animaux"][lang_idx],
                     detail = ["Here, you can choose a model that can identify your target species. If you select ‘None’, it will find vehicles,"
                               " people, and animals, but will not further identify them. When a model is selected, press this button again to "
@@ -6598,10 +6598,10 @@ class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
         self.checkbox_list.append(checkbox)
 
     def get_checked_items(self):
-        return [checkbox.cget("text") for checkbox in self.checkbox_list if checkbox.get() == 1]
+        return [checkbox.cget('text') for checkbox in self.checkbox_list if checkbox.get() == 1]
 
     def get_all_items(self):
-        return [checkbox.cget("text") for checkbox in self.checkbox_list]
+        return [checkbox.cget('text') for checkbox in self.checkbox_list]
 
 def open_nosleep_page():
     webbrowser.open("https://nosleep.page")
@@ -7029,23 +7029,23 @@ def show_result_info(file_path):
     try:
         graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 0)
     except ValueError:
-        print("ValueError - trying again with different params.")
+        print('ValueError - trying again with different params.')
         try:
             graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 23)
         except ValueError:
-            print("ValueError - trying again with different params.")
+            print('ValueError - trying again with different params.')
             try:
                 graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 45)
             except ValueError:
-                print("ValueError - trying again with different params.")
+                print('ValueError - trying again with different params.')
                 try:
                     graph_img, table_rows = create_pie_chart(file_path, looks = "nice", st_angle = 90)
                 except ValueError:
-                    print("ValueError - trying again with different params.")
+                    print('ValueError - trying again with different params.')
                     try:
                         graph_img, table_rows = create_pie_chart(file_path, looks = "simple")
                     except ValueError:
-                        print("ValueError - trying again with different params.")
+                        print('ValueError - trying again with different params.')
                         graph_img, table_rows = create_pie_chart(file_path, looks = "no-lines")
 
     # create window
@@ -8105,51 +8105,51 @@ def set_language():
     write_global_vars(AddaxAI_files, {"lang_idx": lang_idx})
 
     # update tab texts
-    tabControl.tab(deploy_tab, text=t("deploy_tab"))
-    tabControl.tab(help_tab, text=t("help_tab"))
-    tabControl.tab(about_tab, text=t("about_tab"))
+    tabControl.tab(deploy_tab, text=t('deploy_tab'))
+    tabControl.tab(help_tab, text=t('help_tab'))
+    tabControl.tab(about_tab, text=t('about_tab'))
 
     # update texts of deploy tab
-    fst_step.configure(text=" " + t("fst_step") + " ")
-    lbl_choose_folder.configure(text=t("lbl_choose_folder"))
-    btn_choose_folder.configure(text=t("browse"))
-    snd_step.configure(text=" " + t("snd_step") + " ")
-    lbl_model.configure(text=lbl_model_txt[lang_idx])
+    fst_step.configure(text=" " + t('fst_step') + " ")
+    lbl_choose_folder.configure(text=t('lbl_choose_folder'))
+    btn_choose_folder.configure(text=t('browse'))
+    snd_step.configure(text=" " + t('snd_step') + " ")
+    lbl_model.configure(text=t('lbl_model'))
     update_dpd_options(dpd_model, snd_step, var_det_model, dpd_options_model, model_options, row_model, lbl_model, from_lang_idx)
-    lbl_exclude_subs.configure(text=lbl_exclude_subs_txt[lang_idx])
-    lbl_use_custom_img_size_for_deploy.configure(text=lbl_use_custom_img_size_for_deploy_txt[lang_idx])
-    lbl_image_size_for_deploy.configure(text=lbl_image_size_for_deploy_txt[lang_idx])
-    update_ent_text(ent_image_size_for_deploy, t("eg") + ": 640")
-    lbl_abs_paths.configure(text=lbl_abs_paths_txt[lang_idx])
-    lbl_disable_GPU.configure(text=lbl_disable_GPU_txt[lang_idx])
-    lbl_process_img.configure(text=lbl_process_img_txt[lang_idx])
-    lbl_cls_model.configure(text=lbl_cls_model_txt[lang_idx])
+    lbl_exclude_subs.configure(text=t('lbl_exclude_subs'))
+    lbl_use_custom_img_size_for_deploy.configure(text=t('lbl_use_custom_img_size_for_deploy'))
+    lbl_image_size_for_deploy.configure(text=t('lbl_image_size_for_deploy'))
+    update_ent_text(ent_image_size_for_deploy, t('eg') + ": 640")
+    lbl_abs_paths.configure(text=t('lbl_abs_paths'))
+    lbl_disable_GPU.configure(text=t('lbl_disable_GPU'))
+    lbl_process_img.configure(text=t('lbl_process_img'))
+    lbl_cls_model.configure(text=t('lbl_cls_model'))
     update_dpd_options(dpd_cls_model, snd_step, var_cls_model, dpd_options_cls_model, model_cls_animal_options, row_cls_model, lbl_cls_model, from_lang_idx)
-    cls_frame.configure(text=" ↳ " + cls_frame_txt[lang_idx] + " ")
-    lbl_model_info.configure(text = "     " + lbl_model_info_txt[lang_idx])
-    btn_model_info.configure(text=t("show"))
-    lbl_choose_classes.configure(text = "     " + lbl_choose_classes_txt[lang_idx])
-    btn_choose_classes.configure(text = t("select"))
-    lbl_cls_detec_thresh.configure(text="     " + lbl_cls_detec_thresh_txt[lang_idx])
-    lbl_cls_class_thresh.configure(text="     " + lbl_cls_class_thresh_txt[lang_idx])
-    lbl_smooth_cls_animal.configure(text="     " + lbl_smooth_cls_animal_txt[lang_idx])
-    img_frame.configure(text=" ↳ " + img_frame_txt[lang_idx] + " ")
-    lbl_use_checkpnts.configure(text="     " + lbl_use_checkpnts_txt[lang_idx])
-    lbl_checkpoint_freq.configure(text="        ↳ " + lbl_checkpoint_freq_txt[lang_idx])
-    update_ent_text(ent_checkpoint_freq, t("eg") + ": 500")
-    lbl_cont_checkpnt.configure(text="     " + lbl_cont_checkpnt_txt[lang_idx])
+    cls_frame.configure(text=" ↳ " + t('cls_frame') + " ")
+    lbl_model_info.configure(text = "     " + t('lbl_model_info'))
+    btn_model_info.configure(text=t('show'))
+    lbl_choose_classes.configure(text = "     " + t('lbl_choose_classes'))
+    btn_choose_classes.configure(text = t('select'))
+    lbl_cls_detec_thresh.configure(text="     " + t('lbl_cls_detec_thresh'))
+    lbl_cls_class_thresh.configure(text="     " + t('lbl_cls_class_thresh'))
+    lbl_smooth_cls_animal.configure(text="     " + t('lbl_smooth_cls_animal'))
+    img_frame.configure(text=" ↳ " + t('img_frame') + " ")
+    lbl_use_checkpnts.configure(text="     " + t('lbl_use_checkpnts'))
+    lbl_checkpoint_freq.configure(text="        ↳ " + t('lbl_checkpoint_freq'))
+    update_ent_text(ent_checkpoint_freq, t('eg') + ": 500")
+    lbl_cont_checkpnt.configure(text="     " + t('lbl_cont_checkpnt'))
     lbl_process_vid.configure(text=lbl_process_vid_txt[lang_idx])
     vid_frame.configure(text=" ↳ " + vid_frame_txt[lang_idx] + " ")
     lbl_not_all_frames.configure(text="     " + lbl_not_all_frames_txt[lang_idx])
     lbl_nth_frame.configure(text="        ↳ " + lbl_nth_frame_txt[lang_idx])
-    update_ent_text(ent_nth_frame, t("eg") + ": 1")
-    btn_start_deploy.configure(text=btn_start_deploy_txt[lang_idx])
-    trd_step.configure(text=" " + t("trd_step") + " ")
+    update_ent_text(ent_nth_frame, t('eg') + ": 1")
+    btn_start_deploy.configure(text=t('btn_start_deploy'))
+    trd_step.configure(text=" " + t('trd_step') + " ")
     lbl_hitl_main.configure(text=lbl_hitl_main_txt[lang_idx])
     btn_hitl_main.configure(text=["Start", "Iniciar", "Démarrer"][lang_idx])
-    fth_step.configure(text=" " + t("fth_step") + " ")
+    fth_step.configure(text=" " + t('fth_step') + " ")
     lbl_output_dir.configure(text=lbl_output_dir_txt[lang_idx])
-    btn_output_dir.configure(text=t("browse"))
+    btn_output_dir.configure(text=t('browse'))
     lbl_separate_files.configure(text=lbl_separate_files_txt[lang_idx])
     sep_frame.configure(text=" ↳ " + sep_frame_txt[lang_idx] + " ")
     lbl_file_placement.configure(text="     " + lbl_file_placement_txt[lang_idx])
@@ -8160,7 +8160,7 @@ def set_language():
     keep_series_frame.configure(text=" ↳ " + keep_series_frame_txt[lang_idx] + " ")
     lbl_keep_series_seconds.configure(text="     " + lbl_keep_series_seconds_txt[lang_idx])
     lbl_keep_series_species.configure(text="     " + lbl_keep_series_species_txt[lang_idx])
-    btn_keep_series_species.configure(text=t("select"))
+    btn_keep_series_species.configure(text=t('select'))
     try:
         if len(global_vars.get('var_keep_series_species', []) or []) == 0:
             dsp_keep_series_species.configure(text=["Any", "Cualquiera", "Toutes"][lang_idx])
@@ -8193,22 +8193,22 @@ def set_language():
     write_about_tab()
 
     # top buttons
-    adv_btn_switch_mode.configure(text = t("adv_btn_switch_mode"))
+    adv_btn_switch_mode.configure(text = t('adv_btn_switch_mode'))
     sim_btn_switch_mode.configure(text = sim_btn_switch_mode_txt[lang_idx])
     sim_btn_switch_lang.configure(text = languages_available[next_lang_idx])
     adv_btn_switch_lang.configure(text = languages_available[next_lang_idx])
-    adv_btn_sponsor.configure(text = t("adv_btn_sponsor"))
-    sim_btn_sponsor.configure(text = t("adv_btn_sponsor"))
-    adv_btn_reset_values.configure(text = t("adv_btn_reset_values"))
-    sim_btn_reset_values.configure(text = t("adv_btn_reset_values"))
+    adv_btn_sponsor.configure(text = t('adv_btn_sponsor'))
+    sim_btn_sponsor.configure(text = t('adv_btn_sponsor'))
+    adv_btn_reset_values.configure(text = t('adv_btn_reset_values'))
+    sim_btn_reset_values.configure(text = t('adv_btn_reset_values'))
 
     # by addax text
-    adv_abo_lbl.configure(text=t("adv_abo_lbl"))
-    sim_abo_lbl.configure(text=t("adv_abo_lbl"))
+    adv_abo_lbl.configure(text=t('adv_abo_lbl'))
+    sim_abo_lbl.configure(text=t('adv_abo_lbl'))
 
     # simple mode
     sim_dir_lbl.configure(text = sim_dir_lbl_txt[lang_idx])
-    sim_dir_btn.configure(text = t("browse"))
+    sim_dir_btn.configure(text = t('browse'))
     sim_dir_pth.configure(text = sim_dir_pth_txt[lang_idx])
     sim_mdl_lbl.configure(text = sim_mdl_lbl_txt[lang_idx])
     update_sim_mdl_dpd()
@@ -8274,7 +8274,7 @@ def invalid_value_warning(str, numeric = True):
               f"Vous avez soit saisi un valeur invalide pour {str}, ou aucune valeur du tout."][lang_idx] 
     if numeric:
         string += [" You can only enter numeric characters.", " Solo puede ingresar caracteres numéricos.", "Vous pouvez uniquement saisir des caractères numériques."][lang_idx]
-    mb.showerror(t("invalid_value"), string)
+    mb.showerror(t('invalid_value'), string)
 
 # disable widgets based on row and col indeces
 def disable_widgets_based_on_location(master, rows, cols):
@@ -8363,7 +8363,7 @@ shown_abs_paths_warning = True
 def abs_paths_warning():
     global shown_abs_paths_warning
     if var_abs_paths.get() and shown_abs_paths_warning:
-        mb.showinfo(t("warning"), ["It is not recommended to use absolute paths in the output file. Third party software (such "
+        mb.showinfo(t('warning'), ["It is not recommended to use absolute paths in the output file. Third party software (such "
                     "as Timelapse) will not be able to read the json file if the paths are absolute. Only enable"
                     " this option if you know what you are doing.",
                     "No se recomienda utilizar rutas absolutas en el archivo de salida. Software de terceros (como Timelapse"
@@ -8421,7 +8421,7 @@ def toggle_keep_series_frame():
 
 # toggle export subframe
 def toggle_exp_frame():
-    if var_exp.get() and lbl_exp.cget("state") == "normal":
+    if var_exp.get() and lbl_exp.cget('state') == "normal":
         exp_frame.grid(row=exp_frame_row, column=0, columnspan=2, sticky = 'ew')
         enable_widgets(exp_frame)
         exp_frame.configure(fg='black')
@@ -8433,7 +8433,7 @@ def toggle_exp_frame():
 
 # toggle visualization subframe
 def toggle_vis_frame():
-    if var_vis_files.get() and lbl_vis_files.cget("state") == "normal":
+    if var_vis_files.get() and lbl_vis_files.cget('state') == "normal":
         vis_frame.grid(row=vis_frame_row, column=0, columnspan=2, sticky = 'ew')
         enable_widgets(vis_frame)
         vis_frame.configure(fg='black')
@@ -8447,7 +8447,7 @@ def toggle_vis_frame():
 def on_chb_smooth_cls_animal_change():
     write_model_vars(new_values={"var_smooth_cls_animal": var_smooth_cls_animal.get()})
     if var_smooth_cls_animal.get():
-        mb.showinfo(t("information"), ["This feature averages confidence scores to avoid noise. Note that it assumes a single species per "
+        mb.showinfo(t('information'), ["This feature averages confidence scores to avoid noise. Note that it assumes a single species per "
                                                "sequence or video and should therefore only be used if multi-species sequences are rare. It does not"
                                                " affect detections of vehicles or people alongside animals.", "Esta función promedia las puntuaciones "
                                                "de confianza para evitar el ruido. Tenga en cuenta que asume una única especie por secuencia o vídeo "
@@ -8467,7 +8467,7 @@ def toggle_cls_frame():
     snd_step_enabled = False if snd_step.cget('fg') == 'grey80' else True
 
     # only enable cls_frame if snd_step is also enabled and user didn't choose None
-    if var_cls_model.get() != t("none") and snd_step_enabled:
+    if var_cls_model.get() != t('none') and snd_step_enabled:
         cls_frame.grid(row=cls_frame_row, column=0, columnspan=2, sticky = 'ew')
         enable_widgets(cls_frame)
         toggle_checkpoint_freq()
@@ -8510,11 +8510,11 @@ def complete_frame(frame):
     global check_mark_two_rows
 
     # check which frame 
-    any_step = frame.cget('text').startswith(f' {t("step")}')
-    fst_step = frame.cget('text').startswith(f' {t("step")} 1')
-    snd_step = frame.cget('text').startswith(f' {t("step")} 2')
-    trd_step = frame.cget('text').startswith(f' {t("step")} 3')
-    fth_step = frame.cget('text').startswith(f' {t("step")} 4')
+    any_step = frame.cget('text').startswith(' ' + t('step'))
+    fst_step = frame.cget('text').startswith(' ' + t('step') + ' 1')
+    snd_step = frame.cget('text').startswith(' ' + t('step') + ' 2')
+    trd_step = frame.cget('text').startswith(' ' + t('step') + ' 3')
+    fth_step = frame.cget('text').startswith(' ' + t('step') + ' 4')
 
     # adjust frames
     frame.configure(relief = 'groove')
@@ -8534,7 +8534,7 @@ def complete_frame(frame):
             btn_hitl_main.configure(text=["New session?", "¿Nueva sesión?", "Nouvelle session?"][lang_idx], state = NORMAL)
             btn_hitl_main.lift()
         if fst_step:
-            btn_choose_folder.configure(text=t("change_folder") + "?", state = NORMAL)
+            btn_choose_folder.configure(text=t('change_folder') + "?", state = NORMAL)
             btn_choose_folder.lift()
             dsp_choose_folder.lift()
     
@@ -8550,9 +8550,9 @@ def complete_frame(frame):
         lbl_check_mark.grid(row=0, column=0, rowspan=15, columnspan=2, sticky='nesw')
 
         # add buttons
-        btn_view_results = Button(master=frame, text=t("view_results"), width=1, command=lambda: view_results(frame))
+        btn_view_results = Button(master=frame, text=t('view_results'), width=1, command=lambda: view_results(frame))
         btn_view_results.grid(row=0, column=1, sticky='nesw', padx = 5)
-        btn_uncomplete = Button(master=frame, text=t("again"), width=1, command=lambda: enable_frame(frame))
+        btn_uncomplete = Button(master=frame, text=t('again'), width=1, command=lambda: enable_frame(frame))
         btn_uncomplete.grid(row=1, column=1, sticky='nesw', padx = 5)
 
 # enable a frame
@@ -8561,11 +8561,11 @@ def enable_frame(frame):
     enable_widgets(frame)
 
     # check which frame 
-    any_step = frame.cget('text').startswith(f' {t("step")}')
-    fst_step = frame.cget('text').startswith(f' {t("step")} 1')
-    snd_step = frame.cget('text').startswith(f' {t("step")} 2')
-    trd_step = frame.cget('text').startswith(f' {t("step")} 3')
-    fth_step = frame.cget('text').startswith(f' {t("step")} 4')
+    any_step = frame.cget('text').startswith(' ' + t('step'))
+    fst_step = frame.cget('text').startswith(' ' + t('step') + ' 1')
+    snd_step = frame.cget('text').startswith(' ' + t('step') + ' 2')
+    trd_step = frame.cget('text').startswith(' ' + t('step') + ' 3')
+    fth_step = frame.cget('text').startswith(' ' + t('step') + ' 4')
 
     # all frames
     frame.configure(relief = 'solid')
@@ -8591,13 +8591,13 @@ def enable_frame(frame):
 
 # remove checkmarks and complete buttons
 def uncomplete_frame(frame):
-    if not frame.cget('text').startswith(f' {t("step")}'):
+    if not frame.cget('text').startswith(' ' + t('step')):
         # subframes in fth_step only
         frame.configure(fg='black')
     children = frame.winfo_children()
     for child in children:
         if child.winfo_class() == "Button" or child.winfo_class() == "Label":
-            if child.cget('text') == t("again") or child.cget('text') == t("view_results") or child.cget('image') != "":
+            if child.cget('text') == t('again') or child.cget('text') == t('view_results') or child.cget('image') != "":
                 child.grid_remove()
 
 # disable a frame
@@ -8607,7 +8607,7 @@ def disable_frame(frame):
     # all frames
     frame.configure(fg='grey80')
     frame.configure(relief = 'flat')
-    if frame.cget('text').startswith(f' {t("step")} 2'):
+    if frame.cget('text').startswith(' ' + t('step') + ' 2'):
         # snd_step only
         disable_widgets(cls_frame)
         cls_frame.configure(fg='grey80')
@@ -8618,7 +8618,7 @@ def disable_frame(frame):
         disable_widgets(vid_frame)
         vid_frame.configure(fg='grey80')
         vid_frame.configure(relief = 'flat')
-    if frame.cget('text').startswith(f' {t("step")} 4'):
+    if frame.cget('text').startswith(' ' + t('step') + ' 4'):
         # fth_step only
         disable_widgets(sep_frame)
         sep_frame.configure(fg='grey80')
@@ -8760,7 +8760,7 @@ def reset_values():
     var_cont_checkpnt.set(False)
     var_process_vid.set(False)
     var_not_all_frames.set(True)
-    var_nth_frame.set("1")
+    var_nth_frame.set('1')
     var_separate_files.set(False)
     var_keep_series.set(False)
     var_keep_series_seconds.set(5)
@@ -8975,17 +8975,17 @@ check_mark_two_rows = PIL_checkmark.resize((45, 45), Image.Resampling.LANCZOS)
 check_mark_two_rows = ImageTk.PhotoImage(check_mark_two_rows)
 
 # grey top buttons
-adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = t("adv_btn_switch_mode"), command = switch_mode)
+adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_switch_mode'), command = switch_mode)
 adv_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
 adv_btn_switch_lang = GreyTopButton(master = advanc_main_frame, text = "Switch language", command = set_language)
 adv_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-adv_btn_sponsor = GreyTopButton(master = advanc_main_frame, text = t("adv_btn_sponsor"), command = sponsor_project)
+adv_btn_sponsor = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project)
 adv_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-adv_btn_reset_values = GreyTopButton(master = advanc_main_frame, text = t("adv_btn_reset_values"), command = reset_values)
+adv_btn_reset_values = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_reset_values'), command = reset_values)
 adv_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
 
 # about
-adv_abo_lbl = tk.Label(advanc_main_frame, text=t("adv_abo_lbl"), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
+adv_abo_lbl = tk.Label(advanc_main_frame, text=t('adv_abo_lbl'), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
 adv_abo_lbl.grid(row=6, column=0, columnspan = 2, sticky="")
 adv_abo_lbl_link = tk.Label(advanc_main_frame, text="addaxdatascience.com", cursor="hand2", font = Font(size = ADDAX_TXT_SIZE, underline=1), fg=green_primary, bg =yellow_primary)
 adv_abo_lbl_link.grid(row=7, column=0, columnspan = 2, sticky="", pady=(0, PADY))
@@ -8995,7 +8995,7 @@ adv_abo_lbl_link.bind("<Button-1>", lambda e: callback("http://addaxdatascience.
 deploy_tab = ttk.Frame(tabControl)
 deploy_tab.columnconfigure(0, weight=1, minsize=frame_width)
 deploy_tab.columnconfigure(1, weight=1, minsize=frame_width)
-tabControl.add(deploy_tab, text=t("deploy_tab"))
+tabControl.add(deploy_tab, text=t('deploy_tab'))
 deploy_canvas = tk.Canvas(deploy_tab)
 deploy_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 deploy_y_scrollbar = ttk.Scrollbar(deploy_tab, orient=tk.VERTICAL, command=deploy_canvas.yview)
@@ -9007,11 +9007,11 @@ deploy_scrollable_frame.bind("<Configure>", lambda event: deploy_canvas.configur
 
 # help tab
 help_tab = ttk.Frame(tabControl)
-tabControl.add(help_tab, text=t("help_tab"))
+tabControl.add(help_tab, text=t('help_tab'))
 
 # about tab
 about_tab = ttk.Frame(tabControl)
-tabControl.add(about_tab, text=t("about_tab"))
+tabControl.add(about_tab, text=t('about_tab'))
 
 # grid
 tabControl.grid(column=0, row=2, sticky="ns", pady = 0)
@@ -9019,7 +9019,7 @@ tabControl.grid(column=0, row=2, sticky="ns", pady = 0)
 #### deploy tab
 ### first step
 row_fst_step = 1
-fst_step = LabelFrame(deploy_scrollable_frame, text=" " + t("fst_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
+fst_step = LabelFrame(deploy_scrollable_frame, text=" " + t('fst_step') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 fst_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
 fst_step.grid(column=0, row=row_fst_step, columnspan=1, sticky='ew')
 fst_step.columnconfigure(0, weight=1, minsize=label_width)
@@ -9027,18 +9027,18 @@ fst_step.columnconfigure(1, weight=1, minsize=widget_width)
 
 # choose folder
 row_choose_folder = 0
-lbl_choose_folder = Label(master=fst_step, text=t("lbl_choose_folder"), width=1, anchor="w")
+lbl_choose_folder = Label(master=fst_step, text=t('lbl_choose_folder'), width=1, anchor="w")
 lbl_choose_folder.grid(row=row_choose_folder, sticky='nesw', pady=2)
 var_choose_folder = StringVar()
 var_choose_folder.set("")
 var_choose_folder_short = StringVar()
 dsp_choose_folder = Label(master=fst_step, textvariable=var_choose_folder_short, fg='grey', padx = 5)
-btn_choose_folder = Button(master=fst_step, text=t("browse"), width=1, command=lambda: [browse_dir(var_choose_folder, var_choose_folder_short, dsp_choose_folder, 25, row_choose_folder, 0, 'w', source_dir = True), update_frame_states()])
+btn_choose_folder = Button(master=fst_step, text=t('browse'), width=1, command=lambda: [browse_dir(var_choose_folder, var_choose_folder_short, dsp_choose_folder, 25, row_choose_folder, 0, 'w', source_dir = True), update_frame_states()])
 btn_choose_folder.grid(row=row_choose_folder, column=1, sticky='nesw', padx=5)
 
 ### second step
 row_snd_step = 2
-snd_step = LabelFrame(deploy_scrollable_frame, text=" " + t("snd_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
+snd_step = LabelFrame(deploy_scrollable_frame, text=" " + t('snd_step') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 snd_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
 snd_step.grid(column=0, row=row_snd_step, sticky='nesw')
 snd_step.columnconfigure(0, weight=1, minsize=label_width)
@@ -9049,9 +9049,8 @@ det_models = fetch_known_models(DET_DIR)
 dpd_options_model = [det_models + ["Custom model"], det_models + ["Otro modelo"], det_models + ["Modèle personnalisé"]]
 
 # choose detector
-lbl_model_txt = ['Model to detect animals, vehicles, and persons', 'Modelo de detección de animales, vehículos y personas', 'Modèle de détection d\'animaux, véhicules et personnes']
 row_model = 0
-lbl_model = Label(master=snd_step, text=lbl_model_txt[lang_idx], width=1, anchor="w")
+lbl_model = Label(master=snd_step, text=t('lbl_model'), width=1, anchor="w")
 lbl_model.grid(row=row_model, sticky='nesw', pady=2)
 var_det_model = StringVar(snd_step)
 var_det_model.set(dpd_options_model[lang_idx][global_vars["var_det_model_idx"]]) # take idx instead of string
@@ -9071,9 +9070,8 @@ cls_models = fetch_known_models(CLS_DIR)
 dpd_options_cls_model = [["None"] + cls_models, ["Ninguno"] + cls_models, ["Aucun"] + cls_models]
 
 # use classifier
-lbl_cls_model_txt = ["Model to identify animals", "Modelo para identificar mejor a los animales", "Modèle pour l'identification d'animaux"]
 row_cls_model = 1
-lbl_cls_model = Label(snd_step, text=lbl_cls_model_txt[lang_idx], width=1, anchor="w")
+lbl_cls_model = Label(snd_step, text=t('lbl_cls_model'), width=1, anchor="w")
 lbl_cls_model.grid(row=row_cls_model, sticky='nesw', pady=2)
 var_cls_model = StringVar(snd_step)
 var_cls_model.set(dpd_options_cls_model[lang_idx][global_vars["var_cls_model_idx"]]) # take idx instead of string
@@ -9085,9 +9083,8 @@ dpd_cls_model.grid(row=row_cls_model, column=1, sticky='nesw', padx=5, pady=2)
 model_vars = load_model_vars()
 
 ## classification option frame (hidden by default)
-cls_frame_txt = ["Identification options", "Opciones de identificación", "Options d'identification"]
 cls_frame_row = 2
-cls_frame = LabelFrame(snd_step, text=" ↳ " + cls_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="black")
+cls_frame = LabelFrame(snd_step, text=" ↳ " + t('cls_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="black")
 cls_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 cls_frame.grid(row=cls_frame_row, column=0, columnspan=2, sticky = 'ew')
 cls_frame.columnconfigure(0, weight=1, minsize= label_width - subframe_correction_factor)
@@ -9096,21 +9093,19 @@ cls_frame.grid_forget()
 
 # show model info
 row_btn_model_info = 1
-lbl_model_info_txt = ["Show model information", "Mostrar información del modelo (inglés)", "Afficher les informations du modèle"]
 row_model_info = 0
-lbl_model_info = Label(master=cls_frame, text="     " + lbl_model_info_txt[lang_idx], width=1, anchor="w")
+lbl_model_info = Label(master=cls_frame, text="     " + t('lbl_model_info'), width=1, anchor="w")
 lbl_model_info.grid(row=row_model_info, sticky='nesw', pady=2)
-btn_model_info = Button(master=cls_frame, text=t("show"), width=1, command=show_model_info)
+btn_model_info = Button(master=cls_frame, text=t('show'), width=1, command=show_model_info)
 btn_model_info.grid(row=row_model_info, column=1, sticky='nesw', padx=5)
 
 # choose classes
-lbl_choose_classes_txt = ["Select species", "Seleccionar especies", "Sélectionner les espèces à détecter"]
 row_choose_classes = 1
-lbl_choose_classes = Label(master=cls_frame, text="     " + lbl_choose_classes_txt[lang_idx], width=1, anchor="w")
+lbl_choose_classes = Label(master=cls_frame, text="     " + t('lbl_choose_classes'), width=1, anchor="w")
 lbl_choose_classes.grid(row=row_choose_classes, sticky='nesw', pady=2)
-btn_choose_classes = Button(master=cls_frame, text=t("select"), width=1, command=open_species_selection)
+btn_choose_classes = Button(master=cls_frame, text=t('select'), width=1, command=open_species_selection)
 btn_choose_classes.grid(row=row_choose_classes, column=1, sticky='nesw', padx=5)
-if var_cls_model.get() != t("none"):
+if var_cls_model.get() != t('none'):
     dsp_choose_classes = Label(cls_frame, text = f"{len(model_vars.get('selected_classes', []))} of {len(model_vars.get('all_classes', []))}")
 else:
     dsp_choose_classes = Label(cls_frame, text= "")
@@ -9118,9 +9113,8 @@ dsp_choose_classes.grid(row=row_choose_classes, column=0, sticky='e', padx=0)
 dsp_choose_classes.configure(fg=green_primary)
 
 # threshold to classify detections
-lbl_cls_detec_thresh_txt = ["Detection confidence threshold", "Umbral de confianza de detección", "Seuil de confiance des détections"]
 row_cls_detec_thresh = 2
-lbl_cls_detec_thresh = Label(cls_frame, text="     " + lbl_cls_detec_thresh_txt[lang_idx], width=1, anchor="w")
+lbl_cls_detec_thresh = Label(cls_frame, text="     " + t('lbl_cls_detec_thresh'), width=1, anchor="w")
 lbl_cls_detec_thresh.grid(row=row_cls_detec_thresh, sticky='nesw', pady=2)
 var_cls_detec_thresh = DoubleVar()
 
@@ -9134,9 +9128,8 @@ dsp_cls_detec_thresh.grid(row=row_cls_detec_thresh, column=0, sticky='e', padx=0
 dsp_cls_detec_thresh.configure(fg=green_primary)
 
 # threshold accept identifications
-lbl_cls_class_thresh_txt = ["Classification confidence threshold", "Umbral de confianza de la clasificación", "Seuil de confiance des classifications"]
 row_cls_class_thresh = 3
-lbl_cls_class_thresh = Label(cls_frame, text="     " + lbl_cls_class_thresh_txt[lang_idx], width=1, anchor="w")
+lbl_cls_class_thresh = Label(cls_frame, text="     " + t('lbl_cls_class_thresh'), width=1, anchor="w")
 lbl_cls_class_thresh.grid(row=row_cls_class_thresh, sticky='nesw', pady=2)
 var_cls_class_thresh = DoubleVar()
 var_cls_class_thresh.set(model_vars.get('var_cls_class_thresh', 0.5))
@@ -9149,9 +9142,8 @@ dsp_cls_class_thresh.grid(row=row_cls_class_thresh, column=0, sticky='e', padx=0
 dsp_cls_class_thresh.configure(fg=green_primary)
 
 # Smoothen results
-lbl_smooth_cls_animal_txt = ["Smooth confidence scores per sequence", "Suavizar puntuaciones por secuencia", "Lissage de scores de confiance par séquence"]
 row_smooth_cls_animal = 4
-lbl_smooth_cls_animal = Label(cls_frame, text="     " + lbl_smooth_cls_animal_txt[lang_idx], width=1, anchor="w")
+lbl_smooth_cls_animal = Label(cls_frame, text="     " + t('lbl_smooth_cls_animal'), width=1, anchor="w")
 lbl_smooth_cls_animal.grid(row=row_smooth_cls_animal, sticky='nesw', pady=2)
 var_smooth_cls_animal = BooleanVar()
 var_smooth_cls_animal.set(model_vars.get('var_smooth_cls_animal', False))
@@ -9159,19 +9151,17 @@ chb_smooth_cls_animal = Checkbutton(cls_frame, variable=var_smooth_cls_animal, a
 chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', padx=5)
 
 # taxonomic fallback checkbox (only visible if taxon mapping is present)
-lbl_tax_fallback_txt = ["Enable taxonomic confidence aggregation", "Activar agregación de confianza taxonómica", "Activer l'aggrégation taxonomique"]
 row_tax_fallback = 5
-lbl_tax_fallback = Label(cls_frame, text="     " + lbl_tax_fallback_txt[lang_idx], width=1, anchor="w")
+lbl_tax_fallback = Label(cls_frame, text="     " + t('lbl_tax_fallback'), width=1, anchor="w")
 var_tax_fallback = BooleanVar()
 var_tax_fallback.set(model_vars.get('var_tax_fallback', False))
 chb_tax_fallback = Checkbutton(cls_frame, variable=var_tax_fallback, anchor="w", command = toggle_tax_levels)
 
 # taxonomic fallbaock dropdown (only visible if taxon mapping is present)
-lbl_tax_levels_txt = ["Prediction level", "Nivel de predicción", "Niveau de prédiction"]
 row_tax_levels = 6
-lbl_tax_levels = Label(cls_frame, text="     " + lbl_tax_levels_txt[lang_idx], width=1, anchor="w")
+lbl_tax_levels = Label(cls_frame, text="     " + t('lbl_tax_levels'), width=1, anchor="w")
 var_tax_levels = StringVar(cls_frame)
-var_tax_levels.set("dummy") # set dummy value to avoid error
+var_tax_levels.set('dummy') # set dummy value to avoid error
 dpd_tax_levels = OptionMenu(cls_frame, var_tax_levels, ["dummy"])
 dpd_tax_levels.configure(width=1, state=DISABLED)
 
@@ -9183,9 +9173,8 @@ if taxon_mapping_csv_present():
     toggle_tax_levels()
 
 # choose location for species net
-lbl_sppnet_location_txt = ["Location", "Ubicación", "Emplacement"]
 row_sppnet_location = 1
-lbl_sppnet_location = Label(master=cls_frame, text="     " + lbl_sppnet_location_txt[lang_idx], width=1, anchor="w")
+lbl_sppnet_location = Label(master=cls_frame, text="     " + t('lbl_sppnet_location'), width=1, anchor="w")
 lbl_sppnet_location.grid(row=row_sppnet_location, sticky='nesw', pady=2)
 var_sppnet_location = StringVar(cls_frame)
 var_sppnet_location.set(dpd_options_sppnet_location[lang_idx][global_vars["var_sppnet_location_idx"]]) # take idx instead of string
@@ -9194,9 +9183,8 @@ dpd_sppnet_location.configure(width=1, state=DISABLED)
 # dpd_sppnet_location.grid(row=row_sppnet_location, column=1, sticky='nesw', padx=5, pady=2) # dont grid this by default
 
 # include subdirectories
-lbl_exclude_subs_txt = ["Don't process subdirectories", "No procesar subcarpetas", "Ne pas traiter les sous-dossiers"]
 row_exclude_subs = 3
-lbl_exclude_subs = Label(snd_step, text=lbl_exclude_subs_txt[lang_idx], width=1, anchor="w")
+lbl_exclude_subs = Label(snd_step, text=t('lbl_exclude_subs'), width=1, anchor="w")
 lbl_exclude_subs.grid(row=row_exclude_subs, sticky='nesw', pady=2)
 var_exclude_subs = BooleanVar()
 var_exclude_subs.set(global_vars['var_exclude_subs'])
@@ -9204,9 +9192,8 @@ chb_exclude_subs = Checkbutton(snd_step, variable=var_exclude_subs, anchor="w")
 chb_exclude_subs.grid(row=row_exclude_subs, column=1, sticky='nesw', padx=5)
 
 # use custom image size
-lbl_use_custom_img_size_for_deploy_txt = ["Use custom image size", "Usar tamaño de imagen personalizado", "Utiliser une dimension d'image personnalisée"]
 row_use_custom_img_size_for_deploy = 4
-lbl_use_custom_img_size_for_deploy = Label(snd_step, text=lbl_use_custom_img_size_for_deploy_txt[lang_idx], width=1, anchor="w")
+lbl_use_custom_img_size_for_deploy = Label(snd_step, text=t('lbl_use_custom_img_size_for_deploy'), width=1, anchor="w")
 lbl_use_custom_img_size_for_deploy.grid(row=row_use_custom_img_size_for_deploy, sticky='nesw', pady=2)
 var_use_custom_img_size_for_deploy = BooleanVar()
 var_use_custom_img_size_for_deploy.set(global_vars['var_use_custom_img_size_for_deploy'])
@@ -9214,23 +9201,21 @@ chb_use_custom_img_size_for_deploy = Checkbutton(snd_step, variable=var_use_cust
 chb_use_custom_img_size_for_deploy.grid(row=row_use_custom_img_size_for_deploy, column=1, sticky='nesw', padx=5)
 
 # specify custom image size (not grid by default)
-lbl_image_size_for_deploy_txt = ["Image size", "Tamaño imagen", "Dimension d'image"]
 row_image_size_for_deploy = 5
-lbl_image_size_for_deploy = Label(snd_step, text=" ↳ " + lbl_image_size_for_deploy_txt[lang_idx], width=1, anchor="w")
+lbl_image_size_for_deploy = Label(snd_step, text=" ↳ " + t('lbl_image_size_for_deploy'), width=1, anchor="w")
 var_image_size_for_deploy = StringVar()
 var_image_size_for_deploy.set(global_vars['var_image_size_for_deploy'])
 ent_image_size_for_deploy = tk.Entry(snd_step, textvariable=var_image_size_for_deploy, fg='grey', state=NORMAL, width=1)
 if var_image_size_for_deploy.get() == "":
-    ent_image_size_for_deploy.insert(0, t("eg") + ": 640")
+    ent_image_size_for_deploy.insert(0, t('eg') + ": 640")
 else:
     ent_image_size_for_deploy.configure(fg='black')
 ent_image_size_for_deploy.bind("<FocusIn>", image_size_for_deploy_focus_in)
 ent_image_size_for_deploy.configure(state=DISABLED)
 
 # use absolute paths
-lbl_abs_paths_txt = ["Use absolute paths in output file", "Usar rutas absolutas en archivo de salida", "Utiliser chemins absolus dans le fichier de sortie"]
 row_abs_path = 6
-lbl_abs_paths = Label(snd_step, text=lbl_abs_paths_txt[lang_idx], width=1, anchor="w")
+lbl_abs_paths = Label(snd_step, text=t('lbl_abs_paths'), width=1, anchor="w")
 lbl_abs_paths.grid(row=row_abs_path, sticky='nesw', pady=2)
 var_abs_paths = BooleanVar()
 var_abs_paths.set(global_vars['var_abs_paths'])
@@ -9238,9 +9223,8 @@ chb_abs_paths = Checkbutton(snd_step, variable=var_abs_paths, command=abs_paths_
 chb_abs_paths.grid(row=row_abs_path, column=1, sticky='nesw', padx=5)
 
 # use absolute paths
-lbl_disable_GPU_txt = ["Disable GPU processing", "Desactivar el procesamiento en la GPU", "Désactiver le traitement par GPU"]
 row_disable_GPU = 7
-lbl_disable_GPU = Label(snd_step, text=lbl_disable_GPU_txt[lang_idx], width=1, anchor="w")
+lbl_disable_GPU = Label(snd_step, text=t('lbl_disable_GPU'), width=1, anchor="w")
 lbl_disable_GPU.grid(row=row_disable_GPU, sticky='nesw', pady=2)
 var_disable_GPU = BooleanVar()
 var_disable_GPU.set(global_vars['var_disable_GPU'])
@@ -9248,9 +9232,8 @@ chb_disable_GPU = Checkbutton(snd_step, variable=var_disable_GPU, anchor="w")
 chb_disable_GPU.grid(row=row_disable_GPU, column=1, sticky='nesw', padx=5)
 
 # process images
-lbl_process_img_txt = ["Process images, if present", "Si está presente, procesa todas las imágenes", "Traiter les images, si présentes"]
 row_process_img = 8
-lbl_process_img = Label(snd_step, text=lbl_process_img_txt[lang_idx], width=1, anchor="w")
+lbl_process_img = Label(snd_step, text=t('lbl_process_img'), width=1, anchor="w")
 lbl_process_img.grid(row=row_process_img, sticky='nesw', pady=2)
 var_process_img = BooleanVar()
 var_process_img.set(global_vars['var_process_img'])
@@ -9258,9 +9241,8 @@ chb_process_img = Checkbutton(snd_step, variable=var_process_img, command=toggle
 chb_process_img.grid(row=row_process_img, column=1, sticky='nesw', padx=5)
 
 ## image option frame (hidden by default)
-img_frame_txt = ["Image options", "Opciones de imagen", "Options d'images"]
 img_frame_row = 9
-img_frame = LabelFrame(snd_step, text=" ↳ " + img_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+img_frame = LabelFrame(snd_step, text=" ↳ " + t('img_frame') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 img_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 img_frame.grid(row=img_frame_row, column=0, columnspan=2, sticky = 'ew')
 img_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
@@ -9268,9 +9250,8 @@ img_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correctio
 img_frame.grid_forget()
 
 # use checkpoints
-lbl_use_checkpnts_txt = ["Use checkpoints while running", "Usar puntos de control mientras se ejecuta", "Utiliser des points de contrôle pendant l'exécution"]
 row_use_checkpnts = 0
-lbl_use_checkpnts = Label(img_frame, text="     " + lbl_use_checkpnts_txt[lang_idx], pady=2, state=DISABLED, width=1, anchor="w")
+lbl_use_checkpnts = Label(img_frame, text="     " + t('lbl_use_checkpnts'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_use_checkpnts.grid(row=row_use_checkpnts, sticky='nesw')
 var_use_checkpnts = BooleanVar()
 var_use_checkpnts.set(global_vars['var_use_checkpnts'])
@@ -9278,25 +9259,23 @@ chb_use_checkpnts = Checkbutton(img_frame, variable=var_use_checkpnts, command=t
 chb_use_checkpnts.grid(row=row_use_checkpnts, column=1, sticky='nesw', padx=5)
 
 # checkpoint frequency
-lbl_checkpoint_freq_txt = ["Checkpoint frequency", "Frecuencia puntos de control", "Fréquence des points de contrôle"]
 row_checkpoint_freq = 1
-lbl_checkpoint_freq = tk.Label(img_frame, text="        ↳ " + lbl_checkpoint_freq_txt[lang_idx], pady=2, state=DISABLED, width=1, anchor="w")
+lbl_checkpoint_freq = tk.Label(img_frame, text="        ↳ " + t('lbl_checkpoint_freq'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_checkpoint_freq.grid(row=row_checkpoint_freq, sticky='nesw')
 var_checkpoint_freq = StringVar()
 var_checkpoint_freq.set(global_vars['var_checkpoint_freq'])
 ent_checkpoint_freq = tk.Entry(img_frame, textvariable=var_checkpoint_freq, fg='grey', state=NORMAL, width=1)
 ent_checkpoint_freq.grid(row=row_checkpoint_freq, column=1, sticky='nesw', padx=5)
 if var_checkpoint_freq.get() == "":
-    ent_checkpoint_freq.insert(0, t("eg") + ": 10000")
+    ent_checkpoint_freq.insert(0, t('eg') + ": 10000")
 else:
     ent_checkpoint_freq.configure(fg='black')
 ent_checkpoint_freq.bind("<FocusIn>", checkpoint_freq_focus_in)
 ent_checkpoint_freq.configure(state=DISABLED)
 
 # continue from checkpoint file
-lbl_cont_checkpnt_txt = ["Continue from last checkpoint file", "Continuar desde el último punto de control", "Poursuivre à partir du dernier point de contrôle"]
 row_cont_checkpnt = 2
-lbl_cont_checkpnt = Label(img_frame, text="     " + lbl_cont_checkpnt_txt[lang_idx], pady=2, state=DISABLED, width=1, anchor="w")
+lbl_cont_checkpnt = Label(img_frame, text="     " + t('lbl_cont_checkpnt'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_cont_checkpnt.grid(row=row_cont_checkpnt, sticky='nesw')
 var_cont_checkpnt = BooleanVar()
 var_cont_checkpnt.set(global_vars['var_cont_checkpnt'])
@@ -9343,7 +9322,7 @@ var_nth_frame.set(global_vars['var_nth_frame'])
 ent_nth_frame = tk.Entry(vid_frame, textvariable=var_nth_frame, fg='grey' if var_nth_frame.get().isdecimal() else 'black', state=NORMAL, width=1)
 ent_nth_frame.grid(row=row_nth_frame, column=1, sticky='nesw', padx=5)
 if var_nth_frame.get() == "":
-    ent_nth_frame.insert(0, t("eg") + ": 1")
+    ent_nth_frame.insert(0, t('eg') + ": 1")
     ent_nth_frame.configure(fg='grey')
 else:
     ent_nth_frame.configure(fg='black')
@@ -9351,14 +9330,13 @@ ent_nth_frame.bind("<FocusIn>", nth_frame_focus_in)
 ent_nth_frame.configure(state=DISABLED)
 
 # button start deploy
-btn_start_deploy_txt = ["Start processing", "Empezar a procesar", "Démarrer le traitement"]
 row_btn_start_deploy = 12
-btn_start_deploy = Button(snd_step, text=btn_start_deploy_txt[lang_idx], command=start_deploy)
+btn_start_deploy = Button(snd_step, text=t('btn_start_deploy'), command=start_deploy)
 btn_start_deploy.grid(row=row_btn_start_deploy, column=0, columnspan=2, sticky='ew')
 
 ### human-in-the-loop step
 trd_step_row = 1
-trd_step = LabelFrame(deploy_scrollable_frame, text=" " + t("trd_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
+trd_step = LabelFrame(deploy_scrollable_frame, text=" " + t('trd_step') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 trd_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
 trd_step.grid(column=1, row=trd_step_row, sticky='nesw')
 trd_step.columnconfigure(0, weight=1, minsize=label_width)
@@ -9374,7 +9352,7 @@ btn_hitl_main.grid(row=row_hitl_main, column=1, sticky='nesw', padx=5)
 
 ### fourth step
 fth_step_row = 2
-fth_step = LabelFrame(deploy_scrollable_frame, text=" " + t("fth_step") + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
+fth_step = LabelFrame(deploy_scrollable_frame, text=" " + t('fth_step') + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, fg=green_primary, borderwidth=2)
 fth_step.configure(font=(text_font, first_level_frame_font_size, "bold"))
 fth_step.grid(column=1, row=fth_step_row, sticky='nesw')
 fth_step.columnconfigure(0, weight=1, minsize=label_width)
@@ -9389,7 +9367,7 @@ var_output_dir = StringVar()
 var_output_dir.set("")
 var_output_dir_short = StringVar()
 dsp_output_dir = Label(master=fth_step, textvariable=var_output_dir_short, fg=green_primary)
-btn_output_dir = Button(master=fth_step, text=t("browse"), width=1, command=lambda: browse_dir(var_output_dir, var_output_dir_short, dsp_output_dir, 25, row_output_dir, 0, 'e'))
+btn_output_dir = Button(master=fth_step, text=t('browse'), width=1, command=lambda: browse_dir(var_output_dir, var_output_dir_short, dsp_output_dir, 25, row_output_dir, 0, 'e'))
 btn_output_dir.grid(row=row_output_dir, column=1, sticky='nesw', padx=5)
 
 # separate files
@@ -9482,7 +9460,7 @@ else:
     dsp_keep_series_species.configure(text=str(len(global_vars.get('var_keep_series_species', []))))
 dsp_keep_series_species.grid(row=row_keep_series_species, column=0, sticky='e', padx=0)
 
-btn_keep_series_species = Button(keep_series_frame, text=t("select"), command=open_keep_series_species_selection)
+btn_keep_series_species = Button(keep_series_frame, text=t('select'), command=open_keep_series_species_selection)
 btn_keep_series_species.grid(row=row_keep_series_species, column=1, sticky='w', padx=10)
 
 
@@ -9671,9 +9649,9 @@ def write_help_tab():
     help_text.tag_add('intro', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # first step
-    help_text.insert(END, t("fst_step") + "\n")
+    help_text.insert(END, t('fst_step') + "\n")
     help_text.tag_add('frame', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
-    help_text.insert(END, t("browse") + "\n")
+    help_text.insert(END, t('browse') + "\n")
     help_text.insert(END, ["Here you can browse for a folder which contains images and/or video\'s. The model will be deployed on this directory, as well as the post-processing analyses.\n\n",
                            "Aquí puede buscar una carpeta que contenga imágenes y/o vídeos. El modelo se desplegará en este directorio, así como los análisis de post-procesamiento.\n\n",
                            "Ici vous pouvez spécifier un dossier contenant des images et/ou des vidéos. La détection, l'identifications et les analyses de post-traitement s'effectueront sur le contenu de ce répertoire.\n\n"][lang_idx])
@@ -9681,11 +9659,11 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # second step
-    help_text.insert(END, t("snd_step") + "\n")
+    help_text.insert(END, t('snd_step') + "\n")
     help_text.tag_add('frame', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
 
     # det model
-    help_text.insert(END, f"{lbl_model_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_model')}\n")
     help_text.insert(END, [
         "AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate the animal, whereas the "
         "classification model will identify which species the animal belongs to. Here, you can select the detection model that you want to use. If the dropdown "
@@ -9722,7 +9700,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
 
     # cls model
-    help_text.insert(END, f"{lbl_cls_model_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_cls_model')}\n")
     help_text.insert(END, ["AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate the animal, whereas the "
                            "classification model will identify which species the animal belongs to. Here, you can select the classification model that you want to use. Each "
                            "classification model is developed for a specific area. Explore which model suits your data best, but please note that models developed for other biomes "
@@ -9742,14 +9720,14 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # cls model info
-    help_text.insert(END, f"{lbl_model_info_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_model_info')}\n")
     help_text.insert(END, ["This will open a window with model information.", "Esto abrirá una ventana con información sobre el modelo.", "Ceci ouvrira une fenêtre avec des informations sur le modèle."][lang_idx])
     help_text.insert(END, "\n\n")
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # cls spp selection
-    help_text.insert(END, f"{lbl_choose_classes_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_choose_classes')}\n")
     help_text.insert(END, ["Here, you can select and deselect the animals categories that are present in your project"
                           " area. If the animal category is not selected, it will be excluded from the results. The "
                           "category list will update according to the model selected.", "Aquí puede seleccionar y anular"
@@ -9764,7 +9742,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # threshold to classify detections
-    help_text.insert(END, f"{lbl_cls_detec_thresh_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_cls_detec_thresh')}\n")
     help_text.insert(END, ["AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate "
                            "the animal, whereas the classification model will identify which species the animal belongs to. This confidence threshold defines "
                            "which animal detections will be passed on to the classification model for further identification.", "AddaxAI utiliza una "
@@ -9779,7 +9757,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # threshold to classify detections
-    help_text.insert(END, f"{lbl_cls_class_thresh_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_cls_class_thresh')}\n")
     help_text.insert(END, ["AddaxAI uses a combination of a detection model and a classification model to identify animals. The detection model will locate "
                            "the animal, whereas the classification model will identify which species the animal belongs to. This confidence threshold defines "
                            "which animal identifications will be accepted.", "AddaxAI utiliza una combinación de un modelo de detección y un modelo de "
@@ -9793,7 +9771,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # smooth results
-    help_text.insert(END, f"{lbl_smooth_cls_animal_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_smooth_cls_animal')}\n")
     help_text.insert(END, ["Sequence smoothing averages confidence scores across detections within a sequence to reduce noise. This improves accuracy by "
                            "providing more stable results by combining information over multiple images. Note that it assumes a single species per "
                            "sequence and should therefore only be used if multi-species sequences are rare. It does not affect detections of vehicles or "
@@ -9812,7 +9790,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # fallback to higher taxonomy if uncertain
-    help_text.insert(END, f"{lbl_tax_fallback_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_tax_fallback')}\n")
     help_text.insert(END, [
         "If enabled, the model will automatically fall back to a higher taxonomic level (e.g., genus or family) when its confidence at the species level is low. "
         "This can improve overall prediction accuracy by avoiding uncertain species-level classifications. Note that some categories may not have species-level predictions at all — "
@@ -9835,7 +9813,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end"); line_number += 2
 
     # prediction level
-    help_text.insert(END, f"{lbl_tax_levels_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_tax_levels')}\n")
     help_text.insert(END, [
         "This setting allows you to control the granularity of the model's predictions. By default, the model will automatically choose the most appropriate "
         "taxonomic level (e.g., species, genus, or family) depending on its confidence. You can also choose to force predictions to a specific level, "
@@ -9867,7 +9845,7 @@ def write_help_tab():
 
 
     # exclude subs
-    help_text.insert(END, f"{lbl_exclude_subs_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_exclude_subs')}\n")
     help_text.insert(END, ["By default, AddaxAI will recurse into subdirectories. Select this option if you want to ignore the subdirectories and process only"
                            " the files directly in the chosen folder.\n\n", "Por defecto, AddaxAI buscará en los subdirectorios. Seleccione esta opción si "
                            "desea ignorar los subdirectorios y procesar sólo los archivos directamente en la carpeta elegida.\n\n",
@@ -9877,7 +9855,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # exclude detections
-    help_text.insert(END, f"{lbl_use_custom_img_size_for_deploy_txt[lang_idx]} / {lbl_image_size_for_deploy_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_use_custom_img_size_for_deploy')} / {t('lbl_image_size_for_deploy')}\n")
     help_text.insert(END, ["AddaxAI will resize the images before they get processed. AddaxAI will by default resize the images to 1280 pixels. "
                     "Deploying a model with a lower image size will reduce the processing time, but also the detection accuracy. Best results are obtained if you use the"
                     " same image size as the model was trained on. If you trained a model in AddaxAI using the default image size, you should set this value to 640 for "
@@ -9895,7 +9873,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # use absolute paths
-    help_text.insert(END, f"{lbl_abs_paths_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_abs_paths')}\n")
     help_text.insert(END, ["By default, the paths in the output file are relative (i.e. 'image.jpg') instead of absolute (i.e. '/path/to/some/folder/image.jpg'). This "
                     "option will make sure the output file contains absolute paths, but it is not recommended. Third party software (such as ",
                     "Por defecto, las rutas en el archivo de salida son relativas (es decir, 'imagen.jpg') en lugar de absolutas (es decir, '/ruta/a/alguna/carpeta/"
@@ -9917,7 +9895,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # use checkpoints
-    help_text.insert(END, f"{lbl_use_checkpnts_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_use_checkpnts')}\n")
     help_text.insert(END, ["This is a functionality to save results to checkpoints intermittently, in case a technical hiccup arises. That way, you won't have to restart"
                     " the entire process again when the process is interrupted.\n\n",
                     "Se trata de una funcionalidad para guardar los resultados en puntos de control de forma intermitente, en caso de que surja un contratiempo técnico. "
@@ -9928,7 +9906,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # checkpoint frequency
-    help_text.insert(END, f"{lbl_checkpoint_freq_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_checkpoint_freq')}\n")
     help_text.insert(END, ["Fill in how often you want to save the results to checkpoints. The number indicates the number of images after which checkpoints will be saved."
                     " The entry must contain only numeric characters.\n\n",
                     "Introduzca la frecuencia con la que desea guardar los resultados en los puntos de control. El número indica el número de imágenes tras las cuales se "
@@ -9939,7 +9917,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # continue from checkpoint
-    help_text.insert(END, f"{lbl_cont_checkpnt_txt[lang_idx]}\n")
+    help_text.insert(END, f"{t('lbl_cont_checkpnt')}\n")
     help_text.insert(END, ["Here you can choose to continue from the last saved checkpoint onwards so that the algorithm can continue where it left off. Checkpoints are"
                     " saved into the main folder and look like 'checkpoint_<timestamp>.json'. When choosing this option, it will search for a valid"
                     " checkpoint file and prompt you if it can't find it.\n\n",
@@ -9972,7 +9950,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # third step
-    help_text.insert(END, t("trd_step") + "\n")
+    help_text.insert(END, t('trd_step') + "\n")
     help_text.tag_add('frame', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
 
     # human verification
@@ -10008,7 +9986,7 @@ def write_help_tab():
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
     # forth step
-    help_text.insert(END, t("fth_step") + "\n")
+    help_text.insert(END, t('fth_step') + "\n")
     help_text.tag_add('frame', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
 
     # destination folder
@@ -10243,9 +10221,9 @@ sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = sim_btn_s
 sim_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
 sim_btn_switch_lang = GreyTopButton(master = simple_main_frame, text = "Switch language", command = set_language)
 sim_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = t("adv_btn_sponsor"), command = sponsor_project)
+sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project)
 sim_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = t("adv_btn_reset_values"), command = reset_values)
+sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = t('adv_btn_reset_values'), command = reset_values)
 sim_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
 
 # choose folder
@@ -10260,7 +10238,7 @@ sim_dir_lbl = customtkinter.CTkLabel(sim_dir_frm, text=sim_dir_lbl_txt[lang_idx]
 sim_dir_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, sticky="nsw")
 sim_dir_inf = InfoButton(master = sim_dir_frm, text = "?", command = sim_dir_show_info)
 sim_dir_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
-sim_dir_btn = customtkinter.CTkButton(sim_dir_frm, text=t("browse"), width = 1, command = lambda: [browse_dir(var_choose_folder, var_choose_folder_short, dsp_choose_folder, 25, row_choose_folder, 0, 'w', source_dir = True), update_frame_states()])
+sim_dir_btn = customtkinter.CTkButton(sim_dir_frm, text=t('browse'), width = 1, command = lambda: [browse_dir(var_choose_folder, var_choose_folder_short, dsp_choose_folder, 25, row_choose_folder, 0, 'w', source_dir = True), update_frame_states()])
 sim_dir_btn.grid(row=1, column=0, padx=(PADX, PADX/2), pady=(0, PADY), sticky="nswe")
 sim_dir_pth_frm = MySubSubFrame(master=sim_dir_frm)
 sim_dir_pth_frm.grid(row=1, column=1, padx=(PADX/2, PADX), pady=(0, PADY), sticky="nesw")
@@ -10315,7 +10293,7 @@ sim_run_btn = customtkinter.CTkButton(sim_run_frm, text=sim_run_btn_txt[lang_idx
 sim_run_btn.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe", columnspan = 2)
 
 # about
-sim_abo_lbl = tk.Label(simple_main_frame, text=t("adv_abo_lbl"), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
+sim_abo_lbl = tk.Label(simple_main_frame, text=t('adv_abo_lbl'), font = Font(size = ADDAX_TXT_SIZE), fg="black", bg = yellow_primary)
 sim_abo_lbl.grid(row=6, column=0, columnspan = 2, sticky="")
 sim_abo_lbl_link = tk.Label(simple_main_frame, text="addaxdatascience.com", cursor="hand2", font = Font(size = ADDAX_TXT_SIZE, underline=1), fg=green_primary, bg =yellow_primary)
 sim_abo_lbl_link.grid(row=7, column=0, columnspan = 2, sticky="", pady=(0, PADY))
