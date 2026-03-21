@@ -45,6 +45,7 @@ class AppState:
         self.var_separate_files = tk.BooleanVar(value=False)
         self.var_file_placement = tk.IntVar(value=2)
         self.var_sep_conf = tk.BooleanVar(value=False)
+        self.var_keep_series = tk.BooleanVar(value=False)
         self.var_vis_files = tk.BooleanVar(value=False)
         self.var_vis_size = tk.StringVar()
         self.var_vis_bbox = tk.BooleanVar(value=True)
@@ -71,8 +72,8 @@ class AppState:
         self.var_hitl_file_order = tk.IntVar(value=1)
 
         # ── Non-widget mutable state (previously ``global``) ──────────
-        # Cancel / deploy
-        self.cancel_var = tk.BooleanVar(value=False)
+        # Cancel / deploy (cancel_var is a plain bool, not a tkinter var)
+        self.cancel_var = False
         self.cancel_deploy_model_pressed = False
         self.cancel_speciesnet_deploy_pressed = False
         self.subprocess_output = ""
@@ -99,7 +100,7 @@ class AppState:
         self.checkpoint_freq_init = True
         self.image_size_for_deploy_init = True
         self.nth_frame_init = True
-        self.shown_abs_paths_warning = False
+        self.shown_abs_paths_warning = True  # starts True; set False after first warning shown
         self.check_mark_one_row = False
         self.check_mark_two_rows = False
 

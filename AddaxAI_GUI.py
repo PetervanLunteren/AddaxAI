@@ -207,6 +207,7 @@ from addaxai.ui.dialogs.progress import ProgressWindow
 from addaxai.ui.advanced.help_tab import HyperlinkManager, write_help_tab
 from addaxai.ui.advanced.about_tab import write_about_tab
 from addaxai.ui.simple.simple_window import build_simple_mode, sim_dir_show_info, sim_spp_show_info, sim_mdl_show_info
+from addaxai.core.state import AppState
 
 # log pythonpath
 print(sys.path)
@@ -7871,8 +7872,55 @@ else: # macOS
     ADDAX_TXT_SIZE = 9
     GREY_BUTTON_BORDER_WIDTH = 0
 
-# TKINTER MAIN WINDOW 
+# TKINTER MAIN WINDOW
 root = customtkinter.CTk()
+
+# ── AppState: all mutable state previously managed via globals ────────────────
+state = AppState()
+# Expose state's tkinter vars as module-level names so existing code works unchanged
+var_choose_folder = state.var_choose_folder
+var_choose_folder_short = state.var_choose_folder_short
+var_det_model = state.var_det_model
+var_det_model_short = state.var_det_model_short
+var_det_model_path = state.var_det_model_path
+var_cls_model = state.var_cls_model
+var_cls_detec_thresh = state.var_cls_detec_thresh
+var_cls_class_thresh = state.var_cls_class_thresh
+var_smooth_cls_animal = state.var_smooth_cls_animal
+var_tax_fallback = state.var_tax_fallback
+var_tax_levels = state.var_tax_levels
+var_sppnet_location = state.var_sppnet_location
+var_exclude_subs = state.var_exclude_subs
+var_use_custom_img_size_for_deploy = state.var_use_custom_img_size_for_deploy
+var_image_size_for_deploy = state.var_image_size_for_deploy
+var_abs_paths = state.var_abs_paths
+var_disable_GPU = state.var_disable_GPU
+var_process_img = state.var_process_img
+var_use_checkpnts = state.var_use_checkpnts
+var_checkpoint_freq = state.var_checkpoint_freq
+var_cont_checkpnt = state.var_cont_checkpnt
+var_process_vid = state.var_process_vid
+var_not_all_frames = state.var_not_all_frames
+var_nth_frame = state.var_nth_frame
+var_output_dir = state.var_output_dir
+var_output_dir_short = state.var_output_dir_short
+var_separate_files = state.var_separate_files
+var_file_placement = state.var_file_placement
+var_sep_conf = state.var_sep_conf
+var_keep_series = state.var_keep_series
+var_keep_series_seconds = state.var_keep_series_seconds
+var_vis_files = state.var_vis_files
+var_vis_bbox = state.var_vis_bbox
+var_vis_size = state.var_vis_size
+var_vis_blur = state.var_vis_blur
+var_crp_files = state.var_crp_files
+var_plt = state.var_plt
+var_exp = state.var_exp
+var_exp_format = state.var_exp_format
+var_thresh = state.var_thresh
+var_hitl_file_order = state.var_hitl_file_order
+# ─────────────────────────────────────────────────────────────────────────────
+
 AddaxAI_icon_image = tk.PhotoImage(file=os.path.join(AddaxAI_files, "AddaxAI", "imgs", "square_logo_excl_text.png"))
 root.iconphoto(True, AddaxAI_icon_image)
 root.withdraw()
@@ -7971,9 +8019,7 @@ fst_step.columnconfigure(1, weight=1, minsize=widget_width)
 row_choose_folder = 0
 lbl_choose_folder = Label(master=fst_step, text=t('lbl_choose_folder'), width=1, anchor="w")
 lbl_choose_folder.grid(row=row_choose_folder, sticky='nesw', pady=2)
-var_choose_folder = StringVar()
 var_choose_folder.set("")
-var_choose_folder_short = StringVar()
 dsp_choose_folder = Label(master=fst_step, textvariable=var_choose_folder_short, fg='grey', padx = 5)
 btn_choose_folder = Button(master=fst_step, text=t('browse'), width=1, command=lambda: [browse_dir(var_choose_folder, var_choose_folder_short, dsp_choose_folder, 25, row_choose_folder, 0, 'w', source_dir = True), update_frame_states()])
 btn_choose_folder.grid(row=row_choose_folder, column=1, sticky='nesw', padx=5)
@@ -7994,11 +8040,8 @@ dpd_options_model = [det_models + ["Custom model"], det_models + ["Otro modelo"]
 row_model = 0
 lbl_model = Label(master=snd_step, text=t('lbl_model'), width=1, anchor="w")
 lbl_model.grid(row=row_model, sticky='nesw', pady=2)
-var_det_model = StringVar(snd_step)
 var_det_model.set(dpd_options_model[i18n_lang_idx()][global_vars["var_det_model_idx"]]) # take idx instead of string
-var_det_model_short = StringVar()
 var_det_model_short.set(global_vars["var_det_model_short"])
-var_det_model_path = StringVar()
 var_det_model_path.set(global_vars["var_det_model_path"])
 dpd_model = OptionMenu(snd_step, var_det_model, *dpd_options_model[i18n_lang_idx()], command=model_options)
 dpd_model.configure(width=1)
@@ -8015,7 +8058,6 @@ dpd_options_cls_model = [["None"] + cls_models, ["Ninguno"] + cls_models, ["Aucu
 row_cls_model = 1
 lbl_cls_model = Label(snd_step, text=t('lbl_cls_model'), width=1, anchor="w")
 lbl_cls_model.grid(row=row_cls_model, sticky='nesw', pady=2)
-var_cls_model = StringVar(snd_step)
 var_cls_model.set(dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_model_idx"]]) # take idx instead of string
 dpd_cls_model = OptionMenu(snd_step, var_cls_model, *dpd_options_cls_model[i18n_lang_idx()], command=model_cls_animal_options)
 dpd_cls_model.configure(width=1, state=DISABLED)
@@ -8058,8 +8100,6 @@ dsp_choose_classes.configure(fg=green_primary)
 row_cls_detec_thresh = 2
 lbl_cls_detec_thresh = Label(cls_frame, text="     " + t('lbl_cls_detec_thresh'), width=1, anchor="w")
 lbl_cls_detec_thresh.grid(row=row_cls_detec_thresh, sticky='nesw', pady=2)
-var_cls_detec_thresh = DoubleVar()
-
 var_cls_detec_thresh.set(model_vars.get('var_cls_detec_thresh', 0.6))
 scl_cls_detec_thresh = Scale(cls_frame, from_=0.01, to=1, resolution=0.01, orient=HORIZONTAL,
                              variable=var_cls_detec_thresh, showvalue=0, width=10, length=1, state=DISABLED,
@@ -8073,7 +8113,6 @@ dsp_cls_detec_thresh.configure(fg=green_primary)
 row_cls_class_thresh = 3
 lbl_cls_class_thresh = Label(cls_frame, text="     " + t('lbl_cls_class_thresh'), width=1, anchor="w")
 lbl_cls_class_thresh.grid(row=row_cls_class_thresh, sticky='nesw', pady=2)
-var_cls_class_thresh = DoubleVar()
 var_cls_class_thresh.set(model_vars.get('var_cls_class_thresh', 0.5))
 scl_cls_class_thresh = Scale(cls_frame, from_=0.01, to=1, resolution=0.01, orient=HORIZONTAL,
                              variable=var_cls_class_thresh, showvalue=0, width=10, length=1, state=DISABLED,
@@ -8087,7 +8126,6 @@ dsp_cls_class_thresh.configure(fg=green_primary)
 row_smooth_cls_animal = 4
 lbl_smooth_cls_animal = Label(cls_frame, text="     " + t('lbl_smooth_cls_animal'), width=1, anchor="w")
 lbl_smooth_cls_animal.grid(row=row_smooth_cls_animal, sticky='nesw', pady=2)
-var_smooth_cls_animal = BooleanVar()
 var_smooth_cls_animal.set(model_vars.get('var_smooth_cls_animal', False))
 chb_smooth_cls_animal = Checkbutton(cls_frame, variable=var_smooth_cls_animal, anchor="w", command = on_chb_smooth_cls_animal_change)
 chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', padx=5)
@@ -8095,14 +8133,12 @@ chb_smooth_cls_animal.grid(row=row_smooth_cls_animal, column=1, sticky='nesw', p
 # taxonomic fallback checkbox (only visible if taxon mapping is present)
 row_tax_fallback = 5
 lbl_tax_fallback = Label(cls_frame, text="     " + t('lbl_tax_fallback'), width=1, anchor="w")
-var_tax_fallback = BooleanVar()
 var_tax_fallback.set(model_vars.get('var_tax_fallback', False))
 chb_tax_fallback = Checkbutton(cls_frame, variable=var_tax_fallback, anchor="w", command = toggle_tax_levels)
 
 # taxonomic fallbaock dropdown (only visible if taxon mapping is present)
 row_tax_levels = 6
 lbl_tax_levels = Label(cls_frame, text="     " + t('lbl_tax_levels'), width=1, anchor="w")
-var_tax_levels = StringVar(cls_frame)
 var_tax_levels.set('dummy') # set dummy value to avoid error
 dpd_tax_levels = OptionMenu(cls_frame, var_tax_levels, ["dummy"])
 dpd_tax_levels.configure(width=1, state=DISABLED)
@@ -8118,7 +8154,6 @@ if taxon_mapping_csv_present():
 row_sppnet_location = 1
 lbl_sppnet_location = Label(master=cls_frame, text="     " + t('lbl_sppnet_location'), width=1, anchor="w")
 lbl_sppnet_location.grid(row=row_sppnet_location, sticky='nesw', pady=2)
-var_sppnet_location = StringVar(cls_frame)
 var_sppnet_location.set(dpd_options_sppnet_location[global_vars["var_sppnet_location_idx"]]) # take idx instead of string
 dpd_sppnet_location = OptionMenu(cls_frame, var_sppnet_location, *dpd_options_sppnet_location)
 dpd_sppnet_location.configure(width=1, state=DISABLED)
@@ -8128,7 +8163,6 @@ dpd_sppnet_location.configure(width=1, state=DISABLED)
 row_exclude_subs = 3
 lbl_exclude_subs = Label(snd_step, text=t('lbl_exclude_subs'), width=1, anchor="w")
 lbl_exclude_subs.grid(row=row_exclude_subs, sticky='nesw', pady=2)
-var_exclude_subs = BooleanVar()
 var_exclude_subs.set(global_vars['var_exclude_subs'])
 chb_exclude_subs = Checkbutton(snd_step, variable=var_exclude_subs, anchor="w")
 chb_exclude_subs.grid(row=row_exclude_subs, column=1, sticky='nesw', padx=5)
@@ -8137,7 +8171,6 @@ chb_exclude_subs.grid(row=row_exclude_subs, column=1, sticky='nesw', padx=5)
 row_use_custom_img_size_for_deploy = 4
 lbl_use_custom_img_size_for_deploy = Label(snd_step, text=t('lbl_use_custom_img_size_for_deploy'), width=1, anchor="w")
 lbl_use_custom_img_size_for_deploy.grid(row=row_use_custom_img_size_for_deploy, sticky='nesw', pady=2)
-var_use_custom_img_size_for_deploy = BooleanVar()
 var_use_custom_img_size_for_deploy.set(global_vars['var_use_custom_img_size_for_deploy'])
 chb_use_custom_img_size_for_deploy = Checkbutton(snd_step, variable=var_use_custom_img_size_for_deploy, command=toggle_image_size_for_deploy, anchor="w")
 chb_use_custom_img_size_for_deploy.grid(row=row_use_custom_img_size_for_deploy, column=1, sticky='nesw', padx=5)
@@ -8145,7 +8178,6 @@ chb_use_custom_img_size_for_deploy.grid(row=row_use_custom_img_size_for_deploy, 
 # specify custom image size (not grid by default)
 row_image_size_for_deploy = 5
 lbl_image_size_for_deploy = Label(snd_step, text=" ↳ " + t('lbl_image_size_for_deploy'), width=1, anchor="w")
-var_image_size_for_deploy = StringVar()
 var_image_size_for_deploy.set(global_vars['var_image_size_for_deploy'])
 ent_image_size_for_deploy = tk.Entry(snd_step, textvariable=var_image_size_for_deploy, fg='grey', state=NORMAL, width=1)
 if var_image_size_for_deploy.get() == "":
@@ -8159,7 +8191,6 @@ ent_image_size_for_deploy.configure(state=DISABLED)
 row_abs_path = 6
 lbl_abs_paths = Label(snd_step, text=t('lbl_abs_paths'), width=1, anchor="w")
 lbl_abs_paths.grid(row=row_abs_path, sticky='nesw', pady=2)
-var_abs_paths = BooleanVar()
 var_abs_paths.set(global_vars['var_abs_paths'])
 chb_abs_paths = Checkbutton(snd_step, variable=var_abs_paths, command=abs_paths_warning, anchor="w")
 chb_abs_paths.grid(row=row_abs_path, column=1, sticky='nesw', padx=5)
@@ -8168,7 +8199,6 @@ chb_abs_paths.grid(row=row_abs_path, column=1, sticky='nesw', padx=5)
 row_disable_GPU = 7
 lbl_disable_GPU = Label(snd_step, text=t('lbl_disable_GPU'), width=1, anchor="w")
 lbl_disable_GPU.grid(row=row_disable_GPU, sticky='nesw', pady=2)
-var_disable_GPU = BooleanVar()
 var_disable_GPU.set(global_vars['var_disable_GPU'])
 chb_disable_GPU = Checkbutton(snd_step, variable=var_disable_GPU, anchor="w")
 chb_disable_GPU.grid(row=row_disable_GPU, column=1, sticky='nesw', padx=5)
@@ -8177,7 +8207,6 @@ chb_disable_GPU.grid(row=row_disable_GPU, column=1, sticky='nesw', padx=5)
 row_process_img = 8
 lbl_process_img = Label(snd_step, text=t('lbl_process_img'), width=1, anchor="w")
 lbl_process_img.grid(row=row_process_img, sticky='nesw', pady=2)
-var_process_img = BooleanVar()
 var_process_img.set(global_vars['var_process_img'])
 chb_process_img = Checkbutton(snd_step, variable=var_process_img, command=toggle_img_frame, anchor="w")
 chb_process_img.grid(row=row_process_img, column=1, sticky='nesw', padx=5)
@@ -8195,7 +8224,6 @@ img_frame.grid_forget()
 row_use_checkpnts = 0
 lbl_use_checkpnts = Label(img_frame, text="     " + t('lbl_use_checkpnts'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_use_checkpnts.grid(row=row_use_checkpnts, sticky='nesw')
-var_use_checkpnts = BooleanVar()
 var_use_checkpnts.set(global_vars['var_use_checkpnts'])
 chb_use_checkpnts = Checkbutton(img_frame, variable=var_use_checkpnts, command=toggle_checkpoint_freq, state=DISABLED, anchor="w")
 chb_use_checkpnts.grid(row=row_use_checkpnts, column=1, sticky='nesw', padx=5)
@@ -8204,7 +8232,6 @@ chb_use_checkpnts.grid(row=row_use_checkpnts, column=1, sticky='nesw', padx=5)
 row_checkpoint_freq = 1
 lbl_checkpoint_freq = tk.Label(img_frame, text="        ↳ " + t('lbl_checkpoint_freq'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_checkpoint_freq.grid(row=row_checkpoint_freq, sticky='nesw')
-var_checkpoint_freq = StringVar()
 var_checkpoint_freq.set(global_vars['var_checkpoint_freq'])
 ent_checkpoint_freq = tk.Entry(img_frame, textvariable=var_checkpoint_freq, fg='grey', state=NORMAL, width=1)
 ent_checkpoint_freq.grid(row=row_checkpoint_freq, column=1, sticky='nesw', padx=5)
@@ -8219,7 +8246,6 @@ ent_checkpoint_freq.configure(state=DISABLED)
 row_cont_checkpnt = 2
 lbl_cont_checkpnt = Label(img_frame, text="     " + t('lbl_cont_checkpnt'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_cont_checkpnt.grid(row=row_cont_checkpnt, sticky='nesw')
-var_cont_checkpnt = BooleanVar()
 var_cont_checkpnt.set(global_vars['var_cont_checkpnt'])
 chb_cont_checkpnt = Checkbutton(img_frame, variable=var_cont_checkpnt, state=DISABLED, command=disable_chb_cont_checkpnt, anchor="w")
 chb_cont_checkpnt.grid(row=row_cont_checkpnt, column=1, sticky='nesw', padx=5)
@@ -8228,7 +8254,6 @@ chb_cont_checkpnt.grid(row=row_cont_checkpnt, column=1, sticky='nesw', padx=5)
 row_process_vid = 10
 lbl_process_vid = Label(snd_step, text=t('lbl_process_vid'), width=1, anchor="w")
 lbl_process_vid.grid(row=row_process_vid, sticky='nesw', pady=2)
-var_process_vid = BooleanVar()
 var_process_vid.set(global_vars['var_process_vid'])
 chb_process_vid = Checkbutton(snd_step, variable=var_process_vid, command=toggle_vid_frame, anchor="w")
 chb_process_vid.grid(row=row_process_vid, column=1, sticky='nesw', padx=5)
@@ -8246,7 +8271,6 @@ vid_frame.grid_forget()
 row_not_all_frames = 0
 lbl_not_all_frames = Label(vid_frame, text="     " + t('lbl_not_all_frames'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_not_all_frames.grid(row=row_not_all_frames, sticky='nesw')
-var_not_all_frames = BooleanVar()
 var_not_all_frames.set(global_vars['var_not_all_frames'])
 chb_not_all_frames = Checkbutton(vid_frame, variable=var_not_all_frames, command=toggle_nth_frame, state=DISABLED, anchor="w")
 chb_not_all_frames.grid(row=row_not_all_frames, column=1, sticky='nesw', padx=5)
@@ -8255,7 +8279,6 @@ chb_not_all_frames.grid(row=row_not_all_frames, column=1, sticky='nesw', padx=5)
 row_nth_frame = 1
 lbl_nth_frame = tk.Label(vid_frame, text="        ↳ " + t('lbl_nth_frame'), pady=2, state=DISABLED, width=1, anchor="w")
 lbl_nth_frame.grid(row=row_nth_frame, sticky='nesw')
-var_nth_frame = StringVar()
 var_nth_frame.set(global_vars['var_nth_frame'])
 ent_nth_frame = tk.Entry(vid_frame, textvariable=var_nth_frame, fg='grey' if var_nth_frame.get().isdecimal() else 'black', state=NORMAL, width=1)
 ent_nth_frame.grid(row=row_nth_frame, column=1, sticky='nesw', padx=5)
@@ -8299,9 +8322,7 @@ fth_step.columnconfigure(1, weight=1, minsize=widget_width)
 row_output_dir = 0
 lbl_output_dir = Label(master=fth_step, text=t('lbl_output_dir'), width=1, anchor="w")
 lbl_output_dir.grid(row=row_output_dir, sticky='nesw', pady=2)
-var_output_dir = StringVar()
 var_output_dir.set("")
-var_output_dir_short = StringVar()
 dsp_output_dir = Label(master=fth_step, textvariable=var_output_dir_short, fg=green_primary)
 btn_output_dir = Button(master=fth_step, text=t('browse'), width=1, command=lambda: browse_dir(var_output_dir, var_output_dir_short, dsp_output_dir, 25, row_output_dir, 0, 'e'))
 btn_output_dir.grid(row=row_output_dir, column=1, sticky='nesw', padx=5)
@@ -8310,7 +8331,6 @@ btn_output_dir.grid(row=row_output_dir, column=1, sticky='nesw', padx=5)
 row_separate_files = 1
 lbl_separate_files = Label(fth_step, text=t('lbl_separate_files'), width=1, anchor="w")
 lbl_separate_files.grid(row=row_separate_files, sticky='nesw', pady=2)
-var_separate_files = BooleanVar()
 var_separate_files.set(global_vars['var_separate_files'])
 chb_separate_files = Checkbutton(fth_step, variable=var_separate_files, command=toggle_sep_frame, anchor="w")
 chb_separate_files.grid(row=row_separate_files, column=1, sticky='nesw', padx=5)
@@ -8328,7 +8348,6 @@ sep_frame.grid_forget()
 row_file_placement = 0
 lbl_file_placement = Label(sep_frame, text="     " + t('lbl_file_placement'), pady=2, width=1, anchor="w")
 lbl_file_placement.grid(row=row_file_placement, sticky='nesw')
-var_file_placement = IntVar()
 var_file_placement.set(global_vars['var_file_placement'])
 rad_file_placement_move = Radiobutton(sep_frame, text=t('copy'), variable=var_file_placement, value=2)
 rad_file_placement_move.grid(row=row_file_placement, column=1, sticky='w', padx=5)
@@ -8339,7 +8358,6 @@ rad_file_placement_copy.grid(row=row_file_placement, column=1, sticky='e', padx=
 row_sep_conf = 1
 lbl_sep_conf = Label(sep_frame, text="     " + t('lbl_sep_conf'), width=1, anchor="w")
 lbl_sep_conf.grid(row=row_sep_conf, sticky='nesw', pady=2)
-var_sep_conf = BooleanVar()
 var_sep_conf.set(global_vars['var_sep_conf'])
 chb_sep_conf = Checkbutton(sep_frame, variable=var_sep_conf, anchor="w")
 chb_sep_conf.grid(row=row_sep_conf, column=1, sticky='nesw', padx=5)
@@ -8349,7 +8367,6 @@ chb_sep_conf.grid(row=row_sep_conf, column=1, sticky='nesw', padx=5)
 row_keep_series = 2
 lbl_keep_series = Label(sep_frame, text="     " + t('lbl_keep_series'), width=1, anchor="w")
 lbl_keep_series.grid(row=row_keep_series, sticky='nesw', pady=2)
-var_keep_series = BooleanVar()
 var_keep_series.set(global_vars['var_keep_series'])
 chb_keep_series = Checkbutton(sep_frame, variable=var_keep_series, command=toggle_keep_series_frame, anchor="w")
 chb_keep_series.grid(row=row_keep_series, column=1, sticky='nesw', padx=5)
@@ -8367,7 +8384,6 @@ keep_series_frame.grid_forget()
 row_keep_series_seconds = 0
 lbl_keep_series_seconds = Label(keep_series_frame, text="     " + t('lbl_keep_series_seconds'), width=1, anchor="w")
 lbl_keep_series_seconds.grid(row=row_keep_series_seconds, sticky='nesw', pady=2)
-var_keep_series_seconds = DoubleVar()
 var_keep_series_seconds.set(global_vars['var_keep_series_seconds'])
 chb_keep_series_seconds = Scale(keep_series_frame, from_=0.1, to=10, resolution=0.1, orient=HORIZONTAL, variable=var_keep_series_seconds, showvalue=0, width=10, length=1)
 chb_keep_series_seconds.grid(row=row_keep_series_seconds, column=1, sticky='ew', padx=10)
@@ -8396,7 +8412,6 @@ btn_keep_series_species.grid(row=row_keep_series_species, column=1, sticky='w', 
 row_vis_files = 3
 lbl_vis_files = Label(fth_step, text=t('lbl_vis_files'), width=1, anchor="w")
 lbl_vis_files.grid(row=row_vis_files, sticky='nesw', pady=2)
-var_vis_files = BooleanVar()
 var_vis_files.set(global_vars['var_vis_files'])
 chb_vis_files = Checkbutton(fth_step, variable=var_vis_files, anchor="w", command=toggle_vis_frame)
 chb_vis_files.grid(row=row_vis_files, column=1, sticky='nesw', padx=5)
@@ -8414,7 +8429,6 @@ vis_frame.grid_forget()
 row_vis_bbox = 0
 lbl_vis_bbox = Label(vis_frame, text="     " + t('lbl_vis_bbox'), width=1, anchor="w")
 lbl_vis_bbox.grid(row=row_vis_bbox, sticky='nesw', pady=2)
-var_vis_bbox = BooleanVar()
 var_vis_bbox.set(global_vars['var_vis_bbox'])
 chb_vis_bbox = Checkbutton(vis_frame, variable=var_vis_bbox, anchor="w") 
 chb_vis_bbox.grid(row=row_vis_bbox, column=1, sticky='nesw', padx=5)
@@ -8423,7 +8437,6 @@ chb_vis_bbox.grid(row=row_vis_bbox, column=1, sticky='nesw', padx=5)
 row_vis_size = 1
 lbl_vis_size = Label(vis_frame, text="        ↳ " + t('lbl_vis_size'), pady=2, width=1, anchor="w")
 lbl_vis_size.grid(row=row_vis_size, sticky='nesw')
-var_vis_size = StringVar(vis_frame)
 var_vis_size.set(t('dpd_vis_size')[global_vars['var_vis_size_idx']])
 dpd_vis_size = OptionMenu(vis_frame, var_vis_size, *t('dpd_vis_size'))
 dpd_vis_size.configure(width=1)
@@ -8433,7 +8446,6 @@ dpd_vis_size.grid(row=row_vis_size, column=1, sticky='nesw', padx=5)
 row_vis_blur = 2
 lbl_vis_blur = Label(vis_frame, text="     " + t('lbl_vis_blur'), width=1, anchor="w")
 lbl_vis_blur.grid(row=row_vis_blur, sticky='nesw', pady=2)
-var_vis_blur = BooleanVar()
 var_vis_blur.set(global_vars['var_vis_blur'])
 chb_vis_blur = Checkbutton(vis_frame, variable=var_vis_blur, anchor="w") 
 chb_vis_blur.grid(row=row_vis_blur, column=1, sticky='nesw', padx=5)
@@ -8442,7 +8454,6 @@ chb_vis_blur.grid(row=row_vis_blur, column=1, sticky='nesw', padx=5)
 row_crp_files = 5
 lbl_crp_files = Label(fth_step, text=t('lbl_crp_files'), width=1, anchor="w")
 lbl_crp_files.grid(row=row_crp_files, sticky='nesw', pady=2)
-var_crp_files = BooleanVar()
 var_crp_files.set(global_vars['var_crp_files'])
 chb_crp_files = Checkbutton(fth_step, variable=var_crp_files, anchor="w")
 chb_crp_files.grid(row=row_crp_files, column=1, sticky='nesw', padx=5)
@@ -8451,7 +8462,6 @@ chb_crp_files.grid(row=row_crp_files, column=1, sticky='nesw', padx=5)
 row_plt = 6
 lbl_plt = Label(fth_step, text=t('lbl_plt'), width=1, anchor="w")
 lbl_plt.grid(row=row_plt, sticky='nesw', pady=2)
-var_plt = BooleanVar()
 var_plt.set(global_vars['var_plt'])
 chb_plt = Checkbutton(fth_step, variable=var_plt, anchor="w")
 chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
@@ -8460,7 +8470,6 @@ chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
 row_exp = 7
 lbl_exp = Label(fth_step, text=t('lbl_exp'), width=1, anchor="w")
 lbl_exp.grid(row=row_exp, sticky='nesw', pady=2)
-var_exp = BooleanVar()
 var_exp.set(global_vars['var_exp'])
 chb_exp = Checkbutton(fth_step, variable=var_exp, anchor="w", command=toggle_exp_frame)
 chb_exp.grid(row=row_exp, column=1, sticky='nesw', padx=5)
@@ -8478,7 +8487,6 @@ exp_frame.grid_forget()
 row_exp_format = 0
 lbl_exp_format = Label(exp_frame, text="     " + t('lbl_exp_format'), pady=2, width=1, anchor="w")
 lbl_exp_format.grid(row=row_exp_format, sticky='nesw')
-var_exp_format = StringVar(exp_frame)
 var_exp_format.set(t('dpd_exp_format')[global_vars['var_exp_format_idx']])
 dpd_exp_format = OptionMenu(exp_frame, var_exp_format, *t('dpd_exp_format'))
 dpd_exp_format.configure(width=1)
@@ -8488,7 +8496,6 @@ dpd_exp_format.grid(row=row_exp_format, column=1, sticky='nesw', padx=5)
 row_lbl_thresh = 9
 lbl_thresh = Label(fth_step, text=t('lbl_thresh'), width=1, anchor="w")
 lbl_thresh.grid(row=row_lbl_thresh, sticky='nesw', pady=2)
-var_thresh = DoubleVar()
 var_thresh.set(global_vars['var_thresh'])
 scl_thresh = Scale(fth_step, from_=0.01, to=1, resolution=0.01, orient=HORIZONTAL, variable=var_thresh, showvalue=0, width=10, length=1)
 scl_thresh.grid(row=row_lbl_thresh, column=1, sticky='ew', padx=10)

@@ -93,7 +93,7 @@ TKINTER_VAR_ATTRS = [
     "var_tax_levels",
     "var_sppnet_location",
     "var_hitl_file_order",
-    "cancel_var",
+    "var_keep_series",
 ]
 
 
@@ -146,6 +146,7 @@ def test_tkvar_attr_instantiated(state, attr):
 # ── Default values ─────────────────────────────────────────────────────────────
 
 def test_defaults_bools(state):
+    assert state.cancel_var is False
     assert state.cancel_deploy_model_pressed is False
     assert state.cancel_speciesnet_deploy_pressed is False
     assert state.warn_smooth_vid is False
@@ -153,7 +154,7 @@ def test_defaults_bools(state):
     assert state.checkpoint_freq_init is True
     assert state.image_size_for_deploy_init is True
     assert state.nth_frame_init is True
-    assert state.shown_abs_paths_warning is False
+    assert state.shown_abs_paths_warning is True  # starts True
     assert state.check_mark_one_row is False
     assert state.check_mark_two_rows is False
 
@@ -194,4 +195,3 @@ def test_tkvar_defaults(state):
     assert state.var_vis_bbox.get() is True
     assert state.var_tax_fallback.get() is True
     assert state.var_file_placement.get() == 2
-    assert state.cancel_var.get() is False
