@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "addaxai"
+version = "5.0.0"
+description = "Camera trap image classification for ecologists"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "requests",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+gui = [
+    "customtkinter",
+]
+dev = [
+    "addaxai[test,gui]",
+    "pre-commit",
+]
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+no_strict_optional = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--ignore=tests/test_gui_smoke.py --ignore=tests/test_gui_integration.py --ignore=tests/gui_test_runner.py"
