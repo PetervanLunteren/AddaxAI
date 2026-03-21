@@ -167,6 +167,23 @@ from visualise_detection.bounding_box import bounding_box as bb
 from cameratraps.megadetector.detection.video_utils import frame_results_to_video_results, FrameToVideoOptions, VIDEO_EXTENSIONS
 from cameratraps.megadetector.utils.path_utils import IMG_EXTENSIONS
 
+# import extracted modules (Phase 1 wiring)
+from addaxai.utils.files import (is_valid_float, get_size, shorten_path, natural_sort_key,
+                                  contains_special_characters, remove_ansi_escape_sequences,
+                                  sort_checkpoint_files)
+from addaxai.utils.images import (is_image_corrupted, check_images, fix_images,
+                                   get_image_timestamp, build_image_timestamp_index,
+                                   find_series_images, blur_box,
+                                   _parse_timestamp_from_filename, _camera_prefix_of_filename)
+from addaxai.utils.json_ops import (fetch_label_map_from_json, append_to_json,
+                                     change_hitl_var_in_json, get_hitl_var_in_json, merge_jsons)
+from addaxai.processing.annotations import (indent_xml, convert_bbox_pascal_to_yolo,
+                                              convert_xml_to_coco)
+from addaxai.processing.export import clean_line, generate_unique_id, format_datetime
+from addaxai.processing.postprocess import format_size
+from addaxai.models.registry import fetch_known_models
+from addaxai.analysis.plots import fig2img, overlay_logo, calculate_time_span
+
 # log pythonpath
 print(sys.path)
 
@@ -834,21 +851,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                 if os.path.isfile(csv_path):
                     os.remove(csv_path)
 
-def clean_line(line):
-    return line.replace('\0', '')
 
-def generate_unique_id(row):
-    """Generate a unique hash for a row based on its contents."""
-    row_str = "".join(row).encode('utf-8')
-    return hashlib.md5(row_str).hexdigest()
-
-def format_datetime(date_str):
-    """Convert 'DD/MM/YY HH:MM:SS' to 'YYYY-MM-DDTHH:MM:SS', handle 'NA' gracefully."""
-    try:
-        dt = datetime.datetime.strptime(date_str, "%d/%m/%y %H:%M:%S")
-        return dt.strftime("%Y-%m-%dT%H:%M:%S")
-    except ValueError:
-        return 'NA'
 
 # convert csv to coco format
 def csv_to_coco(detections_df, files_df, output_path):
@@ -1973,29 +1976,6 @@ def produce_plots(results_dir):
         create_pie_chart_files_static();plt.close('all')
         create_pie_chart_files_interactive();plt.close('all')
 
-    # overlay logo
-    def overlay_logo(image_path, logo):
-        main_image = Image.open(image_path)
-        main_width, main_height = main_image.size
-        logo_width, logo_height = logo.size
-        position = (main_width - logo_width - 10, 10)
-        main_image.paste(logo, position, logo)
-        main_image.save(image_path)
-
-    # check the time difference in the dataset
-    def calculate_time_span(df):
-        any_dates_present = df['DateTimeOriginal'].notnull().any()
-        if not any_dates_present:
-            return 0, 0, 0, 0
-        first_date = df['DateTimeOriginal'].min()
-        last_date = df['DateTimeOriginal'].max()
-        time_difference = last_date - first_date
-        days = time_difference.days
-        years = int(days / 365)
-        months = int(days / 30)
-        weeks = int(days / 7)
-        return years, months, weeks, days
-
     # main code to plot graphs
     results_dir = os.path.normpath(results_dir)
     plots_dir = os.path.join(results_dir, "graphs")
@@ -2501,25 +2481,9 @@ def uniquify_and_move_img_and_xml_from_filelist(file_list_txt, recognition_file,
     hitl_final_window.destroy()
     change_hitl_var_in_json(recognition_file, "done")
 
-# check if input can be converted to float
-def is_valid_float(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
 
-# get size of file in appropriate unit
-def get_size(path):
-    size = os.path.getsize(path)
-    if size < 1024:
-        return f"{size} bytes"
-    elif size < pow(1024,2):
-        return f"{round(size/1024, 2)} KB"
-    elif size < pow(1024,3):
-        return f"{round(size/(pow(1024,2)), 2)} MB"
-    elif size < pow(1024,4):
-        return f"{round(size/(pow(1024,3)), 2)} GB"
+
+
 
 # check if the user is already in progress of verifying, otherwise start new session
 def start_or_continue_hitl():
@@ -2627,62 +2591,7 @@ def check_if_img_needs_converting(img_file):
     else:
         return False
 
-# converts individual xml to coco
-def convert_xml_to_coco(xml_path, inverted_label_map):
-    # open
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-    try:
-        verification_status = True if root.attrib['verified'] == 'yes' else False
-    except:
-        verification_status = False
-    path = root.findtext('path')
-    size = root.find('size')
-    im_width = int(size.findtext('width'))
-    im_height = int(size.findtext('height'))
 
-    # fetch objects
-    verified_detections = []
-    new_class = False
-    for obj in root.findall('object'):
-        name = obj.findtext('name')
-
-        # check if new class
-        if name not in inverted_label_map:
-            new_class = True
-            highest_index = 0
-            for key, value in inverted_label_map.items():
-                value = int(value)
-                if value > highest_index:
-                    highest_index = value
-            inverted_label_map[name] = str(highest_index + 1)
-        category = inverted_label_map[name]
-
-        # read 
-        bndbox = obj.find('bndbox')
-        xmin = int(float(bndbox.findtext('xmin')))
-        ymin = int(float(bndbox.findtext('ymin')))
-        xmax = int(float(bndbox.findtext('xmax')))
-        ymax = int(float(bndbox.findtext('ymax')))
-
-        # convert
-        w_box = round(abs(xmax - xmin) / im_width, 5)
-        h_box = round(abs(ymax - ymin) / im_height, 5)
-        xo = round(xmin / im_width, 5)
-        yo = round(ymin / im_height, 5)
-        bbox = [xo, yo, w_box, h_box]
-
-        # compile
-        verified_detection = {'category' : category,
-                              'conf' : 1.0,
-                              'bbox' : bbox}
-        verified_detections.append(verified_detection)
-
-    verified_image = {'file' : path,
-                      'detections' : verified_detections}
-    
-    # return
-    return [verified_image, verification_status, new_class, inverted_label_map]
 
 # update json from list with verified images
 def update_json_from_img_list(verified_images, inverted_label_map, recognition_file, patience_dialog, current): 
@@ -2721,7 +2630,7 @@ def update_json_from_img_list(verified_images, inverted_label_map, recognition_f
                     tree = ET.parse(xml)
                     root = tree.getroot()
                     root.set('json_updated', 'yes')
-                    indent(root)
+                    indent_xml(root)
                     tree.write(xml)
         image_recognition_file_content.close()
 
@@ -3287,53 +3196,6 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
             else:
                 classify_detections(os.path.join(chosen_folder, "video_recognition_file.json"), data_type, simple_mode = simple_mode)
 
-# merge image and video jsons together
-def merge_jsons(image_json, video_json, output_file_path):
-
-    # Load the image recognition JSON file
-    if image_json:
-        with open(image_json, 'r') as image_file:
-            image_data = json.load(image_file)
-            
-    # Load the video recognition JSON file
-    if video_json:
-        with open(video_json, 'r') as video_file:
-            video_data = json.load(video_file)
-
-    # Merge the "images" lists
-    if image_json and video_json:
-        merged_images = image_data['images'] + video_data['images']
-        detection_categories = image_data['detection_categories']
-        info = image_data['info']
-        classification_categories = image_data['classification_categories'] if 'classification_categories' in image_data else {}
-        forbidden_classes = image_data['forbidden_classes'] if 'forbidden_classes' in image_data else {}
-    elif image_json:
-        merged_images = image_data['images']
-        detection_categories = image_data['detection_categories']
-        info = image_data['info']
-        classification_categories = image_data['classification_categories'] if 'classification_categories' in image_data else {}
-        forbidden_classes = image_data['forbidden_classes'] if 'forbidden_classes' in image_data else {}
-    elif video_json:
-        merged_images = video_data['images']
-        detection_categories = video_data['detection_categories']
-        info = video_data['info']
-        classification_categories = video_data['classification_categories'] if 'classification_categories' in video_data else {}
-        forbidden_classes = video_data['forbidden_classes'] if 'forbidden_classes' in video_data else {}
-        
-    # Create the merged data
-    merged_data = {
-        "images": merged_images,
-        "detection_categories": detection_categories,
-        "info": info,
-        "classification_categories": classification_categories,
-        "forbidden_classes": forbidden_classes
-    }
-
-    # Save the merged data to a new JSON file
-    with open(output_file_path, 'w') as output_file:
-        json.dump(merged_data, output_file, indent=1)
-
-    print(f'merged json file saved to {output_file_path}')
 
 
 # pop up window showing the user that an AddaxAI update is required for a particular model
@@ -3410,13 +3272,7 @@ def environment_needs_downloading(model_vars):
     else:
         return [True, env_name]
 
-# check if path contains special characters
-def contains_special_characters(path):
-    allowed_characters = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./ +\:'()")
-    for char in path:
-        if char not in allowed_characters:
-            return [True, char]
-    return [False, ""]
+
 
 # we run this instead of a detection model for full image classification
 def imitate_object_detection_for_full_image_classifier(chosen_folder):
@@ -4290,7 +4146,7 @@ def create_pascal_voc_annotation(image_path, annotation_list, human_verified):
         ET.SubElement(bndbox, 'xmax').text = str(xmax)
         ET.SubElement(bndbox, 'ymax').text = str(ymax)
 
-    indent(annotation)
+    indent_xml(annotation)
     tree = ET.ElementTree(annotation)
     xml_file_name = return_xml_path(image_path)
     Path(os.path.dirname(xml_file_name)).mkdir(parents=True, exist_ok=True)
@@ -4584,12 +4440,7 @@ def select_detections(selection_dict, prepare_files):
     if json_paths_converted:
         make_json_absolute(recognition_file)
 
-# Split string into a list of text and number chunks for natural sort
-def natural_sort_key(s):
-    # Remove leading/trailing whitespace
-    s = s.strip()
-    # Split into parts: e.g., "IMG_100.JPG" → ["IMG_", 100, ".JPG"]
-    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
 
 # count confidence values per class for histograms
 def fetch_confs_per_class(json_fpath):
@@ -4972,33 +4823,9 @@ def verification_status(xml):
         verification_status = False
     return verification_status
 
-# helper function to blur person bbox
-def blur_box(image, bbox_left, bbox_top, bbox_right, bbox_bottom, image_width, image_height):
-    x1, y1, x2, y2 = map(int, [bbox_left, bbox_top, bbox_right, bbox_bottom])
-    if x1 >= x2 or y1 >= y2 or x1 < 0 or y1 < 0 or x2 > image_width or y2 > image_height:
-        raise ValueError(f"Invalid bounding box: ({x1}, {y1}, {x2}, {y2})")
-    roi = image[y1:y2, x1:x2]
-    if roi.size == 0:
-        raise ValueError("Extracted ROI is empty. Check the bounding box coordinates.")
-    blurred_roi = cv2.GaussianBlur(roi, (71, 71), 0)
-    image[y1:y2, x1:x2] = blurred_roi
-    return image
 
-# helper function to correctly indent pascal voc annotation files
-def indent(elem, level=0):
-    i = "\n" + level * "  "
-    if len(elem):
-        if not elem.text or not elem.text.strip():
-            elem.text = i + "  "
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
-        for elem in elem:
-            indent(elem, level + 1)
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
-    else:
-        if level and (not elem.tail or not elem.tail.strip()):
-            elem.tail = i
+
+
 
 # make sure the program quits when simple or advanced window is closed
 def on_toplevel_close():
@@ -5009,44 +4836,13 @@ def on_toplevel_close():
         })
     root.destroy()
 
-# check if image is corrupted by attempting to load them 
-def is_image_corrupted(image_path):
-    try:
-        ImageFile.LOAD_TRUNCATED_IMAGES = False
-        with Image.open(image_path) as img:
-            img.load()
-        ImageFile.LOAD_TRUNCATED_IMAGES = True
-        return False
-    except:
-        return True 
 
-# read file list and check all images if they are corrupted
-def check_images(image_list_file):
-    corrupted_images = []
-    with open(image_list_file, 'r') as file:
-        image_paths = file.read().splitlines()
-    for image_path in image_paths:
-        if os.path.exists(image_path):
-            if is_image_corrupted(image_path):
-                corrupted_images.append(image_path)
-    return corrupted_images
 
-# try to fix truncated file by opening and saving it again
-def fix_images(image_paths):
-    for image_path in image_paths:
-        if os.path.exists(image_path):
-            try:
-                ImageFile.LOAD_TRUNCATED_IMAGES = True
-                with Image.open(image_path) as img:
-                    img_copy = img.copy()
-                    img_copy.save(image_path, format=img.format, exif=img.info.get('exif'))
-            except Exception as e:
-                print(f"Could not fix image: {e}")
 
-# remove non ansi characters from text
-def remove_ansi_escape_sequences(text):
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
+
+
+
+
 
 # classes to open window with speciesnet output
 class SpeciesNetOutputWindow:
@@ -5374,19 +5170,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     update_frame_states()
     root.update()
 
-# convert pascal bbox to yolo
-def convert_bbox_pascal_to_yolo(size, box):
-    dw = 1./(size[0])
-    dh = 1./(size[1])
-    x = (box[0] + box[1])/2.0 - 1
-    y = (box[2] + box[3])/2.0 - 1 
-    w = box[1] - box[0]
-    h = box[3] - box[2]
-    x = x*dw
-    w = w*dw
-    y = y*dh
-    h = h*dh
-    return (x,y,w,h)
+
 
 # special function because the sim dpd has a different value for 'None'
 def sim_mdl_dpd_callback(self):
@@ -5524,12 +5308,7 @@ def extract_label_map_from_model(model_file):
     # return label map
     return CUSTOM_DETECTOR_LABEL_MAP
 
-# fetch label map from json
-def fetch_label_map_from_json(path_to_json):
-    with open(path_to_json, "r") as json_file:
-        data = json.load(json_file)
-    label_map = data['detection_categories']
-    return label_map
+
 
 # check if json paths are relative or absolute
 def check_json_paths(path_to_json): 
@@ -5575,47 +5354,11 @@ def make_json_absolute(path_to_json):
         with open(path_to_json, "w") as json_file:
             json.dump(data, json_file, indent=1)
 
-# add information to json file
-def append_to_json(path_to_json, object_to_be_appended):
-    # open
-    with open(path_to_json, "r") as json_file:
-        data = json.load(json_file)
-    
-    # adjust
-    data['info'].update(object_to_be_appended)
 
-    # write
-    with open(path_to_json, "w") as json_file:
-        json.dump(data, json_file, indent=1)
 
-# change human-in-the-loop prgress variable
-def change_hitl_var_in_json(path_to_json, status):
-    # open
-    with open(path_to_json, "r") as json_file:
-        data = json.load(json_file)
-    
-    # adjust
-    data['info']["addaxai_metadata"]["hitl_status"] = status
 
-    # write
-    with open(path_to_json, "w") as json_file:
-        json.dump(data, json_file, indent=1)
 
-# get human-in-the-loop prgress variable
-def get_hitl_var_in_json(path_to_json):
-    # open
-    with open(path_to_json, "r") as json_file:
-        data = json.load(json_file)
-        addaxai_metadata = data['info'].get("addaxai_metadata") or data['info'].get("ecoassist_metadata") # include old name 'EcoAssist' for backwards compatibility
-    
-    # get status
-    if "hitl_status" in addaxai_metadata:
-        status = addaxai_metadata["hitl_status"]
-    else:
-        status = "never-started"
 
-    # return
-    return status
 
 # show warning for video post-processing
 def check_json_presence_and_warn_user(infinitive, continuous, noun):
@@ -5661,129 +5404,7 @@ conf_dirs = {0.0 : "conf_0.0",
              0.9 : "conf_0.8-0.9",
              1.0 : "conf_0.9-1.0"}
 
-def _parse_timestamp_from_filename(filename):
-    """
-    Try common filename timestamp patterns (YYYYMMDDHHMMSS, YYYYMMDD_HHMMSS, etc.)
-    Return a datetime or None.
-    """
-    patterns = [
-        r'(?P<ts>\d{14})',                # 20220101123045
-        r'(?P<ts>\d{8}[_-]\d{6})',        # 20220101_123045 or 20220101-123045
-        r'(?P<ts>\d{4}-\d{2}-\d{2}[_-]\d{6})'
-    ]
-    for pat in patterns:
-        m = re.search(pat, filename)
-        if not m:
-            continue
-        ts = re.sub(r'[_-]', '', m.group('ts'))
-        try:
-            return datetime.datetime.strptime(ts, '%Y%m%d%H%M%S')
-        except Exception:
-            continue
-    return None
 
-def get_image_timestamp(src_dir, rel_path):
-    """
-    Return datetime for given file (src_dir + rel_path).
-    1) Try EXIF DateTimeOriginal / DateTime
-    2) Try filename patterns
-    3) Fallback to filesystem mtime
-    """
-    abs_path = os.path.join(src_dir, rel_path)
-    # (1) EXIF
-    try:
-        img = Image.open(abs_path)
-        exif = img.getexif()
-        if exif:
-            # map tag name -> id
-            tag_map = {v:k for k,v in PIL.ExifTags.TAGS.items()}
-            for tag_name in ("DateTimeOriginal", "DateTime"):
-                if tag_name in tag_map:
-                    tid = tag_map[tag_name]
-                    if tid in exif:
-                        val = exif.get(tid)
-                        if isinstance(val, bytes):
-                            val = val.decode(errors="ignore")
-                        if val:
-                            val = val.replace('\x00','').strip()
-                            try:
-                                return datetime.datetime.strptime(val, "%Y:%m:%d %H:%M:%S")
-                            except Exception:
-                                try:
-                                    return datetime.datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
-                                except Exception:
-                                    pass
-    except Exception:
-        # ignore EXIF-read errors and fall back
-        pass
-
-    # (2) filename
-    try:
-        ts = _parse_timestamp_from_filename(os.path.basename(rel_path))
-        if ts:
-            return ts
-    except Exception:
-        pass
-
-    # (3) filesystem mtime
-    try:
-        return datetime.datetime.fromtimestamp(os.path.getmtime(abs_path))
-    except Exception:
-        return None
-
-def build_image_timestamp_index(src_dir, file_list):
-    """
-    Build dict {rel_path: datetime or None} for the given files.
-    Call this once before the main loop (expensive to open images; we cache).
-    """
-    idx = {}
-    for rel in file_list:
-        try:
-            idx[rel] = get_image_timestamp(src_dir, rel)
-        except Exception:
-            idx[rel] = None
-    return idx
-
-def _camera_prefix_of_filename(filename):
-    """
-    Heuristic: return the filename part before the first timestamp pattern.
-    If no timestamp found, return None.
-    """
-    m = re.search(r'\d{14}', filename)
-    if m:
-        return filename[:m.start()]
-    m = re.search(r'\d{8}[_-]\d{6}', filename)
-    if m:
-        return filename[:m.start()]
-    return None
-
-def find_series_images(target_rel_path, timestamp_index, window_seconds=10, require_same_camera=True):
-    """
-    Return list of rel_paths that belong to same 'burst' as target_rel_path.
-    - Uses timestamp_index (dict from build_image_timestamp_index).
-    - window_seconds: include files within +/- window_seconds of the target timestamp.
-    - require_same_camera: only include files with same filename prefix (heuristic).
-    """
-    if target_rel_path not in timestamp_index:
-        return [target_rel_path]
-    t0 = timestamp_index.get(target_rel_path)
-    if t0 is None:
-        return [target_rel_path]
-
-    prefix0 = _camera_prefix_of_filename(os.path.basename(target_rel_path)) if require_same_camera else None
-    candidates = []
-    for rel, t in timestamp_index.items():
-        if t is None:
-            continue
-        if require_same_camera:
-            prefix = _camera_prefix_of_filename(os.path.basename(rel))
-            if prefix0 is not None and prefix is not None and prefix0 != prefix:
-                continue
-        if abs((t - t0).total_seconds()) <= window_seconds:
-            candidates.append((rel, t))
-    # sort ascending (optional — we keep chronological)
-    candidates.sort(key=lambda x: x[1] or datetime.datetime.max)
-    return [c[0] for c in candidates]
 
 # move files into subdirectories
 def move_files(file, detection_type, var_file_placement, max_detection_conf, var_sep_conf, dst_root, src_dir, manually_checked):
@@ -5818,13 +5439,7 @@ def move_files(file, detection_type, var_file_placement, max_detection_conf, var
     # return new relative file path
     return(new_file)
 
-# sort multiple checkpoint in order from recent to last
-def sort_checkpoint_files(files):
-    def get_timestamp(file):
-        timestamp_str = file.split('_')[1].split('.')[0]
-        return datetime.datetime.strptime(timestamp_str, "%Y%m%d%H%M%S")
-    sorted_files = sorted(files, key=get_timestamp, reverse=True)
-    return sorted_files
+
 
 # check if checkpoint file is present and assign global variable
 def check_checkpnt():
@@ -5845,11 +5460,7 @@ def check_checkpnt():
         loc_chkpnt_file = os.path.join(var_choose_folder.get(), sort_checkpoint_files(loc_chkpnt_files)[0])
     return True
 
-# cut off string if it is too long
-def shorten_path(path, length):
-    if len(path) > length:
-        path = "..." + path[0 - length + 3:]
-    return path
+
 
 # browse directory
 def browse_dir(var, var_short, dsp, cut_off_length, n_row, n_column, str_sticky, source_dir = False):    
@@ -6228,18 +5839,9 @@ def write_global_vars(new_values = None):
     with open(var_file, 'w') as file:
         json.dump(variables, file, indent=4)
 
-# check which models are known and should be listed in the dpd
-def fetch_known_models(root_dir):
-    return sorted([subdir for subdir in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, subdir))])
 
-# convert plt graph to img via in-memory buffer
-def fig2img(fig):
-    import io
-    buf = io.BytesIO()
-    fig.savefig(buf)
-    buf.seek(0)
-    img = Image.open(buf)
-    return img
+
+
 
 # make piechart from results.xlsx
 def create_pie_chart(file_path, looks, st_angle = 45):
@@ -6280,12 +5882,7 @@ def create_pie_chart(file_path, looks, st_angle = 45):
     plt.close()
     return [img, rows]
 
-# format the appropriate size unit
-def format_size(size):
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size < 1024.0:
-            return f"{round(size)} {unit}"
-        size /= 1024.0
+
 
 # function to create a dir and create a model_vars.json
 # it does not yet download the model, but it will show up in the dropdown
