@@ -243,7 +243,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
         if not (os.path.isfile(os.path.join(dst_dir, "results_detections.csv")) and 
                 os.path.isfile(os.path.join(dst_dir, "results_files.csv"))):
             exp = True
-            exp_format = dpd_options_exp_format[lang_idx][1] # CSV
+            exp_format = t('dpd_exp_format')[1] # CSV
             remove_csv = True
 
     # get correct json file
@@ -340,7 +340,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
     postprocessing_error_log = os.path.join(dst_dir, "postprocessing_error_log.txt")
 
     # count the number of rows to make sure it doesn't exceed the limit for an excel sheet
-    if exp and exp_format == dpd_options_exp_format[lang_idx][0]: # if exp_format is the first option in the dropdown menu -> XLSX
+    if exp and exp_format == t('dpd_exp_format')[0]: # if exp_format is the first option in the dropdown menu -> XLSX
         n_rows_files = 1
         n_rows_detections = 1
         for image in data['images']:
@@ -662,7 +662,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                         conf_label = round(bbox[1], 2) if round(bbox[1], 2) != 1.0 else 0.99
                         vis_label = f"{bbox[0]} {conf_label}"
                     color = colors[int(inverted_label_map[bbox[0]])]
-                    bb.add(im_to_vis, *bbox[3:7], vis_label, color, size = dpd_options_vis_size[lang_idx].index(var_vis_size.get())) # convert string to index, e.g. "small" -> 0
+                    bb.add(im_to_vis, *bbox[3:7], vis_label, color, size = t('dpd_vis_size').index(var_vis_size.get())) # convert string to index, e.g. "small" -> 0
             
             im = os.path.join(dst_dir, file)
             Path(os.path.dirname(im)).mkdir(parents=True, exist_ok=True)
@@ -722,7 +722,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
         summary.to_csv(csv_for_summary, encoding='utf-8', mode='w', index=False, header=True)
 
     # convert csv to xlsx if required
-    if exp and exp_format == dpd_options_exp_format[lang_idx][0]: # if exp_format is the first option in the dropdown menu -> XLSX
+    if exp and exp_format == t('dpd_exp_format')[0]: # if exp_format is the first option in the dropdown menu -> XLSX
         xlsx_path = os.path.join(dst_dir, "results.xlsx")
 
         # check if the excel file exists, e.g. when processing both img and vid
@@ -755,7 +755,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                 df.to_excel(writer, sheet_name=result_type, index=None, header=True)
 
     # convert csv to tsv if required
-    if exp and exp_format == dpd_options_exp_format[lang_idx][3]: # if exp_format is the third option in the dropdown menu -> TSV
+    if exp and exp_format == t('dpd_exp_format')[3]: # if exp_format is the third option in the dropdown menu -> TSV
 
         # Check if the TSV file exists, e.g., when processing both img and vid
         csv_path = os.path.join(dst_dir, f"results_detections.csv")
@@ -799,7 +799,7 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                     os.remove(csv_path)
 
     # convert csv to coco format if required
-    if exp and exp_format == dpd_options_exp_format[lang_idx][2]: # COCO
+    if exp and exp_format == t('dpd_exp_format')[2]: # COCO
         
         # init vars
         coco_path = os.path.join(dst_dir, f"results_coco_{data_type}.json")
@@ -835,9 +835,9 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
 
         # if user wants XLSX (0), COCO (2), or TSV (3) as output, or if user didn't specify exp all-
         # together but the files were created for plt -> remove CSV files
-        if (exp and exp_format == dpd_options_exp_format[lang_idx][0]) or \
-            (exp and exp_format == dpd_options_exp_format[lang_idx][2]) or \
-            (exp and exp_format == dpd_options_exp_format[lang_idx][3]) or \
+        if (exp and exp_format == t('dpd_exp_format')[0]) or \
+            (exp and exp_format == t('dpd_exp_format')[2]) or \
+            (exp and exp_format == t('dpd_exp_format')[3]) or \
             remove_csv:
             for result_type in ['detections', 'files', 'summary']:
                 csv_path = os.path.join(dst_dir, f"results_{result_type}.csv")
@@ -1200,7 +1200,7 @@ countries = [
 ]
 
 # for simplicity, the same list is used for both english, spanish and french. I'll fix everything properly in the new version
-dpd_options_sppnet_location = [countries, countries, countries]
+dpd_options_sppnet_location = countries
 
 # open progress window and initiate the post-process progress window
 def start_postprocess():
@@ -1219,8 +1219,8 @@ def start_postprocess():
         "var_vis_files": var_vis_files.get(),
         "var_crp_files": var_crp_files.get(),
         "var_exp": var_exp.get(),
-        "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get()),
-        "var_vis_size_idx": dpd_options_vis_size[lang_idx].index(var_vis_size.get()),
+        "var_exp_format_idx": t('dpd_exp_format').index(var_exp_format.get()),
+        "var_vis_size_idx": t('dpd_vis_size').index(var_vis_size.get()),
         "var_vis_bbox": var_vis_bbox.get(),
         "var_vis_blur": var_vis_blur.get(),
         "var_plt": var_plt.get(),
@@ -3435,7 +3435,7 @@ def start_deploy(simple_mode = False):
     write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
-        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),
+        "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get()),
     })
 
     # simple_mode and advanced mode shared image settings
@@ -4621,7 +4621,7 @@ def on_toplevel_close():
     write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
-        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
+        "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
         })
     root.destroy()
 
@@ -4728,7 +4728,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
     write_global_vars(AddaxAI_files, {
         "lang_idx": lang_idx,
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),
-        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
+        "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
     })
     
     # save advanced settings for next time
@@ -4767,7 +4767,7 @@ def deploy_speciesnet(chosen_folder, sppnet_output_window, simple_mode = False):
             state_code = var_sppnet_location.get()[4:6]
             location_args.append(f"--admin1_region={state_code}")
     write_global_vars(AddaxAI_files, {
-        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get())
+        "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get())
     })
 
     # create commands for Windows
@@ -5291,7 +5291,7 @@ def model_cls_animal_options(self):
     # save settings
     write_global_vars(AddaxAI_files, {
         "var_cls_model_idx": dpd_options_cls_model[lang_idx].index(var_cls_model.get()),  # write index instead of value
-        "var_sppnet_location_idx": dpd_options_sppnet_location[lang_idx].index(var_sppnet_location.get()),  # write index instead of value
+        "var_sppnet_location_idx": dpd_options_sppnet_location.index(var_sppnet_location.get()),  # write index instead of value
         })
  
     # show/hide taxonomic level widgets
@@ -8180,7 +8180,7 @@ def set_language():
     lbl_vis_size.configure(text="        ↳ " + t('lbl_vis_size'))
     lbl_vis_bbox.configure(text="     " + t('lbl_vis_bbox'))
     lbl_vis_blur.configure(text="     " + t('lbl_vis_blur'))
-    var_vis_size.set(dpd_options_vis_size[lang_idx][global_vars['var_vis_size_idx']])
+    var_vis_size.set(t('dpd_vis_size')[global_vars['var_vis_size_idx']])
 
     # update texts of help tab
     help_text.configure(state=NORMAL)
@@ -8768,12 +8768,12 @@ def reset_values():
     var_file_placement.set(2)
     var_sep_conf.set(False)
     var_vis_files.set(False)
-    var_vis_size.set(dpd_options_vis_size[lang_idx][global_vars['var_vis_size_idx']])
+    var_vis_size.set(t('dpd_vis_size')[global_vars['var_vis_size_idx']])
     var_vis_bbox.set(False)
     var_vis_blur.set(False)
     var_crp_files.set(False)
     var_exp.set(True)
-    var_exp_format.set(dpd_options_exp_format[lang_idx][global_vars['var_exp_format_idx']])
+    var_exp_format.set(t('dpd_exp_format')[global_vars['var_exp_format_idx']])
     
     write_global_vars(AddaxAI_files, {
         "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
@@ -8798,12 +8798,12 @@ def reset_values():
         "var_file_placement": var_file_placement.get(),
         "var_sep_conf": var_sep_conf.get(),
         "var_vis_files": var_vis_files.get(),
-        "var_vis_size_idx": dpd_options_vis_size[lang_idx].index(var_vis_size.get()),
+        "var_vis_size_idx": t('dpd_vis_size').index(var_vis_size.get()),
         "var_vis_bbox": var_vis_bbox.get(),
         "var_vis_blur": var_vis_blur.get(),
         "var_crp_files": var_crp_files.get(),
         "var_exp": var_exp.get(),
-        "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get())
+        "var_exp_format_idx": t('dpd_exp_format').index(var_exp_format.get())
     })
 
     # update keep-series trigger display
@@ -9177,8 +9177,8 @@ row_sppnet_location = 1
 lbl_sppnet_location = Label(master=cls_frame, text="     " + t('lbl_sppnet_location'), width=1, anchor="w")
 lbl_sppnet_location.grid(row=row_sppnet_location, sticky='nesw', pady=2)
 var_sppnet_location = StringVar(cls_frame)
-var_sppnet_location.set(dpd_options_sppnet_location[lang_idx][global_vars["var_sppnet_location_idx"]]) # take idx instead of string
-dpd_sppnet_location = OptionMenu(cls_frame, var_sppnet_location, *dpd_options_sppnet_location[lang_idx])
+var_sppnet_location.set(dpd_options_sppnet_location[global_vars["var_sppnet_location_idx"]]) # take idx instead of string
+dpd_sppnet_location = OptionMenu(cls_frame, var_sppnet_location, *dpd_options_sppnet_location)
 dpd_sppnet_location.configure(width=1, state=DISABLED)
 # dpd_sppnet_location.grid(row=row_sppnet_location, column=1, sticky='nesw', padx=5, pady=2) # dont grid this by default
 
@@ -9481,12 +9481,9 @@ chb_vis_bbox.grid(row=row_vis_bbox, column=1, sticky='nesw', padx=5)
 row_vis_size = 1
 lbl_vis_size = Label(vis_frame, text="        ↳ " + t('lbl_vis_size'), pady=2, width=1, anchor="w")
 lbl_vis_size.grid(row=row_vis_size, sticky='nesw')
-dpd_options_vis_size = [["Extra small", "Small", "Medium", "Large", "Extra large"],
-                        ["Extra pequeño", "Pequeño", "Mediano", "Grande", "Extra grande"],
-                        ["Extra petit", "Petit", "Moyen", "Grand", "Extra grand"]]
 var_vis_size = StringVar(vis_frame)
-var_vis_size.set(dpd_options_vis_size[lang_idx][global_vars['var_vis_size_idx']])
-dpd_vis_size = OptionMenu(vis_frame, var_vis_size, *dpd_options_vis_size[lang_idx])
+var_vis_size.set(t('dpd_vis_size')[global_vars['var_vis_size_idx']])
+dpd_vis_size = OptionMenu(vis_frame, var_vis_size, *t('dpd_vis_size'))
 dpd_vis_size.configure(width=1)
 dpd_vis_size.grid(row=row_vis_size, column=1, sticky='nesw', padx=5)
 
@@ -9539,10 +9536,9 @@ exp_frame.grid_forget()
 row_exp_format = 0
 lbl_exp_format = Label(exp_frame, text="     " + t('lbl_exp_format'), pady=2, width=1, anchor="w")
 lbl_exp_format.grid(row=row_exp_format, sticky='nesw')
-dpd_options_exp_format = [["XLSX", "CSV", "COCO", "Sensing Clues (TSV)"], ["XLSX", "CSV", "COCO", "Sensing Clues (TSV)"], ["XLSX", "CSV", "COCO", "Sensing Clues (TSV)"]]
 var_exp_format = StringVar(exp_frame)
-var_exp_format.set(dpd_options_exp_format[lang_idx][global_vars['var_exp_format_idx']])
-dpd_exp_format = OptionMenu(exp_frame, var_exp_format, *dpd_options_exp_format[lang_idx])
+var_exp_format.set(t('dpd_exp_format')[global_vars['var_exp_format_idx']])
+dpd_exp_format = OptionMenu(exp_frame, var_exp_format, *t('dpd_exp_format'))
 dpd_exp_format.configure(width=1)
 dpd_exp_format.grid(row=row_exp_format, column=1, sticky='nesw', padx=5)
 
