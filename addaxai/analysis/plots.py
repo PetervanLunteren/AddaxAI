@@ -8,11 +8,12 @@ later phase.
 
 import io
 import os
+from typing import Any, Tuple
 
 from PIL import Image
 
 
-def fig2img(fig):
+def fig2img(fig: Any) -> Image.Image:
     """Convert a matplotlib figure to a PIL Image via in-memory buffer.
 
     Args:
@@ -27,7 +28,7 @@ def fig2img(fig):
     return Image.open(buf)
 
 
-def overlay_logo(image_path, logo):
+def overlay_logo(image_path: str, logo: Image.Image) -> None:
     """Paste a logo image onto the top-right corner of a chart image.
 
     Args:
@@ -42,7 +43,7 @@ def overlay_logo(image_path, logo):
     main_image.save(image_path)
 
 
-def calculate_time_span(df):
+def calculate_time_span(df: Any) -> Tuple[int, int, int, int]:
     """Analyze the date range in a detection DataFrame.
 
     Args:

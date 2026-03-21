@@ -18,8 +18,9 @@ Usage:
 
 import json
 import os
+from typing import Any, Dict
 
-_strings: dict = {}   # {"en": {...}, "es": {...}, "fr": {...}}
+_strings: Dict[str, Dict[str, Any]] = {}   # {"en": {...}, "es": {...}, "fr": {...}}
 _current: str = "en"
 _LANG_CODES = ["en", "es", "fr"]
 
@@ -49,7 +50,7 @@ def set_language(lang_idx: int) -> None:
     _current = _LANG_CODES[lang_idx]
 
 
-def t(key: str) -> object:
+def t(key: str) -> Any:
     """Look up a translation by key in the current language.
 
     Args:
