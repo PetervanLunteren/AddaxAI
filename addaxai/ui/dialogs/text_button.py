@@ -1,6 +1,7 @@
 """TextButtonWindow dialog for AddaxAI."""
 
 import tkinter as tk
+from typing import Any, Callable, List, Optional
 
 try:
     import customtkinter
@@ -12,7 +13,8 @@ except ImportError:
 
 
 class TextButtonWindow:
-    def __init__(self, title, text, buttons, master=None, bring_to_top_func=None):
+    def __init__(self, title: str, text: str, buttons: List[str],
+                 master: Any = None, bring_to_top_func: Optional[Callable[[Any], None]] = None) -> None:
         self.root = _CTkToplevel(master)
         self.root.title(title)
         self.root.geometry("+10+10")
@@ -32,19 +34,19 @@ class TextButtonWindow:
                                command=lambda btn=button_text: self._button_click(btn))
             button.pack(side=tk.LEFT, padx=5)
 
-    def _button_click(self, button_text):
+    def _button_click(self, button_text: str) -> None:
         self.selected_button = button_text
         self.root.quit()
 
-    def open(self):
+    def open(self) -> None:
         self.root.mainloop()
 
-    def user_close(self):
+    def user_close(self) -> None:
         self.selected_button = "EXIT"
         self.root.quit()
         self.root.destroy()
 
-    def run(self):
+    def run(self) -> Optional[str]:
         self.open()
         self.root.destroy()
         return self.selected_button

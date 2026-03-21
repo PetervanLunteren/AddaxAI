@@ -1,5 +1,7 @@
 """Download progress windows for AddaxAI."""
 
+from typing import Any, Callable, Optional
+
 try:
     import customtkinter
     _CTkToplevel = customtkinter.CTkToplevel
@@ -41,8 +43,10 @@ from addaxai.ui.widgets.buttons import CancelButton
 
 
 class EnvDownloadProgressWindow:
-    def __init__(self, env_title, total_size_str, master=None, scale_factor=1.0,
-                 padx=5, pady=2, green_primary="#00A86B", open_nosleep_func=None):
+    def __init__(self, env_title: str, total_size_str: str, master: Any = None,
+                 scale_factor: float = 1.0, padx: int = 5, pady: int = 2,
+                 green_primary: str = "#00A86B",
+                 open_nosleep_func: Optional[Callable[[], None]] = None) -> None:
         self.green_primary = green_primary
         self.dm_root = _CTkToplevel(master)
         self.dm_root.title("Download progress")
@@ -101,11 +105,11 @@ class EnvDownloadProgressWindow:
 
         self.dm_root.withdraw()
 
-    def open(self):
+    def open(self) -> None:
         self.dm_root.update()
         self.dm_root.deiconify()
 
-    def update_download_progress(self, percentage):
+    def update_download_progress(self, percentage: float) -> None:
         self.pbr_download.set(percentage)
         self.per_download.configure(text=f" {round(percentage * 100)}% ")
         if percentage > 0.5:
@@ -114,7 +118,7 @@ class EnvDownloadProgressWindow:
             self.per_download.configure(fg_color=("#949BA2", "#4B4D50"))
         self.dm_root.update()
 
-    def update_extraction_progress(self, percentage):
+    def update_extraction_progress(self, percentage: float) -> None:
         self.pbr_extraction.set(percentage)
         self.per_extraction.configure(text=f" {round(percentage * 100)}% ")
         if percentage > 0.5:
@@ -123,13 +127,15 @@ class EnvDownloadProgressWindow:
             self.per_extraction.configure(fg_color=("#949BA2", "#4B4D50"))
         self.dm_root.update()
 
-    def close(self):
+    def close(self) -> None:
         self.dm_root.destroy()
 
 
 class ModelDownloadProgressWindow:
-    def __init__(self, model_title, total_size_str, master=None, scale_factor=1.0,
-                 padx=5, pady=2, green_primary="#00A86B", open_nosleep_func=None):
+    def __init__(self, model_title: str, total_size_str: str, master: Any = None,
+                 scale_factor: float = 1.0, padx: int = 5, pady: int = 2,
+                 green_primary: str = "#00A86B",
+                 open_nosleep_func: Optional[Callable[[], None]] = None) -> None:
         self.green_primary = green_primary
         self.dm_root = _CTkToplevel(master)
         self.dm_root.title("Download progress")
@@ -168,11 +174,11 @@ class ModelDownloadProgressWindow:
 
         self.dm_root.withdraw()
 
-    def open(self):
+    def open(self) -> None:
         self.dm_root.update()
         self.dm_root.deiconify()
 
-    def update_progress(self, percentage):
+    def update_progress(self, percentage: float) -> None:
         self.pbr.set(percentage)
         self.per.configure(text=f" {round(percentage * 100)}% ")
         if percentage > 0.5:
@@ -181,5 +187,5 @@ class ModelDownloadProgressWindow:
             self.per.configure(fg_color=("#949BA2", "#4B4D50"))
         self.dm_root.update()
 
-    def close(self):
+    def close(self) -> None:
         self.dm_root.destroy()

@@ -1,6 +1,7 @@
 """CustomWindow — generic pop-up window for AddaxAI."""
 
 import tkinter as tk
+from typing import Any
 
 try:
     import customtkinter
@@ -12,13 +13,13 @@ except ImportError:
 
 
 class CustomWindow:
-    def __init__(self, title="", text="", master=None):
+    def __init__(self, title: str = "", text: str = "", master: Any = None) -> None:
         self.title = title
         self.text = text
         self._master = master
         self.root = None
 
-    def open(self):
+    def open(self) -> None:
         self.root = _CTkToplevel(self._master)
         self.root.title(self.title)
         self.root.geometry("+10+10")
@@ -29,5 +30,5 @@ class CustomWindow:
         self.root.update_idletasks()
         self.root.update()
 
-    def close(self):
+    def close(self) -> None:
         self.root.destroy()

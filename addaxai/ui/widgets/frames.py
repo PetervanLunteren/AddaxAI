@@ -1,5 +1,7 @@
 """Reusable CTkFrame subclasses for AddaxAI."""
 
+from typing import Any
+
 try:
     import customtkinter
     _CTkFrame = customtkinter.CTkFrame
@@ -12,7 +14,7 @@ except ImportError:
 
 
 class MyMainFrame(_CTkFrame):
-    def __init__(self, master, scale_factor=1.0, **kwargs):
+    def __init__(self, master: Any, scale_factor: float = 1.0, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         if scale_factor != 1.0:
             self.columnconfigure(0, weight=1, minsize=70 * round(scale_factor * 1.35, 2))
@@ -23,12 +25,12 @@ class MyMainFrame(_CTkFrame):
 
 
 class MySubFrame(_CTkFrame):
-    def __init__(self, master, **kwargs):
+    def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.columnconfigure(0, weight=1, minsize=250)
         self.columnconfigure(1, weight=1, minsize=250)
 
 
 class MySubSubFrame(_CTkFrame):
-    def __init__(self, master, **kwargs):
+    def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)

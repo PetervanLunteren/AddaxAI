@@ -1,5 +1,7 @@
 """Reusable CTkButton subclasses for AddaxAI."""
 
+from typing import Any
+
 try:
     import customtkinter
     _CTkButton = customtkinter.CTkButton
@@ -12,7 +14,7 @@ except ImportError:
 
 
 class InfoButton(_CTkButton):
-    def __init__(self, master, **kwargs):
+    def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.configure(fg_color=("#ebebeb", "#333333"),
                        hover=False,
@@ -22,7 +24,7 @@ class InfoButton(_CTkButton):
 
 
 class CancelButton(_CTkButton):
-    def __init__(self, master, **kwargs):
+    def __init__(self, master: Any, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.configure(fg_color=("#ebeaea", "#4B4D50"),
                        hover_color=("#939aa2", "#2B2B2B"),
@@ -32,8 +34,8 @@ class CancelButton(_CTkButton):
 
 
 class GreyTopButton(_CTkButton):
-    def __init__(self, master, yellow_secondary="#F0EEDC", yellow_tertiary="#E4E1D0",
-                 border_width=0, **kwargs):
+    def __init__(self, master: Any, yellow_secondary: str = "#F0EEDC",
+                 yellow_tertiary: str = "#E4E1D0", border_width: int = 0, **kwargs: Any) -> None:
         super().__init__(master, **kwargs)
         self.configure(fg_color=(yellow_secondary, "#333333"),
                        hover_color=(yellow_tertiary, "#2B2B2B"),

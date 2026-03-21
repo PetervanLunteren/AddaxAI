@@ -3,6 +3,7 @@
 import math
 import tkinter as tk
 from tkinter import ttk
+from typing import Any
 
 try:
     import customtkinter
@@ -16,7 +17,7 @@ from addaxai.i18n import t
 
 
 class PatienceDialog:
-    def __init__(self, total, text, master=None):
+    def __init__(self, total: int, text: str, master: Any = None) -> None:
         self.root = _CTkToplevel(master)
         self.root.title(t('be_patient'))
         self.root.geometry("+10+10")
@@ -28,11 +29,11 @@ class PatienceDialog:
         self.progress.pack(pady=10, padx=10)
         self.root.withdraw()
 
-    def open(self):
+    def open(self) -> None:
         self.root.update()
         self.root.deiconify()
 
-    def update_progress(self, current, percentage=False):
+    def update_progress(self, current: int, percentage: bool = False) -> None:
         # updating takes considerable time - only do this 100 times
         if current % math.ceil(self.total / 100) == 0:
             self.progress['value'] = (current / self.total) * 100
@@ -43,5 +44,5 @@ class PatienceDialog:
                 self.label.configure(text=f"{self.text}\n{current} of {self.total}")
             self.root.update()
 
-    def close(self):
+    def close(self) -> None:
         self.root.destroy()

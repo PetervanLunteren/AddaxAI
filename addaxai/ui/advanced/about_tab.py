@@ -3,11 +3,12 @@
 import webbrowser
 from functools import partial
 from tkinter import END, INSERT, DISABLED
+from typing import Any, Optional
 
 from addaxai.i18n import t, lang_idx as i18n_lang_idx
 
 
-def write_about_tab(about_text_widget, hyperlink, text_font="TkDefaultFont", scroll=None):
+def write_about_tab(about_text_widget: Any, hyperlink: Any, text_font: str = "TkDefaultFont", scroll: Optional[Any] = None) -> None:
     """Populate the about tab text widget with formatted content.
 
     Args:

@@ -1,5 +1,7 @@
 """ProgressWindow — deploy and postprocess progress dialog for AddaxAI."""
 
+from typing import Any, Callable, List
+
 try:
     import customtkinter
     _CTkToplevel = customtkinter.CTkToplevel
@@ -38,7 +40,8 @@ from addaxai.i18n import t, lang_idx as i18n_lang_idx
 from addaxai.ui.widgets.buttons import CancelButton
 
 class ProgressWindow:
-    def __init__(self, processes, master=None, scale_factor=1.0, padx=5, pady=2, green_primary="#00A86B"):
+    def __init__(self, processes: List[str], master: Any = None, scale_factor: float = 1.0,
+                 padx: int = 5, pady: int = 2, green_primary: str = "#00A86B") -> None:
         self.progress_top_level_window = _CTkToplevel(master)
         self.progress_top_level_window.title(t('analysis_progress'))
         self.progress_top_level_window.geometry("+10+10")
@@ -382,19 +385,19 @@ class ProgressWindow:
         self.progress_top_level_window.update()
 
     def update_values(self,
-                      process,
-                      status,
-                      cur_it = 1,
-                      tot_it = 1,
-                      time_ela = "",
-                      time_rem = "",
-                      speed = "",
-                      hware = "",
-                      cancel_func = lambda: print(""),
-                      extracting_frames_txt = ["Extracting frames...     ",
-                                               "Extrayendo fotogramas...     ",
-                                               "Extraction des trames..."],
-                      frame_video_choice = "frame"):
+                      process: str,
+                      status: str,
+                      cur_it: int = 1,
+                      tot_it: int = 1,
+                      time_ela: str = "",
+                      time_rem: str = "",
+                      speed: str = "",
+                      hware: str = "",
+                      cancel_func: Callable[[], None] = lambda: None,
+                      extracting_frames_txt: List[str] = ["Extracting frames...     ",
+                                                          "Extrayendo fotogramas...     ",
+                                                          "Extraction des trames..."],
+                      frame_video_choice: str = "frame") -> None:
 
         # language settings
         algorithm_starting_txt = ["Algorithm is starting up...", 'El algoritmo está arrancando...', 'Algorithme en démarrage...']
@@ -751,9 +754,9 @@ class ProgressWindow:
         # update screen
         self.progress_top_level_window.update()
 
-    def open(self):
+    def open(self) -> None:
         self.progress_top_level_window.deiconify()
 
-    def close(self):
+    def close(self) -> None:
         self.progress_top_level_window.destroy()
 

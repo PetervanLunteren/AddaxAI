@@ -3,12 +3,13 @@
 import webbrowser
 from functools import partial
 from tkinter import END, INSERT, CURRENT, NORMAL, DISABLED
+from typing import Any, Dict, Optional, Tuple
 
 from addaxai.i18n import t, lang_idx as i18n_lang_idx
 
 # create hyperlinks (thanks marvin from GitHub)
 class HyperlinkManager:
-    def __init__(self, text, green_primary="#00A86B"):
+    def __init__(self, text: Any, green_primary: str = "#00A86B") -> None:
         self.text = text
         self.text.tag_config("hyper", foreground=green_primary, underline=1)
         self.text.tag_bind("hyper", "<Enter>", self._enter)
@@ -16,21 +17,21 @@ class HyperlinkManager:
         self.text.tag_bind("hyper", "<Button-1>", self._click)
         self.reset()
 
-    def reset(self):
-        self.links = {}
+    def reset(self) -> None:
+        self.links: Dict[str, Any] = {}
 
-    def add(self, action):
+    def add(self, action: Any) -> Tuple[str, str]:
         tag = "hyper-%d" % len(self.links)
         self.links[tag] = action
         return "hyper", tag
 
-    def _enter(self, event):
+    def _enter(self, event: Any) -> None:
         self.text.configure(cursor="hand2")
 
-    def _leave(self, event):
+    def _leave(self, event: Any) -> None:
         self.text.configure(cursor="")
 
-    def _click(self, event):
+    def _click(self, event: Any) -> None:
         for tag in self.text.tag_names(CURRENT):
             if tag[:6] == "hyper-":
                 self.links[tag]()
@@ -38,7 +39,7 @@ class HyperlinkManager:
 
 
 
-def write_help_tab(help_text_widget, hyperlink, text_font="TkDefaultFont", scroll=None):
+def write_help_tab(help_text_widget: Any, hyperlink: Any, text_font: str = "TkDefaultFont", scroll: Optional[Any] = None) -> None:
     line_number = 1 
 
     # intro sentence

@@ -5,6 +5,7 @@ import webbrowser
 import tkinter as tk
 from tkinter.font import Font
 import tkinter.messagebox as mb
+from typing import Any, Callable, Dict, List, Optional
 
 try:
     import customtkinter
@@ -37,7 +38,7 @@ from addaxai.ui.widgets.buttons import InfoButton, GreyTopButton
 from addaxai.ui.widgets.species_selection import SpeciesSelectionFrame
 
 
-def sim_dir_show_info():
+def sim_dir_show_info() -> None:
     """Show info dialog for the directory selection panel."""
     mb.showinfo(title=t('information'),
                 message=["Select the images to analyse",
@@ -51,7 +52,7 @@ def sim_dir_show_info():
                         "dans les sous-dossiers seront traitées. Utiliser le mode avancé pour plus d'options."][i18n_lang_idx()])
 
 
-def sim_spp_show_info():
+def sim_spp_show_info() -> None:
     """Show info dialog for the species selection panel."""
     mb.showinfo(title=t('information'),
                 message=["Select the species that are present",
@@ -69,7 +70,7 @@ def sim_spp_show_info():
                         "fonction du modèle sélectionné."][i18n_lang_idx()])
 
 
-def sim_mdl_show_info(var_cls_model=None, show_model_info_func=None):
+def sim_mdl_show_info(var_cls_model: Optional[Any] = None, show_model_info_func: Optional[Callable[[], None]] = None) -> None:
     """Show info dialog for the model selection panel.
 
     Args:
@@ -96,18 +97,25 @@ def sim_mdl_show_info(var_cls_model=None, show_model_info_func=None):
             show_model_info_func()
 
 
-def build_simple_mode(root, version, addaxai_files, scale_factor, padx, pady,
-                      yellow_primary, green_primary, icon_size, logo_width, logo_height,
-                      sim_window_width, sim_window_height, addax_txt_size,
-                      pil_sidebar, pil_logo_incl_text, pil_dir_image, pil_mdl_image,
-                      pil_spp_image, pil_run_image,
-                      on_toplevel_close, switch_mode, set_language, sponsor_project,
-                      reset_values, browse_dir_func, update_frame_states,
-                      start_deploy_func, sim_mdl_dpd_callback,
-                      var_choose_folder, var_choose_folder_short, dsp_choose_folder,
-                      row_choose_folder, dpd_options_cls_model, suffixes_for_sim_none,
-                      global_vars, var_cls_model, show_model_info_func,
-                      yellow_secondary, yellow_tertiary, grey_button_border_width):
+def build_simple_mode(root: Any, version: str, addaxai_files: str, scale_factor: float,
+                      padx: int, pady: int, yellow_primary: str, green_primary: str,
+                      icon_size: int, logo_width: int, logo_height: int,
+                      sim_window_width: int, sim_window_height: int, addax_txt_size: int,
+                      pil_sidebar: Any, pil_logo_incl_text: Any, pil_dir_image: Any,
+                      pil_mdl_image: Any, pil_spp_image: Any, pil_run_image: Any,
+                      on_toplevel_close: Callable[[], None], switch_mode: Callable[[], None],
+                      set_language: Callable[[], None], sponsor_project: Callable[[], None],
+                      reset_values: Callable[[], None], browse_dir_func: Callable[[], None],
+                      update_frame_states: Callable[[], None],
+                      start_deploy_func: Callable[[], None],
+                      sim_mdl_dpd_callback: Callable[[], None],
+                      var_choose_folder: Any, var_choose_folder_short: Any,
+                      dsp_choose_folder: int, row_choose_folder: int,
+                      dpd_options_cls_model: List[str], suffixes_for_sim_none: List[str],
+                      global_vars: Dict[str, Any], var_cls_model: Any,
+                      show_model_info_func: Callable[[], None],
+                      yellow_secondary: str, yellow_tertiary: str,
+                      grey_button_border_width: int) -> Dict[str, Any]:
     """Build the simple mode window and all its widgets.
 
     Returns a dict of all widget references that other code needs.

@@ -4,6 +4,7 @@ import signal
 import tkinter as tk
 import customtkinter
 from subprocess import Popen
+from typing import Any, Callable, Optional
 
 from addaxai.utils.files import remove_ansi_escape_sequences
 
@@ -11,7 +12,8 @@ from addaxai.utils.files import remove_ansi_escape_sequences
 class SpeciesNetOutputWindow:
     """Toplevel window that shows live SpeciesNet stdout and a Cancel button."""
 
-    def __init__(self, master, bring_to_top_func=None, on_cancel=None):
+    def __init__(self, master: Any, bring_to_top_func: Optional[Callable[[Any], None]] = None,
+                 on_cancel: Optional[Callable[[], None]] = None) -> None:
         """
         Args:
             master: parent tkinter window
@@ -30,7 +32,7 @@ class SpeciesNetOutputWindow:
         if bring_to_top_func:
             bring_to_top_func(self.sppnet_output_window_root)
 
-    def add_string(self, text, process=None):
+    def add_string(self, text: str, process: Optional[Popen] = None) -> None:
         if process is not None:
             self.process = process
         if text.strip():
@@ -81,10 +83,10 @@ class SpeciesNetOutputWindow:
             self.text_area.see(tk.END)
             self.sppnet_output_window_root.update()
 
-    def close(self):
+    def close(self) -> None:
         self.sppnet_output_window_root.destroy()
 
-    def cancel(self):
+    def cancel(self) -> None:
         if os.name == 'nt':
             Popen(f"TASKKILL /F /PID {self.process.pid} /T")
         else:
