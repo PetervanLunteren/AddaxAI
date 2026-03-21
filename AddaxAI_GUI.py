@@ -195,6 +195,9 @@ from addaxai.models.registry import (is_first_startup, remove_first_startup_file
                                       distribute_individual_model_jsons,
                                       set_up_unknown_model)
 from addaxai.i18n import init as i18n_init, t, set_language as i18n_set_language, lang_idx as i18n_lang_idx
+from addaxai.ui.widgets.frames import MyMainFrame, MySubFrame, MySubSubFrame
+from addaxai.ui.widgets.buttons import InfoButton, CancelButton, GreyTopButton
+from addaxai.ui.widgets.species_selection import SpeciesSelectionFrame
 
 # log pythonpath
 print(sys.path)
@@ -5230,7 +5233,8 @@ def model_cls_animal_options(self):
                                             height=sim_spp_scr_height,
                                             all_classes=model_vars['all_classes'],
                                             selected_classes=model_vars['selected_classes'],
-                                            command = on_spp_selection)
+                                            command = on_spp_selection,
+                                            pady=PADY)
         sim_spp_scr._scrollbar.configure(height=0)
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
@@ -5271,7 +5275,7 @@ def model_cls_animal_options(self):
         # set selection frame to dummy spp again
         sim_spp_lbl.configure(text_color = "grey")
         sim_spp_scr.grid_forget()
-        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp = True)
+        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
         sim_spp_scr._scrollbar.configure(height=0)
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
@@ -5279,7 +5283,7 @@ def model_cls_animal_options(self):
         # set selection frame to dummy spp again
         sim_spp_lbl.configure(text_color = "grey")
         sim_spp_scr.grid_forget()
-        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp = True)
+        sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
         sim_spp_scr._scrollbar.configure(height=0)
         sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
@@ -6328,7 +6332,8 @@ def open_species_selection():
     scrollable_checkbox_frame = SpeciesSelectionFrame(master=spp_frm, command=on_selection,
                                                       height=400, width=500,
                                                       all_classes=all_classes,
-                                                      selected_classes=selected_classes)
+                                                      selected_classes=selected_classes,
+                                                      pady=PADY)
     scrollable_checkbox_frame._scrollbar.configure(height=0)
     scrollable_checkbox_frame.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="ew")
 
@@ -6470,6 +6475,7 @@ def open_keep_series_species_selection():
         width=500,
         all_classes=visible_classes,
         selected_classes=selected_visible,
+        pady=PADY,
     )
     scrollable_checkbox_frame._scrollbar.configure(height=0)
     scrollable_checkbox_frame.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="ew")
@@ -6489,34 +6495,7 @@ def open_keep_series_species_selection():
 
     ss_root.protocol("WM_DELETE_WINDOW", save)
 
-class MyMainFrame(customtkinter.CTkFrame):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        if scale_factor != 1.0:
-            self.columnconfigure(0, weight=1, minsize=70 * round(scale_factor * 1.35, 2))
-            self.columnconfigure(1, weight=1, minsize=350 * round(scale_factor * 1.35, 2))
-        else:
-            self.columnconfigure(0, weight=1, minsize=70)
-            self.columnconfigure(1, weight=1, minsize=350)
 
-class MySubFrame(customtkinter.CTkFrame):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.columnconfigure(0, weight=1, minsize=250)
-        self.columnconfigure(1, weight=1, minsize=250)
-
-class MySubSubFrame(customtkinter.CTkFrame):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-
-class InfoButton(customtkinter.CTkButton):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.configure(fg_color = ("#ebebeb", "#333333"),
-                       hover = False,
-                       text_color = ("grey", "grey"),
-                       height = 1,
-                       width = 1)
 
 def sim_dir_show_info():
     mb.showinfo(title = t('information'),
@@ -6568,35 +6547,7 @@ def sim_mdl_show_info():
 def checkbox_frame_event():
     print(f"checkbox frame modified: {sim_spp_scr.get_checked_items()}")
 
-# class to list species with checkboxes
-class SpeciesSelectionFrame(customtkinter.CTkScrollableFrame):
-    def __init__(self, master, all_classes=[], selected_classes=[], command=None, dummy_spp=False, **kwargs):
-        super().__init__(master, **kwargs)
-        self.dummy_spp = dummy_spp
-        if dummy_spp:
-            all_classes = [f"{['Species', 'Especies', 'Espèces'][i18n_lang_idx()]} {i + 1}" for i in range(10)]
-        self.command = command
-        self.checkbox_list = []
-        self.selected_classes = selected_classes
-        for item in all_classes:
-            self.add_item(item)
 
-    def add_item(self, item):
-        checkbox = customtkinter.CTkCheckBox(self, text=item)
-        if self.dummy_spp:
-            checkbox.configure(state="disabled")
-        if item in self.selected_classes:
-            checkbox.select()
-        if self.command is not None:
-            checkbox.configure(command=self.command)
-        checkbox.grid(row=len(self.checkbox_list), column=0, pady=PADY, sticky="nsw")
-        self.checkbox_list.append(checkbox)
-
-    def get_checked_items(self):
-        return [checkbox.cget('text') for checkbox in self.checkbox_list if checkbox.get() == 1]
-
-    def get_all_items(self):
-        return [checkbox.cget('text') for checkbox in self.checkbox_list]
 
 def open_nosleep_page():
     webbrowser.open("https://nosleep.page")
@@ -7305,15 +7256,6 @@ def enable_selection_widgets(row):
         rad_amt.configure(state = DISABLED)
         lbl_n_img.configure(state = DISABLED)
 
-# front end class for cancel button
-class CancelButton(customtkinter.CTkButton):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.configure(fg_color = ("#ebeaea", "#4B4D50"),
-                       hover_color = ("#939aa2", "#2B2B2B"),
-                       text_color = ("black", "white"),
-                       height = 10,
-                       width = 120)
 
 # open progress window for deploy and postprocess
 class ProgressWindow:
@@ -8727,15 +8669,6 @@ def switch_mode():
 def sponsor_project():
     webbrowser.open("https://addaxdatascience.com/addaxai/#donate")
 
-class GreyTopButton(customtkinter.CTkButton):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.configure(fg_color = (yellow_secondary, "#333333"),
-                       hover_color = (yellow_tertiary, "#2B2B2B"),
-                       text_color = ("black", "white"),
-                       height = 10,
-                       width = 140,
-                       border_width=GREY_BUTTON_BORDER_WIDTH)
 
 def reset_values():
 
@@ -8969,13 +8902,13 @@ check_mark_two_rows = PIL_checkmark.resize((45, 45), Image.Resampling.LANCZOS)
 check_mark_two_rows = ImageTk.PhotoImage(check_mark_two_rows)
 
 # grey top buttons
-adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_switch_mode'), command = switch_mode)
+adv_btn_switch_mode = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_switch_mode'), command = switch_mode, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 adv_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
-adv_btn_switch_lang = GreyTopButton(master = advanc_main_frame, text = "Switch language", command = set_language)
+adv_btn_switch_lang = GreyTopButton(master = advanc_main_frame, text = "Switch language", command = set_language, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 adv_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-adv_btn_sponsor = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project)
+adv_btn_sponsor = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 adv_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-adv_btn_reset_values = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_reset_values'), command = reset_values)
+adv_btn_reset_values = GreyTopButton(master = advanc_main_frame, text = t('adv_btn_reset_values'), command = reset_values, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 adv_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
 
 # about
@@ -10180,17 +10113,17 @@ sim_top_banner = customtkinter.CTkImage(PIL_logo_incl_text, size=(LOGO_WIDTH, LO
 customtkinter.CTkLabel(simple_main_frame, text="", image = sim_top_banner).grid(column=0, row=0, columnspan=2, sticky='ew', pady=(PADY, 0), padx=0)
 
 # top buttons
-sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = t('sim_btn_switch_mode'), command = switch_mode)
+sim_btn_switch_mode = GreyTopButton(master = simple_main_frame, text = t('sim_btn_switch_mode'), command = switch_mode, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 sim_btn_switch_mode.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="nw")
-sim_btn_switch_lang = GreyTopButton(master = simple_main_frame, text = "Switch language", command = set_language)
+sim_btn_switch_lang = GreyTopButton(master = simple_main_frame, text = "Switch language", command = set_language, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 sim_btn_switch_lang.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="sw")
-sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project)
+sim_btn_sponsor = GreyTopButton(master = simple_main_frame, text = t('adv_btn_sponsor'), command = sponsor_project, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 sim_btn_sponsor.grid(row=0, column=0, padx=PADX, pady=(PADY, 0), columnspan = 2, sticky="ne")
-sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = t('adv_btn_reset_values'), command = reset_values)
+sim_btn_reset_values = GreyTopButton(master = simple_main_frame, text = t('adv_btn_reset_values'), command = reset_values, yellow_secondary=yellow_secondary, yellow_tertiary=yellow_tertiary, border_width=GREY_BUTTON_BORDER_WIDTH)
 sim_btn_reset_values.grid(row=0, column=0, padx=PADX, pady=(0, 0), columnspan = 2, sticky="se")
 
 # choose folder
-sim_dir_frm_1 = MyMainFrame(master=simple_main_frame)
+sim_dir_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
 sim_dir_frm_1.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nswe")
 sim_dir_img_widget = customtkinter.CTkLabel(sim_dir_frm_1, text="", image = dir_image, compound = 'left')
 sim_dir_img_widget.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="nswe")
@@ -10208,7 +10141,7 @@ sim_dir_pth = customtkinter.CTkLabel(sim_dir_pth_frm, text=t('sim_dir_pth'), tex
 sim_dir_pth.pack()
 
 # choose model
-sim_mdl_frm_1 = MyMainFrame(master=simple_main_frame)
+sim_mdl_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
 sim_mdl_frm_1.grid(row=3, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
 sim_mdl_img_widget = customtkinter.CTkLabel(sim_mdl_frm_1, text="", image = mdl_image, compound = 'left')
 sim_mdl_img_widget.grid(row=1, column=0, padx=PADX, pady=PADY, sticky="nswe")
@@ -10225,7 +10158,7 @@ sim_mdl_dpd.set(sim_dpd_options_cls_model[i18n_lang_idx()][global_vars["var_cls_
 sim_mdl_dpd.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="nswe", columnspan = 2)
 
 # select animals
-sim_spp_frm_1 = MyMainFrame(master=simple_main_frame)
+sim_spp_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
 sim_spp_frm_1.grid(row=4, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
 sim_spp_img_widget = customtkinter.CTkLabel(sim_spp_frm_1, text="", image = spp_image, compound = 'left')
 sim_spp_img_widget.grid(row=2, column=0, padx=PADX, pady=PADY, sticky="nswe")
@@ -10236,12 +10169,12 @@ sim_spp_lbl.grid(row=0, column=0, padx=PADX, pady=(0, PADY/4), columnspan = 2, s
 sim_spp_inf = InfoButton(master = sim_spp_frm, text = "?", command = sim_spp_show_info)
 sim_spp_inf.grid(row=0, column=0, padx=PADX, pady=PADY, sticky="e", columnspan = 2)
 sim_spp_scr_height = 238
-sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp = True)
+sim_spp_scr = SpeciesSelectionFrame(master=sim_spp_frm, height=sim_spp_scr_height, dummy_spp=True, pady=PADY)
 sim_spp_scr._scrollbar.configure(height=0)
 sim_spp_scr.grid(row=1, column=0, padx=PADX, pady=(PADY/4, PADY), sticky="ew", columnspan = 2)
 
 # deploy button
-sim_run_frm_1 = MyMainFrame(master=simple_main_frame)
+sim_run_frm_1 = MyMainFrame(master=simple_main_frame, scale_factor=scale_factor)
 sim_run_frm_1.grid(row=5, column=0, padx=PADX, pady=(0, PADY), sticky="nswe")
 sim_run_img_widget = customtkinter.CTkLabel(sim_run_frm_1, text="", image = run_image, compound = 'left')
 sim_run_img_widget.grid(row=3, column=0, padx=PADX, pady=PADY, sticky="nswe")
