@@ -88,6 +88,7 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form";
+import { Callout } from "../components/ui/callout";
 import { cn } from "../lib/utils";
 
 const settingsSchema = z.object({
@@ -1208,6 +1209,12 @@ export default function SettingsPage() {
                       )}
                     />
                   )}
+
+                  {!countryCode && (
+                    <Callout variant="warning" className="mt-4">
+                      <p>Select a country before saving. SpeciesNet uses geographic location to narrow down species predictions.</p>
+                    </Callout>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -1483,7 +1490,8 @@ export default function SettingsPage() {
                         !!saveJobId ||
                         detectionModelStatus?.status !== "ready" ||
                         (hasClassificationModel && classificationModelStatus?.status !== "ready") ||
-                        (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
+                        (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready") ||
+                        (isSpeciesNet && !countryCode)
                       }
                     >
                       <Save className="h-4 w-4 mr-2" />
@@ -1491,9 +1499,11 @@ export default function SettingsPage() {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {(detectionModelStatus?.status !== "ready" || (hasClassificationModel && classificationModelStatus?.status !== "ready") || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
+                {((detectionModelStatus?.status !== "ready" || (hasClassificationModel && classificationModelStatus?.status !== "ready") || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) || (isSpeciesNet && !countryCode)) && (
                   <TooltipContent>
-                    <p>Model needs preparing first</p>
+                    <p>{isSpeciesNet && !countryCode
+                      ? "SpeciesNet requires a country to be selected"
+                      : "Model needs preparing first"}</p>
                   </TooltipContent>
                 )}
               </Tooltip>

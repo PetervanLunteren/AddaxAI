@@ -4,11 +4,21 @@
 
 - [ ] (SEE DANS EMAIL) bug: when doing an analysis, the 'image classification' pbar goes from 0 to 100 without showing any stats like the other pbars. Then the 'finalizing...' part takes long. I get the sense that eveything happens in the 'finalizing...' phase. Could that be true? Investigate. 
 
+- [ ] INVESTIGATE REFACTOR TO MOVE SPECIESNET AS A NORMAL 
+
+
+
+
+
+
 ## Priority 2
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 
 
+- [ ] If we do taxonomic rollup, we might get to taxa without common names or model-class-names like "cow" and "equid". What happens then? What do we show the user in the chips and in the UI? Investigate. I want to know the current way of dealing with that and all its fallbacks. 
+
+
 ## Priority 3
-- [ ] REMOVE LEGACY JSONBasedMLPipeline CLASS - The `JSONBasedMLPipeline` class in `backend/app/ml/json_pipeline.py` (lines ~42-710) is a legacy abstraction that has been superseded by the direct phase handling in `_process_batch_job()` in `backend/app/workers/detection_worker.py`. The batch path (which the UI always uses) calls the standalone `load_json_to_database()` function directly, while the legacy class has its own `_load_to_database()` method, `_run_detection()`, `_run_classification()`, and `process_deployment()`. This creates two parallel code paths for the same work, which means every change (like the non-label skip logic) needs to be applied in two places. The class is only reachable through the non-batch branch in `process_deployment_analysis()` (detection_worker.py ~line 766), which the frontend never triggers (the deployment queue router always sets `is_batch_job: True`). Removal involves: (1) delete the `JSONBasedMLPipeline` class and its methods from `json_pipeline.py`, (2) remove the non-batch branch from `process_deployment_analysis()` in `detection_worker.py` (everything after the `if is_batch` check at ~line 758), (3) remove the `JSONBasedMLPipeline` import from `detection_worker.py`. This is roughly 300 lines of code that duplicates what the batch path already does better.
+- [ ] REMOVE LEGACY ML PIPELINE CODE - Several legacy abstractions have been superseded by the direct phase handling in `_process_batch_job()` in `backend/app/workers/detection_worker.py`. The batch path (which the UI always uses) calls standalone functions directly, while these legacy classes duplicate the same work. Removal involves three pieces: (1) `JSONBasedMLPipeline` class in `backend/app/ml/json_pipeline.py` (lines ~42-710): has its own `_load_to_database()`, `_run_detection()`, `_run_classification()`, and `process_deployment()`. Only reachable through the non-batch branch in `process_deployment_analysis()` (detection_worker.py ~line 766), which the frontend never triggers. Delete the class, the non-batch branch, and its import. (2) `MLPipeline` class in `backend/app/ml/pipeline.py`: completely dead code, never imported or called by anything. It uses the `detect()` method on MegaDetector which is also only called from this dead class. Delete the entire file. (3) The `detect()` method in `backend/app/ml/inference/megadetector.py` (lines ~95-210): only called by the dead `MLPipeline` class. The active code path uses `detect_to_json()` instead. Delete the method. Together this is roughly 500 lines of duplicated or dead code.
 
 
 ## Features

@@ -93,6 +93,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         # Detect SpeciesNet by model ID (future-proof, no dependency on manifest.type)
         is_speciesnet = "SPECIESNET" in classification_model_id.upper()
 
+        # Validate SpeciesNet requirements before loading models
+        if is_speciesnet and not project.country_code:
+            raise ValueError(
+                "SpeciesNet requires a country to be set in project settings. "
+                "Go to Settings and select a country under Geographic location."
+            )
+
         if is_speciesnet:
             # SpeciesNet: batch processing, no inference.py needed
             logger.info(f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})")
@@ -289,52 +296,47 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if video_files:
                 logger.info(f"Phase 1: Running video detection on {len(video_files)} videos")
 
-                try:
-                    # Create video detection model
-                    from app.ml.inference.video_detector import VideoDetectionModel
+                # Create video detection model
+                from app.ml.inference.video_detector import VideoDetectionModel
 
-                    video_detector = VideoDetectionModel(det_model_path, env_manager)
+                video_detector = VideoDetectionModel(det_model_path, env_manager)
 
-                    # Create sync progress wrapper for executor thread
-                    loop = asyncio.get_event_loop()
+                # Create sync progress wrapper for executor thread
+                loop = asyncio.get_event_loop()
 
-                    def sync_video_detection_progress(
-                        message: str,
-                        phase_progress: float,
-                        metrics: dict | None = None,
-                        *,
-                        _loop=loop,
-                    ) -> None:
-                        """Sync wrapper that schedules async callback from executor thread"""
-                        if metrics:
-                            metrics["unit"] = "video"
-                        asyncio.run_coroutine_threadsafe(
-                            deployment_progress_callback(
-                                message, 0.0, "video_detection", phase_progress, metrics
-                            ),
-                            _loop,
-                        )
-
-                    # Run video detection in executor (blocking subprocess I/O)
-                    await loop.run_in_executor(
-                        None,
-                        lambda _vd=video_detector,
-                        _fp=folder_path,
-                        _vjp=video_json_path: _vd.detect_videos_to_json(
-                            video_folder=_fp,
-                            output_json=_vjp,
-                            fps=project.video_fps,
-                            confidence_threshold=0.1,
-                            progress_callback=sync_video_detection_progress,
+                def sync_video_detection_progress(
+                    message: str,
+                    phase_progress: float,
+                    metrics: dict | None = None,
+                    *,
+                    _loop=loop,
+                ) -> None:
+                    """Sync wrapper that schedules async callback from executor thread"""
+                    if metrics:
+                        metrics["unit"] = "video"
+                    asyncio.run_coroutine_threadsafe(
+                        deployment_progress_callback(
+                            message, 0.0, "video_detection", phase_progress, metrics
                         ),
+                        _loop,
                     )
 
-                    json_files_to_merge.append(video_json_path)
-                    logger.info(f"Video detection complete: {video_json_path}")
+                # Run video detection in executor (blocking subprocess I/O)
+                await loop.run_in_executor(
+                    None,
+                    lambda _vd=video_detector,
+                    _fp=folder_path,
+                    _vjp=video_json_path: _vd.detect_videos_to_json(
+                        video_folder=_fp,
+                        output_json=_vjp,
+                        fps=project.video_fps,
+                        confidence_threshold=0.1,
+                        progress_callback=sync_video_detection_progress,
+                    ),
+                )
 
-                except Exception as e:
-                    logger.error(f"Video detection failed: {e}", exc_info=True)
-                    # Continue with images even if video fails
+                json_files_to_merge.append(video_json_path)
+                logger.info(f"Video detection complete: {video_json_path}")
 
             # Extract ALL video frames to disk (for frame-level DB records)
             if video_files and video_json_path.exists():
@@ -375,40 +377,35 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if video_files and classification_model and video_json_path.exists():
                 logger.info("Phase 2: Running video classification")
 
-                try:
-                    # Progress wrapper for video classification phase
-                    async def video_classification_progress(
-                        message: str, phase_progress: float, metrics: dict | None = None
-                    ) -> None:
-                        # Override unit to be more descriptive
-                        if metrics:
-                            metrics["unit"] = "animal"
-                        await deployment_progress_callback(
-                            message,  # Raw tqdm output
-                            0.0,
-                            "video_classification",
-                            phase_progress,
-                            metrics,
-                        )
-
-                    # Run classification on video detections
-                    # (This will update video_json_path in-place)
-                    await run_classification_on_json(
-                        json_path=video_json_path,
-                        classification_model=classification_model,
-                        deployment_folder=folder_path,
-                        country_code=project.country_code,
-                        state_code=project.state_code,
-                        progress_callback=video_classification_progress,
-                        classification_model_dir=cls_model_dir if classification_model_id else None,
-                        video_frames_base_dir=artifacts_folder / "video_frames",
+                # Progress wrapper for video classification phase
+                async def video_classification_progress(
+                    message: str, phase_progress: float, metrics: dict | None = None
+                ) -> None:
+                    # Override unit to be more descriptive
+                    if metrics:
+                        metrics["unit"] = "animal"
+                    await deployment_progress_callback(
+                        message,  # Raw tqdm output
+                        0.0,
+                        "video_classification",
+                        phase_progress,
+                        metrics,
                     )
 
-                    logger.info("Video classification complete")
+                # Run classification on video detections
+                # (This will update video_json_path in-place)
+                await run_classification_on_json(
+                    json_path=video_json_path,
+                    classification_model=classification_model,
+                    deployment_folder=folder_path,
+                    country_code=project.country_code,
+                    state_code=project.state_code,
+                    progress_callback=video_classification_progress,
+                    classification_model_dir=cls_model_dir if classification_model_id else None,
+                    video_frames_base_dir=artifacts_folder / "video_frames",
+                )
 
-                except Exception as e:
-                    logger.error(f"Video classification failed: {e}", exc_info=True)
-                    # Continue with images
+                logger.info("Video classification complete")
 
             # ============================================================
             # PHASE 3: Image Detection (if images exist)
@@ -416,52 +413,48 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if image_files:
                 logger.info(f"Phase 3: Running image detection on {len(image_files)} images")
 
-                try:
-                    # Create synchronous progress wrapper for executor
-                    loop = asyncio.get_event_loop()
+                # Create synchronous progress wrapper for executor
+                loop = asyncio.get_event_loop()
 
-                    def sync_image_detection_progress(
-                        message: str,
-                        phase_progress: float,
-                        metrics: dict | None = None,
-                        *,
-                        _loop=loop,
-                    ) -> None:
-                        """Sync wrapper that schedules async callback"""
-                        # Override unit to be more descriptive
-                        if metrics:
-                            metrics["unit"] = "image"
-                        asyncio.run_coroutine_threadsafe(
-                            deployment_progress_callback(
-                                message,  # Raw tqdm output
-                                0.0,
-                                "image_detection",
-                                phase_progress,
-                                metrics,
-                            ),
-                            _loop,
-                        )
-
-                    # Run MegaDetector on images
-                    image_json_path = await loop.run_in_executor(
-                        None,
-                        lambda _if=image_files,
-                        _fp=folder_path,
-                        _ijp=image_json_path: detection_model.detect_to_json(
-                            image_paths=_if,
-                            deployment_folder=_fp,
-                            confidence_threshold=0.1,
-                            progress_callback=sync_image_detection_progress,
-                            output_path=_ijp,
+                def sync_image_detection_progress(
+                    message: str,
+                    phase_progress: float,
+                    metrics: dict | None = None,
+                    *,
+                    _loop=loop,
+                ) -> None:
+                    """Sync wrapper that schedules async callback"""
+                    # Override unit to be more descriptive
+                    if metrics:
+                        metrics["unit"] = "image"
+                    asyncio.run_coroutine_threadsafe(
+                        deployment_progress_callback(
+                            message,  # Raw tqdm output
+                            0.0,
+                            "image_detection",
+                            phase_progress,
+                            metrics,
                         ),
+                        _loop,
                     )
 
-                    json_files_to_merge.append(image_json_path)
+                # Run MegaDetector on images
+                image_json_path = await loop.run_in_executor(
+                    None,
+                    lambda _if=image_files,
+                    _fp=folder_path,
+                    _ijp=image_json_path: detection_model.detect_to_json(
+                        image_paths=_if,
+                        deployment_folder=_fp,
+                        confidence_threshold=0.1,
+                        progress_callback=sync_image_detection_progress,
+                        output_path=_ijp,
+                    ),
+                )
 
-                    logger.info(f"Image detection complete: {image_json_path}")
+                json_files_to_merge.append(image_json_path)
 
-                except Exception as e:
-                    logger.error(f"Image detection failed: {e}", exc_info=True)
+                logger.info(f"Image detection complete: {image_json_path}")
 
             # ============================================================
             # PHASE 4: Image Classification (if images + classifier)
@@ -469,35 +462,31 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if image_files and classification_model and image_json_path.exists():
                 logger.info("Phase 4: Running image classification")
 
-                try:
-                    # Progress wrapper for image classification phase
-                    async def image_classification_progress(
-                        message: str, phase_progress: float, metrics: dict | None = None
-                    ) -> None:
-                        await deployment_progress_callback(
-                            message,  # Raw tqdm output
-                            0.0,
-                            "image_classification",
-                            phase_progress,
-                            metrics,
-                        )
-
-                    # Run classification on image detections
-                    await run_classification_on_json(
-                        json_path=image_json_path,
-                        classification_model=classification_model,
-                        deployment_folder=folder_path,
-                        country_code=project.country_code,
-                        state_code=project.state_code,
-                        progress_callback=image_classification_progress,
-                        classification_model_dir=cls_model_dir if classification_model_id else None,
-                        video_frames_base_dir=artifacts_folder / "video_frames",
+                # Progress wrapper for image classification phase
+                async def image_classification_progress(
+                    message: str, phase_progress: float, metrics: dict | None = None
+                ) -> None:
+                    await deployment_progress_callback(
+                        message,  # Raw tqdm output
+                        0.0,
+                        "image_classification",
+                        phase_progress,
+                        metrics,
                     )
 
-                    logger.info("Image classification complete")
+                # Run classification on image detections
+                await run_classification_on_json(
+                    json_path=image_json_path,
+                    classification_model=classification_model,
+                    deployment_folder=folder_path,
+                    country_code=project.country_code,
+                    state_code=project.state_code,
+                    progress_callback=image_classification_progress,
+                    classification_model_dir=cls_model_dir if classification_model_id else None,
+                    video_frames_base_dir=artifacts_folder / "video_frames",
+                )
 
-                except Exception as e:
-                    logger.error(f"Image classification failed: {e}", exc_info=True)
+                logger.info("Image classification complete")
 
             # ============================================================
             # PHASE 5: Merge JSONs
