@@ -6,20 +6,21 @@ Below are instructions for AddaxAI users who are unable to execute the normal in
 **Follow the steps below to install AddaxAI from a ZIP file.**
 1. Download both parts of the compressed files:
    - [Part 1 (~1.9 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.001)
-   - [Part 2 (~1.5 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.002)
+   - [Part 2 (~1.1 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.002)
 
-   After downloading both files, open a Command Prompt and combine them:
-   ```
-   copy /b "%USERPROFILE%\Downloads\windows-base-install.7z.001"+"%USERPROFILE%\Downloads\windows-base-install.7z.002" "%USERPROFILE%\Downloads\base-install.7z"
-   ```
    If the internet connection is too unstable or slow for this to work, see the 'Download using the command line for a resume option in unstable internet' alternative at the bottom of this page.
 <div align="center"><img width="400" alt="Screenshot 2025-01-26 at 11 28 56" src="https://github.com/user-attachments/assets/e18ab79e-e955-426e-ac99-6cdc3e6a7d80"></div>
 <br>
 <br>
-  
-2. Create an `AddaxAI_files` subfolder in your user folder: `C:\Users\<your_username>\AddaxAI_files`
 
-3. Download 7zip via [this link](https://www.7-zip.org/a/7z2408-x64.exe), double-click the `7z2408-x64.exe` file in your Downloads folder, leave the destination folder as it is, and press 'Install'. After a few seconds, it should be installed, and the window can be closed by clicking 'Close'.
+2. After downloading both files, open a Command Prompt window and combine them with the command below. To open the Command Prompt on Windows, click the Start menu, type `cmd`, and press Enter. 
+   ```
+   copy /b "%USERPROFILE%\Downloads\windows-base-install.7z.001"+"%USERPROFILE%\Downloads\windows-base-install.7z.002" "%USERPROFILE%\Downloads\base-install.7z"
+   ```
+  
+3. Create an `AddaxAI_files` subfolder in your user folder: `C:\Users\<your_username>\AddaxAI_files`
+
+4. Download 7zip via [this link](https://www.7-zip.org/a/7z2408-x64.exe), double-click the `7z2408-x64.exe` file in your Downloads folder, leave the destination folder as it is, and press 'Install'. After a few seconds, it should be installed, and the window can be closed by clicking 'Close'.
 <div align="center">
   <img width="400" alt="Screenshot 2024-08-14 at 08 14 04" src="https://github.com/user-attachments/assets/f6ad90e6-1ce3-4b1c-a2fd-d22139408c22">
   <img width="400" alt="Screenshot 2025-01-26 at 11 34 55" src="https://github.com/user-attachments/assets/66155752-863f-4382-a969-97c5bbe907dc">
@@ -27,27 +28,27 @@ Below are instructions for AddaxAI users who are unable to execute the normal in
 <br>
 <br>
 
-4. Navigate to the `base-install.7z` file. It will be in your Downloads folder.
-5. Right-click > (Optionally: 'Show more options') > 7-zip > Extract files...
+5. Navigate to the `base-install.7z` file. It will be in your Downloads folder.
+6. Right-click > (Optionally: 'Show more options') > 7-zip > Extract files...
 <div align="center"><img width="800" alt="Screenshot 2024-08-14 at 07 31 51" src="https://github.com/user-attachments/assets/921a6f79-bf9a-4a7c-8137-df339eb9694e"></div>
 <br>
 <br>
 
-6. Click the `...` button to browse your user folder. The location is important. Choose `C:\Users\<your_username>\AddaxAI_files`.
-7. Make sure the checkbox under the 'Extract to' path is unchecked.
-8. Choose 'Overwrite without prompt' as 'Overwrite mode'. 
-9. Click OK. This process will take about 1–5 minutes. 
+7. Click the `...` button to browse your user folder. The location is important. Choose `C:\Users\<your_username>\AddaxAI_files`.
+8. Make sure the checkbox under the 'Extract to' path is unchecked.
+9. Choose 'Overwrite without prompt' as 'Overwrite mode'. 
+10. Click OK. This process will take about 1–5 minutes. 
 <div align="center"><img width="800" alt="Screenshot 2024-08-14 at 07 41 37" src="https://github.com/user-attachments/assets/e040a7b2-8da8-4b33-b347-1e27187ee3a2"></div>
 <br>
 <br>
 
-10. When the files are extracted, check if AddaxAI works by double-clicking the `C:\Users\<your_username>\AddaxAI_files\AddaxAI\open.bat` file.
+11. When the files are extracted, check if AddaxAI works by double-clicking the `C:\Users\<your_username>\AddaxAI_files\AddaxAI\open.bat` file.
 <div align="center"><img width="600" alt="Screenshot 2024-08-14 at 07 23 35" src="https://github.com/user-attachments/assets/410577b9-a722-4c1c-9217-3bd0d773aa6f"></div>
 
 <br>
 <br>
 
-11. You can create a shortcut file so you don't always have to navigate to the `open.bat` file. If you still have your shortcut file left from the normal install, that will work fine. If not, you can create one by right-clicking on `open.bat` > (Optionally: 'Show more options') > Create shortcut. Then drag and drop that shortcut file to your desktop (or wherever you want to place it) and rename it to 'AddaxAI'.
+12. You can create a shortcut file so you don't always have to navigate to the `open.bat` file. If you still have your shortcut file left from the normal install, that will work fine. If not, you can create one by right-clicking on `open.bat` > (Optionally: 'Show more options') > Create shortcut. Then drag and drop that shortcut file to your desktop (or wherever you want to place it) and rename it to 'AddaxAI'.
 <br>
 <br>
 
