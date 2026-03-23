@@ -880,6 +880,7 @@ async def process_deployment_analysis(job_id: str) -> None:
                 country_code=project.country_code,
                 state_code=project.state_code,
                 classification_model_dir=cls_model_dir if classification_model_id else None,
+                excluded_classes=project.excluded_classes,
             )
 
             # Define progress callback wrapper

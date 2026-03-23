@@ -64,6 +64,7 @@ class JSONBasedMLPipeline:
         country_code: str | None = None,
         state_code: str | None = None,
         classification_model_dir: Path | None = None,
+        excluded_classes: list[str] | None = None,
     ):
         """
         Initialize JSON-based ML pipeline.
@@ -76,6 +77,7 @@ class JSONBasedMLPipeline:
             country_code: Country code for SpeciesNet geofencing (e.g., "USA", "KEN")
             state_code: State code for USA (e.g., "CA", "TX")
             classification_model_dir: Path to classification model directory (for taxonomy.csv)
+            excluded_classes: Optional list of label names to exclude
         """
         self.detection_model = detection_model
         self.classification_model = classification_model
@@ -84,6 +86,7 @@ class JSONBasedMLPipeline:
         self.country_code = country_code
         self.state_code = state_code
         self.classification_model_dir = classification_model_dir
+        self.excluded_classes = excluded_classes
 
         det_name = type(detection_model).__name__
         cls_name = (
@@ -195,6 +198,7 @@ class JSONBasedMLPipeline:
                 job_id=job_id,
                 db=db,
                 artifacts_folder=artifacts_folder,
+                excluded_classes=self.excluded_classes,
             )
 
             # Clean up intermediate detection JSON if classification produced a separate result
@@ -487,6 +491,7 @@ class JSONBasedMLPipeline:
         job_id: str,
         db: Session,
         artifacts_folder: Path | None = None,
+        excluded_classes: list[str] | None = None,
     ) -> PipelineResult:
         """
         Parse extended JSON and bulk insert to database.
@@ -499,6 +504,7 @@ class JSONBasedMLPipeline:
             deployment_folder: Deployment folder (base for relative paths)
             job_id: Job ID
             db: Database session
+            excluded_classes: Optional list of label names to exclude
 
         Returns:
             PipelineResult with statistics
@@ -509,12 +515,25 @@ class JSONBasedMLPipeline:
 
         logger.info(f"Loading {len(results.get('images', []))} images to database")
 
+        # Build excluded class ID set for label filtering
+        from app.ml.label_exclusion import (
+            build_excluded_class_ids,
+            filter_classifications,
+            is_non_label_detection,
+        )
+
+        class_categories = results.get("classification_categories", {})
+        excluded_class_ids = build_excluded_class_ids(
+            class_categories, excluded_classes
+        )
+
         # Track statistics
         total_detections = 0
         animal_count = 0
         person_count = 0
         vehicle_count = 0
         classified_count = 0
+        skipped_non_label = 0
 
         # Group detections by file
         defaultdict(list)
@@ -585,13 +604,19 @@ class JSONBasedMLPipeline:
 
             # Create Detection records
             for det in img.get("detections", []):
-                total_detections += 1
-
                 # Map category
                 category_num = det["category"]
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
 
+                # Skip detections classified exclusively as non-label
+                if category == "animal" and is_non_label_detection(
+                    det, excluded_class_ids
+                ):
+                    skipped_non_label += 1
+                    continue
+
+                total_detections += 1
                 file_categories.add(category)
 
                 # Count by category
@@ -610,13 +635,24 @@ class JSONBasedMLPipeline:
                 label_confidence = None
 
                 if "classifications" in det and det["classifications"]:
-                    # Get top classification
-                    top_class_id, top_conf = det["classifications"][0]
+                    classifications = det["classifications"]
 
-                    # Get classification_categories mapping
-                    class_names = results.get("classification_categories", {})
-                    label = class_names.get(str(top_class_id))
-                    label_confidence = float(top_conf)
+                    # Apply label exclusion if configured
+                    if excluded_class_ids:
+                        classifications = filter_classifications(
+                            classifications, excluded_class_ids
+                        )
+
+                    if classifications:
+                        # Get top classification
+                        top_class_id, top_conf = classifications[0]
+
+                        # Get classification_categories mapping
+                        class_names = results.get(
+                            "classification_categories", {}
+                        )
+                        label = class_names.get(str(top_class_id))
+                        label_confidence = float(top_conf)
 
                     if label:
                         classified_count += 1
@@ -664,7 +700,8 @@ class JSONBasedMLPipeline:
 
         logger.info(
             f"Database load complete: {total_detections} detections, "
-            f"{classified_count} classified"
+            f"{classified_count} classified, "
+            f"{skipped_non_label} skipped (non-label)"
         )
 
         return PipelineResult(
@@ -723,9 +760,13 @@ def load_json_to_database(
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
         # Build excluded class ID set for label filtering.
-        # Always strips non-label classes (blank, empty, false detection, none)
-        # plus any user-configured excluded labels.
-        from app.ml.label_exclusion import build_excluded_class_ids
+        # Always strips non-label classes (bait, blank, empty, false detection,
+        # none, vide) plus any user-configured excluded labels.
+        from app.ml.label_exclusion import (
+            build_excluded_class_ids,
+            filter_classifications,
+            is_non_label_detection,
+        )
 
         class_categories = results.get("classification_categories", {})
         excluded_class_ids = build_excluded_class_ids(class_categories, excluded_classes)
@@ -736,6 +777,7 @@ def load_json_to_database(
         person_count = 0
         vehicle_count = 0
         classified_count = 0
+        skipped_non_label = 0
 
         # Pre-extract video dates using exiftool (single process for all videos)
         video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
@@ -907,13 +949,21 @@ def load_json_to_database(
 
             # Create Detection records
             for det in img.get("detections", []):
-                total_detections += 1
-
                 # Map category
                 category_num = det["category"]
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
 
+                # Skip detections classified exclusively as non-label
+                # (blank, empty, false detection, etc.). These are
+                # MegaDetector false positives confirmed by the classifier.
+                if category == "animal" and is_non_label_detection(
+                    det, excluded_class_ids
+                ):
+                    skipped_non_label += 1
+                    continue
+
+                total_detections += 1
                 video_categories.add(category)
 
                 # Count by category
@@ -936,8 +986,6 @@ def load_json_to_database(
 
                     # Apply label exclusion if configured
                     if excluded_class_ids:
-                        from app.ml.label_exclusion import filter_classifications
-
                         classifications = filter_classifications(
                             classifications, excluded_class_ids
                         )
@@ -1014,7 +1062,8 @@ def load_json_to_database(
 
         logger.info(
             f"Database load complete: {total_detections} detections, "
-            f"{classified_count} classified"
+            f"{classified_count} classified, "
+            f"{skipped_non_label} skipped (non-label)"
         )
 
         return PipelineResult(

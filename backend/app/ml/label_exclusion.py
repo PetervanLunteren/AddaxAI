@@ -17,7 +17,9 @@ logger = get_logger(__name__)
 # never appear as label predictions in the UI or affect smoothing/rollup.
 # Stripped during JSON ingest and before postprocessing -- rollup and smoothing
 # never see them. Add new junk classes here (e.g. "calibration", "setup").
-NON_LABEL_CLASSES = frozenset({"bait", "blank", "empty", "false detection", "none"})
+NON_LABEL_CLASSES = frozenset({
+    "bait", "blank", "empty", "false detection", "none", "vide",
+})
 
 
 def filter_classifications(
@@ -68,8 +70,8 @@ def build_excluded_class_ids(
     """
     Build the full set of class IDs to exclude.
 
-    Always includes NON_LABEL_CLASSES (blank, empty, false detection, none).
-    Additionally includes any user-configured excluded labels.
+    Always includes NON_LABEL_CLASSES (bait, blank, empty, false detection,
+    none, vide). Additionally includes any user-configured excluded labels.
 
     Args:
         class_categories: Mapping of class_id -> class_name from JSON
@@ -104,6 +106,40 @@ def build_excluded_class_ids(
     return excluded_class_ids
 
 
+def is_non_label_detection(
+    det: dict,
+    excluded_class_ids: set[str],
+) -> bool:
+    """
+    Return True if a detection should be skipped (not loaded to DB).
+
+    A detection is skipped when:
+    1. It HAS classifications (went through a classifier), AND
+    2. After filtering out excluded/non-label class IDs, no classifications
+       remain.
+
+    Detections without any classifications (unclassified animals) are NOT
+    skipped. Non-animal detections (person, vehicle) never have
+    classifications, so they are never skipped.
+
+    Args:
+        det: Detection dict from JSON (has "classifications" key if classified)
+        excluded_class_ids: Set of class IDs to exclude
+
+    Returns:
+        True if detection should be skipped, False if it should be loaded.
+    """
+    if not excluded_class_ids:
+        return False
+
+    raw_classifications = det.get("classifications")
+    if not raw_classifications:
+        return False
+
+    filtered = filter_classifications(raw_classifications, excluded_class_ids)
+    return len(filtered) == 0
+
+
 def apply_label_exclusion_to_results(
     md_results: dict,
     excluded_labels: list[str] | None = None,
@@ -111,8 +147,8 @@ def apply_label_exclusion_to_results(
     """
     Apply label exclusion to a full MegaDetector JSON results dict (in place).
 
-    Always excludes NON_LABEL_CLASSES (blank, empty, false detection, none).
-    Additionally excludes any user-configured labels.
+    Always excludes NON_LABEL_CLASSES (bait, blank, empty, false detection,
+    none, vide). Additionally excludes any user-configured labels.
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)

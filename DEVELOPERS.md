@@ -116,6 +116,25 @@ This must be applied consistently across every module that counts, lists, filter
 
 **Common mistake:** writing `Detection.confidence >= threshold` without `OR Detection.verified == True`. This silently drops verified low-confidence detections from counts, filters, and charts. The result is that users see different numbers on different pages.
 
+## Non-label detection skip
+
+MegaDetector sometimes produces false positive bounding boxes. When a classification model (SpeciesNet or custom) classifies a detection as one of the non-label classes, the detection is not loaded to the database at all. This keeps false positives out of counts, filters, and the verification UI.
+
+**Non-label classes** (defined in `backend/app/ml/label_exclusion.py`): `bait`, `blank`, `empty`, `false detection`, `none`, `vide` (French for empty). These are always stripped, regardless of project settings.
+
+**The rule:** a detection is skipped when the classifier returned output AND after filtering out non-label classes, zero classifications remain. Detections with no classifier output (unclassified animals) are still loaded with `label=NULL`. Person and vehicle detections are never classified and are always loaded.
+
+**Observation type:** files where all detections were skipped get `observation_type="blank"`. They will not appear in the verification grid and will be counted as blank images on the dashboard.
+
+**Raw JSON preservation:** the JSON on disk (`results.json`) is never modified. It contains all original detections including those classified as blank. The skip only applies during the in-memory DB load step.
+
+**Key files:**
+
+| File | What it does |
+|------|-------------|
+| `backend/app/ml/label_exclusion.py` | `NON_LABEL_CLASSES` set, `is_non_label_detection()` helper |
+| `backend/app/ml/json_pipeline.py` | Skip logic in `load_json_to_database()` and `_load_to_database()` |
+
 ## Best frame selection (videos)
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:
