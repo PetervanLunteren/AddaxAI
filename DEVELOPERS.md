@@ -235,25 +235,7 @@ bird,aves,,,,
 
 `populate_taxonomy_from_csv(model_id, csv_path, db)` reads this file and inserts one row per line. The `model_class` column becomes `label_taxonomy.name`. Entries with only partial taxonomy (e.g. "bird" with just `class=aves`) get `level="class"`.
 
-#### 2. SpeciesNet (no CSV, taxonomy embedded in results JSON)
-
-SpeciesNet doesn't ship a `taxonomy.csv`. Instead, its `results.json` contains a `classification_category_descriptions` dict with semicolon-delimited taxonomy strings:
-
-```json
-{
-  "classification_category_descriptions": {
-    "0": "uuid;mammalia;cetartiodactyla;bovidae;bos;taurus;domestic cattle",
-    "1": "uuid;mammalia;cetartiodactyla;bovidae;;;bovidae",
-    "2": "uuid;;;;;;;blank"
-  }
-}
-```
-
-Format: `UUID;class;order;family;genus;species;common_name`
-
-`populate_taxonomy_from_json(model_id, json_path, db)` parses these strings and uses the **common name** (last field) as `label_taxonomy.name`. Entries with no taxonomy fields (e.g. "blank") are skipped.
-
-#### 3. Taxonomic rollup entries
+#### 2. Taxonomic rollup entries
 
 When taxonomic rollup is enabled and a detection's top-1 confidence is below threshold, confidences are summed up the taxonomy tree. If a higher-level taxon (e.g. "felidae" at family level) crosses the threshold, `Detection.label` is set to that taxon name.
 
@@ -261,19 +243,16 @@ When taxonomic rollup is enabled and a detection's top-1 confidence is below thr
 
 ### Where population is triggered
 
-Both workers use the same fallback pattern — try CSV first, fall back to JSON:
+Both workers call `populate_taxonomy_from_csv` when a `taxonomy.csv` exists in the model directory:
 
 | Worker | When | Code location |
 |--------|------|---------------|
-| `detection_worker.py` | After loading results to DB (phase 6) | ~line 542 |
+| `detection_worker.py` | After loading results to DB (phase 6) | ~line 520 |
 | `postprocessing_worker.py` | After reprocessing all deployments | ~line 174 |
 
 ```python
-# Simplified pattern used in both workers:
 if taxonomy_csv.exists():
     populate_taxonomy_from_csv(model_id, taxonomy_csv, db)
-elif results_json.exists():
-    populate_taxonomy_from_json(model_id, results_json, db)
 ```
 
 The detection worker runs this once per deployment. The postprocessing worker runs it when reprocessing (e.g. after changing model or settings). Since all functions are idempotent, running them multiple times is safe.

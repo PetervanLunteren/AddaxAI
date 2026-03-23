@@ -42,4 +42,3 @@ dependencies:
     - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
     - megadetector==10.0.18
     - ultralytics==8.3.177
-    # Note: speciesnet must be installed separately with --use-pep517 flag

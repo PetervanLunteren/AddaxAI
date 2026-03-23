@@ -56,7 +56,7 @@ class Project(Base):
         JSON, nullable=False, default=list
     )
 
-    # SpeciesNet geographic location (alternative to excluded_classes)
+    # Geographic location for geofenced models
     country_code: Mapped[str | None] = mapped_column(
         String(3), nullable=True
     )

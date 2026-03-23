@@ -51,33 +51,11 @@ export function ProjectsPage() {
     queryFn: () => modelsApi.listClassificationModels(),
   });
 
-  const { data: locations } = useQuery({
-    queryKey: ["speciesnet-locations"],
-    queryFn: () => modelsApi.getSpeciesNetLocations(),
-  });
-
   // Helper to get classification model name by ID
   const getClassificationModelName = (modelId: string | null) => {
     if (!modelId || modelId === "none") return "∅ Detection only";
     const model = classificationModels.find((m) => m.model_id === modelId);
     return model ? `${model.emoji} ${model.friendly_name}` : modelId;
-  };
-
-  // Helper to check if a model is SpeciesNet
-  const isSpeciesNet = (modelId: string | null) => {
-    return modelId?.toLowerCase().includes("speciesnet") ?? false;
-  };
-
-  // Helper to get country name by code
-  const getCountryName = (code: string | null) => {
-    if (!code || !locations) return null;
-    return Object.entries(locations.countries).find(([_, c]) => c === code)?.[0];
-  };
-
-  // Helper to get state name by code
-  const getStateName = (code: string | null) => {
-    if (!code || !locations) return null;
-    return Object.entries(locations.us_states).find(([_, c]) => c === code)?.[0];
   };
 
   // Log errors
@@ -199,22 +177,6 @@ export function ProjectsPage() {
                       {getClassificationModelName(project.classification_model_id)}
                     </p>
 
-                    {isSpeciesNet(project.classification_model_id) && (
-                      <>
-                        <div className="border-t border-border/50" />
-                        <div className="space-y-2 text-sm text-muted-foreground">
-                          {getCountryName(project.country_code) && (
-                            <p>{getCountryName(project.country_code)}</p>
-                          )}
-                          {getCountryName(project.country_code) && getStateName(project.state_code) && (
-                            <div className="border-t border-border/50" />
-                          )}
-                          {getStateName(project.state_code) && (
-                            <p>{getStateName(project.state_code)}</p>
-                          )}
-                        </div>
-                      </>
-                    )}
                   </div>
                 </CardContent>
                 <div className="border-t border-border/50 mx-6" />

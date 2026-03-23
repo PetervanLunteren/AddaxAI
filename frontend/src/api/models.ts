@@ -7,7 +7,7 @@
  */
 
 import { api } from "../lib/api-client";
-import type { ModelInfo, ModelStatusResponse, TaxonomyResponse, LocationsResponse } from "./types";
+import type { ModelInfo, ModelStatusResponse, TaxonomyResponse, GeofenceResponse } from "./types";
 
 export const modelsApi = {
   /**
@@ -56,8 +56,13 @@ export const modelsApi = {
     api.get<TaxonomyResponse>(`/api/ml/models/${modelId}/taxonomy`),
 
   /**
-   * Get available countries and US states for SpeciesNet models
+   * Get geofence information for a classification model
    */
-  getSpeciesNetLocations: () =>
-    api.get<LocationsResponse>("/api/ml/models/speciesnet/locations"),
+  getModelGeofence: (modelId: string, country?: string, state?: string) => {
+    const params = new URLSearchParams();
+    if (country) params.set("country", country);
+    if (state) params.set("state", state);
+    const query = params.toString();
+    return api.get<GeofenceResponse>(`/api/ml/models/${modelId}/geofence${query ? `?${query}` : ""}`);
+  },
 };

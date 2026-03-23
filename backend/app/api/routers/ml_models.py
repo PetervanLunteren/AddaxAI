@@ -706,25 +706,81 @@ def get_model_taxonomy(model_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to parse taxonomy: {str(e)}") from None
 
 
-@router.get("/models/speciesnet/locations")
-def get_speciesnet_locations():
+@router.get("/models/{model_id}/geofence")
+def get_model_geofence(
+    model_id: str,
+    country: str | None = None,
+    state: str | None = None,
+):
     """
-    Get available countries and US states for SpeciesNet geographic location selection.
+    Get geofence data for a classification model.
 
-    Returns dictionaries mapping display names (with emojis) to ISO codes.
+    If the model has a geofence file, returns available countries and
+    optionally the allowed/excluded labels for a specific country.
+
+    Args:
+        model_id: Classification model ID
+        country: Optional ISO country code to filter labels
+        state: Optional US state code (only when country=USA)
 
     Returns:
-        {
-            "countries": {"🇺🇸 United States": "USA", ...},
-            "us_states": {"🌴 California": "CA", ...}
-        }
+        Without country param:
+            {"has_geofence": true, "countries": {...}, "us_states": {...}}
+        With country param:
+            {"has_geofence": true, "allowed_labels": [...],
+             "excluded_count": N, "total_count": N}
+        If no geofence:
+            {"has_geofence": false}
     """
-    try:
+    from app.core.config import get_settings
+    from app.ml.geofence import (
+        compute_excluded_classes,
+        find_geofence_file,
+        get_all_labels,
+        get_allowed_labels,
+    )
+
+    settings = get_settings()
+    model_dir = settings.user_data_dir / "models" / "cls" / model_id
+
+    if not model_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model directory not found: {model_id}",
+        )
+
+    geofence_path = find_geofence_file(model_dir)
+    if geofence_path is None:
+        return {"has_geofence": False}
+
+    if country is None:
         from app.ml.data.countries import countries_data, us_states_data
 
-        return {"countries": countries_data, "us_states": us_states_data}
-    except Exception as e:
-        logger.error(f"Failed to load location data: {e}")
+        return {
+            "has_geofence": True,
+            "countries": countries_data,
+            "us_states": us_states_data,
+        }
+
+    try:
+        allowed = get_allowed_labels(model_dir, country, state)
+        all_labels = get_all_labels(model_dir)
+        excluded = compute_excluded_classes(model_dir, country, state)
+
+        return {
+            "has_geofence": True,
+            "allowed_labels": allowed,
+            "excluded_labels": excluded,
+            "excluded_count": len(excluded),
+            "total_count": len(all_labels),
+        }
+    except FileNotFoundError as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to load location data: {str(e)}"
+            status_code=404, detail=str(e)
+        ) from None
+    except Exception as e:
+        logger.error(f"Geofence computation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compute geofence: {str(e)}",
         ) from None

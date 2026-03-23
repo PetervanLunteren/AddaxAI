@@ -7,12 +7,12 @@
  * - Explicit error handling
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, Check, ChevronsUpDown, InfoIcon } from "lucide-react";
+import { Info, InfoIcon } from "lucide-react";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { ImageDropZone } from "./ImageDropZone";
 import { modelsApi } from "../../api/models";
@@ -53,21 +53,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "../ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../ui/popover";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
-import { cn } from "../../lib/utils";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -83,33 +69,7 @@ const projectSchema = z.object({
   taxonomic_rollup: z.boolean(),
   taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
-}).refine(
-  (data) => {
-    // If SpeciesNet is selected, country must be provided
-    const isSpeciesNet = data.classification_model_id?.toLowerCase().includes("speciesnet");
-    if (isSpeciesNet && !data.country_code) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: "Country is required for SpeciesNet models",
-    path: ["country_code"],
-  }
-).refine(
-  (data) => {
-    // If SpeciesNet is selected and country is USA, state must be provided
-    const isSpeciesNet = data.classification_model_id?.toLowerCase().includes("speciesnet");
-    if (isSpeciesNet && data.country_code === "USA" && !data.state_code) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: "State is required when USA is selected",
-    path: ["state_code"],
-  }
-);
+});
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -122,8 +82,6 @@ export function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [countryOpen, setCountryOpen] = useState(false);
-  const [stateOpen, setStateOpen] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
 
   // Model preparation state
@@ -159,12 +117,8 @@ export function CreateProjectDialog({
     },
   });
 
-  // Watch classification model and country changes
+  // Watch classification model changes
   const classificationModelId = form.watch("classification_model_id");
-  const countryCode = form.watch("country_code");
-
-  // Check if current model is SpeciesNet
-  const isSpeciesNet = classificationModelId?.toLowerCase().includes("speciesnet");
 
   // Fetch model status when model is selected
   const { data: modelStatus } = useQuery({
@@ -188,20 +142,6 @@ export function CreateProjectDialog({
       setPreparingTaskId(null);
     },
   });
-
-  // Fetch locations for SpeciesNet models
-  const { data: locations } = useQuery({
-    queryKey: ["speciesnet-locations"],
-    queryFn: () => modelsApi.getSpeciesNetLocations(),
-    enabled: isSpeciesNet && open,
-  });
-
-  // Clear state_code when country changes away from USA
-  useEffect(() => {
-    if (countryCode !== "USA" && form.getValues("state_code")) {
-      form.setValue("state_code", null);
-    }
-  }, [countryCode, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => projectsApi.create(data),
@@ -465,157 +405,6 @@ export function CreateProjectDialog({
                 existingUrl={null}
                 onChange={setImageFile}
               />
-
-              {/* Country Selection (SpeciesNet only) */}
-              {isSpeciesNet && locations && (
-                <FormField
-                  control={form.control}
-                  name="country_code"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-1.5">
-                        Country
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">
-                              SpeciesNet uses geographic location to improve species predictions.
-                              Select the country where your camera traps are located.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </FormLabel>
-                      <Popover open={countryOpen} onOpenChange={setCountryOpen}>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value
-                                ? Object.entries(locations.countries).find(
-                                    ([_, code]) => code === field.value
-                                  )?.[0]
-                                : "Select country"}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[500px] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search countries..." />
-                            <CommandList>
-                              <CommandEmpty>No country found.</CommandEmpty>
-                              <CommandGroup>
-                                {Object.entries(locations.countries).map(([name, code]) => (
-                                  <CommandItem
-                                    key={code}
-                                    value={name}
-                                    onSelect={() => {
-                                      form.setValue("country_code", code);
-                                      setCountryOpen(false);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        field.value === code ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {name}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-
-              {/* State Selection (USA only) */}
-              {isSpeciesNet && countryCode === "USA" && locations && (
-                <FormField
-                  control={form.control}
-                  name="state_code"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-1.5">
-                        State
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">
-                              Select a US state for more specific SpeciesNet predictions.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </FormLabel>
-                      <Popover open={stateOpen} onOpenChange={setStateOpen}>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value
-                                ? Object.entries(locations.us_states).find(
-                                    ([_, code]) => code === field.value
-                                  )?.[0]
-                                : "Select state"}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[500px] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search states..." />
-                            <CommandList>
-                              <CommandEmpty>No state found.</CommandEmpty>
-                              <CommandGroup>
-                                {Object.entries(locations.us_states).map(([name, code]) => (
-                                  <CommandItem
-                                    key={code}
-                                    value={name}
-                                    onSelect={() => {
-                                      form.setValue("state_code", code);
-                                      setStateOpen(false);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        field.value === code ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {name}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
 
               {form.formState.errors.root && (
                 <p className="text-sm font-medium text-destructive">

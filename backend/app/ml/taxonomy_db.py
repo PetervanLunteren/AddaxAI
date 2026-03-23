@@ -6,7 +6,6 @@ the label_taxonomy table in sync with what's in Detection.label.
 """
 
 import csv
-import json
 from pathlib import Path
 
 from sqlalchemy import func
@@ -91,103 +90,6 @@ def populate_taxonomy_from_csv(
         db.commit()
         logger.info(
             f"Populated {inserted} taxonomy entries for model {model_id}"
-        )
-
-    return inserted
-
-
-def populate_taxonomy_from_json(
-    model_id: str, json_path: Path, db: Session
-) -> int:
-    """
-    Upsert LabelTaxonomy rows from a SpeciesNet results.json file.
-
-    Parses ``classification_category_descriptions`` which contain
-    semicolon-delimited strings like:
-        UUID;class;order;family;genus;species;common_name
-
-    Uses the **common name** (last field) as ``label_taxonomy.name``
-    to match ``Detection.label``.
-
-    Idempotent: skips rows where (model_id, name) already exists.
-
-    Returns:
-        Count of newly inserted rows.
-    """
-    if not json_path.exists():
-        logger.warning(f"Results JSON not found: {json_path}")
-        return 0
-
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    descriptions = data.get("classification_category_descriptions", {})
-    if not descriptions:
-        return 0
-
-    # Query existing names for this model to skip duplicates
-    existing = {
-        r.name
-        for r in db.query(LabelTaxonomy.name)
-        .filter(LabelTaxonomy.classification_model_id == model_id)
-        .all()
-    }
-
-    inserted = 0
-    for desc_str in descriptions.values():
-        parts = desc_str.split(";")
-        if len(parts) < 7:
-            continue
-
-        # Parts: UUID, class, order, family, genus, species, common_name
-        taxon_class = parts[1].strip().lower()
-        taxon_order = parts[2].strip().lower()
-        taxon_family = parts[3].strip().lower()
-        taxon_genus = parts[4].strip().lower()
-        taxon_species = parts[5].strip().lower()
-        common_name = parts[6].strip().lower()
-
-        # Skip entries with no taxonomy (e.g. "blank")
-        has_taxonomy = any([
-            taxon_class, taxon_order, taxon_family, taxon_genus, taxon_species,
-        ])
-        if not common_name or not has_taxonomy:
-            continue
-
-        if common_name in existing:
-            continue
-
-        taxon = {}
-        if taxon_class:
-            taxon["class"] = taxon_class
-        if taxon_order:
-            taxon["order"] = taxon_order
-        if taxon_family:
-            taxon["family"] = taxon_family
-        if taxon_genus:
-            taxon["genus"] = taxon_genus
-        if taxon_species:
-            taxon["species"] = taxon_species
-
-        entry = LabelTaxonomy(
-            classification_model_id=model_id,
-            name=common_name,
-            taxon_class=taxon.get("class"),
-            taxon_order=taxon.get("order"),
-            taxon_family=taxon.get("family"),
-            taxon_genus=taxon.get("genus"),
-            taxon_species=taxon.get("species"),
-            level=_determine_level(taxon),
-            is_custom=False,
-        )
-        db.add(entry)
-        existing.add(common_name)
-        inserted += 1
-
-    if inserted:
-        db.commit()
-        logger.info(
-            f"Populated {inserted} taxonomy entries from JSON for model {model_id}"
         )
 
     return inserted

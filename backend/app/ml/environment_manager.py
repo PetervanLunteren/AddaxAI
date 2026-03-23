@@ -418,36 +418,6 @@ class EnvironmentManager:
 
             logger.info(f"Environment {env_name} created successfully at {env_path}")
 
-            # Special handling: Install speciesnet separately on darwin for addaxai-base
-            # This is needed because speciesnet requires --use-pep517 flag on macOS
-            if env_name == "env-addaxai-base" and platform.system() == "Darwin":
-                logger.info("Installing speciesnet separately for darwin platform...")
-                if progress_callback:
-                    progress_callback("Installing speciesnet package...", 0.98)
-
-                python_path = self._get_python_path(env_path)
-                pip_cmd = [
-                    str(python_path),
-                    "-m",
-                    "pip",
-                    "install",
-                    "speciesnet",
-                    "--use-pep517",
-                ]
-
-                logger.info(f"Running: {' '.join(pip_cmd)}")
-                result = subprocess.run(
-                    pip_cmd,
-                    capture_output=True,
-                    text=True,
-                )
-
-                if result.returncode != 0:
-                    logger.error(f"Failed to install speciesnet: {result.stderr}")
-                    raise RuntimeError(f"Failed to install speciesnet package: {result.stderr}")
-
-                logger.info("Speciesnet installed successfully")
-
             if progress_callback:
                 progress_callback("Environment ready", 1.0)
 

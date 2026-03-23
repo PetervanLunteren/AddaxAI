@@ -1,11 +1,10 @@
 /**
  * Hook to build label options for the unified label picker.
  *
- * Fetches labels from the classification model's taxonomy (or from
- * project label stats for SpeciesNet), merges in any project-specific
- * custom labels, and combines them with the always-available "person"
- * and "vehicle" options. Each option is annotated with a taxonomy
- * string (e.g. "mammalia › carnivora › felidae") when available.
+ * Fetches labels from the classification model's taxonomy, merges in any
+ * project-specific custom labels, and combines them with the always-available
+ * "person" and "vehicle" options. Each option is annotated with a taxonomy
+ * string (e.g. "mammalia > carnivora > felidae") when available.
  */
 
 import { useMemo } from "react";
@@ -19,7 +18,7 @@ export interface LabelOption {
   label: string | null;
   isCustom?: boolean;
   customId?: string;
-  /** Taxonomy string for display, e.g. "mammalia › carnivora › felidae" */
+  /** Taxonomy string for display, e.g. "mammalia > carnivora > felidae" */
   taxonomyCaption?: string | null;
 }
 
@@ -28,7 +27,7 @@ const GENERAL_OPTIONS: LabelOption[] = [
   { value: "vehicle", category: "vehicle", label: null },
 ];
 
-/** Build a display string from taxonomy fields, joining non-empty ranks with " › ". */
+/** Build a display string from taxonomy fields, joining non-empty ranks with " > ". */
 function buildTaxonomyCaption(
   entry: {
     taxon_class: string | null;
@@ -47,36 +46,23 @@ function buildTaxonomyCaption(
     entry.taxon_genus,
     entry.taxon_species,
   ].filter(Boolean).map((s) => capitalize(s as string));
-  return parts.length > 0 ? parts.join(" › ") : null;
+  return parts.length > 0 ? parts.join(" \u203A ") : null;
 }
 
 export function useLabelOptions(
   classificationModelId: string | null,
   projectId: string
 ) {
-  const isSpeciesNet =
-    classificationModelId?.toUpperCase().includes("SPECIESNET") ?? false;
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
-  const hasTaxonomyModel = hasClassificationModel && !isSpeciesNet;
 
-  // Taxonomy-based models (EUR-DF, NAM-ADS, etc.)
+  // Taxonomy-based models (all classification models now use taxonomy)
   const {
     data: taxonomy,
     isLoading: taxonomyLoading,
   } = useQuery({
     queryKey: ["taxonomy", classificationModelId],
     queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
-    enabled: hasTaxonomyModel,
-  });
-
-  // SpeciesNet fallback: distinct labels already in the project
-  const {
-    data: labelStats,
-    isLoading: statsLoading,
-  } = useQuery({
-    queryKey: ["project-label-stats", projectId],
-    queryFn: () => projectsApi.getLabelStats(projectId),
-    enabled: hasClassificationModel && isSpeciesNet,
+    enabled: hasClassificationModel,
   });
 
   // Custom labels added by the user for this project
@@ -99,8 +85,7 @@ export function useLabelOptions(
   });
 
   const isLoading =
-    (hasTaxonomyModel && taxonomyLoading) ||
-    (isSpeciesNet && statsLoading) ||
+    (hasClassificationModel && taxonomyLoading) ||
     (!!projectId && customLoading);
 
   const options = useMemo(() => {
@@ -112,7 +97,7 @@ export function useLabelOptions(
     if (!hasClassificationModel) {
       // Detection-only projects: add "animal" alongside "person" and "vehicle"
       result.push({ value: "animal", category: "animal", label: null });
-    } else if (hasTaxonomyModel && taxonomy?.all_classes) {
+    } else if (taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
         result.push({
           value: cls,
@@ -121,23 +106,12 @@ export function useLabelOptions(
           taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cls]),
         });
       }
-    } else if (isSpeciesNet && labelStats) {
-      for (const stat of labelStats) {
-        if (stat.label) {
-          result.push({
-            value: stat.label,
-            category: "animal",
-            label: stat.label,
-            taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[stat.label]),
-          });
-        }
-      }
     }
 
     // Merge custom labels: if a custom label name already exists (e.g. from
-    // model taxonomy or SpeciesNet label stats), mark that entry as custom
-    // so it appears in the "Custom labels" section with an edit button.
-    // Otherwise, append it as a new entry.
+    // model taxonomy), mark that entry as custom so it appears in the
+    // "Custom labels" section with an edit button. Otherwise, append it as
+    // a new entry.
     if (customLabels) {
       const existingByName = new Map(result.map((o, i) => [o.value.toLowerCase(), i]));
       for (const cl of customLabels) {
@@ -164,7 +138,7 @@ export function useLabelOptions(
     }
 
     return result;
-  }, [hasClassificationModel, hasTaxonomyModel, taxonomy, isSpeciesNet, labelStats, customLabels, taxonomyMap]);
+  }, [hasClassificationModel, taxonomy, customLabels, taxonomyMap]);
 
   return { options, isLoading };
 }

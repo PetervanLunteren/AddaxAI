@@ -418,10 +418,15 @@ export interface LabelTreeResponse {
   count_unit: string;
 }
 
-// SpeciesNet Locations types
-export interface LocationsResponse {
-  countries: Record<string, string>;  // Display name -> ISO code
-  us_states: Record<string, string>;  // Display name -> State code
+// Geofence types
+export interface GeofenceResponse {
+  has_geofence: boolean;
+  countries?: Record<string, string>;
+  us_states?: Record<string, string>;
+  allowed_labels?: string[];
+  excluded_labels?: string[];
+  excluded_count?: number;
+  total_count?: number;
 }
 
 // Similarity types

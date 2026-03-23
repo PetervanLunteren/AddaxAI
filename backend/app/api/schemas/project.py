@@ -28,12 +28,12 @@ class ProjectBase(BaseModel):
         default_factory=list, description="Species classes to exclude from classification"
     )
 
-    # SpeciesNet geographic location (alternative to excluded_classes)
+    # Geographic location for geofence-enabled models
     country_code: str | None = Field(
-        None, description="ISO country code for SpeciesNet models (e.g., 'USA', 'KEN')"
+        None, description="ISO country code for geofenced models (e.g., 'USA', 'KEN')"
     )
     state_code: str | None = Field(
-        None, description="US state code for SpeciesNet models (e.g., 'CA', 'TX')"
+        None, description="US state code for geofenced models (e.g., 'CA', 'TX')"
     )
 
     # Verification shortcut labels (keys 1-5 → label options)

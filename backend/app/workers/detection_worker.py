@@ -90,42 +90,23 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         cls_model_dir = model_storage.get_model_path(cls_manifest)
         env_name = cls_manifest.env
 
-        # Detect SpeciesNet by model ID (future-proof, no dependency on manifest.type)
-        is_speciesnet = "SPECIESNET" in classification_model_id.upper()
-
-        # Validate SpeciesNet requirements before loading models
-        if is_speciesnet and not project.country_code:
-            raise ValueError(
-                "SpeciesNet requires a country to be set in project settings. "
-                "Go to Settings and select a country under Geographic location."
+        # Check for custom inference.py script
+        inference_script = cls_model_dir / "inference.py"
+        if not inference_script.exists():
+            error_msg = (
+                f"Custom inference script not found: {inference_script}\n"
+                f"Model developers must provide inference.py in their HuggingFace repo."
             )
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
 
-        if is_speciesnet:
-            # SpeciesNet: batch processing, no inference.py needed
-            logger.info(f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})")
-            from app.ml.inference.speciesnet_model import SpeciesNetClassificationModel
-
-            classification_model = SpeciesNetClassificationModel(
-                cls_model_dir, cls_model_path, env_name, env_manager
-            )
-        else:
-            # Regular models: check for custom inference.py script
-            inference_script = cls_model_dir / "inference.py"
-            if not inference_script.exists():
-                error_msg = (
-                    f"Custom inference script not found: {inference_script}\n"
-                    f"Model developers must provide inference.py in their HuggingFace repo."
-                )
-                logger.error(error_msg)
-                raise FileNotFoundError(error_msg)
-
-            # Use custom classification model with subprocess isolation
-            logger.info(
-                f"Loading custom classification model: {classification_model_id} (env: {env_name})"
-            )
-            classification_model = CustomClassificationModel(
-                cls_model_dir, cls_model_path, env_name, env_manager
-            )
+        # Use custom classification model with subprocess isolation
+        logger.info(
+            f"Loading custom classification model: {classification_model_id} (env: {env_name})"
+        )
+        classification_model = CustomClassificationModel(
+            cls_model_dir, cls_model_path, env_name, env_manager
+        )
 
     total_detections = 0
     total_files = 0
@@ -398,8 +379,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     json_path=video_json_path,
                     classification_model=classification_model,
                     deployment_folder=folder_path,
-                    country_code=project.country_code,
-                    state_code=project.state_code,
                     progress_callback=video_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     video_frames_base_dir=artifacts_folder / "video_frames",
@@ -479,8 +458,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     json_path=image_json_path,
                     classification_model=classification_model,
                     deployment_folder=folder_path,
-                    country_code=project.country_code,
-                    state_code=project.state_code,
                     progress_callback=image_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     video_frames_base_dir=artifacts_folder / "video_frames",
@@ -528,12 +505,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                             populate_taxonomy_from_csv(
                                 classification_model_id, taxonomy_csv, db
-                            )
-                        elif final_json_path.exists():
-                            from app.ml.taxonomy_db import populate_taxonomy_from_json
-
-                            populate_taxonomy_from_json(
-                                classification_model_id, final_json_path, db
                             )
                     except Exception as e:
                         logger.warning(f"Failed to populate taxonomy DB: {e}")
@@ -826,48 +797,32 @@ async def process_deployment_analysis(job_id: str) -> None:
                 cls_model_dir = model_storage.get_model_path(cls_manifest)
                 env_name = cls_manifest.env
 
-                # Detect SpeciesNet by model ID (future-proof, no dependency on manifest.type)
-                is_speciesnet = "SPECIESNET" in classification_model_id.upper()
-
-                if is_speciesnet:
-                    # SpeciesNet: batch processing, no inference.py needed
-                    logger.info(
-                        f"Loading SpeciesNet model: {classification_model_id} (env: {env_name})"
+                # Check for custom inference.py script
+                inference_script = cls_model_dir / "inference.py"
+                if not inference_script.exists():
+                    error_msg = (
+                        f"Custom inference script not found: {inference_script}\n"
+                        f"Model developers must provide inference.py in their HuggingFace repo."
                     )
-                    from app.ml.inference.speciesnet_model import SpeciesNetClassificationModel
+                    logger.error(error_msg)
+                    raise FileNotFoundError(error_msg)
 
-                    classification_model = SpeciesNetClassificationModel(
-                        cls_model_dir, cls_model_path, env_name, env_manager
-                    )
-                else:
-                    # Regular models: check for custom inference.py script
-                    inference_script = cls_model_dir / "inference.py"
-                    if not inference_script.exists():
-                        error_msg = (
-                            f"Custom inference script not found: {inference_script}\n"
-                            f"Model developers must provide inference.py in their HuggingFace repo."
-                        )
-                        logger.error(error_msg)
-                        raise FileNotFoundError(error_msg)
+                # Use custom classification model with subprocess isolation
+                logger.info(
+                    f"Loading custom classification model: "
+                    f"{classification_model_id} "
+                    f"(env: {env_name})"
+                )
+                classification_model = CustomClassificationModel(
+                    cls_model_dir, cls_model_path, env_name, env_manager
+                )
 
-                    # Use custom classification model with subprocess isolation
-                    logger.info(
-                        f"Loading custom classification model: "
-                        f"{classification_model_id} "
-                        f"(env: {env_name})"
-                    )
-                    classification_model = CustomClassificationModel(
-                        cls_model_dir, cls_model_path, env_name, env_manager
-                    )
-
-            # Create JSON-based ML pipeline with country/state for SpeciesNet
+            # Create JSON-based ML pipeline
             pipeline = JSONBasedMLPipeline(
                 detection_model,
                 classification_model,
                 detection_model_id,
                 classification_model_id,
-                country_code=project.country_code,
-                state_code=project.state_code,
                 classification_model_dir=cls_model_dir if classification_model_id else None,
                 excluded_classes=project.excluded_classes,
             )
@@ -995,8 +950,6 @@ async def run_classification_on_json(
     json_path: Path,
     classification_model,
     deployment_folder: Path,
-    country_code: str | None,
-    state_code: str | None,
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
     classification_model_dir: Path | None = None,
     video_frames_base_dir: Path | None = None,
@@ -1004,15 +957,12 @@ async def run_classification_on_json(
     """
     Run classification on detection JSON file.
 
-    Handles both SpeciesNet (batch) and regular (per-detection) classifiers.
     Updates JSON file in-place with classification results.
 
     Args:
         json_path: Path to detection JSON file
         classification_model: Classification model instance
         deployment_folder: Deployment folder for artifacts
-        country_code: Country code for SpeciesNet
-        state_code: State code for SpeciesNet
         progress_callback: Optional progress callback
         classification_model_dir: Path to classification model directory (for taxonomy.csv)
         video_frames_base_dir: Path to video_frames directory. If None, falls back to
@@ -1025,222 +975,189 @@ async def run_classification_on_json(
 
     from app.ml.json_utils import extract_animal_detections
 
-    # Check if SpeciesNet (batch processing)
-    is_speciesnet = hasattr(classification_model, "classify_batch")
+    logger.info("Running per-detection classification")
 
-    if is_speciesnet:
-        # SpeciesNet: Batch processing
-        logger.info("Running SpeciesNet batch classification")
+    # Load detection JSON
+    with open(json_path) as f:
+        md_results = json.load(f)
 
-        # Create sync progress adapter for executor thread
-        # classify_batch is now synchronous (blocking subprocess I/O)
-        loop = asyncio.get_event_loop()
+    # Extract animal detections
+    animal_detections = extract_animal_detections(md_results)
+    total_animals = len(animal_detections)
 
-        def sync_speciesnet_progress(message, progress, phase, phase_progress, metrics=None):
-            """Sync adapter that schedules async callback from executor thread"""
-            if progress_callback:
-                asyncio.run_coroutine_threadsafe(
-                    progress_callback(message, phase_progress, metrics), loop
-                )
+    if total_animals == 0:
+        logger.info("No animals to classify")
+        return
 
-        await loop.run_in_executor(
-            None,
-            lambda: classification_model.classify_batch(
-                detection_json_path=json_path,
-                country_code=country_code,
-                state_code=state_code,
-                deployment_folder=deployment_folder,
-                progress_callback=sync_speciesnet_progress,
-            ),
+    # Build items list and parallel index list for result merging
+    items: list[dict] = []
+    indices: list[tuple[int, int]] = []
+
+    for img_idx, det_idx, detection in animal_detections:
+        img_info = md_results["images"][img_idx]
+        relative_file = img_info["file"]
+        file_path = (deployment_folder / relative_file).resolve()
+
+        is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
+
+        # For videos: resolve to extracted frame JPEG
+        if is_video:
+            frame_number = detection.get("frame_number")
+            if frame_number is None:
+                logger.warning("Detection missing frame_number, skipping")
+                continue
+
+            _frames_base = video_frames_base_dir or (
+                deployment_folder / ".addaxai" / "video_frames"
+            )
+            relative_video_path = file_path.relative_to(deployment_folder)
+            frame_path = (
+                _frames_base / relative_video_path / f"frame{frame_number:06d}.jpg"
+            )
+            if not frame_path.exists():
+                logger.warning(f"Frame {frame_path.name} not found on disk, skipping")
+                continue
+            image_path = str(frame_path)
+        else:
+            if not file_path.exists():
+                logger.warning(f"Image not found: {file_path}, skipping")
+                continue
+            image_path = str(file_path)
+
+        items.append({
+            "image_path": image_path,
+            "bbox": detection["bbox"],
+        })
+        indices.append((img_idx, det_idx))
+
+    # Debug: summarize what we built
+    video_items = sum(1 for it in items if "frame" in it["image_path"])
+    image_items = len(items) - video_items
+    logger.info(
+        f"[DEBUG] Built {len(items)} items for batch classification "
+        f"({image_items} images, {video_items} video frames), "
+        f"{len(indices)} indices"
+    )
+
+    if not items:
+        logger.info("No valid items to classify after path resolution")
+        return
+
+    # Create sync progress wrapper for executor thread
+    loop = asyncio.get_event_loop()
+
+    def sync_cls_progress(
+        message: str, phase_progress: float, metrics: dict | None = None
+    ) -> None:
+        """Sync wrapper that schedules async callback from executor thread"""
+        if progress_callback:
+            asyncio.run_coroutine_threadsafe(
+                progress_callback(message, phase_progress, metrics), loop
+            )
+
+    def _run_batch_classification():
+        """Synchronous batch classification (runs in executor)."""
+        import time
+
+        start_time = time.time()
+
+        def on_progress(current: int, total: int) -> None:
+            if not progress_callback:
+                return
+            elapsed = time.time() - start_time
+            elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
+            rate = current / elapsed if elapsed > 0 else 0
+            remaining = (total - current) / rate if rate > 0 else 0
+            remaining_str = f"{int(remaining//60):02d}:{int(remaining%60):02d}"
+            percent = int(100 * current / total)
+            bar_length = 10
+            filled = int(bar_length * current / total)
+            bar = "█" * filled + "░" * (bar_length - filled)
+            raw_line = (
+                f"{percent}%|{bar}| {current}/{total} "
+                f"[{elapsed_str}<{remaining_str}, {rate:.2f}animal/s]"
+            )
+            metrics = {
+                "raw_line": raw_line,
+                "current": current,
+                "total": total,
+                "elapsed": elapsed_str,
+                "remaining": remaining_str,
+                "rate": rate,
+                "unit": "animal",
+            }
+            sync_cls_progress(raw_line, current / total, metrics)
+
+        logger.info("[DEBUG] Calling classify_detections()...")
+        results, class_names, compute_device = classification_model.classify_detections(
+            items, progress_callback=on_progress,
         )
-    else:
-        # Regular per-detection classification (one-shot batch subprocess)
-        logger.info("Running per-detection classification")
-
-        # Load detection JSON
-        with open(json_path) as f:
-            md_results = json.load(f)
-
-        # Extract animal detections
-        animal_detections = extract_animal_detections(md_results)
-        total_animals = len(animal_detections)
-
-        if total_animals == 0:
-            logger.info("No animals to classify")
-            return
-
-        # Build items list and parallel index list for result merging
-        items: list[dict] = []
-        indices: list[tuple[int, int]] = []
-
-        for img_idx, det_idx, detection in animal_detections:
-            img_info = md_results["images"][img_idx]
-            relative_file = img_info["file"]
-            file_path = (deployment_folder / relative_file).resolve()
-
-            is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
-
-            # For videos: resolve to extracted frame JPEG
-            if is_video:
-                frame_number = detection.get("frame_number")
-                if frame_number is None:
-                    logger.warning("Detection missing frame_number, skipping")
-                    continue
-
-                _frames_base = video_frames_base_dir or (
-                    deployment_folder / ".addaxai" / "video_frames"
-                )
-                relative_video_path = file_path.relative_to(deployment_folder)
-                frame_path = (
-                    _frames_base / relative_video_path / f"frame{frame_number:06d}.jpg"
-                )
-                if not frame_path.exists():
-                    logger.warning(f"Frame {frame_path.name} not found on disk, skipping")
-                    continue
-                image_path = str(frame_path)
-            else:
-                if not file_path.exists():
-                    logger.warning(f"Image not found: {file_path}, skipping")
-                    continue
-                image_path = str(file_path)
-
-            items.append({
-                "image_path": image_path,
-                "bbox": detection["bbox"],
-            })
-            indices.append((img_idx, det_idx))
-
-        # Debug: summarize what we built
-        video_items = sum(1 for it in items if "frame" in it["image_path"])
-        image_items = len(items) - video_items
         logger.info(
-            f"[DEBUG] Built {len(items)} items for batch classification "
-            f"({image_items} images, {video_items} video frames), "
-            f"{len(indices)} indices"
+            f"[DEBUG] classify_detections() returned: "
+            f"{len(results)} results, {len(class_names)} classes, device={compute_device}"
         )
 
-        if not items:
-            logger.info("No valid items to classify after path resolution")
-            return
+        # Send compute device info (at phase_progress=1.0 to avoid
+        # resetting the progress bar after classification finishes)
+        if progress_callback and compute_device:
+            sync_cls_progress("Classifying...", 1.0, {"compute_device": compute_device})
 
-        # Create sync progress wrapper for executor thread
-        loop = asyncio.get_event_loop()
+        # Merge results back into md_results JSON
+        name_to_id = {name: class_id for class_id, name in class_names.items()}
+        classified_count = 0
 
-        def sync_cls_progress(
-            message: str, phase_progress: float, metrics: dict | None = None
-        ) -> None:
-            """Sync wrapper that schedules async callback from executor thread"""
-            if progress_callback:
-                asyncio.run_coroutine_threadsafe(
-                    progress_callback(message, phase_progress, metrics), loop
-                )
+        for (img_idx, det_idx), result in zip(indices, results, strict=True):
+            if result is None:
+                continue
 
-        def _run_batch_classification():
-            """Synchronous batch classification (runs in executor)."""
-            import time
+            # Store all results (not truncated) so label exclusion
+            # can find included labels even if they rank low.
+            md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
+                [name_to_id[class_name], prob]
+                for class_name, prob in result.all_probabilities.items()
+                if class_name in name_to_id
+            ]
+            classified_count += 1
 
-            start_time = time.time()
+        # Add classification metadata to JSON
+        if class_names:
+            md_results["classification_categories"] = class_names
 
-            def on_progress(current: int, total: int) -> None:
-                if not progress_callback:
-                    return
-                elapsed = time.time() - start_time
-                elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
-                rate = current / elapsed if elapsed > 0 else 0
-                remaining = (total - current) / rate if rate > 0 else 0
-                remaining_str = f"{int(remaining//60):02d}:{int(remaining%60):02d}"
-                percent = int(100 * current / total)
-                bar_length = 10
-                filled = int(bar_length * current / total)
-                bar = "█" * filled + "░" * (bar_length - filled)
-                raw_line = (
-                    f"{percent}%|{bar}| {current}/{total} "
-                    f"[{elapsed_str}<{remaining_str}, {rate:.2f}animal/s]"
-                )
-                metrics = {
-                    "raw_line": raw_line,
-                    "current": current,
-                    "total": total,
-                    "elapsed": elapsed_str,
-                    "remaining": remaining_str,
-                    "rate": rate,
-                    "unit": "animal",
-                }
-                sync_cls_progress(raw_line, current / total, metrics)
+            if classification_model_dir:
+                taxonomy_csv = classification_model_dir / "taxonomy.csv"
+                if taxonomy_csv.exists():
+                    from app.ml.json_utils import build_classification_category_descriptions
 
-            logger.info("[DEBUG] Calling classify_detections()...")
-            results, class_names, compute_device = classification_model.classify_detections(
-                items, progress_callback=on_progress,
-            )
-            logger.info(
-                f"[DEBUG] classify_detections() returned: "
-                f"{len(results)} results, {len(class_names)} classes, device={compute_device}"
-            )
+                    descriptions = build_classification_category_descriptions(
+                        class_names, taxonomy_csv
+                    )
+                    if descriptions:
+                        md_results["classification_category_descriptions"] = descriptions
 
-            # Send compute device info (at phase_progress=1.0 to avoid
-            # resetting the progress bar after classification finishes)
-            if progress_callback and compute_device:
-                sync_cls_progress("Classifying...", 1.0, {"compute_device": compute_device})
+        # Save updated JSON
+        with open(json_path, "w") as f:
+            json.dump(md_results, f, indent=2)
 
-            # Merge results back into md_results JSON
-            name_to_id = {name: class_id for class_id, name in class_names.items()}
-            classified_count = 0
+        logger.info(f"Classified {classified_count}/{total_animals} animals")
+        logger.info(
+            f"[DEBUG] Wrote updated JSON to {json_path}, "
+            f"has classification_categories={bool(md_results.get('classification_categories'))}"
+        )
 
-            for (img_idx, det_idx), result in zip(indices, results):
-                if result is None:
-                    continue
-
-                # Store all results (not truncated) so label exclusion
-                # can find included labels even if they rank low.
-                md_results["images"][img_idx]["detections"][det_idx]["classifications"] = [
-                    [name_to_id[class_name], prob]
-                    for class_name, prob in result.all_probabilities.items()
-                    if class_name in name_to_id
-                ]
-                classified_count += 1
-
-            # Add classification metadata to JSON
-            if class_names:
-                md_results["classification_categories"] = class_names
-
-                if classification_model_dir:
-                    taxonomy_csv = classification_model_dir / "taxonomy.csv"
-                    if taxonomy_csv.exists():
-                        from app.ml.json_utils import build_classification_category_descriptions
-
-                        descriptions = build_classification_category_descriptions(
-                            class_names, taxonomy_csv
-                        )
-                        if descriptions:
-                            md_results["classification_category_descriptions"] = descriptions
-
-            # Save updated JSON
-            with open(json_path, "w") as f:
-                json.dump(md_results, f, indent=2)
-
-            logger.info(f"Classified {classified_count}/{total_animals} animals")
-            logger.info(
-                f"[DEBUG] Wrote updated JSON to {json_path}, "
-                f"has classification_categories={bool(md_results.get('classification_categories'))}"
-            )
-
-        # Run in executor to avoid blocking event loop
-        await loop.run_in_executor(None, _run_batch_classification)
+    # Run in executor to avoid blocking event loop
+    await loop.run_in_executor(None, _run_batch_classification)
 
 
 def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: str) -> None:
     """
     Merge multiple JSON files (video and image results) into single file.
 
-    IMPORTANT: This function properly handles SpeciesNet's dynamic classification IDs
-    by creating a unified classification_categories mapping and renumbering all
+    Creates a unified classification_categories mapping and renumbers all
     classification IDs to be consistent across video and image detections.
 
-    Why this is necessary:
-    - SpeciesNet assigns classification IDs dynamically based on the order labels appear
-    - Video and image JSONs may have different ID mappings for the same label
-    - Example: "zebra" might be ID "1" in video JSON but ID "2" in image JSON
-    - This function unifies the mappings so all IDs are consistent
+    This is necessary because video and image JSONs may have different ID
+    mappings for the same label. This function unifies the mappings so all
+    IDs are consistent.
 
     Args:
         json_files: List of JSON file paths to merge

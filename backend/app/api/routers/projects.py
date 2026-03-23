@@ -123,6 +123,31 @@ def create_project(
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
             ) from None
 
+    # Auto-compute excluded_classes from geofence when country_code is set
+    if (
+        project.country_code
+        and project.country_code.upper() not in ("NONE", "")
+        and project.classification_model_id
+    ):
+        try:
+            from app.ml.geofence import compute_excluded_classes, find_geofence_file
+
+            model_dir = (
+                settings.user_data_dir / "models" / "cls"
+                / project.classification_model_id
+            )
+            if model_dir.exists() and find_geofence_file(model_dir):
+                excluded = compute_excluded_classes(
+                    model_dir, project.country_code, project.state_code
+                )
+                project.excluded_classes = excluded
+                logger.info(
+                    f"Geofence: excluded {len(excluded)} labels "
+                    f"for {project.country_code}"
+                )
+        except Exception as e:
+            logger.warning(f"Geofence computation failed: {e}")
+
     try:
         db_project = crud_project.create_project(db, project)
         logger.info(f"Created project: {project.name} (ID: {db_project.id})")
@@ -270,6 +295,44 @@ def update_project(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
             ) from None
+
+    # Auto-compute excluded_classes from geofence when country_code is set
+    update_data = project.model_dump(exclude_unset=True)
+    if "country_code" in update_data:
+        country_val = update_data["country_code"]
+        if country_val and country_val.upper() not in ("NONE", ""):
+            db_existing = crud_project.get_project(db, project_id)
+            cls_model_id = (
+                update_data.get("classification_model_id")
+                or (db_existing.classification_model_id if db_existing else None)
+            )
+            if cls_model_id:
+                try:
+                    from app.core.config import get_settings
+                    from app.ml.geofence import (
+                        compute_excluded_classes,
+                        find_geofence_file,
+                    )
+
+                    settings = get_settings()
+                    model_dir = (
+                        settings.user_data_dir / "models" / "cls" / cls_model_id
+                    )
+                    if model_dir.exists() and find_geofence_file(model_dir):
+                        state_val = update_data.get(
+                            "state_code",
+                            db_existing.state_code if db_existing else None,
+                        )
+                        excluded = compute_excluded_classes(
+                            model_dir, country_val, state_val
+                        )
+                        project.excluded_classes = excluded
+                        logger.info(
+                            f"Geofence: excluded {len(excluded)} labels "
+                            f"for {country_val}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Geofence computation failed: {e}")
 
     # Validate that not all species are excluded
     if project.excluded_classes is not None and len(project.excluded_classes) > 0:

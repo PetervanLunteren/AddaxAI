@@ -57,13 +57,6 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
     enabled: showDetails,
   });
 
-  // Fetch SpeciesNet locations for friendly country/state names
-  const { data: locations } = useQuery({
-    queryKey: ["speciesnet-locations"],
-    queryFn: () => modelsApi.getSpeciesNetLocations(),
-    enabled: showDetails && !!project?.classification_model_id?.toLowerCase().includes("speciesnet"),
-  });
-
   // Get file count from folder scan
   const { data: scanResult, isLoading: isScanning } = useFolderScan(entry.folder_path);
 
@@ -80,22 +73,6 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
     if (!modelId) return "None";
     const model = classificationModels?.find((m) => m.model_id === modelId);
     return model?.friendly_name || modelId;
-  };
-
-  // Get friendly location names
-  const getCountryName = (countryCode: string | null) => {
-    if (!countryCode || !locations) return countryCode || "Not set";
-    // locations.countries is a Record<string, string> where key is display name and value is code
-    // We need to find the key by value
-    const entry = Object.entries(locations.countries).find(([_, code]) => code === countryCode);
-    return entry ? entry[0] : countryCode;
-  };
-
-  const getStateName = (stateCode: string | null) => {
-    if (!stateCode || !locations) return stateCode || "Not set";
-    // locations.us_states is a Record<string, string> where key is display name and value is code
-    const entry = Object.entries(locations.us_states).find(([_, code]) => code === stateCode);
-    return entry ? entry[0] : stateCode;
   };
 
   // Show last 50 characters of path
@@ -225,8 +202,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
                   {getClassificationModelName(project.classification_model_id)}
                 </dd>
 
-                {/* Label selection - only show if not SpeciesNet */}
-                {!project.classification_model_id?.toLowerCase().includes("speciesnet") && project.excluded_classes && (
+                {/* Label selection */}
+                {project.excluded_classes && (
                   <>
                     <dt className="text-gray-500 font-medium">Label selection:</dt>
                     <dd className="text-gray-900">
@@ -234,21 +211,6 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
                         ? "All labels"
                         : `${project.excluded_classes.length} labels excluded`}
                     </dd>
-                  </>
-                )}
-
-                {/* Geographic location - only show if SpeciesNet */}
-                {project.classification_model_id?.toLowerCase().includes("speciesnet") && (
-                  <>
-                    <dt className="text-gray-500 font-medium">Country:</dt>
-                    <dd className="text-gray-900">{getCountryName(project.country_code)}</dd>
-
-                    {(project.country_code === "US" || project.country_code === "USA") && (
-                      <>
-                        <dt className="text-gray-500 font-medium">State:</dt>
-                        <dd className="text-gray-900">{getStateName(project.state_code)}</dd>
-                      </>
-                    )}
                   </>
                 )}
               </>
