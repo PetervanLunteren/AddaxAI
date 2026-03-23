@@ -12,7 +12,6 @@ To avoid this, we prefix states with emojis, split them in two parts, and map th
 
 # Country data with flag emojis and ISO country codes
 countries_data = {
-    "∅ Do not limit predictions to one country": "NONE",
     "🇦🇼 Aruba": "ABW",
     "🇦🇫 Afghanistan": "AFG",
     "🇦🇴 Angola": "AGO",
@@ -267,67 +266,64 @@ countries_data = {
 
 
 # US states with two-letter abbreviations
-# Due to some weird Claude Code API behaviour, it can’t handle plain US state names.
-# Hence, we prefix each state with an emoji and extract codes from here.
 
 us_states_part_one = {
-    "🐘 Alabama": "AL",             # Crimson Tide mascot
-    "🐻 Alaska": "AK",              # Brown bears & wilderness
-    "🌵 Arizona": "AZ",             # Desert cactus
-    "💎 Arkansas": "AR",            # Crater of Diamonds State Park
-    "🌴 California": "CA",          # Palm trees & beaches
-    "⛰️ Colorado": "CO",            # Rocky Mountains
-    "⚓ Connecticut": "CT",          # Maritime history
-    "🏰 Delaware": "DE",            # Colonial history, "First State"
-    "🐊 Florida": "FL",             # Alligators
-    "🍑 Georgia": "GA",             # Peaches
-    "🌺 Hawaii": "HI",              # Hibiscus, state flower
-    "🥔 Idaho": "ID",               # Famous for potatoes
-    "🏙️ Illinois": "IL",            # Chicago skyline
-    "🏎️ Indiana": "IN",             # Indy 500
-    "🌽 Iowa": "IA",                # Corn production
-    "🦅 Kansas": "KS",              # Plains wildlife & state bird
-    "🥃 Kentucky": "KY",            # Bourbon whiskey
-    "🎷 Louisiana": "LA",           # Jazz, New Orleans
-    "🦞 Maine": "ME"                # Lobsters
+    "Alabama": "AL",
+    "Alaska": "AK",
+    "Arizona": "AZ",
+    "Arkansas": "AR",
+    "California": "CA",
+    "Colorado": "CO",
+    "Connecticut": "CT",
+    "Delaware": "DE",
+    "Florida": "FL",
+    "Georgia": "GA",
+    "Hawaii": "HI",
+    "Idaho": "ID",
+    "Illinois": "IL",
+    "Indiana": "IN",
+    "Iowa": "IA",
+    "Kansas": "KS",
+    "Kentucky": "KY",
+    "Louisiana": "LA",
+    "Maine": "ME",
 }
 
 us_states_part_two = {
-    "🦀 Maryland": "MD",            # Blue crabs
-    "🍏 Massachusetts": "MA",       # Apples, colonial heritage
-    "🚗 Michigan": "MI",            # Motor City (Detroit)
-    "🦌 Minnesota": "MN",           # Deer & lake wildlife
-    "🎸 Mississippi": "MS",         # Birthplace of blues
-    "🎵 Missouri": "MO",            # St. Louis & Kansas City music
-    "🐎 Montana": "MT",             # Horses & open plains
-    "🌾 Nebraska": "NE",            # Wheat & prairies
-    "🎰 Nevada": "NV",              # Las Vegas casinos
-    "🍁 New Hampshire": "NH",       # Fall foliage
-    "🎢 New Jersey": "NJ",          # Boardwalk amusement parks
-    "🌞 New Mexico": "NM",          # Desert sun & Zia symbol
-    "🗽 New York": "NY",            # Statue of Liberty
-    "🏖️ North Carolina": "NC",      # Outer Banks beaches
-    "🐂 North Dakota": "ND",        # Bison & plains
-    "🎭 Ohio": "OH",                # Rock & Roll Hall of Fame, arts
-    "🌪️ Oklahoma": "OK",            # Tornado Alley
-    "🌲 Oregon": "OR",              # Evergreen forests
-    "🔔 Pennsylvania": "PA",        # Liberty Bell
-    "🦪 Rhode Island": "RI",        # Oysters & seafood
-    "🌊 South Carolina": "SC",      # Atlantic beaches
-    "🪨 South Dakota": "SD",        # Badlands & Mount Rushmore
-    "🎤 Tennessee": "TN",           # Country music, Nashville
-    "🤠 Texas": "TX",               # Cowboy culture
-    "🏜️ Utah": "UT",                # Red rock canyons
-    "🥞 Vermont": "VT",             # Maple syrup
-    "⚔️ Virginia": "VA",            # Colonial & Revolutionary history
-    "☕ Washington": "WA",           # Coffee culture (Seattle)
-    "⛏️ West Virginia": "WV",       # Coal mining
-    "🧀 Wisconsin": "WI",           # Cheese production
-    "🦬 Wyoming": "WY",             # Yellowstone bison
-    "🏛️ District of Columbia": "DC" # US Capitol
+    "Maryland": "MD",
+    "Massachusetts": "MA",
+    "Michigan": "MI",
+    "Minnesota": "MN",
+    "Mississippi": "MS",
+    "Missouri": "MO",
+    "Montana": "MT",
+    "Nebraska": "NE",
+    "Nevada": "NV",
+    "New Hampshire": "NH",
+    "New Jersey": "NJ",
+    "New Mexico": "NM",
+    "New York": "NY",
+    "North Carolina": "NC",
+    "North Dakota": "ND",
+    "Ohio": "OH",
+    "Oklahoma": "OK",
+    "Oregon": "OR",
+    "Pennsylvania": "PA",
+    "Rhode Island": "RI",
+    "South Carolina": "SC",
+    "South Dakota": "SD",
+    "Tennessee": "TN",
+    "Texas": "TX",
+    "Utah": "UT",
+    "Vermont": "VT",
+    "Virginia": "VA",
+    "Washington": "WA",
+    "West Virginia": "WV",
+    "Wisconsin": "WI",
+    "Wyoming": "WY",
+    "District of Columbia": "DC",
 }
 us_states_data = {
-    "∅ Do not limit predictions to one state": "NONE",
     **us_states_part_one,
-    **us_states_part_two
+    **us_states_part_two,
 }

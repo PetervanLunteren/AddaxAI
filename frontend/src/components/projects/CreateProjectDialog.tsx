@@ -12,7 +12,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, InfoIcon } from "lucide-react";
+import { Info, InfoIcon, ListTodo } from "lucide-react";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { ImageDropZone } from "./ImageDropZone";
 import { modelsApi } from "../../api/models";
@@ -54,6 +54,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
+import { SpeciesSelectionModal } from "../taxonomy/SpeciesSelectionModal";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -119,6 +120,18 @@ export function CreateProjectDialog({
 
   // Watch classification model changes
   const classificationModelId = form.watch("classification_model_id");
+  const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
+
+  // Label selection state
+  const [labelSelectionModalOpen, setLabelSelectionModalOpen] = useState(false);
+  const excludedClasses = form.watch("excluded_classes") ?? [];
+
+  // Fetch taxonomy for selected classification model
+  const { data: taxonomy } = useQuery({
+    queryKey: ["taxonomy", classificationModelId],
+    queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
+    enabled: hasClassificationModel && open,
+  });
 
   // Fetch model status when model is selected
   const { data: modelStatus } = useQuery({
@@ -400,6 +413,39 @@ export function CreateProjectDialog({
                 />
               )}
 
+              {/* Label selection */}
+              {hasClassificationModel && taxonomy && (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    Label selection
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          Limit predictions to labels expected in your project area to reduce false positives. You can change this later in settings.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </FormLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setLabelSelectionModalOpen(true)}
+                    className="w-full min-h-14 flex flex-col items-start justify-center gap-1 text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ListTodo className="h-4 w-4" />
+                      <span>Select labels</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Currently included {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
+                    </span>
+                  </Button>
+                </FormItem>
+              )}
+
               <ImageDropZone
                 value={imageFile}
                 existingUrl={null}
@@ -474,6 +520,26 @@ export function CreateProjectDialog({
         open={showModelInfo}
         onOpenChange={setShowModelInfo}
       />
+
+      {/* Label Selection Modal */}
+      {classificationModelId && taxonomy && (
+        <SpeciesSelectionModal
+          modelId={classificationModelId}
+          excludedClasses={excludedClasses}
+          onExclusionChange={(classes) => {
+            form.setValue("excluded_classes", classes, { shouldDirty: true });
+          }}
+          open={labelSelectionModalOpen}
+          onOpenChange={setLabelSelectionModalOpen}
+          totalSpeciesCount={taxonomy.all_classes?.length || 0}
+          countryCode={form.watch("country_code")}
+          stateCode={form.watch("state_code")}
+          onLocationChange={(country, state) => {
+            form.setValue("country_code", country, { shouldDirty: true });
+            form.setValue("state_code", state, { shouldDirty: true });
+          }}
+        />
+      )}
     </Dialog>
   );
 }

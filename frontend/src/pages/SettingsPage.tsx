@@ -178,8 +178,6 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [excludedClasses, setExcludedClasses] = useState<string[]>([]);
   const [labelSelectionModalOpen, setLabelSelectionModalOpen] = useState(false);
-  const [countryOpen, setCountryOpen] = useState(false);
-  const [stateOpen, setStateOpen] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
@@ -311,13 +309,6 @@ export default function SettingsPage() {
   const { data: taxonomy } = useQuery({
     queryKey: ["taxonomy", classificationModelId],
     queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
-    enabled: !!classificationModelId && classificationModelId !== "none",
-  });
-
-  // Fetch geofence information for the classification model
-  const { data: geofence } = useQuery({
-    queryKey: ["model-geofence", classificationModelId],
-    queryFn: () => modelsApi.getModelGeofence(classificationModelId!),
     enabled: !!classificationModelId && classificationModelId !== "none",
   });
 
@@ -1060,7 +1051,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Card 2: Label selection (with optional geofence) */}
+            {/* Card 2: Label selection */}
             {hasClassificationModel && taxonomy && (
               <Card>
                 <CardHeader>
@@ -1070,150 +1061,6 @@ export default function SettingsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-0 divide-y border-t">
-                  {/* Geographic location (only shown for models with geofence support) */}
-                  {geofence?.has_geofence && geofence.countries && (
-                    <>
-                      {/* Country selection */}
-                      <FormField
-                        control={form.control}
-                        name="country_code"
-                        render={({ field }) => (
-                          <div className="grid grid-cols-2 items-center gap-8 py-6">
-                            <div className="space-y-1">
-                              <FormLabel>Country</FormLabel>
-                              <FormDescription className="text-sm">
-                                Select the country where your camera traps are located. This narrows down species predictions to those found in your region.
-                              </FormDescription>
-                            </div>
-                            <div className="space-y-2">
-                              <Popover open={countryOpen} onOpenChange={setCountryOpen}>
-                                <PopoverTrigger asChild>
-                                  <FormControl>
-                                    <Button
-                                      variant="outline"
-                                      role="combobox"
-                                      className={cn(
-                                        "w-full justify-between",
-                                        !field.value && "text-muted-foreground"
-                                      )}
-                                    >
-                                      {field.value
-                                        ? Object.entries(geofence.countries!).find(
-                                            ([_, code]) => code === field.value
-                                          )?.[0]
-                                        : "Select country"}
-                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                  </FormControl>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[400px] p-0">
-                                  <Command>
-                                    <CommandInput placeholder="Search countries..." />
-                                    <CommandList>
-                                      <CommandEmpty>No country found.</CommandEmpty>
-                                      <CommandGroup>
-                                        {Object.entries(geofence.countries!).map(([name, code]) => (
-                                          <CommandItem
-                                            key={code}
-                                            value={name}
-                                            onSelect={() => {
-                                              form.setValue("country_code", code, { shouldDirty: true });
-                                              setCountryOpen(false);
-                                            }}
-                                          >
-                                            <Check
-                                              className={cn(
-                                                "mr-2 h-4 w-4",
-                                                field.value === code ? "opacity-100" : "opacity-0"
-                                              )}
-                                            />
-                                            {name}
-                                          </CommandItem>
-                                        ))}
-                                      </CommandGroup>
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                              <FormMessage />
-                            </div>
-                          </div>
-                        )}
-                      />
-
-                      {/* State Selection (USA only) */}
-                      {countryCode === "USA" && geofence.us_states && (
-                        <FormField
-                          control={form.control}
-                          name="state_code"
-                          render={({ field }) => (
-                            <div className="grid grid-cols-2 items-center gap-8 py-6">
-                              <div className="space-y-1">
-                                <FormLabel>State</FormLabel>
-                                <FormDescription className="text-sm">
-                                  Select a US state for more specific predictions.
-                                </FormDescription>
-                              </div>
-                              <div className="space-y-2">
-                                <Popover open={stateOpen} onOpenChange={setStateOpen}>
-                                  <PopoverTrigger asChild>
-                                    <FormControl>
-                                      <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        className={cn(
-                                          "w-full justify-between",
-                                          !field.value && "text-muted-foreground"
-                                        )}
-                                      >
-                                        {field.value
-                                          ? Object.entries(geofence.us_states!).find(
-                                              ([_, code]) => code === field.value
-                                            )?.[0]
-                                          : "Select state"}
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                      </Button>
-                                    </FormControl>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-[400px] p-0">
-                                    <Command>
-                                      <CommandInput placeholder="Search states..." />
-                                      <CommandList>
-                                        <CommandEmpty>No state found.</CommandEmpty>
-                                        <CommandGroup>
-                                          {Object.entries(geofence.us_states!).map(([name, code]) => (
-                                            <CommandItem
-                                              key={code}
-                                              value={name}
-                                              onSelect={() => {
-                                                form.setValue("state_code", code, { shouldDirty: true });
-                                                setStateOpen(false);
-                                              }}
-                                            >
-                                              <Check
-                                                className={cn(
-                                                  "mr-2 h-4 w-4",
-                                                  field.value === code ? "opacity-100" : "opacity-0"
-                                                )}
-                                              />
-                                              {name}
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      </CommandList>
-                                    </Command>
-                                  </PopoverContent>
-                                </Popover>
-                                <FormMessage />
-                              </div>
-                            </div>
-                          )}
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {/* Label selection button */}
                   <div className="grid grid-cols-2 items-center gap-8 py-6">
                     <div className="space-y-1">
                       <FormLabel>Label selection</FormLabel>
@@ -1515,6 +1362,12 @@ export default function SettingsPage() {
             open={labelSelectionModalOpen}
             onOpenChange={setLabelSelectionModalOpen}
             totalSpeciesCount={taxonomy.all_classes?.length || 0}
+            countryCode={countryCode}
+            stateCode={form.watch("state_code")}
+            onLocationChange={(country, state) => {
+              form.setValue("country_code", country, { shouldDirty: true });
+              form.setValue("state_code", state, { shouldDirty: true });
+            }}
           />
         )}
 

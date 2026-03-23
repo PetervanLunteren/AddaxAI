@@ -33,6 +33,8 @@ interface SpeciesSelectorProps {
   treeHeight?: string;
   /** If true, stretch to fill parent instead of using a fixed height. */
   fillHeight?: boolean;
+  /** Optional content rendered next to the search bar (e.g. country filter). */
+  searchRowExtra?: React.ReactNode;
 }
 
 export function SpeciesSelector({
@@ -41,6 +43,7 @@ export function SpeciesSelector({
   onExclusionChange,
   treeHeight = "300px",
   fillHeight = false,
+  searchRowExtra,
 }: SpeciesSelectorProps) {
   const [excludedSet, setExcludedSet] = useState<Set<string>>(new Set(excludedClasses));
 
@@ -82,6 +85,7 @@ export function SpeciesSelector({
           height={treeHeight}
           fillHeight={fillHeight}
           emptyMessage="No taxonomy available for this model"
+          searchRowExtra={searchRowExtra}
         />
       )}
     </div>

@@ -96,18 +96,9 @@ def load_geofence(model_dir: Path) -> dict | None:
     return _load_geofence_cached(str(geofence_path))
 
 
-def parse_labels_file(labels_path: Path) -> list[dict]:
-    """
-    Parse a SpeciesNet-format labels file.
-
-    Each line has format: UUID;class;order;family;genus;species;common_name
-
-    Args:
-        labels_path: Path to .labels.txt file
-
-    Returns:
-        List of dicts with 'common_name' and 'taxonomy_key' fields
-    """
+@lru_cache(maxsize=4)
+def _parse_labels_cached(labels_path: str) -> tuple[tuple[str, str], ...]:
+    """Parse and cache labels file (keyed by string path for lru_cache)."""
     labels = []
     with open(labels_path) as f:
         for line in f:
@@ -119,11 +110,68 @@ def parse_labels_file(labels_path: Path) -> list[dict]:
                 continue
             taxonomy_key = ";".join(parts[1:6])
             common_name = parts[6]
-            labels.append({
-                "common_name": common_name,
-                "taxonomy_key": taxonomy_key,
-            })
-    return labels
+            labels.append((common_name, taxonomy_key))
+    return tuple(labels)
+
+
+def parse_labels_file(labels_path: Path) -> list[dict]:
+    """
+    Parse a SpeciesNet-format labels file.
+
+    Each line has format: UUID;class;order;family;genus;species;common_name
+    Results are cached after first load.
+
+    Args:
+        labels_path: Path to .labels.txt file
+
+    Returns:
+        List of dicts with 'common_name' and 'taxonomy_key' fields
+    """
+    return [
+        {"common_name": name, "taxonomy_key": key}
+        for name, key in _parse_labels_cached(str(labels_path))
+    ]
+
+
+@lru_cache(maxsize=64)
+def _get_allowed_labels_cached(
+    geofence_path: str,
+    labels_path: str,
+    country_code: str,
+    state_code: str | None,
+) -> tuple[str, ...]:
+    """Cached core of get_allowed_labels (string args for lru_cache)."""
+    geofence = _load_geofence_cached(geofence_path)
+    labels = _parse_labels_cached(labels_path)
+    country_upper = country_code.upper()
+    allowed = []
+
+    for common_name, taxonomy_key in labels:
+        if taxonomy_key == ";;;;":
+            allowed.append(common_name)
+            continue
+
+        geofence_entry = geofence.get(taxonomy_key)
+        if geofence_entry is None:
+            allowed.append(common_name)
+            continue
+
+        allow_dict = geofence_entry.get("allow", {})
+        if country_upper not in allow_dict:
+            continue
+
+        if (
+            country_upper == "USA"
+            and state_code
+            and state_code.upper() not in ("NONE", "")
+        ):
+            state_list = allow_dict[country_upper]
+            if state_list and state_code.upper() not in state_list:
+                continue
+
+        allowed.append(common_name)
+
+    return tuple(allowed)
 
 
 def get_allowed_labels(
@@ -136,7 +184,7 @@ def get_allowed_labels(
 
     For each label in the model's labels file, checks whether the label's
     taxonomy key exists in the geofence and whether the country (and
-    optionally state) is in the allow list.
+    optionally state) is in the allow list. Results are cached.
 
     Args:
         model_dir: Path to model directory
@@ -149,8 +197,8 @@ def get_allowed_labels(
     Raises:
         FileNotFoundError: If geofence or labels file is missing
     """
-    geofence = load_geofence(model_dir)
-    if geofence is None:
+    geofence_path = find_geofence_file(model_dir)
+    if geofence_path is None:
         raise FileNotFoundError(
             f"No geofence file found in {model_dir}"
         )
@@ -161,42 +209,9 @@ def get_allowed_labels(
             f"No labels file found in {model_dir}"
         )
 
-    labels = parse_labels_file(labels_path)
-    country_upper = country_code.upper()
-    allowed = []
-
-    for label in labels:
-        key = label["taxonomy_key"]
-
-        # Skip labels with no taxonomy (blank, vehicle)
-        if key == ";;;;":
-            allowed.append(label["common_name"])
-            continue
-
-        geofence_entry = geofence.get(key)
-        if geofence_entry is None:
-            # Label has no geofence entry: allow it (conservative)
-            allowed.append(label["common_name"])
-            continue
-
-        allow_dict = geofence_entry.get("allow", {})
-        if country_upper not in allow_dict:
-            continue
-
-        # Country is allowed. Check state if applicable.
-        if (
-            country_upper == "USA"
-            and state_code
-            and state_code.upper() not in ("NONE", "")
-        ):
-            state_list = allow_dict[country_upper]
-            # Empty list means all states allowed
-            if state_list and state_code.upper() not in state_list:
-                continue
-
-        allowed.append(label["common_name"])
-
-    return allowed
+    return list(_get_allowed_labels_cached(
+        str(geofence_path), str(labels_path), country_code, state_code,
+    ))
 
 
 def get_all_labels(model_dir: Path) -> list[str]:
