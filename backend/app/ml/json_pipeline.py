@@ -460,17 +460,19 @@ class JSONBasedMLPipeline:
 
         logger.info(f"Loading {len(results.get('images', []))} images to database")
 
-        # Build excluded class ID set for label filtering
+        # Build separate ID sets for user exclusion vs non-label skip
         from app.ml.label_exclusion import (
-            build_excluded_class_ids,
+            build_non_label_class_ids,
+            build_user_excluded_class_ids,
             filter_classifications,
-            is_non_label_detection,
+            should_skip_detection,
         )
 
         class_categories = results.get("classification_categories", {})
-        excluded_class_ids = build_excluded_class_ids(
+        user_excluded_ids = build_user_excluded_class_ids(
             class_categories, excluded_classes
         )
+        non_label_ids = build_non_label_class_ids(class_categories)
 
         # Track statistics
         total_detections = 0
@@ -554,9 +556,9 @@ class JSONBasedMLPipeline:
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
 
-                # Skip detections classified exclusively as non-label
-                if category == "animal" and is_non_label_detection(
-                    det, excluded_class_ids
+                # Skip if user-filtered top-1 is a non-label class (false positive)
+                if category == "animal" and should_skip_detection(
+                    det, user_excluded_ids, non_label_ids
                 ):
                     skipped_non_label += 1
                     continue
@@ -582,10 +584,10 @@ class JSONBasedMLPipeline:
                 if "classifications" in det and det["classifications"]:
                     classifications = det["classifications"]
 
-                    # Apply label exclusion if configured
-                    if excluded_class_ids:
+                    # Apply user exclusions only (not NON_LABEL) for label assignment
+                    if user_excluded_ids:
                         classifications = filter_classifications(
-                            classifications, excluded_class_ids
+                            classifications, user_excluded_ids
                         )
 
                     if classifications:
@@ -705,16 +707,19 @@ def load_json_to_database(
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
         # Build excluded class ID set for label filtering.
-        # Always strips non-label classes (bait, blank, empty, false detection,
-        # none, vide) plus any user-configured excluded labels.
+        # Build separate ID sets for user exclusion vs non-label skip
         from app.ml.label_exclusion import (
-            build_excluded_class_ids,
+            build_non_label_class_ids,
+            build_user_excluded_class_ids,
             filter_classifications,
-            is_non_label_detection,
+            should_skip_detection,
         )
 
         class_categories = results.get("classification_categories", {})
-        excluded_class_ids = build_excluded_class_ids(class_categories, excluded_classes)
+        user_excluded_ids = build_user_excluded_class_ids(
+            class_categories, excluded_classes
+        )
+        non_label_ids = build_non_label_class_ids(class_categories)
 
         # Track statistics
         total_detections = 0
@@ -899,11 +904,9 @@ def load_json_to_database(
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
 
-                # Skip detections classified exclusively as non-label
-                # (blank, empty, false detection, etc.). These are
-                # MegaDetector false positives confirmed by the classifier.
-                if category == "animal" and is_non_label_detection(
-                    det, excluded_class_ids
+                # Skip if user-filtered top-1 is a non-label class (false positive)
+                if category == "animal" and should_skip_detection(
+                    det, user_excluded_ids, non_label_ids
                 ):
                     skipped_non_label += 1
                     continue
@@ -929,10 +932,10 @@ def load_json_to_database(
                 if "classifications" in det and det["classifications"]:
                     classifications = det["classifications"]
 
-                    # Apply label exclusion if configured
-                    if excluded_class_ids:
+                    # Apply user exclusions only (not NON_LABEL) for label assignment
+                    if user_excluded_ids:
                         classifications = filter_classifications(
-                            classifications, excluded_class_ids
+                            classifications, user_excluded_ids
                         )
 
                     if classifications:

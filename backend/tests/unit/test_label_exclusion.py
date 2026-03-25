@@ -1,60 +1,149 @@
-"""Unit tests for is_non_label_detection() in label_exclusion.py."""
+"""Unit tests for label exclusion and non-label skip logic."""
 
 from app.ml.label_exclusion import (
     NON_LABEL_CLASSES,
     build_excluded_class_ids,
+    build_non_label_class_ids,
+    build_user_excluded_class_ids,
     is_non_label_detection,
+    should_skip_detection,
 )
 
-
-def _make_excluded(categories: dict[str, str]) -> set[str]:
-    """Build excluded_class_ids from a classification_categories dict."""
-    return build_excluded_class_ids(categories)
-
-
-def test_no_classifications_key():
-    """Detection without classifications key is not skipped (unclassified)."""
-    det = {"category": "1", "conf": 0.9, "bbox": [0, 0, 0.5, 0.5]}
-    excluded = _make_excluded({"1": "blank"})
-    assert is_non_label_detection(det, excluded) is False
-
-
-def test_empty_classifications_list():
-    """Detection with empty classifications list is not skipped."""
-    det = {"classifications": []}
-    excluded = _make_excluded({"1": "blank"})
-    assert is_non_label_detection(det, excluded) is False
-
-
-def test_all_excluded():
-    """Detection with only non-label classifications is skipped."""
-    det = {"classifications": [["1", 0.9], ["2", 0.1]]}
-    excluded = _make_excluded({"1": "blank", "2": "empty"})
-    assert is_non_label_detection(det, excluded) is True
-
-
-def test_some_remain_after_filtering():
-    """Detection with mixed classifications (non-label + real) is not skipped."""
-    det = {"classifications": [["1", 0.6], ["2", 0.4]]}
-    excluded = _make_excluded({"1": "blank", "2": "lion"})
-    assert is_non_label_detection(det, excluded) is False
-
-
-def test_empty_excluded_set():
-    """Empty excluded set never skips anything."""
-    det = {"classifications": [["1", 1.0]]}
-    assert is_non_label_detection(det, set()) is False
-
-
-def test_vide_excluded():
-    """'vide' (French for empty) is in NON_LABEL_CLASSES and triggers skip."""
-    assert "vide" in NON_LABEL_CLASSES
-    det = {"classifications": [["1", 1.0]]}
-    excluded = _make_excluded({"1": "vide"})
-    assert is_non_label_detection(det, excluded) is True
-
+# ---------- NON_LABEL_CLASSES ----------
 
 def test_non_label_classes_complete():
     """All expected non-label classes are present."""
     expected = {"bait", "blank", "empty", "false detection", "none", "vide"}
     assert NON_LABEL_CLASSES == expected
+
+
+# ---------- build_user_excluded_class_ids ----------
+
+def test_user_excluded_no_labels():
+    """No user exclusions returns empty set."""
+    cats = {"1": "lion", "2": "blank"}
+    assert build_user_excluded_class_ids(cats) == set()
+    assert build_user_excluded_class_ids(cats, []) == set()
+
+
+def test_user_excluded_specific_labels():
+    """Returns IDs for user-excluded labels only, not NON_LABEL."""
+    cats = {"1": "lion", "2": "blank", "3": "zebra"}
+    result = build_user_excluded_class_ids(cats, ["lion"])
+    assert result == {"1"}
+
+
+def test_user_excluded_does_not_include_non_label():
+    """User exclusion function never includes NON_LABEL classes."""
+    cats = {"1": "lion", "2": "blank", "3": "bait"}
+    result = build_user_excluded_class_ids(cats, ["lion"])
+    assert "2" not in result  # blank
+    assert "3" not in result  # bait
+    assert result == {"1"}
+
+
+# ---------- build_non_label_class_ids ----------
+
+def test_non_label_ids():
+    """Returns IDs for NON_LABEL_CLASSES only."""
+    cats = {"1": "lion", "2": "blank", "3": "Bait", "4": "zebra"}
+    result = build_non_label_class_ids(cats)
+    assert result == {"2", "3"}  # blank + Bait (case-insensitive)
+
+
+def test_non_label_ids_empty_categories():
+    """Empty categories returns empty set."""
+    assert build_non_label_class_ids({}) == set()
+
+
+def test_non_label_ids_no_matches():
+    """No NON_LABEL classes in categories returns empty set."""
+    cats = {"1": "lion", "2": "zebra"}
+    assert build_non_label_class_ids(cats) == set()
+
+
+# ---------- build_excluded_class_ids (legacy, still used by postprocessing) ----------
+
+def test_build_excluded_includes_both():
+    """Legacy function includes both NON_LABEL and user exclusions."""
+    cats = {"1": "lion", "2": "blank", "3": "zebra"}
+    result = build_excluded_class_ids(cats, ["lion"])
+    assert "1" in result  # user excluded
+    assert "2" in result  # NON_LABEL
+
+
+# ---------- should_skip_detection ----------
+
+def test_skip_no_classifications():
+    """Unclassified detection is not skipped."""
+    det = {"category": "1", "conf": 0.9, "bbox": [0, 0, 0.5, 0.5]}
+    assert should_skip_detection(det, set(), {"1"}) is False
+
+
+def test_skip_empty_classifications():
+    """Empty classifications list is not skipped."""
+    det = {"classifications": []}
+    assert should_skip_detection(det, set(), {"1"}) is False
+
+
+def test_skip_blank_top1_no_user_exclusions():
+    """Blank as top-1, no user exclusions: skip (false positive)."""
+    det = {"classifications": [["2", 0.65], ["1", 0.19], ["3", 0.10]]}
+    non_label = {"2"}  # blank
+    assert should_skip_detection(det, set(), non_label) is True
+
+
+def test_skip_blank_top1_user_excludes_blank():
+    """Blank as top-1, user excludes blank: blank removed, cattle becomes
+    top-1, cattle is not NON_LABEL, so not skipped."""
+    det = {"classifications": [["2", 0.65], ["1", 0.19], ["3", 0.10]]}
+    user_excluded = {"2"}  # user excluded blank
+    non_label = {"2"}  # blank is also NON_LABEL
+    assert should_skip_detection(det, user_excluded, non_label) is False
+
+
+def test_skip_cattle_top1():
+    """Real species as top-1: not skipped."""
+    det = {"classifications": [["1", 0.92], ["2", 0.05], ["3", 0.03]]}
+    non_label = {"2"}  # blank
+    assert should_skip_detection(det, set(), non_label) is False
+
+
+def test_skip_all_user_excluded():
+    """All classifications removed by user exclusion: skip."""
+    det = {"classifications": [["1", 0.6], ["2", 0.4]]}
+    user_excluded = {"1", "2"}
+    assert should_skip_detection(det, user_excluded, set()) is True
+
+
+def test_skip_only_non_labels_remain():
+    """User excludes real species, only blank remains: skip."""
+    det = {"classifications": [["1", 0.6], ["2", 0.3], ["3", 0.1]]}
+    user_excluded = {"1"}  # exclude the real species
+    non_label = {"2", "3"}  # blank + bait
+    # After user filter: [["2", ~0.75], ["3", ~0.25]] → top-1 is blank → skip
+    assert should_skip_detection(det, user_excluded, non_label) is True
+
+
+# ---------- is_non_label_detection (legacy, kept for backward compat) ----------
+
+def test_legacy_no_classifications():
+    """Legacy: unclassified detection is not skipped."""
+    det = {"category": "1", "conf": 0.9}
+    excluded = build_excluded_class_ids({"1": "blank"})
+    assert is_non_label_detection(det, excluded) is False
+
+
+def test_legacy_all_excluded():
+    """Legacy: detection with only non-label classifications is skipped."""
+    det = {"classifications": [["1", 0.9], ["2", 0.1]]}
+    excluded = build_excluded_class_ids({"1": "blank", "2": "empty"})
+    assert is_non_label_detection(det, excluded) is True
+
+
+def test_legacy_vide_excluded():
+    """Legacy: 'vide' triggers skip."""
+    assert "vide" in NON_LABEL_CLASSES
+    det = {"classifications": [["1", 1.0]]}
+    excluded = build_excluded_class_ids({"1": "vide"})
+    assert is_non_label_detection(det, excluded) is True
