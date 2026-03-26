@@ -18,7 +18,9 @@ Created for AddaxAI (https://github.com/PetervanLunteren/AddaxAI)
 """
 
 from __future__ import annotations
+
 from pathlib import Path
+
 from PIL import Image
 
 
@@ -39,12 +41,12 @@ class ModelInference:
         """
         Initialize with model paths. Model loading happens in load_model().
         You can leave this as-is unless you need extra initialization.
-        
+
         Args:
             model_dir: Directory containing model files
             model_path: Path to model file
         """
-        
+
         # Leave this as-is
         self.model_dir = model_dir
         self.model_path = model_path
@@ -60,7 +62,7 @@ class ModelInference:
             True if GPU or MPS is available, False otherwise
         """
 
-        raise NotImplementedError("Implement GPU check for your framework") 
+        raise NotImplementedError("Implement GPU check for your framework")
 
     def load_model(self) -> None:
         """
@@ -132,3 +134,61 @@ class ModelInference:
         """
 
         raise NotImplementedError("Implement get_class_names for your model")
+
+    # ------------------------------------------------------------------
+    # Optional batch inference methods
+    #
+    # Implementing get_tensor() + classify_batch() enables batch inference:
+    # multiple crops processed in one GPU forward pass instead of one at a
+    # time. This can give 5-15x speedup on GPU. If not implemented, the
+    # worker falls back to calling get_classification() per crop.
+    # ------------------------------------------------------------------
+
+    def get_tensor(self, crop: Image.Image):
+        """
+        Optional: preprocess a crop into a model-ready numpy array.
+
+        Called once per crop. The worker collects arrays from multiple
+        crops, stacks them with numpy.stack(), and passes the batch
+        to classify_batch().
+
+        Args:
+            crop: Cropped PIL Image from get_crop()
+
+        Returns:
+            numpy.ndarray: preprocessed array ready for model input.
+            Shape depends on model (e.g., [H, W, C] or [C, H, W]).
+
+        Example (PyTorch model with 224x224 input):
+            import numpy as np
+            from torchvision import transforms
+            tensor = self.preprocess(crop)  # your transforms.Compose
+            return tensor.numpy()
+        """
+        raise NotImplementedError
+
+    def classify_batch(self, batch):
+        """
+        Optional: run inference on a batch of preprocessed arrays.
+
+        Args:
+            batch: numpy.ndarray of stacked arrays from get_tensor().
+                   Shape: [batch_size, ...] where ... matches get_tensor().
+
+        Returns:
+            List of classification results, one per crop in the batch.
+            Each result has the same format as get_classification():
+            [[class_name, confidence], ...]
+
+        Example (PyTorch):
+            import torch
+            tensor = torch.from_numpy(batch).to(self.device)
+            with torch.no_grad():
+                logits = self.model(tensor)
+                probs = torch.softmax(logits, dim=1).cpu().numpy()
+            return [
+                [[self.names[j], float(p[j])] for j in range(len(p))]
+                for p in probs
+            ]
+        """
+        raise NotImplementedError

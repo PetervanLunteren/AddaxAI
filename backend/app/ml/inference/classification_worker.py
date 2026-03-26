@@ -6,8 +6,16 @@ Usage: python classification_worker.py <model_dir> <model_path> <input_json> <ou
 Reads all detections from input_json, classifies them, writes results to output_json.
 Progress and status are streamed via stderr as JSON lines.
 
+Supports two modes:
+- Batch mode: if the model implements get_tensor() + classify_batch(),
+  crops are grouped by image, preprocessed, stacked into batches, and
+  processed in one GPU forward pass per batch. Much faster.
+- Per-crop mode (fallback): calls get_classification() one crop at a time.
+  Works with any model but slower on GPU.
+
 Created by Claude Code on 2026-01-05
 Updated on 2026-03-14 - Simplified from persistent worker to one-shot batch
+Updated on 2026-03-26 - Added image caching and batch inference support
 """
 
 from __future__ import annotations
@@ -17,8 +25,10 @@ import json
 import platform
 import sys
 import traceback
+from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 
@@ -138,6 +148,166 @@ def emit(data: dict) -> None:
     print(json.dumps(data), file=sys.stderr, flush=True)
 
 
+def _classify_batched(model_inference, items, emit_fn):
+    """
+    Classify items using batch inference with image caching.
+
+    Groups items by image path (open each image once), preprocesses
+    crops via get_tensor(), stacks into batches, and runs batch
+    inference via classify_batch().
+
+    Args:
+        model_inference: ModelInference instance with get_tensor() and classify_batch()
+        items: List of {"image_path": str, "bbox": [x, y, w, h]} dicts
+        emit_fn: Callable to emit progress updates
+
+    Returns:
+        List of result dicts (parallel to items)
+    """
+    gpu_available = model_inference.check_gpu()
+    batch_size = 4 if gpu_available else 1
+    total = len(items)
+
+    # Group items by image path for caching (preserve original indices)
+    items_by_image: dict[str, list[tuple[int, dict]]] = defaultdict(list)
+    for i, item in enumerate(items):
+        items_by_image[item["image_path"]].append((i, item))
+
+    results: list[dict | None] = [None] * total
+    processed = 0
+    batch_indices: list[int] = []
+    batch_tensors: list[np.ndarray] = []
+
+    def flush_batch():
+        nonlocal processed
+        if not batch_tensors:
+            return
+        batch = np.stack(batch_tensors)
+        batch_results = model_inference.classify_batch(batch)
+        for idx, classifications in zip(batch_indices, batch_results, strict=False):
+            sorted_cls = sorted(classifications, key=lambda x: x[1], reverse=True)
+            results[idx] = {"success": True, "classifications": sorted_cls}
+        processed += len(batch_indices)
+        emit_fn({"current": processed, "total": total})
+        batch_indices.clear()
+        batch_tensors.clear()
+
+    for image_path, image_items in items_by_image.items():
+        path = Path(image_path)
+        if not path.exists():
+            for orig_idx, _ in image_items:
+                results[orig_idx] = {
+                    "success": False,
+                    "error": f"Image not found: {image_path}",
+                }
+                processed += 1
+            continue
+
+        image = Image.open(path)
+
+        for orig_idx, item in image_items:
+            try:
+                crop = model_inference.get_crop(image, tuple(item["bbox"]))
+                if crop is None:
+                    results[orig_idx] = {
+                        "success": False,
+                        "error": f"Invalid crop for bbox {item['bbox']}",
+                    }
+                    processed += 1
+                    continue
+
+                tensor = model_inference.get_tensor(crop)
+                batch_tensors.append(tensor)
+                batch_indices.append(orig_idx)
+
+                if len(batch_tensors) >= batch_size:
+                    flush_batch()
+
+            except Exception as e:
+                results[orig_idx] = {"success": False, "error": str(e)}
+                processed += 1
+
+    # Flush remaining partial batch
+    flush_batch()
+
+    return results
+
+
+def _classify_per_crop(model_inference, items, emit_fn):
+    """
+    Classify items one crop at a time (fallback for models without batch support).
+
+    Groups items by image path to avoid re-opening the same image.
+
+    Args:
+        model_inference: ModelInference instance
+        items: List of {"image_path": str, "bbox": [x, y, w, h]} dicts
+        emit_fn: Callable to emit progress updates
+
+    Returns:
+        List of result dicts (parallel to items)
+    """
+    total = len(items)
+
+    # Group items by image path for caching
+    items_by_image: dict[str, list[tuple[int, dict]]] = defaultdict(list)
+    for i, item in enumerate(items):
+        items_by_image[item["image_path"]].append((i, item))
+
+    results: list[dict | None] = [None] * total
+    processed = 0
+
+    for image_path, image_items in items_by_image.items():
+        path = Path(image_path)
+        if not path.exists():
+            for orig_idx, _ in image_items:
+                results[orig_idx] = {
+                    "success": False,
+                    "error": f"Image not found: {image_path}",
+                }
+                processed += 1
+            continue
+
+        image = Image.open(path)
+
+        for orig_idx, item in image_items:
+            try:
+                crop = model_inference.get_crop(image, tuple(item["bbox"]))
+                if crop is None:
+                    results[orig_idx] = {
+                        "success": False,
+                        "error": f"Invalid crop for bbox {item['bbox']}",
+                    }
+                    processed += 1
+                    continue
+
+                classifications = model_inference.get_classification(crop)
+                if not classifications:
+                    results[orig_idx] = {
+                        "success": False,
+                        "error": f"Empty result for bbox {item['bbox']}",
+                    }
+                    processed += 1
+                    continue
+
+                sorted_cls = sorted(
+                    classifications, key=lambda x: x[1], reverse=True
+                )
+                results[orig_idx] = {
+                    "success": True,
+                    "classifications": sorted_cls,
+                }
+
+            except Exception as e:
+                results[orig_idx] = {"success": False, "error": str(e)}
+
+            processed += 1
+            if processed % 5 == 0 or processed == total:
+                emit_fn({"current": processed, "total": total})
+
+    return results
+
+
 def main():
     """One-shot batch classification: load model, classify all items, write results, exit."""
     if len(sys.argv) != 5:
@@ -183,50 +353,33 @@ def main():
         class_names = model_inference.get_class_names()
         print(f"[Worker DEBUG] Got {len(class_names)} class names", file=sys.stderr, flush=True)
 
-        # Classify each item
-        results = []
-        for i, item in enumerate(items):
-            try:
-                image_path = Path(item["image_path"])
-                bbox = tuple(item["bbox"])
+        # Choose classification strategy
+        supports_batching = (
+            hasattr(model_inference, "get_tensor")
+            and callable(model_inference.get_tensor)
+            and hasattr(model_inference, "classify_batch")
+            and callable(model_inference.classify_batch)
+        )
 
-                if not image_path.exists():
-                    results.append({"success": False, "error": f"Image not found: {image_path}"})
-                    continue
-
-                image = Image.open(image_path)
-                crop = model_inference.get_crop(image, bbox)
-
-                if crop is None:
-                    results.append({
-                        "success": False,
-                        "error": f"Invalid crop for bbox {bbox} (too small or out of bounds)",
-                    })
-                    continue
-
-                classifications = model_inference.get_classification(crop)
-
-                if not classifications:
-                    results.append({
-                        "success": False,
-                        "error": f"Classification returned empty results for bbox {bbox}",
-                    })
-                    continue
-
-                # Sort by confidence descending
-                sorted_results = sorted(classifications, key=lambda x: x[1], reverse=True)
-                results.append({"success": True, "classifications": sorted_results})
-
-            except Exception as e:
-                results.append({"success": False, "error": str(e)})
-
-            # Emit progress periodically (every item — parent decides how to throttle)
-            if (i + 1) % 5 == 0 or (i + 1) == total:
-                emit({"current": i + 1, "total": total})
+        if supports_batching:
+            gpu_available = model_inference.check_gpu()
+            bs = 4 if gpu_available else 1
+            print(
+                f"[Worker] Using batch inference (batch_size={bs}, "
+                f"device={'GPU' if gpu_available else 'CPU'})",
+                file=sys.stderr, flush=True,
+            )
+            results = _classify_batched(model_inference, items, emit)
+        else:
+            print(
+                "[Worker] Using per-crop inference (no batch support)",
+                file=sys.stderr, flush=True,
+            )
+            results = _classify_per_crop(model_inference, items, emit)
 
         # Write output
-        success_count = sum(1 for r in results if r.get("success"))
-        fail_count = len(results) - success_count
+        success_count = sum(1 for r in results if r and r.get("success"))
+        fail_count = total - success_count
         print(
             f"[Worker DEBUG] Done: {success_count} succeeded, {fail_count} failed, "
             f"writing to {output_json}",
