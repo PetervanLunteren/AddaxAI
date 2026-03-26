@@ -231,6 +231,7 @@ export interface DetectionResponse {
   bbox_height: number;
   label: string | null;
   label_confidence: number | null;
+  display_name: string | null;
   classification_method: string | null;
   frame_number: number | null;
   verified: boolean;
@@ -307,6 +308,7 @@ export interface EventSummary {
   max_n_frames: MaxNFrame[];
   site_name: string | null;
   labels: string[];
+  display_labels?: Record<string, string>;
   observation_type: string;
   observation_types: string[];
   image_count: number;
@@ -464,6 +466,7 @@ export interface DetectionSummary {
   file_id: string;
   label: string | null;
   label_confidence: number | null;
+  display_name: string | null;
   confidence: number;
   category: string;
   verified: boolean;

@@ -134,7 +134,7 @@ export function DetectionDetailSheet({
         <SheetHeader>
           <div className="flex items-center justify-between">
             <SheetTitle className="capitalize">
-              {detection.label || detection.category}
+              {detection.display_name || detection.label || detection.category}
             </SheetTitle>
             {onNavigate && (
               <div className="flex items-center gap-1">
@@ -213,7 +213,7 @@ export function DetectionDetailSheet({
                 </div>
                 {detection.label && (
                   <div className="font-medium capitalize">
-                    {detection.label} ({detection.label_confidence != null ? `${(detection.label_confidence * 100).toFixed(0)}%` : "—"})
+                    {detection.display_name || detection.label} ({detection.label_confidence != null ? `${(detection.label_confidence * 100).toFixed(0)}%` : "—"})
                   </div>
                 )}
               </div>

@@ -53,6 +53,7 @@ class DetectionSummary(BaseModel):
     file_id: str
     label: str | None
     label_confidence: float | None
+    display_name: str | None = None
     confidence: float
     category: str
     verified: bool

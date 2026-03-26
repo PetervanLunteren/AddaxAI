@@ -539,10 +539,10 @@ function EventCard({
                 <Badge
                   key={sp}
                   variant="default"
-                  className="text-[10px] px-1.5 py-0.5 capitalize shadow-sm max-w-[100px]"
+                  className="text-[10px] px-1.5 py-0.5 shadow-sm max-w-[100px]"
                   style={{ backgroundColor: getSpeciesColor(sp), color: getSpeciesTextColor(sp) }}
                 >
-                  <span className="truncate">{sp}</span>
+                  <span className="truncate">{event.display_labels?.[sp] || sp}</span>
                 </Badge>
               ))}
               {event.labels.length > 2 && (

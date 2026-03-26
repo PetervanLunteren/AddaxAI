@@ -38,6 +38,9 @@ class DetectionBase(BaseModel):
     label_confidence: float | None = Field(
         None, ge=0.0, le=1.0, description="Label classification confidence"
     )
+    display_name: str | None = Field(
+        None, max_length=100, description="Latin taxonomy display name"
+    )
     classification_method: str | None = Field(
         None, description="Classification method: 'machine' or 'human'"
     )

@@ -62,7 +62,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
       <div className="aspect-square bg-muted relative overflow-hidden rounded-t-lg">
         <img
           src={`${API_BASE_URL}${detection.crop_url}`}
-          alt={detection.label || detection.category}
+          alt={detection.display_name || detection.label || detection.category}
           loading="lazy"
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -127,7 +127,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
                 : undefined
             }
           >
-            <span className="truncate">{detection.label || detection.category}</span>
+            <span className="truncate">{detection.display_name || detection.label || detection.category}</span>
           </Badge>
           {hasSuggestion && (
             <>

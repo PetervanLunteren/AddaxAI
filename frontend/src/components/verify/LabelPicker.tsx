@@ -54,6 +54,8 @@ interface PinnedOption {
 
 interface LabelPickerProps {
   value: string | null;
+  /** Display name override for the trigger button (falls back to formatted value). */
+  displayName?: string | null;
   onSelect: (option: LabelOption) => void;
   options: LabelOption[];
   isLoading?: boolean;
@@ -67,6 +69,7 @@ interface LabelPickerProps {
 
 export function LabelPicker({
   value,
+  displayName,
   onSelect,
   options,
   isLoading,
@@ -194,7 +197,7 @@ export function LabelPicker({
 
   // Trigger button
   const currentOption = options.find((o) => o.value === value);
-  const displayLabel = value ? formatLabel(value) : "Select label...";
+  const displayLabel = displayName ? formatLabel(displayName) : value ? formatLabel(value) : "Select label...";
   const dotColor = currentOption
     ? getLabelDotColor(currentOption)
     : undefined;

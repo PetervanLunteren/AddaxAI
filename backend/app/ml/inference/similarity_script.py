@@ -32,7 +32,7 @@ MAX_DETECTIONS = 20_000
 
 BASE_SQL = """
 SELECT de.detection_id, de.vector, de.l2_norm,
-       d.label, d.label_confidence, d.confidence, d.category,
+       d.label, d.label_confidence, d.display_name, d.confidence, d.category,
        d.verified, d.classification_method, d.file_id,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.timestamp, f.width_px, f.height_px,
@@ -133,6 +133,7 @@ def _load_embeddings(
         metadata_list.append({
             "label": row["label"],
             "label_confidence": row["label_confidence"],
+            "display_name": row["display_name"],
             "confidence": row["confidence"],
             "category": row["category"],
             "verified": bool(row["verified"]),
@@ -199,6 +200,7 @@ def _build_summary(
         "file_id": meta["file_id"],
         "label": meta["label"],
         "label_confidence": meta["label_confidence"],
+        "display_name": meta.get("display_name"),
         "confidence": meta["confidence"],
         "category": meta["category"],
         "verified": meta["verified"],
@@ -350,7 +352,7 @@ def _load_anchor_embedding(
     """Load a single detection's embedding and metadata."""
     sql = """
     SELECT de.vector, de.l2_norm,
-           d.label, d.label_confidence, d.confidence, d.category,
+           d.label, d.label_confidence, d.display_name, d.confidence, d.category,
            d.verified, d.classification_method, d.file_id,
            d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
            f.deployment_id, f.timestamp, f.width_px, f.height_px,
@@ -387,6 +389,7 @@ def _load_anchor_embedding(
     meta = {
         "label": row["label"],
         "label_confidence": row["label_confidence"],
+        "display_name": row["display_name"],
         "confidence": row["confidence"],
         "category": row["category"],
         "verified": bool(row["verified"]),

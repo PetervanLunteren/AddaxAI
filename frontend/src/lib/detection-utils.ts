@@ -75,8 +75,9 @@ export function getDetectionLabel(detection: DetectionResponse): string {
   const confPct = `${(detection.confidence * 100).toFixed(0)}%`;
 
   if (detection.label && detection.label_confidence != null) {
+    const displayName = detection.display_name || detection.label;
     const labelDisplay =
-      detection.label.charAt(0).toUpperCase() + detection.label.slice(1);
+      displayName.charAt(0).toUpperCase() + displayName.slice(1);
     const labelConfPct = `${(detection.label_confidence * 100).toFixed(0)}%`;
     return `${labelDisplay} ${labelConfPct} · ${categoryLabel} ${confPct}`;
   }

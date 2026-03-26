@@ -666,6 +666,14 @@ class JSONBasedMLPipeline:
                     detection_record.label = label
                     detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
+                    if taxonomy_lookup:
+                        from app.ml.taxonomic_rollup import (
+                            format_latin_display_name,
+                        )
+
+                        detection_record.display_name = (
+                            format_latin_display_name(label, taxonomy_lookup)
+                        )
 
             # Set observation_type based on detection categories
             # (priority: animal > human > vehicle)
@@ -1042,6 +1050,14 @@ def load_json_to_database(
                     detection_record.label = label
                     detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
+                    if taxonomy_lookup:
+                        from app.ml.taxonomic_rollup import (
+                            format_latin_display_name,
+                        )
+
+                        detection_record.display_name = (
+                            format_latin_display_name(label, taxonomy_lookup)
+                        )
 
             # Set observation_type on the video/image File record
             if video_categories:

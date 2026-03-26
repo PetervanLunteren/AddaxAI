@@ -162,8 +162,14 @@ async def process_postprocessing_job(job_id: str) -> None:
                     smoothed = run_postprocessing_for_deployment(
                         deployment.id, json_path, folder_path, project, db
                     )
+                    # Load taxonomy for display_name formatting
+                    pp_taxonomy = None
+                    if taxonomy_csv and taxonomy_csv.exists():
+                        from app.ml.taxonomic_rollup import load_taxonomy_lookup
+
+                        pp_taxonomy = load_taxonomy_lookup(taxonomy_csv)
                     result = update_database_from_smoothed_results(
-                        deployment.id, smoothed, folder_path, db
+                        deployment.id, smoothed, folder_path, db, pp_taxonomy
                     )
                 else:
                     result = reload_raw_classifications_from_json(

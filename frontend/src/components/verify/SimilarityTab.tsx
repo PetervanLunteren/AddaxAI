@@ -933,7 +933,7 @@ export function SimilarityTab({
                 className="h-5 w-5 rounded object-cover"
               />
               <span className="text-xs capitalize">
-                {searchResult.anchor.label || searchResult.anchor.category}
+                {searchResult.anchor.display_name || searchResult.anchor.label || searchResult.anchor.category}
               </span>
             </div>
 

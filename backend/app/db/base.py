@@ -160,6 +160,7 @@ def _migrate_missing_columns(engine: Engine) -> None:
             "detections", "label_taxonomy_id",
             "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL",
         ),
+        ("detections", "display_name", "VARCHAR(100)"),
     ]
     with engine.begin() as conn:
         for table, column, col_type in migrations:

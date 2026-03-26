@@ -116,12 +116,20 @@ export function FileVerificationPanel({
   }, [file.detections, detectionThreshold, isVideo, file.best_frame_number]);
 
   const groupedDetections = useMemo(() => {
-    const counts = new Map<string, number>();
+    const groups = new Map<string, { count: number; displayName: string }>();
     for (const d of filteredDetections) {
       const label = d.label || d.category;
-      counts.set(label, (counts.get(label) ?? 0) + 1);
+      const existing = groups.get(label);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        groups.set(label, {
+          count: 1,
+          displayName: d.display_name || d.label || d.category,
+        });
+      }
     }
-    return counts;
+    return groups;
   }, [filteredDetections]);
 
   return (
@@ -147,13 +155,13 @@ export function FileVerificationPanel({
 
             {/* Grouped summary */}
             <div className="flex-1 overflow-y-auto px-3 space-y-1">
-              {[...groupedDetections.entries()].map(([label, count]) => (
+              {[...groupedDetections.entries()].map(([label, { count, displayName }]) => (
                 <div
                   key={label}
                   className="flex items-center justify-between rounded border p-2 text-sm"
                   style={{ backgroundColor: "#e7efef" }}
                 >
-                  <span>{label}</span>
+                  <span>{displayName}</span>
                   <span className="text-muted-foreground">&times; {count}</span>
                 </div>
               ))}
@@ -344,6 +352,7 @@ function DetectionItem({
   projectId?: string;
 }) {
   const currentLabel = detection.label || detection.category;
+  const currentDisplayName = detection.display_name || detection.label || detection.category;
   const itemRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -364,6 +373,7 @@ function DetectionItem({
       <div className="flex items-center justify-between">
         <LabelPicker
           value={currentLabel}
+          displayName={currentDisplayName}
           onSelect={onUpdateLabel}
           options={labelOptions}
           isLoading={labelOptionsLoading}

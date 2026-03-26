@@ -29,6 +29,7 @@ class EventSummary(BaseModel):
     max_n_frames: list[MaxNFrame]
     site_name: str | None
     labels: list[str]
+    display_labels: dict[str, str] | None = None
     observation_type: str
     observation_types: list[str]
     image_count: int

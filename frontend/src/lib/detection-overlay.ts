@@ -97,8 +97,9 @@ export function computePillLayout(detection: DetectionResponse): PillLayout {
   const hasLabel = !!detection.label;
 
   const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;
+  const displayName = detection.display_name || detection.label!;
   const labelText = hasLabel
-    ? `${detection.label!.charAt(0).toUpperCase() + detection.label!.slice(1)} ${((detection.label_confidence ?? detection.confidence) * 100).toFixed(0)}%`
+    ? `${displayName.charAt(0).toUpperCase() + displayName.slice(1)} ${((detection.label_confidence ?? detection.confidence) * 100).toFixed(0)}%`
     : "";
 
   let pillHeight: number;

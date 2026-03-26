@@ -552,8 +552,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     smoothed = run_postprocessing_for_deployment(
                         deployment.id, final_json_path, folder_path, project, db
                     )
+                    # Load taxonomy for display_name formatting
+                    pp_tax = None
+                    if taxonomy_csv and taxonomy_csv.exists():
+                        from app.ml.taxonomic_rollup import load_taxonomy_lookup
+
+                        pp_tax = load_taxonomy_lookup(taxonomy_csv)
                     pp_result = update_database_from_smoothed_results(
-                        deployment.id, smoothed, folder_path, db
+                        deployment.id, smoothed, folder_path, db, pp_tax
                     )
                     logger.info(f"Postprocessing complete: {pp_result.get('updated', 0)} updated")
                 except Exception as e:

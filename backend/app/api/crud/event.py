@@ -304,6 +304,7 @@ def get_events_by_project(
 
         # Collect unique labels across all files (fall back to category for detection-only)
         label_set: set[str] = set()
+        label_to_display: dict[str, str] = {}
         for f in sorted_files:
             for d in f.detections:
                 meets_confidence = (
@@ -314,7 +315,10 @@ def get_events_by_project(
                 if meets_confidence and (
                     max_confidence is None or d.confidence <= max_confidence
                 ):
-                    label_set.add(d.label if d.label is not None else d.category)
+                    raw = d.label if d.label is not None else d.category
+                    label_set.add(raw)
+                    if d.display_name and raw not in label_to_display:
+                        label_to_display[raw] = d.display_name
 
         # Determine dominant observation type (animal > human > vehicle > blank)
         obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
@@ -360,6 +364,9 @@ def get_events_by_project(
                 if event.deployment and event.deployment.site
                 else None,
                 "labels": sorted(label_set),
+                "display_labels": {
+                    k: v for k, v in label_to_display.items()
+                },
                 "observation_type": dominant_type,
                 "observation_types": sorted(observation_types_set),
                 "image_count": image_count,

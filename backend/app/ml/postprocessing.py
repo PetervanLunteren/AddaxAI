@@ -351,6 +351,7 @@ def update_database_from_smoothed_results(
     smoothed_results: dict,
     deployment_folder: Path,
     db: Session,
+    taxonomy_lookup: dict[str, dict[str, str]] | None = None,
 ) -> dict:
     """
     Update Detection records in the database from smoothed JSON results.
@@ -450,9 +451,19 @@ def update_database_from_smoothed_results(
                     new_label = None
                     new_confidence = None
 
+                # Compute display name for new label
+                new_display = None
+                if new_label and taxonomy_lookup:
+                    from app.ml.taxonomic_rollup import format_latin_display_name
+
+                    new_display = format_latin_display_name(
+                        new_label, taxonomy_lookup
+                    )
+
                 if db_det.label != new_label or db_det.label_confidence != new_confidence:
                     db_det.label = new_label
                     db_det.label_confidence = new_confidence
+                    db_det.display_name = new_display
                     updated += 1
                     changed_file_ids.add(db_det.file_id)
                 else:
@@ -539,5 +550,5 @@ def reload_raw_classifications_from_json(
     )
 
     return update_database_from_smoothed_results(
-        deployment_id, raw_results, deployment_folder, db
+        deployment_id, raw_results, deployment_folder, db, taxonomy_lookup
     )

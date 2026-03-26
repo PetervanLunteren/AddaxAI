@@ -57,6 +57,7 @@ class Detection(Base):
     # Classification results (filled by classification models)
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
     label_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # FK to LabelTaxonomy — source of truth for taxonomy lookups (exports, filter tree).
     # Nullable: existing detections won't have it, and inference creates detections

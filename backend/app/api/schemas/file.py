@@ -19,6 +19,7 @@ class DetectionResponse(BaseModel):
     bbox_height: float
     label: str | None
     label_confidence: float | None
+    display_name: str | None = None
     classification_method: str | None = None
     frame_number: int | None = None
 

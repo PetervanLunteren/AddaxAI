@@ -23,6 +23,51 @@ TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]  # broadest â
 ROLLUP_THRESHOLD = 0.65
 
 
+def format_latin_display_name(
+    label: str,
+    taxonomy_lookup: dict[str, dict[str, str]],
+) -> str:
+    """
+    Format a label as its Latin taxonomy name for UI display.
+
+    Rules:
+        Species: 'G. camelopardalis' (abbreviated genus + epithet)
+        Genus: 'Giraffa'
+        Family: 'Felidae'
+        Order: 'Artiodactyla'
+        Class: 'Mammalia'
+        No taxonomy: return label with first letter capitalized
+
+    Args:
+        label: Raw model class name (e.g., 'giraffe', 'domestic cattle')
+        taxonomy_lookup: Mapping of model_class (lowercase) -> {level: taxon}
+
+    Returns:
+        Formatted Latin display name
+    """
+    if not label:
+        return label
+
+    entry = taxonomy_lookup.get(label.lower())
+    if not entry:
+        return label[0].upper() + label[1:] if label else label
+
+    if "species" in entry and "genus" in entry:
+        genus = entry["genus"]
+        species = entry["species"]
+        return f"{genus[0].upper()}. {species}"
+    if "genus" in entry:
+        return entry["genus"].capitalize()
+    if "family" in entry:
+        return entry["family"].capitalize()
+    if "order" in entry:
+        return entry["order"].capitalize()
+    if "class" in entry:
+        return entry["class"].capitalize()
+
+    return label[0].upper() + label[1:] if label else label
+
+
 @dataclass
 class RollupResult:
     """Result of applying taxonomic rollup to MegaDetector JSON."""

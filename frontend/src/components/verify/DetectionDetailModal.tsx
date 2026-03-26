@@ -207,7 +207,7 @@ export function DetectionDetailModal({
         aria-describedby={undefined}
       >
         <DialogTitle className="sr-only">
-          {detection.label || detection.category} detection detail
+          {detection.display_name || detection.label || detection.category} detection detail
         </DialogTitle>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -519,14 +519,14 @@ export function DetectionDetailModal({
                               <div key={n.detection_id} className="space-y-0.5">
                                 <img
                                   src={`${API_BASE_URL}${n.crop_url}`}
-                                  alt={n.label || n.category}
+                                  alt={n.display_name || n.label || n.category}
                                   className={cn(
                                     "w-full aspect-square object-cover rounded border-2",
                                     agrees ? "border-[#0f6064]" : "border-[#882000]"
                                   )}
                                 />
                                 <p className="text-[9px] text-muted-foreground truncate text-center capitalize">
-                                  {n.label || n.category}
+                                  {n.display_name || n.label || n.category}
                                 </p>
                               </div>
                             );
