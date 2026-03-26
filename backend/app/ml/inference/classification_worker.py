@@ -184,7 +184,7 @@ def _classify_batched(model_inference, items, emit_fn):
             return
         batch = np.stack(batch_tensors)
         batch_results = model_inference.classify_batch(batch)
-        for idx, classifications in zip(batch_indices, batch_results, strict=False):
+        for idx, classifications in zip(batch_indices, batch_results):  # noqa: B905 (Python 3.8 compat)
             sorted_cls = sorted(classifications, key=lambda x: x[1], reverse=True)
             results[idx] = {"success": True, "classifications": sorted_cls}
         processed += len(batch_indices)

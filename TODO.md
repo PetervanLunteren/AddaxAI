@@ -45,6 +45,82 @@
 
 
 
+### SPECIESNET wrong predictions
+Run speciesnet on /Users/peter/Downloads/example-data/project_Kenya/Chui River/deployment_002 and check the results. Many are blank and giraffes are Aves. What the hell is going on? I thought we fixed this as it was a preprocessing mismatch. 
+
+
+#### EXCLUSION METHOD
+
+See current approach and the difference with SpeciesNet approach below. I believe its better to implement the SpeciesNet approach for all models. It doesnt feel good to promote confidences by inflating them by normalising. What do you think? Investigate. What would need to be changed? Make a plan. 
+
+```
+  How geofence exclusion works: SpeciesNet vs AddaxAI                                                                                                                                                                                                                                                                                                                          
+   
+  The scenario                                                                                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                             
+  A camera trap in the USA captures an image. The classifier outputs:                                                                                                                                                                                                                                                                                                          
+  - Lion: 90%                                           
+  - Bobcat: 4%                                                                                                                                                                                                                                                                                                                                                                 
+  - Felidae family (accumulated): 1%                    
+  - Other classes: 5%                    
+                                                                                                                                                                                                                                                                                                                                                                               
+  Lion doesn't exist in the USA, so it's geofenced/excluded.
+                                                                                                                                                                                                                                                                                                                                                                               
+  SpeciesNet's approach: taxonomic rollup                                                                                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                                                                                                                               
+  SpeciesNet sees that lion is geofenced and asks: "what's the nearest allowed ancestor in the taxonomy tree?" It walks up: lion → Panthera genus → Felidae family (allowed in USA). It then accumulates all the scores from geofenced children at that family level (lion 90% + other felidae scores) and returns:                                                            
+                                                        
+  Result: "felidae family" at ~91% confidence                                                                                                                                                                                                                                                                                                                                  
+                                                        
+  The information is preserved: the model was very confident it saw a cat. The specificity is reduced (species → family), but the prediction is honest.                                                                                                                                                                                                                        
+                                                        
+  AddaxAI's approach: remove and renormalize                                                                                                                                                                                                                                                                                                                                   
+                                                        
+  AddaxAI removes lion from the classification list entirely. The remaining confidences (bobcat 4%, felidae 1%, other 5%) are renormalized to sum to 100%:                                                                                                                                                                                                                     
+   
+  Result: "bobcat" at ~40% confidence                                                                                                                                                                                                                                                                                                                                          
+                                                        
+  The bobcat was originally at 4% (the model was NOT confident it was a bobcat), but renormalization inflates it to 40%. If it crosses the 0.65 rollup threshold, AddaxAI's separate taxonomic rollup step won't catch it. The user sees a confident-looking "bobcat" that's actually garbage.                                                                                 
+                                                        
+  When it matters                                                                                                                                                                                                                                                                                                                                                              
+                                                        
+  This only matters when a high-confidence geofenced species gets excluded. In practice:                                                                                                                                                                                                                                                                                       
+  - If the model says 90% lion in the USA, lion genuinely doesn't exist there, so the model is confused (maybe it saw a mountain lion and the model's best match was African lion)
+  - SpeciesNet would say "felidae" (some kind of cat) which is correct                                                                                                                                                                                                                                                                                                         
+  - AddaxAI would say "bobcat" at inflated confidence, which might be wrong
+                                                                                                                                                                                                                                                                                                                                                                               
+  When it doesn't matter                                
+                                                                                                                                                                                                                                                                                                                                                                               
+  - If the excluded species had low confidence (e.g., lion at 3%), removing it barely affects renormalization                                                                                                                                                                                                                                                                  
+  - If the second-best species is genuinely high confidence (e.g., lion 50%, bobcat 45%), renormalization gives bobcat ~90% which might actually be correct
+                                                                                                                                                                                                                                                                                                                                                                               
+  Why we decided to keep AddaxAI's approach                                                                                                                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                                                                                                                                                               
+  We discussed whether to implement SpeciesNet-style rollup during exclusion. The arguments against:                                                                                                                                                                                                                                                                           
+                                                        
+  1. It adds complexity: a second rollup mechanism alongside the existing postprocessing rollup                                                                                                                                                                                                                                                                                
+  2. It's SpeciesNet-specific thinking: for smaller regional models (EUR-DF with 34 classes), species don't share taxonomy branches the same way. Excluding "fox" wouldn't roll up meaningfully to "canidae" because there might not be a canidae label
+  3. The existing two-step process sometimes catches it: remove lion → bobcat at 40% → if below 0.65, the postprocessing rollup kicks in and sums felidae scores → returns "felidae". But if renormalization pushes bobcat above 0.65, the rollup is skipped                                                                                                                   
+  4. Edge cases are rare: a model confidently predicting a geofenced species means the model is already confused about the geography. The wrong label would be caught during human verification                                                                                                                                                                                
+                                                                                                                                                                                                                                                                                                                                                                               
+  The gap that remains                                                                                                                                                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                                                                                                                                                               
+  The case where it fails: high-confidence excluded species → renormalization inflates a wrong second-best above the rollup threshold → user sees a confident but incorrect species label. SpeciesNet handles this correctly, AddaxAI doesn't. We accepted this trade-off to keep the code simple and consistent across all models.  
+
+
+
+>>> you mention "Excluding "fox" wouldn't roll up meaningfully to "canidae" because there might not be a canidae label" but does it need to be a model class? It can be a non model class, right? As in, it doesnt have to be a actual class the model was trained on? We can just aggregate and make a labal for canidae? Just like we do in the other rollup feature? That     
+would make it a lot easier to implement the same SpeciesNet approach for all models, as we all have taxonomy.csv info for all models.
+
+
+You're right. AddaxAI already creates rollup labels that the model was never trained on. The existing taxonomic rollup does exactly this: if no species crosses the threshold, it sums confidences at family level and creates a "felidae" label on the fly, adds it to classification_categories, and stores it in the taxonomy DB via add_rollup_taxonomy_entry(). The
+  label doesn't need to be a model class.
+
+  So the argument I made against implementing SpeciesNet-style exclusion rollup was wrong. The infrastructure is already there. Every model has taxonomy.csv, and the rollup machinery already handles creating new taxonomy labels at any level.
+
+  This means we could implement exclusion rollup for all models with relatively little new code: reuse load_taxonomy_lookup() and the score accumulation logic from taxonomic_rollup.py, apply it during the exclusion step in label_exclusion.py. When a species is excluded, redirect its score to the nearest non-excluded ancestor, create the rollup label if needed.
+
+```
 
 
 
