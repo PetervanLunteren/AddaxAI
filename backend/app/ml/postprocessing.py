@@ -229,18 +229,30 @@ def run_postprocessing_for_deployment(
         logger.info("Rebuilt classification_category_descriptions to 7-token format")
 
     # Apply label exclusion in memory (JSON on disk stays as ground truth).
-    # Always strips non-label classes (blank, empty, false detection, none)
-    # plus any user-configured excluded labels.
+    # When taxonomy is available, excluded species redirect their scores
+    # to taxonomy ancestors instead of being removed (exclusion rollup).
     from app.ml.label_exclusion import apply_label_exclusion_to_results
 
-    apply_label_exclusion_to_results(md_results, project.excluded_classes)
+    cls_model_dir = _find_classification_model_dir(project, db)
+    exclusion_taxonomy = None
+    if cls_model_dir:
+        _tax = cls_model_dir / "taxonomy.csv"
+        if _tax.exists():
+            from app.ml.taxonomic_rollup import load_taxonomy_lookup
+
+            exclusion_taxonomy = load_taxonomy_lookup(_tax)
+
+    apply_label_exclusion_to_results(
+        md_results, project.excluded_classes, exclusion_taxonomy
+    )
 
     # --- Taxonomic rollup (independent of smoothing) ---
     # Runs before smoothing so that when both are enabled, the smoother can
     # refine rolled-up labels using image/sequence context (e.g. "felidae"
     # → "lion" if nearby detections are confidently "lion").
     if project.taxonomic_rollup:
-        cls_model_dir = _find_classification_model_dir(project, db)
+        if not cls_model_dir:
+            cls_model_dir = _find_classification_model_dir(project, db)
         if cls_model_dir:
             taxonomy_csv = cls_model_dir / "taxonomy.csv"
             if taxonomy_csv.exists():
@@ -491,13 +503,14 @@ def reload_raw_classifications_from_json(
     deployment_folder: Path,
     db: Session,
     excluded_classes: list[str] | None = None,
+    taxonomy_csv_path: Path | None = None,
 ) -> dict:
     """
     Reload raw (unsmoothed) classifications from JSON back to database.
 
     Effectively reverts to the original predictions by reading the raw JSON
-    and updating DB records. If excluded_classes is provided, applies label
-    exclusion (zero-out + renormalize) before writing to DB.
+    and updating DB records. Applies label exclusion with rollup when
+    taxonomy is available.
 
     Args:
         deployment_id: Deployment UUID
@@ -505,6 +518,7 @@ def reload_raw_classifications_from_json(
         deployment_folder: Path to deployment folder
         db: Database session
         excluded_classes: Optional list of label names to exclude
+        taxonomy_csv_path: Optional path to taxonomy.csv for rollup
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -514,7 +528,15 @@ def reload_raw_classifications_from_json(
 
     from app.ml.label_exclusion import apply_label_exclusion_to_results
 
-    apply_label_exclusion_to_results(raw_results, excluded_classes)
+    taxonomy_lookup = None
+    if taxonomy_csv_path and taxonomy_csv_path.exists():
+        from app.ml.taxonomic_rollup import load_taxonomy_lookup
+
+        taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv_path)
+
+    apply_label_exclusion_to_results(
+        raw_results, excluded_classes, taxonomy_lookup
+    )
 
     return update_database_from_smoothed_results(
         deployment_id, raw_results, deployment_folder, db

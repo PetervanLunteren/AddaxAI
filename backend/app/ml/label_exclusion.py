@@ -174,24 +174,220 @@ def build_non_label_class_ids(
     return non_label_ids
 
 
+def _build_taxonomy_key(
+    entry: dict[str, str], target_level: str
+) -> str:
+    """
+    Build a geofence-format taxonomy key for an ancestor level.
+
+    Format: class;order;family;genus;species
+    Fills levels up to target_level from the taxonomy entry,
+    leaves more specific levels empty.
+
+    Example: entry={"class":"mammalia","order":"artiodactyla",...},
+    target_level="order" → "mammalia;artiodactyla;;;"
+    """
+    from app.ml.taxonomic_rollup import TAXONOMY_LEVELS
+
+    parts = []
+    for level in TAXONOMY_LEVELS:
+        if level in entry and TAXONOMY_LEVELS.index(level) <= TAXONOMY_LEVELS.index(target_level):
+            parts.append(entry[level])
+        else:
+            parts.append("")
+    return ";".join(parts)
+
+
+def filter_and_rollup_classifications(
+    classifications: list[list],
+    excluded_class_ids: set[str],
+    class_id_to_name: dict[str, str],
+    taxonomy_lookup: dict[str, dict[str, str]],
+    classification_categories: dict[str, str],
+    allowed_taxonomy_keys: frozenset[str] | None = None,
+) -> list[list]:
+    """
+    Filter excluded labels and redirect their scores to taxonomy ancestors.
+
+    Instead of removing excluded species and renormalizing (which inflates
+    garbage predictions), redirects each excluded species' confidence to
+    the nearest allowed ancestor in the taxonomy tree.
+
+    Example: giraffe (90%) excluded in NLD → artiodactyla order
+
+    When allowed_taxonomy_keys is provided (from geofence), the rollup
+    walks up until it finds an ancestor whose taxonomy key is in the
+    allowed set. Without it (manual exclusion), walks up to the first
+    level above the excluded species.
+
+    Args:
+        classifications: List of [class_id, confidence] pairs
+        excluded_class_ids: Set of class IDs to exclude
+        class_id_to_name: Mapping of class_id -> class_name
+        taxonomy_lookup: Mapping of model_class (lowercase) -> {level: taxon}
+        classification_categories: Mutable dict of class_id -> name
+            (new ancestor labels are added here in-memory)
+        allowed_taxonomy_keys: Optional frozenset of taxonomy keys
+            allowed by geofence (e.g., 'mammalia;artiodactyla;;;')
+
+    Returns:
+        New classification list with excluded scores redirected to
+        ancestors, sorted by confidence descending.
+    """
+    if not classifications or not excluded_class_ids:
+        return classifications
+
+    from app.ml.taxonomic_rollup import TAXONOMY_LEVELS, _format_rollup_label
+
+    # Build name-based excluded set for ancestor checking
+    excluded_names = {
+        class_id_to_name.get(str(cid), "").lower()
+        for cid in excluded_class_ids
+    }
+
+    # Build reverse lookup: name (lowercase) -> class_id
+    name_to_id: dict[str, str] = {}
+    for cid, name in classification_categories.items():
+        name_to_id[name.lower()] = cid
+
+    # Track next available class_id for new ancestor labels
+    max_id = max(
+        (int(k) for k in classification_categories if k.isdigit()),
+        default=0,
+    )
+
+    # Accumulate: kept items stay, excluded items redirect to ancestors
+    kept: dict[str, float] = {}  # class_id -> confidence
+    ancestor_scores: dict[str, float] = {}  # ancestor_label -> accumulated confidence
+
+    for cls_id, conf in classifications:
+        cls_id_str = str(cls_id)
+
+        if cls_id_str not in excluded_class_ids:
+            # Not excluded: keep as-is
+            kept[cls_id_str] = kept.get(cls_id_str, 0.0) + conf
+            continue
+
+        # Excluded: find nearest non-excluded ancestor
+        name = class_id_to_name.get(cls_id_str, "").lower()
+        entry = taxonomy_lookup.get(name)
+
+        if not entry:
+            # No taxonomy info: drop the score (can't roll up)
+            continue
+
+        # Walk up taxonomy levels to find nearest ALLOWED ancestor.
+        # Start from the level ABOVE the excluded class's most specific
+        # level, since the class itself is what we're trying to replace.
+        most_specific = None
+        for level in reversed(TAXONOMY_LEVELS):
+            if level in entry:
+                most_specific = level
+                break
+
+        ancestor_label = None
+        broadest_label = None
+        started = False
+
+        for level in reversed(TAXONOMY_LEVELS):
+            if level not in entry:
+                continue
+
+            # Skip the excluded class's own level
+            if level == most_specific:
+                started = True
+                continue
+            if not started:
+                continue
+
+            taxon_value = entry[level]
+            label = _format_rollup_label(
+                level, taxon_value, taxonomy_lookup
+            )
+
+            # Track broadest available as fallback
+            if broadest_label is None:
+                broadest_label = label
+
+            # Check if this ancestor is allowed
+            if allowed_taxonomy_keys is not None:
+                # Geofence mode: build the taxonomy key for this
+                # ancestor and check if it's in the allowed set
+                ancestor_key = _build_taxonomy_key(entry, level)
+                if ancestor_key in allowed_taxonomy_keys:
+                    ancestor_label = label
+                    break
+            else:
+                # Manual exclusion: accept first ancestor above
+                # the excluded species (no geofence to check)
+                if label.lower() not in excluded_names:
+                    ancestor_label = label
+                    break
+
+        # If no allowed ancestor, use broadest available
+        if ancestor_label is None:
+            ancestor_label = broadest_label
+
+        if ancestor_label is None:
+            # No taxonomy levels at all: drop the score
+            continue
+
+        ancestor_scores[ancestor_label] = (
+            ancestor_scores.get(ancestor_label, 0.0) + conf
+        )
+
+    # Ensure ancestor labels have class IDs in classification_categories
+    for label in ancestor_scores:
+        if label.lower() not in name_to_id:
+            max_id += 1
+            new_id = str(max_id)
+            classification_categories[new_id] = label
+            name_to_id[label.lower()] = new_id
+
+    # Build final classification list
+    result: list[list] = []
+
+    for cls_id, conf in kept.items():
+        result.append([cls_id, conf])
+
+    for label, conf in ancestor_scores.items():
+        cls_id = name_to_id[label.lower()]
+        # Merge with any existing kept score for this ancestor
+        existing = next((r for r in result if r[0] == cls_id), None)
+        if existing:
+            existing[1] += conf
+        else:
+            result.append([cls_id, conf])
+
+    result.sort(key=lambda x: x[1], reverse=True)
+    return result
+
+
 def should_skip_detection(
     det: dict,
     user_excluded_class_ids: set[str],
     non_label_class_ids: set[str],
+    class_id_to_name: dict[str, str] | None = None,
+    taxonomy_lookup: dict[str, dict[str, str]] | None = None,
+    classification_categories: dict[str, str] | None = None,
+    allowed_taxonomy_keys: frozenset[str] | None = None,
 ) -> bool:
     """
     Return True if a detection should not be loaded to the database.
 
     Steps:
     1. If no classifications, don't skip (unclassified animal).
-    2. Apply user exclusion filter (remove + renormalize).
-    3. If nothing remains after user filtering, skip.
+    2. Apply user exclusion (with rollup if taxonomy available).
+    3. If nothing remains after filtering, skip.
     4. If filtered top-1 is a NON_LABEL class, skip (false positive bbox).
 
     Args:
         det: Detection dict from JSON
         user_excluded_class_ids: Class IDs from user's excluded_classes
         non_label_class_ids: Class IDs for NON_LABEL_CLASSES
+        class_id_to_name: Optional mapping for rollup support
+        taxonomy_lookup: Optional taxonomy for rollup support
+        classification_categories: Optional mutable dict for rollup support
 
     Returns:
         True if detection should be skipped, False if it should be loaded.
@@ -200,13 +396,23 @@ def should_skip_detection(
     if not raw:
         return False
 
-    # Apply user exclusions
+    # Apply user exclusions (with rollup if taxonomy available)
     if user_excluded_class_ids:
-        filtered = filter_classifications(raw, user_excluded_class_ids)
+        if taxonomy_lookup and class_id_to_name and classification_categories:
+            filtered = filter_and_rollup_classifications(
+                raw,
+                user_excluded_class_ids,
+                class_id_to_name,
+                taxonomy_lookup,
+                classification_categories,
+                allowed_taxonomy_keys,
+            )
+        else:
+            filtered = filter_classifications(raw, user_excluded_class_ids)
     else:
         filtered = raw
 
-    # Nothing left after user filtering
+    # Nothing left after filtering
     if not filtered:
         return True
 
@@ -252,6 +458,7 @@ def is_non_label_detection(
 def apply_label_exclusion_to_results(
     md_results: dict,
     excluded_labels: list[str] | None = None,
+    taxonomy_lookup: dict[str, dict[str, str]] | None = None,
 ) -> dict:
     """
     Apply label exclusion to a full MegaDetector JSON results dict (in place).
@@ -259,9 +466,13 @@ def apply_label_exclusion_to_results(
     Always excludes NON_LABEL_CLASSES (bait, blank, empty, false detection,
     none, vide). Additionally excludes any user-configured labels.
 
+    When taxonomy_lookup is provided, user-excluded species redirect their
+    scores to taxonomy ancestors instead of being removed.
+
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
         excluded_labels: Optional list of label names to exclude
+        taxonomy_lookup: Optional taxonomy for exclusion rollup
 
     Returns:
         The modified dict (same reference as input)
@@ -272,9 +483,34 @@ def apply_label_exclusion_to_results(
     if not excluded_class_ids:
         return md_results
 
+    # Split into user exclusions and non-label IDs
+    user_excluded_ids = build_user_excluded_class_ids(
+        class_categories, excluded_labels
+    )
+    class_id_to_name = {str(k): v for k, v in class_categories.items()}
+
+    use_rollup = bool(taxonomy_lookup and user_excluded_ids)
+
     for img in md_results.get("images", []):
         for det in img.get("detections", []):
-            if "classifications" in det and det["classifications"]:
+            if "classifications" not in det or not det["classifications"]:
+                continue
+
+            if use_rollup:
+                # Rollup user-excluded scores to ancestors, then strip NON_LABEL
+                rolled = filter_and_rollup_classifications(
+                    det["classifications"],
+                    user_excluded_ids,
+                    class_id_to_name,
+                    taxonomy_lookup,
+                    class_categories,
+                )
+                # Also strip NON_LABEL classes (for smoothing/rollup)
+                non_label_ids = build_non_label_class_ids(class_categories)
+                det["classifications"] = filter_classifications(
+                    rolled, non_label_ids
+                )
+            else:
                 det["classifications"] = filter_classifications(
                     det["classifications"], excluded_class_ids
                 )

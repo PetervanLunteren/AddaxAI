@@ -483,6 +483,25 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 from app.ml.json_pipeline import load_json_to_database
 
+                # Resolve taxonomy CSV and geofence keys for exclusion rollup
+                taxonomy_csv = None
+                geo_keys = None
+                if classification_model_id and cls_model_dir:
+                    _tax = cls_model_dir / "taxonomy.csv"
+                    if _tax.exists():
+                        taxonomy_csv = _tax
+                    if project.country_code:
+                        try:
+                            from app.ml.geofence import get_allowed_taxonomy_keys
+
+                            geo_keys = get_allowed_taxonomy_keys(
+                                cls_model_dir,
+                                project.country_code,
+                                project.state_code,
+                            )
+                        except FileNotFoundError:
+                            pass
+
                 result = load_json_to_database(
                     json_path=final_json_path,
                     deployment_id=deployment.id,
@@ -491,6 +510,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     db=db,
                     excluded_classes=project.excluded_classes,
                     artifacts_folder=artifacts_folder,
+                    taxonomy_csv_path=taxonomy_csv,
+                    allowed_taxonomy_keys=geo_keys,
                 )
 
                 total_detections += result.total_detections
@@ -817,6 +838,20 @@ async def process_deployment_analysis(job_id: str) -> None:
                     cls_model_dir, cls_model_path, env_name, env_manager
                 )
 
+            # Compute geofence keys for exclusion rollup
+            geo_keys_single = None
+            if cls_model_dir and project.country_code:
+                try:
+                    from app.ml.geofence import get_allowed_taxonomy_keys
+
+                    geo_keys_single = get_allowed_taxonomy_keys(
+                        cls_model_dir,
+                        project.country_code,
+                        project.state_code,
+                    )
+                except FileNotFoundError:
+                    pass
+
             # Create JSON-based ML pipeline
             pipeline = JSONBasedMLPipeline(
                 detection_model,
@@ -825,6 +860,7 @@ async def process_deployment_analysis(job_id: str) -> None:
                 classification_model_id,
                 classification_model_dir=cls_model_dir if classification_model_id else None,
                 excluded_classes=project.excluded_classes,
+                allowed_taxonomy_keys=geo_keys_single,
             )
 
             # Define progress callback wrapper

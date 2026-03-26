@@ -5,6 +5,7 @@ from app.ml.label_exclusion import (
     build_excluded_class_ids,
     build_non_label_class_ids,
     build_user_excluded_class_ids,
+    filter_and_rollup_classifications,
     is_non_label_detection,
     should_skip_detection,
 )
@@ -123,6 +124,127 @@ def test_skip_only_non_labels_remain():
     non_label = {"2", "3"}  # blank + bait
     # After user filter: [["2", ~0.75], ["3", ~0.25]] → top-1 is blank → skip
     assert should_skip_detection(det, user_excluded, non_label) is True
+
+
+# ---------- filter_and_rollup_classifications ----------
+
+# Shared test fixtures
+_FELIDAE = {
+    "class": "mammalia", "order": "carnivora",
+    "family": "felidae",
+}
+_TAXONOMY = {
+    "lion": {**_FELIDAE, "genus": "panthera", "species": "leo"},
+    "tiger": {**_FELIDAE, "genus": "panthera", "species": "tigris"},
+    "bobcat": {**_FELIDAE, "genus": "lynx", "species": "rufus"},
+    "fox": {
+        "class": "mammalia", "order": "carnivora",
+        "family": "canidae", "genus": "vulpes", "species": "vulpes",
+    },
+    "zebra": {
+        "class": "mammalia", "order": "perissodactyla",
+        "family": "equidae", "genus": "equus", "species": "quagga",
+    },
+}
+
+_CATS = {"1": "lion", "2": "bobcat", "3": "fox", "4": "zebra", "5": "blank", "6": "tiger"}
+_ID_TO_NAME = {k: v for k, v in _CATS.items()}
+
+
+def test_rollup_excluded_to_genus():
+    """Lion excluded redirects score to panthera genus (nearest ancestor)."""
+    classifications = [["1", 0.90], ["2", 0.04], ["3", 0.03], ["4", 0.03]]
+    excluded = {"1"}  # lion
+    cats = dict(_CATS)
+    result = filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats
+    )
+    top = result[0]
+    top_label = cats.get(str(top[0]))
+    # Lion rolls up to genus "panthera" (nearest non-excluded ancestor)
+    assert top_label == "panthera"
+    assert top[1] > 0.85
+
+
+def test_rollup_multiple_excluded_same_genus():
+    """Lion + tiger both excluded accumulate at panthera genus."""
+    classifications = [["1", 0.50], ["6", 0.30], ["2", 0.10], ["4", 0.10]]
+    excluded = {"1", "6"}  # lion + tiger (both genus panthera)
+    cats = dict(_CATS)
+    result = filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats
+    )
+    top = result[0]
+    top_label = cats.get(str(top[0]))
+    # Both roll up to panthera genus
+    assert top_label == "panthera"
+    assert top[1] >= 0.80  # lion 50% + tiger 30%
+
+
+def test_rollup_non_excluded_unaffected():
+    """Non-excluded species keep their original scores."""
+    classifications = [["4", 0.60], ["1", 0.30], ["3", 0.10]]
+    excluded = {"1"}  # lion
+    cats = dict(_CATS)
+    result = filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats
+    )
+    # Zebra should still be present with its original score
+    zebra_entry = [r for r in result if cats.get(str(r[0])) == "zebra"]
+    assert len(zebra_entry) == 1
+    assert zebra_entry[0][1] == 0.60
+
+
+def test_rollup_no_taxonomy_drops_score():
+    """Excluded class with no taxonomy entry: score is dropped."""
+    classifications = [["5", 0.90], ["4", 0.10]]
+    excluded = {"5"}  # blank (not in taxonomy)
+    cats = dict(_CATS)
+    result = filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats
+    )
+    # Blank has no taxonomy, so its 90% is dropped. Zebra remains.
+    assert len(result) >= 1
+    top_label = cats.get(str(result[0][0]))
+    assert top_label == "zebra"
+
+
+def test_rollup_all_ancestors_excluded_uses_broadest():
+    """When all ancestors are excluded, use broadest available."""
+    classifications = [["1", 0.90], ["4", 0.10]]
+    excluded = {"1"}  # only lion is a model class
+    cats = dict(_CATS)
+    # Lion walks up: genus=panthera (not excluded) → stops there.
+    result = filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats
+    )
+    top_label = cats.get(str(result[0][0]))
+    assert top_label == "panthera"
+
+
+def test_rollup_empty_excluded():
+    """No exclusions returns classifications unchanged."""
+    classifications = [["1", 0.90], ["4", 0.10]]
+    cats = dict(_CATS)
+    result = filter_and_rollup_classifications(
+        classifications, set(), _ID_TO_NAME, _TAXONOMY, cats
+    )
+    assert result == classifications
+
+
+def test_rollup_creates_new_class_id():
+    """Rollup creates a new class ID in classification_categories."""
+    classifications = [["1", 0.90], ["4", 0.10]]
+    excluded = {"1"}  # lion
+    cats = dict(_CATS)
+    original_len = len(cats)
+    filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats
+    )
+    # "panthera" should have been added to cats
+    assert len(cats) > original_len
+    panthera_ids = [k for k, v in cats.items() if v == "panthera"]
+    assert len(panthera_ids) == 1
 
 
 # ---------- is_non_label_detection (legacy, kept for backward compat) ----------

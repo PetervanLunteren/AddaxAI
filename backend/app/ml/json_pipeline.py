@@ -63,6 +63,7 @@ class JSONBasedMLPipeline:
         classification_model_id: str | None,
         classification_model_dir: Path | None = None,
         excluded_classes: list[str] | None = None,
+        allowed_taxonomy_keys: frozenset[str] | None = None,
     ):
         """
         Initialize JSON-based ML pipeline.
@@ -74,6 +75,7 @@ class JSONBasedMLPipeline:
             classification_model_id: Classification model ID for metadata
             classification_model_dir: Path to classification model directory (for taxonomy.csv)
             excluded_classes: Optional list of label names to exclude
+            allowed_taxonomy_keys: Optional geofence keys for exclusion rollup
         """
         self.detection_model = detection_model
         self.classification_model = classification_model
@@ -81,6 +83,7 @@ class JSONBasedMLPipeline:
         self.classification_model_id = classification_model_id
         self.classification_model_dir = classification_model_dir
         self.excluded_classes = excluded_classes
+        self.allowed_taxonomy_keys = allowed_taxonomy_keys
 
         det_name = type(detection_model).__name__
         cls_name = (
@@ -185,6 +188,13 @@ class JSONBasedMLPipeline:
             await progress_callback("Loading results to database...", 0.9, "finalize", 0.0)
             logger.info("Phase 3: Loading to database")
 
+            # Resolve taxonomy CSV for exclusion rollup
+            taxonomy_csv = None
+            if self.classification_model_dir:
+                _tax = self.classification_model_dir / "taxonomy.csv"
+                if _tax.exists():
+                    taxonomy_csv = _tax
+
             result = self._load_to_database(
                 extended_json_path=extended_json_path,
                 deployment_id=deployment_id,
@@ -193,6 +203,8 @@ class JSONBasedMLPipeline:
                 db=db,
                 artifacts_folder=artifacts_folder,
                 excluded_classes=self.excluded_classes,
+                taxonomy_csv_path=taxonomy_csv,
+                allowed_taxonomy_keys=self.allowed_taxonomy_keys,
             )
 
             # Clean up intermediate detection JSON if classification produced a separate result
@@ -437,6 +449,8 @@ class JSONBasedMLPipeline:
         db: Session,
         artifacts_folder: Path | None = None,
         excluded_classes: list[str] | None = None,
+        taxonomy_csv_path: Path | None = None,
+        allowed_taxonomy_keys: frozenset[str] | None = None,
     ) -> PipelineResult:
         """
         Parse extended JSON and bulk insert to database.
@@ -464,7 +478,7 @@ class JSONBasedMLPipeline:
         from app.ml.label_exclusion import (
             build_non_label_class_ids,
             build_user_excluded_class_ids,
-            filter_classifications,
+            filter_and_rollup_classifications,
             should_skip_detection,
         )
 
@@ -473,6 +487,15 @@ class JSONBasedMLPipeline:
             class_categories, excluded_classes
         )
         non_label_ids = build_non_label_class_ids(class_categories)
+
+        # Load taxonomy for exclusion rollup (redirect excluded scores to ancestors)
+        taxonomy_lookup = None
+        class_id_to_name = None
+        if taxonomy_csv_path and taxonomy_csv_path.exists() and user_excluded_ids:
+            from app.ml.taxonomic_rollup import load_taxonomy_lookup
+
+            taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv_path)
+            class_id_to_name = {str(k): v for k, v in class_categories.items()}
 
         # Track statistics
         total_detections = 0
@@ -558,7 +581,9 @@ class JSONBasedMLPipeline:
 
                 # Skip if user-filtered top-1 is a non-label class (false positive)
                 if category == "animal" and should_skip_detection(
-                    det, user_excluded_ids, non_label_ids
+                    det, user_excluded_ids, non_label_ids,
+                    class_id_to_name, taxonomy_lookup,
+                    class_categories, allowed_taxonomy_keys,
                 ):
                     skipped_non_label += 1
                     continue
@@ -584,11 +609,23 @@ class JSONBasedMLPipeline:
                 if "classifications" in det and det["classifications"]:
                     classifications = det["classifications"]
 
-                    # Apply user exclusions only (not NON_LABEL) for label assignment
+                    # Apply user exclusions with rollup (or fallback)
                     if user_excluded_ids:
-                        classifications = filter_classifications(
-                            classifications, user_excluded_ids
-                        )
+                        if taxonomy_lookup and class_id_to_name:
+                            classifications = filter_and_rollup_classifications(
+                                classifications,
+                                user_excluded_ids,
+                                class_id_to_name,
+                                taxonomy_lookup,
+                                class_categories,
+                                allowed_taxonomy_keys,
+                            )
+                        else:
+                            from app.ml.label_exclusion import filter_classifications
+
+                            classifications = filter_classifications(
+                                classifications, user_excluded_ids
+                            )
 
                     if classifications:
                         # Get top classification
@@ -669,6 +706,8 @@ def load_json_to_database(
     db: Session,
     excluded_classes: list[str] | None = None,
     artifacts_folder: Path | None = None,
+    taxonomy_csv_path: Path | None = None,
+    allowed_taxonomy_keys: frozenset[str] | None = None,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -706,12 +745,11 @@ def load_json_to_database(
 
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
-        # Build excluded class ID set for label filtering.
         # Build separate ID sets for user exclusion vs non-label skip
         from app.ml.label_exclusion import (
             build_non_label_class_ids,
             build_user_excluded_class_ids,
-            filter_classifications,
+            filter_and_rollup_classifications,
             should_skip_detection,
         )
 
@@ -720,6 +758,15 @@ def load_json_to_database(
             class_categories, excluded_classes
         )
         non_label_ids = build_non_label_class_ids(class_categories)
+
+        # Load taxonomy for exclusion rollup
+        taxonomy_lookup = None
+        class_id_to_name = None
+        if taxonomy_csv_path and taxonomy_csv_path.exists() and user_excluded_ids:
+            from app.ml.taxonomic_rollup import load_taxonomy_lookup
+
+            taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv_path)
+            class_id_to_name = {str(k): v for k, v in class_categories.items()}
 
         # Track statistics
         total_detections = 0
@@ -906,7 +953,9 @@ def load_json_to_database(
 
                 # Skip if user-filtered top-1 is a non-label class (false positive)
                 if category == "animal" and should_skip_detection(
-                    det, user_excluded_ids, non_label_ids
+                    det, user_excluded_ids, non_label_ids,
+                    class_id_to_name, taxonomy_lookup,
+                    class_categories, allowed_taxonomy_keys,
                 ):
                     skipped_non_label += 1
                     continue
@@ -932,11 +981,23 @@ def load_json_to_database(
                 if "classifications" in det and det["classifications"]:
                     classifications = det["classifications"]
 
-                    # Apply user exclusions only (not NON_LABEL) for label assignment
+                    # Apply user exclusions with rollup (or fallback)
                     if user_excluded_ids:
-                        classifications = filter_classifications(
-                            classifications, user_excluded_ids
-                        )
+                        if taxonomy_lookup and class_id_to_name:
+                            classifications = filter_and_rollup_classifications(
+                                classifications,
+                                user_excluded_ids,
+                                class_id_to_name,
+                                taxonomy_lookup,
+                                class_categories,
+                                allowed_taxonomy_keys,
+                            )
+                        else:
+                            from app.ml.label_exclusion import filter_classifications
+
+                            classifications = filter_classifications(
+                                classifications, user_excluded_ids
+                            )
 
                     if classifications:
                         # Get top classification

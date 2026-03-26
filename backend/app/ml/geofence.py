@@ -261,6 +261,70 @@ def compute_excluded_classes(
     return [label for label in all_labels if label not in allowed]
 
 
+@lru_cache(maxsize=64)
+def _get_allowed_taxonomy_keys_cached(
+    geofence_path: str,
+    country_code: str,
+    state_code: str | None,
+) -> frozenset[str]:
+    """Get all taxonomy keys allowed for a country from the geofence."""
+    geofence = _load_geofence_cached(geofence_path)
+    country_upper = country_code.upper()
+    allowed_keys: set[str] = set()
+
+    for taxonomy_key, entry in geofence.items():
+        allow_dict = entry.get("allow", {})
+        if country_upper not in allow_dict:
+            continue
+
+        if (
+            country_upper == "USA"
+            and state_code
+            and state_code.upper() not in ("NONE", "")
+        ):
+            state_list = allow_dict[country_upper]
+            if state_list and state_code.upper() not in state_list:
+                continue
+
+        allowed_keys.add(taxonomy_key)
+
+    return frozenset(allowed_keys)
+
+
+def get_allowed_taxonomy_keys(
+    model_dir: Path,
+    country_code: str,
+    state_code: str | None = None,
+) -> frozenset[str]:
+    """
+    Get all taxonomy keys allowed for a country/state from the geofence.
+
+    These keys are in 'class;order;family;genus;species' format and
+    cover ALL taxonomy levels (not just species). Used by exclusion
+    rollup to check if an ancestor taxon is present in the country.
+
+    Args:
+        model_dir: Path to model directory
+        country_code: ISO country code
+        state_code: Optional US state code
+
+    Returns:
+        Frozenset of allowed taxonomy key strings
+
+    Raises:
+        FileNotFoundError: If geofence file is missing
+    """
+    geofence_path = find_geofence_file(model_dir)
+    if geofence_path is None:
+        raise FileNotFoundError(
+            f"No geofence file found in {model_dir}"
+        )
+
+    return _get_allowed_taxonomy_keys_cached(
+        str(geofence_path), country_code, state_code
+    )
+
+
 def get_available_countries(model_dir: Path) -> list[str]:
     """
     Get all country codes that appear in any geofence entry.

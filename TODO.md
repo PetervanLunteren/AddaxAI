@@ -44,14 +44,25 @@
 - [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
 
 
+### Add a simple country dropdown if goefencing file exists. Perhaps we can add a tab like structure like "simple" / "full control". 
 
-### SPECIESNET wrong predictions
-Run speciesnet on /Users/peter/Downloads/example-data/project_Kenya/Chui River/deployment_002 and check the results. Many are blank and giraffes are Aves. What the hell is going on? I thought we fixed this as it was a preprocessing mismatch. 
+
+### Improve the verification checkmarks in the grid view of events verification. Should we show pbars for the MaxN files and the all files? SOmething like that? Also make the Verification status filter explicit. Add options for all scenarios, one or more MaxNs verified, etc, etc. 
 
 
 #### EXCLUSION METHOD
 
-See current approach and the difference with SpeciesNet approach below. I believe its better to implement the SpeciesNet approach for all models. It doesnt feel good to promote confidences by inflating them by normalising. What do you think? Investigate. What would need to be changed? Make a plan. 
+See current approach and the difference with SpeciesNet approach below. I believe its better to implement the SpeciesNet approach for all models. It doesnt feel good to promote confidences by inflating them by normalising. What do you think?  I would rather have all models follow the speciesNet exclusion method with auto rollup to a taxa that is allowed. (lion in the USA gets Felidae) for all models than the current approach where garbage labels get promoted to confident predictions (lion 97%, bird 2%, in the USA becomes bird 67%). Investigate. What would need to be changed? Make a plan.
+
+Instructions:
+* Switch to plan mode, I want this task to be done with "plan mode on"
+* Read all MD file in root to get a understanding of the project. 
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+* Ask me clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. The minimum number of questions to ask me is 10
+
 
 ```
   How geofence exclusion works: SpeciesNet vs AddaxAI                                                                                                                                                                                                                                                                                                                          
@@ -124,3 +135,8 @@ You're right. AddaxAI already creates rollup labels that the model was never tra
 
 
 
+
+When an excluded species rolls up to an ancestor (e.g., lion -> felidae), this creates a NEW classification_categories entry in the JSON. Should we also persist    
+this to the JSON file on disk (like the existing postprocessing rollup does)
+
+"like the existing postprocessing rollup does"??????

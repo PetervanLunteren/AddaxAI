@@ -119,6 +119,21 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         logger.info(f"Processing {total} deployments for project {project.name}")
 
+        # Resolve taxonomy CSV for exclusion rollup
+        taxonomy_csv = None
+        if project.classification_model_id:
+            from app.core.config import get_settings
+
+            settings = get_settings()
+            _cls_dir = (
+                settings.user_data_dir / "models" / "cls"
+                / project.classification_model_id
+            )
+            if _cls_dir.exists():
+                _tax = _cls_dir / "taxonomy.csv"
+                if _tax.exists():
+                    taxonomy_csv = _tax
+
         # Snapshot label counts before processing
         before_counts = _get_label_counts(db, project_id)
 
@@ -154,6 +169,7 @@ async def process_postprocessing_job(job_id: str) -> None:
                     result = reload_raw_classifications_from_json(
                         deployment.id, json_path, folder_path, db,
                         excluded_classes=project.excluded_classes,
+                        taxonomy_csv_path=taxonomy_csv,
                     )
 
                 total_updated += result.get("updated", 0)
