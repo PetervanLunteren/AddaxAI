@@ -155,12 +155,7 @@ export function LabelPicker({
   const hasMoreModelLabels = allFilteredModelLabels.length > 50;
   const filteredCustomLabels = customLabelOpts.filter(matchesSearch);
 
-  const hasResults =
-    (filteredPinned && filteredPinned.length > 0) ||
-    filteredGeneral.length > 0 ||
-    filteredModelLabels.length > 0 ||
-    filteredCustomLabels.length > 0;
-  const showAddNew = !!projectId && (!searchLower || !hasResults);
+  const showAddNew = !!projectId;
 
   const handleAddNew = useCallback(() => {
     if (!projectId) return;
