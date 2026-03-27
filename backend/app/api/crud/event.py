@@ -97,35 +97,73 @@ def _apply_event_filters(
             )
             query = query.filter(exists(unverified_subq))
         elif verification == "unverified_maxn":
-            # Event has at least one MaxN frame that is unverified
+            # No MaxN frames verified: all MaxN frames are unverified
             MaxNFile = aliased(File)
-            query = query.filter(
-                exists(
-                    select(EventObservation.id)
-                    .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
-                    .where(
-                        and_(
-                            EventObservation.event_id == Event.id,
-                            MaxNFile.verified == False,  # noqa: E712
-                        )
+            has_verified_maxn = exists(
+                select(EventObservation.id)
+                .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
+                .where(
+                    and_(
+                        EventObservation.event_id == Event.id,
+                        MaxNFile.verified == True,  # noqa: E712
                     )
                 )
             )
-        elif verification == "verified_maxn":
-            # Event has at least one MaxN frame that is verified
+            query = query.filter(~has_verified_maxn)
+        elif verification == "all_maxn_verified":
+            # Every MaxN frame is verified: NOT EXISTS any unverified MaxN
             MaxNFile = aliased(File)
-            query = query.filter(
-                exists(
-                    select(EventObservation.id)
-                    .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
-                    .where(
-                        and_(
-                            EventObservation.event_id == Event.id,
-                            MaxNFile.verified == True,  # noqa: E712
-                        )
+            has_unverified_maxn = exists(
+                select(EventObservation.id)
+                .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
+                .where(
+                    and_(
+                        EventObservation.event_id == Event.id,
+                        MaxNFile.verified == False,  # noqa: E712
                     )
                 )
             )
+            # Must have at least one MaxN frame
+            has_any_maxn = exists(
+                select(EventObservation.id).where(
+                    and_(
+                        EventObservation.event_id == Event.id,
+                        EventObservation.max_n_file_id.isnot(None),
+                    )
+                )
+            )
+            query = query.filter(has_any_maxn, ~has_unverified_maxn)
+        elif verification == "some_maxn_verified":
+            # At least one MaxN verified AND at least one not verified
+            VerifiedMaxNFile = aliased(File)
+            UnverifiedMaxNFile = aliased(File)
+            has_verified = exists(
+                select(EventObservation.id)
+                .join(
+                    VerifiedMaxNFile,
+                    VerifiedMaxNFile.id == EventObservation.max_n_file_id,
+                )
+                .where(
+                    and_(
+                        EventObservation.event_id == Event.id,
+                        VerifiedMaxNFile.verified == True,  # noqa: E712
+                    )
+                )
+            )
+            has_unverified = exists(
+                select(EventObservation.id)
+                .join(
+                    UnverifiedMaxNFile,
+                    UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
+                )
+                .where(
+                    and_(
+                        EventObservation.event_id == Event.id,
+                        UnverifiedMaxNFile.verified == False,  # noqa: E712
+                    )
+                )
+            )
+            query = query.filter(has_verified, has_unverified)
         elif verification == "none_verified":
             # Zero files verified: NOT EXISTS any verified file
             verified_subq = (
@@ -345,8 +383,17 @@ def get_events_by_project(
         )
         verified_count = sum(1 for f in sorted_files if f.verified)
 
-        # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
+        # MaxN verification counts
         max_n_frames = max_n_by_event.get(event.id, [])
+        file_verified_map = {f.id: f.verified for f in sorted_files}
+        total_maxn_count = len(max_n_frames)
+        verified_maxn_count = sum(
+            1
+            for mf in max_n_frames
+            if file_verified_map.get(mf["file_id"], False)
+        )
+
+        # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
         thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
             sorted_files[0].id if sorted_files else None
         )
@@ -374,6 +421,8 @@ def get_events_by_project(
                 "video_count": video_count,
                 "verified_count": verified_count,
                 "total_count": len(sorted_files),
+                "verified_maxn_count": verified_maxn_count,
+                "total_maxn_count": total_maxn_count,
             }
         )
 

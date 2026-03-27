@@ -43,7 +43,7 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
               style={{ width: `${maxnPct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {Math.round(maxnPct)}% MaxN frames verified
+          {Math.round(maxnPct)}% MaxN verified
         </div>
         <div className="h-4 w-px bg-border" />
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

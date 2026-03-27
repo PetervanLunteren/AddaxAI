@@ -37,6 +37,8 @@ class EventSummary(BaseModel):
     video_count: int
     verified_count: int
     total_count: int
+    verified_maxn_count: int
+    total_maxn_count: int
 
 
 class EventWithFiles(BaseModel):

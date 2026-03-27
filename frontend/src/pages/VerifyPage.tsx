@@ -578,21 +578,19 @@ function EventCard({
           )}
         </div>
         <div className="text-xs text-muted-foreground">{dateTimeStr}</div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-xs">
           <span className="flex items-center gap-1">
-            {event.max_n_frames.length > 0
-              ? `${event.max_n_frames.length} MaxN frame${event.max_n_frames.length !== 1 ? "s" : ""}`
-              : "No MaxN"}
-          </span>
-          <span className="flex items-center gap-1">
-            Files {event.verified_count}/{event.total_count} verified
-            {event.verified_count === event.total_count && event.total_count > 0 ? (
+            MaxN {event.verified_maxn_count}/{event.total_maxn_count}
+            {event.verified_maxn_count === event.total_maxn_count && event.total_maxn_count > 0 ? (
               <div className="bg-primary rounded-full p-0.5">
                 <Check className="h-2.5 w-2.5 text-primary-foreground" />
               </div>
             ) : (
               <Circle className="h-3 w-3" />
             )}
+          </span>
+          <span className="text-muted-foreground">
+            All {event.verified_count}/{event.total_count}
           </span>
         </div>
       </CardContent>

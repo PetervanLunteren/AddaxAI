@@ -34,11 +34,3 @@
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
-
-
-### IMPROVE UI ON CARDS
-Improve the verification checkmarks in the grid view of events verification. Should we show pbars for the MaxN files and the all files? SOmething like that? Also make the Verification status filter explicit. Add options for all scenarios, one or more MaxNs verified, etc, etc. 
-
-
-
-

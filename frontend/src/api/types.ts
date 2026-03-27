@@ -271,7 +271,8 @@ export type VerificationFilter =
   | "fully_verified"
   | "not_fully_verified"
   | "unverified_maxn"
-  | "verified_maxn"
+  | "all_maxn_verified"
+  | "some_maxn_verified"
   | "none_verified";
 
 export interface EventFilterParams {
@@ -316,6 +317,8 @@ export interface EventSummary {
   video_count: number;
   verified_count: number;
   total_count: number;
+  verified_maxn_count: number;
+  total_maxn_count: number;
 }
 
 export interface EventWithFiles {
