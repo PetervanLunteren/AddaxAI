@@ -221,6 +221,28 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
             db, detection, update.label
         )
         detection.classification_method = "human"
+        # Update display_name from taxonomy
+        if update.label and detection.label_taxonomy_id:
+            from app.ml.taxonomic_rollup import (
+                format_display_name_from_taxonomy_row,
+            )
+            from app.models.label_taxonomy import LabelTaxonomy
+
+            tax = db.query(LabelTaxonomy).get(detection.label_taxonomy_id)
+            if tax:
+                detection.display_name = format_display_name_from_taxonomy_row(
+                    update.label,
+                    tax.taxon_genus, tax.taxon_species,
+                    tax.taxon_family, tax.taxon_order, tax.taxon_class,
+                )
+            else:
+                detection.display_name = (
+                    update.label[0].upper() + update.label[1:]
+                )
+        elif update.label:
+            detection.display_name = update.label[0].upper() + update.label[1:]
+        else:
+            detection.display_name = None
         if update.label is None:
             detection.label_confidence = None
     if update.label_confidence is not None:

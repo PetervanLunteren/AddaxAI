@@ -293,7 +293,7 @@ def test_leaf_has_structured_fields(db):
 
     leaf = find_node(result["tree"], "leopard")
     assert leaf is not None
-    assert leaf["name"] == "Panthera pardus"
+    assert leaf["name"] == "P. pardus"
     assert leaf["annotation"] == "leopard"
     assert leaf["count"] >= 1
 

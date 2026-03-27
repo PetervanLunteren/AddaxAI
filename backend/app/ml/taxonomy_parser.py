@@ -180,7 +180,8 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 # Leaf node
                 if level_name == "species":
                     if genus_name and species_name:
-                        leaf_label = f"{genus_name.strip().capitalize()} {species_name}"
+                        g = genus_name.strip()
+                        leaf_label = f"{g[0].upper()}. {species_name}"
                     else:
                         leaf_label = species_name or display_name
                     leaf_annotation = display_name

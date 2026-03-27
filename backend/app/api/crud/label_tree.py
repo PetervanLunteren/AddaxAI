@@ -211,7 +211,8 @@ def build_label_filter_tree(
             if row.is_custom:
                 display_label = row.taxon_species or row.name
             elif row.taxon_species and row.taxon_genus:
-                display_label = f"{row.taxon_genus.strip().capitalize()} {row.taxon_species}"
+                genus = row.taxon_genus.strip()
+                display_label = f"{genus[0].upper()}. {row.taxon_species}"
             else:
                 display_label = row.taxon_species or row.name
             display_name = row.name.replace("_", " ")

@@ -23,6 +23,33 @@ TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]  # broadest â
 ROLLUP_THRESHOLD = 0.65
 
 
+def format_display_name_from_taxonomy_row(
+    label: str,
+    taxon_genus: str | None,
+    taxon_species: str | None,
+    taxon_family: str | None = None,
+    taxon_order: str | None = None,
+    taxon_class: str | None = None,
+) -> str:
+    """
+    Format a Latin display name from individual taxonomy fields.
+
+    Useful when you have a LabelTaxonomy row or individual fields
+    rather than a full taxonomy_lookup dict.
+    """
+    if taxon_species and taxon_genus:
+        return f"{taxon_genus[0].upper()}. {taxon_species}"
+    if taxon_genus:
+        return taxon_genus.capitalize()
+    if taxon_family:
+        return taxon_family.capitalize()
+    if taxon_order:
+        return taxon_order.capitalize()
+    if taxon_class:
+        return taxon_class.capitalize()
+    return label[0].upper() + label[1:] if label else label
+
+
 def format_latin_display_name(
     label: str,
     taxonomy_lookup: dict[str, dict[str, str]],

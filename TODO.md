@@ -44,13 +44,25 @@
 - [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
 
 
-### Add a simple country dropdown if goefencing file exists. Perhaps we can add a tab like structure like "simple" / "full control". 
+## BUG
+In verification, try to change label of an animal to Person or Vehicle. It says verified and the image shows person, but the animal label stays there in the list. (EDIT possibly this bug is already solved, check it though)
+
+## Bug 
+sometimes ther verification list in the event windows dont show the coloured dot in front. Why? 
+
+## Now that we are working towards a stadard of displaying labels (P. leo, always latin if taxonomy is available), whould we update the way we display classes in the list of event verification? And while were at it, also in the list when choosing a new label? We should probabaly use the same format for both. Both should have the full taxonomy and the common name there too, and the display name as most apparent one. 
+
+
+
+
+
+### Add a simple country dropdown if goefencing file exists. Perhaps we can add a tab like structure like "simple" / "full control". Or quick / full control or what would you propose? Most people will just want to say: I'm in the Netherlands. Or is this just adding UI cpomplexity? They can now just clikc the button and select Netherlands, then "OK". Otherwise we add a tab control, which adds complexity. But showing a full list with all 2000 species is also ceomplex! What do you think.
 
 
 ### Improve the verification checkmarks in the grid view of events verification. Should we show pbars for the MaxN files and the all files? SOmething like that? Also make the Verification status filter explicit. Add options for all scenarios, one or more MaxNs verified, etc, etc. 
 
 
-### 
+### Should we make the latin name the default in the dasboard view? Right now its the raw label, but it woulnd make much sense to show the raw label there and the latin name in the rest of the app. Whjat do you think? It's basicallt the species as deafult? Or am i missing something here? 
 
 ###
 When an excluded species rolls up to an ancestor (e.g., lion -> felidae), this creates a NEW classification_categories entry in the JSON. Should we also persist    

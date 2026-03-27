@@ -235,11 +235,30 @@ def bulk_relabel_detections(
         from app.api.crud.detection import _resolve_detection_taxonomy
         new_taxonomy_id = _resolve_detection_taxonomy(db, detections[0], body.label)
 
+    # Compute display_name for the new label
+    new_display_name = None
+    if body.label and new_taxonomy_id:
+        from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
+        from app.models.label_taxonomy import LabelTaxonomy
+
+        tax = db.query(LabelTaxonomy).get(new_taxonomy_id)
+        if tax:
+            new_display_name = format_display_name_from_taxonomy_row(
+                body.label,
+                tax.taxon_genus, tax.taxon_species,
+                tax.taxon_family, tax.taxon_order, tax.taxon_class,
+            )
+        else:
+            new_display_name = body.label[0].upper() + body.label[1:]
+    elif body.label:
+        new_display_name = body.label[0].upper() + body.label[1:]
+
     for det in detections:
         if body.label is not None:
             det.label = body.label if body.label != "" else None
             det.label_confidence = 1.0 if body.label else None
             det.label_taxonomy_id = new_taxonomy_id
+            det.display_name = new_display_name if body.label else None
         if body.category is not None:
             det.category = body.category
         det.classification_method = "human"
