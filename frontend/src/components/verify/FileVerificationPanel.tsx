@@ -115,22 +115,43 @@ export function FileVerificationPanel({
     return dets;
   }, [file.detections, detectionThreshold, isVideo, file.best_frame_number]);
 
+  // Build lookup from labelOptions for taxonomy captions
+  const labelOptionsByValue = useMemo(() => {
+    const map = new Map<string, { displayName: string; caption: string | null; commonName: string | null }>();
+    for (const opt of labelOptions) {
+      map.set(opt.value, {
+        displayName: opt.displayName,
+        caption: opt.taxonomyCaption ?? null,
+        commonName: opt.label,
+      });
+    }
+    return map;
+  }, [labelOptions]);
+
   const groupedDetections = useMemo(() => {
-    const groups = new Map<string, { count: number; displayName: string }>();
+    const groups = new Map<string, {
+      count: number;
+      displayName: string;
+      commonName: string | null;
+      caption: string | null;
+    }>();
     for (const d of filteredDetections) {
       const label = d.label || d.category;
       const existing = groups.get(label);
       if (existing) {
         existing.count += 1;
       } else {
+        const opt = labelOptionsByValue.get(label);
         groups.set(label, {
           count: 1,
-          displayName: d.display_name || d.label || d.category,
+          displayName: d.display_name || opt?.displayName || d.label || d.category,
+          commonName: opt?.commonName ?? null,
+          caption: opt?.caption ?? null,
         });
       }
     }
     return groups;
-  }, [filteredDetections]);
+  }, [filteredDetections, labelOptionsByValue]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
@@ -155,14 +176,23 @@ export function FileVerificationPanel({
 
             {/* Grouped summary */}
             <div className="flex-1 overflow-y-auto px-3 space-y-1">
-              {[...groupedDetections.entries()].map(([label, { count, displayName }]) => (
+              {[...groupedDetections.entries()].map(([label, { count, displayName, commonName, caption }]) => (
                 <div
                   key={label}
                   className="flex items-center justify-between rounded border p-2 text-sm"
                   style={{ backgroundColor: "#e7efef" }}
                 >
-                  <span>{displayName}</span>
-                  <span className="text-muted-foreground">&times; {count}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate">{displayName}</span>
+                    {(commonName || caption) && (
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {[commonName ? commonName.charAt(0).toUpperCase() + commonName.slice(1) : null, caption]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-muted-foreground shrink-0">&times; {count}</span>
                 </div>
               ))}
 

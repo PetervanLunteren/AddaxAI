@@ -14,6 +14,8 @@ import { projectsApi } from "../api/projects";
 
 export interface LabelOption {
   value: string;
+  /** Latin display name (e.g., "G. camelopardalis"). Falls back to capitalized value. */
+  displayName: string;
   category: "animal" | "person" | "vehicle";
   label: string | null;
   isCustom?: boolean;
@@ -23,9 +25,31 @@ export interface LabelOption {
 }
 
 const GENERAL_OPTIONS: LabelOption[] = [
-  { value: "person", category: "person", label: null },
-  { value: "vehicle", category: "vehicle", label: null },
+  { value: "person", displayName: "Person", category: "person", label: null },
+  { value: "vehicle", displayName: "Vehicle", category: "vehicle", label: null },
 ];
+
+/** Build a Latin display name from taxonomy fields (mirrors backend format_display_name_from_taxonomy_row). */
+function formatLatinName(
+  rawLabel: string,
+  entry: {
+    taxon_class: string | null;
+    taxon_order: string | null;
+    taxon_family: string | null;
+    taxon_genus: string | null;
+    taxon_species: string | null;
+  } | undefined,
+): string {
+  if (!entry) return rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+  if (entry.taxon_species && entry.taxon_genus) {
+    return `${entry.taxon_genus.charAt(0).toUpperCase()}. ${entry.taxon_species}`;
+  }
+  if (entry.taxon_genus) return entry.taxon_genus.charAt(0).toUpperCase() + entry.taxon_genus.slice(1);
+  if (entry.taxon_family) return entry.taxon_family.charAt(0).toUpperCase() + entry.taxon_family.slice(1);
+  if (entry.taxon_order) return entry.taxon_order.charAt(0).toUpperCase() + entry.taxon_order.slice(1);
+  if (entry.taxon_class) return entry.taxon_class.charAt(0).toUpperCase() + entry.taxon_class.slice(1);
+  return rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+}
 
 /** Build a display string from taxonomy fields, joining non-empty ranks with " > ". */
 function buildTaxonomyCaption(
@@ -63,6 +87,7 @@ export function useLabelOptions(
     queryKey: ["taxonomy", classificationModelId],
     queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
     enabled: hasClassificationModel,
+    staleTime: Infinity,
   });
 
   // Custom labels added by the user for this project
@@ -73,6 +98,7 @@ export function useLabelOptions(
     queryKey: ["custom-labels", projectId],
     queryFn: () => projectsApi.getCustomLabels(projectId),
     enabled: !!projectId,
+    staleTime: Infinity,
   });
 
   // Taxonomy fields for all labels (model + custom)
@@ -82,6 +108,7 @@ export function useLabelOptions(
     queryKey: ["label-taxonomy-map", projectId],
     queryFn: () => projectsApi.getLabelTaxonomyMap(projectId),
     enabled: !!projectId,
+    staleTime: Infinity,
   });
 
   const isLoading =
@@ -96,14 +123,19 @@ export function useLabelOptions(
 
     if (!hasClassificationModel) {
       // Detection-only projects: add "animal" alongside "person" and "vehicle"
-      result.push({ value: "animal", category: "animal", label: null });
+      result.push({
+        value: "animal", displayName: "Animal",
+        category: "animal", label: null,
+      });
     } else if (taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
+        const entry = taxonomyMap?.[cls];
         result.push({
           value: cls,
+          displayName: formatLatinName(cls, entry),
           category: "animal",
           label: cls,
-          taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cls]),
+          taxonomyCaption: buildTaxonomyCaption(entry),
         });
       }
     }
@@ -117,20 +149,24 @@ export function useLabelOptions(
       for (const cl of customLabels) {
         const idx = existingByName.get(cl.name.toLowerCase());
         if (idx !== undefined) {
+          const entry = taxonomyMap?.[cl.name];
           result[idx] = {
             ...result[idx],
             isCustom: true,
             customId: cl.id,
-            taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cl.name]) ?? result[idx].taxonomyCaption,
+            displayName: formatLatinName(cl.name, entry),
+            taxonomyCaption: buildTaxonomyCaption(entry) ?? result[idx].taxonomyCaption,
           };
         } else {
+          const entry = taxonomyMap?.[cl.name];
           result.push({
             value: cl.name,
+            displayName: formatLatinName(cl.name, entry),
             category: "animal",
             label: cl.name,
             isCustom: true,
             customId: cl.id,
-            taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[cl.name]),
+            taxonomyCaption: buildTaxonomyCaption(entry),
           });
           existingByName.set(cl.name.toLowerCase(), result.length - 1);
         }

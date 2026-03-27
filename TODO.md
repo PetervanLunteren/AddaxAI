@@ -50,7 +50,13 @@ In verification, try to change label of an animal to Person or Vehicle. It says 
 ## Bug 
 sometimes ther verification list in the event windows dont show the coloured dot in front. Why? 
 
+## IMPROVE LABEL stuff
+ We've standardized on Latin taxonomy names as the primary display format (G.
+ camelopardalis, Felidae, etc.) across detection chips, overlays, dashboard, and
+ taxonomy trees. I get the feeling that we currently have differnet approaches on how to lookup taxonomy, and caluclate the display names etc. Would it make sense to just move everything to a standard with a new endpoint that just returns all the info you need from the backend ot SQL table so that there is one source of truth. I get the feeling that now we have many sources of truth.... Investigate where all the truths and the differnt methods are. And what it would cost to make a standard and merge into one source of truth. 
+
 ## Now that we are working towards a stadard of displaying labels (P. leo, always latin if taxonomy is available), whould we update the way we display classes in the list of event verification? And while were at it, also in the list when choosing a new label? We should probabaly use the same format for both. Both should have the full taxonomy and the common name there too, and the display name as most apparent one. 
+
 
 
 
