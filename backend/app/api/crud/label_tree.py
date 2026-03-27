@@ -205,16 +205,7 @@ def build_label_filter_tree(
         count = label_event_counts.get(row.name, 0)
 
         if row.level == "species":
-            # Build binomial display name.
-            # Model-native: taxon_species is the epithet -> prepend genus.
-            # Custom (GBIF): taxon_species is already the full binomial.
-            if row.is_custom:
-                display_label = row.taxon_species or row.name
-            elif row.taxon_species and row.taxon_genus:
-                genus = row.taxon_genus.strip()
-                display_label = f"{genus[0].upper()}. {row.taxon_species}"
-            else:
-                display_label = row.taxon_species or row.name
+            display_label = row.display_name or row.name
             display_name = row.name.replace("_", " ")
             leaf_id = row.name
             leaf_node = {
@@ -228,24 +219,9 @@ def build_label_filter_tree(
             }
         else:
             leaf_id = f"{row.name}:unspecified"
-            # Check if the raw model name matches its taxon field for this level.
-            # If yes (e.g. "Bovidae" == taxon_family "Bovidae"), it's a proper
-            # taxon name and gets the level prefix.  If no (e.g. "Bird" !=
-            # taxon_class "Aves"), it's a raw model label -- show without prefix.
-            taxon_value_for_level = {
-                "class": row.taxon_class,
-                "order": row.taxon_order,
-                "family": row.taxon_family,
-                "genus": row.taxon_genus,
-            }.get(row.level)
-            is_formal_taxon = (
-                taxon_value_for_level is not None
-                and taxon_value_for_level.lower() == row.name.lower()
-            )
             display = (
-                row.name.replace("_", " ").title()
-                if is_formal_taxon
-                else row.name.replace("_", " ").capitalize()
+                row.display_name
+                or row.name.replace("_", " ").capitalize()
             )
             leaf_node = {
                 "id": leaf_id,

@@ -176,22 +176,13 @@ export function FileVerificationPanel({
 
             {/* Grouped summary */}
             <div className="flex-1 overflow-y-auto px-3 space-y-1">
-              {[...groupedDetections.entries()].map(([label, { count, displayName, commonName, caption }]) => (
+              {[...groupedDetections.entries()].map(([label, { count, displayName }]) => (
                 <div
                   key={label}
                   className="flex items-center justify-between rounded border p-2 text-sm"
                   style={{ backgroundColor: "#e7efef" }}
                 >
-                  <div className="flex flex-col min-w-0">
-                    <span className="truncate">{displayName}</span>
-                    {(commonName || caption) && (
-                      <span className="text-[10px] text-muted-foreground truncate">
-                        {[commonName ? commonName.charAt(0).toUpperCase() + commonName.slice(1) : null, caption]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    )}
-                  </div>
+                  <span className="truncate">{displayName}</span>
                   <span className="text-muted-foreground shrink-0">&times; {count}</span>
                 </div>
               ))}

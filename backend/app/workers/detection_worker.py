@@ -530,6 +530,35 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     except Exception as e:
                         logger.warning(f"Failed to populate taxonomy DB: {e}")
 
+                # Persist exclusion rollup entries to label_taxonomy
+                if (
+                    result.exclusion_rollup_entries
+                    and classification_model_id
+                ):
+                    try:
+                        from app.ml.taxonomic_rollup import (
+                            load_taxonomy_lookup,
+                        )
+                        from app.ml.taxonomy_db import (
+                            add_rollup_taxonomy_entry,
+                        )
+
+                        taxonomy_csv = cls_model_dir / "taxonomy.csv"
+                        if taxonomy_csv.exists():
+                            tax_lookup = load_taxonomy_lookup(taxonomy_csv)
+                            for entry in result.exclusion_rollup_entries:
+                                add_rollup_taxonomy_entry(
+                                    classification_model_id,
+                                    entry["name"],
+                                    entry["level"],
+                                    tax_lookup,
+                                    db,
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to persist exclusion rollup: {e}"
+                        )
+
                 # Link detections to taxonomy rows via FK
                 try:
                     from app.ml.taxonomy_db import link_detections_to_taxonomy

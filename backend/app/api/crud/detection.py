@@ -221,30 +221,38 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
             db, detection, update.label
         )
         detection.classification_method = "human"
-        # Update display_name from taxonomy
+        # Read display_name from the taxonomy row (single source of truth)
         if update.label and detection.label_taxonomy_id:
-            from app.ml.taxonomic_rollup import (
-                format_display_name_from_taxonomy_row,
-            )
             from app.models.label_taxonomy import LabelTaxonomy
 
             tax = db.query(LabelTaxonomy).get(detection.label_taxonomy_id)
-            if tax:
-                detection.display_name = format_display_name_from_taxonomy_row(
-                    update.label,
-                    tax.taxon_genus, tax.taxon_species,
-                    tax.taxon_family, tax.taxon_order, tax.taxon_class,
-                )
-            else:
-                detection.display_name = (
-                    update.label[0].upper() + update.label[1:]
-                )
+            detection.display_name = (
+                tax.display_name if tax else update.label[0].upper() + update.label[1:]
+            )
         elif update.label:
             detection.display_name = update.label[0].upper() + update.label[1:]
         else:
             detection.display_name = None
         if update.label is None:
             detection.label_confidence = None
+    # When category changes to a builtin (person/vehicle/animal) without a
+    # label, resolve taxonomy from the category so display_name and the FK
+    # are set correctly.
+    if update.category and not detection.label:
+        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+        from app.models.label_taxonomy import LabelTaxonomy
+
+        builtin = (
+            db.query(LabelTaxonomy)
+            .filter(
+                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
+                LabelTaxonomy.name == update.category,
+            )
+            .first()
+        )
+        if builtin:
+            detection.label_taxonomy_id = builtin.id
+            detection.display_name = builtin.display_name
     if update.label_confidence is not None:
         detection.label_confidence = update.label_confidence
 
@@ -300,11 +308,36 @@ def _get_project_id_for_detection(db: Session, detection: Detection) -> str | No
 def _resolve_detection_taxonomy(
     db: Session, detection: Detection, label_name: str | None
 ) -> str | None:
-    """Look up the correct label_taxonomy_id for a relabeled detection."""
+    """Look up or auto-create the label_taxonomy_id for a relabeled detection.
+
+    If no existing taxonomy entry matches, creates a custom entry with
+    level='unknown' so every label has a corresponding taxonomy row.
+    """
     if not label_name:
         return None
     project_id = _get_project_id_for_detection(db, detection)
     if not project_id:
         return None
+
     from app.ml.taxonomy_db import resolve_taxonomy_id
-    return resolve_taxonomy_id(label_name, project_id, db)
+
+    taxonomy_id = resolve_taxonomy_id(label_name, project_id, db)
+    if taxonomy_id:
+        return taxonomy_id
+
+    # Auto-create a custom taxonomy entry for this label
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    new_entry = LabelTaxonomy(
+        is_custom=True,
+        project_id=project_id,
+        level="unknown",
+        name=label_name,
+        classification_model_id="",
+        display_name=label_name[0].upper() + label_name[1:]
+        if label_name
+        else label_name,
+    )
+    db.add(new_entry)
+    db.flush()
+    return new_entry.id

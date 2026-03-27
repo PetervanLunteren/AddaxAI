@@ -18,9 +18,19 @@ in renormalization. JSON files on disk remain untouched as raw ground
 truth.
 """
 
+from dataclasses import dataclass, field
+
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class ExclusionRollupResult:
+    """Result from filter_and_rollup_classifications."""
+
+    classifications: list[list]
+    new_entries: list[dict] = field(default_factory=list)
 
 # Non-label classes: predictions that mean "nothing here" or "false positive".
 # A detection whose top-1 is one of these is not loaded to the database.
@@ -205,7 +215,7 @@ def filter_and_rollup_classifications(
     taxonomy_lookup: dict[str, dict[str, str]],
     classification_categories: dict[str, str],
     allowed_taxonomy_keys: frozenset[str] | None = None,
-) -> list[list]:
+) -> ExclusionRollupResult:
     """
     Filter excluded labels and redirect their scores to taxonomy ancestors.
 
@@ -235,7 +245,7 @@ def filter_and_rollup_classifications(
         ancestors, sorted by confidence descending.
     """
     if not classifications or not excluded_class_ids:
-        return classifications
+        return ExclusionRollupResult(classifications=classifications)
 
     from app.ml.taxonomic_rollup import TAXONOMY_LEVELS, _format_rollup_label
 
@@ -259,6 +269,7 @@ def filter_and_rollup_classifications(
     # Accumulate: kept items stay, excluded items redirect to ancestors
     kept: dict[str, float] = {}  # class_id -> confidence
     ancestor_scores: dict[str, float] = {}  # ancestor_label -> accumulated confidence
+    ancestor_levels: dict[str, str] = {}  # ancestor_label -> taxonomy level
 
     for cls_id, conf in classifications:
         cls_id_str = str(cls_id)
@@ -286,7 +297,9 @@ def filter_and_rollup_classifications(
                 break
 
         ancestor_label = None
+        ancestor_level = None
         broadest_label = None
+        broadest_level = None
         started = False
 
         for level in reversed(TAXONOMY_LEVELS):
@@ -308,6 +321,7 @@ def filter_and_rollup_classifications(
             # Track broadest available as fallback
             if broadest_label is None:
                 broadest_label = label
+                broadest_level = level
 
             # Check if this ancestor is allowed
             if allowed_taxonomy_keys is not None:
@@ -316,17 +330,20 @@ def filter_and_rollup_classifications(
                 ancestor_key = _build_taxonomy_key(entry, level)
                 if ancestor_key in allowed_taxonomy_keys:
                     ancestor_label = label
+                    ancestor_level = level
                     break
             else:
                 # Manual exclusion: accept first ancestor above
                 # the excluded species (no geofence to check)
                 if label.lower() not in excluded_names:
                     ancestor_label = label
+                    ancestor_level = level
                     break
 
         # If no allowed ancestor, use broadest available
         if ancestor_label is None:
             ancestor_label = broadest_label
+            ancestor_level = broadest_level
 
         if ancestor_label is None:
             # No taxonomy levels at all: drop the score
@@ -335,14 +352,21 @@ def filter_and_rollup_classifications(
         ancestor_scores[ancestor_label] = (
             ancestor_scores.get(ancestor_label, 0.0) + conf
         )
+        if ancestor_label not in ancestor_levels and ancestor_level:
+            ancestor_levels[ancestor_label] = ancestor_level
 
     # Ensure ancestor labels have class IDs in classification_categories
+    new_entries: list[dict] = []
     for label in ancestor_scores:
         if label.lower() not in name_to_id:
             max_id += 1
             new_id = str(max_id)
             classification_categories[new_id] = label
             name_to_id[label.lower()] = new_id
+            new_entries.append({
+                "name": label.lower(),
+                "level": ancestor_levels.get(label, "unknown"),
+            })
 
     # Build final classification list
     result: list[list] = []
@@ -360,7 +384,9 @@ def filter_and_rollup_classifications(
             result.append([cls_id, conf])
 
     result.sort(key=lambda x: x[1], reverse=True)
-    return result
+    return ExclusionRollupResult(
+        classifications=result, new_entries=new_entries
+    )
 
 
 def should_skip_detection(
@@ -406,7 +432,7 @@ def should_skip_detection(
                 taxonomy_lookup,
                 classification_categories,
                 allowed_taxonomy_keys,
-            )
+            ).classifications
         else:
             filtered = filter_classifications(raw, user_excluded_class_ids)
     else:
@@ -498,7 +524,7 @@ def apply_label_exclusion_to_results(
 
             if use_rollup:
                 # Rollup user-excluded scores to ancestors, then strip NON_LABEL
-                rolled = filter_and_rollup_classifications(
+                rollup_result = filter_and_rollup_classifications(
                     det["classifications"],
                     user_excluded_ids,
                     class_id_to_name,
@@ -508,7 +534,7 @@ def apply_label_exclusion_to_results(
                 # Also strip NON_LABEL classes (for smoothing/rollup)
                 non_label_ids = build_non_label_class_ids(class_categories)
                 det["classifications"] = filter_classifications(
-                    rolled, non_label_ids
+                    rollup_result.classifications, non_label_ids
                 )
             else:
                 det["classifications"] = filter_classifications(

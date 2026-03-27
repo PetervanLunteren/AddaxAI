@@ -122,21 +122,15 @@ def _rank_display_label(taxonomic_rank: str | None):
     # are treated as having no taxonomy.
     has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
 
-    # For species rank, show abbreviated binomial (G. camelopardalis)
-    # instead of just the epithet, matching the display_name format.
+    # For species rank, use the pre-computed display_name from
+    # label_taxonomy (e.g. "G. camelopardalis") instead of building
+    # the binomial in SQL.
     if taxonomic_rank == "species":
-        binomial = (
-            func.upper(func.substr(LabelTaxonomy.taxon_genus, 1, 1))
-            + literal(". ")
-            + LabelTaxonomy.taxon_species
-        )
         rank_display = case(
             (
-                LabelTaxonomy.taxon_species.isnot(None)
-                & LabelTaxonomy.taxon_genus.isnot(None),
-                binomial,
+                LabelTaxonomy.taxon_species.isnot(None),
+                LabelTaxonomy.display_name,
             ),
-            (rank_col.isnot(None), rank_col),
             else_=None,
         )
     else:
@@ -351,35 +345,13 @@ def get_species_distribution(
     """
     # Build label expression for taxonomic aggregation
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-        # "Most specific": show each label at its best available Latin name.
-        # Species → "G. camelopardalis", genus → "Giraffa", etc.
+        # "Most specific": use pre-computed display_name from label_taxonomy.
         # Falls back to raw label for non-animal or no-taxonomy entries.
-        binomial = (
-            func.upper(func.substr(LabelTaxonomy.taxon_genus, 1, 1))
-            + literal(". ")
-            + LabelTaxonomy.taxon_species
-        )
         label_expr = case(
             (EventObservation.category != "animal", EventObservation.category),
-            (
-                LabelTaxonomy.taxon_species.isnot(None)
-                & LabelTaxonomy.taxon_genus.isnot(None),
-                binomial,
+            else_=func.coalesce(
+                LabelTaxonomy.display_name, EventObservation.label
             ),
-            (LabelTaxonomy.taxon_genus.isnot(None), LabelTaxonomy.taxon_genus),
-            (
-                LabelTaxonomy.taxon_family.isnot(None),
-                LabelTaxonomy.taxon_family,
-            ),
-            (
-                LabelTaxonomy.taxon_order.isnot(None),
-                LabelTaxonomy.taxon_order,
-            ),
-            (
-                LabelTaxonomy.taxon_class.isnot(None),
-                LabelTaxonomy.taxon_class,
-            ),
-            else_=EventObservation.label,
         )
         needs_join = True
     else:
@@ -391,20 +363,13 @@ def get_species_distribution(
             rank_col = getattr(LabelTaxonomy, col_name)
             has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
 
-            # For species rank, show abbreviated binomial (G. camelopardalis)
+            # For species rank, use pre-computed display_name
             if taxonomic_rank == "species":
-                binomial = (
-                    func.upper(func.substr(LabelTaxonomy.taxon_genus, 1, 1))
-                    + literal(". ")
-                    + LabelTaxonomy.taxon_species
-                )
                 rank_display = case(
                     (
-                        LabelTaxonomy.taxon_species.isnot(None)
-                        & LabelTaxonomy.taxon_genus.isnot(None),
-                        binomial,
+                        LabelTaxonomy.taxon_species.isnot(None),
+                        LabelTaxonomy.display_name,
                     ),
-                    (rank_col.isnot(None), rank_col),
                     else_=None,
                 )
             else:
@@ -487,15 +452,38 @@ def get_activity_pattern(
 
     if species:
         if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-            query = query.where(EventObservation.label == species)
+            # Filter by display name (matching species distribution output)
+            display_label = case(
+                (EventObservation.category != "animal", EventObservation.category),
+                else_=func.coalesce(
+                    LabelTaxonomy.display_name, EventObservation.label
+                ),
+            )
+            query = query.outerjoin(
+                LabelTaxonomy,
+                LabelTaxonomy.name == EventObservation.label,
+            )
+            query = query.where(display_label == species)
         else:
             col_name = _RANK_COLUMNS.get(taxonomic_rank)
             if col_name:
                 rank_col = getattr(LabelTaxonomy, col_name)
                 has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+                # For species rank, use display_name to match
+                # the abbreviated binomial shown in the dropdown
+                if taxonomic_rank == "species":
+                    rank_display = case(
+                        (
+                            LabelTaxonomy.taxon_species.isnot(None),
+                            LabelTaxonomy.display_name,
+                        ),
+                        else_=None,
+                    )
+                else:
+                    rank_display = rank_col
                 label_expr = case(
                     (EventObservation.category != "animal", EventObservation.category),
-                    (rank_col.isnot(None), rank_col),
+                    (rank_display.isnot(None), rank_display),
                     (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                     else_=literal(NO_TAXONOMY),
                 )
@@ -556,15 +544,38 @@ def get_detection_trend(
 
     if species:
         if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-            query = query.where(EventObservation.label == species)
+            # Filter by display name (matching species distribution output)
+            display_label = case(
+                (EventObservation.category != "animal", EventObservation.category),
+                else_=func.coalesce(
+                    LabelTaxonomy.display_name, EventObservation.label
+                ),
+            )
+            query = query.outerjoin(
+                LabelTaxonomy,
+                LabelTaxonomy.name == EventObservation.label,
+            )
+            query = query.where(display_label == species)
         else:
             col_name = _RANK_COLUMNS.get(taxonomic_rank)
             if col_name:
                 rank_col = getattr(LabelTaxonomy, col_name)
                 has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+                # For species rank, use display_name to match
+                # the abbreviated binomial shown in the dropdown
+                if taxonomic_rank == "species":
+                    rank_display = case(
+                        (
+                            LabelTaxonomy.taxon_species.isnot(None),
+                            LabelTaxonomy.display_name,
+                        ),
+                        else_=None,
+                    )
+                else:
+                    rank_display = rank_col
                 label_expr = case(
                     (EventObservation.category != "animal", EventObservation.category),
-                    (rank_col.isnot(None), rank_col),
+                    (rank_display.isnot(None), rank_display),
                     (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                     else_=literal(NO_TAXONOMY),
                 )

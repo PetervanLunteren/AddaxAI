@@ -453,9 +453,11 @@ export function SimilarityTab({
     (detectionId: string, label: string, category: string) => {
       detectionsApi
         .bulkRelabel([detectionId], label, category)
-        .then((data) => {
+        .then(() => {
           patchLocalDetections((d) =>
-            d.detection_id === detectionId ? { ...d, label, category, verified: true } : d
+            d.detection_id === detectionId
+              ? { ...d, label, category, display_name: null, verified: true }
+              : d
           );
         })
         .catch((err: Error) => toast.error(err.message));
@@ -464,10 +466,12 @@ export function SimilarityTab({
   );
 
   const handleBulkRelabel = useCallback(
-    (ids: string[], label: string | null, category: string) => {
+    (ids: string[], label: string | null, category: string, displayName: string) => {
       const idSet = new Set(ids);
       patchLocalDetections((d) =>
-        idSet.has(d.detection_id) ? { ...d, label, category, verified: true } : d
+        idSet.has(d.detection_id)
+          ? { ...d, label, category, display_name: displayName, verified: true }
+          : d
       );
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     },
@@ -482,7 +486,7 @@ export function SimilarityTab({
         .then(() => {
           patchLocalDetections((d) =>
             idSet.has(d.detection_id)
-              ? { ...d, label: "false detection", verified: true }
+              ? { ...d, label: "false detection", display_name: "False detection", verified: true }
               : d
           );
           clearSelection();

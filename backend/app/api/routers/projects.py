@@ -835,6 +835,7 @@ def get_label_taxonomy_map(
             "taxon_family": row.taxon_family,
             "taxon_genus": row.taxon_genus,
             "taxon_species": row.taxon_species,
+            "display_name": row.display_name,
         }
     return result
 
@@ -908,6 +909,7 @@ def create_custom_label(
         level="unknown",
         name=name,
         classification_model_id="",
+        display_name=name.capitalize(),
     )
     db.add(new_label)
     db.commit()
@@ -1009,7 +1011,20 @@ def update_custom_label(
     row.taxon_species = body.taxon_species
     row.level = _derive_taxonomy_level(body)
 
-    # Ensure all detections with this label name point to this taxonomy row
+    # Recompute display_name from updated taxonomy fields
+    from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
+
+    row.display_name = format_display_name_from_taxonomy_row(
+        row.name,
+        body.taxon_genus,
+        body.taxon_species,
+        body.taxon_family,
+        body.taxon_order,
+        body.taxon_class,
+    )
+
+    # Ensure all detections with this label name point to this taxonomy
+    # row and have the updated display_name
     project_file_ids = (
         db.query(File.id)
         .join(Deployment)
@@ -1020,11 +1035,13 @@ def update_custom_label(
         db.query(Detection)
         .filter(
             Detection.label == row.name,
-            Detection.label_taxonomy_id != label_id,
             Detection.file_id.in_(project_file_ids),
         )
         .update(
-            {Detection.label_taxonomy_id: label_id},
+            {
+                Detection.label_taxonomy_id: label_id,
+                Detection.display_name: row.display_name,
+            },
             synchronize_session=False,
         )
     )

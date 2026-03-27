@@ -451,13 +451,20 @@ def update_database_from_smoothed_results(
                     new_label = None
                     new_confidence = None
 
-                # Compute display name for new label
+                # Look up display_name from label_taxonomy
                 new_display = None
-                if new_label and taxonomy_lookup:
-                    from app.ml.taxonomic_rollup import format_latin_display_name
+                if new_label:
+                    from app.models.label_taxonomy import LabelTaxonomy
 
-                    new_display = format_latin_display_name(
-                        new_label, taxonomy_lookup
+                    tax_row = (
+                        db.query(LabelTaxonomy.display_name)
+                        .filter(LabelTaxonomy.name == new_label)
+                        .first()
+                    )
+                    new_display = (
+                        tax_row[0]
+                        if tax_row
+                        else new_label[0].upper() + new_label[1:]
                     )
 
                 if db_det.label != new_label or db_det.label_confidence != new_confidence:

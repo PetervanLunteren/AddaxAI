@@ -12,7 +12,7 @@ Created by Claude Code on 2026-01-04
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -103,6 +103,7 @@ class PipelineResult:
     classified_detections: int
     person_detections: int = 0
     vehicle_detections: int = 0
+    exclusion_rollup_entries: list[dict] = field(default_factory=list)
 
 
 class DetectionModel(ABC):

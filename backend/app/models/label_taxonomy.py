@@ -40,6 +40,9 @@ class LabelTaxonomy(Base):
     level: Mapped[str] = mapped_column(
         String(20), nullable=False
     )
+    display_name: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
     is_custom: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )

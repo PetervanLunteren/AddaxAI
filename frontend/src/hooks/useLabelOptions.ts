@@ -29,26 +29,12 @@ const GENERAL_OPTIONS: LabelOption[] = [
   { value: "vehicle", displayName: "Vehicle", category: "vehicle", label: null },
 ];
 
-/** Build a Latin display name from taxonomy fields (mirrors backend format_display_name_from_taxonomy_row). */
-function formatLatinName(
+/** Read display_name from the backend taxonomy map, with capitalize fallback. */
+function getDisplayName(
   rawLabel: string,
-  entry: {
-    taxon_class: string | null;
-    taxon_order: string | null;
-    taxon_family: string | null;
-    taxon_genus: string | null;
-    taxon_species: string | null;
-  } | undefined,
+  entry: { display_name?: string | null } | undefined,
 ): string {
-  if (!entry) return rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
-  if (entry.taxon_species && entry.taxon_genus) {
-    return `${entry.taxon_genus.charAt(0).toUpperCase()}. ${entry.taxon_species}`;
-  }
-  if (entry.taxon_genus) return entry.taxon_genus.charAt(0).toUpperCase() + entry.taxon_genus.slice(1);
-  if (entry.taxon_family) return entry.taxon_family.charAt(0).toUpperCase() + entry.taxon_family.slice(1);
-  if (entry.taxon_order) return entry.taxon_order.charAt(0).toUpperCase() + entry.taxon_order.slice(1);
-  if (entry.taxon_class) return entry.taxon_class.charAt(0).toUpperCase() + entry.taxon_class.slice(1);
-  return rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+  return entry?.display_name || rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
 }
 
 /** Build a display string from taxonomy fields, joining non-empty ranks with " > ". */
@@ -132,7 +118,7 @@ export function useLabelOptions(
         const entry = taxonomyMap?.[cls];
         result.push({
           value: cls,
-          displayName: formatLatinName(cls, entry),
+          displayName: getDisplayName(cls, entry),
           category: "animal",
           label: cls,
           taxonomyCaption: buildTaxonomyCaption(entry),
@@ -154,14 +140,14 @@ export function useLabelOptions(
             ...result[idx],
             isCustom: true,
             customId: cl.id,
-            displayName: formatLatinName(cl.name, entry),
+            displayName: getDisplayName(cl.name, entry),
             taxonomyCaption: buildTaxonomyCaption(entry) ?? result[idx].taxonomyCaption,
           };
         } else {
           const entry = taxonomyMap?.[cl.name];
           result.push({
             value: cl.name,
-            displayName: formatLatinName(cl.name, entry),
+            displayName: getDisplayName(cl.name, entry),
             category: "animal",
             label: cl.name,
             isCustom: true,

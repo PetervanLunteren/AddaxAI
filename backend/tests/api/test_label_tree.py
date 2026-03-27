@@ -17,10 +17,23 @@ MODEL_ID = "EUR-DF-v1-3"
 
 def _add_taxonomy(db, name, level, **kw):
     """Helper to insert a LabelTaxonomy row."""
+    from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
+
+    display_name = kw.pop("display_name", None)
+    if display_name is None:
+        display_name = format_display_name_from_taxonomy_row(
+            name,
+            kw.get("taxon_genus"),
+            kw.get("taxon_species"),
+            kw.get("taxon_family"),
+            kw.get("taxon_order"),
+            kw.get("taxon_class"),
+        )
     row = LabelTaxonomy(
         classification_model_id=MODEL_ID,
         name=name,
         level=level,
+        display_name=display_name,
         **kw,
     )
     db.add(row)

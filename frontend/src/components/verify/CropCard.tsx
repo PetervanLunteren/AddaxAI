@@ -10,7 +10,7 @@ import { memo } from "react";
 import { Check } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getDetectionColor } from "../../lib/detection-utils";
-import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
+import { getSpeciesTextColor } from "../../utils/species-colors";
 import {
   BBOX_STROKE_WIDTH,
   BBOX_OPACITY,
@@ -122,8 +122,8 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
               isSuspicious && "border-transparent bg-[#882000] text-white hover:bg-[#882000]"
             )}
             style={
-              !isFalseDetection && !isSuspicious && detection.label
-                ? { backgroundColor: getSpeciesColor(detection.label), color: getSpeciesTextColor(detection.label) }
+              !isFalseDetection && !isSuspicious
+                ? { backgroundColor: getDetectionColor(detection), color: getSpeciesTextColor(detection.label || detection.category) }
                 : undefined
             }
           >

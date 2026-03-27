@@ -211,7 +211,9 @@ export function LabelPicker({
   const displayLabel = displayName ? formatLabel(displayName) : value ? formatLabel(value) : "Select label...";
   const dotColor = currentOption
     ? getLabelDotColor(currentOption)
-    : undefined;
+    : value
+      ? getSpeciesColor(value)
+      : undefined;
 
   return (
     <>

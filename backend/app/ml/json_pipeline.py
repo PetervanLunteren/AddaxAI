@@ -505,6 +505,10 @@ class JSONBasedMLPipeline:
         classified_count = 0
         skipped_non_label = 0
 
+        # Track new exclusion rollup entries for taxonomy persistence
+        seen_exclusion_entries: set[str] = set()
+        exclusion_new_entries: list[dict] = []
+
         # Group detections by file
         defaultdict(list)
 
@@ -612,14 +616,21 @@ class JSONBasedMLPipeline:
                     # Apply user exclusions with rollup (or fallback)
                     if user_excluded_ids:
                         if taxonomy_lookup and class_id_to_name:
-                            classifications = filter_and_rollup_classifications(
-                                classifications,
-                                user_excluded_ids,
-                                class_id_to_name,
-                                taxonomy_lookup,
-                                class_categories,
-                                allowed_taxonomy_keys,
+                            exclusion_result = (
+                                filter_and_rollup_classifications(
+                                    classifications,
+                                    user_excluded_ids,
+                                    class_id_to_name,
+                                    taxonomy_lookup,
+                                    class_categories,
+                                    allowed_taxonomy_keys,
+                                )
                             )
+                            classifications = exclusion_result.classifications
+                            for entry in exclusion_result.new_entries:
+                                if entry["name"] not in seen_exclusion_entries:
+                                    seen_exclusion_entries.add(entry["name"])
+                                    exclusion_new_entries.append(entry)
                         else:
                             from app.ml.label_exclusion import filter_classifications
 
@@ -666,14 +677,8 @@ class JSONBasedMLPipeline:
                     detection_record.label = label
                     detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
-                    if taxonomy_lookup:
-                        from app.ml.taxonomic_rollup import (
-                            format_latin_display_name,
-                        )
-
-                        detection_record.display_name = (
-                            format_latin_display_name(label, taxonomy_lookup)
-                        )
+                    # display_name is set by link_detections_to_taxonomy()
+                    # which runs after this function in the worker
 
             # Set observation_type based on detection categories
             # (priority: animal > human > vehicle)
@@ -703,6 +708,7 @@ class JSONBasedMLPipeline:
             person_detections=person_count,
             vehicle_detections=vehicle_count,
             classified_detections=classified_count,
+            exclusion_rollup_entries=exclusion_new_entries,
         )
 
 
@@ -783,6 +789,10 @@ def load_json_to_database(
         vehicle_count = 0
         classified_count = 0
         skipped_non_label = 0
+
+        # Track new exclusion rollup entries for taxonomy persistence
+        seen_exclusion_entries: set[str] = set()
+        exclusion_new_entries: list[dict] = []
 
         # Pre-extract video dates using exiftool (single process for all videos)
         video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
@@ -992,14 +1002,21 @@ def load_json_to_database(
                     # Apply user exclusions with rollup (or fallback)
                     if user_excluded_ids:
                         if taxonomy_lookup and class_id_to_name:
-                            classifications = filter_and_rollup_classifications(
-                                classifications,
-                                user_excluded_ids,
-                                class_id_to_name,
-                                taxonomy_lookup,
-                                class_categories,
-                                allowed_taxonomy_keys,
+                            exclusion_result = (
+                                filter_and_rollup_classifications(
+                                    classifications,
+                                    user_excluded_ids,
+                                    class_id_to_name,
+                                    taxonomy_lookup,
+                                    class_categories,
+                                    allowed_taxonomy_keys,
+                                )
                             )
+                            classifications = exclusion_result.classifications
+                            for entry in exclusion_result.new_entries:
+                                if entry["name"] not in seen_exclusion_entries:
+                                    seen_exclusion_entries.add(entry["name"])
+                                    exclusion_new_entries.append(entry)
                         else:
                             from app.ml.label_exclusion import filter_classifications
 
@@ -1050,14 +1067,8 @@ def load_json_to_database(
                     detection_record.label = label
                     detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
-                    if taxonomy_lookup:
-                        from app.ml.taxonomic_rollup import (
-                            format_latin_display_name,
-                        )
-
-                        detection_record.display_name = (
-                            format_latin_display_name(label, taxonomy_lookup)
-                        )
+                    # display_name is set by link_detections_to_taxonomy()
+                    # which runs after this function in the worker
 
             # Set observation_type on the video/image File record
             if video_categories:
@@ -1098,6 +1109,7 @@ def load_json_to_database(
             person_detections=person_count,
             vehicle_detections=vehicle_count,
             classified_detections=classified_count,
+            exclusion_rollup_entries=exclusion_new_entries,
         )
 
     except Exception as e:

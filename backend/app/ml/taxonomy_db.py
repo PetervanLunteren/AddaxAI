@@ -12,6 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
 from app.models.detection import Detection
 from app.models.label_taxonomy import LabelTaxonomy
 
@@ -80,6 +81,14 @@ def populate_taxonomy_from_csv(
             taxon_genus=taxon.get("genus"),
             taxon_species=taxon.get("species"),
             level=_determine_level(taxon),
+            display_name=format_display_name_from_taxonomy_row(
+                name,
+                taxon.get("genus"),
+                taxon.get("species"),
+                taxon.get("family"),
+                taxon.get("order"),
+                taxon.get("class"),
+            ),
             is_custom=False,
         )
         db.add(entry)
@@ -129,15 +138,26 @@ def add_rollup_taxonomy_entry(
             ancestors = entry
             break
 
+    genus_val = (
+        ancestors.get("genus") if level in ("genus", "species") else None
+    )
     taxonomy_entry = LabelTaxonomy(
         classification_model_id=model_id,
         name=name,
         taxon_class=ancestors.get("class"),
         taxon_order=ancestors.get("order"),
         taxon_family=ancestors.get("family"),
-        taxon_genus=ancestors.get("genus") if level in ("genus", "species") else None,
+        taxon_genus=genus_val,
         taxon_species=None,  # Rolled-up entries never have species
         level=level,
+        display_name=format_display_name_from_taxonomy_row(
+            name,
+            genus_val,
+            None,
+            ancestors.get("family"),
+            ancestors.get("order"),
+            ancestors.get("class"),
+        ),
         is_custom=False,
     )
     db.add(taxonomy_entry)
@@ -181,6 +201,7 @@ def ensure_builtin_labels(db: Session) -> int:
             classification_model_id=BUILTIN_MODEL_ID,
             name=label_def["name"],
             level="none",
+            display_name=label_def["name"].capitalize(),
             is_custom=False,
         )
         db.add(taxonomy_entry)
@@ -239,14 +260,18 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     label_names = [row[0] for row in unlinked_labels]
 
     if label_names:
-        # Build lookup: label name -> taxonomy ID
+        # Build lookup: label name -> (taxonomy_id, display_name)
         # Priority: model-level > custom > builtin
-        name_to_taxonomy_id: dict[str, str] = {}
+        name_to_taxonomy: dict[str, tuple[str, str | None]] = {}
 
         # 1. Model-level taxonomy (if model exists)
         if model_id:
             model_rows = (
-                db.query(LabelTaxonomy.id, LabelTaxonomy.name)
+                db.query(
+                    LabelTaxonomy.id,
+                    LabelTaxonomy.name,
+                    LabelTaxonomy.display_name,
+                )
                 .filter(
                     LabelTaxonomy.classification_model_id == model_id,
                     LabelTaxonomy.project_id.is_(None),
@@ -254,12 +279,16 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 )
                 .all()
             )
-            for tid, name in model_rows:
-                name_to_taxonomy_id[name] = tid
+            for tid, name, dname in model_rows:
+                name_to_taxonomy[name] = (tid, dname)
 
         # 2. Custom labels for this project
         custom_rows = (
-            db.query(LabelTaxonomy.id, LabelTaxonomy.name)
+            db.query(
+                LabelTaxonomy.id,
+                LabelTaxonomy.name,
+                LabelTaxonomy.display_name,
+            )
             .filter(
                 LabelTaxonomy.project_id == project_id,
                 LabelTaxonomy.is_custom == True,  # noqa: E712
@@ -267,13 +296,17 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             )
             .all()
         )
-        for tid, name in custom_rows:
-            if name not in name_to_taxonomy_id:
-                name_to_taxonomy_id[name] = tid
+        for tid, name, dname in custom_rows:
+            if name not in name_to_taxonomy:
+                name_to_taxonomy[name] = (tid, dname)
 
         # 3. Builtin labels (animal, person, vehicle)
         builtin_rows = (
-            db.query(LabelTaxonomy.id, LabelTaxonomy.name)
+            db.query(
+                LabelTaxonomy.id,
+                LabelTaxonomy.name,
+                LabelTaxonomy.display_name,
+            )
             .filter(
                 LabelTaxonomy.classification_model_id
                 == BUILTIN_MODEL_ID,
@@ -281,12 +314,12 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             )
             .all()
         )
-        for tid, name in builtin_rows:
-            if name not in name_to_taxonomy_id:
-                name_to_taxonomy_id[name] = tid
+        for tid, name, dname in builtin_rows:
+            if name not in name_to_taxonomy:
+                name_to_taxonomy[name] = (tid, dname)
 
-        # Bulk-update: one UPDATE per label
-        for label_name, taxonomy_id in name_to_taxonomy_id.items():
+        # Bulk-update: one UPDATE per label (set FK + display_name)
+        for label_name, (taxonomy_id, dname) in name_to_taxonomy.items():
             count = (
                 db.query(Detection)
                 .filter(
@@ -297,7 +330,10 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                     Detection.label_taxonomy_id.is_(None),
                 )
                 .update(
-                    {Detection.label_taxonomy_id: taxonomy_id},
+                    {
+                        Detection.label_taxonomy_id: taxonomy_id,
+                        Detection.display_name: dname,
+                    },
                     synchronize_session=False,
                 )
             )
@@ -318,7 +354,11 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
 
     if category_names:
         builtin_cat_rows = (
-            db.query(LabelTaxonomy.id, LabelTaxonomy.name)
+            db.query(
+                LabelTaxonomy.id,
+                LabelTaxonomy.name,
+                LabelTaxonomy.display_name,
+            )
             .filter(
                 LabelTaxonomy.classification_model_id
                 == BUILTIN_MODEL_ID,
@@ -326,7 +366,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             )
             .all()
         )
-        for tid, cat_name in builtin_cat_rows:
+        for tid, cat_name, dname in builtin_cat_rows:
             count = (
                 db.query(Detection)
                 .filter(
@@ -338,7 +378,10 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                     Detection.label_taxonomy_id.is_(None),
                 )
                 .update(
-                    {Detection.label_taxonomy_id: tid},
+                    {
+                        Detection.label_taxonomy_id: tid,
+                        Detection.display_name: dname,
+                    },
                     synchronize_session=False,
                 )
             )
