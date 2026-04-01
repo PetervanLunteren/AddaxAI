@@ -5,6 +5,10 @@ If the species label panel on the right side of the verification window has disa
 
 ## The fix
 
+<details>
+<summary><b>Windows</b></summary>
+<br>
+
 1. Make sure you can see hidden files in File Explorer.
    - **Windows 11**: Open File Explorer > click **View** in the toolbar > **Show** > check **Hidden items**.
    - **Windows 10**: Open File Explorer > click the **View** tab > check the **Hidden items** checkbox.
@@ -16,3 +20,22 @@ If the species label panel on the right side of the verification window has disa
 4. Close AddaxAI completely and reopen it.
 
 5. Start the verification again. The species label window should be restored.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+<br>
+
+1. Open Terminal.
+
+2. Run the following command to delete the settings file:
+   ```
+   rm ~/.labelImgSettings.pkl
+   ```
+
+3. Close AddaxAI completely and reopen it.
+
+4. Start the verification again. The species label window should be restored.
+
+</details>
