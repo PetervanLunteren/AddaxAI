@@ -32,27 +32,21 @@ def load_json_to_database(
     deployment_folder: Path,
     job_id: str,
     db: Session,
-    excluded_classes: list[str] | None = None,
     artifacts_folder: Path | None = None,
-    taxonomy_csv_path: Path | None = None,
-    allowed_taxonomy_keys: frozenset[str] | None = None,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
 
-    Standalone function for use by detection_worker.py when processing
-    video+image deployments separately. Handles frame_number field for
-    video detections.
+    Stores raw classifier labels without exclusion or rollup. Phase 7
+    (postprocessing) is responsible for applying label exclusion,
+    taxonomic rollup, and smoothing as a single unified code path.
 
     Args:
-        json_path: Path to JSON file (merged addaxai-run.json)
+        json_path: Path to JSON file (merged results.json)
         deployment_id: Deployment ID
         deployment_folder: Deployment folder (base for relative paths)
         job_id: Job ID
         db: Database session
-        excluded_classes: Optional list of label names to exclude from
-            classification results. Excluded labels are zeroed out and
-            remaining confidences renormalized before writing to DB.
         artifacts_folder: Project-scoped artifacts folder. If provided,
             video_frames are read from artifacts_folder/video_frames/.
 
@@ -73,28 +67,15 @@ def load_json_to_database(
 
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
-        # Build separate ID sets for user exclusion vs non-label skip
+        # Build non-label ID set for skip logic (currently disabled,
+        # re-enable after SpeciesNet comparison is complete)
         from app.ml.label_exclusion import (
             build_non_label_class_ids,
-            build_user_excluded_class_ids,
-            filter_and_rollup_classifications,
-            should_skip_detection,  # noqa: F401 (re-enable with non-label skip)
+            should_skip_detection,  # noqa: F401
         )
 
         class_categories = results.get("classification_categories", {})
-        user_excluded_ids = build_user_excluded_class_ids(
-            class_categories, excluded_classes
-        )
         non_label_ids = build_non_label_class_ids(class_categories)  # noqa: F841
-
-        # Load taxonomy for exclusion rollup
-        taxonomy_lookup = None
-        class_id_to_name = None
-        if taxonomy_csv_path and taxonomy_csv_path.exists() and user_excluded_ids:
-            from app.ml.taxonomic_rollup import load_taxonomy_lookup
-
-            taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv_path)
-            class_id_to_name = {str(k): v for k, v in class_categories.items()}
 
         # Track statistics
         total_detections = 0
@@ -103,10 +84,6 @@ def load_json_to_database(
         vehicle_count = 0
         classified_count = 0
         skipped_non_label = 0
-
-        # Track new exclusion rollup entries for taxonomy persistence
-        seen_exclusion_entries: set[str] = set()
-        exclusion_new_entries: list[dict] = []
 
         # Pre-extract video dates using exiftool (single process for all videos)
         video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
@@ -286,9 +263,7 @@ def load_json_to_database(
                 # TEMPORARY: disabled non-label skip for SpeciesNet comparison.
                 # Re-enable after comparison is complete.
                 # if category == "animal" and should_skip_detection(
-                #     det, user_excluded_ids, non_label_ids,
-                #     class_id_to_name, taxonomy_lookup,
-                #     class_categories, allowed_taxonomy_keys,
+                #     det, non_label_ids,
                 # ):
                 #     skipped_non_label += 1
                 #     continue
@@ -312,44 +287,12 @@ def load_json_to_database(
                 label_confidence = None
 
                 if "classifications" in det and det["classifications"]:
-                    classifications = det["classifications"]
-
-                    # Apply user exclusions with rollup (or fallback)
-                    if user_excluded_ids:
-                        if taxonomy_lookup and class_id_to_name:
-                            exclusion_result = (
-                                filter_and_rollup_classifications(
-                                    classifications,
-                                    user_excluded_ids,
-                                    class_id_to_name,
-                                    taxonomy_lookup,
-                                    class_categories,
-                                    allowed_taxonomy_keys,
-                                    classification_category_descriptions=results.get(
-                                        "classification_category_descriptions"
-                                    ),
-                                )
-                            )
-                            classifications = exclusion_result.classifications
-                            for entry in exclusion_result.new_entries:
-                                if entry["name"] not in seen_exclusion_entries:
-                                    seen_exclusion_entries.add(entry["name"])
-                                    exclusion_new_entries.append(entry)
-                        else:
-                            from app.ml.label_exclusion import filter_classifications
-
-                            classifications = filter_classifications(
-                                classifications, user_excluded_ids
-                            )
-
-                    if classifications:
-                        # Get top classification
-                        top_class_id, top_conf = classifications[0]
-
-                        # Get classification_categories mapping
-                        class_names = results.get("classification_categories", {})
-                        label = class_names.get(str(top_class_id))
-                        label_confidence = float(top_conf)
+                    # Store raw top-1 classification. Exclusion and rollup
+                    # are applied in Phase 7 (postprocessing).
+                    top_class_id, top_conf = det["classifications"][0]
+                    class_names = results.get("classification_categories", {})
+                    label = class_names.get(str(top_class_id))
+                    label_confidence = float(top_conf)
 
                     if label:
                         classified_count += 1
@@ -427,7 +370,6 @@ def load_json_to_database(
             person_detections=person_count,
             vehicle_detections=vehicle_count,
             classified_detections=classified_count,
-            exclusion_rollup_entries=exclusion_new_entries,
         )
 
     except Exception as e:

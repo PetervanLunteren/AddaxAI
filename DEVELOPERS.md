@@ -287,3 +287,6 @@ All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag ex
 | `backend/tests/ml/test_taxonomy_db.py` | Tests for all population functions |
 | `backend/tests/api/test_label_tree.py` | Tests for tree building + API endpoint |
 
+### Rules
+
+**Never overwrite verified detections.** When a user manually verifies or relabels a detection (`Detection.verified == True`), that human judgment takes priority over any machine output. Postprocessing, reprocessing, taxonomic rollup, smoothing, and any other automatic pipeline must skip verified detections. If you are writing code that updates `Detection.label`, `Detection.label_confidence`, or `Detection.category`, always check `verified` first and leave verified records untouched.

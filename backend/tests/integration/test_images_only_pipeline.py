@@ -102,8 +102,8 @@ def test_load_creates_detection_records(deployment_scaffold):
     assert det.classification_method == "machine"
 
 
-def test_load_with_label_exclusion(deployment_scaffold):
-    """Excluded labels removed; remaining confidences keep raw values."""
+def test_load_stores_raw_labels(deployment_scaffold):
+    """Phase 6 stores raw top-1 without exclusion (exclusion is Phase 7)."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -132,14 +132,13 @@ def test_load_with_label_exclusion(deployment_scaffold):
             deployment_folder=deploy_dir,
             job_id=s["job"].id,
             db=db,
-            excluded_classes=["lion"],
             artifacts_folder=s["artifacts"],
         )
 
     det = db.query(Detection).one()
-    # lion excluded -> top label should be zebra with raw confidence
-    assert det.label == "zebra"
-    assert abs(det.label_confidence - 0.3) < 0.01
+    # Raw top-1 is lion (exclusion happens in Phase 7, not here)
+    assert det.label == "lion"
+    assert abs(det.label_confidence - 0.6) < 0.01
 
 
 def test_observation_type_priority(deployment_scaffold):

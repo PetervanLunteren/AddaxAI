@@ -10,7 +10,7 @@ Following DEVELOPERS.md principles:
 Created by Claude Code on 2026-01-04
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -50,7 +50,6 @@ class PipelineResult:
     classified_detections: int
     person_detections: int = 0
     vehicle_detections: int = 0
-    exclusion_rollup_entries: list[dict] = field(default_factory=list)
 
 
 class DetectionModel:

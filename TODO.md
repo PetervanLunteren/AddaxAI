@@ -2,15 +2,10 @@
 - [ ] RE-ENABLE NON-LABEL SKIP - The `should_skip_detection()` calls in `backend/app/ml/json_pipeline.py` (lines ~587 and ~976) are temporarily commented out for SpeciesNet comparison testing. Uncomment both blocks after comparison is complete. Search for "TEMPORARY: disabled non-label skip" to find them.
 
 ## Priority 1
-- [ ] Since we now do the exlusion of animals not by renormalizing the the predicitons based on excluded spces like we used to do (lion 70%, bobcat 20%, deer 10% -> lion excluded -> bobcat 667% deer 33%, lion 0%), but by walking up the taxonomy ladder until we find a common anchestor that is included. We now do not need all predictions in the JSON file for all detections anymore. We could do with keeping only the top-1. Agree? If so, would it make sense to trim the JSONs at the end of the analysis step to leave only top-1 (or perhaps top-5?) and then also remove all the labels in the category dicts that are never called? That saves a LOT of disk space for things we would never use. Agree? Does that make sense?
+- [ ] since we only need the top-5 predictions in the JSON for reprocessing, we can regenerate the DB after a species slecetion change, right? Is that already implemented? If not, how would it look like? Remeber that verified predictions should NEVER be overwritten by automatic reprocessing methods or other rewrites. 
 
-
-- [ ] since we only need the top-1 predictions, we can regenerate the DB after a species slecetion change, right? 
-
-- [ ] we should have the exact saem JSON format as SPECIESNET
-
-# REDUCE JSON SIZE
-Can we redice the JSON size so that it does not store all prediction confidences of all detections? And also not all category mappings at the end? Basically, just copy what SpeciesNet outputs. The JSON needs to be EXACTLY the same. every byte should be the same. 
+# TEST 1. Unify exclusion/rollup code paths: First-time DB load uses filter_and_rollup_classifications() (one step), reprocessing uses apply_label_exclusion_to_results() + apply_taxonomic_rollup_to_results() (two steps). User wants these unified.
+## It should be exactly the same when running analysis and when doing reprocessing. So test analysis with reprocess change and back to normal, then compare again.
 
 # ROLLDOWN 
 exlusion rollup currently works like this (corect me if i'm wrong!):
@@ -24,13 +19,10 @@ What if we also allow rolldown if there is only one child taxon present? The abo
 
 ## Priority 2
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 
-
 - [ ] would it make sense to upgrade the app to use DINOv3 instead of DINOv2?
 
-
 ## Priority 3
-- [ ] REMOVE LEGACY ML PIPELINE CODE - Several legacy abstractions have been superseded by the direct phase handling in `_process_batch_job()` in `backend/app/workers/detection_worker.py`. The batch path (which the UI always uses) calls standalone functions directly, while these legacy classes duplicate the same work. Removal involves three pieces: (1) `JSONBasedMLPipeline` class in `backend/app/ml/json_pipeline.py` (lines ~42-710): has its own `_load_to_database()`, `_run_detection()`, `_run_classification()`, and `process_deployment()`. Only reachable through the non-batch branch in `process_deployment_analysis()` (detection_worker.py ~line 766), which the frontend never triggers. Delete the class, the non-batch branch, and its import. (2) `MLPipeline` class in `backend/app/ml/pipeline.py`: completely dead code, never imported or called by anything. It uses the `detect()` method on MegaDetector which is also only called from this dead class. Delete the entire file. (3) The `detect()` method in `backend/app/ml/inference/megadetector.py` (lines ~95-210): only called by the dead `MLPipeline` class. The active code path uses `detect_to_json()` instead. Delete the method. Together this is roughly 500 lines of duplicated or dead code.
-
+- [ ] 
 
 ## Features
 - [ ] TIME OFFSET - add a feature that allows datetime offset. This should happen at the "new deployment" options. Perhaps something that says "your data spans X days/weeks, etc. " Click here to see the burned in pixel dates (show a few images / frames) and show the extracted datetime next to it. Then users can add an offset to all data in the deployment. Add fast options to switch from AM to PM etc. +12:00 and -12:00. 

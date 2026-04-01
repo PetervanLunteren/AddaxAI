@@ -505,35 +505,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 from app.ml.json_pipeline import load_json_to_database
 
-                # Resolve taxonomy CSV and geofence keys for exclusion rollup
-                taxonomy_csv = None
-                geo_keys = None
-                if classification_model_id and cls_model_dir:
-                    _tax = cls_model_dir / "taxonomy.csv"
-                    if _tax.exists():
-                        taxonomy_csv = _tax
-                    if project.country_code:
-                        try:
-                            from app.ml.geofence import get_allowed_taxonomy_keys
-
-                            geo_keys = get_allowed_taxonomy_keys(
-                                cls_model_dir,
-                                project.country_code,
-                                project.state_code,
-                            )
-                        except FileNotFoundError:
-                            pass
-
                 result = load_json_to_database(
                     json_path=final_json_path,
                     deployment_id=deployment.id,
                     deployment_folder=folder_path,
                     job_id=job_id,
                     db=db,
-                    excluded_classes=project.excluded_classes,
                     artifacts_folder=artifacts_folder,
-                    taxonomy_csv_path=taxonomy_csv,
-                    allowed_taxonomy_keys=geo_keys,
                 )
 
                 total_detections += result.total_detections
@@ -552,35 +530,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     except Exception as e:
                         logger.warning(f"Failed to populate taxonomy DB: {e}")
 
-                # Persist exclusion rollup entries to label_taxonomy
-                if (
-                    result.exclusion_rollup_entries
-                    and classification_model_id
-                ):
-                    try:
-                        from app.ml.taxonomic_rollup import (
-                            load_taxonomy_lookup,
-                        )
-                        from app.ml.taxonomy_db import (
-                            add_rollup_taxonomy_entry,
-                        )
-
-                        taxonomy_csv = cls_model_dir / "taxonomy.csv"
-                        if taxonomy_csv.exists():
-                            tax_lookup = load_taxonomy_lookup(taxonomy_csv)
-                            for entry in result.exclusion_rollup_entries:
-                                add_rollup_taxonomy_entry(
-                                    classification_model_id,
-                                    entry["name"],
-                                    entry["level"],
-                                    tax_lookup,
-                                    db,
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to persist exclusion rollup: {e}"
-                        )
-
                 # Link detections to taxonomy rows via FK
                 try:
                     from app.ml.taxonomy_db import link_detections_to_taxonomy
@@ -590,12 +539,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     logger.warning(f"Failed to link detections to taxonomy: {e}")
 
             # ============================================================
-            # PHASE 7: Postprocessing (rollup + smoothing)
-            # Rollup failure is fatal (data integrity). Smoothing failure
-            # is handled inside run_postprocessing_for_deployment() which
-            # returns rollup-only results when smoothing crashes.
+            # PHASE 7: Postprocessing (exclusion + rollup + smoothing)
+            # This is the single code path for all label processing.
+            # Phase 6 stores raw classifier labels; Phase 7 applies
+            # exclusion, rollup, and smoothing based on project settings.
             # ============================================================
-            if final_json_path.exists() and (project.event_smoothing or project.taxonomic_rollup):
+            if final_json_path.exists():
                 logger.info("Phase 7: Running postprocessing")
                 from app.ml.postprocessing import (
                     run_postprocessing_for_deployment,
@@ -606,6 +555,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     deployment.id, final_json_path, folder_path, project, db
                 )
                 # Load taxonomy for display_name formatting
+                taxonomy_csv = None
+                if classification_model_id and cls_model_dir:
+                    _tax = cls_model_dir / "taxonomy.csv"
+                    if _tax.exists():
+                        taxonomy_csv = _tax
                 pp_tax = None
                 if taxonomy_csv and taxonomy_csv.exists():
                     from app.ml.taxonomic_rollup import load_taxonomy_lookup
