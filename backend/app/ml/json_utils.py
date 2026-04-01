@@ -12,7 +12,6 @@ Created by Claude Code on 2026-01-05
 import csv
 import uuid
 from pathlib import Path
-from typing import Any
 
 
 def extract_animal_detections(md_results: dict) -> list[tuple[int, int, dict]]:
@@ -34,33 +33,6 @@ def extract_animal_detections(md_results: dict) -> list[tuple[int, int, dict]]:
                 animals.append((img_idx, det_idx, det))
 
     return animals
-
-
-def build_addaxai_metadata(
-    deployment_id: str,
-    det_model_id: str,
-    cls_model_id: str | None,
-    md_results: dict,
-) -> dict[str, Any]:
-    """
-    Build addaxai_metadata section for extended JSON.
-
-    Args:
-        deployment_id: Deployment UUID
-        det_model_id: Detection model ID
-        cls_model_id: Classification model ID (or None)
-        md_results: MegaDetector results dict
-
-    Returns:
-        Metadata dict for addaxai_metadata section
-    """
-    return {
-        "deployment_id": deployment_id,
-        "selected_det_modelID": det_model_id,
-        "selected_cls_modelID": cls_model_id,
-        "n_images": len(md_results.get("images", [])),
-        "n_videos": 0,
-    }
 
 
 def create_artifacts_folder(deployment_folder: Path) -> Path:
@@ -215,7 +187,10 @@ def trim_classification_results(
             cls_list = det.get("classifications")
             if not cls_list:
                 continue
-            det["classifications"] = cls_list[:max_classifications]
+            det["classifications"] = [
+                [class_id, round(conf, 5)]
+                for class_id, conf in cls_list[:max_classifications]
+            ]
             for class_id, _conf in det["classifications"]:
                 referenced_ids.add(str(class_id))
 

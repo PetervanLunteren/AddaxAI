@@ -471,7 +471,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info(f"Phase 5: Merging {len(json_files_to_merge)} JSON files")
                 await deployment_progress_callback("Merging results...", 0.0, "saving", 0.5)
 
-                merge_json_files(json_files_to_merge, final_json_path, deployment.id)
+                merge_json_files(
+                    json_files_to_merge,
+                    final_json_path,
+                    deployment.id,
+                    detection_model_id=detection_model_id,
+                    classification_model_id=classification_model_id,
+                )
 
             # Trim classifications to top-5 and prune unused categories
             if final_json_path.exists() and classification_model:
@@ -1060,7 +1066,13 @@ async def run_classification_on_json(
     await loop.run_in_executor(None, _run_batch_classification)
 
 
-def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: str) -> None:
+def merge_json_files(
+    json_files: list[Path],
+    output_file: Path,
+    deployment_id: str,
+    detection_model_id: str | None = None,
+    classification_model_id: str | None = None,
+) -> None:
     """
     Merge multiple JSON files (video and image results) into single file.
 
@@ -1075,6 +1087,8 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
         json_files: List of JSON file paths to merge
         output_file: Output merged JSON file path
         deployment_id: Deployment ID for metadata
+        detection_model_id: Detection model ID (for info section)
+        classification_model_id: Classification model ID (for info section)
 
     Raises:
         RuntimeError: If merge fails
@@ -1174,11 +1188,21 @@ def merge_json_files(json_files: list[Path], output_file: Path, deployment_id: s
             f"across {len(json_files)} JSON files"
         )
 
-        # Add metadata
-        merged_data["addaxai_metadata"] = {
+        # Add AddaxAI metadata nested under info.addaxai
+        addaxai_info: dict = {
+            "version": "todo-not-implemented-yet",
             "deployment_id": deployment_id,
-            "processed_at": datetime.utcnow().isoformat(),
+            "classification_completion_time": (
+                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            ),
         }
+        if detection_model_id:
+            addaxai_info["detection_model"] = detection_model_id
+        if classification_model_id:
+            addaxai_info["classification_model"] = (
+                classification_model_id
+            )
+        merged_data["info"]["addaxai"] = addaxai_info
 
         # Write merged JSON
         with open(output_file, "w") as f:

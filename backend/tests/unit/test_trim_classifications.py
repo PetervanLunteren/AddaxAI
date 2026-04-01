@@ -38,6 +38,10 @@ def test_trim_basic():
     assert len(det["classifications"]) == 5
     assert det["classifications"][0] == ["0", 0.9]
     assert det["classifications"][4] == ["4", 0.5]
+
+    # Confidences are rounded to 5 decimals
+    for _class_id, conf in det["classifications"]:
+        assert conf == round(conf, 5)
     assert removed == 5
     assert len(results["classification_categories"]) == 5
     assert len(results["classification_category_descriptions"]) == 5
@@ -176,3 +180,15 @@ def test_trim_multiple_detections_share_categories():
 
     # cls_a keeps 0-4, cls_b keeps 9-5
     assert len(results["classification_categories"]) == 10
+
+
+def test_trim_rounds_confidences():
+    cats = {"1": "lion", "2": "zebra"}
+    cls = [["1", 0.974035382270813], ["2", 0.003682751208543]]
+
+    results = _make_results([cls], categories=cats)
+    trim_classification_results(results)
+
+    det = results["images"][0]["detections"][0]
+    assert det["classifications"][0] == ["1", 0.97404]
+    assert det["classifications"][1] == ["2", 0.00368]
