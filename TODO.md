@@ -1,12 +1,26 @@
+## TEMPORARY
+- [ ] RE-ENABLE NON-LABEL SKIP - The `should_skip_detection()` calls in `backend/app/ml/json_pipeline.py` (lines ~587 and ~976) are temporarily commented out for SpeciesNet comparison testing. Uncomment both blocks after comparison is complete. Search for "TEMPORARY: disabled non-label skip" to find them.
+
 ## Priority 1
-- [ ] TEST replace-representatives-with-maxn-frames -> Now that we have implemented the MaxN mechanism, should we rethink our "representative" frame selection in the events verification? If we have two species detected in a single event, we have two MaxNs (one for each species). It would make sense to verify both of them, as that influences the counts. The rest do not influence the counts since they are not MaxN anyway. Agree? Maybe we can rename the representative frame to "MaxN", which is understandable by the users as it is a well known concept in ecology. What do you think? So the seleciton is not based on the confidence, size, sharpness as it is done now, but only on the maxNs of the labels above the project.detection.confidence. That means an event can have several "MaxN" frames. How would this affect the current project? What needs to be done? What am I forgetting? Are there any complications? What do you think? Do a full audit. 
+- [ ] Since we now do the exlusion of animals not by renormalizing the the predicitons based on excluded spces like we used to do (lion 70%, bobcat 20%, deer 10% -> lion excluded -> bobcat 667% deer 33%, lion 0%), but by walking up the taxonomy ladder until we find a common anchestor that is included. We now do not need all predictions in the JSON file for all detections anymore. We could do with keeping only the top-1. Agree? If so, would it make sense to trim the JSONs at the end of the analysis step to leave only top-1 (or perhaps top-5?) and then also remove all the labels in the category dicts that are never called? That saves a LOT of disk space for things we would never use. Agree? Does that make sense?
 
 
-- [ ] (SEE DANS EMAIL) bug: when doing an analysis, the 'image classification' pbar goes from 0 to 100 without showing any stats like the other pbars. Then the 'finalizing...' part takes long. I get the sense that eveything happens in the 'finalizing...' phase. Could that be true? Investigate. 
+- [ ] since we only need the top-1 predictions, we can regenerate the DB after a species slecetion change, right? 
 
-- [ ] INVESTIGATE REFACTOR TO RUN SPECIESNET AS A NORMAL CLASSIFACTION MODEL - at the moment SpeciesNet uses its own inference code, whilest the other classification models all share their inference code. That seems like extra complexity. What if we just run SpeciesNet as a 'normal' clasisfication model like all the others? That save a lot of conplexity and if/else statements. Do a full audit on how this would affect the current code base, what needs to be changed and what features would not work then. What are the things that are hard, what pros and cons, etc. I want a full report and everything thought of. I know the current way of running SpeciesNet is by using its internal country + state geofencing, but can we mimick that ourselves by just reading the SpeciesNet sepecific country data and then allowing users to select / deselect labels just like any other classifciation model does? I know this is a great refactor, but I believe it should be thoroughly investigated, since it will make our lives a lot easier in the end. 
+- [ ] we should have the exact saem JSON format as SPECIESNET
 
-- [ ] Since we now do the exlusion of animals not by renormalizing the the predicitons based on excluded spces like we used to do (lion 70%, bobcat 20%, deer 10% -> lion excluded -> bobcat 667% deer 33%, lion 0%), but by walking up the taxonomy ladder until we find a common anchestor that is included. We now do not need all predictions in the JSON file for all detections anymore. We could do with keeping only the top-1. Agree? If so, would it make sense to trim the JSONs at the end of the analysis step to leave only top-1 (or perhaps top-3?) and then also remove all the labels in the category dicts that we never call? That saves a LOT of disk space for things we would never use. Agree? Does that make sense? And also, since we only need the top-1 predictions, we can regenerate the DB after a species slecetion change, right? 
+# REDUCE JSON SIZE
+Can we redice the JSON size so that it does not store all prediction confidences of all detections? And also not all category mappings at the end? Basically, just copy what SpeciesNet outputs. The JSON needs to be EXACTLY the same. every byte should be the same. 
+
+# ROLLDOWN 
+exlusion rollup currently works like this (corect me if i'm wrong!):
+raw: wolf 60%, dog 20%, bear 10%, cat 10%.
+exluded wolf, included dog, cat, bear: dog 20%, bear 10%, cat 10%, wolf 0%. 
+Detection was wolf top-1, which is excluded, so it check the parent taxon to see if that is included. Canidea is included (via dog), so the deteciton gets the prediction (canidae 80%), am I correct? 
+What if we also allow rolldown if there is only one child taxon present? The above example would then go to canidae 80% and see that there is only one canidae possible, so it must be that one, so it rollsdown to dog 80%. What do you think? If the raw prediction was wolf 60%, dog 20%, fox 10%, cat 10%, the rolldown wouldn't have worked since then there are two childs of the canidae, and hence the prediciton would remain canidae 80%. Agree? What do yout think of this appraoch? And what would it take to implement it? 
+
+
+
 
 ## Priority 2
 - [ ] dashboard verification vard, explenation text "Event representatives are one file per event, used for quick review." explain a bit more how that representative is chosen. See event verification guide for more info. 

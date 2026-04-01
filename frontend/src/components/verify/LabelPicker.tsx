@@ -57,6 +57,26 @@ function TaxonomyCaption({
   );
 }
 
+const RECENT_LABELS_MAX = 3;
+
+function getRecentLabelKeys(projectId?: string): string[] {
+  if (!projectId) return [];
+  try {
+    const raw = localStorage.getItem(`addaxai-recent-labels-${projectId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentLabel(value: string, projectId?: string): void {
+  if (!projectId) return;
+  const key = `addaxai-recent-labels-${projectId}`;
+  const current = getRecentLabelKeys(projectId).filter((v) => v !== value);
+  current.unshift(value);
+  localStorage.setItem(key, JSON.stringify(current.slice(0, RECENT_LABELS_MAX)));
+}
+
 interface PinnedOption {
   key: number;
   option: LabelOption;
@@ -124,13 +144,20 @@ export function LabelPicker({
     onOpenChange?.(next);
   };
 
+  // Recent labels (persisted per project in localStorage)
+  const [recentKeys, setRecentKeys] = useState<string[]>(() =>
+    getRecentLabelKeys(projectId)
+  );
+
   const handleSelect = useCallback(
     (option: LabelOption) => {
+      pushRecentLabel(option.value, projectId);
+      setRecentKeys(getRecentLabelKeys(projectId));
       onSelect(option);
       handleOpenChange(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onSelect]
+    [onSelect, projectId]
   );
 
   // Manual filtering
@@ -148,6 +175,19 @@ export function LabelPicker({
   const generalOptions = options.filter((o) => o.label === null);
   const modelLabels = options.filter((o) => o.label !== null && !o.isCustom);
   const customLabelOpts = options.filter((o) => o.label !== null && o.isCustom);
+
+  // Build recent options from localStorage keys, excluding pinned labels
+  const pinnedValues = useMemo(
+    () => new Set(pinnedOptions?.map(({ option }) => option.value) ?? []),
+    [pinnedOptions]
+  );
+  const recentOptions = useMemo(() => {
+    const optMap = new Map(options.map((o) => [o.value, o]));
+    return recentKeys
+      .filter((k) => optMap.has(k) && !pinnedValues.has(k))
+      .map((k) => optMap.get(k)!);
+  }, [recentKeys, options, pinnedValues]);
+  const filteredRecent = recentOptions.filter(matchesSearch);
 
   const filteredGeneral = generalOptions.filter(matchesSearch);
   const allFilteredModelLabels = modelLabels.filter(matchesSearch);
@@ -260,6 +300,37 @@ export function LabelPicker({
                       <code className="bg-zinc-100 text-zinc-500 px-1 rounded text-[10px] mr-1.5">
                         {key}
                       </code>
+                      <div
+                        className="w-2 h-2 rounded-full shrink-0 mr-1.5"
+                        style={{
+                          backgroundColor: getLabelDotColor(opt),
+                        }}
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <span>{opt.displayName}</span>
+                        <TaxonomyCaption commonName={opt.label} caption={opt.taxonomyCaption} />
+                      </div>
+                      <Check
+                        className={cn(
+                          "ml-auto h-3 w-3 shrink-0",
+                          value === opt.value ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+
+              {/* Recent labels */}
+              {filteredRecent.length > 0 && (
+                <CommandGroup heading="Recent">
+                  {filteredRecent.map((opt) => (
+                    <CommandItem
+                      key={`recent-${opt.value}`}
+                      value={`recent-${opt.value} ${opt.displayName}`}
+                      onSelect={() => handleSelect(opt)}
+                      className="odd:bg-muted/40"
+                    >
                       <div
                         className="w-2 h-2 rounded-full shrink-0 mr-1.5"
                         style={{
@@ -409,6 +480,7 @@ export function LabelPicker({
 
               {/* Empty state */}
               {!showAddNew &&
+                filteredRecent.length === 0 &&
                 filteredGeneral.length === 0 &&
                 filteredModelLabels.length === 0 &&
                 filteredCustomLabels.length === 0 &&

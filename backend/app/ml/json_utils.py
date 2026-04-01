@@ -180,6 +180,60 @@ def build_classification_category_descriptions(
     return descriptions
 
 
+def trim_classification_results(
+    md_results: dict,
+    *,
+    max_classifications: int = 5,
+) -> int:
+    """
+    Trim classification results to top-N per detection in-place.
+
+    Truncates each detection's classifications list to the top
+    max_classifications entries (already sorted descending by confidence).
+    Prunes classification_categories and classification_category_descriptions
+    to only include class IDs still referenced by at least one detection.
+
+    Args:
+        md_results: MegaDetector/AddaxAI JSON results dict (modified in-place)
+        max_classifications: Maximum classification entries to keep per
+            detection. Defaults to 5 (matches SpeciesNet API and the
+            rollup algorithm in taxonomic_rollup.py).
+
+    Returns:
+        Number of class IDs removed from classification_categories.
+    """
+    categories = md_results.get("classification_categories")
+    if not categories:
+        return 0
+
+    original_count = len(categories)
+
+    # Trim each detection and collect referenced class IDs
+    referenced_ids: set[str] = set()
+    for img in md_results.get("images", []):
+        for det in img.get("detections", []):
+            cls_list = det.get("classifications")
+            if not cls_list:
+                continue
+            det["classifications"] = cls_list[:max_classifications]
+            for class_id, _conf in det["classifications"]:
+                referenced_ids.add(str(class_id))
+
+    # Prune classification_categories
+    for key in list(categories):
+        if key not in referenced_ids:
+            del categories[key]
+
+    # Prune classification_category_descriptions
+    descriptions = md_results.get("classification_category_descriptions")
+    if descriptions:
+        for key in list(descriptions):
+            if key not in referenced_ids:
+                del descriptions[key]
+
+    return original_count - len(categories)
+
+
 def get_relative_path(absolute_path: Path, base_folder: Path) -> str:
     """
     Get relative path from base folder to absolute path.

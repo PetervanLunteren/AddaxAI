@@ -304,3 +304,128 @@ def test_non_label_classes_constant():
     assert "empty" in NON_LABEL_CLASSES
     assert "false detection" in NON_LABEL_CLASSES
     assert "none" in NON_LABEL_CLASSES
+
+
+# --- Path A: geofence rollup (top-1 excluded) ---
+
+def test_geofence_rollup_excluded_top1(taxonomy_lookup, class_id_to_name):
+    """Path A: top-1 excluded at 0.90, rolls up to allowed family."""
+    classifications = [[0, 0.90], [1, 0.05], [2, 0.03], [3, 0.02]]
+    excluded = frozenset({"leopard"})
+    allowed = frozenset({
+        "mammalia;carnivora;felidae;;",
+        "mammalia;carnivora;;;",
+        "mammalia;;;;",
+    })
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        allowed_taxonomy_keys=allowed,
+    )
+    assert result is not None
+    assert result["level"] == "family"
+    assert result["label"] == "felidae"
+    assert result["confidence"] >= 0.90
+
+
+def test_geofence_rollup_skips_genus(taxonomy_lookup, class_id_to_name):
+    """Path A starts at family, skipping species and genus."""
+    classifications = [[0, 0.90], [1, 0.05], [2, 0.03], [3, 0.02]]
+    excluded = frozenset({"leopard"})
+    # genus panthera IS allowed, but Path A should skip genus
+    allowed = frozenset({
+        "mammalia;carnivora;felidae;panthera;",
+        "mammalia;carnivora;felidae;;",
+    })
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        allowed_taxonomy_keys=allowed,
+    )
+    assert result is not None
+    assert result["level"] == "family"
+
+
+def test_geofence_rollup_ancestor_not_allowed(
+    taxonomy_lookup, class_id_to_name
+):
+    """Path A: family not allowed, walks up to order."""
+    classifications = [[0, 0.90], [1, 0.05], [2, 0.03], [3, 0.02]]
+    excluded = frozenset({"leopard"})
+    # felidae NOT in allowed set, but carnivora IS
+    allowed = frozenset({"mammalia;carnivora;;;"})
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        allowed_taxonomy_keys=allowed,
+    )
+    assert result is not None
+    assert result["level"] == "order"
+    assert result["label"] == "carnivora"
+
+
+def test_geofence_rollup_nothing_allowed(taxonomy_lookup, class_id_to_name):
+    """Path A: no ancestor allowed, returns None."""
+    classifications = [[0, 0.90], [1, 0.05], [2, 0.03], [3, 0.02]]
+    excluded = frozenset({"leopard"})
+    allowed = frozenset()  # nothing allowed
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        allowed_taxonomy_keys=allowed,
+    )
+    assert result is None
+
+
+def test_geofence_rollup_high_conf_excluded_still_rolls_up(
+    taxonomy_lookup, class_id_to_name
+):
+    """Path A fires even when top-1 conf >= 0.65 (unlike Path B)."""
+    classifications = [[0, 0.95], [1, 0.03], [2, 0.02]]
+    excluded = frozenset({"leopard"})
+    allowed = frozenset({"mammalia;carnivora;felidae;;"})
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        allowed_taxonomy_keys=allowed,
+    )
+    assert result is not None
+    assert result["level"] == "family"
+
+
+# --- Path B: confidence rollup with allowed check ---
+
+def test_confidence_rollup_result_must_be_allowed(
+    taxonomy_lookup, class_id_to_name
+):
+    """Path B: genus not allowed, walks to family."""
+    # leopard 0.35 + lion 0.35 = panthera genus 0.70
+    classifications = [[0, 0.35], [1, 0.35], [2, 0.15], [3, 0.15]]
+    # panthera genus NOT allowed, felidae family IS
+    allowed = frozenset({"mammalia;carnivora;felidae;;"})
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        allowed_taxonomy_keys=allowed,
+    )
+    assert result is not None
+    assert result["level"] == "family"
+    assert result["label"] == "felidae"
+
+
+# --- Top-5 behavior ---
+
+def test_top5_only_used_for_sums(taxonomy_lookup, class_id_to_name):
+    """Only top-5 classifications are used for rollup sums."""
+    # 6 classifications. The 6th (bird, 0.15) would be excluded from
+    # top-5 but doesn't affect mammalia sum since bird is aves.
+    # mammalia from top-5: leopard(0.20)+lion(0.15)+cheetah(0.15)+zebra(0.15)=0.65
+    classifications = [
+        [0, 0.20], [5, 0.20], [1, 0.15], [2, 0.15], [3, 0.15], [4, 0.15],
+    ]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+    )
+    # mammalia = 0.65 >= 0.65 from top-5
+    assert result is not None
+    assert result["level"] == "class"
+    assert result["label"] == "mammalia"

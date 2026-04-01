@@ -134,22 +134,71 @@ def _build_rollup_description(
     return ";".join(tokens)
 
 
+def _build_taxonomy_key_for_level(
+    entry: dict[str, str], target_level: str,
+) -> str:
+    """
+    Build a geofence-format taxonomy key for a taxon at a given level.
+
+    Format: class;order;family;genus;species
+    Fills levels up to target_level from the taxonomy entry,
+    leaves more specific levels empty.
+
+    Duplicated from label_exclusion._build_taxonomy_key to avoid
+    circular import (label_exclusion imports from this module).
+    """
+    parts: list[str] = []
+    for level in TAXONOMY_LEVELS:
+        if (
+            level in entry
+            and TAXONOMY_LEVELS.index(level)
+            <= TAXONOMY_LEVELS.index(target_level)
+        ):
+            parts.append(entry[level])
+        else:
+            parts.append("")
+    return ";".join(parts)
+
+
 def rollup_single_detection(
     classifications: list[list],
     class_id_to_name: dict[str, str],
     taxonomy_lookup: dict[str, dict[str, str]],
+    excluded_names: frozenset[str] | None = None,
+    allowed_taxonomy_keys: frozenset[str] | None = None,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
 
+    Two rollup paths (matching the official SpeciesNet API):
+
+    **Path A (geofence rollup)**: top-1 is excluded. Roll up to the
+    nearest allowed ancestor using top-1 confidence as the threshold.
+    Walks family, order, class (skips species and genus).
+
+    **Path B (confidence rollup)**: top-1 is allowed but confidence
+    < 0.65. Roll up to the nearest level above 0.65. Walks genus,
+    family, order, class.
+
+    Both paths use only the top-5 predictions for summing (matching
+    the official SpeciesNet classifier which returns top-5 only).
+    The rolled-up result must itself be allowed when
+    allowed_taxonomy_keys is provided.
+
     Args:
-        classifications: List of [class_id, confidence] pairs (sorted by conf desc)
+        classifications: [class_id, confidence] pairs (sorted by conf desc)
         class_id_to_name: Mapping of class_id -> class_name
         taxonomy_lookup: Mapping of model_class -> {level: taxon_value}
+        excluded_names: Lowercase names of excluded species. When provided,
+            enables Path A (geofence rollup) for excluded top-1 species.
+        allowed_taxonomy_keys: Geofence taxonomy keys
+            (format "class;order;family;genus;species") that are allowed
+            in the project's country. Rollup candidates are checked
+            against this set.
 
     Returns:
-        None if detection should be skipped (already confident or non-taxonomic),
-        or {"label": str, "confidence": float, "level": str} if rolled up.
+        None if no rollup needed or nothing qualifies,
+        or {"label": str, "confidence": float, "level": str, "taxon": str}.
     """
     if not classifications:
         return None
@@ -157,20 +206,34 @@ def rollup_single_detection(
     top_id, top_conf = classifications[0]
     top_name = class_id_to_name.get(str(top_id), "").lower()
 
-    # Short-circuit: top-1 already confident enough
-    if top_conf >= ROLLUP_THRESHOLD:
-        return None
-
-    # Skip non-taxonomic classes (not in taxonomy CSV).
-    # Non-label classes (blank, empty, false detection, none) are already
-    # stripped by label exclusion before rollup runs.
+    # Skip non-taxonomic classes (blank, vehicle, human, etc.)
     if top_name not in taxonomy_lookup:
         return None
 
-    # Sum confidences into level_sums[level][taxon_value]
-    level_sums: dict[str, dict[str, float]] = {level: {} for level in TAXONOMY_LEVELS}
+    # Determine rollup path
+    top_is_excluded = (
+        excluded_names is not None and top_name in excluded_names
+    )
 
-    for cls_id, conf in classifications:
+    if not top_is_excluded and top_conf >= ROLLUP_THRESHOLD:
+        # Top-1 is allowed and confident: no rollup needed
+        return None
+
+    # Use top-5 predictions for sums (matches official SpeciesNet API
+    # which only returns top-5 from its classifier)
+    top5 = classifications[:5]
+
+    # Sum top-5 scores at each taxonomy level.
+    # Also track a representative entry per (level, taxon) for the
+    # allowed check.
+    level_sums: dict[str, dict[str, float]] = {
+        level: {} for level in TAXONOMY_LEVELS
+    }
+    level_entries: dict[str, dict[str, dict[str, str]]] = {
+        level: {} for level in TAXONOMY_LEVELS
+    }
+
+    for cls_id, conf in top5:
         name = class_id_to_name.get(str(cls_id), "").lower()
         if name not in taxonomy_lookup:
             continue
@@ -178,46 +241,68 @@ def rollup_single_detection(
         for level in TAXONOMY_LEVELS:
             if level in entry:
                 taxon = entry[level]
-                level_sums[level][taxon] = level_sums[level].get(taxon, 0.0) + conf
+                level_sums[level][taxon] = (
+                    level_sums[level].get(taxon, 0.0) + conf
+                )
+                if taxon not in level_entries[level]:
+                    level_entries[level][taxon] = entry
 
-    # Walk from most specific (species) to broadest (class)
-    for level in reversed(TAXONOMY_LEVELS):
-        sums = level_sums[level]
+    if top_is_excluded:
+        # Path A: geofence rollup
+        threshold = top_conf
+        walk_levels = ["family", "order", "class"]
+    else:
+        # Path B: confidence rollup
+        threshold = ROLLUP_THRESHOLD
+        walk_levels = ["genus", "family", "order", "class"]
+
+    # Walk from most specific to broadest. At each level, find the
+    # max-scoring taxon that crosses the threshold and is allowed
+    # (matching official SpeciesNet geofence_utils.py lines 186-196).
+    for level in walk_levels:
+        sums = level_sums.get(level, {})
         if not sums:
             continue
-        top_taxon = max(sums, key=sums.get)
-        if sums[top_taxon] >= ROLLUP_THRESHOLD:
-            label = _format_rollup_label(level, top_taxon, taxonomy_lookup)
+        for taxon in sorted(sums, key=sums.get, reverse=True):
+            if sums[taxon] < threshold:
+                break  # remaining taxa have even lower scores
+            if allowed_taxonomy_keys is not None:
+                entry = level_entries[level][taxon]
+                key = _build_taxonomy_key_for_level(entry, level)
+                if key not in allowed_taxonomy_keys:
+                    continue  # ancestor not allowed, try next
+            label = _format_rollup_label(
+                level, taxon, taxonomy_lookup
+            )
             return {
-                "label": label, "confidence": sums[top_taxon],
-                "level": level, "taxon": top_taxon,
+                "label": label,
+                "confidence": sums[taxon],
+                "level": level,
+                "taxon": taxon,
             }
 
-    # Fallback: walk broadest to most specific, return first available
-    for level in TAXONOMY_LEVELS:
-        sums = level_sums[level]
-        if sums:
-            top_taxon = max(sums, key=sums.get)
-            label = _format_rollup_label(level, top_taxon, taxonomy_lookup)
-            return {
-                "label": label, "confidence": sums[top_taxon],
-                "level": level, "taxon": top_taxon,
-            }
-
+    # No level crossed the threshold with an allowed result
     return None
 
 
-def apply_taxonomic_rollup_to_results(md_results: dict, taxonomy_csv_path: Path) -> RollupResult:
+def apply_taxonomic_rollup_to_results(
+    md_results: dict,
+    taxonomy_csv_path: Path,
+    excluded_names: frozenset[str] | None = None,
+    allowed_taxonomy_keys: frozenset[str] | None = None,
+) -> RollupResult:
     """
     Apply taxonomic rollup to all detections in a MegaDetector JSON dict (in place).
 
-    For each detection whose top-1 confidence is below the threshold and whose
-    top-1 class is in the taxonomy, sums probabilities at each taxonomic level
-    and picks the most specific level crossing the threshold.
+    Supports two rollup paths via rollup_single_detection():
+    - Path A (geofence rollup): top-1 is excluded, rolls up to allowed ancestor
+    - Path B (confidence rollup): top-1 is allowed but low confidence
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
         taxonomy_csv_path: Path to taxonomy.csv
+        excluded_names: Lowercase names of excluded species (enables Path A)
+        allowed_taxonomy_keys: Geofence taxonomy keys allowed in the country
 
     Returns:
         RollupResult with the modified dict and list of new rolled-up entries.
@@ -236,11 +321,12 @@ def apply_taxonomic_rollup_to_results(md_results: dict, taxonomy_csv_path: Path)
     # Track new labels that need category IDs
     existing_names = {v.lower(): k for k, v in class_cats.items()}
     max_id = max((int(k) for k in class_cats if k.isdigit()), default=0)
-    descriptions = md_results.setdefault("classification_category_descriptions", {})
+    descriptions = md_results.setdefault(
+        "classification_category_descriptions", {}
+    )
 
     rolled_up = 0
-    skipped_confident = 0
-    skipped_non_taxonomic = 0
+    skipped = 0
     new_entries: list[dict] = []
     seen_rollup_labels: set[str] = set()
 
@@ -250,15 +336,15 @@ def apply_taxonomic_rollup_to_results(md_results: dict, taxonomy_csv_path: Path)
             if not classifications:
                 continue
 
-            result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
+            result = rollup_single_detection(
+                classifications,
+                class_id_to_name,
+                taxonomy_lookup,
+                excluded_names=excluded_names,
+                allowed_taxonomy_keys=allowed_taxonomy_keys,
+            )
             if result is None:
-                # Determine skip reason for logging
-                top_conf = classifications[0][1]
-                top_name = class_id_to_name.get(str(classifications[0][0]), "").lower()
-                if top_conf >= ROLLUP_THRESHOLD:
-                    skipped_confident += 1
-                elif top_name not in taxonomy_lookup:
-                    skipped_non_taxonomic += 1
+                skipped += 1
                 continue
 
             # Find or create category ID for the rolled-up label
@@ -271,7 +357,6 @@ def apply_taxonomic_rollup_to_results(md_results: dict, taxonomy_csv_path: Path)
                 class_cats[new_id] = label
                 class_id_to_name[new_id] = label
                 existing_names[label.lower()] = new_id
-                # Add description so MegaDetector's smoothing can work with this category
                 descriptions[new_id] = _build_rollup_description(
                     result["level"], result["taxon"], taxonomy_lookup,
                 )
@@ -284,13 +369,13 @@ def apply_taxonomic_rollup_to_results(md_results: dict, taxonomy_csv_path: Path)
                     "level": result["level"],
                 })
 
-            det["classifications"] = [[new_id, round(result["confidence"], 5)]]
+            det["classifications"] = [
+                [new_id, round(result["confidence"], 5)]
+            ]
             rolled_up += 1
 
     logger.info(
-        f"Taxonomic rollup: {rolled_up} rolled up, "
-        f"{skipped_confident} skipped (confident), "
-        f"{skipped_non_taxonomic} skipped (non-taxonomic)"
+        f"Taxonomic rollup: {rolled_up} rolled up, {skipped} skipped"
     )
 
     return RollupResult(md_results=md_results, new_entries=new_entries)

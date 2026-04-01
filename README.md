@@ -13,20 +13,19 @@ The application includes a comprehensive logging system for debugging and diagno
 ### Start app
 
 #### 1. Start backend
+
     ```cmd
     cd backend
     source venv/bin/activate
     uvicorn app.main:app --reload
     ```
+
 #### 2. Start frontend
+
     ```cmd
     cd frontend
     nvm use 20
     npm run dev
-    ```
-#### 3. Watch logs in real-time
-    ```cmd
-    tail -f ~/AddaxAI/logs/backend.log
     ```
 
 

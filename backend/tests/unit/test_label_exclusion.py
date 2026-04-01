@@ -122,7 +122,7 @@ def test_skip_only_non_labels_remain():
     det = {"classifications": [["1", 0.6], ["2", 0.3], ["3", 0.1]]}
     user_excluded = {"1"}  # exclude the real species
     non_label = {"2", "3"}  # blank + bait
-    # After user filter: [["2", ~0.75], ["3", ~0.25]] → top-1 is blank → skip
+    # After user filter: [["2", 0.3], ["3", 0.1]] → top-1 is blank → skip
     assert should_skip_detection(det, user_excluded, non_label) is True
 
 
@@ -287,3 +287,97 @@ def test_legacy_vide_excluded():
     det = {"classifications": [["1", 1.0]]}
     excluded = build_excluded_class_ids({"1": "vide"})
     assert is_non_label_detection(det, excluded) is True
+
+
+# ---------- filter_classifications (no renormalization) ----------
+
+def test_filter_classifications_no_renormalization():
+    """Remaining confidences keep raw values after filtering."""
+    from app.ml.label_exclusion import filter_classifications
+
+    classifications = [["1", 0.65], ["2", 0.28], ["3", 0.07]]
+    result = filter_classifications(classifications, {"2"})
+    assert result == [["1", 0.65], ["3", 0.07]]
+
+
+def test_filter_classifications_sorted_descending():
+    """Result is sorted by confidence descending."""
+    from app.ml.label_exclusion import filter_classifications
+
+    classifications = [["1", 0.10], ["2", 0.50], ["3", 0.30]]
+    result = filter_classifications(classifications, {"2"})
+    assert result[0] == ["3", 0.30]
+    assert result[1] == ["1", 0.10]
+
+
+# ---------- exclusion rollup descriptions ----------
+
+def test_rollup_adds_descriptions_for_new_ancestors():
+    """New ancestor categories get 7-token descriptions."""
+    classifications = [["1", 0.90], ["4", 0.10]]
+    excluded = {"1"}  # lion
+    cats = dict(_CATS)
+    descriptions: dict[str, str] = {}
+    filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats,
+        classification_category_descriptions=descriptions,
+    )
+    # A description should have been added for the new ancestor
+    assert len(descriptions) == 1
+    desc = next(iter(descriptions.values()))
+    # 7-token format: name;class;order;family;genus;species;name
+    assert len(desc.split(";")) == 7
+
+
+def test_rollup_no_crash_when_descriptions_none():
+    """No crash when classification_category_descriptions is None."""
+    classifications = [["1", 0.90], ["4", 0.10]]
+    excluded = {"1"}  # lion
+    cats = dict(_CATS)
+    # Should not raise
+    filter_and_rollup_classifications(
+        classifications, excluded, _ID_TO_NAME, _TAXONOMY, cats,
+        classification_category_descriptions=None,
+    )
+
+
+# ---------- apply_label_exclusion_to_results (NON_LABEL kept) ----------
+
+def test_apply_label_exclusion_noop_when_taxonomy():
+    """With taxonomy, apply_label_exclusion_to_results is a no-op."""
+    from app.ml.label_exclusion import apply_label_exclusion_to_results
+
+    md_results = {
+        "classification_categories": dict(_CATS),
+        "images": [{
+            "detections": [{
+                "classifications": [["1", 0.60], ["5", 0.30], ["4", 0.10]],
+            }],
+        }],
+    }
+    original_cls = [list(c) for c in md_results["images"][0]["detections"][0]["classifications"]]
+    apply_label_exclusion_to_results(
+        md_results, excluded_labels=["lion"], taxonomy_lookup=_TAXONOMY
+    )
+    # All classifications unchanged (including excluded lion and blank)
+    assert md_results["images"][0]["detections"][0]["classifications"] == original_cls
+
+
+# ---------- strip_non_label_from_results ----------
+
+def test_strip_non_label_from_results():
+    """strip_non_label_from_results removes blank and bait."""
+    from app.ml.label_exclusion import strip_non_label_from_results
+
+    md_results = {
+        "classification_categories": {"1": "lion", "2": "blank", "3": "bait"},
+        "images": [{
+            "detections": [{
+                "classifications": [["1", 0.60], ["2", 0.30], ["3", 0.10]],
+            }],
+        }],
+    }
+    strip_non_label_from_results(md_results)
+    cls = md_results["images"][0]["detections"][0]["classifications"]
+    assert len(cls) == 1
+    assert cls[0][0] == "1"

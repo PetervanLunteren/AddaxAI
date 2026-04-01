@@ -46,6 +46,8 @@ def compute_postprocessing_settings_hash(project) -> str:
             "taxonomic_rollup_threshold": project.taxonomic_rollup_threshold,
             "independence_interval": project.independence_interval,
             "excluded_classes": sorted(project.excluded_classes or []),
+            "country_code": project.country_code,
+            "state_code": project.state_code,
         },
         sort_keys=True,
     )
@@ -229,8 +231,8 @@ def run_postprocessing_for_deployment(
         logger.info("Rebuilt classification_category_descriptions to 7-token format")
 
     # Apply label exclusion in memory (JSON on disk stays as ground truth).
-    # When taxonomy is available, excluded species redirect their scores
-    # to taxonomy ancestors instead of being removed (exclusion rollup).
+    # When taxonomy is available, this is a no-op: excluded species are
+    # handled by the geofence-aware rollup below instead.
     from app.ml.label_exclusion import apply_label_exclusion_to_results
 
     cls_model_dir = _find_classification_model_dir(project, db)
@@ -246,10 +248,28 @@ def run_postprocessing_for_deployment(
         md_results, project.excluded_classes, exclusion_taxonomy
     )
 
-    # --- Taxonomic rollup (independent of smoothing) ---
-    # Runs before smoothing so that when both are enabled, the smoother can
-    # refine rolled-up labels using image/sequence context (e.g. "felidae"
-    # → "lion" if nearby detections are confidently "lion").
+    # Build excluded_names and allowed_taxonomy_keys for geofence-aware
+    # rollup (matching official SpeciesNet API behavior).
+    excluded_names: frozenset[str] | None = None
+    if project.excluded_classes:
+        excluded_names = frozenset(
+            name.lower() for name in project.excluded_classes
+        )
+
+    allowed_taxonomy_keys: frozenset[str] | None = None
+    if cls_model_dir and project.country_code:
+        try:
+            from app.ml.geofence import get_allowed_taxonomy_keys
+
+            allowed_taxonomy_keys = get_allowed_taxonomy_keys(
+                cls_model_dir, project.country_code, project.state_code
+            )
+        except FileNotFoundError:
+            pass
+
+    # --- Taxonomic rollup (geofence-aware) ---
+    # Two paths: (A) excluded top-1 rolls up to allowed ancestor,
+    # (B) low-confidence allowed top-1 rolls up at 0.65 threshold.
     if project.taxonomic_rollup:
         if not cls_model_dir:
             cls_model_dir = _find_classification_model_dir(project, db)
@@ -261,7 +281,12 @@ def run_postprocessing_for_deployment(
                     load_taxonomy_lookup,
                 )
 
-                rollup_result = apply_taxonomic_rollup_to_results(md_results, taxonomy_csv)
+                rollup_result = apply_taxonomic_rollup_to_results(
+                    md_results,
+                    taxonomy_csv,
+                    excluded_names=excluded_names,
+                    allowed_taxonomy_keys=allowed_taxonomy_keys,
+                )
                 md_results = rollup_result.md_results
 
                 # Persist rolled-up entries to label_taxonomy table
@@ -279,7 +304,9 @@ def run_postprocessing_for_deployment(
                                 db,
                             )
                     except Exception as e:
-                        logger.warning(f"Failed to persist rollup taxonomy entries: {e}")
+                        logger.warning(
+                            f"Failed to persist rollup taxonomy entries: {e}"
+                        )
 
     # --- Event smoothing (independent of rollup) ---
     # Rollup section above is complete. If smoothing is off, return the
@@ -339,6 +366,14 @@ def run_postprocessing_for_deployment(
             smoothed = json.load(f)
 
         return smoothed
+
+    except Exception as e:
+        logger.error(
+            f"Event smoothing failed for deployment {deployment_id}, "
+            f"returning rollup-only results: {e}",
+            exc_info=True,
+        )
+        return md_results
 
     finally:
         Path(input_path).unlink(missing_ok=True)
@@ -522,13 +557,15 @@ def reload_raw_classifications_from_json(
     db: Session,
     excluded_classes: list[str] | None = None,
     taxonomy_csv_path: Path | None = None,
+    excluded_names: frozenset[str] | None = None,
+    allowed_taxonomy_keys: frozenset[str] | None = None,
 ) -> dict:
     """
     Reload raw (unsmoothed) classifications from JSON back to database.
 
     Effectively reverts to the original predictions by reading the raw JSON
-    and updating DB records. Applies label exclusion with rollup when
-    taxonomy is available.
+    and updating DB records. Applies geofence-aware rollup when taxonomy
+    is available.
 
     Args:
         deployment_id: Deployment UUID
@@ -537,6 +574,8 @@ def reload_raw_classifications_from_json(
         db: Database session
         excluded_classes: Optional list of label names to exclude
         taxonomy_csv_path: Optional path to taxonomy.csv for rollup
+        excluded_names: Lowercase excluded species names for rollup
+        allowed_taxonomy_keys: Geofence taxonomy keys for rollup
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -555,6 +594,18 @@ def reload_raw_classifications_from_json(
     apply_label_exclusion_to_results(
         raw_results, excluded_classes, taxonomy_lookup
     )
+
+    # Apply geofence-aware rollup (same logic as main postprocessing)
+    if taxonomy_csv_path and taxonomy_csv_path.exists():
+        from app.ml.taxonomic_rollup import apply_taxonomic_rollup_to_results
+
+        rollup_result = apply_taxonomic_rollup_to_results(
+            raw_results,
+            taxonomy_csv_path,
+            excluded_names=excluded_names,
+            allowed_taxonomy_keys=allowed_taxonomy_keys,
+        )
+        raw_results = rollup_result.md_results
 
     return update_database_from_smoothed_results(
         deployment_id, raw_results, deployment_folder, db, taxonomy_lookup

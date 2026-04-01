@@ -31,7 +31,6 @@ from app.db.base import get_db
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
 from app.ml.inference.megadetector import MegaDetectorV1000
-from app.ml.json_pipeline import JSONBasedMLPipeline
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.models import Deployment
@@ -474,6 +473,23 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 merge_json_files(json_files_to_merge, final_json_path, deployment.id)
 
+            # Trim classifications to top-5 and prune unused categories
+            if final_json_path.exists() and classification_model:
+                import json as _json
+
+                from app.ml.json_utils import trim_classification_results
+
+                with open(final_json_path) as f:
+                    trimmed_data = _json.load(f)
+                removed = trim_classification_results(trimmed_data)
+                if removed > 0:
+                    with open(final_json_path, "w") as f:
+                        _json.dump(trimmed_data, f, indent=2)
+                    logger.info(
+                        f"Trimmed classifications: removed {removed} "
+                        f"unused class IDs"
+                    )
+
             # ============================================================
             # PHASE 6: Load to Database
             # ============================================================
@@ -568,31 +584,33 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     logger.warning(f"Failed to link detections to taxonomy: {e}")
 
             # ============================================================
-            # PHASE 7: Postprocessing (smoothing) — non-fatal
+            # PHASE 7: Postprocessing (rollup + smoothing)
+            # Rollup failure is fatal (data integrity). Smoothing failure
+            # is handled inside run_postprocessing_for_deployment() which
+            # returns rollup-only results when smoothing crashes.
             # ============================================================
             if final_json_path.exists() and (project.event_smoothing or project.taxonomic_rollup):
-                try:
-                    logger.info("Phase 7: Running postprocessing (smoothing)")
-                    from app.ml.postprocessing import (
-                        run_postprocessing_for_deployment,
-                        update_database_from_smoothed_results,
-                    )
+                logger.info("Phase 7: Running postprocessing")
+                from app.ml.postprocessing import (
+                    run_postprocessing_for_deployment,
+                    update_database_from_smoothed_results,
+                )
 
-                    smoothed = run_postprocessing_for_deployment(
-                        deployment.id, final_json_path, folder_path, project, db
-                    )
-                    # Load taxonomy for display_name formatting
-                    pp_tax = None
-                    if taxonomy_csv and taxonomy_csv.exists():
-                        from app.ml.taxonomic_rollup import load_taxonomy_lookup
+                smoothed = run_postprocessing_for_deployment(
+                    deployment.id, final_json_path, folder_path, project, db
+                )
+                # Load taxonomy for display_name formatting
+                pp_tax = None
+                if taxonomy_csv and taxonomy_csv.exists():
+                    from app.ml.taxonomic_rollup import load_taxonomy_lookup
 
-                        pp_tax = load_taxonomy_lookup(taxonomy_csv)
-                    pp_result = update_database_from_smoothed_results(
-                        deployment.id, smoothed, folder_path, db, pp_tax
-                    )
-                    logger.info(f"Postprocessing complete: {pp_result.get('updated', 0)} updated")
-                except Exception as e:
-                    logger.error(f"Postprocessing failed (non-fatal): {e}", exc_info=True)
+                    pp_tax = load_taxonomy_lookup(taxonomy_csv)
+                pp_result = update_database_from_smoothed_results(
+                    deployment.id, smoothed, folder_path, db, pp_tax
+                )
+                logger.info(
+                    f"Postprocessing complete: {pp_result.get('updated', 0)} updated"
+                )
 
             # ============================================================
             # PHASE 8: Embedding (DINOv2) — fatal if configured
@@ -771,195 +789,18 @@ async def process_deployment_analysis(job_id: str) -> None:
             is_batch = payload.get("is_batch_job", False)
             queue_entry_ids = payload.get("queue_entry_ids", [])
 
-            if is_batch and queue_entry_ids:
-                # Process multiple queue entries sequentially
-                logger.info(f"Job {job_id} is a batch job with {len(queue_entry_ids)} entries")
-                await _process_batch_job(job_id, project_id, queue_entry_ids, db)
-                # Don't continue with single-deployment logic
-                db.close()
-                return
-
-            # Single deployment processing (original logic)
-            folder_path = payload.get("folder_path")
-            queue_entry_id = payload.get(
-                "queue_entry_id"
-            )  # Optional - may be None if not from queue
-
-            if not all([project_id, folder_path]):
-                raise ValueError("Invalid job payload: missing project_id or folder_path")
-
-            folder_path = Path(folder_path)
-            if not folder_path.exists():
-                raise ValueError(f"Folder not found: {folder_path}")
-
-            # Get project configuration
-            await ws_manager.send_progress(job_id, "Loading project configuration...", 0.02)
-            project = project_crud.get_project(db, project_id)
-            if not project:
-                raise ValueError(f"Project not found: {project_id}")
-
-            detection_model_id = project.detection_model_id
-            classification_model_id = project.classification_model_id
+            if not (is_batch and queue_entry_ids):
+                raise ValueError(
+                    "Invalid job payload: expected is_batch_job=true "
+                    "with queue_entry_ids"
+                )
 
             logger.info(
-                f"Project {project.name}: detection={detection_model_id}, "
-                f"classification={classification_model_id or 'None'}"
+                f"Job {job_id} is a batch job with "
+                f"{len(queue_entry_ids)} entries"
             )
-
-            # Update job status
-            job_crud.update_job_status(db, job_id, "running")
-
-            # Scan folder for images
-            await ws_manager.send_progress(job_id, "Scanning folder for images...", 0.03)
-            image_files = scan_folder_for_images(folder_path)
-            logger.info(f"Found {len(image_files)} images in {folder_path}")
-
-            if not image_files:
-                raise ValueError(f"No images found in {folder_path}")
-
-            # Validate site selection
-            await ws_manager.send_progress(job_id, "Creating deployment...", 0.04)
-            site_id = payload.get("site_id")
-            if not site_id:
-                raise ValueError("No site selected — site_id is required in job payload")
-
-            # Create deployment
-            deployment = create_deployment(
-                db=db,
-                site_id=site_id,
-                folder_path=str(folder_path),
-            )
-            logger.info(f"Created deployment: {deployment.id}")
-
-            # Initialize ML infrastructure
-            await ws_manager.send_progress(job_id, "Initializing ML models...", 0.05)
-
-            manifest_manager = ManifestManager()
-            env_manager = EnvironmentManager()
-            model_storage = ModelStorage()
-
-            # Load detection model
-            det_manifest = manifest_manager.get_model(detection_model_id)
-            det_model_path = model_storage.get_model_file(det_manifest)
-
-            logger.info(f"Loading detection model: {detection_model_id}")
-            detection_model = MegaDetectorV1000(det_model_path, env_manager)
-
-            # Load classification model (if configured)
-            classification_model = None
-            if classification_model_id:
-                cls_manifest = manifest_manager.get_model(classification_model_id)
-                cls_model_path = model_storage.get_model_file(cls_manifest)
-                cls_model_dir = model_storage.get_model_path(cls_manifest)
-                env_name = cls_manifest.env
-
-                # Check for custom inference.py script
-                inference_script = cls_model_dir / "inference.py"
-                if not inference_script.exists():
-                    error_msg = (
-                        f"Custom inference script not found: {inference_script}\n"
-                        f"Model developers must provide inference.py in their HuggingFace repo."
-                    )
-                    logger.error(error_msg)
-                    raise FileNotFoundError(error_msg)
-
-                # Use custom classification model with subprocess isolation
-                logger.info(
-                    f"Loading custom classification model: "
-                    f"{classification_model_id} "
-                    f"(env: {env_name})"
-                )
-                classification_model = CustomClassificationModel(
-                    cls_model_dir, cls_model_path, env_name, env_manager
-                )
-
-            # Compute geofence keys for exclusion rollup
-            geo_keys_single = None
-            if cls_model_dir and project.country_code:
-                try:
-                    from app.ml.geofence import get_allowed_taxonomy_keys
-
-                    geo_keys_single = get_allowed_taxonomy_keys(
-                        cls_model_dir,
-                        project.country_code,
-                        project.state_code,
-                    )
-                except FileNotFoundError:
-                    pass
-
-            # Create JSON-based ML pipeline
-            pipeline = JSONBasedMLPipeline(
-                detection_model,
-                classification_model,
-                detection_model_id,
-                classification_model_id,
-                classification_model_dir=cls_model_dir if classification_model_id else None,
-                excluded_classes=project.excluded_classes,
-                allowed_taxonomy_keys=geo_keys_single,
-            )
-
-            # Define progress callback wrapper
-            async def progress_callback(
-                message: str, progress: float, phase: str, phase_progress: float
-            ) -> None:
-                """Forward progress updates to WebSocket"""
-                await ws_manager.send_progress(job_id, message, progress, phase, phase_progress)
-
-            # Create project-scoped artifacts folder
-            artifacts_folder = folder_path / ".addaxai" / "projects" / project_id
-            artifacts_folder.mkdir(parents=True, exist_ok=True)
-
-            # Run JSON-based pipeline (detection → classification → database)
-            result = await pipeline.process_deployment(
-                deployment_id=deployment.id,
-                # Use folder_path from payload, not deployment record
-                deployment_folder=folder_path,
-                image_paths=image_files,
-                job_id=job_id,
-                db=db,
-                progress_callback=progress_callback,
-                artifacts_folder=artifacts_folder,
-            )
-
-            # Auto-generate events for the project
-            event_count = event_crud.generate_events_for_project(db, project_id)
-            logger.info(f"Job {job_id}: Auto-generated {event_count} events")
-
-            # Update job status
-            job_crud.update_job_status(db, job_id, "completed")
-
-            # Update queue entry if this job was from queue
-            if queue_entry_id:
-                queue_crud.update_queue_status(
-                    db, queue_entry_id, status="completed", deployment_id=deployment.id
-                )
-                logger.info(f"Updated queue entry {queue_entry_id} to completed")
-
-            # Prepare completion message
-            completion_message = f"Analysis complete: {result.total_detections} detections"
-            if classification_model:
-                completion_message += f", {result.classified_detections} classified"
-
-            # Send completion message
-            await ws_manager.send_complete(
-                job_id=job_id,
-                success=True,
-                message=completion_message,
-                data={
-                    "deployment_id": deployment.id,
-                    "file_count": result.total_files,
-                    "detection_count": result.total_detections,
-                    "animal_count": result.animal_detections,
-                    "person_count": result.person_detections,
-                    "vehicle_count": result.vehicle_detections,
-                    "classified_count": result.classified_detections,
-                },
-            )
-
-            logger.info(
-                f"Job {job_id} completed: {result.total_files} files, "
-                f"{result.total_detections} detections, "
-                f"{result.classified_detections} classified"
+            await _process_batch_job(
+                job_id, project_id, queue_entry_ids, db
             )
 
         finally:

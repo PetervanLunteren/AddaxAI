@@ -21,6 +21,8 @@ def _make_project_mock(**overrides):
         taxonomic_rollup_threshold=0.65,
         independence_interval=1800,
         excluded_classes=[],
+        country_code=None,
+        state_code=None,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)
@@ -50,6 +52,12 @@ def test_hash_excluded_classes_order_independent():
     p1 = _make_project_mock(excluded_classes=["a", "b"])
     p2 = _make_project_mock(excluded_classes=["b", "a"])
     assert compute_postprocessing_settings_hash(p1) == compute_postprocessing_settings_hash(p2)
+
+
+def test_hash_changes_on_country_code():
+    p1 = _make_project_mock(country_code="KEN")
+    p2 = _make_project_mock(country_code="NLD")
+    assert compute_postprocessing_settings_hash(p1) != compute_postprocessing_settings_hash(p2)
 
 
 def test_build_sequence_empty_deployment(db):
@@ -231,3 +239,62 @@ def test_smoothing_presets_cover_all_strengths():
     keys = set(presets["normal"].keys())
     assert set(presets["mild"].keys()) == keys
     assert set(presets["aggressive"].keys()) == keys
+
+
+def test_smoothing_failure_returns_rollup_results(db):
+    """When smoothing subprocess crashes, rollup-only results are returned."""
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
+    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 0, 0))
+
+    results = {
+        "images": [
+            {
+                "file": "img_001.jpg",
+                "detections": [
+                    {
+                        "category": "1",
+                        "conf": 0.9,
+                        "bbox": [0.1, 0.2, 0.3, 0.4],
+                        "classifications": [["1", 0.85]],
+                    }
+                ],
+            }
+        ],
+        "classification_categories": {"1": "lion"},
+        "classification_category_descriptions": {
+            "1": "lion;mammalia;carnivora;felidae;panthera;leo;lion"
+        },
+    }
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(results, f)
+        json_path = f.name
+
+    project_mock = _make_project_mock(
+        classification_model_id=None,
+        excluded_classes=[],
+        taxonomic_rollup=False,
+        detection_threshold=0.5,
+    )
+
+    def crashing_subprocess(args, **kwargs):
+        return MagicMock(
+            returncode=1,
+            stderr="KeyError: '999'",
+            stdout="",
+        )
+
+    with (
+        patch("app.ml.postprocessing.subprocess.run", side_effect=crashing_subprocess),
+        patch("app.ml.postprocessing._get_ml_python_path", return_value="/fake/python"),
+    ):
+        result = run_postprocessing_for_deployment(
+            d.id, json_path, "/fake/folder", project_mock, db
+        )
+
+    # Should return the pre-smoothing results, not crash
+    assert "images" in result
+    assert len(result["images"]) == 1
+    det = result["images"][0]["detections"][0]
+    assert det["classifications"][0][0] == "1"

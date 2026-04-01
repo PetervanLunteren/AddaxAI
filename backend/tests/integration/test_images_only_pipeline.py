@@ -103,7 +103,7 @@ def test_load_creates_detection_records(deployment_scaffold):
 
 
 def test_load_with_label_exclusion(deployment_scaffold):
-    """Excluded labels removed; remaining confidences renormalized and re-sorted."""
+    """Excluded labels removed; remaining confidences keep raw values."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -137,10 +137,9 @@ def test_load_with_label_exclusion(deployment_scaffold):
         )
 
     det = db.query(Detection).one()
-    # lion excluded -> top label should be zebra with renormalized confidence
+    # lion excluded -> top label should be zebra with raw confidence
     assert det.label == "zebra"
-    # 0.3 / (0.3 + 0.1) = 0.75
-    assert abs(det.label_confidence - 0.75) < 0.01
+    assert abs(det.label_confidence - 0.3) < 0.01
 
 
 def test_observation_type_priority(deployment_scaffold):

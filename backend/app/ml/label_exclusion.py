@@ -3,19 +3,18 @@ Label exclusion and non-label skip logic.
 
 Two separate concerns handled here:
 
-1. **User exclusion** (filter + renormalize): labels the user marked as
-   not present in their project area are removed from the classification
-   list and remaining confidences renormalized to sum to 1.0. This
-   changes which label is assigned to a detection.
+1. **User exclusion** (filter): labels the user marked as not present
+   in their project area are removed from the classification list.
+   Remaining confidences keep their raw values (no renormalization).
+   This changes which label is assigned to a detection.
 
 2. **Non-label skip** (DB gatekeeper): if the top-1 prediction after
    user filtering is a NON_LABEL_CLASS (blank, bait, etc.), the
    detection is not loaded to the database at all. The bbox is treated
    as a false positive.
 
-These two steps are independent. NON_LABEL_CLASSES never participate
-in renormalization. JSON files on disk remain untouched as raw ground
-truth.
+These two steps are independent. JSON files on disk remain untouched
+as raw ground truth.
 """
 
 from dataclasses import dataclass, field
@@ -46,7 +45,9 @@ def filter_classifications(
     excluded_class_ids: set[str],
 ) -> list[list]:
     """
-    Zero out excluded labels and renormalize remaining confidences.
+    Remove excluded labels from classifications.
+
+    Remaining confidences keep their raw values (no renormalization).
 
     Args:
         classifications: List of [class_id, confidence] pairs
@@ -54,8 +55,7 @@ def filter_classifications(
 
     Returns:
         New list of [class_id, confidence] sorted by confidence descending,
-        with excluded labels removed and remaining confidences renormalized
-        to sum to 1.0. Returns empty list if no labels remain.
+        with excluded labels removed. Returns empty list if no labels remain.
     """
     if not classifications or not excluded_class_ids:
         return classifications
@@ -69,17 +69,8 @@ def filter_classifications(
     if not remaining:
         return []
 
-    total = sum(conf for _, conf in remaining)
-    if total <= 0:
-        return []
-
-    renormalized = [
-        [cls_id, round(conf / total, 5)]
-        for cls_id, conf in remaining
-    ]
-    renormalized.sort(key=lambda x: x[1], reverse=True)
-
-    return renormalized
+    remaining.sort(key=lambda x: x[1], reverse=True)
+    return remaining
 
 
 def build_excluded_class_ids(
@@ -215,6 +206,7 @@ def filter_and_rollup_classifications(
     taxonomy_lookup: dict[str, dict[str, str]],
     classification_categories: dict[str, str],
     allowed_taxonomy_keys: frozenset[str] | None = None,
+    classification_category_descriptions: dict[str, str] | None = None,
 ) -> ExclusionRollupResult:
     """
     Filter excluded labels and redirect their scores to taxonomy ancestors.
@@ -247,7 +239,11 @@ def filter_and_rollup_classifications(
     if not classifications or not excluded_class_ids:
         return ExclusionRollupResult(classifications=classifications)
 
-    from app.ml.taxonomic_rollup import TAXONOMY_LEVELS, _format_rollup_label
+    from app.ml.taxonomic_rollup import (
+        TAXONOMY_LEVELS,
+        _build_rollup_description,
+        _format_rollup_label,
+    )
 
     # Build name-based excluded set for ancestor checking
     excluded_names = {
@@ -270,6 +266,7 @@ def filter_and_rollup_classifications(
     kept: dict[str, float] = {}  # class_id -> confidence
     ancestor_scores: dict[str, float] = {}  # ancestor_label -> accumulated confidence
     ancestor_levels: dict[str, str] = {}  # ancestor_label -> taxonomy level
+    ancestor_taxons: dict[str, str] = {}  # ancestor_label -> raw taxon value
 
     for cls_id, conf in classifications:
         cls_id_str = str(cls_id)
@@ -354,6 +351,9 @@ def filter_and_rollup_classifications(
         )
         if ancestor_label not in ancestor_levels and ancestor_level:
             ancestor_levels[ancestor_label] = ancestor_level
+            ancestor_taxons[ancestor_label] = entry.get(
+                ancestor_level, ancestor_label.lower()
+            )
 
     # Ensure ancestor labels have class IDs in classification_categories
     new_entries: list[dict] = []
@@ -363,6 +363,16 @@ def filter_and_rollup_classifications(
             new_id = str(max_id)
             classification_categories[new_id] = label
             name_to_id[label.lower()] = new_id
+            if classification_category_descriptions is not None:
+                desc_level = ancestor_levels.get(label, "unknown")
+                desc_taxon = ancestor_taxons.get(
+                    label, label.lower()
+                )
+                classification_category_descriptions[new_id] = (
+                    _build_rollup_description(
+                        desc_level, desc_taxon, taxonomy_lookup,
+                    )
+                )
             new_entries.append({
                 "name": label.lower(),
                 "level": ancestor_levels.get(label, "unknown"),
@@ -489,56 +499,79 @@ def apply_label_exclusion_to_results(
     """
     Apply label exclusion to a full MegaDetector JSON results dict (in place).
 
-    Always excludes NON_LABEL_CLASSES (bait, blank, empty, false detection,
-    none, vide). Additionally excludes any user-configured labels.
+    Used in the postprocessing path (Phase 7).
 
-    When taxonomy_lookup is provided, user-excluded species redirect their
-    scores to taxonomy ancestors instead of being removed.
+    When taxonomy is available, this is a no-op: the classification lists
+    stay untouched. Excluded species are handled by the geofence-aware
+    rollup in apply_taxonomic_rollup_to_results(), which preserves the
+    model's strong signal and redirects it to allowed ancestors (matching
+    the official SpeciesNet API behavior).
+
+    When taxonomy is NOT available (fallback), user-excluded and NON_LABEL
+    classes are removed from classification lists.
+
+    Note: the Phase 6 DB load path (json_pipeline.py) uses
+    filter_and_rollup_classifications() directly for label assignment.
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
         excluded_labels: Optional list of label names to exclude
-        taxonomy_lookup: Optional taxonomy for exclusion rollup
+        taxonomy_lookup: Optional taxonomy lookup dict
 
     Returns:
         The modified dict (same reference as input)
     """
+    if taxonomy_lookup:
+        # Rollup handles excluded species with geofence awareness.
+        # Do not filter here to preserve the full confidence landscape.
+        return md_results
+
     class_categories = md_results.get("classification_categories", {})
-    excluded_class_ids = build_excluded_class_ids(class_categories, excluded_labels)
+    excluded_class_ids = build_excluded_class_ids(
+        class_categories, excluded_labels
+    )
 
     if not excluded_class_ids:
         return md_results
-
-    # Split into user exclusions and non-label IDs
-    user_excluded_ids = build_user_excluded_class_ids(
-        class_categories, excluded_labels
-    )
-    class_id_to_name = {str(k): v for k, v in class_categories.items()}
-
-    use_rollup = bool(taxonomy_lookup and user_excluded_ids)
 
     for img in md_results.get("images", []):
         for det in img.get("detections", []):
             if "classifications" not in det or not det["classifications"]:
                 continue
+            det["classifications"] = filter_classifications(
+                det["classifications"], excluded_class_ids
+            )
 
-            if use_rollup:
-                # Rollup user-excluded scores to ancestors, then strip NON_LABEL
-                rollup_result = filter_and_rollup_classifications(
-                    det["classifications"],
-                    user_excluded_ids,
-                    class_id_to_name,
-                    taxonomy_lookup,
-                    class_categories,
-                )
-                # Also strip NON_LABEL classes (for smoothing/rollup)
-                non_label_ids = build_non_label_class_ids(class_categories)
-                det["classifications"] = filter_classifications(
-                    rollup_result.classifications, non_label_ids
-                )
-            else:
-                det["classifications"] = filter_classifications(
-                    det["classifications"], excluded_class_ids
-                )
+    return md_results
+
+
+def strip_non_label_from_results(md_results: dict) -> dict:
+    """
+    Strip NON_LABEL classes from all detections in md_results (in place).
+
+    Should be called AFTER taxonomic rollup but BEFORE smoothing, so that
+    rollup sees the full confidence landscape (matching the official
+    SpeciesNet API) while smoothing does not see blank/bait/etc.
+
+    Args:
+        md_results: Full MegaDetector JSON dict (modified in place)
+
+    Returns:
+        The modified dict (same reference as input)
+    """
+    class_categories = md_results.get("classification_categories", {})
+    non_label_ids = build_non_label_class_ids(class_categories)
+    if not non_label_ids:
+        return md_results
+
+    for img in md_results.get("images", []):
+        for det in img.get("detections", []):
+            if not det.get("classifications"):
+                continue
+            det["classifications"] = [
+                [cls_id, conf]
+                for cls_id, conf in det["classifications"]
+                if str(cls_id) not in non_label_ids
+            ]
 
     return md_results

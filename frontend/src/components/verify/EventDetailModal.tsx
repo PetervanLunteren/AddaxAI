@@ -56,6 +56,7 @@ import { WelcomePopover } from "./WelcomePopover";
 import { HelpSheet } from "./HelpSheet";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
+import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 
 interface EventDetailModalProps {
   eventId: string | null;
@@ -1332,9 +1333,10 @@ export function EventDetailModal({
                   {currentFileMaxNFrames.map((frame) => (
                     <span
                       key={frame.label}
-                      className="bg-primary text-white text-[10px] leading-none font-medium px-1.5 py-0.5 rounded-sm capitalize"
+                      className="text-[10px] leading-none font-medium px-1.5 py-0.5 rounded-sm capitalize"
+                      style={{ backgroundColor: getSpeciesColor(frame.label), color: getSpeciesTextColor(frame.label) }}
                     >
-                      MaxN: {frame.label}
+                      MaxN: {frame.label} ×{frame.max_n}
                     </span>
                   ))}
                 </div>
