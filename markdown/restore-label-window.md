@@ -5,7 +5,7 @@ If the species label panel on the right side of the verification window has disa
 
 ## The fix
 
-1. Make sure you can see hidden files in File Explorer. The `.labelImgSettings.pkl` file is hidden by default.
+1. Make sure you can see hidden files in File Explorer.
    - **Windows 11**: Open File Explorer > click **View** in the toolbar > **Show** > check **Hidden items**.
    - **Windows 10**: Open File Explorer > click the **View** tab > check the **Hidden items** checkbox.
 
