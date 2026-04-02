@@ -542,7 +542,7 @@ function EventCard({
                   className="text-[10px] px-1.5 py-0.5 shadow-sm max-w-[100px]"
                   style={{ backgroundColor: getSpeciesColor(sp), color: getSpeciesTextColor(sp) }}
                 >
-                  <span className="truncate">{event.display_labels?.[sp] || sp}</span>
+                  <span className="truncate">{event.display_labels?.[sp] || sp.charAt(0).toUpperCase() + sp.slice(1)}</span>
                 </Badge>
               ))}
               {event.labels.length > 2 && (

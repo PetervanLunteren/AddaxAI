@@ -289,4 +289,6 @@ All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag ex
 
 ### Rules
 
+**No ad-hoc database fixes.** Do not run one-time scripts to patch database state. If data is stale or incorrect, fix the code that produces it. The data will be corrected when the user re-runs the relevant operation (analysis, reprocessing, taxonomy population). The app must handle its own data integrity.
+
 **Never overwrite verified detections.** When a user manually verifies or relabels a detection (`Detection.verified == True`), that human judgment takes priority over any machine output. Postprocessing, reprocessing, taxonomic rollup, smoothing, and any other automatic pipeline must skip verified detections. If you are writing code that updates `Detection.label`, `Detection.label_confidence`, or `Detection.category`, always check `verified` first and leave verified records untouched.

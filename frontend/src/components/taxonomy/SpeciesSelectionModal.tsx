@@ -69,6 +69,8 @@ export function SpeciesSelectionModal({
   const [workingCountry, setWorkingCountry] = useState<string | null>(null);
   const [workingState, setWorkingState] = useState<string | null>(null);
   const [locationOpen, setLocationOpen] = useState(false);
+  // Track whether the user actively changed the country (vs initial load)
+  const [countryUserChanged, setCountryUserChanged] = useState(false);
 
   // Fetch geofence data (countries list)
   const { data: geofence } = useQuery({
@@ -97,6 +99,7 @@ export function SpeciesSelectionModal({
       setWorkingExcluded(excludedClasses);
       setWorkingCountry(countryCode ?? null);
       setWorkingState(stateCode ?? null);
+      setCountryUserChanged(false);
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,6 +107,7 @@ export function SpeciesSelectionModal({
   const handleCountryChange = useCallback(
     (country: string) => {
       setWorkingCountry(country);
+      setCountryUserChanged(true);
       if (country !== "USA") {
         setWorkingState(null);
       }
@@ -111,12 +115,14 @@ export function SpeciesSelectionModal({
     [],
   );
 
-  // When geofence-filtered data arrives, update working excluded list
+  // When geofence-filtered data arrives after a user-initiated country
+  // change, update the working excluded list. On modal open (initial
+  // load), the saved excluded_classes are used instead.
   useEffect(() => {
-    if (geofenceFiltered?.excluded_labels) {
+    if (countryUserChanged && geofenceFiltered?.excluded_labels) {
       setWorkingExcluded(geofenceFiltered.excluded_labels);
     }
-  }, [geofenceFiltered]);
+  }, [geofenceFiltered, countryUserChanged]);
 
   const handleStateChange = useCallback((state: string) => {
     setWorkingState(state);

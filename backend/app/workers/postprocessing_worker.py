@@ -119,20 +119,23 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         logger.info(f"Processing {total} deployments for project {project.name}")
 
-        # Resolve taxonomy CSV for exclusion rollup
+        # Resolve classification model dir and taxonomy CSV
         taxonomy_csv = None
+        cls_model_dir = None
         if project.classification_model_id:
             from app.core.config import get_settings
 
             settings = get_settings()
-            _cls_dir = (
+            cls_model_dir = (
                 settings.user_data_dir / "models" / "cls"
                 / project.classification_model_id
             )
-            if _cls_dir.exists():
-                _tax = _cls_dir / "taxonomy.csv"
+            if cls_model_dir.exists():
+                _tax = cls_model_dir / "taxonomy.csv"
                 if _tax.exists():
                     taxonomy_csv = _tax
+            else:
+                cls_model_dir = None
 
         # Snapshot label counts before processing
         before_counts = _get_label_counts(db, project_id)
@@ -169,13 +172,35 @@ async def process_postprocessing_job(job_id: str) -> None:
 
                         pp_taxonomy = load_taxonomy_lookup(taxonomy_csv)
                     result = update_database_from_smoothed_results(
-                        deployment.id, smoothed, folder_path, db, pp_taxonomy
+                        deployment.id, smoothed, folder_path, db, pp_taxonomy,
+                        excluded_classes=project.excluded_classes,
                     )
                 else:
+                    # Build excluded_names and geofence keys for rollup
+                    excluded_names = frozenset(
+                        n.lower()
+                        for n in (project.excluded_classes or [])
+                    )
+                    geo_keys = None
+                    if cls_model_dir and project.country_code:
+                        try:
+                            from app.ml.geofence import (
+                                get_allowed_taxonomy_keys,
+                            )
+
+                            geo_keys = get_allowed_taxonomy_keys(
+                                cls_model_dir,
+                                project.country_code,
+                                project.state_code,
+                            )
+                        except FileNotFoundError:
+                            pass
                     result = reload_raw_classifications_from_json(
                         deployment.id, json_path, folder_path, db,
                         excluded_classes=project.excluded_classes,
                         taxonomy_csv_path=taxonomy_csv,
+                        excluded_names=excluded_names,
+                        allowed_taxonomy_keys=geo_keys,
                     )
 
                 total_updated += result.get("updated", 0)

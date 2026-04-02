@@ -463,3 +463,62 @@ def test_build_sequence_groups_by_interval(deployment_scaffold):
     assert seq_info[0]["seq_id"] == seq_info[1]["seq_id"]
     assert seq_info[1]["seq_id"] == seq_info[2]["seq_id"]
     assert seq_info[2]["seq_id"] != seq_info[3]["seq_id"]
+
+
+def test_final_sweep_clears_excluded_labels(deployment_scaffold):
+    """Detections with excluded labels are cleared to None by the sweep."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    json_path = _load_basic_images(s)
+
+    # All detections have label "lion" from the basic load
+    dets = db.query(Detection).all()
+    assert all(d.label == "lion" for d in dets)
+
+    # Run update with lion excluded
+    with open(json_path) as f:
+        smoothed = json.load(f)
+
+    counts = update_database_from_smoothed_results(
+        s["deployment"].id, smoothed, deploy_dir, db,
+        excluded_classes=["lion"],
+    )
+
+    # All labels should be cleared
+    dets = db.query(Detection).all()
+    assert all(d.label is None for d in dets)
+    assert counts["updated"] > 0
+
+
+def test_final_sweep_preserves_verified(deployment_scaffold):
+    """Verified detections keep excluded labels (human override)."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    json_path = _load_basic_images(s)
+
+    # Mark first detection as verified
+    det = db.query(Detection).first()
+    det.verified = True
+    det.verified_at = datetime.utcnow()
+    db.flush()
+
+    with open(json_path) as f:
+        smoothed = json.load(f)
+
+    update_database_from_smoothed_results(
+        s["deployment"].id, smoothed, deploy_dir, db,
+        excluded_classes=["lion"],
+    )
+
+    # Verified detection keeps its label
+    db.expire_all()
+    verified_det = db.query(Detection).filter(
+        Detection.verified.is_(True)
+    ).one()
+    assert verified_det.label == "lion"
+
+    # Non-verified detections are cleared
+    unverified = db.query(Detection).filter(
+        Detection.verified.is_(False)
+    ).all()
+    assert all(d.label is None for d in unverified)

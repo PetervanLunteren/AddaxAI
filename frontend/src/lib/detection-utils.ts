@@ -13,6 +13,17 @@ export function getDetectionColor(detection: { label?: string | null; category: 
   return detection.label ? getSpeciesColor(detection.label) : getCategoryColor(detection.category);
 }
 
+/** Get display name for a detection, with capitalized fallback. */
+export function getDetectionDisplayName(detection: {
+  display_name?: string | null;
+  label?: string | null;
+  category: string;
+}): string {
+  if (detection.display_name) return detection.display_name;
+  if (detection.label) return detection.label;
+  return detection.category.charAt(0).toUpperCase() + detection.category.slice(1);
+}
+
 /** Get color for a detection category. */
 export function getCategoryColor(category: string): string {
   switch (category) {

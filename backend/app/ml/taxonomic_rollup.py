@@ -166,6 +166,7 @@ def rollup_single_detection(
     taxonomy_lookup: dict[str, dict[str, str]],
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
+    included_ancestor_taxa: frozenset[tuple[str, str]] | None = None,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
@@ -182,8 +183,9 @@ def rollup_single_detection(
 
     Both paths use only the top-5 predictions for summing (matching
     the official SpeciesNet classifier which returns top-5 only).
-    The rolled-up result must itself be allowed when
-    allowed_taxonomy_keys is provided.
+    The rolled-up result must pass both the geofence check
+    (allowed_taxonomy_keys) and the user exclusion check
+    (included_ancestor_taxa).
 
     Args:
         classifications: [class_id, confidence] pairs (sorted by conf desc)
@@ -195,6 +197,9 @@ def rollup_single_detection(
             (format "class;order;family;genus;species") that are allowed
             in the project's country. Rollup candidates are checked
             against this set.
+        included_ancestor_taxa: Pre-computed set of (level, taxon)
+            pairs that have at least one non-excluded descendant.
+            Rollup candidates without included descendants are skipped.
 
     Returns:
         None if no rollup needed or nothing qualifies,
@@ -270,7 +275,10 @@ def rollup_single_detection(
                 entry = level_entries[level][taxon]
                 key = _build_taxonomy_key_for_level(entry, level)
                 if key not in allowed_taxonomy_keys:
-                    continue  # ancestor not allowed, try next
+                    continue  # geofence: ancestor not allowed
+            if included_ancestor_taxa is not None:
+                if (level, taxon) not in included_ancestor_taxa:
+                    continue  # no included descendants
             label = _format_rollup_label(
                 level, taxon, taxonomy_lookup
             )
@@ -325,6 +333,19 @@ def apply_taxonomic_rollup_to_results(
         "classification_category_descriptions", {}
     )
 
+    # Pre-compute which (level, taxon) pairs have at least one
+    # non-excluded descendant. Rollup candidates without included
+    # descendants are skipped.
+    included_ancestor_taxa: frozenset[tuple[str, str]] | None = None
+    if excluded_names:
+        _included: set[tuple[str, str]] = set()
+        for model_class, entry in taxonomy_lookup.items():
+            if model_class not in excluded_names:
+                for level in TAXONOMY_LEVELS:
+                    if level in entry:
+                        _included.add((level, entry[level]))
+        included_ancestor_taxa = frozenset(_included)
+
     rolled_up = 0
     skipped = 0
     new_entries: list[dict] = []
@@ -342,6 +363,7 @@ def apply_taxonomic_rollup_to_results(
                 taxonomy_lookup,
                 excluded_names=excluded_names,
                 allowed_taxonomy_keys=allowed_taxonomy_keys,
+                included_ancestor_taxa=included_ancestor_taxa,
             )
             if result is None:
                 skipped += 1

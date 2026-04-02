@@ -429,3 +429,67 @@ def test_top5_only_used_for_sums(taxonomy_lookup, class_id_to_name):
     assert result is not None
     assert result["level"] == "class"
     assert result["label"] == "mammalia"
+
+
+# --- included_ancestor_taxa (exclusion check on rollup ancestors) ---
+
+
+def test_rollup_skips_excluded_ancestor(taxonomy_lookup, class_id_to_name):
+    """All felidae excluded, leopard top-1 skips felidae, walks to mammalia
+    (which has zebra as an included descendant)."""
+    # Exclude all felidae species, keep zebra
+    excluded = frozenset({"leopard", "lion", "cheetah"})
+    # Pre-compute included ancestors from zebra only
+    included = set()
+    for name, entry in taxonomy_lookup.items():
+        if name not in excluded:
+            for level in ("class", "order", "family", "genus", "species"):
+                if level in entry:
+                    included.add((level, entry[level]))
+    included_ancestors = frozenset(included)
+
+    # leopard top-1 (excluded), should skip felidae and carnivora
+    # (no included descendants), land on mammalia (zebra is mammalia)
+    classifications = [["0", 0.85], ["3", 0.10], ["4", 0.05]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        included_ancestor_taxa=included_ancestors,
+    )
+    assert result is not None
+    assert result["level"] == "class"
+    assert result["taxon"] == "mammalia"
+
+
+def test_rollup_returns_none_when_all_excluded(
+    taxonomy_lookup, class_id_to_name,
+):
+    """All species excluded, no ancestor has included descendants."""
+    excluded = frozenset({
+        "leopard", "lion", "cheetah", "zebra", "bird",
+    })
+    # No included species -> empty set
+    included_ancestors = frozenset()
+
+    classifications = [["0", 0.85], ["1", 0.10], ["2", 0.05]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=excluded,
+        included_ancestor_taxa=included_ancestors,
+    )
+    assert result is None
+
+
+def test_rollup_no_effect_when_no_exclusions(
+    taxonomy_lookup, class_id_to_name,
+):
+    """No exclusions, included_ancestor_taxa is None, check skipped."""
+    classifications = [["0", 0.50], ["1", 0.10], ["2", 0.05]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+        excluded_names=None,
+        included_ancestor_taxa=None,
+    )
+    # Normal confidence rollup (Path B), no exclusion interference
+    assert result is not None
+    assert result["level"] in ("genus", "family")

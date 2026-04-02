@@ -387,6 +387,7 @@ def update_database_from_smoothed_results(
     deployment_folder: Path,
     db: Session,
     taxonomy_lookup: dict[str, dict[str, str]] | None = None,
+    excluded_classes: list[str] | None = None,
 ) -> dict:
     """
     Update Detection records in the database from smoothed JSON results.
@@ -394,11 +395,18 @@ def update_database_from_smoothed_results(
     Matches JSON detections to DB records using file_path + bbox coordinates
     (rounded to 4 decimal places) + frame_number.
 
+    After updating labels, sweeps for any non-verified detection whose
+    label is still in excluded_classes and clears it to None.
+
     Args:
         deployment_id: Deployment UUID
         smoothed_results: Smoothed MegaDetector-format dict
         deployment_folder: Path to deployment folder
         db: Database session
+        taxonomy_lookup: Optional taxonomy for display_name lookup
+        excluded_classes: Optional list of excluded label names.
+            Any non-verified detection still carrying an excluded
+            label after the update is cleared to None.
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -515,6 +523,21 @@ def update_database_from_smoothed_results(
                 logger.warning(f"Error updating detection: {e}")
                 errors += 1
 
+    # Final sweep: clear any non-verified detection whose label is
+    # still excluded. Catches edge cases where smoothing re-introduces
+    # an excluded label or rollup couldn't find an included ancestor.
+    if excluded_classes:
+        excluded_lower = {name.lower() for name in excluded_classes}
+        for det in detections:
+            if det.verified:
+                continue
+            if det.label and det.label.lower() in excluded_lower:
+                det.label = None
+                det.label_confidence = None
+                det.display_name = None
+                changed_file_ids.add(det.file_id)
+                updated += 1
+
     # Recompute observation_type for files with changed detections
     for file_id in changed_file_ids:
         file_record = db.query(File).filter(File.id == file_id).first()
@@ -608,5 +631,6 @@ def reload_raw_classifications_from_json(
         raw_results = rollup_result.md_results
 
     return update_database_from_smoothed_results(
-        deployment_id, raw_results, deployment_folder, db, taxonomy_lookup
+        deployment_id, raw_results, deployment_folder, db, taxonomy_lookup,
+        excluded_classes=excluded_classes,
     )

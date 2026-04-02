@@ -9,7 +9,7 @@
 import { memo } from "react";
 import { Check } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getDetectionColor } from "../../lib/detection-utils";
+import { getDetectionColor, getDetectionDisplayName } from "../../lib/detection-utils";
 import { getSpeciesTextColor } from "../../utils/species-colors";
 import {
   BBOX_STROKE_WIDTH,
@@ -62,7 +62,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
       <div className="aspect-square bg-muted relative overflow-hidden rounded-t-lg">
         <img
           src={`${API_BASE_URL}${detection.crop_url}`}
-          alt={detection.display_name || detection.label || detection.category}
+          alt={getDetectionDisplayName(detection)}
           loading="lazy"
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -127,7 +127,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
                 : undefined
             }
           >
-            <span className="truncate">{detection.display_name || detection.label || detection.category}</span>
+            <span className="truncate">{getDetectionDisplayName(detection)}</span>
           </Badge>
           {hasSuggestion && (
             <>

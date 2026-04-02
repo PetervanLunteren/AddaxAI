@@ -21,7 +21,7 @@ import { Progress } from "../ui/progress";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getDetectionColor } from "../../lib/detection-utils";
+import { getDetectionColor, getDetectionDisplayName } from "../../lib/detection-utils";
 import type { DetectionSummary } from "../../api/types";
 
 interface DetectionDetailSheetProps {
@@ -134,7 +134,7 @@ export function DetectionDetailSheet({
         <SheetHeader>
           <div className="flex items-center justify-between">
             <SheetTitle className="capitalize">
-              {detection.display_name || detection.label || detection.category}
+              {getDetectionDisplayName(detection)}
             </SheetTitle>
             {onNavigate && (
               <div className="flex items-center gap-1">

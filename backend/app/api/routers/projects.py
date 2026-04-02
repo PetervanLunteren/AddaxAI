@@ -264,6 +264,10 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectRespon
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with id '{project_id}' not found",
         )
+    logger.info(
+        f"GET project {project_id}: "
+        f"{len(db_project.excluded_classes or [])} excluded_classes"
+    )
     return ProjectResponse.model_validate(db_project)
 
 
@@ -295,44 +299,6 @@ def update_project(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
             ) from None
-
-    # Auto-compute excluded_classes from geofence when country_code is set
-    update_data = project.model_dump(exclude_unset=True)
-    if "country_code" in update_data:
-        country_val = update_data["country_code"]
-        if country_val and country_val.upper() not in ("NONE", ""):
-            db_existing = crud_project.get_project(db, project_id)
-            cls_model_id = (
-                update_data.get("classification_model_id")
-                or (db_existing.classification_model_id if db_existing else None)
-            )
-            if cls_model_id:
-                try:
-                    from app.core.config import get_settings
-                    from app.ml.geofence import (
-                        compute_excluded_classes,
-                        find_geofence_file,
-                    )
-
-                    settings = get_settings()
-                    model_dir = (
-                        settings.user_data_dir / "models" / "cls" / cls_model_id
-                    )
-                    if model_dir.exists() and find_geofence_file(model_dir):
-                        state_val = update_data.get(
-                            "state_code",
-                            db_existing.state_code if db_existing else None,
-                        )
-                        excluded = compute_excluded_classes(
-                            model_dir, country_val, state_val
-                        )
-                        project.excluded_classes = excluded
-                        logger.info(
-                            f"Geofence: excluded {len(excluded)} labels "
-                            f"for {country_val}"
-                        )
-                except Exception as e:
-                    logger.warning(f"Geofence computation failed: {e}")
 
     # Validate that not all species are excluded
     if project.excluded_classes is not None and len(project.excluded_classes) > 0:
@@ -366,6 +332,19 @@ def update_project(
         and project.model_dump(exclude_unset=True).get("detection_threshold") is not None
     )
 
+    # Debug: log what the frontend sent for excluded_classes
+    update_fields = project.model_dump(exclude_unset=True)
+    if "excluded_classes" in update_fields:
+        exc = update_fields["excluded_classes"]
+        logger.info(
+            f"PATCH project {project_id}: excluded_classes has "
+            f"{len(exc)} entries (first 5: {exc[:5]})"
+        )
+    else:
+        logger.info(
+            f"PATCH project {project_id}: excluded_classes NOT in payload"
+        )
+
     try:
         db_project = crud_project.update_project(db, project_id, project)
         if db_project is None:
@@ -374,6 +353,12 @@ def update_project(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project with id '{project_id}' not found",
             )
+
+        # Debug: log what was stored
+        logger.info(
+            f"PATCH project {project_id}: DB now has "
+            f"{len(db_project.excluded_classes or [])} excluded_classes"
+        )
 
         # Recalculate MaxN if threshold changed
         if threshold_changing:

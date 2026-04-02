@@ -566,7 +566,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     pp_tax = load_taxonomy_lookup(taxonomy_csv)
                 pp_result = update_database_from_smoothed_results(
-                    deployment.id, smoothed, folder_path, db, pp_tax
+                    deployment.id, smoothed, folder_path, db, pp_tax,
+                    excluded_classes=project.excluded_classes,
                 )
                 logger.info(
                     f"Postprocessing complete: {pp_result.get('updated', 0)} updated"

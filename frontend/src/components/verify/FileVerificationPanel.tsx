@@ -14,6 +14,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Textarea } from "../ui/textarea";
 import { cn } from "../../lib/utils";
+import { getDetectionDisplayName } from "../../lib/detection-utils";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 
@@ -144,7 +145,7 @@ export function FileVerificationPanel({
         const opt = labelOptionsByValue.get(label);
         groups.set(label, {
           count: 1,
-          displayName: d.display_name || opt?.displayName || d.label || d.category,
+          displayName: d.display_name || opt?.displayName || getDetectionDisplayName(d),
           commonName: opt?.commonName ?? null,
           caption: opt?.caption ?? null,
         });
@@ -373,7 +374,7 @@ function DetectionItem({
   projectId?: string;
 }) {
   const currentLabel = detection.label || detection.category;
-  const currentDisplayName = detection.display_name || detection.label || detection.category;
+  const currentDisplayName = getDetectionDisplayName(detection);
   const itemRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -18,6 +18,7 @@ import { detectionsApi } from "../../api/detections";
 import { similarityApi } from "../../api/similarity";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
+import { getDetectionDisplayName } from "../../lib/detection-utils";
 import {
   computePillLayout,
   svgRoundedRectPath,
@@ -207,7 +208,7 @@ export function DetectionDetailModal({
         aria-describedby={undefined}
       >
         <DialogTitle className="sr-only">
-          {detection.display_name || detection.label || detection.category} detection detail
+          {getDetectionDisplayName(detection)} detection detail
         </DialogTitle>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -519,14 +520,14 @@ export function DetectionDetailModal({
                               <div key={n.detection_id} className="space-y-0.5">
                                 <img
                                   src={`${API_BASE_URL}${n.crop_url}`}
-                                  alt={n.display_name || n.label || n.category}
+                                  alt={getDetectionDisplayName(n)}
                                   className={cn(
                                     "w-full aspect-square object-cover rounded border-2",
                                     agrees ? "border-[#0f6064]" : "border-[#882000]"
                                   )}
                                 />
                                 <p className="text-[9px] text-muted-foreground truncate text-center capitalize">
-                                  {n.display_name || n.label || n.category}
+                                  {getDetectionDisplayName(n)}
                                 </p>
                               </div>
                             );

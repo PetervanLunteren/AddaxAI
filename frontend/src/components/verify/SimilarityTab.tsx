@@ -25,6 +25,7 @@ import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
 import { FilterPanel } from "./FilterPanel";
+import { getDetectionDisplayName } from "../../lib/detection-utils";
 import { SimilaritySettings } from "./SimilaritySettings";
 import { SimilarityHelpSheet } from "./SimilarityHelpSheet";
 import { LabelPicker } from "./LabelPicker";
@@ -937,7 +938,7 @@ export function SimilarityTab({
                 className="h-5 w-5 rounded object-cover"
               />
               <span className="text-xs capitalize">
-                {searchResult.anchor.display_name || searchResult.anchor.label || searchResult.anchor.category}
+                {getDetectionDisplayName(searchResult.anchor)}
               </span>
             </div>
 
