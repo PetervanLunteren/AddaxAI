@@ -17,7 +17,7 @@ COUNTRY='KEN'
 # run in Addax on the same DIR, same country, and smoothing OFF
 # then note projectID uuid
 
-PROJECTUUID='538a450c-aa79-4bbe-a468-ed9997072d74'
+PROJECTUUID='8edb77c3-aa60-4073-a7b8-e291bfdd4a80'
 
 # ==============================
 # COMPARE

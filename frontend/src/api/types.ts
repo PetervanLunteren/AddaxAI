@@ -232,6 +232,7 @@ export interface DetectionResponse {
   label: string | null;
   label_confidence: number | null;
   display_name: string | null;
+  label_taxonomy_id: string | null;
   classification_method: string | null;
   frame_number: number | null;
   verified: boolean;

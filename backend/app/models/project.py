@@ -69,7 +69,7 @@ class Project(Base):
         Float, nullable=False, default=0.5
     )
     event_smoothing: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
+        Boolean, nullable=False, default=False
     )
     smoothing_strength: Mapped[str] = mapped_column(
         String(20), nullable=False, default="normal"

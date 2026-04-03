@@ -8,9 +8,15 @@ import type React from "react";
 import type { DetectionResponse } from "../api/types";
 import { getSpeciesColor } from "../utils/species-colors";
 
-/** Get color for a detection: species color if labeled, category color otherwise. */
-export function getDetectionColor(detection: { label?: string | null; category: string }): string {
-  return detection.label ? getSpeciesColor(detection.label) : getCategoryColor(detection.category);
+/** Get color for a detection: species color if labeled, category color otherwise.
+ *  Uses label_taxonomy_id as the color key when available (matches event label chips). */
+export function getDetectionColor(detection: {
+  label?: string | null;
+  label_taxonomy_id?: string | null;
+  category: string;
+}): string {
+  const key = detection.label_taxonomy_id || detection.label;
+  return key ? getSpeciesColor(key) : getCategoryColor(detection.category);
 }
 
 /** Get display name for a detection, with capitalized fallback. */

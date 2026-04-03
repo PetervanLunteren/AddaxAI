@@ -91,8 +91,9 @@ export interface PillLayout {
 }
 
 export function computePillLayout(detection: DetectionResponse): PillLayout {
-  const color = detection.label
-    ? getSpeciesColor(detection.label)
+  const colorKey = detection.label_taxonomy_id || detection.label;
+  const color = colorKey
+    ? getSpeciesColor(colorKey)
     : getCategoryColor(detection.category);
   const hasLabel = !!detection.label;
 

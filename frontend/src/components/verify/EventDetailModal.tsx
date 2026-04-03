@@ -1334,7 +1334,7 @@ export function EventDetailModal({
                     <span
                       key={frame.label}
                       className="text-[10px] leading-none font-medium px-1.5 py-0.5 rounded-sm capitalize"
-                      style={{ backgroundColor: getSpeciesColor(frame.label), color: getSpeciesTextColor(frame.label) }}
+                      style={{ backgroundColor: getSpeciesColor(frame.label_taxonomy_id || frame.label || ""), color: getSpeciesTextColor(frame.label_taxonomy_id || frame.label || "") }}
                     >
                       MaxN: {frame.label} ×{frame.max_n}
                     </span>

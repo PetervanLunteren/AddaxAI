@@ -168,7 +168,7 @@ export function EventFilmstrip({
                     <span
                       key={frame.label}
                       className="text-[9px] leading-none font-semibold px-1 py-0.5 rounded-sm shadow-sm"
-                      style={{ backgroundColor: getSpeciesColor(frame.label), color: getSpeciesTextColor(frame.label) }}
+                      style={{ backgroundColor: getSpeciesColor(frame.label_taxonomy_id || frame.label || ""), color: getSpeciesTextColor(frame.label_taxonomy_id || frame.label || "") }}
                     >
                       MaxN
                     </span>

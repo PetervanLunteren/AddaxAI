@@ -20,6 +20,7 @@ class DetectionResponse(BaseModel):
     label: str | None
     label_confidence: float | None
     display_name: str | None = None
+    label_taxonomy_id: str | None = None
     classification_method: str | None = None
     frame_number: int | None = None
 

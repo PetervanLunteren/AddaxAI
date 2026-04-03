@@ -55,7 +55,7 @@ class ProjectBase(BaseModel):
         default=0.5, ge=0.0, le=1.0, description="Confidence threshold for detections (0.0-1.0)"
     )
     event_smoothing: bool = Field(
-        default=True, description="Apply temporal smoothing to detections"
+        default=False, description="Apply temporal smoothing to detections"
     )
     smoothing_strength: str = Field(
         default="normal",

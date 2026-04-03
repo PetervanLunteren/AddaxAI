@@ -215,11 +215,23 @@ export default function VerifyPage() {
     placeholderData: (prev) => prev,
   });
 
-  // Set species color context from current events
+  // Set species color context from current events.
+  // Labels are taxonomy UUIDs; register display_labels as aliases
+  // so name-string lookups (in LabelPicker, overlay, etc.) get
+  // the same color.
   useMemo(() => {
     if (events?.length) {
       const allLabels = [...new Set(events.flatMap((e) => e.labels))];
-      if (allLabels.length > 0) setSpeciesContext(allLabels);
+      // Collect UUID -> name aliases from all events' display_labels
+      const aliases: Record<string, string> = {};
+      for (const e of events) {
+        if (e.display_labels) {
+          for (const [uuid, name] of Object.entries(e.display_labels)) {
+            aliases[uuid] = name;
+          }
+        }
+      }
+      if (allLabels.length > 0) setSpeciesContext(allLabels, aliases);
     }
   }, [events]);
 

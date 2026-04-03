@@ -41,6 +41,9 @@ class DetectionBase(BaseModel):
     display_name: str | None = Field(
         None, max_length=100, description="Latin taxonomy display name"
     )
+    label_taxonomy_id: str | None = Field(
+        None, description="FK to label_taxonomy table"
+    )
     classification_method: str | None = Field(
         None, description="Classification method: 'machine' or 'human'"
     )
