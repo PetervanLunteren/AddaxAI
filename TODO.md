@@ -6,7 +6,8 @@
 - [ ] Test SpeciesNet thouroughly. Use the test script and go from there. 
 
 ## Priority 2
-- [ ] 
+- [ ] Make the country selection in the label selection (if present) a bit more visually aparent. Perhaps with a green/teal border around it? People need to see it is possible. 
+- [ ] Check how the label selection modal looks for models that dont have country filters. Check both in creteProject and in project settings. 
 
 ## Priority 3
 - [ ] 

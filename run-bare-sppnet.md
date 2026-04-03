@@ -3,8 +3,8 @@
 # RUN SPECIESNET OFFICIAL API
 # ==============================
 
-DIR='/Users/peter/Downloads/example-data/project_Kenya'
-COUNTRY='KEN'
+DIR='/Users/peter/Downloads/example-data/'
+COUNTRY='NLD'
 
 ~/AddaxAI/envs/env-addaxai-base/bin/python -m megadetector.detection.run_detector_batch ~/AddaxAI/models/det/MD5A-0-0/md_v5a.0.0.pt "$DIR" "$DIR/MD_ground_truth.json" --recursive --include_image_size 
 

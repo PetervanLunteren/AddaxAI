@@ -12,17 +12,41 @@ Detailed comparison of how the official SpeciesNet pipeline (`run_md_and_species
 - Official API output: `SPPNET_ground_truth.json` (generated with `run_md_and_speciesnet --country KEN`)
 - AddaxAI output: `.addaxai/projects/.../results.json` + DB detections
 
-## Current comparison results (2026-04-03, non-label skip disabled)
+## Current comparison results (2026-04-03, smoothing off, non-label skip disabled)
+
+### Kenya (KEN): 1867 classified detections
 
 | Category | Count |
 |----------|-------|
-| Exact match | 245 |
-| Label differences | 8 |
+| Exact match | 1863 |
+| Confidence-only diff | 3 |
+| Label differences | 1 |
 | GT only / DB only | 0 |
 
-Match rate: 96.8% (245/253 classified detections).
+Match rate: 99.8%. The 1 label difference and 3 confidence differences are all caused by the taxonomy ancestor resolution difference described below (difference #8).
 
-The 8 differences all follow the same pattern: the official API rolls up to a higher taxonomy level (bovidae, cetartiodactyla, mammalia) while AddaxAI keeps the species-level label ("domestic cattle"). Root cause is under investigation (both systems now use top-5 for rollup sums, so the difference must come from elsewhere in the pipeline).
+### Netherlands (NLD): 2400 classified detections
+
+| Category | Count |
+|----------|-------|
+| Exact match | 2275 |
+| Confidence-only diff | 27 |
+| Label differences | 98 |
+| GT only / DB only | 0 |
+
+Match rate: 94.8%. All 98 label differences and 27 confidence differences are caused by the taxonomy ancestor resolution difference (difference #8). AddaxAI picks a more specific taxonomy level (usually family) while the official API falls through to order or class. This is an intentional difference where AddaxAI produces better results (see difference #8 below).
+
+Label difference breakdown:
+- `mammalia -> callitrichidae`: 47x (class -> family)
+- `cetartiodactyla -> bovidae`: 45x (order -> family)
+- `aves -> pycnonotidae`: 3x (class -> family)
+- `mammalia -> bovidae`: 1x (class -> family)
+- `carnivora -> mustelidae`: 1x (order -> family)
+- `lagomorpha -> leporidae`: 1x (order -> family)
+
+### Raw model output verification (NLD, 841 species-level detections)
+
+Comparing only species-level detections (no rollup involved) between the official API's GT JSON and AddaxAI's results.json: zero label differences, 658 confidence "diffs" that are all just rounding (GT rounds to 3 decimals, AddaxAI to 5). The raw classifier outputs are identical. All label and confidence differences in the comparison above come from the rollup stage, not the model.
 
 ## Official SpeciesNet pipeline (3 stages)
 
@@ -168,6 +192,19 @@ The official API doesn't pre-filter the classification list. It runs the model o
 |---|---|---|
 | Rollup finds nothing above threshold | Returns None → ensemble falls through to "animal" (if detection > 0.5) or "unknown" | Returns None → keeps original top-1 label |
 
+### 8. Taxonomy ancestor resolution (primary source of remaining differences)
+
+| | Official API | AddaxAI |
+|---|---|---|
+| How ancestors are found | `get_ancestor_at_level()` looks up the ancestor key in `taxonomy_map` (built from the model's `.labels.txt` file). Returns `None` if the ancestor has no label in the model. | Groups by taxon value from `taxonomy.csv`. Every family/order/class that appears in the taxonomy is a valid rollup target. |
+| Effect | Can only roll up to levels that have a dedicated label in the model's training data. 172 out of 280 families have no label, so rollup skips them and falls through to order or class. | Can roll up to any taxonomy level that exists in the taxonomy CSV, producing more specific labels. |
+
+The official API's `roll_up_labels_to_first_matching_level()` calls `get_ancestor_at_level()` (in `taxonomy_utils.py`) which constructs a 5-part key (e.g., `mammalia;cetartiodactyla;bovidae;;`) and looks it up in `taxonomy_map`. If no entry exists for that key, the function returns `None` and the species does not contribute to the family-level sum. For 172 out of 280 families (e.g., callitrichidae, pycnonotidae), there is no family-level entry in the model's `.labels.txt`, so the rollup cannot stop at family level and falls through to order or class.
+
+AddaxAI's `rollup_single_detection()` groups by taxon value from the taxonomy CSV (e.g., `entry["family"] == "bovidae"`). Every species with a family value contributes to that family's sum, regardless of whether the model has a family-level label. This produces more specific, taxonomically correct rollup results.
+
+This is an intentional design difference. Rollup targets should be based on taxonomy, not on what labels happened to be in the model's training data. AddaxAI's approach gives users more informative labels (e.g., "callitrichidae" instead of "mammalia").
+
 ## Geofence data
 
 Both systems use the same geofence file: `geofence_release.2025.02.27.0702.json` in the model directory. Format: `{ "taxonomy_key": { "allow": { "KEN": [], "USA": ["CA","FL"], ... } } }`.
@@ -201,19 +238,19 @@ These changes are in the working tree (not yet committed):
 
 6. **Isolated smoothing failure from rollup**. Smoothing crash in `run_postprocessing_for_deployment()` now returns rollup-only results instead of propagating the exception. Phase 7 in `detection_worker.py` is fatal (rollup must succeed).
 
-## What remains to match the official API exactly
+## Remaining known differences
 
-### 8 remaining label differences (2026-04-03)
+### Taxonomy ancestor resolution (intentional, not a bug)
 
-All 8 follow the same pattern: official API rolls up (bovidae, cetartiodactyla, mammalia) while AddaxAI stays at "domestic cattle". Both systems use top-5 for rollup sums now, so the cause is elsewhere in the pipeline. Under investigation.
+All remaining label and confidence differences stem from difference #8 above. AddaxAI produces more specific rollup labels because it resolves taxonomy ancestors from the taxonomy CSV rather than requiring a label in the model's training data. This is by design.
 
 ### Ensemble heuristics
 
-The official API uses a complex decision tree that combines detection confidence with classification confidence (human/vehicle/blank heuristics). AddaxAI separates these concerns. Replicating the ensemble heuristics is a larger refactor and may not be desirable since AddaxAI handles detection categories differently (person and vehicle detections are never classified).
+The official API uses a complex decision tree that combines detection confidence with classification confidence (human/vehicle/blank heuristics). AddaxAI separates these concerns: MegaDetector handles detection categories, classification handles species. Not planned to change.
 
-### Geofence check on rollup results
+### `included_ancestor_taxa` check (intentional AddaxAI addition)
 
-The official API checks if the rolled-up ancestor is itself geofence-allowed. AddaxAI doesn't. This hasn't caused any differences in the Kenya test set but could in edge cases where a higher-level taxon is geofenced.
+AddaxAI checks that a rollup ancestor has at least one non-excluded descendant species. The official API only checks if the ancestor itself is geofenced. This prevents useless labels (e.g., "canidae" when all canidae species are excluded). Kept as a deliberate improvement.
 
 ## Files reference
 

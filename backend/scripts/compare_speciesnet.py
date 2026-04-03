@@ -119,11 +119,14 @@ def load_db_detections(
     dets = conn.execute(
         """
         SELECT f.file_path, d.label, d.label_confidence,
-               d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height
+               d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
+               lt.level, lt.taxon_class, lt.taxon_order,
+               lt.taxon_family, lt.taxon_genus, lt.taxon_species
         FROM detections d
         JOIN files f ON d.file_id = f.id
         JOIN deployments dep ON f.deployment_id = dep.id
         JOIN sites s ON dep.site_id = s.id
+        LEFT JOIN label_taxonomy lt ON d.label_taxonomy_id = lt.id
         WHERE s.project_id = ?
         """,
         (project_id,),
@@ -140,7 +143,18 @@ def load_db_detections(
             round(d["bbox_width"], 4),
             round(d["bbox_height"], 4),
         )
+        # Resolve to Latin taxon name (matching GT convention).
+        # Species-level: use label (common name, both systems match).
+        # Higher levels: use the most specific taxon column.
         label = d["label"] or "(unlabeled)"
+        level = d["level"]
+        if level and level != "species":
+            for col in ("taxon_species", "taxon_genus", "taxon_family",
+                        "taxon_order", "taxon_class"):
+                val = d[col]
+                if val:
+                    label = val
+                    break
         conf = d["label_confidence"] or 0.0
         lookup[(fname, bbox)] = (label, conf)
 
@@ -177,10 +191,13 @@ def compare(
                 (key, gt_label, gt_conf, db_label, db_conf)
             )
 
-    # DB detections not in GT (AddaxAI found something GT didn't)
+    # DB detections not in GT (skip videos / files not in GT)
+    gt_filenames = {fname for fname, _ in gt_lookup}
     for key in db_lookup:
         if key not in gt_lookup:
-            db_only += 1
+            fname, _ = key
+            if fname in gt_filenames:
+                db_only += 1
 
     total_compared = exact + len(conf_diff) + len(real_diff)
 
