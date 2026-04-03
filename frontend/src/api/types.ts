@@ -289,12 +289,14 @@ export interface EventFilterOptions {
   labels: string[];
   date_range: { min: string; max: string } | null;
   label_event_counts: Record<string, number>;
+  display_labels?: Record<string, string>;
 }
 
 // MaxN frame reference
 export interface MaxNFrame {
   file_id: string;
-  label: string;
+  label: string | null;
+  label_taxonomy_id: string | null;
   max_n: number;
 }
 

@@ -14,10 +14,12 @@ interface FilterChipsProps {
   filteredCount: number;
   totalCount: number;
   siteNames: Record<string, string>;
+  displayLabels?: Record<string, string>;
 }
 
 /** Format a raw label ID for display (e.g. "artiodactyla:unspecified" -> "Artiodactyla"). */
-function formatLabel(raw: string): string {
+function formatLabel(raw: string, displayLabels?: Record<string, string>): string {
+  if (displayLabels?.[raw]) return displayLabels[raw];
   const name = raw.replace(/:unspecified$/, "").replace(/_/g, " ");
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
@@ -38,6 +40,7 @@ export function FilterChips({
   filteredCount,
   totalCount,
   siteNames,
+  displayLabels,
 }: FilterChipsProps) {
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
 
@@ -85,7 +88,7 @@ export function FilterChips({
       for (const lbl of filters.labels) {
         chips.push({
           key: `label-${lbl}`,
-          label: formatLabel(lbl),
+          label: formatLabel(lbl, displayLabels),
           onRemove: () => {
             const next = filters.labels!.filter((s) => s !== lbl);
             onChange({ ...filters, labels: next.length ? next : undefined });

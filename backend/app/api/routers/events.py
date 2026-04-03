@@ -38,16 +38,13 @@ def _parse_filter_params(
     max_confidence: float | None,
 ) -> dict:
     """Parse common filter query params into kwargs for CRUD functions."""
-    # Strip :unspecified suffix from label IDs (used by rolled-up taxa in tree)
-    raw_labels = labels.split(",") if labels else None
-    if raw_labels:
-        raw_labels = [s.removesuffix(":unspecified") for s in raw_labels]
+    parsed_labels = labels.split(",") if labels else None
 
     return dict(
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=datetime.fromisoformat(date_from) if date_from else None,
         date_to=datetime.fromisoformat(date_to) if date_to else None,
-        labels=raw_labels,
+        labels=parsed_labels,
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,

@@ -497,6 +497,48 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     )
 
             # ============================================================
+            # PRE-PHASE 6: Populate taxonomy (must exist before DB load)
+            # ============================================================
+            from app.ml.taxonomy_db import (
+                batch_resolve_taxonomy_ids,
+                ensure_builtin_labels,
+                link_detections_to_taxonomy,
+                populate_taxonomy_from_csv,
+            )
+
+            builtin_taxonomy_ids = ensure_builtin_labels(db)
+
+            taxonomy_name_to_id: dict[str, tuple[str, str | None]] = {}
+            if classification_model_id:
+                try:
+                    taxonomy_csv = cls_model_dir / "taxonomy.csv"
+                    if taxonomy_csv.exists():
+                        populate_taxonomy_from_csv(
+                            classification_model_id, taxonomy_csv, db
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to populate taxonomy DB: {e}")
+
+                # Pre-resolve all class names from the JSON
+                if final_json_path.exists():
+                    import json as _json
+
+                    with open(final_json_path) as _f:
+                        _results_for_resolve = _json.load(_f)
+                    class_names_list = list(
+                        _results_for_resolve.get(
+                            "classification_categories", {}
+                        ).values()
+                    )
+                    if class_names_list:
+                        taxonomy_name_to_id = batch_resolve_taxonomy_ids(
+                            class_names_list,
+                            classification_model_id,
+                            project_id,
+                            db,
+                        )
+
+            # ============================================================
             # PHASE 6: Load to Database
             # ============================================================
             if final_json_path.exists():
@@ -512,28 +554,16 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     job_id=job_id,
                     db=db,
                     artifacts_folder=artifacts_folder,
+                    taxonomy_name_to_id=taxonomy_name_to_id,
+                    builtin_taxonomy_ids=builtin_taxonomy_ids,
                 )
 
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
-                # Populate label_taxonomy table from taxonomy.csv or results JSON
-                if classification_model_id:
-                    try:
-                        taxonomy_csv = cls_model_dir / "taxonomy.csv"
-                        if taxonomy_csv.exists():
-                            from app.ml.taxonomy_db import populate_taxonomy_from_csv
-
-                            populate_taxonomy_from_csv(
-                                classification_model_id, taxonomy_csv, db
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to populate taxonomy DB: {e}")
-
-                # Link detections to taxonomy rows via FK
+                # Defensive fallback: link any detections that weren't
+                # resolved inline (should be a no-op)
                 try:
-                    from app.ml.taxonomy_db import link_detections_to_taxonomy
-
                     link_detections_to_taxonomy(project_id, db)
                 except Exception as e:
                     logger.warning(f"Failed to link detections to taxonomy: {e}")
@@ -565,9 +595,40 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     from app.ml.taxonomic_rollup import load_taxonomy_lookup
 
                     pp_tax = load_taxonomy_lookup(taxonomy_csv)
+
+                # Resolve excluded_classes to taxonomy UUIDs
+                excluded_tax_ids: set[str] | None = None
+                if project.excluded_classes:
+                    from app.models.label_taxonomy import LabelTaxonomy
+
+                    exc_rows = (
+                        db.query(LabelTaxonomy.id)
+                        .filter(
+                            LabelTaxonomy.name.in_(
+                                project.excluded_classes
+                            ),
+                        )
+                        .all()
+                    )
+                    excluded_tax_ids = {r[0] for r in exc_rows}
+
+                # Re-resolve taxonomy after rollup may have added entries
+                pp_name_to_id = batch_resolve_taxonomy_ids(
+                    list(
+                        smoothed.get(
+                            "classification_categories", {}
+                        ).values()
+                    ),
+                    classification_model_id,
+                    project_id,
+                    db,
+                ) if classification_model_id else taxonomy_name_to_id
+
                 pp_result = update_database_from_smoothed_results(
                     deployment.id, smoothed, folder_path, db, pp_tax,
                     excluded_classes=project.excluded_classes,
+                    excluded_taxonomy_ids=excluded_tax_ids,
+                    taxonomy_name_to_id=pp_name_to_id,
                 )
                 logger.info(
                     f"Postprocessing complete: {pp_result.get('updated', 0)} updated"

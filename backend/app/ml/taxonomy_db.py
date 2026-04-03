@@ -169,19 +169,21 @@ BUILTIN_LABELS = [
 ]
 
 
-def ensure_builtin_labels(db: Session) -> int:
+def ensure_builtin_labels(db: Session) -> dict[str, str]:
     """
-    Ensure LabelTaxonomy has rows for non-classification labels ("person", "vehicle").
+    Ensure LabelTaxonomy has rows for non-classification labels
+    ("animal", "person", "vehicle").
 
     These use classification_model_id="__builtin__" and level="none".
     Idempotent: skips rows that already exist.
 
     Returns:
-        Count of newly inserted rows.
+        Mapping of builtin name to taxonomy UUID,
+        e.g. {"animal": "uuid-1", "person": "uuid-2", "vehicle": "uuid-3"}.
     """
     existing = {
-        r.name
-        for r in db.query(LabelTaxonomy.name)
+        r.name: r.id
+        for r in db.query(LabelTaxonomy.name, LabelTaxonomy.id)
         .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .all()
     }
@@ -198,13 +200,93 @@ def ensure_builtin_labels(db: Session) -> int:
             is_custom=False,
         )
         db.add(taxonomy_entry)
+        db.flush()
+        existing[label_def["name"]] = taxonomy_entry.id
         inserted += 1
 
     if inserted:
         db.commit()
         logger.info(f"Seeded {inserted} builtin label(s) in label_taxonomy")
 
-    return inserted
+    return existing
+
+
+def batch_resolve_taxonomy_ids(
+    label_names: list[str],
+    model_id: str | None,
+    project_id: str,
+    db: Session,
+) -> dict[str, tuple[str, str | None]]:
+    """
+    Resolve a batch of label names to (taxonomy_id, display_name) tuples.
+
+    Priority: model-level > custom > builtin.
+    Single query per priority level instead of N+1.
+
+    Returns:
+        {lowercase_name: (taxonomy_id, display_name)} for all matched names.
+    """
+    if not label_names:
+        return {}
+
+    result: dict[str, tuple[str, str | None]] = {}
+
+    # 1. Model-level taxonomy
+    if model_id:
+        model_rows = (
+            db.query(
+                LabelTaxonomy.id,
+                LabelTaxonomy.name,
+                LabelTaxonomy.display_name,
+            )
+            .filter(
+                LabelTaxonomy.classification_model_id == model_id,
+                LabelTaxonomy.project_id.is_(None),
+                LabelTaxonomy.name.in_(label_names),
+            )
+            .all()
+        )
+        for tid, name, dname in model_rows:
+            result[name.lower()] = (tid, dname)
+
+    # 2. Custom labels for this project
+    custom_rows = (
+        db.query(
+            LabelTaxonomy.id,
+            LabelTaxonomy.name,
+            LabelTaxonomy.display_name,
+        )
+        .filter(
+            LabelTaxonomy.project_id == project_id,
+            LabelTaxonomy.is_custom == True,  # noqa: E712
+            LabelTaxonomy.name.in_(label_names),
+        )
+        .all()
+    )
+    for tid, name, dname in custom_rows:
+        key = name.lower()
+        if key not in result:
+            result[key] = (tid, dname)
+
+    # 3. Builtin labels (animal, person, vehicle)
+    builtin_rows = (
+        db.query(
+            LabelTaxonomy.id,
+            LabelTaxonomy.name,
+            LabelTaxonomy.display_name,
+        )
+        .filter(
+            LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
+            LabelTaxonomy.name.in_(label_names),
+        )
+        .all()
+    )
+    for tid, name, dname in builtin_rows:
+        key = name.lower()
+        if key not in result:
+            result[key] = (tid, dname)
+
+    return result
 
 
 def link_detections_to_taxonomy(project_id: str, db: Session) -> int:

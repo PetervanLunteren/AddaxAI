@@ -44,15 +44,15 @@ def _apply_event_filters(
         query = query.filter(Event.start_time <= end_of_day)
 
     if labels:
-        # EXISTS subquery: event has at least one file with a detection matching labels
-        # Use COALESCE to fall back to category when label is null (detection-only projects)
-        effective_label = func.coalesce(Detection.label, Detection.category)
+        # EXISTS subquery: event has at least one file with a detection
+        # matching the given labels. Labels are taxonomy UUIDs when
+        # available, falling back to string matching.
         label_subq = (
             select(event_files.c.event_id)
             .join(File, File.id == event_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
-            .where(effective_label.in_(labels))
+            .where(Detection.label_taxonomy_id.in_(labels))
         )
         if min_confidence is not None:
             label_subq = label_subq.where(
@@ -340,7 +340,7 @@ def get_events_by_project(
             key=lambda f: f.timestamp,
         )
 
-        # Collect unique labels across all files (fall back to category for detection-only)
+        # Collect unique taxonomy IDs across all files
         label_set: set[str] = set()
         label_to_display: dict[str, str] = {}
         for f in sorted_files:
@@ -353,10 +353,17 @@ def get_events_by_project(
                 if meets_confidence and (
                     max_confidence is None or d.confidence <= max_confidence
                 ):
-                    raw = d.label if d.label is not None else d.category
-                    label_set.add(raw)
-                    if d.display_name and raw not in label_to_display:
-                        label_to_display[raw] = d.display_name
+                    tid = d.label_taxonomy_id
+                    if tid:
+                        label_set.add(tid)
+                        display = d.display_name or d.label or d.category
+                        if display and tid not in label_to_display:
+                            label_to_display[tid] = display
+                    else:
+                        raw = d.label if d.label is not None else d.category
+                        label_set.add(raw)
+                        if d.display_name and raw not in label_to_display:
+                            label_to_display[raw] = d.display_name
 
         # Determine dominant observation type (animal > human > vehicle > blank)
         obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
@@ -696,34 +703,51 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         Detection.verified == True,  # noqa: E712
     )
 
-    # Distinct labels across threshold-passing detections
-    effective_label = func.coalesce(Detection.label, Detection.category)
+    # Distinct taxonomy IDs across threshold-passing detections
     label_rows = (
-        db.query(effective_label)
+        db.query(
+            Detection.label_taxonomy_id,
+            func.coalesce(
+                Detection.display_name, Detection.label, Detection.category
+            ),
+        )
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
+        .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(threshold_clause)
         .distinct()
         .all()
     )
     label_list = sorted([row[0] for row in label_rows if row[0]])
 
-    # Count distinct events per label (threshold-filtered)
+    # Build display_labels mapping (taxonomy_id -> display name)
+    display_labels: dict[str, str] = {}
+    for tid, display in label_rows:
+        if tid and display and tid not in display_labels:
+            display_labels[tid] = display
+
+    # Count distinct events per taxonomy ID (threshold-filtered)
     label_count_rows = (
-        db.query(effective_label, func.count(func.distinct(Event.id)))
+        db.query(
+            Detection.label_taxonomy_id,
+            func.count(func.distinct(Event.id)),
+        )
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .join(Event, Event.id == event_files.c.event_id)
         .join(Deployment, Deployment.id == Event.deployment_id)
         .join(Site, Site.id == Deployment.site_id)
         .filter(Site.project_id == project_id)
+        .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(threshold_clause)
-        .group_by(effective_label)
+        .group_by(Detection.label_taxonomy_id)
         .all()
     )
-    label_event_counts = {name: count for name, count in label_count_rows if name}
+    label_event_counts = {
+        tid: count for tid, count in label_count_rows if tid
+    }
 
     # Date range from events
     date_row = (
@@ -745,4 +769,5 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         "labels": label_list,
         "date_range": date_range,
         "label_event_counts": label_event_counts,
+        "display_labels": display_labels,
     }

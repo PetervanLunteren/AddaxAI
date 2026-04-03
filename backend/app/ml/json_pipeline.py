@@ -33,6 +33,10 @@ def load_json_to_database(
     job_id: str,
     db: Session,
     artifacts_folder: Path | None = None,
+    taxonomy_name_to_id: (
+        dict[str, tuple[str, str | None]] | None
+    ) = None,
+    builtin_taxonomy_ids: dict[str, str] | None = None,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -49,6 +53,10 @@ def load_json_to_database(
         db: Database session
         artifacts_folder: Project-scoped artifacts folder. If provided,
             video_frames are read from artifacts_folder/video_frames/.
+        taxonomy_name_to_id: Pre-resolved mapping of
+            {lowercase_label: (taxonomy_id, display_name)}.
+        builtin_taxonomy_ids: Mapping of builtin category names
+            to taxonomy UUIDs, e.g. {"animal": "uuid", ...}.
 
     Returns:
         PipelineResult with statistics
@@ -328,8 +336,25 @@ def load_json_to_database(
                     detection_record.label = label
                     detection_record.label_confidence = label_confidence
                     detection_record.classification_method = "machine"
-                    # display_name is set by link_detections_to_taxonomy()
-                    # which runs after this function in the worker
+                    # Resolve taxonomy ID and display_name inline
+                    if taxonomy_name_to_id:
+                        resolved = taxonomy_name_to_id.get(
+                            label.lower()
+                        )
+                        if resolved:
+                            detection_record.label_taxonomy_id = (
+                                resolved[0]
+                            )
+                            detection_record.display_name = resolved[1]
+
+                # Set builtin taxonomy ID for unclassified detections
+                if not label and builtin_taxonomy_ids:
+                    builtin_tid = builtin_taxonomy_ids.get(category)
+                    if builtin_tid:
+                        detection_record.label_taxonomy_id = builtin_tid
+                        detection_record.display_name = (
+                            category.capitalize()
+                        )
 
             # Set observation_type on the video/image File record
             if video_categories:

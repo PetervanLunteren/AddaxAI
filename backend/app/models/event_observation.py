@@ -23,6 +23,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from .event import Event
     from .file import File
+    from .label_taxonomy import LabelTaxonomy
 
 
 class EventObservation(Base):
@@ -44,7 +45,12 @@ class EventObservation(Base):
         ForeignKey("events.id", ondelete="CASCADE"),
         nullable=False,
     )
-    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    label_taxonomy_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("label_taxonomy.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     max_n: Mapped[int] = mapped_column(Integer, nullable=False)
     max_n_file_id: Mapped[str | None] = mapped_column(
@@ -58,11 +64,18 @@ class EventObservation(Base):
         "Event", back_populates="observations"
     )
     max_n_file: Mapped["File | None"] = relationship("File")
+    label_taxonomy: Mapped["LabelTaxonomy | None"] = relationship(
+        "LabelTaxonomy", back_populates="observations"
+    )
 
     __table_args__ = (
-        UniqueConstraint("event_id", "label", name="uq_event_obs_event_label"),
+        UniqueConstraint(
+            "event_id", "label_taxonomy_id",
+            name="uq_event_obs_event_taxonomy",
+        ),
         Index("idx_event_obs_event", "event_id"),
         Index("idx_event_obs_label", "label"),
+        Index("idx_event_obs_label_taxonomy", "label_taxonomy_id"),
     )
 
     def __repr__(self) -> str:

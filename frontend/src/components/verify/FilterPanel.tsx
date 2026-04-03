@@ -82,7 +82,10 @@ export function FilterPanel({
     sites?.map((s) => ({ value: s.id, label: s.name })) ?? [];
 
   const labelFilterOptions: MultiSelectOption[] =
-    filterOptions?.labels.map((lbl) => ({ value: lbl, label: lbl })) ?? [];
+    filterOptions?.labels.map((lbl) => ({
+      value: lbl,
+      label: filterOptions?.display_labels?.[lbl] ?? lbl,
+    })) ?? [];
 
   if (!isOpen) return null;
 

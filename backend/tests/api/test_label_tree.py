@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from app.api.crud.label_tree import build_label_filter_tree
+from app.ml.taxonomy_db import link_detections_to_taxonomy
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
@@ -69,32 +70,41 @@ def test_build_tree_with_labels_and_rollups(db):
     p = _setup_project_with_detections(db, ["leopard", "lion", "felidae"])
 
     # Add taxonomy rows
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
-    _add_taxonomy(db, "lion", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="leo")
-    _add_taxonomy(db, "felidae", "family",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae")
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus",
+    )
+    lion_tax = _add_taxonomy(
+        db, "lion", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera", taxon_species="leo",
+    )
+    felidae_tax = _add_taxonomy(
+        db, "felidae", "family",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae",
+    )
+
+    # Link detections to taxonomy via FK
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
     assert "tree" in result
     assert "all_leaf_ids" in result
 
-    # Should have leaf IDs for leopard, lion, and felidae:unspecified
+    # Leaf IDs are now taxonomy UUIDs
     leaf_ids = result["all_leaf_ids"]
-    assert "leopard" in leaf_ids
-    assert "lion" in leaf_ids
-    assert "felidae:unspecified" in leaf_ids
+    assert leopard_tax.id in leaf_ids
+    assert lion_tax.id in leaf_ids
+    assert felidae_tax.id in leaf_ids
 
     # Check tree has hierarchy
     tree = result["tree"]
     assert len(tree) > 0
 
-    # Find the felidae:unspecified leaf in the tree
     def find_node(nodes, target_id):
         for n in nodes:
             if n["id"] == target_id:
@@ -104,25 +114,27 @@ def test_build_tree_with_labels_and_rollups(db):
                 return found
         return None
 
-    felidae_node = find_node(tree, "felidae:unspecified")
+    felidae_node = find_node(tree, felidae_tax.id)
     assert felidae_node is not None
     # Rolled-up leaf should have clean name and annotation
     assert felidae_node["name"] == "Felidae"
     assert felidae_node.get("annotation") == "unspecified"
 
-    # felidae:unspecified should be nested inside "family Felidae", not at root
+    # Leaf should be nested (not at root)
     root_ids = [n["id"] for n in tree]
-    assert "felidae:unspecified" not in root_ids
+    assert felidae_tax.id not in root_ids
 
     # Navigate hierarchy: class Mammalia -> order Carnivora -> family Felidae
     mammalia_node = find_node(tree, "class:mammalia")
     assert mammalia_node is not None
 
-    family_felidae = find_node([mammalia_node], "class:mammalia|order:carnivora|family:felidae")
+    family_felidae = find_node(
+        [mammalia_node], "class:mammalia|order:carnivora|family:felidae"
+    )
     assert family_felidae is not None
-    # felidae:unspecified should be a child of family Felidae
+    # felidae leaf should be a child of family Felidae
     felidae_child_ids = [c["id"] for c in family_felidae.get("children", [])]
-    assert "felidae:unspecified" in felidae_child_ids
+    assert felidae_tax.id in felidae_child_ids
 
 
 def test_build_tree_no_model_no_detections(db):
@@ -136,7 +148,7 @@ def test_build_tree_detection_only(db):
     """Detection-only project gets a tree from categories."""
     from app.ml.taxonomy_db import ensure_builtin_labels
 
-    ensure_builtin_labels(db)
+    builtin_ids = ensure_builtin_labels(db)
 
     p = make_project(db, classification_model_id=None)
     s = make_site(db, project_id=p.id)
@@ -160,27 +172,19 @@ def test_build_tree_detection_only(db):
             category=cat,
         )
 
+    # Link detections to builtin taxonomy
+    link_detections_to_taxonomy(p.id, db)
     db.flush()
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
     assert "tree" in result
 
+    # Leaf IDs are taxonomy UUIDs for builtins
     leaf_ids = result["all_leaf_ids"]
-    assert "animal" in leaf_ids
-    assert "person" in leaf_ids
-    assert "vehicle" in leaf_ids
-
-    # All three should be under the "other" node
-    tree = result["tree"]
-    other_node = next(
-        (n for n in tree if n["id"] == "other"), None
-    )
-    assert other_node is not None
-    other_child_ids = [c["id"] for c in other_node["children"]]
-    assert "animal" in other_child_ids
-    assert "person" in other_child_ids
-    assert "vehicle" in other_child_ids
+    assert builtin_ids["animal"] in leaf_ids
+    assert builtin_ids["person"] in leaf_ids
+    assert builtin_ids["vehicle"] in leaf_ids
 
 
 def test_build_tree_no_detections(db):
@@ -191,16 +195,12 @@ def test_build_tree_no_detections(db):
 
 
 def test_build_tree_no_taxonomy_rows(db):
-    """Labels without taxonomy rows appear under 'other'."""
+    """Detections without taxonomy links don't appear in the tree."""
     p = _setup_project_with_detections(db, ["leopard"])
-    # Don't add any taxonomy rows
+    # Don't add any taxonomy rows and don't link
     result = build_label_filter_tree(p.id, db)
-    assert result is not None
-    assert "leopard" in result["all_leaf_ids"]
-    other_node = next(
-        (n for n in result["tree"] if n["id"] == "other"), None
-    )
-    assert other_node is not None
+    # No linked detections, so tree should be None
+    assert result is None
 
 
 def test_build_tree_with_event_counts(db):
@@ -213,6 +213,9 @@ def test_build_tree_with_event_counts(db):
                   taxon_class="mammalia", taxon_order="carnivora",
                   taxon_family="felidae", taxon_genus="panthera", taxon_species="leo")
 
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
+
     result = build_label_filter_tree(p.id, db)
     assert result is not None
     counts = result["label_event_counts"]
@@ -221,40 +224,38 @@ def test_build_tree_with_event_counts(db):
 
 
 def test_unmatched_label_in_other(db):
-    """Labels not in taxonomy go to 'other' group."""
+    """Only linked detections appear. Unlinked detections are excluded."""
     p = _setup_project_with_detections(db, ["leopard", "blank"])
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus",
+    )
     # "blank" has no taxonomy row
+
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
-    assert "blank" in result["all_leaf_ids"]
-
-    # Find the "other" group
-    other_group = None
-    for node in result["tree"]:
-        if node["id"] == "other":
-            other_group = node
-            break
-
-    assert other_group is not None
-    # "blank" should be a leaf under "other"
-    child_ids = [c["id"] for c in other_group.get("children", [])]
-    assert "blank" in child_ids
+    # Only leopard should appear (linked), blank has no taxonomy
+    assert leopard_tax.id in result["all_leaf_ids"]
 
 
-def test_unspecified_suffix_stripping(client, db):
-    """Filter parsing strips :unspecified suffix from label IDs."""
+def test_filter_by_taxonomy_id(client, db):
+    """Event filter uses taxonomy UUIDs for label matching."""
     p = _setup_project_with_detections(db, ["felidae"])
-    _add_taxonomy(db, "felidae", "family",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae")
+    felidae_tax = _add_taxonomy(
+        db, "felidae", "family",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae",
+    )
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
 
-    # Query with :unspecified suffix — should still match
+    # Query with taxonomy UUID
     resp = client.get(
-        f"/api/events?project_id={p.id}&labels=felidae:unspecified"
+        f"/api/events?project_id={p.id}&labels={felidae_tax.id}"
     )
     assert resp.status_code == 200
 
@@ -271,9 +272,13 @@ def test_label_tree_endpoint(client, db):
 def test_label_tree_endpoint_with_data(client, db):
     """The /label-tree endpoint returns tree when data exists."""
     p = _setup_project_with_detections(db, ["leopard"])
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus",
+    )
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
 
     resp = client.get(f"/api/events/label-tree?project_id={p.id}")
     assert resp.status_code == 200
@@ -281,16 +286,20 @@ def test_label_tree_endpoint_with_data(client, db):
     assert data is not None
     assert "tree" in data
     assert "all_leaf_ids" in data
-    assert "leopard" in data["all_leaf_ids"]
+    assert leopard_tax.id in data["all_leaf_ids"]
     assert data["count_unit"] == "event"
 
 
 def test_leaf_has_structured_fields(db):
     """Label leaf nodes have annotation and count fields."""
     p = _setup_project_with_detections(db, ["leopard"])
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus",
+    )
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
@@ -304,7 +313,7 @@ def test_leaf_has_structured_fields(db):
                 return found
         return None
 
-    leaf = find_node(result["tree"], "leopard")
+    leaf = find_node(result["tree"], leopard_tax.id)
     assert leaf is not None
     assert leaf["name"] == "P. pardus"
     assert leaf["annotation"] == "leopard"

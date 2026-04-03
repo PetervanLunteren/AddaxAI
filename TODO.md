@@ -2,13 +2,12 @@
 - [ ] RE-ENABLE NON-LABEL SKIP - The `should_skip_detection()` calls in `backend/app/ml/json_pipeline.py` (lines ~587 and ~976) are temporarily commented out for SpeciesNet comparison testing. Uncomment both blocks after comparison is complete. Search for "TEMPORARY: disabled non-label skip" to find them.
 
 ## Priority 1
-- [ ] since we only need the top-5 predictions in the JSON for reprocessing, we can regenerate the DB after a species slecetion change, right? Is that already implemented? If not, how would it look like? Remeber that verified predictions should NEVER be overwritten by automatic reprocessing methods or other rewrites. 
 
 # TEST 1. Unify exclusion/rollup code paths: First-time DB load uses filter_and_rollup_classifications() (one step), reprocessing uses apply_label_exclusion_to_results() + apply_taxonomic_rollup_to_results() (two steps). User wants these unified.
-## It should be exactly the same when running analysis and when doing reprocessing. So test analysis with reprocess change and back to normal, then compare again.
+## It should be exactly the same when running analysis and when doing reprocessing. So test analysis with reprocess change and back to normal, then compare again. 
 
-  - Elaborate plan in repo root: /Users/peter/Documents/Repos/AddaxAI-WebUI/UUID_LABEL_MIGRATION_PLAN.md 
-  - Session plan document: /Users/peter/.claude/plans/polymorphic-sauteeing-pebble.md       
+# UI COLOR FIX 
+The colors of the boxes and the associated label chips in the event verification grid view are not the same.The chips colors are off.  In Similarity verification there correct. 
 
 # ROLLDOWN 
 exlusion rollup currently works like this (corect me if i'm wrong!):

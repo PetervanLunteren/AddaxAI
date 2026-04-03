@@ -58,14 +58,18 @@ def test_label_tree_uses_fk_linked_detections(db):
     """Tree correctly resolves taxonomy via FK join when detections are linked."""
     p, dets = _setup_project_with_linked_detections(db, ["leopard", "lion"])
 
-    _add_taxonomy(db, "leopard", "species",
-                            taxon_class="mammalia", taxon_order="carnivora",
-                            taxon_family="felidae", taxon_genus="panthera",
-                            taxon_species="pardus")
-    _add_taxonomy(db, "lion", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera",
-                  taxon_species="leo")
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera",
+        taxon_species="pardus",
+    )
+    lion_tax = _add_taxonomy(
+        db, "lion", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera",
+        taxon_species="leo",
+    )
 
     # Link detections to taxonomy
     link_detections_to_taxonomy(p.id, db)
@@ -73,42 +77,49 @@ def test_label_tree_uses_fk_linked_detections(db):
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
-    assert "leopard" in result["all_leaf_ids"]
-    assert "lion" in result["all_leaf_ids"]
+    # Leaf IDs are now taxonomy UUIDs
+    assert leopard_tax.id in result["all_leaf_ids"]
+    assert lion_tax.id in result["all_leaf_ids"]
 
 
 def test_label_tree_mixed_linked_and_unlinked(db):
-    """Tree works with both FK-linked and unlinked detections."""
+    """Tree includes FK-linked detections; unlinked are excluded from tree."""
     p, dets = _setup_project_with_linked_detections(db, ["leopard", "mystery_animal"])
 
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera",
-                  taxon_species="pardus")
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera",
+        taxon_species="pardus",
+    )
 
-    # Only link leopard; mystery_animal has no taxonomy row
+    # Only link leopard; mystery_animal has no taxonomy row and no FK
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
-    # leopard resolved via FK, mystery_animal falls to "other"
-    assert "leopard" in result["all_leaf_ids"]
-    assert "mystery_animal" in result["all_leaf_ids"]
+    # leopard resolved via FK
+    assert leopard_tax.id in result["all_leaf_ids"]
 
 
-def test_label_tree_fallback_for_unlinked(db):
-    """Unlinked detections still match via string fallback."""
+def test_label_tree_all_linked(db):
+    """All detections linked via FK appear in the tree."""
     p, dets = _setup_project_with_linked_detections(db, ["leopard"])
-    # Don't link — leave label_taxonomy_id NULL
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera",
-                  taxon_species="pardus")
+
+    leopard_tax = _add_taxonomy(
+        db, "leopard", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae", taxon_genus="panthera",
+        taxon_species="pardus",
+    )
+
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
 
     result = build_label_filter_tree(p.id, db)
     assert result is not None
-    assert "leopard" in result["all_leaf_ids"]
+    assert leopard_tax.id in result["all_leaf_ids"]
 
 
 # ---------- Delete custom label sets FK to NULL ----------

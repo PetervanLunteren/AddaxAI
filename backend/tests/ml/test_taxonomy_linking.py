@@ -51,9 +51,10 @@ def _make_project_with_detections(db, label_list, model_id=MODEL_ID):
 
 
 def test_ensure_builtin_labels_creates_rows(db):
-    """Seeds animal, person, and vehicle rows."""
-    count = ensure_builtin_labels(db)
-    assert count == 3
+    """Seeds animal, person, and vehicle rows and returns UUID mapping."""
+    result = ensure_builtin_labels(db)
+    assert len(result) == 3
+    assert set(result.keys()) == {"animal", "person", "vehicle"}
 
     rows = (
         db.query(LabelTaxonomy)
@@ -71,10 +72,12 @@ def test_ensure_builtin_labels_creates_rows(db):
 
 def test_ensure_builtin_labels_idempotent(db):
     """Calling twice doesn't duplicate rows."""
-    count1 = ensure_builtin_labels(db)
-    count2 = ensure_builtin_labels(db)
-    assert count1 == 3
-    assert count2 == 0
+    result1 = ensure_builtin_labels(db)
+    result2 = ensure_builtin_labels(db)
+    assert len(result1) == 3
+    assert len(result2) == 3
+    # Same UUIDs both times
+    assert result1 == result2
 
     total = (
         db.query(LabelTaxonomy)

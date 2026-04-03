@@ -16,6 +16,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from .detection import Detection
+    from .event_observation import EventObservation
 
 
 class LabelTaxonomy(Base):
@@ -54,6 +55,9 @@ class LabelTaxonomy(Base):
     # Back-reference to detections linked via FK
     detections: Mapped[list["Detection"]] = relationship(
         "Detection", back_populates="label_taxonomy"
+    )
+    observations: Mapped[list["EventObservation"]] = relationship(
+        "EventObservation", back_populates="label_taxonomy"
     )
 
     __table_args__ = (

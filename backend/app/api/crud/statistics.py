@@ -406,7 +406,7 @@ def get_species_distribution(
     if needs_join:
         query = query.outerjoin(
             LabelTaxonomy,
-            LabelTaxonomy.name == EventObservation.label,
+            LabelTaxonomy.id == EventObservation.label_taxonomy_id,
         )
 
     if site_ids:

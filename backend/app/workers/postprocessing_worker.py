@@ -161,6 +161,22 @@ async def process_postprocessing_job(job_id: str) -> None:
                 continue
 
             try:
+                # Resolve excluded_classes to taxonomy UUIDs
+                excluded_tax_ids: set[str] | None = None
+                if project.excluded_classes:
+                    from app.models.label_taxonomy import LabelTaxonomy
+
+                    exc_rows = (
+                        db.query(LabelTaxonomy.id)
+                        .filter(
+                            LabelTaxonomy.name.in_(
+                                project.excluded_classes
+                            ),
+                        )
+                        .all()
+                    )
+                    excluded_tax_ids = {r[0] for r in exc_rows}
+
                 if smoothing_enabled:
                     smoothed = run_postprocessing_for_deployment(
                         deployment.id, json_path, folder_path, project, db
@@ -171,9 +187,26 @@ async def process_postprocessing_job(job_id: str) -> None:
                         from app.ml.taxonomic_rollup import load_taxonomy_lookup
 
                         pp_taxonomy = load_taxonomy_lookup(taxonomy_csv)
+
+                    # Resolve label names to taxonomy IDs
+                    from app.ml.taxonomy_db import batch_resolve_taxonomy_ids
+
+                    pp_name_to_id = batch_resolve_taxonomy_ids(
+                        list(
+                            smoothed.get(
+                                "classification_categories", {}
+                            ).values()
+                        ),
+                        project.classification_model_id,
+                        project_id,
+                        db,
+                    ) if project.classification_model_id else None
+
                     result = update_database_from_smoothed_results(
                         deployment.id, smoothed, folder_path, db, pp_taxonomy,
                         excluded_classes=project.excluded_classes,
+                        excluded_taxonomy_ids=excluded_tax_ids,
+                        taxonomy_name_to_id=pp_name_to_id,
                     )
                 else:
                     # Build excluded_names and geofence keys for rollup

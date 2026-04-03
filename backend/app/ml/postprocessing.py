@@ -388,6 +388,10 @@ def update_database_from_smoothed_results(
     db: Session,
     taxonomy_lookup: dict[str, dict[str, str]] | None = None,
     excluded_classes: list[str] | None = None,
+    excluded_taxonomy_ids: set[str] | None = None,
+    taxonomy_name_to_id: (
+        dict[str, tuple[str, str | None]] | None
+    ) = None,
 ) -> dict:
     """
     Update Detection records in the database from smoothed JSON results.
@@ -396,7 +400,7 @@ def update_database_from_smoothed_results(
     (rounded to 4 decimal places) + frame_number.
 
     After updating labels, sweeps for any non-verified detection whose
-    label is still in excluded_classes and clears it to None.
+    label_taxonomy_id is still in excluded_taxonomy_ids and clears it.
 
     Args:
         deployment_id: Deployment UUID
@@ -404,9 +408,14 @@ def update_database_from_smoothed_results(
         deployment_folder: Path to deployment folder
         db: Database session
         taxonomy_lookup: Optional taxonomy for display_name lookup
-        excluded_classes: Optional list of excluded label names.
-            Any non-verified detection still carrying an excluded
-            label after the update is cleared to None.
+        excluded_classes: Optional list of excluded label names
+            (legacy, used as fallback when excluded_taxonomy_ids
+            is not provided).
+        excluded_taxonomy_ids: Set of excluded taxonomy UUIDs.
+            Preferred over excluded_classes for the final sweep.
+        taxonomy_name_to_id: Pre-resolved {lowercase_name:
+            (taxonomy_id, display_name)} mapping for setting
+            label_taxonomy_id on updated detections.
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -494,26 +503,40 @@ def update_database_from_smoothed_results(
                     new_label = None
                     new_confidence = None
 
-                # Look up display_name from label_taxonomy
+                # Resolve taxonomy ID and display_name
+                new_taxonomy_id = None
                 new_display = None
-                if new_label:
+                if new_label and taxonomy_name_to_id:
+                    resolved = taxonomy_name_to_id.get(
+                        new_label.lower()
+                    )
+                    if resolved:
+                        new_taxonomy_id = resolved[0]
+                        new_display = resolved[1]
+                if new_label and not new_display:
                     from app.models.label_taxonomy import LabelTaxonomy
 
                     tax_row = (
-                        db.query(LabelTaxonomy.display_name)
+                        db.query(
+                            LabelTaxonomy.id,
+                            LabelTaxonomy.display_name,
+                        )
                         .filter(LabelTaxonomy.name == new_label)
                         .first()
                     )
-                    new_display = (
-                        tax_row[0]
-                        if tax_row
-                        else new_label[0].upper() + new_label[1:]
-                    )
+                    if tax_row:
+                        new_taxonomy_id = tax_row[0]
+                        new_display = tax_row[1]
+                    else:
+                        new_display = (
+                            new_label[0].upper() + new_label[1:]
+                        )
 
                 if db_det.label != new_label or db_det.label_confidence != new_confidence:
                     db_det.label = new_label
                     db_det.label_confidence = new_confidence
                     db_det.display_name = new_display
+                    db_det.label_taxonomy_id = new_taxonomy_id
                     updated += 1
                     changed_file_ids.add(db_det.file_id)
                 else:
@@ -526,7 +549,21 @@ def update_database_from_smoothed_results(
     # Final sweep: clear any non-verified detection whose label is
     # still excluded. Catches edge cases where smoothing re-introduces
     # an excluded label or rollup couldn't find an included ancestor.
-    if excluded_classes:
+    if excluded_taxonomy_ids:
+        for det in detections:
+            if det.verified:
+                continue
+            if (
+                det.label_taxonomy_id
+                and det.label_taxonomy_id in excluded_taxonomy_ids
+            ):
+                det.label = None
+                det.label_confidence = None
+                det.display_name = None
+                det.label_taxonomy_id = None
+                changed_file_ids.add(det.file_id)
+                updated += 1
+    elif excluded_classes:
         excluded_lower = {name.lower() for name in excluded_classes}
         for det in detections:
             if det.verified:
@@ -535,6 +572,7 @@ def update_database_from_smoothed_results(
                 det.label = None
                 det.label_confidence = None
                 det.display_name = None
+                det.label_taxonomy_id = None
                 changed_file_ids.add(det.file_id)
                 updated += 1
 

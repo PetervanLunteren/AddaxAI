@@ -36,32 +36,31 @@ def build_label_filter_tree(
     if not project:
         return None
 
-    model_id = project.classification_model_id
     threshold = project.detection_threshold
 
-    # Use COALESCE so detection-only projects (label=NULL) fall back
-    # to category ("animal", "person", "vehicle").
-    effective_label = func.coalesce(Detection.label, Detection.category)
-
-    # Get detected labels + counts (events or detections).
+    # Count by label_taxonomy_id (authoritative FK).
     # Only count detections at or above the project's confidence threshold
     # so the tree matches what the verify page actually displays.
     if count_by == "detection":
         label_count_rows = (
-            db.query(effective_label, func.count(Detection.id))
+            db.query(
+                Detection.label_taxonomy_id,
+                func.count(Detection.id),
+            )
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
-            .filter(effective_label.isnot(None))
+            .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
-            .group_by(effective_label)
+            .group_by(Detection.label_taxonomy_id)
             .all()
         )
     else:
         label_count_rows = (
             db.query(
-                effective_label, func.count(func.distinct(Event.id))
+                Detection.label_taxonomy_id,
+                func.count(func.distinct(Event.id)),
             )
             .join(File, File.id == Detection.file_id)
             .join(event_files, event_files.c.file_id == File.id)
@@ -69,78 +68,42 @@ def build_label_filter_tree(
             .join(Deployment, Deployment.id == Event.deployment_id)
             .join(Site, Site.id == Deployment.site_id)
             .filter(Site.project_id == project_id)
-            .filter(effective_label.isnot(None))
+            .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
-            .group_by(effective_label)
+            .group_by(Detection.label_taxonomy_id)
             .all()
         )
 
     if not label_count_rows:
         return None
 
-    label_event_counts = {name: count for name, count in label_count_rows}
-    detected_labels = set(label_event_counts.keys())
+    taxonomy_id_counts = {
+        tid: count for tid, count in label_count_rows if tid
+    }
+    detected_taxonomy_ids = set(taxonomy_id_counts.keys())
 
-    # Get taxonomy rows via FK join (preferred) + string match fallback for unlinked.
-    # FK-linked: query distinct taxonomy rows referenced by detections in this project.
-    linked_taxonomy_ids = (
-        db.query(func.distinct(Detection.label_taxonomy_id))
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .filter(
-            Site.project_id == project_id,
-            Detection.label_taxonomy_id.isnot(None),
-        )
-        .subquery()
+    # Load taxonomy rows for all detected taxonomy IDs
+    taxonomy_rows_raw = (
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.id.in_(detected_taxonomy_ids))
+        .all()
     )
-    fk_rows = [
-        r for r in (
-            db.query(LabelTaxonomy)
-            .filter(LabelTaxonomy.id.in_(
-                db.query(linked_taxonomy_ids.c[0])
-            ))
-            .all()
-        )
-        if r.name in detected_labels
-    ]
-    fk_label_names = {r.name for r in fk_rows}
 
-    # String-match fallback for unlinked detections (label_taxonomy_id IS NULL)
-    unlinked_labels = detected_labels - fk_label_names
-    fallback_rows: list[LabelTaxonomy] = []
-    if unlinked_labels:
-        if model_id:
-            model_rows = (
-                db.query(LabelTaxonomy)
-                .filter(
-                    LabelTaxonomy.classification_model_id == model_id,
-                    LabelTaxonomy.project_id.is_(None),
-                    LabelTaxonomy.name.in_(unlinked_labels),
-                )
-                .all()
+    # Build name-based counts from taxonomy_id counts
+    # (needed for the tree builder which indexes by name)
+    label_event_counts: dict[str, int] = {}
+    tid_to_name: dict[str, str] = {}
+    for row in taxonomy_rows_raw:
+        tid_to_name[row.id] = row.name
+    for tid, count in taxonomy_id_counts.items():
+        name = tid_to_name.get(tid)
+        if name:
+            label_event_counts[name] = (
+                label_event_counts.get(name, 0) + count
             )
-            model_label_names = {r.name.lower() for r in model_rows}
-        else:
-            model_rows = []
-            model_label_names = set()
 
-        custom_rows = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.project_id == project_id,
-                LabelTaxonomy.is_custom == True,  # noqa: E712
-                LabelTaxonomy.name.in_(unlinked_labels),
-            )
-            .all()
-        )
-        custom_rows = [
-            r for r in custom_rows
-            if r.name.lower() not in model_label_names
-        ]
-        fallback_rows = model_rows + custom_rows
-
-    taxonomy_rows = fk_rows + fallback_rows
+    detected_labels = set(label_event_counts.keys())
+    taxonomy_rows = taxonomy_rows_raw
 
     # Rows with no taxonomy fields go to "Other" instead of root
     has_taxonomy = []
@@ -207,7 +170,7 @@ def build_label_filter_tree(
         if row.level == "species":
             display_label = row.display_name or row.name
             display_name = row.name.replace("_", " ")
-            leaf_id = row.name
+            leaf_id = row.id
             leaf_node = {
                 "id": leaf_id,
                 "name": display_label,
@@ -218,7 +181,7 @@ def build_label_filter_tree(
                 "_event_count": count,
             }
         else:
-            leaf_id = f"{row.name}:unspecified"
+            leaf_id = row.id
             display = (
                 row.display_name
                 or row.name.replace("_", " ").capitalize()
@@ -239,9 +202,14 @@ def build_label_filter_tree(
     # Add unmatched labels to "other" group
     if unmatched_labels:
         other_children: dict = {}
+        # Resolve unmatched names to taxonomy IDs for leaf IDs.
+        # Include all taxonomy rows (with and without taxonomy fields).
+        name_to_tid: dict[str, str] = {
+            r.name: r.id for r in taxonomy_rows_raw
+        }
         for label_name in sorted(unmatched_labels):
             count = label_event_counts.get(label_name, 0)
-            leaf_id = label_name
+            leaf_id = name_to_tid.get(label_name, label_name)
             other_children[leaf_id] = {
                 "id": leaf_id,
                 "name": label_name.replace("_", " ").capitalize(),

@@ -43,12 +43,15 @@ def calculate_max_n_for_event(
 
     Returns the created EventObservation rows.
     """
+    # Group by label_taxonomy_id (authoritative), falling back to
+    # COALESCE(label, category) for display string.
     effective_label = func.coalesce(Detection.label, Detection.category)
 
-    # Count detections per file per label, keep track of file_id
+    # Count detections per file per taxonomy_id
     counts = (
         db.query(
             Detection.file_id,
+            Detection.label_taxonomy_id,
             effective_label.label("eff_label"),
             Detection.category,
             func.count(Detection.id).label("det_count"),
@@ -57,7 +60,12 @@ def calculate_max_n_for_event(
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id == event_id)
         .filter(_threshold_clause(detection_threshold))
-        .group_by(Detection.file_id, effective_label, Detection.category)
+        .group_by(
+            Detection.file_id,
+            Detection.label_taxonomy_id,
+            effective_label,
+            Detection.category,
+        )
         .all()
     )
 
@@ -70,14 +78,17 @@ def calculate_max_n_for_event(
         )
         return []
 
-    # Find MaxN per label: the file with the highest count for each label
-    max_n_per_label: dict[str, dict] = {}
-    for file_id, label, category, det_count in counts:
-        if label not in max_n_per_label or det_count > max_n_per_label[label]["count"]:
-            max_n_per_label[label] = {
+    # Find MaxN per taxonomy_id (or label string as fallback key)
+    max_n_per_key: dict[str, dict] = {}
+    for file_id, taxonomy_id, label, category, det_count in counts:
+        key = taxonomy_id or label
+        if key not in max_n_per_key or det_count > max_n_per_key[key]["count"]:
+            max_n_per_key[key] = {
                 "count": det_count,
                 "file_id": file_id,
                 "category": category,
+                "label": label,
+                "taxonomy_id": taxonomy_id,
             }
 
     # Replace existing observations for this event
@@ -88,11 +99,12 @@ def calculate_max_n_for_event(
     )
 
     observations = []
-    for label, data in max_n_per_label.items():
+    for data in max_n_per_key.values():
         obs = EventObservation(
             id=str(uuid.uuid4()),
             event_id=event_id,
-            label=label,
+            label=data["label"],
+            label_taxonomy_id=data["taxonomy_id"],
             category=data["category"],
             max_n=data["count"],
             max_n_file_id=data["file_id"],
@@ -183,6 +195,7 @@ def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
             EventObservation.max_n_file_id,
             EventObservation.label,
             EventObservation.max_n,
+            EventObservation.label_taxonomy_id,
         )
         .filter(EventObservation.event_id == event_id)
         .filter(EventObservation.max_n_file_id.isnot(None))
@@ -190,7 +203,12 @@ def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
         .all()
     )
     return [
-        {"file_id": row[0], "label": row[1], "max_n": row[2]}
+        {
+            "file_id": row[0],
+            "label": row[1],
+            "max_n": row[2],
+            "label_taxonomy_id": row[3],
+        }
         for row in rows
     ]
 

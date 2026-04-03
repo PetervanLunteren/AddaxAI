@@ -223,6 +223,13 @@ export default function VerifyPage() {
     }
   }, [events]);
 
+  // Fetch filter options for display_labels mapping (shared cache with FilterPanel)
+  const { data: filterOptions } = useQuery({
+    queryKey: ["event-filter-options", projectId],
+    queryFn: () => eventsApi.getFilterOptions(projectId!),
+    enabled: !!projectId,
+  });
+
   // Fetch sites for name mapping in filter chips
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -302,6 +309,7 @@ export default function VerifyPage() {
                   filteredCount={filteredEvents}
                   totalCount={totalEvents}
                   siteNames={siteNames}
+                  displayLabels={filterOptions?.display_labels}
                 />
               )}
             </FilterPanel>

@@ -13,7 +13,8 @@ class MaxNFrame(BaseModel):
     """A MaxN frame reference for filmstrip badges."""
 
     file_id: str
-    label: str
+    label: str | None = None
+    label_taxonomy_id: str | None = None
     max_n: int
 
 
@@ -105,6 +106,7 @@ class EventFilterOptions(BaseModel):
     labels: list[str]
     date_range: DateRange | None
     label_event_counts: dict[str, int]
+    display_labels: dict[str, str] | None = None
 
 
 class LabelTreeNode(BaseModel):
