@@ -110,7 +110,7 @@ export function CreateProjectDialog({
       country_code: null,
       state_code: null,
       detection_threshold: 0.5,
-      event_smoothing: true,
+      event_smoothing: false,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
       taxonomic_rollup_threshold: 0.65,

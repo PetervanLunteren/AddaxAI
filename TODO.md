@@ -1,6 +1,6 @@
 ## TEMPORARY
 - [ ] RE-ENABLE NON-LABEL SKIP - The `should_skip_detection()` calls in `backend/app/ml/json_pipeline.py` (lines ~587 and ~976) are temporarily commented out for SpeciesNet comparison testing. Uncomment both blocks after comparison is complete. Search for "TEMPORARY: disabled non-label skip" to find them.
-- [ ] RE-ENABLE SMOOTHING DEFAULT - The default for `event_smoothing` in `backend/app/models/project.py` and `backend/app/api/schemas/project.py` is temporarily set to `False` for SpeciesNet comparison testing. Change both back to `True` after comparison is complete.
+- [ ] RE-ENABLE SMOOTHING DEFAULT - The default for `event_smoothing` is temporarily set to `False` in four places for SpeciesNet comparison testing. Change all back to `True` after comparison is complete: `backend/app/models/project.py`, `backend/app/api/schemas/project.py`, `frontend/src/components/projects/CreateProjectDialog.tsx`, `frontend/src/pages/SettingsPage.tsx`.
 
 ## Priority 1
 - [ ] Test SpeciesNet thouroughly. Use the test script and go from there. 

@@ -12,16 +12,17 @@ Detailed comparison of how the official SpeciesNet pipeline (`run_md_and_species
 - Official API output: `SPPNET_ground_truth.json` (generated with `run_md_and_speciesnet --country KEN`)
 - AddaxAI output: `.addaxai/projects/.../results.json` + DB detections
 
-## Current comparison results (after fixes applied in this session)
+## Current comparison results (2026-04-03, non-label skip disabled)
 
 | Category | Count |
 |----------|-------|
-| Exact match (same label, confidence within 0.002) | 130 |
-| Label format difference (same concept, Latin vs common name) | 8 |
-| GT was blank (AddaxAI correctly skips via non-label detection logic) | 114 |
-| Real label difference | 1 |
+| Exact match | 245 |
+| Label differences | 8 |
+| GT only / DB only | 0 |
 
-The 8 format differences are expected: AddaxAI uses Latin taxonomy names ("bovidae", "mammalia", "cetartiodactyla") while the official API uses display names ("bovidae family", "mammal", "cetartiodactyla order"). This is by design; AddaxAI's `label_taxonomy.display_name` handles user-facing presentation.
+Match rate: 96.8% (245/253 classified detections).
+
+The 8 differences all follow the same pattern: the official API rolls up to a higher taxonomy level (bovidae, cetartiodactyla, mammalia) while AddaxAI keeps the species-level label ("domestic cattle"). Root cause is under investigation (both systems now use top-5 for rollup sums, so the difference must come from elsewhere in the pipeline).
 
 ## Official SpeciesNet pipeline (3 stages)
 
@@ -93,7 +94,7 @@ Two functions:
 
 Order of operations in `run_postprocessing_for_deployment()`:
 1. `apply_label_exclusion_to_results()`: removes excluded species from classification lists (simple drop, no redirection to ancestors, no renormalization). NON_LABEL classes (blank, bait, etc.) are kept.
-2. `apply_taxonomic_rollup_to_results()`: for detections with top-1 confidence < 0.65, sums ALL remaining species' confidences at each taxonomy level. Picks the most specific level above 0.65. Returns None if nothing crosses threshold.
+2. `apply_taxonomic_rollup_to_results()`: for detections with top-1 confidence < 0.65, sums top-5 predictions' confidences at each taxonomy level. Picks the most specific level above 0.65. Returns None if nothing crosses threshold.
 3. `strip_non_label_from_results()`: removes blank/bait/etc. from classification lists.
 4. Event smoothing (MegaDetector subprocess, non-fatal).
 5. `update_database_from_smoothed_results()`: writes final labels to DB.
@@ -102,22 +103,21 @@ Order of operations in `run_postprocessing_for_deployment()`:
 
 `rollup_single_detection()`:
 - Triggers when top-1 confidence < 0.65 AND top-1 is in taxonomy
-- Sums ALL remaining classifications at each level (species, genus, family, order, class)
+- Uses only top-5 predictions for rollup sums (matches official SpeciesNet API)
+- Sums top-5 scores at each level (species, genus, family, order, class)
 - Walks from most specific to broadest, picks first level >= 0.65
 - Returns None if nothing crosses threshold
 
 ## Key differences
 
-### 1. Number of predictions used in rollup (the remaining 1-difference cause)
+### 1. Predictions stored vs used in rollup
 
 | | Official API | AddaxAI |
 |---|---|---|
 | Predictions stored | Top-5 only | All 2498 |
-| Predictions used in rollup sums | Top-5 | All remaining after exclusion (~578) |
+| Predictions used in rollup sums | Top-5 | Top-5 (trimmed before summing) |
 
-This is the root cause of the 1 remaining label difference. With only top-5, the bovidae family sum for a detection might be 0.64 (just below 0.65), so the official API falls through to order level. With all 578 remaining species, AddaxAI's bovidae sum is 0.725 (50 bovidae species accumulate tiny confidences), so it picks family level.
-
-**To match the official API**, AddaxAI's rollup would need to use only the top-N predictions. However, AddaxAI stores all 2498 for good reasons (exclusion rollup in Phase 6 needs the full distribution to redirect scores properly). The fix would be to trim to top-5 (or top-N) only in the Phase 7 rollup step, not in storage.
+Both systems now use top-5 for rollup sums. AddaxAI stores all 2498 in the JSON (needed for Phase 6 exclusion rollup which redirects scores to ancestors), but `rollup_single_detection()` trims to top-5 before computing level sums.
 
 ### 2. Decision tree vs simple threshold
 
@@ -203,13 +203,9 @@ These changes are in the working tree (not yet committed):
 
 ## What remains to match the official API exactly
 
-### Top-N limitation in rollup
+### 8 remaining label differences (2026-04-03)
 
-The biggest remaining difference. The official classifier returns only top-5, so rollup sums use 5 predictions. AddaxAI stores all 2498 and uses all remaining (~578 after exclusion) for rollup sums. This causes 1 out of 130 non-blank detections to pick a different rollup level.
-
-**Possible fix**: in `rollup_single_detection()` or `apply_taxonomic_rollup_to_results()`, trim the classification list to top-5 before computing rollup sums. This would only affect the Phase 7 postprocessing path. Phase 6 DB load should continue using the full distribution for exclusion rollup.
-
-**Trade-off**: limiting to top-5 means rollup sums are based on less information. With more predictions, the sums are more accurate representations of the model's confidence at each taxonomy level. The official API's top-5 limitation is likely a performance optimization, not a deliberate design choice.
+All 8 follow the same pattern: official API rolls up (bovidae, cetartiodactyla, mammalia) while AddaxAI stays at "domestic cattle". Both systems use top-5 for rollup sums now, so the cause is elsewhere in the pipeline. Under investigation.
 
 ### Ensemble heuristics
 

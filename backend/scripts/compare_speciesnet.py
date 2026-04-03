@@ -16,7 +16,7 @@ Usage:
 
 Options:
     --gt          Path to the official SpeciesNet ground truth JSON
-    --project-id  AddaxAI project UUID
+    --project-id  AddaxAI project UUID (default: most recently created)
     --verbose     Show all individual differences
 """
 
@@ -168,7 +168,7 @@ def compare(
         db_label, db_conf = db_entry
 
         if gt_label == db_label:
-            if abs(gt_conf - db_conf) < 0.15:
+            if abs(gt_conf - db_conf) < 0.01:
                 exact += 1
             else:
                 conf_diff.append((key, gt_label, gt_conf, db_conf))
@@ -265,8 +265,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--project-id",
-        required=True,
-        help="AddaxAI project UUID",
+        required=False,
+        default=None,
+        help="AddaxAI project UUID (default: most recently created)",
     )
     parser.add_argument(
         "--verbose",
@@ -285,20 +286,31 @@ def main() -> None:
         print(f"Error: database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Verify project exists
+    # Resolve project ID
     conn = sqlite3.connect(str(db_path))
-    row = conn.execute(
-        "SELECT id, country_code FROM projects WHERE id = ?",
-        (args.project_id,),
-    ).fetchone()
+    if args.project_id:
+        row = conn.execute(
+            "SELECT id, country_code FROM projects WHERE id = ?",
+            (args.project_id,),
+        ).fetchone()
+        if not row:
+            print(
+                f"Error: project {args.project_id} not found",
+                file=sys.stderr,
+            )
+            conn.close()
+            sys.exit(1)
+    else:
+        row = conn.execute(
+            "SELECT id, country_code FROM projects"
+            " ORDER BY created_at DESC LIMIT 1",
+        ).fetchone()
+        if not row:
+            print("Error: no projects in database", file=sys.stderr)
+            conn.close()
+            sys.exit(1)
+        args.project_id = row[0]
     conn.close()
-
-    if not row:
-        print(
-            f"Error: project {args.project_id} not found",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
     print(f"GT file: {args.gt}")
     print(f"Project: {args.project_id}")

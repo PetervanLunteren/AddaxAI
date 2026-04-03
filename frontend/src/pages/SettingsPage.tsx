@@ -257,7 +257,7 @@ export default function SettingsPage() {
       state_code: null,
       video_fps: 1.0,
       detection_threshold: 0.5,
-      event_smoothing: true,
+      event_smoothing: false,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
       taxonomic_rollup_threshold: 0.65,
