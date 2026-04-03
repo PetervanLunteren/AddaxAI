@@ -150,7 +150,7 @@ def add_rollup_taxonomy_entry(
         taxon_genus=genus_val,
         taxon_species=None,  # Rolled-up entries never have species
         level=level,
-        display_name=correct_display,
+        display_name=name.capitalize(),
         is_custom=False,
     )
     db.add(taxonomy_entry)

@@ -7,6 +7,9 @@
 # TEST 1. Unify exclusion/rollup code paths: First-time DB load uses filter_and_rollup_classifications() (one step), reprocessing uses apply_label_exclusion_to_results() + apply_taxonomic_rollup_to_results() (two steps). User wants these unified.
 ## It should be exactly the same when running analysis and when doing reprocessing. So test analysis with reprocess change and back to normal, then compare again.
 
+  - Elaborate plan in repo root: /Users/peter/Documents/Repos/AddaxAI-WebUI/UUID_LABEL_MIGRATION_PLAN.md 
+  - Session plan document: /Users/peter/.claude/plans/polymorphic-sauteeing-pebble.md       
+
 # ROLLDOWN 
 exlusion rollup currently works like this (corect me if i'm wrong!):
 raw: wolf 60%, dog 20%, bear 10%, cat 10%.
