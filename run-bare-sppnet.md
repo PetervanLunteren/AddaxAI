@@ -3,7 +3,7 @@
 # RUN SPECIESNET OFFICIAL API
 # ==============================
 
-DIR='/Users/peter/Downloads/example-data/'
+DIR='/Users/peter/Downloads/example-data'
 COUNTRY='NLD'
 
 ~/AddaxAI/envs/env-addaxai-base/bin/python -m megadetector.detection.run_detector_batch ~/AddaxAI/models/det/MD5A-0-0/md_v5a.0.0.pt "$DIR" "$DIR/MD_ground_truth.json" --recursive --include_image_size 
@@ -27,3 +27,5 @@ source venv/bin/activate
 python scripts/compare_speciesnet.py --gt "$DIR/SPPNET_ground_truth.json" 
 
 python scripts/compare_speciesnet.py --gt "$DIR/SPPNET_ground_truth.json" --verbose
+
+❯ OK, lets remove the temporary difference #8 fix                                                                                                            

@@ -145,16 +145,18 @@ def load_db_detections(
         )
         # Resolve to Latin taxon name (matching GT convention).
         # Species-level: use label (common name, both systems match).
-        # Higher levels: use the most specific taxon column.
+        # Higher levels: use the taxon column matching the label's level.
         label = d["label"] or "(unlabeled)"
         level = d["level"]
-        if level and level != "species":
-            for col in ("taxon_species", "taxon_genus", "taxon_family",
-                        "taxon_order", "taxon_class"):
-                val = d[col]
-                if val:
-                    label = val
-                    break
+        level_to_col = {
+            "class": "taxon_class",
+            "order": "taxon_order",
+            "family": "taxon_family",
+            "genus": "taxon_genus",
+        }
+        col = level_to_col.get(level)
+        if col and d[col]:
+            label = d[col]
         conf = d["label_confidence"] or 0.0
         lookup[(fname, bbox)] = (label, conf)
 
