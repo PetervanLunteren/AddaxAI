@@ -256,18 +256,24 @@ def print_results(results: dict, verbose: bool = False) -> None:
                     f"addaxai={db_l} ({db_c:.4f})"
                 )
 
-    if results["conf_diff"] and verbose:
-        print(f"\n--- Confidence differences ({len(results['conf_diff'])}) ---")
-        for key, label, gt_c, db_c in results["conf_diff"][:10]:
-            fname, _ = key
-            print(
-                f"  {fname}: {label} "
-                f"official={gt_c} addaxai={db_c:.4f} "
-                f"diff={abs(gt_c - db_c):.4f}"
-            )
-        remaining = len(results["conf_diff"]) - 10
-        if remaining > 0:
-            print(f"  ... and {remaining} more")
+    if results["conf_diff"]:
+        diffs = [abs(gt_c - db_c) for _, _, gt_c, db_c in results["conf_diff"]]
+        print(
+            f"\n--- Confidence differences ({len(diffs)}) ---"
+            f"\n  min={min(diffs):.4f}  max={max(diffs):.4f}"
+            f"  avg={sum(diffs) / len(diffs):.4f}"
+        )
+        if verbose:
+            for key, label, gt_c, db_c in results["conf_diff"][:10]:
+                fname, _ = key
+                print(
+                    f"  {fname}: {label} "
+                    f"official={gt_c} addaxai={db_c:.4f} "
+                    f"diff={abs(gt_c - db_c):.4f}"
+                )
+            remaining = len(results["conf_diff"]) - 10
+            if remaining > 0:
+                print(f"  ... and {remaining} more")
 
     print()
 

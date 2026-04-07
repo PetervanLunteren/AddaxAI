@@ -29,20 +29,14 @@ Match rate: 99.8%. The 1 label difference and 3 confidence differences are all c
 
 | Category | Count |
 |----------|-------|
-| Exact match | 2275 |
+| Exact match | 2372 |
 | Confidence-only diff | 27 |
-| Label differences | 98 |
+| Label differences | 1 |
 | GT only / DB only | 0 |
 
-Match rate: 94.8%. All 98 label differences and 27 confidence differences are caused by the taxonomy ancestor resolution difference (difference #8). AddaxAI picks a more specific taxonomy level (usually family) while the official API falls through to order or class. This is an intentional difference where AddaxAI produces better results (see difference #8 below).
-
-Label difference breakdown:
-- `mammalia -> callitrichidae`: 47x (class -> family)
-- `cetartiodactyla -> bovidae`: 45x (order -> family)
-- `aves -> pycnonotidae`: 3x (class -> family)
-- `mammalia -> bovidae`: 1x (class -> family)
-- `carnivora -> mustelidae`: 1x (order -> family)
-- `lagomorpha -> leporidae`: 1x (order -> family)
+Match rate: 98.8%. The 1 label difference is `mammalia -> bovidae` (difference #8: AddaxAI picks family, official API picks class). The 27 confidence differences have two causes:
+- 3 bovidae rollups where AddaxAI's family sum is higher because more species contribute (difference #8)
+- 24 aves rollups where AddaxAI keeps the raw "bird" label at 0.67 while the official API rolls up to "aves" at 0.80 (difference #2: the official API's ensemble combiner triggers rollup for non-species top-1 labels like "bird", AddaxAI does not)
 
 ### Raw model output verification (NLD, 841 species-level detections)
 

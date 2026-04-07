@@ -167,7 +167,6 @@ def rollup_single_detection(
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
     included_ancestor_taxa: frozenset[tuple[str, str]] | None = None,
-    valid_ancestor_keys: frozenset[str] | None = None,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
@@ -246,20 +245,6 @@ def rollup_single_detection(
         entry = taxonomy_lookup[name]
         for level in TAXONOMY_LEVELS:
             if level in entry:
-                # TEMPORARY: skip species whose ancestor at this level
-                # has no label in the model (matching official SpeciesNet
-                # API behavior for comparison testing). The official API's
-                # get_ancestor_at_level() returns None when the ancestor
-                # key is missing from taxonomy_map, so the species does
-                # not contribute to the sum at that level. Remove this
-                # block after testing to restore AddaxAI's better behavior
-                # of resolving ancestors from the taxonomy CSV.
-                if valid_ancestor_keys is not None:
-                    ancestor_key = _build_taxonomy_key_for_level(
-                        entry, level
-                    )
-                    if ancestor_key not in valid_ancestor_keys:
-                        continue
                 taxon = entry[level]
                 level_sums[level][taxon] = (
                     level_sums[level].get(taxon, 0.0) + conf
@@ -361,32 +346,6 @@ def apply_taxonomic_rollup_to_results(
                         _included.add((level, entry[level]))
         included_ancestor_taxa = frozenset(_included)
 
-    # TEMPORARY: build set of valid ancestor keys from the model's
-    # .labels.txt file. This restricts rollup to only use taxonomy
-    # levels that have a dedicated label in the model's original
-    # training data, matching the official SpeciesNet API behavior
-    # where get_ancestor_at_level() returns None for missing ancestors.
-    # 172/280 families have no label, so rollup skips them.
-    # Remove this block after testing to restore AddaxAI's better
-    # behavior of resolving ancestors from the taxonomy CSV.
-    # See SPECIESNET_COMPARISON.md difference #8.
-    valid_ancestor_keys: frozenset[str] | None = None
-    labels_file = list(taxonomy_csv_path.parent.glob("*.labels.txt"))
-    if labels_file:
-        _valid: set[str] = set()
-        with open(labels_file[0]) as lf:
-            for line in lf:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(";")
-                if len(parts) < 7:
-                    continue
-                # Key format: class;order;family;genus;species
-                key = ";".join(parts[1:6])
-                _valid.add(key)
-        valid_ancestor_keys = frozenset(_valid)
-
     rolled_up = 0
     skipped = 0
     new_entries: list[dict] = []
@@ -405,7 +364,6 @@ def apply_taxonomic_rollup_to_results(
                 excluded_names=excluded_names,
                 allowed_taxonomy_keys=allowed_taxonomy_keys,
                 included_ancestor_taxa=included_ancestor_taxa,
-                valid_ancestor_keys=valid_ancestor_keys,
             )
             if result is None:
                 skipped += 1
