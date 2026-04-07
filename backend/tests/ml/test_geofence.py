@@ -2,16 +2,15 @@
 
 Validates that AddaxAI's geofence decisions match the official SpeciesNet
 API's should_geofence_animal_classification(). Tests use the real
-SpeciesNet model data (geofence JSON + labels file).
+SpeciesNet v4.0.2a model data (geofence JSON + labels file).
 
 Three test categories (per SpeciesNet developer recommendation):
 1. Known-allowed and known-blocked pairs (ecologically obvious)
-2. Random taxa/location pairs compared against the official API
-3. Block-rule entries (TODO: add after SpeciesNet update)
+2. Block-rule entries (all 56 entries with block rules in v4.0.2a)
+3. Exhaustive taxa/location comparison against the official API
 """
 
 import json
-import random
 import subprocess
 import textwrap
 from pathlib import Path
@@ -19,14 +18,16 @@ from pathlib import Path
 import pytest
 
 from app.ml.geofence import (
+    _get_allowed_labels_cached,
+    _load_geofence_cached,
+    _parse_labels_cached,
     find_geofence_file,
     find_labels_file,
     get_allowed_labels,
     load_geofence,
-    parse_labels_file,
 )
 
-MODEL_DIR = Path.home() / "AddaxAI/models/cls/SPECIESNET-v4-0-1-A-v1"
+MODEL_DIR = Path.home() / "AddaxAI/models/cls/SPECIESNET-v4-0-2-A"
 ENV_PYTHON = Path.home() / "AddaxAI/envs/env-addaxai-base/bin/python"
 
 requires_model = pytest.mark.skipif(
@@ -51,7 +52,7 @@ KNOWN_ALLOWED = [
     ("cheetah", "KEN", None),
     ("spotted hyaena", "KEN", None),
     ("olive baboon", "KEN", None),
-    ("hippopotamus", "KEN", None),
+    ("african buffalo", "KEN", None),
     # European wildlife in Netherlands
     ("european roe deer", "NLD", None),
     ("beech marten", "NLD", None),
@@ -69,8 +70,8 @@ KNOWN_ALLOWED = [
     ("nine-banded armadillo", "BRA", None),
     ("colombian red howler monkey", "BRA", None),
     # Australian wildlife in Australia
-    ("eastern grey kangaroo", "AUS", None),
     ("common wombat", "AUS", None),
+    ("koala", "AUS", None),
 ]
 
 
@@ -85,15 +86,15 @@ KNOWN_BLOCKED = [
     ("impala", "NLD", None),
     ("olive baboon", "NLD", None),
     ("spotted hyaena", "NLD", None),
-    ("hippopotamus", "NLD", None),
     ("cheetah", "NLD", None),
+    ("african buffalo", "NLD", None),
     # South American wildlife blocked in Kenya
     ("giant anteater", "KEN", None),
     ("nine-banded armadillo", "KEN", None),
     ("mantled howler monkey", "KEN", None),
     # Australian wildlife blocked in Kenya
-    ("eastern grey kangaroo", "KEN", None),
     ("common wombat", "KEN", None),
+    ("koala", "KEN", None),
     # North American wildlife blocked in Netherlands
     ("eastern gray squirrel", "NLD", None),
     ("pronghorn", "NLD", None),
@@ -109,25 +110,55 @@ KNOWN_BLOCKED = [
     # South American wildlife blocked in Netherlands
     ("giant anteater", "NLD", None),
     # Australian wildlife blocked in Netherlands
-    ("eastern grey kangaroo", "NLD", None),
     ("common wombat", "NLD", None),
+    ("koala", "NLD", None),
 ]
 
 
 # --- Block-rule pairs ---
-# European roe deer: allowed in USA via allow list, but blocked via block rule.
-# Dingo: allowed everywhere via allow, blocked everywhere via block, except AUS.
+# All species with block rules in v4.0.2a geofence. For each, test a
+# blocked country and (when available) an allowed-but-not-blocked country.
+# v4.0.2a has 56 block-rule entries covering pittidae, macropodidae,
+# hippopotamidae, potoroidae, and individual species.
 
 BLOCK_RULE_PAIRS = [
-    # Roe deer: allowed in Europe, blocked in USA despite being in allow list
-    ("european roe deer", "NLD", None, True),   # allowed (in allow, no block)
-    ("european roe deer", "DEU", None, True),   # allowed (in allow, no block)
-    ("european roe deer", "USA", None, False),  # blocked (in allow AND block)
-    # Dingo: allowed AND blocked everywhere, only truly allowed in AUS
-    # (AUS is in the allow list but NOT in the block list)
-    ("dingo", "AUS", None, True),               # allowed (in allow, not in block)
-    ("dingo", "NLD", None, False),              # blocked (in allow AND block)
-    ("dingo", "KEN", None, False),              # blocked (in allow AND block)
+    # Pittidae (birds, blocked in 91 countries)
+    ("blue pitta", "ABW", None, False),
+    ("noisy pitta", "ABW", None, False),
+    ("blue-winged pitta", "ABW", None, False),
+    # Roe deer: allowed in Europe, blocked in USA
+    ("european roe deer", "NLD", None, True),
+    ("european roe deer", "DEU", None, True),
+    ("european roe deer", "USA", None, False),
+    # Sika deer: allowed in China, state-level blocks in USA
+    ("sika deer", "CHN", None, True),
+    ("sika deer", "USA", "DE", True),   # allowed in Delaware
+    ("sika deer", "USA", "CA", False),  # blocked in California
+    # Hippopotamus: blocked in 210 countries (not in allow for most)
+    ("hippopotamus", "ABW", None, False),
+    # Dingo: blocked everywhere except no allowed-only country exists
+    ("dingo", "ABW", None, False),
+    ("dingo", "NLD", None, False),
+    # Badgers
+    ("eurasian badger", "AFG", None, True),
+    ("eurasian badger", "USA", None, False),
+    ("asian badger", "USA", None, False),
+    # Macropodidae (kangaroos/wallabies, blocked in 245 countries)
+    ("eastern grey kangaroo", "ABW", None, False),
+    ("western gray kangaroo", "ABW", None, False),
+    ("red kangaroo", "ABW", None, False),
+    ("agile wallaby", "ABW", None, False),
+    ("swamp wallaby", "ABW", None, False),
+    ("quokka", "ABW", None, False),
+    ("red-necked wallaby", "ABW", None, False),
+    ("common wallaroo", "ABW", None, False),
+    # Potoroidae (potoroos/bettongs, blocked in 248 countries)
+    ("rufous bettong", "ABW", None, False),
+    ("long-nosed potoroo", "ABW", None, False),
+    ("long-footed potoroo", "ABW", None, False),
+    # Eurasian red squirrel: allowed in Europe, blocked in USA
+    ("eurasian red squirrel", "ALA", None, True),
+    ("eurasian red squirrel", "USA", None, False),
 ]
 
 
@@ -191,7 +222,12 @@ class TestKnownBlockedSpecies:
 
 @requires_model
 class TestBlockRules:
-    """Species with both allow and block rules (edge cases)."""
+    """Species with both allow and block rules (edge cases).
+
+    v4.0.2a has 56 entries with block rules. These test representative
+    species from each group with both a blocked and (when available)
+    an allowed country.
+    """
 
     @pytest.mark.parametrize(
         "species,country,state,expected_allowed",
@@ -200,10 +236,6 @@ class TestBlockRules:
             f"{s}-{c}-{'allowed' if a else 'blocked'}"
             for s, c, _, a in BLOCK_RULE_PAIRS
         ],
-    )
-    @pytest.mark.xfail(
-        reason="AddaxAI does not implement geofence block rules yet",
-        strict=False,
     )
     def test_block_rule(self, species, country, state, expected_allowed):
         allowed = get_allowed_labels(MODEL_DIR, country, state)
@@ -217,27 +249,34 @@ class TestBlockRules:
             )
 
 
-# --- Random taxa vs official API ---
+# --- Exhaustive comparison vs official API ---
 
 @requires_model
 @requires_env
 @pytest.mark.slow
-class TestRandomTaxaMatchOfficialAPI:
+class TestExhaustiveMatchOfficialAPI:
     """Compare AddaxAI's geofence decisions against the official SpeciesNet API.
 
-    Tests 500 random taxa x 10 random countries (+ 10 US states for USA).
-    Agreement must be 100% (no floating-point math involved).
+    Tests ALL taxa x ALL countries from the geofence data. Agreement
+    must be 100% (no floating-point math involved).
     """
 
-    def test_random_taxa_match(self):
+    def test_exhaustive_match(self):
+        # Clear caches to ensure fresh data with current parse logic
+        _parse_labels_cached.cache_clear()
+        _get_allowed_labels_cached.cache_clear()
+        _load_geofence_cached.cache_clear()
+
         geofence_path = find_geofence_file(MODEL_DIR)
         labels_path = find_labels_file(MODEL_DIR)
         assert geofence_path and labels_path
 
         geofence = load_geofence(MODEL_DIR)
 
-        # Read raw lines to get full 7-token labels for the official API
+        # Read raw lines to get full 7-token labels for the official API.
+        # Use the same name-dedup logic as inference.py for empty names.
         raw_labels = []
+        seen_names: set[str] = set()
         with open(labels_path) as f:
             for line in f:
                 line = line.strip()
@@ -245,46 +284,57 @@ class TestRandomTaxaMatchOfficialAPI:
                     continue
                 parts = line.split(";")
                 if len(parts) >= 7:
+                    common_name = parts[6]
+                    if not common_name or common_name in seen_names:
+                        taxonomy = [p for p in parts[1:6] if p]
+                        if taxonomy:
+                            common_name = taxonomy[-1]
+                    if common_name in seen_names:
+                        common_name = f"{common_name} ({parts[0][:8]})"
+                    seen_names.add(common_name)
                     raw_labels.append({
                         "full_label": line,
-                        "common_name": parts[6],
+                        "common_name": common_name,
                     })
 
-        # Pick 500 random taxa
-        rng = random.Random(42)
-        sample_labels = rng.sample(raw_labels, min(500, len(raw_labels)))
-
-        # Pick 10 random countries from geofence data
+        # Get ALL countries from geofence data
         all_countries: set[str] = set()
         for rules in geofence.values():
             all_countries.update(rules.get("allow", {}).keys())
-        sample_countries = rng.sample(sorted(all_countries), 10)
+            all_countries.update(rules.get("block", {}).keys())
+        sorted_countries = sorted(all_countries)
 
-        # Pick 10 US states
+        # US states for state-level testing
         us_states = [
             "CA", "FL", "TX", "NY", "WA", "CO", "MT", "AK", "HI", "ME",
         ]
 
-        # Build query list: (full_7token_label, country, state)
+        # Build exhaustive query list: all taxa x all countries
+        # Each entry: (full_label, common_name, country, state)
         queries = []
-        for label_info in sample_labels:
-            for country in sample_countries:
-                state = None
-                if country == "USA":
-                    state = rng.choice(us_states)
+        for label_info in raw_labels:
+            for country in sorted_countries:
                 queries.append((
                     label_info["full_label"],
+                    label_info["common_name"],
                     country,
+                    None,
+                ))
+            # Also test US states
+            for state in us_states:
+                queries.append((
+                    label_info["full_label"],
+                    label_info["common_name"],
+                    "USA",
                     state,
                 ))
 
-        # Run official API via subprocess
+        # Run official API via subprocess (batch all queries at once)
         script = textwrap.dedent("""\
             import json, sys
             from speciesnet.geofence_utils import (
                 should_geofence_animal_classification,
             )
-            from speciesnet.taxonomy_utils import get_full_class_string
 
             geofence_map = json.load(open(sys.argv[1]))
             queries = json.load(sys.stdin)
@@ -298,12 +348,17 @@ class TestRandomTaxaMatchOfficialAPI:
             json.dump(results, sys.stdout)
         """)
 
+        # Send only (full_label, country, state) to subprocess
+        subprocess_queries = [
+            (q[0], q[2], q[3]) for q in queries
+        ]
+
         proc = subprocess.run(
             [str(ENV_PYTHON), "-c", script, str(geofence_path)],
-            input=json.dumps(queries),
+            input=json.dumps(subprocess_queries),
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=300,
         )
         assert proc.returncode == 0, (
             f"Official API subprocess failed: {proc.stderr}"
@@ -315,15 +370,13 @@ class TestRandomTaxaMatchOfficialAPI:
         allowed_cache: dict[tuple, list[str]] = {}
         mismatches = []
 
-        for i, (full_label, country, state) in enumerate(queries):
+        for i, (full_label, common_name, country, state) in enumerate(queries):
             cache_key = (country, state)
             if cache_key not in allowed_cache:
                 allowed_cache[cache_key] = get_allowed_labels(
                     MODEL_DIR, country, state
                 )
 
-            parts = full_label.split(";")
-            common_name = parts[6] if len(parts) >= 7 else full_label
             addaxai_allowed = common_name in allowed_cache[cache_key]
             official_blocked = official_results[i]
 
@@ -338,17 +391,9 @@ class TestRandomTaxaMatchOfficialAPI:
                     f" key={taxonomy_key}"
                 )
 
+        total = len(queries)
         assert not mismatches, (
             f"{len(mismatches)} geofence mismatches out of"
-            f" {len(queries)} queries:\n"
-            + "\n".join(mismatches[:20])
+            f" {total} queries ({len(mismatches)/total*100:.2f}%):\n"
+            + "\n".join(mismatches[:30])
         )
-
-
-# TODO: after updating to the new SpeciesNet version, add tests for
-# the geofence changes file (block rules added on top of allow rules).
-# The current geofence JSON has 2 entries with block rules:
-# - european roe deer: allowed in Europe, blocked in USA
-# - dingo: allowed everywhere, blocked everywhere except AUS
-# These are partially covered by TestBlockRules above, but the
-# developer mentioned a separate changes file with more entries.

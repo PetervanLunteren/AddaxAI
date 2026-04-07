@@ -42,8 +42,11 @@ follow_imports = "normal"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --tb=short"
+addopts = "--cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --tb=short -m 'not slow'"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "slow: exhaustive tests that take longer to run (use pytest -m slow to include)",
+]

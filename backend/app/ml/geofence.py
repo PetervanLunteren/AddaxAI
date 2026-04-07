@@ -57,7 +57,8 @@ def find_labels_file(model_dir: Path) -> Path | None:
     """
     Find a labels file in a model directory.
 
-    Looks for files matching '*.labels.txt'.
+    Looks for files matching '*.labels*.txt' (supports date-suffixed
+    filenames like '*.labels.20251208.txt').
 
     Args:
         model_dir: Path to model directory
@@ -65,7 +66,7 @@ def find_labels_file(model_dir: Path) -> Path | None:
     Returns:
         Path to labels file, or None if not found
     """
-    matches = sorted(model_dir.glob(f"*{LABELS_EXTENSION}"))
+    matches = sorted(model_dir.glob("*.labels*.txt"))
     if matches:
         return matches[0]
     return None
@@ -98,8 +99,14 @@ def load_geofence(model_dir: Path) -> dict | None:
 
 @lru_cache(maxsize=4)
 def _parse_labels_cached(labels_path: str) -> tuple[tuple[str, str], ...]:
-    """Parse and cache labels file (keyed by string path for lru_cache)."""
+    """Parse and cache labels file (keyed by string path for lru_cache).
+
+    Applies the same name-dedup logic as inference.py: empty or
+    duplicate common names fall back to the most specific taxonomy
+    rank, then UUID prefix if still duplicate.
+    """
     labels = []
+    seen_names: set[str] = set()
     with open(labels_path) as f:
         for line in f:
             line = line.strip()
@@ -110,6 +117,16 @@ def _parse_labels_cached(labels_path: str) -> tuple[tuple[str, str], ...]:
                 continue
             taxonomy_key = ";".join(parts[1:6])
             common_name = parts[6]
+
+            if not common_name or common_name in seen_names:
+                taxonomy = [p for p in parts[1:6] if p]
+                if taxonomy:
+                    common_name = taxonomy[-1]
+
+            if common_name in seen_names:
+                common_name = f"{common_name} ({parts[0][:8]})"
+
+            seen_names.add(common_name)
             labels.append((common_name, taxonomy_key))
     return tuple(labels)
 
@@ -156,18 +173,39 @@ def _get_allowed_labels_cached(
             allowed.append(common_name)
             continue
 
-        allow_dict = geofence_entry.get("allow", {})
-        if country_upper not in allow_dict:
-            continue
+        # Mirrors official SpeciesNet should_geofence_animal_classification():
+        # 1. Check allow rules (if present)
+        # 2. Check block rules (override allow)
+        # 3. If neither rule blocks, species is allowed
+        geofenced = False
+        state_upper = (
+            state_code.upper()
+            if state_code and state_code.upper() not in ("NONE", "")
+            else None
+        )
 
-        if (
-            country_upper == "USA"
-            and state_code
-            and state_code.upper() not in ("NONE", "")
-        ):
-            state_list = allow_dict[country_upper]
-            if state_list and state_code.upper() not in state_list:
-                continue
+        # Allow rules
+        allow_dict = geofence_entry.get("allow")
+        if allow_dict:
+            if country_upper not in allow_dict:
+                geofenced = True
+            else:
+                allow_states = allow_dict[country_upper]
+                if state_upper and allow_states and state_upper not in allow_states:
+                    geofenced = True
+
+        # Block rules (override allow)
+        if not geofenced:
+            block_dict = geofence_entry.get("block")
+            if block_dict and country_upper in block_dict:
+                block_states = block_dict[country_upper]
+                if not block_states:
+                    geofenced = True
+                elif state_upper and state_upper in block_states:
+                    geofenced = True
+
+        if geofenced:
+            continue
 
         allowed.append(common_name)
 
@@ -272,21 +310,35 @@ def _get_allowed_taxonomy_keys_cached(
     country_upper = country_code.upper()
     allowed_keys: set[str] = set()
 
+    state_upper = (
+        state_code.upper()
+        if state_code and state_code.upper() not in ("NONE", "")
+        else None
+    )
+
     for taxonomy_key, entry in geofence.items():
-        allow_dict = entry.get("allow", {})
-        if country_upper not in allow_dict:
-            continue
+        geofenced = False
 
-        if (
-            country_upper == "USA"
-            and state_code
-            and state_code.upper() not in ("NONE", "")
-        ):
-            state_list = allow_dict[country_upper]
-            if state_list and state_code.upper() not in state_list:
-                continue
+        allow_dict = entry.get("allow")
+        if allow_dict:
+            if country_upper not in allow_dict:
+                geofenced = True
+            else:
+                allow_states = allow_dict[country_upper]
+                if state_upper and allow_states and state_upper not in allow_states:
+                    geofenced = True
 
-        allowed_keys.add(taxonomy_key)
+        if not geofenced:
+            block_dict = entry.get("block")
+            if block_dict and country_upper in block_dict:
+                block_states = block_dict[country_upper]
+                if not block_states:
+                    geofenced = True
+                elif state_upper and state_upper in block_states:
+                    geofenced = True
+
+        if not geofenced:
+            allowed_keys.add(taxonomy_key)
 
     return frozenset(allowed_keys)
 
