@@ -171,6 +171,7 @@ def compare(
     """Compare GT (Latin-converted) vs DB detections and return summary."""
     exact = 0
     conf_diff: list[tuple] = []
+    all_conf_diffs: list[float] = []
     real_diff: list[tuple] = []
     gt_only = 0
     db_only = 0
@@ -184,7 +185,10 @@ def compare(
         db_label, db_conf = db_entry
 
         if gt_label == db_label:
-            if abs(gt_conf - db_conf) < 0.01:
+            diff = abs(gt_conf - db_conf)
+            if diff > 0:
+                all_conf_diffs.append(diff)
+            if diff < 0.001:
                 exact += 1
             else:
                 conf_diff.append((key, gt_label, gt_conf, db_conf))
@@ -206,6 +210,7 @@ def compare(
     return {
         "exact": exact,
         "conf_diff": conf_diff,
+        "all_conf_diffs": all_conf_diffs,
         "real_diff": real_diff,
         "gt_only": gt_only,
         "db_only": db_only,
@@ -256,10 +261,18 @@ def print_results(results: dict, verbose: bool = False) -> None:
                     f"addaxai={db_l} ({db_c:.4f})"
                 )
 
+    all_diffs = results["all_conf_diffs"]
+    if all_diffs:
+        print(
+            f"\n  All confidence diffs (incl. rounding): n={len(all_diffs)}"
+            f"  min={min(all_diffs):.4f}  max={max(all_diffs):.4f}"
+            f"  avg={sum(all_diffs) / len(all_diffs):.4f}"
+        )
+
     if results["conf_diff"]:
         diffs = [abs(gt_c - db_c) for _, _, gt_c, db_c in results["conf_diff"]]
         print(
-            f"\n--- Confidence differences ({len(diffs)}) ---"
+            f"\n--- Confidence differences above threshold ({len(diffs)}) ---"
             f"\n  min={min(diffs):.4f}  max={max(diffs):.4f}"
             f"  avg={sum(diffs) / len(diffs):.4f}"
         )
@@ -337,7 +350,10 @@ def main() -> None:
         args.project_id = row[0]
     conn.close()
 
-    print(f"GT file: {args.gt}")
+    import hashlib
+    gt_hash = hashlib.md5(args.gt.read_bytes()).hexdigest()[:8]
+
+    print(f"GT file: {args.gt} ({gt_hash})")
     print(f"Project: {args.project_id}")
     print(f"Country: {row[1] or 'not set'}")
 

@@ -12,31 +12,29 @@ Detailed comparison of how the official SpeciesNet pipeline (`run_md_and_species
 - Official API output: `SPPNET_ground_truth.json` (generated with `run_md_and_speciesnet --country KEN`)
 - AddaxAI output: `.addaxai/projects/.../results.json` + DB detections
 
-## Current comparison results (2026-04-03, smoothing off, non-label skip disabled)
+## Current comparison results (2026-04-07, smoothing off, non-label skip disabled)
 
-### Kenya (KEN): 1867 classified detections
+### Kenya (KEN): 2400 classified detections
 
 | Category | Count |
 |----------|-------|
-| Exact match | 1863 |
-| Confidence-only diff | 3 |
+| Exact match | 2395 |
+| Confidence-only diff | 4 |
 | Label differences | 1 |
 | GT only / DB only | 0 |
 
-Match rate: 99.8%. The 1 label difference and 3 confidence differences are all caused by the taxonomy ancestor resolution difference described below (difference #8).
+Match rate: 99.8%. The 1 label difference (`mammalia -> bovidae`) and 4 confidence differences are all bovidae rollups caused by the taxonomy ancestor resolution difference (difference #8). Average confidence diff across all non-exact detections is 0.0003 (rounding noise).
 
 ### Netherlands (NLD): 2400 classified detections
 
 | Category | Count |
 |----------|-------|
-| Exact match | 2372 |
-| Confidence-only diff | 27 |
+| Exact match | 2395 |
+| Confidence-only diff | 4 |
 | Label differences | 1 |
 | GT only / DB only | 0 |
 
-Match rate: 98.8%. The 1 label difference is `mammalia -> bovidae` (difference #8: AddaxAI picks family, official API picks class). The 27 confidence differences have two causes:
-- 3 bovidae rollups where AddaxAI's family sum is higher because more species contribute (difference #8)
-- 24 aves rollups where AddaxAI keeps the raw "bird" label at 0.67 while the official API rolls up to "aves" at 0.80 (difference #2: the official API's ensemble combiner triggers rollup for non-species top-1 labels like "bird", AddaxAI does not)
+Match rate: 99.8%. The 1 label difference is `mammalia -> bovidae` (difference #8: AddaxAI picks family, official API picks class). The 4 confidence differences are all bovidae rollups where AddaxAI's family sum is higher because more species contribute (difference #8). Average confidence diff across all 2366 non-exact detections is 0.0003 (rounding noise).
 
 ### Raw model output verification (NLD, 841 species-level detections)
 
@@ -120,7 +118,7 @@ Order of operations in `run_postprocessing_for_deployment()`:
 ### Rollup implementation (`backend/app/ml/taxonomic_rollup.py`)
 
 `rollup_single_detection()`:
-- Triggers when top-1 confidence < 0.65 AND top-1 is in taxonomy
+- Triggers when top-1 confidence < 0.65, OR top-1 is not a species-level label (matching official API: non-species labels like "bird" always go through rollup)
 - Uses only top-5 predictions for rollup sums (matches official SpeciesNet API)
 - Sums top-5 scores at each level (species, genus, family, order, class)
 - Walks from most specific to broadest, picks first level >= 0.65
@@ -137,15 +135,15 @@ Order of operations in `run_postprocessing_for_deployment()`:
 
 Both systems now use top-5 for rollup sums. AddaxAI stores all 2498 in the JSON (needed for Phase 6 exclusion rollup which redirects scores to ancestors), but `rollup_single_detection()` trims to top-5 before computing level sums.
 
-### 2. Decision tree vs simple threshold
+### 2. Decision tree vs simple threshold (partially resolved)
 
 | | Official API | AddaxAI |
 |---|---|---|
-| When rollup triggers | Complex heuristic: only when species conf < 0.65 AND detection heuristics don't match earlier | Simple: when top-1 conf < 0.65 |
+| When rollup triggers | Complex heuristic: species conf < 0.65, or non-species top-1, AND detection heuristics don't match earlier | When top-1 conf < 0.65, or top-1 is not species-level |
 | Blank handling | Heuristic: detection conf < 0.2 + blank cls > 0.5 | Non-label skip: top-1 is blank after exclusion |
 | Human/vehicle | Heuristic thresholds using detection confidence | Not classified (person/vehicle detections skip classification) |
 
-The official API's ensemble combiner uses BOTH detection and classification confidence in a complex decision tree. AddaxAI separates these concerns: MegaDetector handles detection categories, and classification handles species.
+The non-species rollup trigger now matches: both systems roll up non-species labels (like "bird", "bovidae family") regardless of confidence. The remaining difference is that the official API also uses detection confidence in its decision tree, while AddaxAI separates detection and classification concerns.
 
 ### 3. Geofence check on rollup results
 

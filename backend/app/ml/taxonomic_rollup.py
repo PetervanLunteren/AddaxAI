@@ -220,8 +220,11 @@ def rollup_single_detection(
         excluded_names is not None and top_name in excluded_names
     )
 
-    if not top_is_excluded and top_conf >= ROLLUP_THRESHOLD:
-        # Top-1 is allowed and confident: no rollup needed
+    top_is_species = "species" in taxonomy_lookup.get(top_name, {})
+    if not top_is_excluded and top_conf >= ROLLUP_THRESHOLD and top_is_species:
+        # Top-1 is a confident species-level prediction: no rollup needed.
+        # Non-species labels (e.g., "bird", "bovidae family") always go
+        # through rollup to sum the top-5 for a more accurate confidence.
         return None
 
     # Use top-5 predictions for sums (matches official SpeciesNet API

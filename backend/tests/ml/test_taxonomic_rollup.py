@@ -105,6 +105,45 @@ def test_skip_confident(taxonomy_lookup, class_id_to_name):
     assert result is None
 
 
+def test_non_species_top1_still_rolls_up(taxonomy_lookup, class_id_to_name):
+    """Non-species top-1 above threshold still rolls up to sum confidence.
+
+    'bird' (class=aves, no genus/species) at 0.80 with felidae species
+    in top-5 should roll up, not skip. The mammalia class sum
+    (0.80 + 0.10 + 0.05 = 0.95) crosses 0.65.
+    """
+    # bird 0.80 (class-level), leopard 0.10, lion 0.05, zebra 0.05
+    classifications = [[4, 0.80], [0, 0.10], [1, 0.05], [3, 0.05]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup
+    )
+    assert result is not None
+    # bird is the only aves entry, so aves sum = 0.80. But mammalia
+    # sum = 0.80 + 0.10 + 0.05 + 0.05 = 1.0. Rollup picks the most
+    # specific level above 0.65, which is class=mammalia (since aves
+    # and mammalia are both class-level and mammalia has the higher sum).
+    assert result["confidence"] >= 0.80
+
+
+def test_non_species_top1_resolves_to_specific_level(
+    taxonomy_lookup, class_id_to_name
+):
+    """Non-species top-1 can resolve to a more specific level than itself.
+
+    'bird' (class=aves) at 0.30 with 3 felidae species summing to 0.70
+    at family level should pick felidae, not aves.
+    """
+    # bird 0.30, leopard 0.30, lion 0.25, cheetah 0.15
+    # felidae family = 0.30 + 0.25 + 0.15 = 0.70 (>= 0.65)
+    classifications = [[4, 0.30], [0, 0.30], [1, 0.25], [2, 0.15]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup
+    )
+    assert result is not None
+    assert result["level"] == "family"
+    assert result["label"] == "felidae"
+
+
 def test_skip_non_taxonomic(taxonomy_lookup, class_id_to_name):
     # top-1 is "blank" (not in taxonomy) → skip
     classifications = [[5, 0.50], [0, 0.30], [1, 0.20]]
