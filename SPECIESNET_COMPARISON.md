@@ -12,33 +12,40 @@ Detailed comparison of how the official SpeciesNet pipeline (`run_md_and_species
 - Official API output: `SPPNET_ground_truth.json` (generated with `run_md_and_speciesnet --country KEN`)
 - AddaxAI output: `.addaxai/projects/.../results.json` + DB detections
 
-## Current comparison results (2026-04-07, smoothing off, non-label skip disabled)
+## Current comparison results (2026-04-07, SpeciesNet v4.0.2a, smoothing off, non-label skip disabled)
 
 ### Kenya (KEN): 2400 classified detections
 
 | Category | Count |
 |----------|-------|
-| Exact match | 2395 |
-| Confidence-only diff | 4 |
-| Label differences | 1 |
+| Exact match | 2400 |
+| Confidence-only diff | 0 |
+| Label differences | 0 |
 | GT only / DB only | 0 |
 
-Match rate: 99.8%. The 1 label difference (`mammalia -> bovidae`) and 4 confidence differences are all bovidae rollups caused by the taxonomy ancestor resolution difference (difference #8). Average confidence diff across all non-exact detections is 0.0003 (rounding noise).
+Match rate: 100.0%. All confidence diffs are rounding only (max 0.0005, avg 0.0002).
 
 ### Netherlands (NLD): 2400 classified detections
 
 | Category | Count |
 |----------|-------|
-| Exact match | 2395 |
-| Confidence-only diff | 4 |
-| Label differences | 1 |
+| Exact match | 2400 |
+| Confidence-only diff | 0 |
+| Label differences | 0 |
 | GT only / DB only | 0 |
 
-Match rate: 99.8%. The 1 label difference is `mammalia -> bovidae` (difference #8: AddaxAI picks family, official API picks class). The 4 confidence differences are all bovidae rollups where AddaxAI's family sum is higher because more species contribute (difference #8). Average confidence diff across all 2366 non-exact detections is 0.0003 (rounding noise).
+Match rate: 100.0%. All confidence diffs are rounding only (max 0.0005, avg 0.0002).
 
-### Raw model output verification (NLD, 841 species-level detections)
+### USA, South Carolina (USA-SC): 2400 classified detections
 
-Comparing only species-level detections (no rollup involved) between the official API's GT JSON and AddaxAI's results.json: zero label differences, 658 confidence "diffs" that are all just rounding (GT rounds to 3 decimals, AddaxAI to 5). The raw classifier outputs are identical. All label and confidence differences in the comparison above come from the rollup stage, not the model.
+| Category | Count |
+|----------|-------|
+| Exact match | 2400 |
+| Confidence-only diff | 0 |
+| Label differences | 0 |
+| GT only / DB only | 0 |
+
+Match rate: 100.0%. All confidence diffs are rounding only (max 0.0005, avg 0.0002). Tests state-level geofence rules.
 
 ## Official SpeciesNet pipeline (3 stages)
 

@@ -130,10 +130,14 @@ BLOCK_RULE_PAIRS = [
     ("european roe deer", "NLD", None, True),
     ("european roe deer", "DEU", None, True),
     ("european roe deer", "USA", None, False),
-    # Sika deer: allowed in China, state-level blocks in USA
+    # Sika deer: allowed in China; in USA, only DE and NJ are truly
+    # allowed (in allow but not in block). TX/CA/etc. are in both
+    # allow and block, so block wins.
     ("sika deer", "CHN", None, True),
-    ("sika deer", "USA", "DE", True),   # allowed in Delaware
-    ("sika deer", "USA", "CA", False),  # blocked in California
+    ("sika deer", "USA", "DE", True),   # allowed (allow, no block)
+    ("sika deer", "USA", "NJ", True),   # allowed (allow, no block)
+    ("sika deer", "USA", "TX", False),  # blocked (in both allow and block)
+    ("sika deer", "USA", "CA", False),  # blocked (block only)
     # Hippopotamus: blocked in 210 countries (not in allow for most)
     ("hippopotamus", "ABW", None, False),
     # Dingo: blocked everywhere except no allowed-only country exists
