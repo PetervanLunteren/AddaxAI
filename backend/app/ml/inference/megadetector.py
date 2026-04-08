@@ -148,14 +148,14 @@ class MegaDetectorV1000(DetectionModel):
                         metrics["rate"] = 1.0 / time_per_item  # Convert to items/s
                         metrics["unit"] = inverse_match.group(2)
 
-            # Extract elapsed time: "00:52" or "01:23:45"
+            # Extract elapsed time: "00:52", "01:23:45", or "1:02:49" (single-digit hours)
             # Look for pattern before "<" (elapsed comes first in tqdm)
-            time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)
+            time_match = re.search(r"\[(\d{1,2}:\d{2}(?::\d{2})?)<", line)
             if time_match:
                 metrics["elapsed"] = time_match.group(1)
 
             # Extract remaining time: after "<"
-            remaining_match = re.search(r"<(\d{2}:\d{2}(?::\d{2})?)", line)
+            remaining_match = re.search(r"<(\d{1,2}:\d{2}(?::\d{2})?)", line)
             if remaining_match:
                 metrics["remaining"] = remaining_match.group(1)
 

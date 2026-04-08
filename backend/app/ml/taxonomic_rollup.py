@@ -112,6 +112,10 @@ def _build_rollup_description(
     Format: name;class;order;family;genus;species;name
     Fills in ancestor levels from any taxonomy entry that has this taxon value.
     """
+    # Kingdom level (animal) has no taxonomy fields
+    if level == "kingdom":
+        return f"{taxon_value};;;;;;{taxon_value}"
+
     # Find a taxonomy entry with this taxon to get ancestor levels
     ancestors: dict[str, str] = {}
     for entry in taxonomy_lookup.values():
@@ -166,7 +170,6 @@ def rollup_single_detection(
     taxonomy_lookup: dict[str, dict[str, str]],
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
-    included_ancestor_taxa: frozenset[tuple[str, str]] | None = None,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
@@ -183,9 +186,8 @@ def rollup_single_detection(
 
     Both paths use only the top-5 predictions for summing (matching
     the official SpeciesNet classifier which returns top-5 only).
-    The rolled-up result must pass both the geofence check
-    (allowed_taxonomy_keys) and the user exclusion check
-    (included_ancestor_taxa).
+    The rolled-up result must pass the geofence check
+    (allowed_taxonomy_keys).
 
     Args:
         classifications: [class_id, confidence] pairs (sorted by conf desc)
@@ -197,13 +199,11 @@ def rollup_single_detection(
             (format "class;order;family;genus;species") that are allowed
             in the project's country. Rollup candidates are checked
             against this set.
-        included_ancestor_taxa: Pre-computed set of (level, taxon)
-            pairs that have at least one non-excluded descendant.
-            Rollup candidates without included descendants are skipped.
 
     Returns:
-        None if no rollup needed or nothing qualifies,
-        or {"label": str, "confidence": float, "level": str, "taxon": str}.
+        None if no rollup found (keep raw top-1 as-is).
+        {"label": str, "confidence": float, "level": str, "taxon": str}
+            if rollup found a confident ancestor.
     """
     if not classifications:
         return None
@@ -211,17 +211,27 @@ def rollup_single_detection(
     top_id, top_conf = classifications[0]
     top_name = class_id_to_name.get(str(top_id), "").lower()
 
-    # Skip non-taxonomic classes (blank, vehicle, human, etc.)
-    if top_name not in taxonomy_lookup:
-        return None
+    # Non-taxonomic top-1 (blank, vehicle, etc.) - run rollup to see
+    # if the other top-5 entries can roll up to "animal" at kingdom
+    # level. If not, keep the raw top-1 (matches official API wrapper
+    # which keeps raw top-1 when rollup returns None).
+    top_in_taxonomy = top_name in taxonomy_lookup
 
     # Determine rollup path
     top_is_excluded = (
         excluded_names is not None and top_name in excluded_names
     )
 
-    top_is_species = "species" in taxonomy_lookup.get(top_name, {})
-    if not top_is_excluded and top_conf >= ROLLUP_THRESHOLD and top_is_species:
+    top_is_species = (
+        top_in_taxonomy
+        and "species" in taxonomy_lookup.get(top_name, {})
+    )
+    if (
+        top_in_taxonomy
+        and not top_is_excluded
+        and top_conf >= ROLLUP_THRESHOLD
+        and top_is_species
+    ):
         # Top-1 is a confident species-level prediction: no rollup needed.
         # Non-species labels (e.g., "bird", "bovidae family") always go
         # through rollup to sum the top-5 for a more accurate confidence.
@@ -279,9 +289,6 @@ def rollup_single_detection(
                 key = _build_taxonomy_key_for_level(entry, level)
                 if key not in allowed_taxonomy_keys:
                     continue  # geofence: ancestor not allowed
-            if included_ancestor_taxa is not None:
-                if (level, taxon) not in included_ancestor_taxa:
-                    continue  # no included descendants
             label = _format_rollup_label(
                 level, taxon, taxonomy_lookup
             )
@@ -292,7 +299,24 @@ def rollup_single_detection(
                 "taxon": taxon,
             }
 
-    # No level crossed the threshold with an allowed result
+    # No level crossed the threshold with an allowed result.
+    # Try kingdom level (last resort): sum all top-5 with any taxonomy
+    # info. If the sum >= 0.65, return "animal" at that score.
+    # Matches official API behavior of rolling up to kingdom.
+    kingdom_sum = sum(
+        conf for cls_id, conf in top5
+        if class_id_to_name.get(str(cls_id), "").lower() in taxonomy_lookup
+    )
+    if kingdom_sum >= ROLLUP_THRESHOLD:
+        return {
+            "label": "animal",
+            "confidence": kingdom_sum,
+            "level": "kingdom",
+            "taxon": "animal",
+        }
+
+    # Nothing crossed any threshold. Return None to keep the raw top-1
+    # (matches official API wrapper run_md_and_speciesnet behavior).
     return None
 
 
@@ -336,19 +360,6 @@ def apply_taxonomic_rollup_to_results(
         "classification_category_descriptions", {}
     )
 
-    # Pre-compute which (level, taxon) pairs have at least one
-    # non-excluded descendant. Rollup candidates without included
-    # descendants are skipped.
-    included_ancestor_taxa: frozenset[tuple[str, str]] | None = None
-    if excluded_names:
-        _included: set[tuple[str, str]] = set()
-        for model_class, entry in taxonomy_lookup.items():
-            if model_class not in excluded_names:
-                for level in TAXONOMY_LEVELS:
-                    if level in entry:
-                        _included.add((level, entry[level]))
-        included_ancestor_taxa = frozenset(_included)
-
     rolled_up = 0
     skipped = 0
     new_entries: list[dict] = []
@@ -366,9 +377,9 @@ def apply_taxonomic_rollup_to_results(
                 taxonomy_lookup,
                 excluded_names=excluded_names,
                 allowed_taxonomy_keys=allowed_taxonomy_keys,
-                included_ancestor_taxa=included_ancestor_taxa,
             )
             if result is None:
+                # No rollup needed or rollup found nothing - keep raw top-1
                 skipped += 1
                 continue
 

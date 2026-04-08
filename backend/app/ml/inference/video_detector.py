@@ -244,13 +244,13 @@ class VideoDetectionModel:
                         metrics["rate"] = 1.0 / time_per_item  # Convert to items/s
                         metrics["unit"] = inverse_match.group(2)
 
-            # Extract elapsed time
-            time_match = re.search(r"\[(\d{2}:\d{2}(?::\d{2})?)<", line)
+            # Extract elapsed time (supports single-digit hours like "1:02:49")
+            time_match = re.search(r"\[(\d{1,2}:\d{2}(?::\d{2})?)<", line)
             if time_match:
                 metrics["elapsed"] = time_match.group(1)
 
             # Extract remaining time
-            remaining_match = re.search(r"<(\d{2}:\d{2}(?::\d{2})?)", line)
+            remaining_match = re.search(r"<(\d{1,2}:\d{2}(?::\d{2})?)", line)
             if remaining_match:
                 metrics["remaining"] = remaining_match.group(1)
 

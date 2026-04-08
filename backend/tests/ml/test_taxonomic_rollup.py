@@ -144,10 +144,27 @@ def test_non_species_top1_resolves_to_specific_level(
     assert result["label"] == "felidae"
 
 
-def test_skip_non_taxonomic(taxonomy_lookup, class_id_to_name):
-    # top-1 is "blank" (not in taxonomy) → skip
-    classifications = [[5, 0.50], [0, 0.30], [1, 0.20]]
-    result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
+def test_blank_top1_kingdom_rollup(taxonomy_lookup, class_id_to_name):
+    """Top-1 is blank but other top-5 species sum to kingdom > 0.65."""
+    # blank 0.20, leopard 0.30, lion 0.20, cheetah 0.20 → kingdom = 0.70
+    classifications = [[5, 0.20], [0, 0.30], [1, 0.20], [2, 0.20]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup
+    )
+    # Should walk genus/family/order/class first. felidae family = 0.70.
+    assert result is not None
+    assert result["level"] == "family"
+    assert result["taxon"] == "felidae"
+
+
+def test_blank_top1_no_rollup_keeps_top1(taxonomy_lookup, class_id_to_name):
+    """Top-1 is blank, no rollup possible (too few animal scores)."""
+    # blank 0.50, leopard 0.05, lion 0.05 → no level reaches 0.65
+    classifications = [[5, 0.50], [0, 0.05], [1, 0.05]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup
+    )
+    # Returns None - the raw "blank" top-1 is kept by caller
     assert result is None
 
 
@@ -252,12 +269,12 @@ def test_apply_mixed(taxonomy_csv):
             {
                 "file": "img1.jpg",
                 "detections": [
-                    # Confident → skip
+                    # Confident → skip (no rollup needed)
                     {
                         "bbox": [0.1, 0.1, 0.5, 0.5],
                         "classifications": [[0, 0.80], [1, 0.20]],
                     },
-                    # Non-taxonomic → skip
+                    # Non-taxonomic top-1, no rollup → keeps raw top-1
                     {
                         "bbox": [0.2, 0.2, 0.3, 0.3],
                         "classifications": [[5, 0.50], [0, 0.30], [1, 0.20]],
@@ -280,7 +297,7 @@ def test_apply_mixed(taxonomy_csv):
     assert dets[0]["classifications"][0][0] == 0
     assert dets[0]["classifications"][0][1] == 0.80
 
-    # Second: unchanged (non-taxonomic top-1)
+    # Second: kept as raw top-1 (non-taxonomic, no rollup possible)
     assert dets[1]["classifications"][0][0] == 5
 
     # Third: rolled up to "panthera"
@@ -329,9 +346,10 @@ def test_apply_adds_descriptions(taxonomy_csv):
 # own guard -- it simply won't see them.
 
 
-def test_non_label_not_in_taxonomy_skipped(taxonomy_lookup, class_id_to_name):
-    """Classes not in taxonomy_lookup are skipped by rollup (including non-label classes)."""
-    # "blank" (class_id 5) is not in taxonomy_lookup -> rollup skips it
+def test_non_label_top1_returns_none(taxonomy_lookup, class_id_to_name):
+    """Non-taxonomic top-1 returns None when other species don't sum enough."""
+    # "blank" (class_id 5) top-1 at 0.50, others at 0.30 + 0.20 = 0.50 total
+    # → no level reaches 0.65 → returns None (caller keeps raw top-1)
     classifications = [[5, 0.50], [0, 0.30], [1, 0.20]]
     result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
     assert result is None
@@ -404,16 +422,20 @@ def test_geofence_rollup_ancestor_not_allowed(
 
 
 def test_geofence_rollup_nothing_allowed(taxonomy_lookup, class_id_to_name):
-    """Path A: no ancestor allowed, returns None."""
+    """Path A: no ancestor allowed, falls back to kingdom 'animal'."""
     classifications = [[0, 0.90], [1, 0.05], [2, 0.03], [3, 0.02]]
     excluded = frozenset({"leopard"})
-    allowed = frozenset()  # nothing allowed
+    allowed = frozenset()  # nothing allowed at family/order/class
     result = rollup_single_detection(
         classifications, class_id_to_name, taxonomy_lookup,
         excluded_names=excluded,
         allowed_taxonomy_keys=allowed,
     )
-    assert result is None
+    # Kingdom rollup: all 4 are in taxonomy_lookup, sum = 1.0 >= 0.65
+    # Returns "animal" at kingdom level
+    assert result is not None
+    assert result["level"] == "kingdom"
+    assert result["taxon"] == "animal"
 
 
 def test_geofence_rollup_high_conf_excluded_still_rolls_up(
@@ -470,65 +492,3 @@ def test_top5_only_used_for_sums(taxonomy_lookup, class_id_to_name):
     assert result["label"] == "mammalia"
 
 
-# --- included_ancestor_taxa (exclusion check on rollup ancestors) ---
-
-
-def test_rollup_skips_excluded_ancestor(taxonomy_lookup, class_id_to_name):
-    """All felidae excluded, leopard top-1 skips felidae, walks to mammalia
-    (which has zebra as an included descendant)."""
-    # Exclude all felidae species, keep zebra
-    excluded = frozenset({"leopard", "lion", "cheetah"})
-    # Pre-compute included ancestors from zebra only
-    included = set()
-    for name, entry in taxonomy_lookup.items():
-        if name not in excluded:
-            for level in ("class", "order", "family", "genus", "species"):
-                if level in entry:
-                    included.add((level, entry[level]))
-    included_ancestors = frozenset(included)
-
-    # leopard top-1 (excluded), should skip felidae and carnivora
-    # (no included descendants), land on mammalia (zebra is mammalia)
-    classifications = [["0", 0.85], ["3", 0.10], ["4", 0.05]]
-    result = rollup_single_detection(
-        classifications, class_id_to_name, taxonomy_lookup,
-        excluded_names=excluded,
-        included_ancestor_taxa=included_ancestors,
-    )
-    assert result is not None
-    assert result["level"] == "class"
-    assert result["taxon"] == "mammalia"
-
-
-def test_rollup_returns_none_when_all_excluded(
-    taxonomy_lookup, class_id_to_name,
-):
-    """All species excluded, no ancestor has included descendants."""
-    excluded = frozenset({
-        "leopard", "lion", "cheetah", "zebra", "bird",
-    })
-    # No included species -> empty set
-    included_ancestors = frozenset()
-
-    classifications = [["0", 0.85], ["1", 0.10], ["2", 0.05]]
-    result = rollup_single_detection(
-        classifications, class_id_to_name, taxonomy_lookup,
-        excluded_names=excluded,
-        included_ancestor_taxa=included_ancestors,
-    )
-    assert result is None
-
-
-def test_rollup_no_effect_when_no_exclusions(
-    taxonomy_lookup, class_id_to_name,
-):
-    """No exclusions, included_ancestor_taxa is None, check skipped."""
-    classifications = [["0", 0.50], ["1", 0.10], ["2", 0.05]]
-    result = rollup_single_detection(
-        classifications, class_id_to_name, taxonomy_lookup,
-        excluded_names=None,
-        included_ancestor_taxa=None,
-    )
-    # Normal confidence rollup (Path B), no exclusion interference
-    assert result is not None
-    assert result["level"] in ("genus", "family")

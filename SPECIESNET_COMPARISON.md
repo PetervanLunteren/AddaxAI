@@ -47,6 +47,20 @@ Match rate: 100.0%. All confidence diffs are rounding only (max 0.0005, avg 0.00
 
 Match rate: 100.0%. All confidence diffs are rounding only (max 0.0005, avg 0.0002). Tests state-level geofence rules.
 
+### Out-of-distribution test set (USA, mixed images from India, Australia, and Congo): 13845 classified detections
+
+A separate test set with images that are NOT in the SpeciesNet training data, geofenced to USA. Mixed wildlife from India, Australia, and Congo (i.e., almost everything is out-of-range). This is a stress test: the classifier is uncertain, the rollup paths are heavily exercised, and many species are excluded.
+
+| Category | Count |
+|----------|-------|
+| Exact match | 13817 |
+| Confidence-only diff | 0 |
+| Label differences | 0 |
+| GT only / DB only | 0 |
+| Skipped (person/vehicle) | 28 |
+
+Match rate: 100.0%. All confidence diffs are rounding only (max 0.0005, avg 0.0003). 28 person/vehicle detections were skipped (AddaxAI does not classify them by design — see "Person and vehicle detections" section below).
+
 ## Official SpeciesNet pipeline (3 stages)
 
 Source code is installed at `~/AddaxAI/envs/env-addaxai-base/lib/python3.11/site-packages/speciesnet/`.
@@ -239,17 +253,33 @@ These changes are in the working tree (not yet committed):
 
 ## Remaining known differences
 
-### Taxonomy ancestor resolution (intentional, not a bug)
+### Person and vehicle detections (not classified by AddaxAI)
 
-All remaining label and confidence differences stem from difference #8 above. AddaxAI produces more specific rollup labels because it resolves taxonomy ancestors from the taxonomy CSV rather than requiring a label in the model's training data. This is by design.
+AddaxAI does not run the classifier on detections that MegaDetector categorizes as person or vehicle. The official API runs the classifier on all detections regardless of detector category, then uses an ensemble decision tree to decide the final label.
 
-### Ensemble heuristics
+This produces differences in two scenarios:
+1. **True person/vehicle detections**: official API may return "human" or "vehicle" via its step 1 heuristic. AddaxAI just uses the MegaDetector category and leaves the label NULL.
+2. **False positive person detections**: when MegaDetector incorrectly detects a bird/animal as a person, the official API still classifies it (returning the actual species or "blank"). AddaxAI leaves these as person without a species label.
 
-The official API uses a complex decision tree that combines detection confidence with classification confidence (human/vehicle/blank heuristics). AddaxAI separates these concerns: MegaDetector handles detection categories, classification handles species. Not planned to change.
+The comparison script skips person/vehicle detections to avoid these differences. AddaxAI's behavior is intentional: the category column already indicates person/vehicle, and running the classifier on them adds compute cost without meaningful benefit for the typical AddaxAI use case (wildlife monitoring).
 
-### `included_ancestor_taxa` check (intentional AddaxAI addition)
+### Taxonomy ancestor resolution
 
-AddaxAI checks that a rollup ancestor has at least one non-excluded descendant species. The official API only checks if the ancestor itself is geofenced. This prevents useless labels (e.g., "canidae" when all canidae species are excluded). Kept as a deliberate improvement.
+The official API requires a dedicated label in the model's labels file to roll up to a taxonomy level. 172 of 280 families have no such label. AddaxAI resolves ancestors from the taxonomy CSV, which has all families. This means AddaxAI can roll up to family levels that the official API cannot.
+
+In practice, this difference does not surface when both systems also check the geofence: both systems verify the rolled-up ancestor is allowed in the country. Since the geofence data uses the same taxonomy as the labels file, the same ancestors are rejected in both systems for most cases.
+
+### Ensemble decision tree
+
+The official API uses a complex decision tree that combines detection confidence with classification confidence (human/vehicle/blank heuristics). AddaxAI's pipeline is simpler:
+- Person/vehicle detections: not classified
+- Other detections: rollup based on classification confidence only
+
+This is a smaller difference now that AddaxAI implements:
+- Non-species rollup: when top-1 is "bird" or "bovidae family" (a higher-level label, not species), run rollup to sum top-5 for a more accurate confidence
+- Kingdom-level rollup: when no level crosses 0.65, sum all top-5 entries with any taxonomy info; if the sum >= 0.65, return "animal" at kingdom level (matches official `run_md_and_speciesnet` behavior)
+
+The remaining ensemble difference is the use of detection confidence to decide between detection-based labels (human/vehicle/blank) and classification-based labels. AddaxAI separates these concerns (MegaDetector category for detection type, classifier label for species).
 
 ## Files reference
 

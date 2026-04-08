@@ -3,7 +3,7 @@
 # RUN SPECIESNET OFFICIAL API
 # ==============================
 
-DIR='/Users/peter/Downloads/example-data'
+DIR='/Users/peter/Desktop/SN-testset'
 COUNTRY='USA'
 
 ~/AddaxAI/envs/env-addaxai-base/bin/python -m megadetector.detection.run_detector_batch ~/AddaxAI/models/det/MD5A-0-0/md_v5a.0.0.pt "$DIR" "$DIR/MD_ground_truth.json" --recursive --include_image_size 

@@ -111,14 +111,19 @@ def load_gt(gt_path: Path) -> dict[tuple[str, tuple], tuple[str, float]]:
 
 def load_db_detections(
     project_id: str, db_path: Path
-) -> dict[tuple[str, tuple], tuple[str, float]]:
-    """Load AddaxAI DB detections and return lookup by (filename, bbox)."""
+) -> dict[tuple[str, tuple], tuple[str, float, str]]:
+    """Load AddaxAI DB detections.
+
+    Returns lookup by (filename, bbox) -> (label, confidence, category).
+    Label "(unlabeled)" with category "animal" is treated as "animal"
+    in compare() to match the official API's step 5b fallback.
+    """
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
     dets = conn.execute(
         """
-        SELECT f.file_path, d.label, d.label_confidence,
+        SELECT f.file_path, d.label, d.label_confidence, d.category,
                d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
                lt.level, lt.taxon_class, lt.taxon_order,
                lt.taxon_family, lt.taxon_genus, lt.taxon_species
@@ -134,7 +139,7 @@ def load_db_detections(
 
     conn.close()
 
-    lookup: dict[tuple[str, tuple], tuple[str, float]] = {}
+    lookup: dict[tuple[str, tuple], tuple[str, float, str]] = {}
     for d in dets:
         fname = Path(d["file_path"]).name
         bbox = (
@@ -158,23 +163,30 @@ def load_db_detections(
         if col and d[col]:
             label = d[col]
         conf = d["label_confidence"] or 0.0
-        lookup[(fname, bbox)] = (label, conf)
+        category = d["category"] or ""
+        lookup[(fname, bbox)] = (label, conf, category)
 
     return lookup
 
 
 def compare(
     gt_lookup: dict[tuple[str, tuple], tuple[str, float]],
-    db_lookup: dict[tuple[str, tuple], tuple[str, float]],
+    db_lookup: dict[tuple[str, tuple], tuple[str, float, str]],
     verbose: bool = False,
 ) -> dict:
-    """Compare GT (Latin-converted) vs DB detections and return summary."""
+    """Compare GT (Latin-converted) vs DB detections and return summary.
+
+    Person/vehicle detections are skipped: AddaxAI doesn't classify
+    them by design, while the official API does. These are documented
+    as a known difference.
+    """
     exact = 0
     conf_diff: list[tuple] = []
     all_conf_diffs: list[float] = []
     real_diff: list[tuple] = []
     gt_only = 0
     db_only = 0
+    skipped_person = 0
 
     for key, (gt_label, gt_conf) in gt_lookup.items():
         db_entry = db_lookup.get(key)
@@ -182,7 +194,12 @@ def compare(
             gt_only += 1
             continue
 
-        db_label, db_conf = db_entry
+        db_label, db_conf, db_category = db_entry
+
+        # Skip person/vehicle detections: AddaxAI doesn't classify them
+        if db_category in ("person", "vehicle"):
+            skipped_person += 1
+            continue
 
         if gt_label == db_label:
             diff = abs(gt_conf - db_conf)
@@ -215,6 +232,7 @@ def compare(
         "gt_only": gt_only,
         "db_only": db_only,
         "total_compared": total_compared,
+        "skipped_person": skipped_person,
     }
 
 
@@ -233,6 +251,7 @@ def print_results(results: dict, verbose: bool = False) -> None:
     print(f"  Label differences:        {len(results['real_diff'])}")
     print(f"  In GT only (not in DB):   {results['gt_only']}")
     print(f"  In DB only (not in GT):   {results['db_only']}")
+    print(f"  Skipped (person/vehicle): {results['skipped_person']}")
 
     if total > 0:
         match_pct = exact / total * 100
