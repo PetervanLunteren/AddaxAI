@@ -7,11 +7,11 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.site import SiteCreate, SiteUpdate
-from app.models import Site
+from app.models import Deployment, Site
 
 
 def get_sites(db: Session, project_id: str | None = None) -> list[Site]:
@@ -98,3 +98,38 @@ def delete_site(db: Session, site_id: str) -> bool:
     db.delete(db_site)
     db.commit()
     return True
+
+
+def get_sites_with_stats(
+    db: Session, project_id: str
+) -> list[dict]:
+    """
+    Get all sites for a project with deployment counts.
+
+    Returns list of dicts with site fields + deployment_count.
+    """
+    dep_count = func.count(Deployment.id).label("deployment_count")
+    rows = db.execute(
+        select(Site, dep_count)
+        .outerjoin(Deployment, Deployment.site_id == Site.id)
+        .where(Site.project_id == project_id)
+        .group_by(Site.id)
+        .order_by(Site.created_at.desc())
+    ).all()
+
+    results = []
+    for site, count in rows:
+        site_dict = {
+            "id": site.id,
+            "project_id": site.project_id,
+            "name": site.name,
+            "latitude": site.latitude,
+            "longitude": site.longitude,
+            "elevation_m": site.elevation_m,
+            "habitat_type": site.habitat_type,
+            "notes": site.notes,
+            "created_at": site.created_at,
+            "deployment_count": count,
+        }
+        results.append(site_dict)
+    return results

@@ -13,18 +13,24 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.deployment import DeploymentCreate, DeploymentUpdate
-from app.models import Deployment, Event, File
+from app.models import Deployment, Event, File, Site
 
 
-def get_deployments(db: Session, site_id: str | None = None) -> list[Deployment]:
+def get_deployments(
+    db: Session,
+    site_id: str | None = None,
+    project_id: str | None = None,
+) -> list[Deployment]:
     """
-    Get all deployments, optionally filtered by site_id.
+    Get all deployments, optionally filtered by site_id or project_id.
 
     Returns empty list if no deployments exist.
     """
     query = select(Deployment).order_by(Deployment.created_at.desc())
     if site_id:
         query = query.where(Deployment.site_id == site_id)
+    if project_id:
+        query = query.join(Site).where(Site.project_id == project_id)
     result = db.execute(query)
     return list(result.scalars().all())
 
@@ -142,4 +148,58 @@ def get_deployment_stats(db: Session, deployment_id: str) -> dict[str, int] | No
         "file_count": file_count,
         "event_count": event_count,
         "detection_count": detection_count,
+    }
+
+
+def get_bulk_deployment_stats(
+    db: Session, project_id: str
+) -> dict[str, dict[str, int]]:
+    """
+    Get file/event/detection counts for all deployments in a project.
+
+    Single round-trip per count type. Returns {deployment_id: {file_count, event_count, detection_count}}.
+    """
+    from app.models import Detection
+
+    # All deployment IDs in project
+    dep_ids_subq = (
+        select(Deployment.id)
+        .join(Site)
+        .where(Site.project_id == project_id)
+        .subquery()
+    )
+
+    file_counts = dict(
+        db.execute(
+            select(File.deployment_id, func.count(File.id))
+            .where(File.deployment_id.in_(select(dep_ids_subq)))
+            .group_by(File.deployment_id)
+        ).all()
+    )
+
+    event_counts = dict(
+        db.execute(
+            select(Event.deployment_id, func.count(Event.id))
+            .where(Event.deployment_id.in_(select(dep_ids_subq)))
+            .group_by(Event.deployment_id)
+        ).all()
+    )
+
+    detection_counts = dict(
+        db.execute(
+            select(File.deployment_id, func.count(Detection.id))
+            .join(File, Detection.file_id == File.id)
+            .where(File.deployment_id.in_(select(dep_ids_subq)))
+            .group_by(File.deployment_id)
+        ).all()
+    )
+
+    all_ids = set(file_counts) | set(event_counts) | set(detection_counts)
+    return {
+        dep_id: {
+            "file_count": file_counts.get(dep_id, 0),
+            "event_count": event_counts.get(dep_id, 0),
+            "detection_count": detection_counts.get(dep_id, 0),
+        }
+        for dep_id in all_ids
     }

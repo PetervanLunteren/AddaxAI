@@ -28,6 +28,9 @@ class DeploymentBase(BaseModel):
         None, max_length=255, description="Camera serial number"
     )
     notes: str | None = Field(None, description="Optional notes about deployment")
+    datetime_offset_seconds: int | None = Field(
+        None, description="Datetime offset in seconds applied during analysis"
+    )
 
 
 class DeploymentCreate(DeploymentBase):
@@ -55,6 +58,7 @@ class DeploymentUpdate(BaseModel):
     camera_model: str | None = None
     camera_serial: str | None = None
     notes: str | None = None
+    datetime_offset_seconds: int | None = None
 
 
 class DeploymentResponse(DeploymentBase):
@@ -89,6 +93,14 @@ class DeploymentWithStats(DeploymentResponse):
     detection_count: int = Field(
         0, description="Total number of detections in this deployment"
     )
+
+
+class DeploymentStatsOnly(BaseModel):
+    """Lightweight stats for bulk deployment listing (no deployment fields)."""
+
+    file_count: int = 0
+    event_count: int = 0
+    detection_count: int = 0
 
 
 class GPSCoordinates(BaseModel):

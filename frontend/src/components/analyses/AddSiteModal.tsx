@@ -1,11 +1,11 @@
 /**
- * Add Site Modal Component
+ * Site Modal Component (create and edit)
  *
- * Modal dialog for creating a new camera trap site.
- * - Form with site name and coordinates
+ * Modal dialog for creating or editing a camera trap site.
+ * - Form with site name, coordinates, elevation, habitat type, notes
  * - Interactive map for location selection
  * - Auto-fills lat/lon from map clicks
- * - Validates uniqueness and required fields
+ * - In edit mode: prefills all fields from existing site
  */
 
 import { useState, useEffect } from "react";
@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { MapPin, WifiOff, RefreshCw } from "lucide-react";
+import { WifiOff, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -24,9 +24,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { sitesApi } from "@/api/sites";
+import type { SiteResponse } from "@/api/types";
 import { SiteMap } from "./SiteMap";
 
 // Validation schema
@@ -34,6 +36,22 @@ const siteSchema = z.object({
   name: z.string().min(1, "Site name is required"),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
+  elevation_m: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((val) => {
+      if (val === "" || val === undefined) return undefined;
+      const num = typeof val === "string" ? parseFloat(val) : val;
+      return isNaN(num) ? undefined : num;
+    }),
+  habitat_type: z
+    .string()
+    .optional()
+    .transform((val) => (val === "" ? undefined : val)),
+  notes: z
+    .string()
+    .optional()
+    .transform((val) => (val === "" ? undefined : val)),
 });
 
 type SiteFormData = z.infer<typeof siteSchema>;
@@ -44,6 +62,8 @@ interface AddSiteModalProps {
   onOpenChange: (open: boolean) => void;
   onSiteCreated?: (siteId: string) => void;
   initialLocation?: { lat: number; lon: number };
+  /** When provided, modal operates in edit mode with prefilled values. */
+  site?: SiteResponse;
 }
 
 export function AddSiteModal({
@@ -52,8 +72,11 @@ export function AddSiteModal({
   onOpenChange,
   onSiteCreated,
   initialLocation,
+  site,
 }: AddSiteModalProps) {
   const queryClient = useQueryClient();
+  const isEditMode = !!site;
+
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lon: number } | null>(
     null
   );
@@ -74,29 +97,49 @@ export function AddSiteModal({
       name: "",
       latitude: 0,
       longitude: 0,
+      elevation_m: undefined,
+      habitat_type: "",
+      notes: "",
     },
   });
 
   const latitude = watch("latitude");
   const longitude = watch("longitude");
 
-  // Set initial location when modal opens with GPS from deployment
+  // Prefill form when modal opens
   useEffect(() => {
-    if (open && initialLocation) {
+    if (!open) return;
+
+    if (isEditMode) {
+      // Edit mode: prefill from existing site
+      setValue("name", site.name);
+      setValue("latitude", site.latitude ?? 0);
+      setValue("longitude", site.longitude ?? 0);
+      setValue("elevation_m", site.elevation_m ?? undefined);
+      setValue("habitat_type", site.habitat_type ?? "");
+      setValue("notes", site.notes ?? "");
+      if (site.latitude != null && site.longitude != null) {
+        setSelectedLocation({ lat: site.latitude, lon: site.longitude });
+      }
+    } else if (initialLocation) {
+      // Create mode with GPS pre-fill
       setValue("latitude", initialLocation.lat);
       setValue("longitude", initialLocation.lon);
       setSelectedLocation(initialLocation);
     }
-  }, [open, initialLocation, setValue]);
+  }, [open, isEditMode, site, initialLocation, setValue]);
 
-  // Update selected location when form values change
+  // Update selected location when form values change (only for valid coordinates)
   useEffect(() => {
-    if (latitude && longitude) {
+    if (typeof latitude === "number" && !isNaN(latitude) &&
+        typeof longitude === "number" && !isNaN(longitude) &&
+        latitude >= -90 && latitude <= 90 &&
+        longitude >= -180 && longitude <= 180) {
       setSelectedLocation({ lat: latitude, lon: longitude });
     }
   }, [latitude, longitude]);
 
-  // Create site mutation
+  // Create mutation
   const createSite = useMutation({
     mutationFn: (data: SiteFormData) =>
       sitesApi.create({
@@ -104,15 +147,14 @@ export function AddSiteModal({
         name: data.name,
         latitude: data.latitude,
         longitude: data.longitude,
+        elevation_m: data.elevation_m ?? null,
+        habitat_type: data.habitat_type ?? null,
+        notes: data.notes ?? null,
       }),
     onSuccess: (newSite) => {
-      // Refresh sites list
       queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
-
-      // Call callback with new site ID
+      queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
       onSiteCreated?.(newSite.id);
-
-      // Close modal and reset form
       onOpenChange(false);
       reset();
       setSelectedLocation(null);
@@ -121,6 +163,32 @@ export function AddSiteModal({
       console.error("Failed to create site:", error);
     },
   });
+
+  // Update mutation
+  const updateSite = useMutation({
+    mutationFn: (data: SiteFormData) =>
+      sitesApi.update(site!.id, {
+        name: data.name,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        elevation_m: data.elevation_m ?? null,
+        habitat_type: data.habitat_type ?? null,
+        notes: data.notes ?? null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["sites", site!.id] });
+      queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
+      onOpenChange(false);
+      reset();
+      setSelectedLocation(null);
+    },
+    onError: (error) => {
+      console.error("Failed to update site:", error);
+    },
+  });
+
+  const mutation = isEditMode ? updateSite : createSite;
 
   // Handle map location selection
   const handleLocationSelect = (lat: number, lon: number) => {
@@ -143,7 +211,7 @@ export function AddSiteModal({
 
   // Handle form submission
   const onSubmit = (data: SiteFormData) => {
-    createSite.mutate(data);
+    mutation.mutate(data);
   };
 
   // Reset form when modal closes
@@ -160,12 +228,13 @@ export function AddSiteModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Add new site
+          <DialogTitle>
+            {isEditMode ? "Edit site" : "Add new site"}
           </DialogTitle>
           <DialogDescription>
-            Create a new camera trap site for this project. Click on the map to set the location.
+            {isEditMode
+              ? "Update this site's details. Click on the map to change the location."
+              : "Create a new camera trap site for this project. Click on the map to set the location."}
           </DialogDescription>
         </DialogHeader>
 
@@ -214,11 +283,12 @@ export function AddSiteModal({
                 selectedLocation={selectedLocation}
                 onLocationSelect={handleLocationSelect}
                 onMapError={handleMapError}
+                excludeSiteId={site?.id}
               />
             </div>
           )}
 
-          {/* Coordinates (editable when offline, readonly when map works) */}
+          {/* Coordinates */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="latitude">Latitude</Label>
@@ -227,8 +297,7 @@ export function AddSiteModal({
                 {...register("latitude", { valueAsNumber: true })}
                 type="number"
                 step="any"
-                readOnly={!mapOffline}
-                className={mapOffline ? "" : "bg-gray-50"}
+                placeholder="e.g., 44.4280"
               />
               {errors.latitude && (
                 <p className="text-sm text-red-600">{errors.latitude.message}</p>
@@ -242,8 +311,7 @@ export function AddSiteModal({
                 {...register("longitude", { valueAsNumber: true })}
                 type="number"
                 step="any"
-                readOnly={!mapOffline}
-                className={mapOffline ? "" : "bg-gray-50"}
+                placeholder="e.g., -110.5885"
               />
               {errors.longitude && (
                 <p className="text-sm text-red-600">{errors.longitude.message}</p>
@@ -251,15 +319,45 @@ export function AddSiteModal({
             </div>
           </div>
 
+          {/* Extra fields */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="elevation_m">Elevation (meters)</Label>
+              <Input
+                id="elevation_m"
+                {...register("elevation_m")}
+                type="number"
+                step="any"
+                placeholder="e.g., 2000"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="habitat_type">Habitat type</Label>
+              <Input
+                id="habitat_type"
+                {...register("habitat_type")}
+                placeholder="e.g., Forest, Grassland"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              {...register("notes")}
+              placeholder="Additional notes about this site"
+            />
+          </div>
+
           {/* Error message */}
-          {createSite.isError && (
+          {mutation.isError && (
             <div className="text-sm text-red-600">
-              Failed to create site.{" "}
-              {createSite.error instanceof Error
-                ? createSite.error.message
-                : typeof createSite.error === 'object' && createSite.error !== null
-                  ? JSON.stringify(createSite.error)
-                  : String(createSite.error)}
+              {isEditMode ? "Failed to update site." : "Failed to create site."}{" "}
+              {mutation.error instanceof Error
+                ? mutation.error.message
+                : String(mutation.error)}
             </div>
           )}
 
@@ -267,8 +365,10 @@ export function AddSiteModal({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createSite.isPending || !selectedLocation}>
-              {createSite.isPending ? "Creating..." : "Create site"}
+            <Button type="submit" disabled={mutation.isPending || !selectedLocation}>
+              {mutation.isPending
+                ? (isEditMode ? "Saving..." : "Creating...")
+                : (isEditMode ? "Save changes" : "Create site")}
             </Button>
           </DialogFooter>
         </form>

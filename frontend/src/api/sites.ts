@@ -7,10 +7,10 @@
  */
 
 import { api } from "../lib/api-client";
-import type { SiteCreate, SiteResponse, SiteUpdate } from "./types";
+import type { SiteCreate, SiteResponse, SiteUpdate, SiteWithStats } from "./types";
 
 // Re-export types
-export type { SiteCreate, SiteResponse, SiteUpdate };
+export type { SiteCreate, SiteResponse, SiteUpdate, SiteWithStats };
 
 export const sitesApi = {
   /**
@@ -43,4 +43,10 @@ export const sitesApi = {
    * Delete site
    */
   delete: (id: string) => api.delete<void>(`/api/sites/${id}`),
+
+  /**
+   * List sites with deployment counts (for metadata table)
+   */
+  listWithStats: (projectId: string) =>
+    api.get<SiteWithStats[]>(`/api/sites/with-stats?project_id=${projectId}`),
 };

@@ -21,6 +21,7 @@ from app.api.crud import deployment as crud_deployment
 from app.api.schemas.deployment import (
     DeploymentCreate,
     DeploymentResponse,
+    DeploymentStatsOnly,
     DeploymentUpdate,
     DeploymentWithStats,
     FolderPreviewResponse,
@@ -39,14 +40,17 @@ router = APIRouter(prefix="/api/deployments", tags=["Deployments"])
 @router.get("", response_model=list[DeploymentResponse])
 def list_deployments(
     site_id: str | None = Query(None, description="Filter by site ID"),
+    project_id: str | None = Query(None, description="Filter by project ID"),
     db: Session = Depends(get_db),
 ) -> list[DeploymentResponse]:
     """
-    List all deployments, optionally filtered by site_id.
+    List all deployments, optionally filtered by site_id or project_id.
 
     Returns empty list if no deployments exist.
     """
-    deployments = crud_deployment.get_deployments(db, site_id=site_id)
+    deployments = crud_deployment.get_deployments(
+        db, site_id=site_id, project_id=project_id
+    )
     return [DeploymentResponse.model_validate(d) for d in deployments]
 
 
@@ -218,6 +222,23 @@ def preview_image(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to read file: {str(e)}",
         ) from e
+
+
+@router.get("/bulk-stats", response_model=dict[str, DeploymentStatsOnly])
+def get_bulk_stats(
+    project_id: str = Query(..., description="Project ID"),
+    db: Session = Depends(get_db),
+) -> dict[str, DeploymentStatsOnly]:
+    """
+    Get file/event/detection counts for all deployments in a project.
+
+    Returns a dict keyed by deployment ID with stats for each.
+    """
+    raw = crud_deployment.get_bulk_deployment_stats(db, project_id)
+    return {
+        dep_id: DeploymentStatsOnly(**stats)
+        for dep_id, stats in raw.items()
+    }
 
 
 @router.get("/file-datetime")

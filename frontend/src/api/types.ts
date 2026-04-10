@@ -157,6 +157,41 @@ export interface SiteResponse {
   created_at: string;
 }
 
+export interface SiteWithStats extends SiteResponse {
+  deployment_count: number;
+}
+
+// Deployment types
+export interface DeploymentResponse {
+  id: string;
+  site_id: string;
+  folder_path: string | null;
+  folder_status: "valid" | "missing" | "needs_relink";
+  last_validated_at: string | null;
+  start_date: string;
+  end_date: string | null;
+  camera_model: string | null;
+  camera_serial: string | null;
+  notes: string | null;
+  datetime_offset_seconds: number | null;
+  created_at: string;
+}
+
+export interface DeploymentUpdate {
+  start_date?: string | null;
+  end_date?: string | null;
+  camera_model?: string | null;
+  camera_serial?: string | null;
+  notes?: string | null;
+  datetime_offset_seconds?: number | null;
+}
+
+export interface DeploymentStatsOnly {
+  file_count: number;
+  event_count: number;
+  detection_count: number;
+}
+
 // Job types
 export type JobType =
   | "deployment_analysis"

@@ -2,11 +2,29 @@
  * Sidebar Navigation Component
  */
 
-import { NavLink, useParams } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, useParams, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Camera, Play, CheckCircle, BarChart3, Image, Download, Settings } from "lucide-react";
+import {
+  Camera,
+  Play,
+  CheckCircle,
+  BarChart3,
+  Image,
+  Download,
+  Settings,
+  MapPin,
+  CardSim,
+  ChevronDown,
+  Database,
+} from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "../ui/collapsible";
 
 interface NavItem {
   to: string;
@@ -16,6 +34,13 @@ interface NavItem {
 
 export function Sidebar() {
   const { projectId } = useParams<{ projectId: string }>();
+  const location = useLocation();
+
+  const isMetadataRoute =
+    location.pathname.includes("/sites") ||
+    location.pathname.includes("/deployments");
+
+  const [metadataOpen, setMetadataOpen] = useState(isMetadataRoute);
 
   const { data: project } = useQuery({
     queryKey: ["projects", projectId],
@@ -23,14 +48,40 @@ export function Sidebar() {
     enabled: !!projectId,
   });
 
-  const navItems: NavItem[] = [
+  const mainItems: NavItem[] = [
     { to: `/projects/${projectId}/analyses`, icon: Play, label: "Analyses" },
     { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
     { to: `/projects/${projectId}/images`, icon: Image, label: "Images" },
     { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
+  ];
+
+  const metadataItems: NavItem[] = [
+    { to: `/projects/${projectId}/sites`, icon: MapPin, label: "Sites" },
+    { to: `/projects/${projectId}/deployments`, icon: CardSim, label: "Deployments" },
+  ];
+
+  const utilityItems: NavItem[] = [
     { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
     { to: `/projects/${projectId}/settings`, icon: Settings, label: "Settings" },
   ];
+
+  const renderNavLink = (item: NavItem) => (
+    <NavLink
+      key={item.to}
+      to={item.to}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          isActive
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        )
+      }
+    >
+      <item.icon className="h-4 w-4" />
+      {item.label}
+    </NavLink>
+  );
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 border-r bg-white">
@@ -47,23 +98,44 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 p-4">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )
-            }
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </NavLink>
-        ))}
+        {mainItems.map(renderNavLink)}
+
+        {/* Metadata section */}
+        <Collapsible open={metadataOpen} onOpenChange={setMetadataOpen}>
+          <CollapsibleTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+            <Database className="h-4 w-4" />
+            <span className="flex-1 text-left">Metadata</span>
+            <ChevronDown
+              className={cn(
+                "h-3.5 w-3.5 transition-transform",
+                metadataOpen && "rotate-180"
+              )}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-col gap-1 pt-1">
+              {metadataItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-3 rounded-lg pl-9 pr-3 py-2 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )
+                  }
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
+        {utilityItems.map(renderNavLink)}
       </nav>
 
       {/* Project Info at Bottom */}

@@ -63,9 +63,11 @@ interface SiteMapProps {
   selectedLocation: { lat: number; lon: number } | null;
   onLocationSelect: (lat: number, lon: number) => void;
   onMapError?: () => void;
+  /** Site ID to exclude from blue markers (the site being edited). */
+  excludeSiteId?: string;
 }
 
-export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapError }: SiteMapProps) {
+export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapError, excludeSiteId }: SiteMapProps) {
   // Fetch existing sites
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -151,6 +153,16 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
     }
   }, [computeSitesViewState]);
 
+  // Pan to selected location when it changes (e.g. typed coordinates)
+  useEffect(() => {
+    if (!mapReady.current || !hasAutoZoomed.current || !selectedLocation) return;
+    setViewState((prev) => ({
+      ...prev,
+      longitude: selectedLocation.lon,
+      latitude: selectedLocation.lat,
+    }));
+  }, [selectedLocation]);
+
   // Handle map click
   const handleMapClick = useCallback(
     (event: any) => {
@@ -205,6 +217,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
         {/* Existing sites as markers */}
         {sites?.map(
           (site) =>
+            site.id !== excludeSiteId &&
             site.latitude != null &&
             site.longitude != null && (
               <Marker

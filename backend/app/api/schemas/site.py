@@ -61,3 +61,9 @@ class SiteResponse(SiteBase):
     created_at: datetime
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
+
+
+class SiteWithStats(SiteResponse):
+    """Site response with deployment count for table views."""
+
+    deployment_count: int = 0

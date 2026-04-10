@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import site as crud_site
-from app.api.schemas.site import SiteCreate, SiteResponse, SiteUpdate
+from app.api.schemas.site import SiteCreate, SiteResponse, SiteUpdate, SiteWithStats
 from app.core.logging_config import get_logger
 from app.db.base import get_db
 
@@ -63,6 +63,20 @@ def create_site(site: SiteCreate, db: Session = Depends(get_db)) -> SiteResponse
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Site with name '{site.name}' already exists in this project",
         ) from e
+
+
+@router.get("/with-stats", response_model=list[SiteWithStats])
+def list_sites_with_stats(
+    project_id: str = Query(..., description="Project ID"),
+    db: Session = Depends(get_db),
+) -> list[SiteWithStats]:
+    """
+    List all sites for a project with deployment counts.
+
+    Used by the metadata management page.
+    """
+    rows = crud_site.get_sites_with_stats(db, project_id=project_id)
+    return [SiteWithStats(**row) for row in rows]
 
 
 @router.get("/{site_id}", response_model=SiteResponse)

@@ -19,6 +19,8 @@ import DashboardPage from "./pages/DashboardPage";
 import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
+import { SitesPage } from "./pages/SitesPage";
+import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
@@ -106,6 +108,8 @@ function App() {
             <Route path="review" element={<Navigate to="../verify" replace />} />
             <Route path="images" element={<ImagesPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="sites" element={<SitesPage />} />
+            <Route path="deployments" element={<DeploymentsPage />} />
             <Route path="export" element={<ExportPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
