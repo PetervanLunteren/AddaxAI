@@ -204,50 +204,53 @@ function BatchSizeRow({
               <FormDescription className="text-sm">{description}</FormDescription>
             </div>
             <div className="space-y-2">
-              <Select
-                value={isCustom ? "custom" : "default"}
-                onValueChange={(value) => {
-                  if (value === "default") {
-                    field.onChange(null);
-                  } else if (field.value === null) {
-                    // Only prefill with the GPU default when switching FROM
-                    // Default (field is null). If the field already has a
-                    // saved value (e.g. 12 from the DB), keep it. This guard
-                    // also prevents Radix Select from overwriting the value
-                    // when it fires onValueChange on programmatic prop changes
-                    // (e.g. form.reset changing the Select from "default" to
-                    // "custom").
-                    field.onChange(defaultGpu);
-                  }
-                }}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="default">{defaultLabel}</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-              {isCustom && (
-                <Input
-                  type="number"
-                  min={1}
-                  max={256}
-                  value={field.value ?? ""}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    if (raw === "") {
-                      field.onChange(1);
-                      return;
+              <div className="flex gap-2">
+                <Select
+                  value={isCustom ? "custom" : "default"}
+                  onValueChange={(value) => {
+                    if (value === "default") {
+                      field.onChange(null);
+                    } else if (field.value === null) {
+                      // Only prefill with the GPU default when switching FROM
+                      // Default (field is null). If the field already has a
+                      // saved value (e.g. 12 from the DB), keep it. This guard
+                      // also prevents Radix Select from overwriting the value
+                      // when it fires onValueChange on programmatic prop changes
+                      // (e.g. form.reset changing the Select from "default" to
+                      // "custom").
+                      field.onChange(defaultGpu);
                     }
-                    const parsed = parseInt(raw, 10);
-                    field.onChange(Number.isNaN(parsed) ? 1 : parsed);
                   }}
-                />
-              )}
+                >
+                  <FormControl>
+                    <SelectTrigger className={isCustom ? "w-[130px] shrink-0" : ""}>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="default">{defaultLabel}</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isCustom && (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={256}
+                    className="flex-1"
+                    value={field.value ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        field.onChange(1);
+                        return;
+                      }
+                      const parsed = parseInt(raw, 10);
+                      field.onChange(Number.isNaN(parsed) ? 1 : parsed);
+                    }}
+                  />
+                )}
+              </div>
               <FormMessage />
             </div>
           </div>
@@ -1176,10 +1179,10 @@ export default function SettingsPage() {
                   <CardHeader>
                     <CardTitle>Performance</CardTitle>
                     <CardDescription>
-                      Override how many crops each model processes in parallel. Higher batch
-                      sizes are faster but use more GPU memory. Leave at default unless you're
-                      hitting out-of-memory errors or want to push throughput on a powerful
-                      machine.
+                      Override how many images each model processes in parallel. Higher
+                      values are faster but use more memory. Leave at default unless
+                      you're running into out-of-memory errors or want to push
+                      throughput on a powerful machine.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-0 divide-y border-t">
@@ -1463,6 +1466,9 @@ export default function SettingsPage() {
                     form.setValue("taxonomic_rollup", true, { shouldDirty: true });
                     form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
                     form.setValue("independence_interval", 1800, { shouldDirty: true });
+                    form.setValue("detection_batch_size", null, { shouldDirty: true });
+                    form.setValue("classification_batch_size", null, { shouldDirty: true });
+                    form.setValue("embedding_batch_size", null, { shouldDirty: true });
                   }}
                   disabled={updateMutation.isPending}
                 >

@@ -3,10 +3,10 @@
 - [ ] RE-ENABLE SMOOTHING DEFAULT - The default for `event_smoothing` is temporarily set to `False` in four places for SpeciesNet comparison testing. Change all back to `True` after comparison is complete: `backend/app/models/project.py`, `backend/app/api/schemas/project.py`, `frontend/src/components/projects/CreateProjectDialog.tsx`, `frontend/src/pages/SettingsPage.tsx`.
 
 ## Priority 1
-- [ ] Test SpeciesNet thouroughly. Use the test script and go from there. 
+- [ ] 
 
 ## Priority 2
-- [ ] Add batch size options to the settings. For detection model and classification model. options: default (X GPU/ Y CPU), or custom + input field. What do you think? Perhaps put it as a separate card? Or should we just put everything into one card? Lets think about this in terms of UX UI. 
+- [ ] 
 
 ## Priority 3
 - [ ] 
