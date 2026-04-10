@@ -66,6 +66,7 @@ class EmbeddingModel:
         self,
         input_json_path: Path,
         output_npz_path: Path,
+        batch_size: int | None = None,
         progress_callback: Callable[[str, float, dict | None], None] | None = None,
     ) -> int:
         """
@@ -76,6 +77,9 @@ class EmbeddingModel:
         Args:
             input_json_path: Path to input JSON with detection list
             output_npz_path: Path for output .npz file
+            batch_size: Number of crops processed per batch. None means let the
+                embedding script auto-select based on its own GPU detection.
+                A non-None integer is the user's Custom override.
             progress_callback: Optional callback(message, phase_progress, metrics)
 
         Returns:
@@ -104,6 +108,11 @@ class EmbeddingModel:
             "--input-size",
             str(self.manifest.input_size),
         ]
+
+        # Only override batch size when the user explicitly set a Custom
+        # value. None = let the script auto-select (GPU=64, MPS=32, CPU=8).
+        if batch_size is not None:
+            cmd.extend(["--batch-size", str(batch_size)])
 
         logger.info(f"Running embedding: {' '.join(cmd)}")
 

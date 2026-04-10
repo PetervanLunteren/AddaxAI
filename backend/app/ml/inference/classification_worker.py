@@ -148,7 +148,7 @@ def emit(data: dict) -> None:
     print(json.dumps(data), file=sys.stderr, flush=True)
 
 
-def _classify_batched(model_inference, items, emit_fn):
+def _classify_batched(model_inference, items, batch_size, emit_fn):
     """
     Classify items using batch inference with image caching.
 
@@ -159,13 +159,14 @@ def _classify_batched(model_inference, items, emit_fn):
     Args:
         model_inference: ModelInference instance with get_tensor() and classify_batch()
         items: List of {"image_path": str, "bbox": [x, y, w, h]} dicts
+        batch_size: Number of crops per batch. Resolved by the parent backend
+            process from the project's classification_batch_size override (or
+            the per-pipeline default) and passed in via the input JSON.
         emit_fn: Callable to emit progress updates
 
     Returns:
         List of result dicts (parallel to items)
     """
-    gpu_available = model_inference.check_gpu()
-    batch_size = 4 if gpu_available else 1
     total = len(items)
 
     # Group items by image path for caching (preserve original indices)
@@ -346,6 +347,10 @@ def main():
             data = json.load(f)
 
         items = data["items"]
+        # batch_size comes from the project's Custom override when set,
+        # or is absent when the user left it at Default. When absent,
+        # fall back to the subprocess's own GPU-aware default.
+        batch_size = data.get("batch_size")
         total = len(items)
         print(f"[Worker DEBUG] Read {total} items from {input_json}", file=sys.stderr, flush=True)
 
@@ -363,13 +368,16 @@ def main():
 
         if supports_batching:
             gpu_available = model_inference.check_gpu()
-            bs = 4 if gpu_available else 1
+            # Use the Custom override if provided, otherwise auto-detect
+            effective_batch_size = batch_size if batch_size is not None else (
+                8 if gpu_available else 1
+            )
             print(
-                f"[Worker] Using batch inference (batch_size={bs}, "
+                f"[Worker] Using batch inference (batch_size={effective_batch_size}, "
                 f"device={'GPU' if gpu_available else 'CPU'})",
                 file=sys.stderr, flush=True,
             )
-            results = _classify_batched(model_inference, items, emit)
+            results = _classify_batched(model_inference, items, effective_batch_size, emit)
         else:
             print(
                 "[Worker] Using per-crop inference (no batch support)",

@@ -165,3 +165,67 @@ def test_postprocessing_status_no_classifications(client, db):
     assert resp.status_code == 200
     data = resp.json()
     assert data["has_classifications"] is False
+
+
+# --- Batch size overrides ---
+
+
+def test_create_project_default_batch_sizes_are_null(client):
+    """A new project should have NULL for all three batch_size fields."""
+    resp = client.post("/api/projects", json={"name": "bs-default"})
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["detection_batch_size"] is None
+    assert data["classification_batch_size"] is None
+    assert data["embedding_batch_size"] is None
+
+
+def test_update_project_batch_sizes_persist(client, db):
+    p = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={
+            "detection_batch_size": 16,
+            "classification_batch_size": 64,
+            "embedding_batch_size": 128,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["detection_batch_size"] == 16
+    assert data["classification_batch_size"] == 64
+    assert data["embedding_batch_size"] == 128
+
+    # Reload via GET to confirm persistence
+    resp = client.get(f"/api/projects/{p.id}")
+    data = resp.json()
+    assert data["detection_batch_size"] == 16
+    assert data["classification_batch_size"] == 64
+    assert data["embedding_batch_size"] == 128
+
+
+def test_update_project_batch_size_to_null(client, db):
+    """Setting a batch_size back to null reverts to the default."""
+    p = make_project(db)
+    client.patch(f"/api/projects/{p.id}", json={"detection_batch_size": 16})
+    resp = client.patch(f"/api/projects/{p.id}", json={"detection_batch_size": None})
+    assert resp.status_code == 200
+    assert resp.json()["detection_batch_size"] is None
+
+
+def test_update_project_batch_size_zero_is_rejected(client, db):
+    p = make_project(db)
+    resp = client.patch(f"/api/projects/{p.id}", json={"detection_batch_size": 0})
+    assert resp.status_code == 422
+
+
+def test_update_project_batch_size_negative_is_rejected(client, db):
+    p = make_project(db)
+    resp = client.patch(f"/api/projects/{p.id}", json={"classification_batch_size": -1})
+    assert resp.status_code == 422
+
+
+def test_update_project_batch_size_too_large_is_rejected(client, db):
+    p = make_project(db)
+    resp = client.patch(f"/api/projects/{p.id}", json={"embedding_batch_size": 999})
+    assert resp.status_code == 422

@@ -378,6 +378,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     json_path=video_json_path,
                     classification_model=classification_model,
                     deployment_folder=folder_path,
+                    batch_size=project.classification_batch_size,
                     progress_callback=video_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     video_frames_base_dir=artifacts_folder / "video_frames",
@@ -421,10 +422,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     None,
                     lambda _if=image_files,
                     _fp=folder_path,
-                    _ijp=image_json_path: detection_model.detect_to_json(
+                    _ijp=image_json_path,
+                    _bs=project.detection_batch_size: detection_model.detect_to_json(
                         image_paths=_if,
                         deployment_folder=_fp,
                         confidence_threshold=0.1,
+                        batch_size=_bs,
                         progress_callback=sync_image_detection_progress,
                         output_path=_ijp,
                     ),
@@ -457,6 +460,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     json_path=image_json_path,
                     classification_model=classification_model,
                     deployment_folder=folder_path,
+                    batch_size=project.classification_batch_size,
                     progress_callback=image_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     video_frames_base_dir=artifacts_folder / "video_frames",
@@ -684,8 +688,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     None,
                     lambda _em=embedding_model,
                     _eij=embedding_input_json,
-                    _eon=embedding_output_npz: _em.compute_embeddings(
-                        _eij, _eon, sync_embedding_progress
+                    _eon=embedding_output_npz,
+                    _bs=project.embedding_batch_size: _em.compute_embeddings(
+                        _eij, _eon, _bs, sync_embedding_progress
                     ),
                 )
 
@@ -884,6 +889,7 @@ async def run_classification_on_json(
     json_path: Path,
     classification_model,
     deployment_folder: Path,
+    batch_size: int,
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
     classification_model_dir: Path | None = None,
     video_frames_base_dir: Path | None = None,
@@ -897,6 +903,9 @@ async def run_classification_on_json(
         json_path: Path to detection JSON file
         classification_model: Classification model instance
         deployment_folder: Deployment folder for artifacts
+        batch_size: Number of crops per classification batch. Resolved by the
+            caller from the project's classification_batch_size override (or
+            the per-pipeline default).
         progress_callback: Optional progress callback
         classification_model_dir: Path to classification model directory (for taxonomy.csv)
         video_frames_base_dir: Path to video_frames directory. If None, falls back to
@@ -1024,7 +1033,7 @@ async def run_classification_on_json(
 
         logger.info("[DEBUG] Calling classify_detections()...")
         results, class_names, compute_device = classification_model.classify_detections(
-            items, progress_callback=on_progress,
+            items, batch_size=batch_size, progress_callback=on_progress,
         )
         logger.info(
             f"[DEBUG] classify_detections() returned: "

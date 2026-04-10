@@ -77,6 +77,28 @@ class ProjectBase(BaseModel):
     min_cluster_size: int = Field(5, ge=2, le=100, description="HDBSCAN min_cluster_size parameter")
     min_samples: int = Field(3, ge=1, le=50, description="HDBSCAN min_samples parameter")
 
+    # Per-project subprocess batch size overrides.
+    # NULL means "let the subprocess use its own built-in default" (each
+    # subprocess has its own GPU detection inside its conda env).
+    detection_batch_size: int | None = Field(
+        default=None,
+        ge=1,
+        le=256,
+        description="Override detection model batch size (null = use default)",
+    )
+    classification_batch_size: int | None = Field(
+        default=None,
+        ge=1,
+        le=256,
+        description="Override classification model batch size (null = use default)",
+    )
+    embedding_batch_size: int | None = Field(
+        default=None,
+        ge=1,
+        le=256,
+        description="Override embedding model batch size (null = use default)",
+    )
+
 
 class ProjectCreate(ProjectBase):
     """
@@ -113,6 +135,9 @@ class ProjectUpdate(BaseModel):
     independence_interval: int | None = Field(None, ge=0)
     min_cluster_size: int | None = Field(None, ge=2, le=100)
     min_samples: int | None = Field(None, ge=1, le=50)
+    detection_batch_size: int | None = Field(None, ge=1, le=256)
+    classification_batch_size: int | None = Field(None, ge=1, le=256)
+    embedding_batch_size: int | None = Field(None, ge=1, le=256)
 
 
 class ProjectResponse(ProjectBase):

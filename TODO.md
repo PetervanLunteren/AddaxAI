@@ -6,23 +6,12 @@
 - [ ] Test SpeciesNet thouroughly. Use the test script and go from there. 
 
 ## Priority 2
-- [ ] Make the country selection in the label selection (if present) a bit more visually aparent. Perhaps with a green/teal border around it? People need to see it is possible. 
-- [ ] Check how the label selection modal looks for models that dont have country filters. Check both in creteProject and in project settings. 
+- [ ] Add batch size options to the settings. For detection model and classification model. options: default (X GPU/ Y CPU), or custom + input field. What do you think? Perhaps put it as a separate card? Or should we just put everything into one card? Lets think about this in terms of UX UI. 
 
 ## Priority 3
 - [ ] 
 
-## Future TODOs
-- [ ] would it make sense to upgrade the app to use DINOv3 instead of DINOv2?
-- [ ] ROLLDOWN - exlusion rollup currently works like this (corect me if i'm wrong!):
-    > raw: wolf 60%, dog 20%, bear 10%, cat 10%.
-    > exluded wolf, included dog, cat, bear: dog 20%, bear 10%, cat 10%, wolf 0%. 
-    > Detection was wolf top-1, which is excluded, so it check the parent taxon to see if that is included. Canidea is included (via dog), so the deteciton gets the prediction (canidae 80%), am I correct? 
-    > What if we also allow rolldown if there is only one child taxon present? The above example would then go to canidae 80% and see that there is only one canidae possible, so it must be that one, so it rollsdown to dog 80%. What do you think? If the raw prediction was wolf 60%, dog 20%, fox 10%, cat 10%, the rolldown wouldn't have worked since then there are two childs of the canidae, and hence the prediciton would remain canidae 80%. Agree? What do yout think of this appraoch? And what would it take to implement it? 
-
-
-
-## Features
+## New features
 - [ ] TIME OFFSET - add a feature that allows datetime offset. This should happen at the "new deployment" options. Perhaps something that says "your data spans X days/weeks, etc. " Click here to see the burned in pixel dates (show a few images / frames) and show the extracted datetime next to it. Then users can add an offset to all data in the deployment. Add fast options to switch from AM to PM etc. +12:00 and -12:00. 
 - [ ] METADATA MANAGEMENT - add pages for deployments and sites, where they are all visible in a table format with filter options that make sense for the data. Each row is a unit (deployment or site) and the user can filter, sort, view, and then have actions as a three dot. The actions three dot will be "edit" for now only, where the user can edit the name of the unit, the time, etc. These are not defined yet, but need to be defined in this plan. The idea is that it offers a page where users have more room to customise their metadata, and edit flexibly. We will add actions to the three dot later on. 
 - [ ] TIMELAPSE STANDALONE APP
@@ -38,3 +27,13 @@
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [ ] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
+
+## Nice to haves
+- [ ] Add a geolocation file for the Sub Saharan model too, like SpeciesNet, so users of the SSmodel can also prefil by country. 
+- [ ] would it make sense to upgrade the app to use DINOv3 instead of DINOv2?
+- [ ] ROLLDOWN - exlusion rollup currently works like this (corect me if i'm wrong!):
+    > raw: wolf 60%, dog 20%, bear 10%, cat 10%.
+    > exluded wolf, included dog, cat, bear: dog 20%, bear 10%, cat 10%, wolf 0%. 
+    > Detection was wolf top-1, which is excluded, so it check the parent taxon to see if that is included. Canidea is included (via dog), so the deteciton gets the prediction (canidae 80%), am I correct? 
+    > What if we also allow rolldown if there is only one child taxon present? The above example would then go to canidae 80% and see that there is only one canidae possible, so it must be that one, so it rollsdown to dog 80%. What do you think? If the raw prediction was wolf 60%, dog 20%, fox 10%, cat 10%, the rolldown wouldn't have worked since then there are two childs of the canidae, and hence the prediciton would remain canidae 80%. Agree? What do yout think of this appraoch? And what would it take to implement it? 
+- [ ]

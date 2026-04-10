@@ -142,6 +142,13 @@ class ModelInference:
     # multiple crops processed in one GPU forward pass instead of one at a
     # time. This can give 5-15x speedup on GPU. If not implemented, the
     # worker falls back to calling get_classification() per crop.
+    #
+    # The batch size is supplied by the parent backend process via the
+    # input JSON's "batch_size" key. It comes from the project's per-model
+    # classification_batch_size override (or the per-pipeline default in
+    # app.ml.batch_size). Your inference class does not need to know or
+    # set the batch size — the worker handles batching for you and calls
+    # classify_batch() with batches no larger than the configured value.
     # ------------------------------------------------------------------
 
     def get_tensor(self, crop: Image.Image):

@@ -30,7 +30,9 @@ import { HelpSheet } from "../components/verify/HelpSheet";
 import { SimilarityTab } from "../components/verify/SimilarityTab";
 import { EventsStatsToolbar } from "../components/verify/EventsStatsToolbar";
 
-const PAGE_SIZE = 50;
+// 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
+// (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
+const PAGE_SIZE = 48;
 const FILTER_DEBOUNCE_MS = 300;
 
 /** Debounce a value by `delay` ms. Compares by JSON serialization. */
@@ -536,8 +538,10 @@ function EventCard({
             </svg>
           );
         })()}
-        {/* Label chips */}
-        <div className="absolute bottom-2 left-2 flex gap-1">
+        {/* Label chips. right-2 + flex-wrap so badges wrap upward when they
+            don't fit, instead of overflowing past the card's right edge and
+            getting clipped by the parent's overflow-hidden. */}
+        <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
           {event.observation_types
             .filter((t) => t === "human" || t === "vehicle")
             .map((t) => {

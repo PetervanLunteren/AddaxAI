@@ -11,7 +11,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Globe } from "lucide-react";
+import { Check, ChevronsUpDown, Flag } from "lucide-react";
 import { SpeciesSelector } from "./SpeciesSelector";
 import { Button } from "../ui/button";
 import {
@@ -192,12 +192,18 @@ export function SpeciesSelectionModal({
           size="sm"
           className={cn(
             "h-9 w-full justify-between",
-            !selectedLocationKey && "text-muted-foreground",
+            !selectedLocationKey &&
+              "border-primary bg-primary/10 text-primary font-medium hover:bg-primary/15 hover:text-primary",
           )}
         >
-          <Globe className="h-3.5 w-3.5 shrink-0 mr-1.5 opacity-60" />
+          <Flag
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 mr-1.5",
+              selectedLocationKey ? "opacity-60" : "opacity-100",
+            )}
+          />
           <span className="truncate flex-1 text-left">
-            {selectedLocationLabel ?? "Preselect by geography"}
+            {selectedLocationLabel ?? "Preselect species by country (recommended)"}
           </span>
           <ChevronsUpDown className="ml-1.5 h-3 w-3 shrink-0 opacity-50" />
         </Button>

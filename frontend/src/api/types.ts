@@ -26,6 +26,9 @@ export interface ProjectCreate {
   independence_interval: number;
   min_cluster_size: number;
   min_samples: number;
+  detection_batch_size: number | null;
+  classification_batch_size: number | null;
+  embedding_batch_size: number | null;
 }
 
 export interface ProjectUpdate {
@@ -47,6 +50,9 @@ export interface ProjectUpdate {
   independence_interval?: number | null;
   min_cluster_size?: number | null;
   min_samples?: number | null;
+  detection_batch_size?: number | null;
+  classification_batch_size?: number | null;
+  embedding_batch_size?: number | null;
 }
 
 export interface ProjectResponse {
@@ -69,6 +75,9 @@ export interface ProjectResponse {
   independence_interval: number;
   min_cluster_size: number;
   min_samples: number;
+  detection_batch_size: number | null;
+  classification_batch_size: number | null;
+  embedding_batch_size: number | null;
   postprocessing_settings_hash: string | null;
   thumbnail_path: string | null;
   created_at: string;
@@ -400,6 +409,11 @@ export interface ModelInfo {
   license?: string | null;
   min_app_version?: string | null;
   embedding_dim?: number | null;
+  // Per-pipeline default batch sizes the worker will use when the project's
+  // batch_size override is null. Used to label the "Default" option in the
+  // Performance card. Same numbers for every model in the same pipeline.
+  default_batch_size_gpu: number;
+  default_batch_size_cpu: number;
 }
 
 // Taxonomy types

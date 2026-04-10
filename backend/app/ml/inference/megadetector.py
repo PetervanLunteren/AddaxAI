@@ -174,6 +174,7 @@ class MegaDetectorV1000(DetectionModel):
         image_paths: list[Path],
         deployment_folder: Path,
         confidence_threshold: float,
+        batch_size: int | None = None,
         progress_callback: Callable[[str, float], None] | None = None,
         output_path: Path | None = None,
     ) -> Path:
@@ -187,6 +188,9 @@ class MegaDetectorV1000(DetectionModel):
             image_paths: List of absolute paths to image files
             deployment_folder: Path to deployment folder (will create .addaxai subfolder)
             confidence_threshold: Minimum confidence for detections (typically 0.1)
+            batch_size: Number of images processed in parallel. None means let
+                MegaDetector use its own default (1). A non-None integer is
+                the user's Custom override from the project settings.
             progress_callback: Optional callback(message, progress)
             output_path: Optional explicit output path. If provided, results are written
                 here instead of the default .addaxai/detection_results.json.
@@ -208,7 +212,7 @@ class MegaDetectorV1000(DetectionModel):
 
         logger.info(
             f"Running MegaDetector on {len(image_paths)} images "
-            f"with threshold {confidence_threshold}"
+            f"with threshold {confidence_threshold}, batch_size {batch_size}"
         )
 
         if progress_callback:
@@ -251,6 +255,12 @@ class MegaDetectorV1000(DetectionModel):
                     str(temp_output),
                 ]
 
+                # Only override batch size when the user explicitly set a
+                # Custom value. None = let MegaDetector use its own default.
+                if batch_size is not None:
+                    cmd.insert(-3, "--batch_size")
+                    cmd.insert(-3, str(batch_size))
+
                 logger.info(f"Running command: {' '.join(cmd)}")
 
                 if progress_callback:
@@ -288,6 +298,29 @@ class MegaDetectorV1000(DetectionModel):
                         if progress_callback and ("Processing image" in line or "%" in line):
                             progress = self._parse_progress_line(line)
                             metrics = self._parse_tqdm_metrics(line)
+
+                            # When batch_size > 1, MegaDetector's tqdm
+                            # iterates over batches, not images. Remap
+                            # to image-level counts so the UI shows the
+                            # correct total and throughput.
+                            if (
+                                batch_size is not None
+                                and batch_size > 1
+                                and metrics
+                            ):
+                                total_batches = metrics.get("total", 0)
+                                if total_batches > 0:
+                                    fraction = (
+                                        metrics.get("current", 0)
+                                        / total_batches
+                                    )
+                                    metrics["total"] = len(image_paths)
+                                    metrics["current"] = round(
+                                        fraction * len(image_paths)
+                                    )
+                                if "rate" in metrics:
+                                    metrics["rate"] *= batch_size
+
                             if progress is not None:
                                 # Try to send metrics if callback accepts
                                 # 3 params, else fallback to 2

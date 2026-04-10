@@ -70,7 +70,7 @@ def get_batch_size(device: torch.device, user_batch_size: int) -> int:
     if user_batch_size > 0:
         return user_batch_size
     if device.type == "cuda":
-        return 64
+        return 32
     elif device.type == "mps":
         return 32
     else:

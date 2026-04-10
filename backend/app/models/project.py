@@ -102,6 +102,20 @@ class Project(Base):
         Integer, nullable=False, default=3
     )
 
+    # Per-project subprocess batch size overrides.
+    # NULL = let the subprocess use its own built-in default (which
+    # auto-detects GPU inside its own conda env). A non-null integer
+    # is the user's Custom override from the Performance card.
+    detection_batch_size: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    classification_batch_size: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    embedding_batch_size: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
     # Postprocessing state — SHA-256 hash of last-applied smoothing settings
     postprocessing_settings_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True

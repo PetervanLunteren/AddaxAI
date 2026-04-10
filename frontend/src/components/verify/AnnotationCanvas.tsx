@@ -591,6 +591,15 @@ export function AnnotationCanvas({
             const isSelected = selectedDetectionId === detection.id;
             const pill = computePillLayout(detection);
 
+            // Clamp the pill so it stays inside the stage. Without this, a
+            // bbox near the right edge of the image pushes its label pill
+            // off-canvas where it gets clipped (the dot + label disappear).
+            const pillX = Math.max(
+              0,
+              Math.min(x, stageSize.width - pill.pillWidth),
+            );
+            const pillY = y - pill.pillHeight < 0 ? y : y - pill.pillHeight;
+
             return (
               <React.Fragment key={detection.id}>
                 {/* Bounding box (stroke only, rounded) */}
@@ -612,7 +621,7 @@ export function AnnotationCanvas({
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
                 {/* Label pill */}
-                <Group x={x} y={y - pill.pillHeight < 0 ? y : y - pill.pillHeight} listening={false}>
+                <Group x={pillX} y={pillY} listening={false}>
                   <Rect
                     width={pill.pillWidth}
                     height={pill.pillHeight}

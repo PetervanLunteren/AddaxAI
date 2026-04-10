@@ -318,8 +318,9 @@ export function TreeSelector({
   return (
     <div className={`space-y-2 border rounded-md p-3${fillHeight ? " h-full flex flex-col overflow-hidden" : ""}`}>
       <p className="text-sm text-muted-foreground">{counterText}</p>
-      {/* Search (+ optional extra content like geography filter) */}
-      <div className={searchRowExtra ? "grid grid-cols-2 gap-2" : "flex"}>
+      {/* Optional extra content (e.g. geography filter) + search */}
+      <div className={searchRowExtra ? "grid grid-cols-2 gap-2" : ""}>
+        {searchRowExtra}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
@@ -330,7 +331,6 @@ export function TreeSelector({
             className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        {searchRowExtra}
       </div>
 
       {/* Bulk action buttons */}

@@ -37,8 +37,12 @@ def calculate_max_n_for_event(
 
     Algorithm:
     1. Get all detections in this event's files that pass the threshold
-    2. Group by (file_id, effective_label) to count detections per file
-    3. For each label, find the file with the maximum count (= MaxN)
+    2. Group by (file_id, effective_label) to count detections per file,
+       summing detection confidence per group
+    3. For each label, find the file with the maximum count (= MaxN).
+       Ties are broken by the highest summed detection confidence, so the
+       chosen frame is the one where the model is most certain about the
+       animals it sees.
     4. Replace existing EventObservation rows with new ones
 
     Returns the created EventObservation rows.
@@ -47,7 +51,8 @@ def calculate_max_n_for_event(
     # COALESCE(label, category) for display string.
     effective_label = func.coalesce(Detection.label, Detection.category)
 
-    # Count detections per file per taxonomy_id
+    # Count detections per file per taxonomy_id, plus summed confidence
+    # for tie-breaking when multiple files share the same MaxN count.
     counts = (
         db.query(
             Detection.file_id,
@@ -55,6 +60,7 @@ def calculate_max_n_for_event(
             effective_label.label("eff_label"),
             Detection.category,
             func.count(Detection.id).label("det_count"),
+            func.sum(Detection.confidence).label("conf_sum"),
         )
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
@@ -78,13 +84,18 @@ def calculate_max_n_for_event(
         )
         return []
 
-    # Find MaxN per taxonomy_id (or label string as fallback key)
+    # Find MaxN per taxonomy_id (or label string as fallback key).
+    # Score is (det_count, conf_sum) so that ties on count are broken by
+    # the file with the highest summed detection confidence.
     max_n_per_key: dict[str, dict] = {}
-    for file_id, taxonomy_id, label, category, det_count in counts:
+    for file_id, taxonomy_id, label, category, det_count, conf_sum in counts:
         key = taxonomy_id or label
-        if key not in max_n_per_key or det_count > max_n_per_key[key]["count"]:
+        new_score = (det_count, conf_sum)
+        existing = max_n_per_key.get(key)
+        if existing is None or new_score > (existing["count"], existing["conf_sum"]):
             max_n_per_key[key] = {
                 "count": det_count,
+                "conf_sum": conf_sum,
                 "file_id": file_id,
                 "category": category,
                 "label": label,

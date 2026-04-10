@@ -76,6 +76,7 @@ class CustomClassificationModel:
     def classify_detections(
         self,
         items: list[dict],
+        batch_size: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> tuple[list[ClassificationResult | None], dict[str, str], str]:
         """
@@ -83,6 +84,9 @@ class CustomClassificationModel:
 
         Args:
             items: List of {"image_path": str, "bbox": [x, y, w, h]} dicts
+            batch_size: Number of crops processed per batch. None means let the
+                classification worker use its own default (auto-detects GPU).
+                A non-None integer is the user's Custom override.
             progress_callback: Optional callback(current, total) for progress updates
 
         Returns:
@@ -102,9 +106,15 @@ class CustomClassificationModel:
             input_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".json", prefix="cls_input_", delete=False
             )
-            json.dump({"items": items}, input_file)
+            payload: dict = {"items": items}
+            if batch_size is not None:
+                payload["batch_size"] = batch_size
+            json.dump(payload, input_file)
             input_file.close()
-            logger.info(f"[DEBUG] Wrote {len(items)} items to input file: {input_file.name}")
+            logger.info(
+                f"[DEBUG] Wrote {len(items)} items (batch_size={batch_size}) "
+                f"to input file: {input_file.name}"
+            )
 
             # Create output file path
             output_fd, output_path = tempfile.mkstemp(suffix=".json", prefix="cls_output_")

@@ -51,6 +51,7 @@ import {
   DialogContent,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Slider } from "../components/ui/slider";
 import { Switch } from "../components/ui/switch";
 import {
@@ -104,6 +105,10 @@ const settingsSchema = z.object({
   taxonomic_rollup: z.boolean(),
   taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
+  // null = use the per-pipeline default; integer = user override
+  detection_batch_size: z.number().int().min(1).max(256).nullable(),
+  classification_batch_size: z.number().int().min(1).max(256).nullable(),
+  embedding_batch_size: z.number().int().min(1).max(256).nullable(),
 });
 
 const INDEPENDENCE_INTERVAL_OPTIONS = [
@@ -128,6 +133,12 @@ const VIDEO_FPS_OPTIONS = [
 ];
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
+
+/** Form field names that hold a per-pipeline batch size override. */
+type BatchSizeFieldName =
+  | "detection_batch_size"
+  | "classification_batch_size"
+  | "embedding_batch_size";
 
 /** Settings that trigger classification reprocessing when changed. */
 const SMOOTHING_SETTINGS = [
@@ -154,6 +165,96 @@ function hasSmoothingChanges(
     }
   }
   return false;
+}
+
+/**
+ * One row of the Performance card. A Select with two options (Default / Custom)
+ * plus a number input that appears below when "Custom" is picked.
+ *
+ * Mode is derived from the field value: null = Default, integer = Custom.
+ * Switching to Custom prefills with the model's GPU default; switching back
+ * to Default sets the field to null.
+ */
+function BatchSizeRow({
+  control,
+  name,
+  label,
+  description,
+  defaultGpu,
+  defaultCpu,
+}: {
+  control: ReturnType<typeof useForm<SettingsFormData>>["control"];
+  name: BatchSizeFieldName;
+  label: string;
+  description: string;
+  defaultGpu: number;
+  defaultCpu: number;
+}) {
+  const defaultLabel = `Default (${defaultGpu} on GPU, ${defaultCpu} on CPU)`;
+  return (
+    <FormField
+      control={control}
+      name={name}
+      render={({ field }) => {
+        const isCustom = field.value !== null;
+        return (
+          <div className="grid grid-cols-2 items-center gap-8 py-6">
+            <div className="space-y-1">
+              <FormLabel>{label}</FormLabel>
+              <FormDescription className="text-sm">{description}</FormDescription>
+            </div>
+            <div className="space-y-2">
+              <Select
+                value={isCustom ? "custom" : "default"}
+                onValueChange={(value) => {
+                  if (value === "default") {
+                    field.onChange(null);
+                  } else if (field.value === null) {
+                    // Only prefill with the GPU default when switching FROM
+                    // Default (field is null). If the field already has a
+                    // saved value (e.g. 12 from the DB), keep it. This guard
+                    // also prevents Radix Select from overwriting the value
+                    // when it fires onValueChange on programmatic prop changes
+                    // (e.g. form.reset changing the Select from "default" to
+                    // "custom").
+                    field.onChange(defaultGpu);
+                  }
+                }}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="default">{defaultLabel}</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {isCustom && (
+                <Input
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={field.value ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") {
+                      field.onChange(1);
+                      return;
+                    }
+                    const parsed = parseInt(raw, 10);
+                    field.onChange(Number.isNaN(parsed) ? 1 : parsed);
+                  }}
+                />
+              )}
+              <FormMessage />
+            </div>
+          </div>
+        );
+      }}
+    />
+  );
 }
 
 /** Fetch observation and event snapshots for the current project settings. */
@@ -262,6 +363,9 @@ export default function SettingsPage() {
       taxonomic_rollup: true,
       taxonomic_rollup_threshold: 0.65,
       independence_interval: 1800,
+      detection_batch_size: null,
+      classification_batch_size: null,
+      embedding_batch_size: null,
     },
   });
 
@@ -282,6 +386,9 @@ export default function SettingsPage() {
         taxonomic_rollup: project.taxonomic_rollup,
         taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
+        detection_batch_size: project.detection_batch_size ?? null,
+        classification_batch_size: project.classification_batch_size ?? null,
+        embedding_batch_size: project.embedding_batch_size ?? null,
       };
       form.reset(values);
 
@@ -680,6 +787,9 @@ export default function SettingsPage() {
         taxonomic_rollup: project.taxonomic_rollup,
         taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
+        detection_batch_size: project.detection_batch_size ?? null,
+        classification_batch_size: project.classification_batch_size ?? null,
+        embedding_batch_size: project.embedding_batch_size ?? null,
       });
       setExcludedClasses(project.excluded_classes || []);
     }
@@ -1051,7 +1161,64 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Card 2: Label selection */}
+            {/* Card 2: Performance */}
+            {(() => {
+              const detectionModel = detectionModels.find((m) => m.model_id === detectionModelId);
+              const classificationModel = classificationModels.find(
+                (m) => m.model_id === classificationModelId,
+              );
+              const embeddingModel = embeddingModels.find((m) => m.model_id === embeddingModelId);
+              const showClassificationRow = hasClassificationModel && !!classificationModel;
+              const showEmbeddingRow =
+                !!embeddingModelId && embeddingModelId !== "none" && !!embeddingModel;
+              return (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Performance</CardTitle>
+                    <CardDescription>
+                      Override how many crops each model processes in parallel. Higher batch
+                      sizes are faster but use more GPU memory. Leave at default unless you're
+                      hitting out-of-memory errors or want to push throughput on a powerful
+                      machine.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-0 divide-y border-t">
+                    {detectionModel && (
+                      <BatchSizeRow
+                        control={form.control}
+                        name="detection_batch_size"
+                        label="Detection batch size"
+                        description="Crops processed per batch by the detection model."
+                        defaultGpu={detectionModel.default_batch_size_gpu}
+                        defaultCpu={detectionModel.default_batch_size_cpu}
+                      />
+                    )}
+                    {showClassificationRow && (
+                      <BatchSizeRow
+                        control={form.control}
+                        name="classification_batch_size"
+                        label="Classification batch size"
+                        description="Crops processed per batch by the classification model."
+                        defaultGpu={classificationModel.default_batch_size_gpu}
+                        defaultCpu={classificationModel.default_batch_size_cpu}
+                      />
+                    )}
+                    {showEmbeddingRow && (
+                      <BatchSizeRow
+                        control={form.control}
+                        name="embedding_batch_size"
+                        label="Embedding batch size"
+                        description="Crops processed per batch by the embedding model."
+                        defaultGpu={embeddingModel.default_batch_size_gpu}
+                        defaultCpu={embeddingModel.default_batch_size_cpu}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {/* Card 3: Label selection */}
             {hasClassificationModel && taxonomy && (
               <Card>
                 <CardHeader>
@@ -1089,7 +1256,7 @@ export default function SettingsPage() {
               </Card>
             )}
 
-            {/* Card 3: Analysis and counting */}
+            {/* Card 4: Analysis and counting */}
             <Card>
               <CardHeader>
                 <CardTitle>Analysis and counting</CardTitle>

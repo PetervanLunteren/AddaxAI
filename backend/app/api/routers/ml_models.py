@@ -14,6 +14,14 @@ from pydantic import BaseModel
 
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
+from app.ml.batch_size import (
+    CLASSIFICATION_DEFAULT_CPU,
+    CLASSIFICATION_DEFAULT_GPU,
+    DETECTION_DEFAULT_CPU,
+    DETECTION_DEFAULT_GPU,
+    EMBEDDING_DEFAULT_CPU,
+    EMBEDDING_DEFAULT_GPU,
+)
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
@@ -76,6 +84,20 @@ class ModelInfo(BaseModel):
     license: str | None = None
     min_app_version: str | None = None
     embedding_dim: int | None = None
+    # Per-pipeline default batch sizes used when the project leaves the
+    # batch_size override unset. Same value for every model in the same
+    # pipeline today; comes from app.ml.batch_size constants.
+    default_batch_size_gpu: int
+    default_batch_size_cpu: int
+
+
+# Lookup table mirroring the constants in app.ml.batch_size, used to
+# populate ModelInfo.default_batch_size_* by pipeline type.
+_DEFAULT_BATCH_SIZES_BY_TYPE: dict[str, tuple[int, int]] = {
+    "detection": (DETECTION_DEFAULT_GPU, DETECTION_DEFAULT_CPU),
+    "classification": (CLASSIFICATION_DEFAULT_GPU, CLASSIFICATION_DEFAULT_CPU),
+    "embedding": (EMBEDDING_DEFAULT_GPU, EMBEDDING_DEFAULT_CPU),
+}
 
 
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
@@ -520,6 +542,7 @@ def list_detection_models() -> list[ModelInfo]:
     manifest_mgr, _, _ = _get_managers()
     models = manifest_mgr.get_detection_models()
 
+    det_gpu, det_cpu = _DEFAULT_BATCH_SIZES_BY_TYPE["detection"]
     model_list = [
         ModelInfo(
             model_id=manifest.model_id,
@@ -534,6 +557,8 @@ def list_detection_models() -> list[ModelInfo]:
             citation=getattr(manifest, "citation", None),
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
+            default_batch_size_gpu=det_gpu,
+            default_batch_size_cpu=det_cpu,
         )
         for manifest in models.values()
     ]
@@ -562,6 +587,8 @@ def list_classification_models() -> list[ModelInfo]:
     manifest_mgr, _, _ = _get_managers()
     models = manifest_mgr.get_classification_models()
 
+    cls_gpu, cls_cpu = _DEFAULT_BATCH_SIZES_BY_TYPE["classification"]
+
     # Add "None" option first
     result = [
         ModelInfo(
@@ -570,6 +597,8 @@ def list_classification_models() -> list[ModelInfo]:
             emoji="⊘",
             type="classification",
             description="Run detection only, without species classification",
+            default_batch_size_gpu=cls_gpu,
+            default_batch_size_cpu=cls_cpu,
         )
     ]
 
@@ -588,6 +617,8 @@ def list_classification_models() -> list[ModelInfo]:
             citation=getattr(manifest, "citation", None),
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
+            default_batch_size_gpu=cls_gpu,
+            default_batch_size_cpu=cls_cpu,
         )
         for manifest in models.values()
     ]
@@ -609,6 +640,8 @@ def list_embedding_models() -> list[ModelInfo]:
     manifest_mgr, _, _ = _get_managers()
     models = manifest_mgr.get_embedding_models()
 
+    emb_gpu, emb_cpu = _DEFAULT_BATCH_SIZES_BY_TYPE["embedding"]
+
     # Add "None" option first
     result = [
         ModelInfo(
@@ -617,6 +650,8 @@ def list_embedding_models() -> list[ModelInfo]:
             emoji="⊘",
             type="embedding",
             description="Skip embedding computation",
+            default_batch_size_gpu=emb_gpu,
+            default_batch_size_cpu=emb_cpu,
         )
     ]
 
@@ -636,6 +671,8 @@ def list_embedding_models() -> list[ModelInfo]:
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
             embedding_dim=manifest.embedding_dim,
+            default_batch_size_gpu=emb_gpu,
+            default_batch_size_cpu=emb_cpu,
         )
         for manifest in models.values()
     ]

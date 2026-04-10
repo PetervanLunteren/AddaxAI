@@ -193,7 +193,10 @@ async def process_re_embedding_job(job_id: str) -> None:
                     None,
                     lambda cb=sync_embedding_progress,
                     _eij=embedding_input_json,
-                    _eon=embedding_output_npz: embedding_model.compute_embeddings(_eij, _eon, cb),
+                    _eon=embedding_output_npz,
+                    _bs=project.embedding_batch_size: embedding_model.compute_embeddings(
+                        _eij, _eon, _bs, cb
+                    ),
                 )
 
                 # Save to DB
