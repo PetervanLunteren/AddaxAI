@@ -98,6 +98,15 @@ class GPSCoordinates(BaseModel):
     longitude: float = Field(..., description="Longitude in decimal degrees")
 
 
+class SampleFile(BaseModel):
+    """A sample file from the deployment folder with its extracted datetime."""
+
+    path: str = Field(..., description="File path relative to the deployment folder")
+    file_datetime: str | None = Field(
+        None, description="Extracted EXIF/metadata datetime (ISO string), or null"
+    )
+
+
 class FolderPreviewResponse(BaseModel):
     """
     Preview of a deployment folder before running analysis.
@@ -114,8 +123,8 @@ class FolderPreviewResponse(BaseModel):
     suggested_site_id: str | None = Field(
         None, description="ID of nearby site if GPS matched"
     )
-    sample_files: list[str] = Field(
-        [], description="Sample of file paths (relative to deployment folder)"
+    sample_files: list[SampleFile] = Field(
+        [], description="Sample files with extracted datetimes for preview"
     )
     start_date: datetime | None = Field(
         None, description="Earliest DateTimeOriginal found in images"

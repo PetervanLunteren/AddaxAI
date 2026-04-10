@@ -60,6 +60,7 @@ def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQ
         site_id=entry.site_id,
         video_count=entry.video_count,
         image_count=entry.image_count,
+        datetime_offset_seconds=entry.datetime_offset_seconds,
         status="pending",
     )
     db.add(db_entry)

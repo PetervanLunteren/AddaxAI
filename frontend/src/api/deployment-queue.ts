@@ -28,6 +28,7 @@ export interface DeploymentQueueCreate {
   site_id?: string | null;
   video_count?: number;
   image_count?: number;
+  datetime_offset_seconds?: number | null;
 }
 
 export interface ProcessQueueRequest {

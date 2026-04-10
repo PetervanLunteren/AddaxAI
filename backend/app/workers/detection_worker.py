@@ -119,6 +119,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 continue
 
             folder_path = Path(entry.folder_path)
+            datetime_offset_seconds = entry.datetime_offset_seconds or 0
             if not folder_path.exists():
                 error_msg = f"Folder not found: {folder_path}"
                 logger.error(error_msg)
@@ -218,6 +219,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             deployment = create_deployment(
                 db=db, site_id=entry.site_id, folder_path=str(folder_path)
             )
+            # Store the datetime offset on the deployment for audit
+            if datetime_offset_seconds:
+                deployment.datetime_offset_seconds = datetime_offset_seconds
+                db.commit()
             logger.info(f"Created deployment: {deployment.id}")
 
             # Create project-scoped artifacts folder
@@ -560,6 +565,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     artifacts_folder=artifacts_folder,
                     taxonomy_name_to_id=taxonomy_name_to_id,
                     builtin_taxonomy_ids=builtin_taxonomy_ids,
+                    datetime_offset_seconds=datetime_offset_seconds,
                 )
 
                 total_detections += result.total_detections

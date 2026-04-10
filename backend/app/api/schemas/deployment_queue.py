@@ -17,6 +17,10 @@ class DeploymentQueueBase(BaseModel):
 
     folder_path: str = Field(..., min_length=1, description="Absolute path to deployment folder")
     site_id: str | None = Field(None, description="Site ID (optional)")
+    datetime_offset_seconds: int | None = Field(
+        None,
+        description="Seconds to add to all file timestamps (null = no adjustment)",
+    )
 
 
 class DeploymentQueueCreate(DeploymentQueueBase):

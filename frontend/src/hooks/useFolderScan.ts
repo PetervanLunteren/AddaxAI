@@ -8,13 +8,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 
-interface FolderScanResult {
+export interface SampleFile {
+  path: string;
+  file_datetime: string | null;
+}
+
+export interface FolderScanResult {
   image_count: number;
   video_count: number;
   total_count: number;
   gps_location: { latitude: number; longitude: number } | null;
   suggested_site_id: string | null;
-  sample_files: string[];
+  sample_files: SampleFile[];
   start_date: string | null;
   end_date: string | null;
   missing_datetime: boolean;

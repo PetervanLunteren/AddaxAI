@@ -27,6 +27,7 @@ import { deploymentQueueApi } from "@/api/deployment-queue";
 import { FolderSelector } from "./FolderSelector";
 import { SiteSelector } from "./SiteSelector";
 import { AddSiteModal } from "./AddSiteModal";
+import { DatetimeOffsetModal } from "./DatetimeOffsetModal";
 import { useFolderScan } from "@/hooks/useFolderScan";
 
 interface AddDeploymentCardProps {
@@ -41,6 +42,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [siteId, setSiteId] = useState<string | null>(null);
   const [showAddSiteModal, setShowAddSiteModal] = useState(false);
   const [touchedFields, setTouchedFields] = useState({ folder: false, site: false });
+  const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
+  const [offsetModalOpen, setOffsetModalOpen] = useState(false);
 
   // Get folder scan results for validation
   const { data: scanResult, isLoading: isScanning } = useFolderScan(folderPath);
@@ -53,21 +56,29 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
 
   // Add to queue mutation
   const addToQueue = useMutation({
-    mutationFn: (data: { folder_path: string; site_id: string; video_count: number; image_count: number }) =>
+    mutationFn: (data: {
+      folder_path: string;
+      site_id: string;
+      video_count: number;
+      image_count: number;
+      datetime_offset_seconds: number | null;
+    }) =>
       deploymentQueueApi.create({
         project_id: projectId,
         folder_path: data.folder_path,
         site_id: data.site_id,
         video_count: data.video_count,
         image_count: data.image_count,
+        datetime_offset_seconds: data.datetime_offset_seconds || null,
       }),
     onSuccess: () => {
       // Refresh queue
       queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
 
-      // Clear folder and site
+      // Clear folder, site, and offset
       setFolderPath(null);
       setSiteId(null);
+      setDatetimeOffsetSeconds(0);
     },
     onError: (error) => {
       // Only show error alerts
@@ -107,6 +118,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       site_id: siteId,
       video_count: scanResult.video_count,
       image_count: scanResult.image_count,
+      datetime_offset_seconds: datetimeOffsetSeconds || null,
     });
   };
 
@@ -130,8 +142,11 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             value={folderPath}
             onChange={(path) => {
               setFolderPath(path);
+              setDatetimeOffsetSeconds(0); // Reset offset when folder changes
               setTouchedFields((prev) => ({ ...prev, folder: true }));
             }}
+            datetimeOffsetSeconds={datetimeOffsetSeconds}
+            onAdjustDates={() => setOffsetModalOpen(true)}
           />
 
           {/* Site selector */}
@@ -178,6 +193,18 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           </TooltipProvider>
         </CardFooter>
       </Card>
+
+      {/* Datetime offset modal */}
+      {folderPath && scanResult && (
+        <DatetimeOffsetModal
+          open={offsetModalOpen}
+          onOpenChange={setOffsetModalOpen}
+          sampleFiles={scanResult.sample_files}
+          folderPath={folderPath}
+          currentOffsetSeconds={datetimeOffsetSeconds}
+          onApply={setDatetimeOffsetSeconds}
+        />
+      )}
 
       {/* Add site modal */}
       <AddSiteModal

@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { Folder, Info, CheckCircle2, AlertCircle, Loader2, ChevronDown, Image, Video, MapPin, Calendar } from "lucide-react";
+import { Folder, Info, CheckCircle2, AlertCircle, Loader2, ChevronDown, Image, Video, MapPin, MapPinOff, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -71,13 +71,39 @@ const TEST_DEPLOYMENTS = [
   "/Users/peter/Downloads/example-data/project_Seattle/dans_backyard",
 ];
 
+/** Format an offset in seconds as a human-readable string, e.g. "+3 days, 12 hours". */
+function formatOffset(seconds: number): string {
+  if (seconds === 0) return "no offset";
+  const sign = seconds > 0 ? "+" : "-";
+  const abs = Math.abs(seconds);
+  const days = Math.floor(abs / 86400);
+  const hours = Math.floor((abs % 86400) / 3600);
+  const minutes = Math.floor((abs % 3600) / 60);
+  const parts: string[] = [];
+  if (days) parts.push(`${days} ${days === 1 ? "day" : "days"}`);
+  if (hours) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+  if (minutes) parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+  if (parts.length === 0) parts.push(`${abs} seconds`);
+  return `${sign}${parts.join(", ")}`;
+}
+
 interface FolderSelectorProps {
   value: string | null;
   onChange: (path: string) => void;
   error?: string;
+  /** Current datetime offset in seconds (0 = no offset). */
+  datetimeOffsetSeconds?: number;
+  /** Called when the user clicks "Adjust dates". Parent opens the modal. */
+  onAdjustDates?: () => void;
 }
 
-export function FolderSelector({ value, onChange, error }: FolderSelectorProps) {
+export function FolderSelector({
+  value,
+  onChange,
+  error,
+  datetimeOffsetSeconds = 0,
+  onAdjustDates,
+}: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
   const [showManualInput, setShowManualInput] = useState(!isElectron());
   const inElectron = isElectron();
@@ -215,44 +241,90 @@ export function FolderSelector({ value, onChange, error }: FolderSelectorProps) 
           ) : hasFiles ? (
             <>
               <div className="border border-[#0f6064] bg-[#ebf0f2] rounded-lg p-4 space-y-2">
-                {/* All scan results in vertical list */}
-                <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
-                  <Image className="h-4 w-4" />
-                  <span>{scanResult.image_count} images</span>
-                </div>
+                {/* File counts — only show types that exist */}
+                {scanResult.image_count > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
+                    <Image className="h-4 w-4" />
+                    <span>{scanResult.image_count} {scanResult.image_count === 1 ? "image" : "images"}</span>
+                  </div>
+                )}
+                {scanResult.video_count > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
+                    <Video className="h-4 w-4" />
+                    <span>{scanResult.video_count} {scanResult.video_count === 1 ? "video" : "videos"}</span>
+                  </div>
+                )}
 
-                <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
-                  <Video className="h-4 w-4" />
-                  <span>{scanResult.video_count} videos</span>
-                </div>
+                {/* GPS — show "found" with coordinates in tooltip, or "not found" */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 text-sm text-[#0f6064] cursor-default">
+                      {scanResult.gps_location ? (
+                        <>
+                          <MapPin className="h-4 w-4" />
+                          <span>GPS found</span>
+                        </>
+                      ) : (
+                        <>
+                          <MapPinOff className="h-4 w-4" />
+                          <span>No GPS metadata</span>
+                        </>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  {scanResult.gps_location && (
+                    <TooltipContent>
+                      {scanResult.gps_location.latitude.toFixed(6)}, {scanResult.gps_location.longitude.toFixed(6)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
 
-                <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
-                  <MapPin className="h-4 w-4" />
-                  <span>
-                    {scanResult.gps_location
-                      ? `${scanResult.gps_location.latitude.toFixed(6)}, ${scanResult.gps_location.longitude.toFixed(6)}`
-                      : 'GPS metadata not found'}
-                  </span>
-                </div>
-
+                {/* Date range — unambiguous format (e.g. "7 Feb 2016") */}
                 <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
                   <Calendar className="h-4 w-4" />
                   <span>
                     {scanResult.start_date && scanResult.end_date ? (
-                      <>
-                        {new Date(scanResult.start_date).toLocaleDateString()} - {new Date(scanResult.end_date).toLocaleDateString()}
-                        {(() => {
-                          const start = new Date(scanResult.start_date);
-                          const end = new Date(scanResult.end_date);
-                          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                          return days > 0 ? ` (${days} days)` : '';
-                        })()}
-                      </>
+                      (() => {
+                        const fmt = (d: Date) => d.toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                        const offsetMs = datetimeOffsetSeconds * 1000;
+                        const start = new Date(new Date(scanResult.start_date).getTime() + offsetMs);
+                        const end = new Date(new Date(scanResult.end_date).getTime() + offsetMs);
+                        return `${fmt(start)} – ${fmt(end)}`;
+                      })()
                     ) : (
-                      'DateTime metadata not found'
+                      "No datetime metadata"
                     )}
                   </span>
                 </div>
+
+                {/* Datetime offset link */}
+                {onAdjustDates && scanResult.start_date && (
+                  <div className="text-sm text-[#0f6064]">
+                    {datetimeOffsetSeconds !== 0 ? (
+                      <span>
+                        Offset:{" "}
+                        <button
+                          type="button"
+                          onClick={onAdjustDates}
+                          className="underline underline-offset-2 hover:text-[#0a4a4d]"
+                        >
+                          {formatOffset(datetimeOffsetSeconds)}
+                        </button>
+                      </span>
+                    ) : (
+                      <span>
+                        Dates look wrong?{" "}
+                        <button
+                          type="button"
+                          onClick={onAdjustDates}
+                          className="underline underline-offset-2 hover:text-[#0a4a4d]"
+                        >
+                          Adjust dates
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* DateTime missing error */}

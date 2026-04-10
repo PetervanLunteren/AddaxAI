@@ -49,6 +49,13 @@ class DeploymentQueue(Base):
         String(36), ForeignKey("sites.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Datetime offset (seconds) to add to all file timestamps during analysis.
+    # NULL = no adjustment. Set by the user in the "Adjust dates" modal when
+    # camera firmware had an incorrect clock (factory reset, AM/PM error, etc.).
+    datetime_offset_seconds: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
     # Model configuration now inherited from project (not per-deployment)
 
     # Processing status

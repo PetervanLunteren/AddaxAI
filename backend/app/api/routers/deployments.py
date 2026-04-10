@@ -7,7 +7,13 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
+import io
+import subprocess
+from pathlib import Path, PurePosixPath
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
+from PIL import Image
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,8 +25,10 @@ from app.api.schemas.deployment import (
     DeploymentWithStats,
     FolderPreviewResponse,
     GPSCoordinates,
+    SampleFile,
 )
 from app.core.logging_config import get_logger
+from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.db.base import get_db
 from app.services.folder_scanner import scan_folder
 
@@ -118,12 +126,144 @@ def preview_folder_path(
         total_count=preview["total_count"],
         gps_location=GPSCoordinates(**preview["gps_location"]) if preview["gps_location"] else None,
         suggested_site_id=None,
-        sample_files=preview["sample_files"],
+        sample_files=[SampleFile(**sf) for sf in preview["sample_files"]],
         start_date=preview["start_date"],
         end_date=preview["end_date"],
         missing_datetime=preview["missing_datetime"],
         datetime_validation_log=preview["datetime_validation_log"],
     )
+
+
+# Maximum thumbnail width for preview images (avoids sending 20 MB RAW files)
+_PREVIEW_MAX_WIDTH = 800
+
+
+@router.get("/preview-image")
+def preview_image(
+    folder: str = Query(..., description="Absolute path to deployment folder"),
+    file: str = Query(..., description="Relative file path from sample_files"),
+):
+    """Serve a resized image from a deployment folder for datetime preview.
+
+    Used by the DatetimeOffsetModal to show sample images so users can
+    compare the burned-in pixel date with the extracted EXIF datetime.
+
+    Security: rejects paths containing '..' and validates the resolved
+    path is inside the folder.
+    """
+    # Block path traversal
+    if ".." in file or PurePosixPath(file).is_absolute():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path",
+        )
+
+    folder_path = Path(folder)
+    file_path = (folder_path / file).resolve()
+
+    # Ensure resolved path is inside the folder
+    if not str(file_path).startswith(str(folder_path.resolve())):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File path is outside the deployment folder",
+        )
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not found: {file}",
+        )
+
+    ext = file_path.suffix.lower()
+    is_video = ext in VIDEO_EXTENSIONS
+
+    try:
+        if is_video:
+            # Extract first frame from video via ffmpeg → JPEG pipe
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-i", str(file_path),
+                    "-vframes", "1",
+                    "-vf", f"scale={_PREVIEW_MAX_WIDTH}:-1",
+                    "-f", "image2pipe",
+                    "-vcodec", "mjpeg",
+                    "pipe:1",
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode != 0 or not result.stdout:
+                raise RuntimeError(
+                    f"ffmpeg failed (exit {result.returncode}): "
+                    f"{result.stderr[:200].decode(errors='replace')}"
+                )
+            buf = io.BytesIO(result.stdout)
+            return StreamingResponse(buf, media_type="image/jpeg")
+
+        # Image: open with Pillow, resize, serve as JPEG
+        img = Image.open(file_path)
+        if img.width > _PREVIEW_MAX_WIDTH:
+            ratio = _PREVIEW_MAX_WIDTH / img.width
+            img = img.resize(
+                (int(img.width * ratio), int(img.height * ratio)),
+                Image.Resampling.LANCZOS,
+            )
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=80)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Failed to serve preview for {file_path}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read file: {str(e)}",
+        ) from e
+
+
+@router.get("/file-datetime")
+def get_file_datetime(
+    folder: str = Query(..., description="Absolute path to deployment folder"),
+    file: str = Query(..., description="Relative file path"),
+):
+    """Extract the EXIF/metadata datetime from a single file on demand.
+
+    Called lazily by the DatetimeOffsetModal as the user navigates through
+    images, so we don't pay the cost of extracting all 10k+ datetimes
+    during the initial folder scan.
+    """
+    if ".." in file or PurePosixPath(file).is_absolute():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path",
+        )
+
+    folder_path = Path(folder)
+    file_path = (folder_path / file).resolve()
+
+    if not str(file_path).startswith(str(folder_path.resolve())):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File path is outside the deployment folder",
+        )
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not found: {file}",
+        )
+
+    dt = None
+    ext = file_path.suffix.lower()
+    if ext in IMAGE_EXTENSIONS:
+        from app.services.folder_scanner import _extract_exif_date_single
+
+        dt = _extract_exif_date_single(file_path)
+    elif ext in VIDEO_EXTENSIONS:
+        from app.utils.media_dates import extract_video_date
+
+        dt = extract_video_date(file_path)
+
+    return {"file_datetime": dt.isoformat() if dt else None}
 
 
 @router.get("/{deployment_id}", response_model=DeploymentResponse)

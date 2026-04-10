@@ -35,6 +35,13 @@ class GPSCoordinates(TypedDict):
     longitude: float
 
 
+class SampleFilePreview(TypedDict):
+    """A sample file with its extracted datetime."""
+
+    path: str  # Relative to deployment folder
+    file_datetime: str | None  # ISO format datetime, or None if unavailable
+
+
 class FolderPreview(TypedDict):
     """Preview of a deployment folder."""
 
@@ -42,7 +49,7 @@ class FolderPreview(TypedDict):
     video_count: int
     total_count: int
     gps_location: GPSCoordinates | None
-    sample_files: list[str]  # Relative paths
+    sample_files: list[SampleFilePreview]
     start_date: str | None  # ISO format datetime
     end_date: str | None  # ISO format datetime
     missing_datetime: bool  # True if no EXIF dates found
@@ -86,8 +93,21 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
             elif ext in VIDEO_EXTENSIONS:
                 video_files.append(file_path)
 
-    # Get relative paths for sample
-    sample_files = [str(f.relative_to(folder)) for f in (image_files[:5] + video_files[:2])[:10]]
+    # Build the full file list for the "Adjust dates" modal. Users
+    # browse files to compare burned-in pixel dates with extracted
+    # datetimes. Both images and videos are included (camera trap
+    # videos also have burned-in timestamps). The preview-image
+    # endpoint handles videos by extracting the first frame via ffmpeg.
+    #
+    # Datetimes are NOT extracted here (10k files × ~3ms = 30 seconds
+    # is too slow). The frontend fetches on demand via file-datetime.
+    #
+    # Sorted by filename (chronological for camera traps).
+    all_media = sorted(image_files + video_files, key=lambda p: p.name)
+    sample_files = [
+        {"path": str(f.relative_to(folder)), "file_datetime": None}
+        for f in all_media
+    ]
 
     # Try to extract GPS from random sample of images
     gps_location = _extract_gps_from_sample(folder, image_files, gps_sample_size)
@@ -342,6 +362,21 @@ def _extract_date_range(
 
     validation_log.append("✗ DateTime extraction failed - no valid timestamps found")
     return None, None, validation_log
+
+
+def _extract_exif_date_single(img_path: Path) -> datetime | None:
+    """Extract the EXIF datetime from a single image. Returns None on failure."""
+    try:
+        with Image.open(img_path) as img:
+            exif_data = img.getexif()
+            if not exif_data:
+                return None
+            date_str = exif_data.get(36867) or exif_data.get(36868) or exif_data.get(306)
+            if date_str:
+                return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        pass
+    return None
 
 
 def _extract_exif_dates(sample: list[Path]) -> list[datetime]:

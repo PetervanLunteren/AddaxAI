@@ -37,6 +37,7 @@ def load_json_to_database(
         dict[str, tuple[str, str | None]] | None
     ) = None,
     builtin_taxonomy_ids: dict[str, str] | None = None,
+    datetime_offset_seconds: int = 0,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -162,6 +163,12 @@ def load_json_to_database(
                         if absolute_path.exists()
                         else datetime.utcnow()
                     )
+
+                # Apply user-specified datetime offset (from the "Adjust
+                # dates" modal). This corrects camera firmware clock errors
+                # like factory resets to 1970 or AM/PM mistakes.
+                if datetime_offset_seconds and timestamp:
+                    timestamp += timedelta(seconds=datetime_offset_seconds)
 
                 # Best frame fields (video only)
                 best_frame_number = img.get("best_frame_number")
