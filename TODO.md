@@ -1,6 +1,6 @@
 ## TEMPORARY
-- [ ] RE-ENABLE NON-LABEL SKIP - The `should_skip_detection()` calls in `backend/app/ml/json_pipeline.py` (lines ~587 and ~976) are temporarily commented out for SpeciesNet comparison testing. Uncomment both blocks after comparison is complete. Search for "TEMPORARY: disabled non-label skip" to find them.
-- [ ] RE-ENABLE SMOOTHING DEFAULT - The default for `event_smoothing` is temporarily set to `False` in four places for SpeciesNet comparison testing. Change all back to `True` after comparison is complete: `backend/app/models/project.py`, `backend/app/api/schemas/project.py`, `frontend/src/components/projects/CreateProjectDialog.tsx`, `frontend/src/pages/SettingsPage.tsx`.
+- [x] RE-ENABLE NON-LABEL SKIP - The `should_skip_detection()` calls in `backend/app/ml/json_pipeline.py` (lines ~587 and ~976) are temporarily commented out for SpeciesNet comparison testing. Uncomment both blocks after comparison is complete. Search for "TEMPORARY: disabled non-label skip" to find them.
+- [x] RE-ENABLE SMOOTHING DEFAULT - The default for `event_smoothing` is temporarily set to `False` in four places for SpeciesNet comparison testing. Change all back to `True` after comparison is complete: `backend/app/models/project.py`, `backend/app/api/schemas/project.py`, `frontend/src/components/projects/CreateProjectDialog.tsx`, `frontend/src/pages/SettingsPage.tsx`.
 
 ## Priority 1
 - [ ] 
@@ -12,7 +12,6 @@
 - [ ] 
 
 ## New features
-- [ ] TIME OFFSET - add a feature that allows datetime offset. This should happen at the "new deployment" options. Perhaps something that says "your data spans X days/weeks, etc. " Click here to see the burned in pixel dates (show a few images / frames) and show the extracted datetime next to it. Then users can add an offset to all data in the deployment. Add fast options to switch from AM to PM etc. +12:00 and -12:00. 
 - [ ] METADATA MANAGEMENT - add pages for deployments and sites, where they are all visible in a table format with filter options that make sense for the data. Each row is a unit (deployment or site) and the user can filter, sort, view, and then have actions as a three dot. The actions three dot will be "edit" for now only, where the user can edit the name of the unit, the time, etc. These are not defined yet, but need to be defined in this plan. The idea is that it offers a page where users have more room to customise their metadata, and edit flexibly. We will add actions to the three dot later on. 
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] DEPTH ESTIMATION

@@ -40,6 +40,8 @@ class ConnectionManager:
         # Registered start functions waiting for "ready" signal
         self._pending_starts: dict[str, Callable] = {}
         self._lock = asyncio.Lock()
+        # Background cleanup tasks (tracked so they can be cancelled on shutdown)
+        self._cleanup_tasks: set[asyncio.Task] = set()
 
     async def connect(self, websocket: WebSocket, job_id: str) -> None:
         """
@@ -95,7 +97,7 @@ class ConnectionManager:
         logger.info(f"Registered pending start for task {task_id}")
 
         # Schedule cleanup in case frontend never connects
-        asyncio.create_task(self._cleanup_pending_start(task_id))
+        self._schedule_cleanup(self._cleanup_pending_start(task_id))
 
     async def handle_ready(self, task_id: str) -> None:
         """
@@ -215,7 +217,7 @@ class ConnectionManager:
                         self.active_connections[job_id].remove(connection)
 
         # Clean up state after 60s (client has long since received it)
-        asyncio.create_task(self._cleanup_state(job_id, delay=60))
+        self._schedule_cleanup(self._cleanup_state(job_id, delay=60))
 
     async def send_error(self, job_id: str, error: str) -> None:
         """
@@ -257,11 +259,25 @@ class ConnectionManager:
                         self.active_connections[job_id].remove(connection)
 
         # Clean up state after 60s
-        asyncio.create_task(self._cleanup_state(job_id, delay=60))
+        self._schedule_cleanup(self._cleanup_state(job_id, delay=60))
 
     def get_connection_count(self, job_id: str) -> int:
         """Get number of active connections for a job."""
         return len(self.active_connections.get(job_id, []))
+
+    def _schedule_cleanup(self, coro) -> None:
+        """Schedule a cleanup coroutine and track the task for cancellation."""
+        task = asyncio.create_task(coro)
+        self._cleanup_tasks.add(task)
+        task.add_done_callback(self._cleanup_tasks.discard)
+
+    async def close(self) -> None:
+        """Cancel all pending cleanup tasks. Call on shutdown."""
+        for task in self._cleanup_tasks:
+            task.cancel()
+        if self._cleanup_tasks:
+            await asyncio.gather(*self._cleanup_tasks, return_exceptions=True)
+        self._cleanup_tasks.clear()
 
     async def _cleanup_state(self, job_id: str, delay: int = 60) -> None:
         """Clean up current state for a job after a delay."""

@@ -76,15 +76,14 @@ def load_json_to_database(
 
         logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
 
-        # Build non-label ID set for skip logic (currently disabled,
-        # re-enable after SpeciesNet comparison is complete)
+        # Build non-label ID set for skip logic
         from app.ml.label_exclusion import (
             build_non_label_class_ids,
-            should_skip_detection,  # noqa: F401
+            should_skip_detection,
         )
 
         class_categories = results.get("classification_categories", {})
-        non_label_ids = build_non_label_class_ids(class_categories)  # noqa: F841
+        non_label_ids = build_non_label_class_ids(class_categories)
 
         # Track statistics
         total_detections = 0
@@ -275,13 +274,11 @@ def load_json_to_database(
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
                 category = category_map.get(category_num, "animal")
 
-                # TEMPORARY: disabled non-label skip for SpeciesNet comparison.
-                # Re-enable after comparison is complete.
-                # if category == "animal" and should_skip_detection(
-                #     det, non_label_ids,
-                # ):
-                #     skipped_non_label += 1
-                #     continue
+                if category == "animal" and should_skip_detection(
+                    det, non_label_ids,
+                ):
+                    skipped_non_label += 1
+                    continue
 
                 total_detections += 1
                 video_categories.add(category)

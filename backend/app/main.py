@@ -133,6 +133,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except asyncio.CancelledError:
                 pass
 
+    # Cancel pending WebSocket cleanup tasks
+    from app.core.websocket_manager import ws_manager
+    await ws_manager.close()
+
     logger.info("Shutting down AddaxAI Backend")
 
 
