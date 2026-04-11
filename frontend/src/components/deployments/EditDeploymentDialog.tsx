@@ -2,7 +2,7 @@
  * Edit deployment slideout panel.
  */
 
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +29,7 @@ import {
 } from "../ui/form";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
+import { TagsEditor } from "../ui/tags-editor";
 
 const deploymentSchema = z.object({
   start_date: z.string().min(1, "Start date is required"),
@@ -72,6 +73,7 @@ export function EditDeploymentDialog({
   onOpenChange,
 }: EditDeploymentDialogProps) {
   const queryClient = useQueryClient();
+  const [tags, setTags] = useState<Record<string, string>>(deployment.tags ?? {});
 
   const form = useForm<DeploymentUpdate>({
     resolver: zodResolver(deploymentSchema),
@@ -94,11 +96,12 @@ export function EditDeploymentDialog({
       datetime_offset_seconds: deployment.datetime_offset_seconds ?? undefined,
       notes: deployment.notes ?? "",
     });
+    setTags(deployment.tags ?? {});
   }, [deployment, form]);
 
   const updateMutation = useMutation({
     mutationFn: (data: DeploymentUpdate) =>
-      deploymentsApi.update(deployment.id, data),
+      deploymentsApi.update(deployment.id, { ...data, tags }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
       queryClient.invalidateQueries({ queryKey: ["deployment-stats", projectId] });
@@ -219,6 +222,8 @@ export function EditDeploymentDialog({
                 </FormItem>
               )}
             />
+
+            <TagsEditor value={tags} onChange={setTags} />
 
             {form.formState.errors.root && (
               <p className="text-sm font-medium text-destructive">

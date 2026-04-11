@@ -5,21 +5,7 @@
 - [ ] 
 
 ## Priority 3
-- [ ] Add these fields to the site modal:
-
-Elevation (meters)
-e.g., 200
-Height above sea level in meters
-
-Habitat type
-e.g., Forest, Grassland
-Main vegetation or ecosystem type
-
-Notes
-..... () funny text
-
-Any other things users want to generall link to a site? 
-- [ ] add a custom field generator for sites, where people can add a field an value that is linked to the site, for example: "Dominant tree species": "Oak". Let users have full flexibilty. 
+- [ ] 
 
 ## New features
 - [ ] METADATA MANAGEMENT - add pages for deployments and sites, where they are all visible in a table format with filter options that make sense for the data. Each row is a unit (deployment or site) and the user can filter, sort, view, and then have actions as a three dot. The actions three dot will be "edit" for now only, where the user can edit the name of the unit, the time, etc. These are not defined yet, but need to be defined in this plan. The idea is that it offers a page where users have more room to customise their metadata, and edit flexibly. We will add actions to the three dot later on. 

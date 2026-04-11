@@ -11,7 +11,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -60,6 +60,7 @@ class Deployment(Base):
     camera_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     camera_serial: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     # Audit: the datetime offset (seconds) that was applied to all file
     # timestamps when this deployment was analyzed. Informational only,

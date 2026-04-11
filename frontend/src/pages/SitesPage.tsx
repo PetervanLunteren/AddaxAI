@@ -30,7 +30,7 @@ import {
 import { AddSiteModal } from "../components/analyses/AddSiteModal";
 import { cn } from "../lib/utils";
 
-type SortField = "name" | "latitude" | "longitude" | "elevation_m" | "habitat_type" | "deployment_count";
+type SortField = "name" | "latitude" | "longitude" | "elevation_m" | "habitat_type" | "deployment_count" | "tag_count";
 type SortDir = "asc" | "desc";
 
 function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
@@ -88,8 +88,12 @@ export function SitesPage() {
 
     // Sort
     result.sort((a, b) => {
-      let aVal: string | number | null = a[sortField];
-      let bVal: string | number | null = b[sortField];
+      let aVal: string | number | null = sortField === "tag_count"
+        ? Object.keys(a.tags ?? {}).length
+        : a[sortField];
+      let bVal: string | number | null = sortField === "tag_count"
+        ? Object.keys(b.tags ?? {}).length
+        : b[sortField];
 
       if (aVal == null && bVal == null) return 0;
       if (aVal == null) return 1;
@@ -171,6 +175,9 @@ export function SitesPage() {
                   <TableHead className={cn(headClass, "text-right")} onClick={() => toggleSort("deployment_count")}>
                     Deployments<SortIcon field="deployment_count" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
+                  <TableHead className={headClass} onClick={() => toggleSort("tag_count")}>
+                    Tags<SortIcon field="tag_count" sortField={sortField} sortDir={sortDir} />
+                  </TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -192,6 +199,15 @@ export function SitesPage() {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {site.deployment_count}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {(() => {
+                        const entries = Object.entries(site.tags ?? {});
+                        if (entries.length === 0) return "\u2014";
+                        const first = `${entries[0][0]}: ${entries[0][1]}`;
+                        if (entries.length === 1) return first;
+                        return `${first}, +${entries.length - 1} more`;
+                      })()}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

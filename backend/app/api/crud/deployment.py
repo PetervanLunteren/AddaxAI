@@ -60,6 +60,7 @@ def create_deployment(db: Session, deployment: DeploymentCreate) -> Deployment:
         camera_model=deployment.camera_model,
         camera_serial=deployment.camera_serial,
         notes=deployment.notes,
+        tags=deployment.tags,
     )
     db.add(db_deployment)
     db.commit()

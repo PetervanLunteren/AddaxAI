@@ -134,6 +134,7 @@ export interface SiteCreate {
   elevation_m?: number | null;
   habitat_type?: string | null;
   notes?: string | null;
+  tags?: Record<string, string> | null;
 }
 
 export interface SiteUpdate {
@@ -143,6 +144,7 @@ export interface SiteUpdate {
   elevation_m?: number | null;
   habitat_type?: string | null;
   notes?: string | null;
+  tags?: Record<string, string> | null;
 }
 
 export interface SiteResponse {
@@ -154,6 +156,7 @@ export interface SiteResponse {
   elevation_m: number | null;
   habitat_type: string | null;
   notes: string | null;
+  tags: Record<string, string>;
   created_at: string;
 }
 
@@ -173,6 +176,7 @@ export interface DeploymentResponse {
   camera_model: string | null;
   camera_serial: string | null;
   notes: string | null;
+  tags: Record<string, string>;
   datetime_offset_seconds: number | null;
   created_at: string;
 }
@@ -183,6 +187,7 @@ export interface DeploymentUpdate {
   camera_model?: string | null;
   camera_serial?: string | null;
   notes?: string | null;
+  tags?: Record<string, string> | null;
   datetime_offset_seconds?: number | null;
 }
 

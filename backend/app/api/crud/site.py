@@ -55,6 +55,7 @@ def create_site(db: Session, site: SiteCreate) -> Site:
         elevation_m=site.elevation_m,
         habitat_type=site.habitat_type,
         notes=site.notes,
+        tags=site.tags,
     )
     db.add(db_site)
     db.commit()
@@ -128,6 +129,7 @@ def get_sites_with_stats(
             "elevation_m": site.elevation_m,
             "habitat_type": site.habitat_type,
             "notes": site.notes,
+            "tags": site.tags,
             "created_at": site.created_at,
             "deployment_count": count,
         }

@@ -46,7 +46,8 @@ type SortField =
   | "camera_serial"
   | "file_count"
   | "event_count"
-  | "detection_count";
+  | "detection_count"
+  | "tag_count";
 type SortDir = "asc" | "desc";
 
 interface DeploymentRow extends DeploymentResponse {
@@ -161,8 +162,12 @@ export function DeploymentsPage() {
 
     // Sort
     result.sort((a, b) => {
-      let aVal: string | number | null = a[sortField];
-      let bVal: string | number | null = b[sortField];
+      let aVal: string | number | null = sortField === "tag_count"
+        ? Object.keys(a.tags ?? {}).length
+        : a[sortField];
+      let bVal: string | number | null = sortField === "tag_count"
+        ? Object.keys(b.tags ?? {}).length
+        : b[sortField];
 
       if (aVal == null && bVal == null) return 0;
       if (aVal == null) return 1;
@@ -284,6 +289,9 @@ export function DeploymentsPage() {
                   <TableHead className={cn(headClass, "text-right")} onClick={() => toggleSort("detection_count")}>
                     Detections<SortIcon field="detection_count" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
+                  <TableHead className={headClass} onClick={() => toggleSort("tag_count")}>
+                    Tags<SortIcon field="tag_count" sortField={sortField} sortDir={sortDir} />
+                  </TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -304,6 +312,15 @@ export function DeploymentsPage() {
                     <TableCell className="text-right tabular-nums">{dep.file_count}</TableCell>
                     <TableCell className="text-right tabular-nums">{dep.event_count}</TableCell>
                     <TableCell className="text-right tabular-nums">{dep.detection_count}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {(() => {
+                        const entries = Object.entries(dep.tags ?? {});
+                        if (entries.length === 0) return "\u2014";
+                        const first = `${entries[0][0]}: ${entries[0][1]}`;
+                        if (entries.length === 1) return first;
+                        return `${first}, +${entries.length - 1} more`;
+                      })()}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

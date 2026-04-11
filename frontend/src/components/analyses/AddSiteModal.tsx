@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { sitesApi } from "@/api/sites";
 import type { SiteResponse } from "@/api/types";
+import { TagsEditor } from "@/components/ui/tags-editor";
 import { SiteMap } from "./SiteMap";
 
 // Validation schema
@@ -82,6 +83,7 @@ export function AddSiteModal({
   );
   const [mapOffline, setMapOffline] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [tags, setTags] = useState<Record<string, string>>({});
 
   // Form setup
   const {
@@ -118,6 +120,7 @@ export function AddSiteModal({
       setValue("elevation_m", site.elevation_m ?? undefined);
       setValue("habitat_type", site.habitat_type ?? "");
       setValue("notes", site.notes ?? "");
+      setTags(site.tags ?? {});
       if (site.latitude != null && site.longitude != null) {
         setSelectedLocation({ lat: site.latitude, lon: site.longitude });
       }
@@ -150,6 +153,7 @@ export function AddSiteModal({
         elevation_m: data.elevation_m ?? null,
         habitat_type: data.habitat_type ?? null,
         notes: data.notes ?? null,
+        tags,
       }),
     onSuccess: (newSite) => {
       queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
@@ -174,6 +178,7 @@ export function AddSiteModal({
         elevation_m: data.elevation_m ?? null,
         habitat_type: data.habitat_type ?? null,
         notes: data.notes ?? null,
+        tags,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
@@ -219,6 +224,7 @@ export function AddSiteModal({
     if (!open) {
       reset();
       setSelectedLocation(null);
+      setTags({});
       setMapOffline(false);
       setShowMap(true);
     }
@@ -247,7 +253,7 @@ export function AddSiteModal({
             <Input
               id="name"
               {...register("name")}
-              placeholder="e.g., Forest Ridge North"
+              placeholder="e.g., Forest ridge north"
               className={errors.name ? "border-red-500" : ""}
             />
             {errors.name && <p className="text-sm text-red-600">{errors.name.message}</p>}
@@ -322,7 +328,7 @@ export function AddSiteModal({
           {/* Extra fields */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="elevation_m">Elevation (meters)</Label>
+              <Label htmlFor="elevation_m">Elevation in meters</Label>
               <Input
                 id="elevation_m"
                 {...register("elevation_m")}
@@ -347,9 +353,12 @@ export function AddSiteModal({
             <Textarea
               id="notes"
               {...register("notes")}
-              placeholder="Additional notes about this site"
+              placeholder="e.g., Watch out for the curious baboons near this site"
             />
           </div>
+
+          {/* Tags */}
+          <TagsEditor value={tags} onChange={setTags} />
 
           {/* Error message */}
           {mutation.isError && (

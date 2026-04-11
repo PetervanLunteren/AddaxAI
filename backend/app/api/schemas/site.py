@@ -21,6 +21,9 @@ class SiteBase(BaseModel):
     elevation_m: float | None = Field(None, description="Elevation in meters")
     habitat_type: str | None = Field(None, max_length=255, description="Habitat type")
     notes: str | None = Field(None, description="Additional notes")
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Custom key:value metadata tags"
+    )
 
 
 class SiteCreate(SiteBase):
@@ -47,6 +50,7 @@ class SiteUpdate(BaseModel):
     elevation_m: float | None = None
     habitat_type: str | None = Field(None, max_length=255)
     notes: str | None = None
+    tags: dict[str, str] | None = None
 
 
 class SiteResponse(SiteBase):

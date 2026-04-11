@@ -31,6 +31,9 @@ class DeploymentBase(BaseModel):
     datetime_offset_seconds: int | None = Field(
         None, description="Datetime offset in seconds applied during analysis"
     )
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Custom key:value metadata tags"
+    )
 
 
 class DeploymentCreate(DeploymentBase):
@@ -59,6 +62,7 @@ class DeploymentUpdate(BaseModel):
     camera_serial: str | None = None
     notes: str | None = None
     datetime_offset_seconds: int | None = None
+    tags: dict[str, str] | None = None
 
 
 class DeploymentResponse(DeploymentBase):
