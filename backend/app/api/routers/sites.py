@@ -126,13 +126,26 @@ def delete_site(site_id: str, db: Session = Depends(get_db)) -> None:
     Delete a site.
 
     Returns 404 if site doesn't exist.
-    Cascades deletion to all deployments, files, etc.
+    Returns 409 if the site has any deployments. Deployments must be
+    reassigned or deleted first to avoid accidentally orphaning data.
     """
-    deleted = crud_site.delete_site(db, site_id)
-    if not deleted:
+    db_site = crud_site.get_site(db, site_id)
+    if db_site is None:
         logger.warning(f"Cannot delete site: {site_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Site with id '{site_id}' not found",
         )
-    logger.info(f"Deleted site: {site_id} (cascaded to deployments and files)")
+
+    deployment_count = len(db_site.deployments)
+    if deployment_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cannot delete site with {deployment_count} deployment(s). "
+                "Reassign or delete the deployments first."
+            ),
+        )
+
+    crud_site.delete_site(db, site_id)
+    logger.info(f"Deleted site: {site_id}")

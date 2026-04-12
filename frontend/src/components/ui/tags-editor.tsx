@@ -7,11 +7,15 @@
  * only receives cleaned output via onChange.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Plus, X } from "lucide-react";
 import { Input } from "./input";
 import { Button } from "./button";
 import { Label } from "./label";
+import { cn } from "../../lib/utils";
+
+const MAX_KEY_LENGTH = 40;
+const MAX_VALUE_LENGTH = 150;
 
 interface TagRow {
   key: string;
@@ -33,7 +37,7 @@ function toDict(rows: TagRow[]): Record<string, string> {
   for (const row of rows) {
     const k = row.key.trim();
     if (k) {
-      dict[k] = row.value;
+      dict[k] = row.value.trim();
     }
   }
   return dict;
@@ -49,6 +53,22 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
     (next: TagRow[]) => onChange(toDict(next)),
     [onChange]
   );
+
+  // Detect duplicate keys (case-sensitive, trimmed)
+  const duplicateKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    for (const row of rows) {
+      const k = row.key.trim();
+      if (!k) continue;
+      if (seen.has(k)) {
+        duplicates.add(k);
+      } else {
+        seen.add(k);
+      }
+    }
+    return duplicates;
+  }, [rows]);
 
   const addRow = () => {
     setRows((prev) => [...prev, { key: "", value: "" }]);
@@ -68,37 +88,60 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
     notify(next);
   };
 
+  const handleBlur = (index: number, field: "key" | "value") => {
+    const row = rows[index];
+    const trimmed = row[field].trim();
+    if (trimmed !== row[field]) {
+      updateRow(index, field, trimmed);
+    }
+  };
+
+  const hasDuplicates = duplicateKeys.size > 0;
+
   return (
     <div className="space-y-2">
       <Label>Tags</Label>
       {rows.length > 0 && (
         <div className="space-y-2">
-          {rows.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input
-                placeholder="e.g., Canopy cover"
-                value={row.key}
-                onChange={(e) => updateRow(i, "key", e.target.value)}
-                className="flex-1"
-              />
-              <Input
-                placeholder="e.g., Dense"
-                value={row.value}
-                onChange={(e) => updateRow(i, "value", e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => removeRow(i)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const trimmedKey = row.key.trim();
+            const isDuplicate = trimmedKey !== "" && duplicateKeys.has(trimmedKey);
+            return (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  placeholder="e.g., Canopy cover"
+                  value={row.key}
+                  onChange={(e) => updateRow(i, "key", e.target.value)}
+                  onBlur={() => handleBlur(i, "key")}
+                  maxLength={MAX_KEY_LENGTH}
+                  className={cn("flex-1", isDuplicate && "border-destructive focus-visible:ring-destructive")}
+                />
+                <Input
+                  placeholder="e.g., Dense"
+                  value={row.value}
+                  onChange={(e) => updateRow(i, "value", e.target.value)}
+                  onBlur={() => handleBlur(i, "value")}
+                  maxLength={MAX_VALUE_LENGTH}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => removeRow(i)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
+      )}
+      {hasDuplicates && (
+        <p className="text-sm text-destructive">
+          Duplicate keys are not allowed. Later entries will overwrite earlier ones.
+        </p>
       )}
       <Button
         type="button"

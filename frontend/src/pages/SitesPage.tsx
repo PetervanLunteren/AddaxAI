@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin } from "lucide-react";
 import { sitesApi } from "../api/sites";
@@ -28,9 +28,9 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { AddSiteModal } from "../components/analyses/AddSiteModal";
-import { cn } from "../lib/utils";
+import { DeleteSiteDialog } from "../components/sites/DeleteSiteDialog";
 
-type SortField = "name" | "latitude" | "longitude" | "elevation_m" | "habitat_type" | "deployment_count" | "tag_count";
+type SortField = "name" | "elevation_m" | "habitat_type" | "deployment_count" | "notes" | "tag_count";
 type SortDir = "asc" | "desc";
 
 function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
@@ -42,24 +42,16 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 
 export function SitesPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editingSite, setEditingSite] = useState<SiteResponse | null>(null);
+  const [deletingSite, setDeletingSite] = useState<SiteWithStats | null>(null);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites-with-stats", projectId],
     queryFn: () => sitesApi.listWithStats(projectId!),
     enabled: !!projectId,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (siteId: string) => sitesApi.delete(siteId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
-    },
   });
 
   const toggleSort = (field: SortField) => {
@@ -160,20 +152,17 @@ export function SitesPage() {
                   <TableHead className={headClass} onClick={() => toggleSort("name")}>
                     Name<SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("latitude")}>
-                    Latitude<SortIcon field="latitude" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("longitude")}>
-                    Longitude<SortIcon field="longitude" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("elevation_m")}>
                     Elevation<SortIcon field="elevation_m" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("habitat_type")}>
                     Habitat type<SortIcon field="habitat_type" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={cn(headClass, "text-right")} onClick={() => toggleSort("deployment_count")}>
+                  <TableHead className={headClass} onClick={() => toggleSort("deployment_count")}>
                     Deployments<SortIcon field="deployment_count" sortField={sortField} sortDir={sortDir} />
+                  </TableHead>
+                  <TableHead className={headClass} onClick={() => toggleSort("notes")}>
+                    Notes<SortIcon field="notes" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("tag_count")}>
                     Tags<SortIcon field="tag_count" sortField={sortField} sortDir={sortDir} />
@@ -186,21 +175,18 @@ export function SitesPage() {
                   <TableRow key={site.id}>
                     <TableCell className="font-medium">{site.name}</TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
-                      {site.latitude != null ? site.latitude.toFixed(4) : "\u2014"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {site.longitude != null ? site.longitude.toFixed(4) : "\u2014"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
                       {site.elevation_m != null ? `${site.elevation_m}m` : "\u2014"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {site.habitat_type || "\u2014"}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-muted-foreground tabular-nums">
                       {site.deployment_count}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                      {site.notes ? (site.notes.length > 50 ? `${site.notes.slice(0, 50)}\u2026` : site.notes) : "\u2014"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
                       {(() => {
                         const entries = Object.entries(site.tags ?? {});
                         if (entries.length === 0) return "\u2014";
@@ -223,11 +209,7 @@ export function SitesPage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => {
-                              if (confirm("Are you sure you want to delete this site? All its deployments, files, and detections will be permanently removed.")) {
-                                deleteMutation.mutate(site.id);
-                              }
-                            }}
+                            onClick={() => setDeletingSite(site)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
@@ -267,6 +249,12 @@ export function SitesPage() {
           onOpenChange={(open) => !open && setEditingSite(null)}
         />
       )}
+
+      <DeleteSiteDialog
+        site={deletingSite}
+        open={!!deletingSite}
+        onOpenChange={(open) => !open && setDeletingSite(null)}
+      />
     </div>
   );
 }

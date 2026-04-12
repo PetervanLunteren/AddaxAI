@@ -16,7 +16,7 @@ import {
   MapPin,
   CardSim,
   ChevronDown,
-  Database,
+  Table,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
@@ -103,7 +103,7 @@ export function Sidebar() {
         {/* Metadata section */}
         <Collapsible open={metadataOpen} onOpenChange={setMetadataOpen}>
           <CollapsibleTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-            <Database className="h-4 w-4" />
+            <Table className="h-4 w-4" />
             <span className="flex-1 text-left">Metadata</span>
             <ChevronDown
               className={cn(

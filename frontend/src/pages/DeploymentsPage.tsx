@@ -36,7 +36,6 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { EditDeploymentDialog } from "../components/deployments/EditDeploymentDialog";
-import { cn } from "../lib/utils";
 
 type SortField =
   | "site_name"
@@ -47,6 +46,7 @@ type SortField =
   | "file_count"
   | "event_count"
   | "detection_count"
+  | "notes"
   | "tag_count";
 type SortDir = "asc" | "desc";
 
@@ -280,14 +280,17 @@ export function DeploymentsPage() {
                   <TableHead className={headClass} onClick={() => toggleSort("camera_serial")}>
                     Serial<SortIcon field="camera_serial" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={cn(headClass, "text-right")} onClick={() => toggleSort("file_count")}>
+                  <TableHead className={headClass} onClick={() => toggleSort("file_count")}>
                     Files<SortIcon field="file_count" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={cn(headClass, "text-right")} onClick={() => toggleSort("event_count")}>
+                  <TableHead className={headClass} onClick={() => toggleSort("event_count")}>
                     Events<SortIcon field="event_count" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={cn(headClass, "text-right")} onClick={() => toggleSort("detection_count")}>
+                  <TableHead className={headClass} onClick={() => toggleSort("detection_count")}>
                     Detections<SortIcon field="detection_count" sortField={sortField} sortDir={sortDir} />
+                  </TableHead>
+                  <TableHead className={headClass} onClick={() => toggleSort("notes")}>
+                    Notes<SortIcon field="notes" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("tag_count")}>
                     Tags<SortIcon field="tag_count" sortField={sortField} sortDir={sortDir} />
@@ -299,7 +302,7 @@ export function DeploymentsPage() {
                 {filtered.map((dep) => (
                   <TableRow key={dep.id}>
                     <TableCell className="font-medium">{dep.site_name}</TableCell>
-                    <TableCell className="tabular-nums">{dep.start_date}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">{dep.start_date}</TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {dep.end_date || "\u2014"}
                     </TableCell>
@@ -309,10 +312,13 @@ export function DeploymentsPage() {
                     <TableCell className="text-muted-foreground">
                       {dep.camera_serial || "\u2014"}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{dep.file_count}</TableCell>
-                    <TableCell className="text-right tabular-nums">{dep.event_count}</TableCell>
-                    <TableCell className="text-right tabular-nums">{dep.detection_count}</TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground tabular-nums">{dep.file_count}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">{dep.event_count}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">{dep.detection_count}</TableCell>
+                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                      {dep.notes ? (dep.notes.length > 50 ? `${dep.notes.slice(0, 50)}\u2026` : dep.notes) : "\u2014"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
                       {(() => {
                         const entries = Object.entries(dep.tags ?? {});
                         if (entries.length === 0) return "\u2014";
