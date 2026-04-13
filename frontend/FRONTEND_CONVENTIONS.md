@@ -78,25 +78,53 @@ Follow Tailwind's spacing scale:
 
 ### Layout Patterns
 
-**Container Width:**
-```tsx
-<div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-```
-
 **Card Grid:**
 ```tsx
 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 ```
 
-**Gradient Background:**
+### Page Layout (canonical)
+
+**Every project-route page MUST use this exact wrapper.** No gradient
+backgrounds, no `p-8` outer padding, no `max-w-5xl`, no plain `<div>`
+in place of `<header>`. Consistency across pages matters more than
+per-page styling experiments.
+
 ```tsx
-<div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+<div className="min-h-screen">
+  <header className="border-b bg-white/80 backdrop-blur-sm">
+    <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Page title</h1>
+          <p className="text-sm text-muted-foreground">
+            Short description of the page
+          </p>
+        </div>
+        {/* Optional: right-side action(s) — e.g. <Button>+ New site</Button> */}
+      </div>
+    </div>
+  </header>
+
+  <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    {/* Page content. Add `space-y-4` or `space-y-6` to <main> if the
+        page is a vertical stack of sections. */}
+  </main>
+</div>
 ```
 
-**Header with Backdrop Blur:**
-```tsx
-<header className="border-b bg-white/80 backdrop-blur-sm">
-```
+**Rules:**
+
+- **Outer wrapper**: `<div className="min-h-screen">` — no background. The body of the app supplies the page background.
+- **Header element**: must be a real `<header>` with `border-b bg-white/80 backdrop-blur-sm`. The translucent surface + bottom border is the canonical visual treatment.
+- **Header inner container**: `mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8`. Same max-width as the body.
+- **Title**: `text-2xl font-bold tracking-tight`. Always `text-2xl` — never `text-3xl`. Always include `tracking-tight`.
+- **Subtitle**: `text-sm text-muted-foreground`. No `mt-1` (the parent block handles spacing).
+- **Right-side actions**: drop a `<Button>` (or filter component) into the flex container. The wrapping `<div className="flex items-center justify-between">` keeps it aligned with the title.
+- **Main element**: must be a real `<main>` with `mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8`. **Always** `max-w-7xl` — never `max-w-5xl` or anything else.
+- **Vertical spacing**: if the main content is a vertical stack of distinct sections, add `space-y-4` (tight) or `space-y-6` (loose) to `<main>`.
+
+**Reference implementations**: `SitesPage.tsx`, `DeploymentsPage.tsx`, `AnalysesPage.tsx` all follow this pattern exactly. Copy from there.
 
 ## Icon Library
 

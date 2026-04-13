@@ -142,29 +142,34 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Project overview with statistics and trends. Observation counts are based on MaxN per event, the peak number of individuals per species visible in a single image within an event, summed across all events.
-          </p>
+      <header className="border-b bg-white/80 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+              <p className="text-sm text-muted-foreground">
+                Project overview with statistics and trends. Observation counts are based on MaxN per event, the peak number of individuals per species visible in a single image within an event, summed across all events.
+              </p>
+            </div>
+            <DashboardFilters
+              siteOptions={siteOptions}
+              selectedSiteIds={selectedSiteIds}
+              onSiteIdsChange={setSelectedSiteIds}
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+              minDate={overview?.first_file_date}
+              maxDate={overview?.last_file_date}
+              taxonomicRank={taxonomicRank}
+              onTaxonomicRankChange={setTaxonomicRank}
+            />
+          </div>
         </div>
-        <DashboardFilters
-          siteOptions={siteOptions}
-          selectedSiteIds={selectedSiteIds}
-          onSiteIdsChange={setSelectedSiteIds}
-          dateRange={dateRange}
-          onDateRangeChange={setDateRange}
-          minDate={overview?.first_file_date}
-          maxDate={overview?.last_file_date}
-          taxonomicRank={taxonomicRank}
-          onTaxonomicRankChange={setTaxonomicRank}
-        />
-      </div>
+      </header>
 
-      {/* Summary Cards */}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        {/* Summary Cards */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (
           <Card key={card.title}>
@@ -273,6 +278,7 @@ export default function DashboardPage() {
           dateTo={dateRange.endDate ?? undefined}
         />
       </div>
+      </main>
     </div>
   );
 }

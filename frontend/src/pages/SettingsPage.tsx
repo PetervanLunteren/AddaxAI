@@ -817,16 +817,22 @@ export default function SettingsPage() {
   const isDirty = form.formState.isDirty;
 
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
-      <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Project settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure AI models, label selection, and analysis parameters
-          </p>
+    <div className="min-h-screen">
+      {/* Header */}
+      <header className="border-b bg-white/80 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Project settings</h1>
+              <p className="text-sm text-muted-foreground">
+                Configure AI models, label selection, and analysis parameters
+              </p>
+            </div>
+          </div>
         </div>
+      </header>
 
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         {/* Settings form */}
         <TooltipProvider>
           <Form {...form}>
@@ -1716,7 +1722,7 @@ export default function SettingsPage() {
             toast.success("Re-embedding complete!");
           }}
         />
-      </div>
+      </main>
     </div>
   );
 }

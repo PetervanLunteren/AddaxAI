@@ -263,23 +263,24 @@ export default function VerifyPage() {
   const hasMore = events && events.length === PAGE_SIZE;
 
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Verify
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {totalEvents > 0
-                ? "Review and verify AI detections. Events verifies at the file level, similarity at the detection level."
-                : "Run a deployment analysis to get started"}
-            </p>
+    <div className="min-h-screen">
+      {/* Header */}
+      <header className="border-b bg-white/80 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Verify</h1>
+              <p className="text-sm text-muted-foreground">
+                {totalEvents > 0
+                  ? "Review and verify AI detections. Events verifies at the file level, similarity at the detection level."
+                  : "Run a deployment analysis to get started"}
+              </p>
+            </div>
           </div>
-          {/* Filters are always visible below */}
         </div>
+      </header>
 
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-4">
         {/* Tab strip */}
         <div className="flex items-center gap-1 border-b">
           <button
@@ -421,7 +422,7 @@ export default function VerifyPage() {
         )}
 
         <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
-      </div>
+      </main>
     </div>
   );
 }

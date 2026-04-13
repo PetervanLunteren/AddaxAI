@@ -1,5 +1,5 @@
 ## Priority 1
-- [ ] Fix the page layouts and make them consistent. Some use more width than others, and some have a header section with line and other no line and grey background. We need to make sure all the pages look the same, with exactly the same font sizes and colours, the same backgrounds and then same rules. Investigate and report the differences to me. 
+- [ ] 
 
 ## Priority 2
 - [ ] 

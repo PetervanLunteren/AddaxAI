@@ -24,15 +24,17 @@ export function AnalysesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b bg-white">
+      <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Process</h1>
-            <p className="text-sm text-muted-foreground">
-              Add deployments to the queue and process them with your configured models
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Process</h1>
+              <p className="text-sm text-muted-foreground">
+                Add deployments to the queue and process them with your configured models
+              </p>
+            </div>
           </div>
         </div>
       </header>
