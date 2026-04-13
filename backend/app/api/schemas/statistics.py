@@ -26,9 +26,25 @@ class HourlyCount(BaseModel):
     count: int
 
 
+class SunBands(BaseModel):
+    """Fractional-hour timestamps for civil twilight + day boundaries.
+
+    Computed server-side via python-astral from the project's averaged
+    site lat/lon, its IANA timezone, and a reference date drawn from
+    the filter range midpoint. Fed to the Activity pattern chart so
+    the frontend can color each hour bar as night / dawn-dusk / day.
+    """
+
+    dawn: float
+    sunrise: float
+    sunset: float
+    dusk: float
+
+
 class ActivityPatternResponse(BaseModel):
     hours: list[HourlyCount]
     total_observations: int
+    sun_bands: SunBands | None = None
 
 
 class DetectionTrendPoint(BaseModel):

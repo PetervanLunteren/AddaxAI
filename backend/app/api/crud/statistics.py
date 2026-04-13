@@ -19,6 +19,7 @@ from app.api.schemas.statistics import (
     ObservationRateMapResponse,
     SpeciesCount,
     SpeciesObservationCount,
+    SunBands,
     VerificationProgress,
 )
 from app.models.deployment import Deployment
@@ -437,8 +438,85 @@ def get_species_distribution(
 
 
 # ---------------------------------------------------------------------------
-# 3. Activity pattern (hourly)
+# 3. Activity pattern (hourly) + sun bands
 # ---------------------------------------------------------------------------
+
+
+def _avg_site_location(
+    db: Session,
+    project_id: str,
+    site_ids: list[str] | None = None,
+) -> tuple[float, float] | None:
+    """Arithmetic mean of site coordinates in a project.
+
+    Returns None when the project has no sites in the filtered set.
+    Site.latitude / Site.longitude are NOT NULL columns, so the only
+    way this returns None is if there are zero matching sites.
+    """
+    query = select(
+        func.avg(Site.latitude).label("lat"),
+        func.avg(Site.longitude).label("lon"),
+    ).where(Site.project_id == project_id)
+    if site_ids:
+        query = query.where(Site.id.in_(site_ids))
+    row = db.execute(query).one()
+    if row.lat is None or row.lon is None:
+        return None
+    return (float(row.lat), float(row.lon))
+
+
+def _reference_date_for_sun(
+    date_from: str | None, date_to: str | None
+) -> date:
+    """Pick a single reference date for the sun-position calculation.
+
+    Midpoint of the user's filter range when both ends are set,
+    otherwise the set end, otherwise today. Matches AddaxAI-Connect.
+    """
+    start = date.fromisoformat(date_from) if date_from else None
+    end = date.fromisoformat(date_to) if date_to else None
+    if start and end:
+        return start + (end - start) / 2
+    return start or end or date.today()
+
+
+def _compute_sun_bands(
+    lat: float,
+    lon: float,
+    reference_date: date,
+    tz_name: str,
+) -> SunBands | None:
+    """Compute fractional-hour dawn / sunrise / sunset / dusk at a
+    location and date, in the project's local timezone.
+
+    Uses python-astral (pure math, no network). Returns None if
+    astral raises ValueError for extreme latitudes (polar night/day)
+    or any other input the library refuses to process.
+    """
+    from zoneinfo import ZoneInfo
+
+    from astral import LocationInfo
+    from astral.sun import sun
+
+    try:
+        location = LocationInfo("project", "project", tz_name, lat, lon)
+        s = sun(
+            location.observer,
+            date=reference_date,
+            tzinfo=ZoneInfo(tz_name),
+        )
+    except ValueError:
+        return None
+
+    def _to_fractional_hour(dt: datetime) -> float:
+        return dt.hour + dt.minute / 60 + dt.second / 3600
+
+    return SunBands(
+        dawn=_to_fractional_hour(s["dawn"]),
+        sunrise=_to_fractional_hour(s["sunrise"]),
+        sunset=_to_fractional_hour(s["sunset"]),
+        dusk=_to_fractional_hour(s["dusk"]),
+    )
 
 
 def get_activity_pattern(
@@ -525,7 +603,28 @@ def get_activity_pattern(
     ]
     total = sum(hc.count for hc in hours)
 
-    return ActivityPatternResponse(hours=hours, total_observations=total)
+    # Compute day/night bands for the chart background. Driven by the
+    # project's timezone + average site lat/lon + the filter midpoint
+    # date. Falls back to None if any of those are missing or astral
+    # refuses to compute (polar latitudes, unknown timezone, etc.).
+    sun_bands: SunBands | None = None
+    tz_name = db.query(Project.timezone).filter(
+        Project.id == project_id
+    ).scalar()
+    if tz_name:
+        location = _avg_site_location(db, project_id, site_ids)
+        if location is not None:
+            lat, lon = location
+            sun_bands = _compute_sun_bands(
+                lat=lat,
+                lon=lon,
+                reference_date=_reference_date_for_sun(date_from, date_to),
+                tz_name=tz_name,
+            )
+
+    return ActivityPatternResponse(
+        hours=hours, total_observations=total, sun_bands=sun_bands
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -25,23 +25,59 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import { statisticsApi } from "../../api/statistics";
+import { statisticsApi, type SunBands } from "../../api/statistics";
 import { normalizeLabel } from "../../utils/labels";
 import type { DateRange } from "./index";
 
-// Single neutral bar color (the former "day" band). Proper
-// day/night/twilight coloring needs lat/lon + date-based sunrise
-// /sunset (via suncalc) to be accurate across seasons and latitudes,
-// deferred until that's wired up.
-const BAR_COLOR = "#71b7ba";
+// Time-of-day color bands. Fed by project-specific sunrise/sunset
+// (astral, backend) so the dawn/day/dusk/night boundaries reflect
+// the real sun position at the project's site lat/lon for the
+// filter date range.
+const NIGHT_COLOR = "#0f6064";
+const TWILIGHT_COLOR = "#ff8945";
+const DAY_COLOR = "#71b7ba";
+
+/**
+ * Pick a color for a given hour based on the project's sun bands.
+ *
+ * Each bar represents the one-hour span `[hour, hour + 1)`. We
+ * classify by overlap, not by point-membership, because at low
+ * latitudes civil twilight is only ~20 minutes wide and would
+ * otherwise never intersect an integer hour. Twilight takes
+ * priority when an hour touches both a twilight window and
+ * day/night, so crepuscular activity stays visually obvious.
+ *
+ * Falls back to the neutral day color when sun bands aren't
+ * available (no sites in the project, astral declined to compute,
+ * etc.).
+ */
+function getHourColor(hour: number, sunBands: SunBands | null): string {
+  if (!sunBands) return DAY_COLOR;
+  const { dawn, sunrise, sunset, dusk } = sunBands;
+  const start = hour;
+  const end = hour + 1;
+
+  // Overlap with either twilight window?
+  const overlapsMorningTwilight = start < sunrise && end > dawn;
+  const overlapsEveningTwilight = start < dusk && end > sunset;
+  if (overlapsMorningTwilight || overlapsEveningTwilight) {
+    return TWILIGHT_COLOR;
+  }
+
+  // Overlap with the daylight window?
+  if (start < sunset && end > sunrise) return DAY_COLOR;
+
+  return NIGHT_COLOR;
+}
 
 interface ActivityClockProps {
   hours: { hour: number; count: number }[];
   /** If non-null, counts are already normalized and suffix the center tooltip. */
   normalized: boolean;
+  sunBands: SunBands | null;
 }
 
-function ActivityClock({ hours, normalized }: ActivityClockProps) {
+function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
   // 200x200 viewBox centered at (100, 100). Inner empty circle gives the
   // center tooltip room; outer ring leaves space for hour labels.
   const cx = 100;
@@ -125,7 +161,7 @@ function ActivityClock({ hours, normalized }: ActivityClockProps) {
             y1={y1}
             x2={x2}
             y2={y2}
-            stroke={BAR_COLOR}
+            stroke={getHourColor(hour, sunBands)}
             strokeWidth={isHovered ? barWidth + 2 : barWidth}
             strokeLinecap="round"
           />
@@ -282,6 +318,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
   }, [activityData, trapNights]);
 
   const hasActivity = hours.some((h) => h.count > 0);
+  const sunBands: SunBands | null = activityData?.sun_bands ?? null;
 
   return (
     <Card>
@@ -331,13 +368,42 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
               <p className="text-muted-foreground">Loading...</p>
             </div>
           ) : hasActivity ? (
-            <ActivityClock hours={hours} normalized={normalized} />
+            <ActivityClock
+              hours={hours}
+              normalized={normalized}
+              sunBands={sunBands}
+            />
           ) : (
             <div className="flex items-center justify-center h-full">
               <p className="text-muted-foreground">No activity data available</p>
             </div>
           )}
         </div>
+        {sunBands && hasActivity && (
+          <div className="flex items-center justify-center gap-6 mt-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-3 w-3 rounded-full"
+                style={{ backgroundColor: NIGHT_COLOR }}
+              />
+              Night
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-3 w-3 rounded-full"
+                style={{ backgroundColor: TWILIGHT_COLOR }}
+              />
+              Dawn / Dusk
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-3 w-3 rounded-full"
+                style={{ backgroundColor: DAY_COLOR }}
+              />
+              Day
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -31,9 +31,22 @@ export interface HourlyCount {
   count: number;
 }
 
+export interface SunBands {
+  /** Fractional hour (0-24) when civil twilight starts. */
+  dawn: number;
+  /** Fractional hour when the sun clears the horizon. */
+  sunrise: number;
+  /** Fractional hour when the sun drops below the horizon. */
+  sunset: number;
+  /** Fractional hour when civil twilight ends. */
+  dusk: number;
+}
+
 export interface ActivityPatternResponse {
   hours: HourlyCount[];
   total_observations: number;
+  /** Null when the project has no sites or astral can't compute. */
+  sun_bands: SunBands | null;
 }
 
 export interface DetectionTrendPoint {

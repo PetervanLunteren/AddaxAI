@@ -15,6 +15,9 @@ websockets==14.1
 pydantic==2.10.4
 pydantic-settings==2.7.0
 
+# Astronomy (sunrise/sunset computation for activity pattern chart)
+astral>=3.2
+
 # Image Processing
 Pillow==11.0.0
 
