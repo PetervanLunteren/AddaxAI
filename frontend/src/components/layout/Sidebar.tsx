@@ -5,14 +5,15 @@
 import { NavLink, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Camera,
-  Play,
-  CheckCircle,
   BarChart3,
-  Download,
-  Settings,
-  MapPin,
+  Camera,
   CardSim,
+  CheckCircle,
+  Download,
+  Map,
+  MapPin,
+  Play,
+  Settings,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
@@ -36,6 +37,7 @@ export function Sidebar() {
   const workItems: NavItem[] = [
     { to: `/projects/${projectId}/analyses`, icon: Play, label: "Process" },
     { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
+    { to: `/projects/${projectId}/map`, icon: Map, label: "Map" },
     { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
   ];
 

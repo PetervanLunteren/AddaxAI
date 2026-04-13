@@ -6,7 +6,7 @@ All queries are scoped to a project via the join chain:
 
 from datetime import date, datetime
 
-from sqlalchemy import Integer, Select, case, distinct, func, literal, select
+from sqlalchemy import Integer, Select, and_, case, distinct, func, literal, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.statistics import (
@@ -15,7 +15,10 @@ from app.api.schemas.statistics import (
     DetectionCategories,
     DetectionTrendPoint,
     HourlyCount,
+    ObservationRateMapFeature,
+    ObservationRateMapResponse,
     SpeciesCount,
+    SpeciesObservationCount,
     VerificationProgress,
 )
 from app.models.deployment import Deployment
@@ -150,23 +153,24 @@ def _rank_display_label(taxonomic_rank: str | None):
 # ---------------------------------------------------------------------------
 
 
-def get_trap_nights(
+def get_per_deployment_trap_nights(
     db: Session,
     project_id: str,
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-) -> int:
-    """Calculate total trap nights across deployments.
+) -> dict[str, int]:
+    """Calculate trap nights for each deployment in a project.
 
     For each deployment:
-        effective_end = end_date or max(file timestamp date) or start_date
+        effective_start = min(start_date, first file date)
+        effective_end = end_date or last file date or start_date
         nights = max(0, (effective_end - effective_start).days)
 
     Clips to date_from/date_to range if provided. Includes 0-file deployments.
-    Returns at least 1 to avoid division by zero.
+    Returns a dict mapping deployment_id to its trap nights count (raw,
+    no minimum). Used by both the dashboard total and the map endpoint.
     """
-    # Get deployments with their min/max file dates
     min_file_date = func.min(func.date(File.timestamp)).label("min_file_date")
     max_file_date = func.max(func.date(File.timestamp)).label("max_file_date")
 
@@ -190,14 +194,14 @@ def get_trap_nights(
 
     rows = db.execute(query).all()
 
-    # Parse date_from/date_to for clipping
     clip_start = date.fromisoformat(date_from) if date_from else None
     clip_end = date.fromisoformat(date_to) if date_to else None
 
-    total_nights = 0
+    nights_by_deployment: dict[str, int] = {}
     for row in rows:
         dep_start = row.start_date
         if not dep_start:
+            nights_by_deployment[row.id] = 0
             continue
 
         # Parse file dates (SQLite returns strings)
@@ -213,23 +217,36 @@ def get_trap_nights(
         elif max_fd and isinstance(max_fd, datetime):
             max_fd = max_fd.date()
 
-        # Effective start: earliest of deployment start_date and first file
         effective_start = min(dep_start, min_fd) if min_fd else dep_start
-
-        # Effective end: deployment end_date, or last file date, or start
         dep_end = row.end_date
         effective_end = dep_end or max_fd or effective_start
 
-        # Clip to date range
         if clip_start:
             effective_start = max(effective_start, clip_start)
         if clip_end:
             effective_end = min(effective_end, clip_end)
 
-        nights = max(0, (effective_end - effective_start).days)
-        total_nights += nights
+        nights_by_deployment[row.id] = max(0, (effective_end - effective_start).days)
 
-    return max(1, total_nights)
+    return nights_by_deployment
+
+
+def get_trap_nights(
+    db: Session,
+    project_id: str,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> int:
+    """Total trap nights across all deployments in a project.
+
+    Sum of get_per_deployment_trap_nights(). Returns at least 1 so
+    callers that divide by trap nights never hit a zero divisor.
+    """
+    per_deployment = get_per_deployment_trap_nights(
+        db, project_id, site_ids, date_from, date_to
+    )
+    return max(1, sum(per_deployment.values()))
 
 
 # ---------------------------------------------------------------------------
@@ -690,3 +707,176 @@ def get_verification_progress(
         total_files=row.total_files or 0,
         verified_files=row.verified_files or 0,
     )
+
+
+# ---------------------------------------------------------------------------
+# 7. Observation rate map (per-deployment GeoJSON-style features)
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
+
+
+def get_observation_rate_map(
+    db: Session,
+    project_id: str,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    label_taxonomy_ids: list[str] | None = None,
+) -> ObservationRateMapResponse:
+    """Per-deployment observation rate features for the map page.
+
+    Uses the same MaxN-per-event metric as the dashboard so rates are
+    consistent across pages: rate = sum(EventObservation.max_n) /
+    max(1, trap_nights) * 100.
+
+    Each feature represents one deployment with its site coordinates,
+    effort window, observation count, computed rate, and a per-species
+    breakdown for the popup. Deployments that fall entirely outside
+    the active filters (no events, no effort) are skipped. Deployments
+    with effort but zero observations are kept so the user can see
+    where they monitored without finding anything.
+    """
+    clip_start = _parse_iso_date(date_from)
+    clip_end = _parse_iso_date(date_to)
+
+    # 1) Per-deployment trap nights (clipped to the active date range).
+    trap_nights_by_dep = get_per_deployment_trap_nights(
+        db, project_id, site_ids, date_from, date_to
+    )
+
+    if not trap_nights_by_dep:
+        return ObservationRateMapResponse(features=[])
+
+    eligible_dep_ids = list(trap_nights_by_dep.keys())
+
+    # 2) Per-deployment observation count + site/deployment metadata.
+    #
+    # Date and label filters go into the outer-join ON clauses, NOT a
+    # WHERE. Putting them in WHERE would drop deployments that have
+    # events but none matching the filter, because all their joined
+    # rows would be excluded before the GROUP BY. With the filters in
+    # the ON clause, non-matching events/observations simply produce
+    # a NULL row under the outer join, the deployment stays in the
+    # result, and sum(max_n) naturally becomes 0 for it. Effort
+    # without matching observations is exactly the "empty hex" case
+    # we want to render.
+    event_on: list = [Event.deployment_id == Deployment.id]
+    if clip_start:
+        event_on.append(Event.start_time >= clip_start)
+    if clip_end:
+        end_of_day = datetime.combine(clip_end, datetime.max.time())
+        event_on.append(Event.start_time <= end_of_day)
+
+    obs_on: list = [EventObservation.event_id == Event.id]
+    if label_taxonomy_ids:
+        obs_on.append(EventObservation.label_taxonomy_id.in_(label_taxonomy_ids))
+
+    count_query = (
+        select(
+            Deployment.id.label("deployment_id"),
+            Deployment.site_id.label("site_id"),
+            Deployment.start_date.label("start_date"),
+            Deployment.end_date.label("end_date"),
+            Site.name.label("site_name"),
+            Site.latitude.label("latitude"),
+            Site.longitude.label("longitude"),
+            func.coalesce(func.sum(EventObservation.max_n), 0).label("obs_count"),
+        )
+        .select_from(Deployment)
+        .join(Site, Deployment.site_id == Site.id)
+        .outerjoin(Event, and_(*event_on))
+        .outerjoin(EventObservation, and_(*obs_on))
+        .where(Deployment.id.in_(eligible_dep_ids))
+        .group_by(
+            Deployment.id,
+            Deployment.site_id,
+            Deployment.start_date,
+            Deployment.end_date,
+            Site.name,
+            Site.latitude,
+            Site.longitude,
+        )
+    )
+
+    rows = db.execute(count_query).all()
+
+    # 3) Per-(deployment, label) breakdown for popups. Only fetch this if
+    #    there's any data to break down.
+    breakdown_by_dep: dict[str, list[SpeciesObservationCount]] = {}
+    if any(row.obs_count > 0 for row in rows):
+        breakdown_query = (
+            select(
+                Event.deployment_id.label("deployment_id"),
+                EventObservation.label.label("label"),
+                EventObservation.label_taxonomy_id.label("label_taxonomy_id"),
+                LabelTaxonomy.display_name.label("display_name"),
+                func.sum(EventObservation.max_n).label("count"),
+            )
+            .select_from(EventObservation)
+            .join(Event, Event.id == EventObservation.event_id)
+            .outerjoin(
+                LabelTaxonomy,
+                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+            )
+            .where(Event.deployment_id.in_(eligible_dep_ids))
+            .group_by(
+                Event.deployment_id,
+                EventObservation.label,
+                EventObservation.label_taxonomy_id,
+                LabelTaxonomy.display_name,
+            )
+            .order_by(func.sum(EventObservation.max_n).desc())
+        )
+
+        if clip_start:
+            breakdown_query = breakdown_query.where(Event.start_time >= clip_start)
+        if clip_end:
+            end_of_day = datetime.combine(clip_end, datetime.max.time())
+            breakdown_query = breakdown_query.where(Event.start_time <= end_of_day)
+        if label_taxonomy_ids:
+            breakdown_query = breakdown_query.where(
+                EventObservation.label_taxonomy_id.in_(label_taxonomy_ids)
+            )
+
+        for row in db.execute(breakdown_query).all():
+            label_display = row.display_name or row.label or "unknown"
+            breakdown_by_dep.setdefault(row.deployment_id, []).append(
+                SpeciesObservationCount(
+                    label=label_display,
+                    label_taxonomy_id=row.label_taxonomy_id,
+                    count=int(row.count or 0),
+                )
+            )
+
+    # 4) Build the feature list. Drop deployments with neither effort nor
+    #    observations (truly empty under the active filters).
+    features: list[ObservationRateMapFeature] = []
+    for row in rows:
+        nights = trap_nights_by_dep.get(row.deployment_id, 0)
+        obs = int(row.obs_count or 0)
+        if nights == 0 and obs == 0:
+            continue
+
+        rate_per_100 = (obs / nights * 100) if nights > 0 else 0.0
+        breakdown = breakdown_by_dep.get(row.deployment_id, [])[:10]
+
+        features.append(
+            ObservationRateMapFeature(
+                deployment_id=row.deployment_id,
+                site_id=row.site_id,
+                site_name=row.site_name,
+                latitude=row.latitude,
+                longitude=row.longitude,
+                start_date=row.start_date,
+                end_date=row.end_date,
+                trap_nights=nights,
+                observation_count=obs,
+                rate_per_100=rate_per_100,
+                species_breakdown=breakdown,
+            )
+        )
+
+    return ObservationRateMapResponse(features=features)

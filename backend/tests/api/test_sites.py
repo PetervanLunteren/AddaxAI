@@ -24,6 +24,8 @@ def test_create_site(client, db):
     resp = client.post("/api/sites", json={
         "name": "Site A",
         "project_id": p.id,
+        "latitude": 52.0,
+        "longitude": 5.0,
     })
     assert resp.status_code == 201
     data = resp.json()
@@ -35,8 +37,20 @@ def test_create_site_invalid_project(client):
     resp = client.post("/api/sites", json={
         "name": "Site A",
         "project_id": "nonexistent",
+        "latitude": 52.0,
+        "longitude": 5.0,
     })
     assert resp.status_code == 400
+
+
+def test_create_site_missing_gps(client, db):
+    """GPS coordinates are now required."""
+    p = make_project(db)
+    resp = client.post("/api/sites", json={
+        "name": "Site A",
+        "project_id": p.id,
+    })
+    assert resp.status_code == 422
 
 
 def test_create_site_duplicate_name(client, db):
@@ -45,6 +59,8 @@ def test_create_site_duplicate_name(client, db):
     resp = client.post("/api/sites", json={
         "name": "dup",
         "project_id": p.id,
+        "latitude": 52.0,
+        "longitude": 5.0,
     })
     assert resp.status_code == 409
 

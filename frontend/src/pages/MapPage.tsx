@@ -1,0 +1,147 @@
+/**
+ * Map page — spatial view of deployments colored by observation rate.
+ *
+ * Page owns:
+ *   - Filter state (sites, dates, labels) — persisted to the URL
+ *   - View mode (hexbins / points / clusters) — persisted to localStorage
+ *   - Base layer (positron / satellite / osm) — persisted to localStorage
+ *
+ * Passes all of it down to MapFilterBar (the controls) and
+ * ObservationRateMap (the renderer) so the two stay in sync.
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+
+import type { ObservationRateMapFilters } from "../api/statistics";
+import {
+  MapFilterBar,
+  type BaseLayer,
+  type MapFilters,
+  type ViewMode,
+} from "../components/map/MapFilterBar";
+import { ObservationRateMap } from "../components/map/ObservationRateMap";
+import {
+  filtersFromSearchParams,
+  filtersToSearchParams,
+  type FilterSchema,
+} from "../lib/filter-url";
+
+const FILTER_SCHEMA: FilterSchema = {
+  site_ids: "string[]",
+  date_from: "date",
+  date_to: "date",
+  labels: "string[]",
+};
+
+const VIEW_MODE_KEY = "addaxai:map-view-mode";
+const BASE_LAYER_KEY = "addaxai:map-base-layer";
+
+function readStoredViewMode(): ViewMode {
+  const saved = localStorage.getItem(VIEW_MODE_KEY);
+  if (saved === "hexbins" || saved === "points" || saved === "clusters") {
+    return saved;
+  }
+  return "hexbins";
+}
+
+function readStoredBaseLayer(): BaseLayer {
+  const saved = localStorage.getItem(BASE_LAYER_KEY);
+  if (saved === "positron" || saved === "satellite" || saved === "osm") {
+    return saved;
+  }
+  return "positron";
+}
+
+export function MapPage() {
+  const { projectId } = useParams<{ projectId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [viewMode, setViewMode] = useState<ViewMode>(readStoredViewMode);
+  const [baseLayer, setBaseLayer] = useState<BaseLayer>(readStoredBaseLayer);
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem(BASE_LAYER_KEY, baseLayer);
+  }, [baseLayer]);
+
+  const filters = useMemo<MapFilters>(() => {
+    const parsed = filtersFromSearchParams(searchParams, FILTER_SCHEMA);
+    return {
+      site_ids: parsed.site_ids as string[] | undefined,
+      date_from: parsed.date_from as string | undefined,
+      date_to: parsed.date_to as string | undefined,
+      labels: parsed.labels as string[] | undefined,
+    };
+  }, [searchParams]);
+
+  const handleFiltersChange = (next: MapFilters) => {
+    setSearchParams(
+      filtersToSearchParams(
+        {
+          site_ids: next.site_ids,
+          date_from: next.date_from,
+          date_to: next.date_to,
+          labels: next.labels,
+        },
+        FILTER_SCHEMA
+      )
+    );
+  };
+
+  const apiFilters: ObservationRateMapFilters = useMemo(
+    () => ({
+      siteIds: filters.site_ids,
+      dateFrom: filters.date_from,
+      dateTo: filters.date_to,
+      labelTaxonomyIds: filters.labels,
+    }),
+    [filters]
+  );
+
+  if (!projectId) {
+    return <div>Project ID missing</div>;
+  }
+
+  return (
+    <div className="min-h-screen">
+      {/* Header */}
+      <header className="border-b bg-white/80 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Map</h1>
+              <p className="text-sm text-muted-foreground">
+                Observation rate per deployment, expressed as observations
+                per 100 trap nights
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        <MapFilterBar
+          projectId={projectId}
+          filters={filters}
+          onChange={handleFiltersChange}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          baseLayer={baseLayer}
+          onBaseLayerChange={setBaseLayer}
+        />
+        <ObservationRateMap
+          projectId={projectId}
+          filters={apiFilters}
+          viewMode={viewMode}
+          baseLayer={baseLayer}
+        />
+      </main>
+    </div>
+  );
+}
+
+export default MapPage;

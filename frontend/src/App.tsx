@@ -15,6 +15,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
 import DashboardPage from "./pages/DashboardPage";
+import { MapPage } from "./pages/MapPage";
 import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -105,6 +106,7 @@ function App() {
             <Route path="analyses" element={<AnalysesPage />} />
             <Route path="verify" element={<VerifyPage />} />
             <Route path="review" element={<Navigate to="../verify" replace />} />
+            <Route path="map" element={<MapPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="sites" element={<SitesPage />} />
             <Route path="deployments" element={<DeploymentsPage />} />

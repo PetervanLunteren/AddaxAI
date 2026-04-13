@@ -123,6 +123,8 @@ def make_site(db: Session, *, project_id: str, **kw) -> Site:
         id=str(uuid.uuid4()),
         project_id=project_id,
         name=f"site-{uuid.uuid4().hex[:6]}",
+        latitude=52.0,
+        longitude=5.0,
     )
     defaults.update(kw)
     obj = Site(**defaults)

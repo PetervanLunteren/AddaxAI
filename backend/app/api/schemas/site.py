@@ -16,8 +16,8 @@ class SiteBase(BaseModel):
     """Base schema with common site fields."""
 
     name: str = Field(..., min_length=1, max_length=255, description="Site name")
-    latitude: float | None = Field(None, ge=-90, le=90, description="Latitude (-90 to 90)")
-    longitude: float | None = Field(None, ge=-180, le=180, description="Longitude (-180 to 180)")
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude (-90 to 90)")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude (-180 to 180)")
     elevation_m: float | None = Field(None, description="Elevation in meters")
     habitat_type: str | None = Field(None, max_length=255, description="Habitat type")
     notes: str | None = Field(None, max_length=1000, description="Additional notes")

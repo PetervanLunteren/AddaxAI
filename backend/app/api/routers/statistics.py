@@ -9,6 +9,7 @@ from app.api.schemas.statistics import (
     DashboardOverview,
     DetectionCategories,
     DetectionTrendPoint,
+    ObservationRateMapResponse,
     SpeciesCount,
     VerificationProgress,
 )
@@ -106,4 +107,24 @@ def verification_progress(
 ) -> VerificationProgress:
     return stats_crud.get_verification_progress(
         db, project_id, _parse_site_ids(site_ids), date_from, date_to
+    )
+
+
+@router.get("/observation-rate-map", response_model=ObservationRateMapResponse)
+def observation_rate_map(
+    project_id: str = Query(...),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    label_taxonomy_ids: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> ObservationRateMapResponse:
+    """Per-deployment observation rate features for the Map page."""
+    return stats_crud.get_observation_rate_map(
+        db,
+        project_id,
+        _parse_site_ids(site_ids),
+        date_from,
+        date_to,
+        _parse_site_ids(label_taxonomy_ids),
     )

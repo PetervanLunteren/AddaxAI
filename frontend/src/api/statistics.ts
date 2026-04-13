@@ -53,6 +53,37 @@ export interface VerificationProgress {
   verified_files: number;
 }
 
+export interface SpeciesObservationCount {
+  label: string;
+  label_taxonomy_id: string | null;
+  count: number;
+}
+
+export interface ObservationRateMapFeature {
+  deployment_id: string;
+  site_id: string;
+  site_name: string;
+  latitude: number;
+  longitude: number;
+  start_date: string;
+  end_date: string | null;
+  trap_nights: number;
+  observation_count: number;
+  rate_per_100: number;
+  species_breakdown: SpeciesObservationCount[];
+}
+
+export interface ObservationRateMapResponse {
+  features: ObservationRateMapFeature[];
+}
+
+export interface ObservationRateMapFilters {
+  siteIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  labelTaxonomyIds?: string[];
+}
+
 // --- Shared helpers ---
 
 /**
@@ -131,5 +162,29 @@ export const statisticsApi = {
   getVerificationProgress: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
     return api.get<VerificationProgress>(`/api/statistics/verification-progress?${query}`);
+  },
+
+  /**
+   * Per-deployment observation rate features for the Map page.
+   * Rate = observations / trap nights * 100, where observations is
+   * sum(EventObservation.max_n) per event.
+   */
+  getObservationRateMap: (
+    projectId: string,
+    filters?: ObservationRateMapFilters
+  ) => {
+    const params = new URLSearchParams();
+    params.set("project_id", projectId);
+    if (filters?.siteIds?.length) {
+      params.set("site_ids", filters.siteIds.join(","));
+    }
+    if (filters?.dateFrom) params.set("date_from", filters.dateFrom);
+    if (filters?.dateTo) params.set("date_to", filters.dateTo);
+    if (filters?.labelTaxonomyIds?.length) {
+      params.set("label_taxonomy_ids", filters.labelTaxonomyIds.join(","));
+    }
+    return api.get<ObservationRateMapResponse>(
+      `/api/statistics/observation-rate-map?${params.toString()}`
+    );
   },
 };
