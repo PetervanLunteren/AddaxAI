@@ -8,8 +8,18 @@ Following DEVELOPERS.md principles:
 """
 
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_iana_timezone(value: str) -> str:
+    """Reject anything not in the system's IANA tzdata database."""
+    try:
+        ZoneInfo(value)
+    except ZoneInfoNotFoundError as e:
+        raise ValueError(f"Invalid IANA timezone: {value!r}") from e
+    return value
 
 
 class ProjectBase(BaseModel):
@@ -35,6 +45,20 @@ class ProjectBase(BaseModel):
     state_code: str | None = Field(
         None, description="US state code for geofenced models (e.g., 'CA', 'TX')"
     )
+
+    # IANA timezone name — metadata for future suncalc overlay. Not
+    # used to convert any stored timestamps.
+    timezone: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="IANA timezone name (e.g., 'Europe/Amsterdam', 'UTC')",
+    )
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, v: str) -> str:
+        return _validate_iana_timezone(v)
 
     # Verification shortcut labels (keys 1-5 → label options)
     shortcut_labels: dict = Field(
@@ -125,7 +149,15 @@ class ProjectUpdate(BaseModel):
     excluded_classes: list[str] | None = None
     country_code: str | None = None
     state_code: str | None = None
+    timezone: str | None = Field(None, min_length=1, max_length=64)
     shortcut_labels: dict | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _validate_iana_timezone(v)
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
     detection_threshold: float | None = Field(None, ge=0.0, le=1.0)
     event_smoothing: bool | None = None

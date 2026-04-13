@@ -64,6 +64,14 @@ class Project(Base):
         String(2), nullable=True
     )
 
+    # IANA timezone name (e.g. "Europe/Amsterdam"). Stored as metadata
+    # and consumed by the future suncalc overlay on the activity
+    # pattern chart. Not used to convert any stored datetimes — camera
+    # clocks are already in their local timezone.
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
+
     # Detection and processing settings
     detection_threshold: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.5

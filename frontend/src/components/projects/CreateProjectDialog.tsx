@@ -207,7 +207,13 @@ export function CreateProjectDialog({
   };
 
   const onSubmit = (data: ProjectCreate) => {
-    createMutation.mutate(data);
+    // Silently fill in the project timezone using the browser's IANA
+    // zone. Electron's Chromium engine honors the OS setting. No UI
+    // field here — users can change it later in Project settings if
+    // the data was recorded in a different timezone.
+    const detectedTimezone =
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    createMutation.mutate({ ...data, timezone: detectedTimezone });
   };
 
   // Get selected model info for preparation view

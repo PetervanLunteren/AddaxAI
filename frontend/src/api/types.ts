@@ -17,6 +17,8 @@ export interface ProjectCreate {
   shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code?: string | null;
   state_code?: string | null;
+  /** IANA timezone name, e.g. "Europe/Amsterdam". Required. */
+  timezone: string;
   video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
@@ -41,6 +43,8 @@ export interface ProjectUpdate {
   shortcut_labels?: Record<string, { value: string; category: string; label: string | null }> | null;
   country_code?: string | null;
   state_code?: string | null;
+  /** IANA timezone name, optional on update. */
+  timezone?: string | null;
   video_fps?: number | null;
   detection_threshold?: number | null;
   event_smoothing?: boolean | null;
@@ -66,6 +70,7 @@ export interface ProjectResponse {
   shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code: string | null;
   state_code: string | null;
+  timezone: string;
   video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;

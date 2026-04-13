@@ -26,18 +26,65 @@ def test_list_projects_empty(client):
 
 
 def test_create_project(client):
-    resp = client.post("/api/projects", json={"name": "My Project"})
+    resp = client.post(
+        "/api/projects",
+        json={"name": "My Project", "timezone": "UTC"},
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "My Project"
+    assert data["timezone"] == "UTC"
     assert "id" in data
     assert "created_at" in data
 
 
 def test_create_project_duplicate_name(client, db):
     make_project(db, name="dup")
-    resp = client.post("/api/projects", json={"name": "dup"})
+    resp = client.post("/api/projects", json={"name": "dup", "timezone": "UTC"})
     assert resp.status_code == 409
+
+
+def test_create_project_requires_timezone(client):
+    """Omitting timezone yields 422 (required field)."""
+    resp = client.post("/api/projects", json={"name": "no-tz"})
+    assert resp.status_code == 422
+
+
+def test_create_project_rejects_invalid_timezone(client):
+    """Bogus IANA strings get rejected by the field validator."""
+    resp = client.post(
+        "/api/projects",
+        json={"name": "bad-tz", "timezone": "Moon/Crater"},
+    )
+    assert resp.status_code == 422
+
+
+def test_create_project_accepts_valid_iana_timezone(client):
+    resp = client.post(
+        "/api/projects",
+        json={"name": "amsterdam", "timezone": "Europe/Amsterdam"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["timezone"] == "Europe/Amsterdam"
+
+
+def test_update_project_timezone(client, db):
+    p = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"timezone": "America/New_York"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["timezone"] == "America/New_York"
+
+
+def test_update_project_rejects_invalid_timezone(client, db):
+    p = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"timezone": "Foo/Bar"},
+    )
+    assert resp.status_code == 422
 
 
 def test_get_project(client, db):
@@ -172,7 +219,9 @@ def test_postprocessing_status_no_classifications(client, db):
 
 def test_create_project_default_batch_sizes_are_null(client):
     """A new project should have NULL for all three batch_size fields."""
-    resp = client.post("/api/projects", json={"name": "bs-default"})
+    resp = client.post(
+        "/api/projects", json={"name": "bs-default", "timezone": "UTC"}
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["detection_batch_size"] is None

@@ -89,6 +89,7 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form";
+import { TimezoneSelect } from "../components/ui/timezone-select";
 import { cn } from "../lib/utils";
 
 const settingsSchema = z.object({
@@ -98,6 +99,7 @@ const settingsSchema = z.object({
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
+  timezone: z.string().min(1, "Timezone is required"),
   video_fps: z.number().min(0.1).max(10),
   detection_threshold: z.number().min(0).max(1),
   event_smoothing: z.boolean(),
@@ -359,6 +361,7 @@ export default function SettingsPage() {
       excluded_classes: [],
       country_code: null,
       state_code: null,
+      timezone: "UTC",
       video_fps: 1.0,
       detection_threshold: 0.5,
       event_smoothing: true,
@@ -382,6 +385,7 @@ export default function SettingsPage() {
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
+        timezone: project.timezone || "UTC",
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
@@ -783,6 +787,7 @@ export default function SettingsPage() {
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
+        timezone: project.timezone || "UTC",
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
@@ -837,6 +842,46 @@ export default function SettingsPage() {
         <TooltipProvider>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" key={project?.id}>
+            {/* Card 0: Project info */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Project info</CardTitle>
+                <CardDescription>
+                  High-level metadata about this project.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-0 divide-y border-t">
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Timezone</FormLabel>
+                        <FormDescription className="text-sm">
+                          The timezone your cameras are set to. Used for
+                          exports and activity charts. Doesn't change any
+                          stored timestamps. If your camera uses a fixed UTC
+                          offset, pick one of the "UTC±X (fixed)" options.
+                          If it follows a regional timezone with daylight
+                          saving, pick the city name.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <FormControl>
+                          <TimezoneSelect
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
             {/* Card 1: Models */}
             <Card>
               <CardHeader>

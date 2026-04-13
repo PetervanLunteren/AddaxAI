@@ -110,6 +110,7 @@ def make_project(db: Session, **kw) -> Project:
     defaults = dict(
         id=str(uuid.uuid4()),
         name=f"project-{uuid.uuid4().hex[:6]}",
+        timezone="UTC",
     )
     defaults.update(kw)
     obj = Project(**defaults)

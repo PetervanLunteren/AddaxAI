@@ -53,6 +53,7 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
         shortcut_labels=project.shortcut_labels if project.shortcut_labels else {},
         country_code=project.country_code,
         state_code=project.state_code,
+        timezone=project.timezone,
         detection_threshold=project.detection_threshold,
         event_smoothing=project.event_smoothing,
         taxonomic_rollup=project.taxonomic_rollup,
