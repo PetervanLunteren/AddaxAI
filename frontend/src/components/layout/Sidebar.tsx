@@ -9,7 +9,6 @@ import {
   Play,
   CheckCircle,
   BarChart3,
-  Image,
   Download,
   Settings,
   MapPin,
@@ -33,18 +32,24 @@ export function Sidebar() {
     enabled: !!projectId,
   });
 
-  const mainItems: NavItem[] = [
-    { to: `/projects/${projectId}/analyses`, icon: Play, label: "Analyses" },
+  // "Work" pages — daily-flow actions and views.
+  const workItems: NavItem[] = [
+    { to: `/projects/${projectId}/analyses`, icon: Play, label: "Process" },
     { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
-    { to: `/projects/${projectId}/images`, icon: Image, label: "Images" },
     { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
+  ];
+
+  // "Config" pages — set up monitoring locations and deployments.
+  const configItems: NavItem[] = [
     { to: `/projects/${projectId}/sites`, icon: MapPin, label: "Sites" },
     { to: `/projects/${projectId}/deployments`, icon: CardSim, label: "Deployments" },
   ];
 
+  // Utility pages — settings + future tools. Export sits last because
+  // it's still a placeholder.
   const utilityItems: NavItem[] = [
-    { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
     { to: `/projects/${projectId}/settings`, icon: Settings, label: "Settings" },
+    { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
   ];
 
   const renderNavLink = (item: NavItem) => (
@@ -80,7 +85,10 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 p-4">
-        {mainItems.map(renderNavLink)}
+        {workItems.map(renderNavLink)}
+        <div className="my-2 border-t" />
+        {configItems.map(renderNavLink)}
+        <div className="my-2 border-t" />
         {utilityItems.map(renderNavLink)}
       </nav>
 

@@ -1,11 +1,9 @@
 /**
- * Shared detection display utilities.
- *
- * Extracted from ImagesPage for reuse across verify and images pages.
+ * Shared detection display utilities used by the verify page and its
+ * detail/canvas components.
  */
 
 import type React from "react";
-import type { DetectionResponse } from "../api/types";
 import { getSpeciesColor } from "../utils/species-colors";
 
 /** Get color for a detection: species color if labeled, category color otherwise.
@@ -85,19 +83,3 @@ export function getObservationBadge(type: string): {
   }
 }
 
-/** Format detection label for bounding box overlay. */
-export function getDetectionLabel(detection: DetectionResponse): string {
-  const categoryLabel =
-    detection.category.charAt(0).toUpperCase() + detection.category.slice(1);
-  const confPct = `${(detection.confidence * 100).toFixed(0)}%`;
-
-  if (detection.label && detection.label_confidence != null) {
-    const displayName = detection.display_name || detection.label;
-    const labelDisplay =
-      displayName.charAt(0).toUpperCase() + displayName.slice(1);
-    const labelConfPct = `${(detection.label_confidence * 100).toFixed(0)}%`;
-    return `${labelDisplay} ${labelConfPct} · ${categoryLabel} ${confPct}`;
-  }
-
-  return `${categoryLabel} ${confPct}`;
-}

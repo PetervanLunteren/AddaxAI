@@ -29,7 +29,7 @@ export function AnalysesPage() {
       <header className="border-b bg-white">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">New analysis</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Process</h1>
             <p className="text-sm text-muted-foreground">
               Add deployments to the queue and process them with your configured models
             </p>

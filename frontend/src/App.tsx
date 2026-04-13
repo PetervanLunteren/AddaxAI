@@ -14,7 +14,6 @@ import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
-import ImagesPage from "./pages/ImagesPage";
 import DashboardPage from "./pages/DashboardPage";
 import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
@@ -106,7 +105,6 @@ function App() {
             <Route path="analyses" element={<AnalysesPage />} />
             <Route path="verify" element={<VerifyPage />} />
             <Route path="review" element={<Navigate to="../verify" replace />} />
-            <Route path="images" element={<ImagesPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="sites" element={<SitesPage />} />
             <Route path="deployments" element={<DeploymentsPage />} />
