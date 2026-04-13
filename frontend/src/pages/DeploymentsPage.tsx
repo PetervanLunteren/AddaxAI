@@ -6,13 +6,12 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
-import { Search, MoreVertical, Pencil, ArrowUp, ArrowDown, Tent } from "lucide-react";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
 import { sitesApi } from "../api/sites";
-import type { DeploymentResponse, DeploymentStatsOnly, SiteResponse } from "../api/types";
+import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
 import {
   Table,
@@ -28,27 +27,38 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import { FilterBar, type FilterFieldDef, type FilterValues } from "../components/ui/filter-bar";
+import { TagPills } from "../components/ui/tag-pills";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
+import { filtersFromSearchParams, filtersToSearchParams, type FilterSchema } from "../lib/filter-url";
 import { EditDeploymentDialog } from "../components/deployments/EditDeploymentDialog";
+import {
+  DeleteDeploymentDialog,
+  type DeleteDeploymentTarget,
+} from "../components/deployments/DeleteDeploymentDialog";
+import { RelinkGroupBanner } from "../components/deployments/RelinkGroupBanner";
 
 type SortField =
   | "site_name"
   | "start_date"
   | "end_date"
-  | "camera_model"
-  | "camera_serial"
   | "file_count"
-  | "event_count"
-  | "detection_count"
   | "notes"
   | "tag_count";
 type SortDir = "asc" | "desc";
+
+const FILTER_SCHEMA: FilterSchema = {
+  search: "string",
+  site_ids: "string[]",
+  date_from: "date",
+  date_to: "date",
+  tag_keys: "string[]",
+};
 
 interface DeploymentRow extends DeploymentResponse {
   site_name: string;
@@ -64,15 +74,29 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
     : <ArrowDown className="ml-1 inline h-3.5 w-3.5" />;
 }
 
+
 export function DeploymentsPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const [search, setSearch] = useState("");
-  const [siteFilter, setSiteFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(
+    () => filtersFromSearchParams(searchParams, FILTER_SCHEMA),
+    [searchParams]
+  );
+  const search = (filters.search as string | undefined) ?? "";
+  const siteIds = (filters.site_ids as string[] | undefined) ?? [];
+  const dateFrom = (filters.date_from as string | undefined) ?? "";
+  const dateTo = (filters.date_to as string | undefined) ?? "";
+  const tagKeysFilter = (filters.tag_keys as string[] | undefined) ?? [];
+
   const [sortField, setSortField] = useState<SortField>("start_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [editingDeployment, setEditingDeployment] = useState<DeploymentResponse | null>(null);
+  const [deletingDeployment, setDeletingDeployment] = useState<DeleteDeploymentTarget | null>(null);
+
+  const handleFilterChange = (next: FilterValues) => {
+    setSearchParams(filtersToSearchParams(next, FILTER_SCHEMA));
+  };
 
   const { data: deployments, isLoading: deploymentsLoading } = useQuery({
     queryKey: ["deployments", projectId],
@@ -134,9 +158,10 @@ export function DeploymentsPage() {
   const filtered = useMemo(() => {
     let result = [...rows];
 
-    // Site filter
-    if (siteFilter !== "all") {
-      result = result.filter((d) => d.site_id === siteFilter);
+    // Site filter (multi-select)
+    if (siteIds.length > 0) {
+      const idSet = new Set(siteIds);
+      result = result.filter((d) => idSet.has(d.site_id));
     }
 
     // Date range filter
@@ -150,14 +175,27 @@ export function DeploymentsPage() {
     // Text search
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter(
-        (d) =>
-          d.site_name.toLowerCase().includes(q) ||
-          (d.camera_model && d.camera_model.toLowerCase().includes(q)) ||
-          (d.camera_serial && d.camera_serial.toLowerCase().includes(q)) ||
-          (d.notes && d.notes.toLowerCase().includes(q)) ||
-          (d.folder_path && d.folder_path.toLowerCase().includes(q))
-      );
+      result = result.filter((d) => {
+        if (d.site_name.toLowerCase().includes(q)) return true;
+        if (d.notes && d.notes.toLowerCase().includes(q)) return true;
+        for (const [k, v] of Object.entries(d.tags ?? {})) {
+          if (k.toLowerCase().includes(q) || v.toLowerCase().includes(q)) {
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+
+    // Tag keys multi-select (deployment has at least one of the selected keys)
+    if (tagKeysFilter.length > 0) {
+      const set = new Set(tagKeysFilter);
+      result = result.filter((d) => {
+        for (const k of Object.keys(d.tags ?? {})) {
+          if (set.has(k)) return true;
+        }
+        return false;
+      });
     }
 
     // Sort
@@ -182,7 +220,7 @@ export function DeploymentsPage() {
     });
 
     return result;
-  }, [rows, siteFilter, dateFrom, dateTo, search, sortField, sortDir]);
+  }, [rows, siteIds, dateFrom, dateTo, search, tagKeysFilter, sortField, sortDir]);
 
   if (!projectId) {
     return <div>Project ID missing</div>;
@@ -190,6 +228,67 @@ export function DeploymentsPage() {
 
   const isLoading = deploymentsLoading;
   const headClass = "cursor-pointer select-none hover:text-foreground";
+
+  // Broken deployments grouped by their deepest missing ancestor.
+  // Grouping happens on the backend because only the filesystem knows
+  // which ancestor was actually renamed — see /api/deployments/group-broken.
+  const brokenItems = useMemo(
+    () =>
+      (deployments ?? [])
+        .filter((d) => d.folder_status === "needs_relink" && d.folder_path)
+        .map((d) => ({ id: d.id, folder_path: d.folder_path! })),
+    [deployments]
+  );
+
+  const brokenGroupsQuery = useQuery({
+    queryKey: ["broken-groups", projectId, brokenItems],
+    queryFn: () => deploymentsApi.groupBroken({ items: brokenItems }),
+    enabled: brokenItems.length > 0,
+    staleTime: 30_000,
+  });
+
+  const brokenGroups = brokenGroupsQuery.data?.groups ?? [];
+
+  const deploymentsById = useMemo(() => {
+    const map = new Map<string, DeploymentResponse>();
+    for (const d of deployments ?? []) map.set(d.id, d);
+    return map;
+  }, [deployments]);
+
+  // Distinct tag keys across all loaded deployments, sorted alphabetically.
+  const tagKeyOptions = (() => {
+    const set = new Set<string>();
+    for (const d of deployments ?? []) {
+      for (const k of Object.keys(d.tags ?? {})) {
+        if (k.trim()) set.add(k);
+      }
+    }
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((k) => ({ value: k, label: k }));
+  })();
+
+  const filterFields: FilterFieldDef[] = [
+    { kind: "search", key: "search", label: "Search", placeholder: "Search..." },
+    {
+      kind: "multi-select",
+      key: "site_ids",
+      label: "Sites",
+      options: (sites ?? []).map((s) => ({ value: s.id, label: s.name })),
+      placeholder: "All sites",
+      summary: (n) => `${n} site${n > 1 ? "s" : ""}`,
+    },
+    { kind: "date", key: "date_from", label: "From" },
+    { kind: "date", key: "date_to", label: "To" },
+    {
+      kind: "multi-select",
+      key: "tag_keys",
+      label: "Tag keys",
+      options: tagKeyOptions,
+      placeholder: "All tag keys",
+      summary: (n) => `${n} tag${n > 1 ? "s" : ""}`,
+    },
+  ];
 
   return (
     <div className="min-h-screen">
@@ -203,6 +302,10 @@ export function DeploymentsPage() {
                 Camera deployment periods across all sites
               </p>
             </div>
+            <Button onClick={() => navigate(`/projects/${projectId}/analyses`)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New deployment
+            </Button>
           </div>
         </div>
       </header>
@@ -210,53 +313,28 @@ export function DeploymentsPage() {
       {/* Main content */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Filter bar */}
-        <div className="mb-6 flex flex-wrap items-center gap-4">
-          <Select value={siteFilter} onValueChange={setSiteFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="All sites" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All sites</SelectItem>
-              {sites?.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-2">
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-40"
-              placeholder="From"
-            />
-            <span className="text-muted-foreground text-sm">to</span>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-40"
-              placeholder="To"
-            />
-          </div>
-
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search camera, serial, notes..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          <span className="text-sm text-muted-foreground">
-            {filtered.length} {filtered.length === 1 ? "deployment" : "deployments"}
-          </span>
+        <div className="mb-6">
+          <FilterBar
+            value={filters}
+            onChange={handleFilterChange}
+            fields={filterFields}
+          />
         </div>
+
+        {/* One recovery banner per group of missing folders. */}
+        {brokenGroups.length > 0 && (
+          <div className="mb-6">
+            {brokenGroups.map((g) => (
+              <RelinkGroupBanner
+                key={g.prefix}
+                group={g}
+                projectId={projectId}
+                siteNames={Object.fromEntries(siteMap.entries())}
+                deploymentsById={deploymentsById}
+              />
+            ))}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center py-12 text-muted-foreground">Loading deployments...</div>
@@ -274,20 +352,8 @@ export function DeploymentsPage() {
                   <TableHead className={headClass} onClick={() => toggleSort("end_date")}>
                     End date<SortIcon field="end_date" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("camera_model")}>
-                    Camera<SortIcon field="camera_model" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("camera_serial")}>
-                    Serial<SortIcon field="camera_serial" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("file_count")}>
                     Files<SortIcon field="file_count" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("event_count")}>
-                    Events<SortIcon field="event_count" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("detection_count")}>
-                    Detections<SortIcon field="detection_count" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("notes")}>
                     Notes<SortIcon field="notes" sortField={sortField} sortDir={sortDir} />
@@ -301,31 +367,36 @@ export function DeploymentsPage() {
               <TableBody>
                 {filtered.map((dep) => (
                   <TableRow key={dep.id}>
-                    <TableCell className="font-medium">{dep.site_name}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {dep.folder_status === "needs_relink" && (
+                          <TooltipProvider delayDuration={100}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                AddaxAI can't find this folder on disk. It may
+                                have been renamed, moved, or is on a
+                                disconnected drive. Use the banner at the top
+                                of the page to reconnect it.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        <span>{dep.site_name}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">{dep.start_date}</TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {dep.end_date || "\u2014"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {dep.camera_model || "\u2014"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {dep.camera_serial || "\u2014"}
-                    </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">{dep.file_count}</TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">{dep.event_count}</TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">{dep.detection_count}</TableCell>
                     <TableCell className="text-muted-foreground max-w-[300px] truncate">
                       {dep.notes ? (dep.notes.length > 50 ? `${dep.notes.slice(0, 50)}\u2026` : dep.notes) : "\u2014"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
-                      {(() => {
-                        const entries = Object.entries(dep.tags ?? {});
-                        if (entries.length === 0) return "\u2014";
-                        const first = `${entries[0][0]}: ${entries[0][1]}`;
-                        if (entries.length === 1) return first;
-                        return `${first}, +${entries.length - 1} more`;
-                      })()}
+                    <TableCell className="max-w-[320px]">
+                      <TagPills tags={dep.tags} />
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -338,6 +409,17 @@ export function DeploymentsPage() {
                           <DropdownMenuItem onClick={() => setEditingDeployment(dep)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => setDeletingDeployment({
+                              id: dep.id,
+                              site_name: dep.site_name,
+                              start_date: dep.start_date,
+                            })}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -374,6 +456,14 @@ export function DeploymentsPage() {
           onOpenChange={(open) => !open && setEditingDeployment(null)}
         />
       )}
+
+      <DeleteDeploymentDialog
+        deployment={deletingDeployment}
+        projectId={projectId}
+        open={!!deletingDeployment}
+        onOpenChange={(open) => !open && setDeletingDeployment(null)}
+      />
+
     </div>
   );
 }

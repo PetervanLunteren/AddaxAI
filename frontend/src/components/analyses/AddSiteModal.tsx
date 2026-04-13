@@ -353,6 +353,7 @@ export function AddSiteModal({
             <Textarea
               id="notes"
               {...register("notes")}
+              maxLength={1000}
               placeholder="e.g., Watch out for the curious baboons near this site"
             />
           </div>

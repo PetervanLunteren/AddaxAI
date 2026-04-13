@@ -169,7 +169,7 @@ export interface DeploymentResponse {
   id: string;
   site_id: string;
   folder_path: string | null;
-  folder_status: "valid" | "missing" | "needs_relink";
+  folder_status: "valid" | "needs_relink";
   last_validated_at: string | null;
   start_date: string;
   end_date: string | null;
@@ -189,6 +189,56 @@ export interface DeploymentUpdate {
   notes?: string | null;
   tags?: Record<string, string> | null;
   datetime_offset_seconds?: number | null;
+}
+
+export interface BulkRelinkItem {
+  deployment_id: string;
+  new_folder_path: string;
+}
+
+export interface BulkRelinkRequest {
+  replacements: BulkRelinkItem[];
+}
+
+export interface BulkRelinkResultItem {
+  deployment_id: string;
+  success: boolean;
+  files_rewritten: number;
+  mismatches: string[];
+}
+
+export interface BulkRelinkResponse {
+  results: BulkRelinkResultItem[];
+}
+
+export interface SuggestRelinkTargetRequest {
+  missing_path: string;
+}
+
+export interface SuggestRelinkTargetResponse {
+  existing_parent: string | null;
+  suggested_path: string | null;
+  candidates: string[];
+}
+
+export interface GroupBrokenItem {
+  id: string;
+  folder_path: string;
+}
+
+export interface GroupBrokenRequest {
+  items: GroupBrokenItem[];
+}
+
+export interface GroupBrokenGroup {
+  prefix: string;
+  existing_parent: string | null;
+  suggested_path: string | null;
+  items: GroupBrokenItem[];
+}
+
+export interface GroupBrokenResponse {
+  groups: GroupBrokenGroup[];
 }
 
 export interface DeploymentStatsOnly {

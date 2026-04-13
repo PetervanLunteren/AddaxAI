@@ -96,6 +96,37 @@ async def update_model_catalog(app: FastAPI) -> None:
         app.state.model_updates = {"new_models": [], "error": str(e)}
 
 
+async def _check_deployment_folders_on_startup() -> None:
+    """
+    Re-stat every deployment's folder_path so the folder_status column
+    reflects the current filesystem state. Runs as a non-blocking task
+    during app startup, so slow or unmounted drives never block boot.
+    """
+    from app.api.crud.deployment import check_all_deployment_folders
+    from app.db.base import get_session_factory
+
+    try:
+        # Run the sync DB work off the event loop so slow filesystem
+        # stat calls don't block request handling.
+        def _run() -> dict[str, int]:
+            session_factory = get_session_factory()
+            db = session_factory()
+            try:
+                return check_all_deployment_folders(db)
+            finally:
+                db.close()
+
+        result = await asyncio.to_thread(_run)
+        logger.info(
+            f"Deployment folder check complete: "
+            f"{result['checked']} checked, "
+            f"{result['changed']} changed, "
+            f"{result['skipped']} skipped"
+        )
+    except Exception as e:
+        logger.error(f"Deployment folder check failed: {e}", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -121,11 +152,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start background tasks (non-blocking)
     sync_task = asyncio.create_task(update_model_catalog(app))
     thumbnail_task = asyncio.create_task(auto_generate_thumbnails())
+    folder_check_task = asyncio.create_task(_check_deployment_folders_on_startup())
 
     yield
 
     # Shutdown: cancel background tasks if still running
-    for task in (sync_task, thumbnail_task):
+    for task in (sync_task, thumbnail_task, folder_check_task):
         if not task.done():
             task.cancel()
             try:

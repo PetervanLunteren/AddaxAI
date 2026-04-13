@@ -1,5 +1,5 @@
 ## Priority 1
-- [ ] 
+- [ ] Fix the page layouts and make them consistent. Some use more width than others, and some have a header section with line and other no line and grey background. We need to make sure all the pages look the same, with exactly the same font sizes and colours, the same backgrounds and then same rules. Investigate and report the differences to me. 
 
 ## Priority 2
 - [ ] 
@@ -8,7 +8,6 @@
 - [ ] 
 
 ## New features
-- [ ] METADATA MANAGEMENT - add pages for deployments and sites, where they are all visible in a table format with filter options that make sense for the data. Each row is a unit (deployment or site) and the user can filter, sort, view, and then have actions as a three dot. The actions three dot will be "edit" for now only, where the user can edit the name of the unit, the time, etc. These are not defined yet, but need to be defined in this plan. The idea is that it offers a page where users have more room to customise their metadata, and edit flexibly. We will add actions to the three dot later on. 
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] DEPTH ESTIMATION
 - [ ] PROCESS BATCH RESULTS - https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py

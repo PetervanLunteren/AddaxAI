@@ -21,6 +21,12 @@ class DeploymentQueueBase(BaseModel):
         None,
         description="Seconds to add to all file timestamps (null = no adjustment)",
     )
+    notes: str | None = Field(
+        None, max_length=1000, description="Optional deployment notes"
+    )
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Custom key:value metadata tags"
+    )
 
 
 class DeploymentQueueCreate(DeploymentQueueBase):

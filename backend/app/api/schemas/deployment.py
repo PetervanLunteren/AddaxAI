@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-FolderStatus = Literal["valid", "missing", "needs_relink"]
+FolderStatus = Literal["valid", "needs_relink"]
 
 
 class DeploymentBase(BaseModel):
@@ -27,7 +27,9 @@ class DeploymentBase(BaseModel):
     camera_serial: str | None = Field(
         None, max_length=255, description="Camera serial number"
     )
-    notes: str | None = Field(None, description="Optional notes about deployment")
+    notes: str | None = Field(
+        None, max_length=1000, description="Optional notes about deployment"
+    )
     datetime_offset_seconds: int | None = Field(
         None, description="Datetime offset in seconds applied during analysis"
     )
@@ -52,15 +54,17 @@ class DeploymentUpdate(BaseModel):
     Schema for updating an existing deployment.
 
     All fields are optional - only provided fields will be updated.
-    Used for updating metadata and re-linking folder paths.
+    Used for updating metadata, re-linking folder paths, and
+    moving deployments between sites in the same project.
     """
 
+    site_id: str | None = None
     folder_path: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     camera_model: str | None = None
     camera_serial: str | None = None
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=1000)
     datetime_offset_seconds: int | None = None
     tags: dict[str, str] | None = None
 
@@ -105,6 +109,96 @@ class DeploymentStatsOnly(BaseModel):
     file_count: int = 0
     event_count: int = 0
     detection_count: int = 0
+
+
+class BulkRelinkItem(BaseModel):
+    """Single deployment relink instruction."""
+
+    deployment_id: str = Field(..., description="Deployment to relink")
+    new_folder_path: str = Field(
+        ..., min_length=1, description="New absolute folder path"
+    )
+
+
+class BulkRelinkRequest(BaseModel):
+    """Request body for bulk relinking multiple deployments at once."""
+
+    replacements: list[BulkRelinkItem] = Field(
+        ..., description="List of deployment relink instructions"
+    )
+
+
+class BulkRelinkResultItem(BaseModel):
+    """Result for a single deployment in a bulk relink operation."""
+
+    deployment_id: str
+    success: bool
+    files_rewritten: int = 0
+    mismatches: list[str] = Field(default_factory=list)
+
+
+class BulkRelinkResponse(BaseModel):
+    """Per-deployment outcomes of a bulk relink operation."""
+
+    results: list[BulkRelinkResultItem]
+
+
+class SuggestRelinkTargetRequest(BaseModel):
+    """Request body for the relink auto-suggest endpoint."""
+
+    missing_path: str = Field(
+        ..., min_length=1, description="Broken folder path to find a replacement for"
+    )
+
+
+class SuggestRelinkTargetResponse(BaseModel):
+    """
+    Suggested replacement for a missing folder.
+
+    `existing_parent` is the deepest ancestor of `missing_path` that still
+    exists on disk. `candidates` lists sibling directories under that
+    parent ranked by name similarity to the missing basename.
+    `suggested_path` is the top candidate if its similarity is high
+    enough to auto-fill, otherwise null.
+    """
+
+    existing_parent: str | None = None
+    suggested_path: str | None = None
+    candidates: list[str] = Field(default_factory=list)
+
+
+class GroupBrokenItem(BaseModel):
+    """Single broken deployment sent to the group-broken endpoint."""
+
+    id: str
+    folder_path: str
+
+
+class GroupBrokenRequest(BaseModel):
+    """Request body for the group-broken endpoint."""
+
+    items: list[GroupBrokenItem]
+
+
+class GroupBrokenGroup(BaseModel):
+    """
+    One bucket of broken deployments that share a deepest-missing-ancestor.
+
+    `prefix` is that ancestor (the path to substitute out). `suggested_path`
+    is the auto-suggested replacement for `prefix` (same parent, renamed
+    sibling) if one crosses the similarity threshold, otherwise null.
+    """
+
+    prefix: str
+    existing_parent: str | None = None
+    suggested_path: str | None = None
+    items: list[GroupBrokenItem]
+
+
+class GroupBrokenResponse(BaseModel):
+    """Grouped broken deployments with per-group auto-suggestions."""
+
+    groups: list[GroupBrokenGroup]
 
 
 class GPSCoordinates(BaseModel):

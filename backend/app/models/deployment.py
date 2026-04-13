@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .site import Site
 
 
-FolderStatus = Literal["valid", "missing", "needs_relink"]
+FolderStatus = Literal["valid", "needs_relink"]
 
 
 class Deployment(Base):
@@ -49,7 +49,7 @@ class Deployment(Base):
     )  # Absolute path to deployment folder
     folder_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="valid"
-    )  # "valid", "missing", "needs_relink"
+    )  # "valid", "needs_relink"
     last_validated_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
     )  # When folder was last checked

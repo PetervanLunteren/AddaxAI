@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFolderScan } from "@/hooks/useFolderScan";
 import { isElectron } from "@/lib/platform";
+import { formatOffset } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -71,22 +72,6 @@ const TEST_DEPLOYMENTS = [
   "/Users/peter/Downloads/example-data/project_Seattle/dans_backyard",
 ];
 
-/** Format an offset in seconds as a human-readable string, e.g. "+3 days, 12 hours". */
-function formatOffset(seconds: number): string {
-  if (seconds === 0) return "no offset";
-  const sign = seconds > 0 ? "+" : "-";
-  const abs = Math.abs(seconds);
-  const days = Math.floor(abs / 86400);
-  const hours = Math.floor((abs % 86400) / 3600);
-  const minutes = Math.floor((abs % 3600) / 60);
-  const parts: string[] = [];
-  if (days) parts.push(`${days} ${days === 1 ? "day" : "days"}`);
-  if (hours) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
-  if (minutes) parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
-  if (parts.length === 0) parts.push(`${abs} seconds`);
-  return `${sign}${parts.join(", ")}`;
-}
-
 interface FolderSelectorProps {
   value: string | null;
   onChange: (path: string) => void;
@@ -95,6 +80,10 @@ interface FolderSelectorProps {
   datetimeOffsetSeconds?: number;
   /** Called when the user clicks "Adjust dates". Parent opens the modal. */
   onAdjustDates?: () => void;
+  /** Hide the built-in "Folder" label (when the parent provides its own). */
+  hideLabel?: boolean;
+  /** Hide the scan result panel (file counts, GPS, dates, adjust-dates link). */
+  hideScanResult?: boolean;
 }
 
 export function FolderSelector({
@@ -103,6 +92,8 @@ export function FolderSelector({
   error,
   datetimeOffsetSeconds = 0,
   onAdjustDates,
+  hideLabel = false,
+  hideScanResult = false,
 }: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
   const [showManualInput, setShowManualInput] = useState(!isElectron());
@@ -124,38 +115,40 @@ export function FolderSelector({
   return (
     <TooltipProvider>
       <div className="space-y-2">
-        {/* Label with info tooltip */}
-        <label className="flex items-center gap-1.5 text-sm font-medium">
-          Folder
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="max-w-sm space-y-2">
-                <p>
-                  Select a folder that contains all images and videos from a single deployment.
-                  A deployment is one camera SD card from start to end at a single site.
-                </p>
-                <p>
-                  Add exactly one complete deployment at a time. Do not add partial deployments
-                  or multiple deployments in a single folder. This ensures accurate statistics,
-                  exports, maps, and graphs.
-                </p>
-                <p>
-                  The system will recursively scan all subfolders for images and videos. To add
-                  multiple deployments, queue each one separately.
-                </p>
-                <p>
-                  The selected folder must already be in its final location. AddaxAI does not
-                  store the media files themselves, only the file paths. If the folder is moved
-                  or renamed after analysis, the files can no longer be found. You can relink
-                  them at any time.
-                </p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </label>
+        {/* Label with info tooltip (suppressed when the parent provides its own label) */}
+        {!hideLabel && (
+          <label className="flex items-center gap-1.5 text-sm font-medium">
+            Folder
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="max-w-sm space-y-2">
+                  <p>
+                    Select a folder that contains all images and videos from a single deployment.
+                    A deployment is one camera SD card from start to end at a single site.
+                  </p>
+                  <p>
+                    Add exactly one complete deployment at a time. Do not add partial deployments
+                    or multiple deployments in a single folder. This ensures accurate statistics,
+                    exports, maps, and graphs.
+                  </p>
+                  <p>
+                    The system will recursively scan all subfolders for images and videos. To add
+                    multiple deployments, queue each one separately.
+                  </p>
+                  <p>
+                    The selected folder must already be in its final location. AddaxAI does not
+                    store the media files themselves, only the file paths. If the folder is moved
+                    or renamed after analysis, the files can no longer be found. You can relink
+                    them at any time.
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </label>
+        )}
 
         {/* Input or button */}
         {inElectron ? (
@@ -232,7 +225,7 @@ export function FolderSelector({
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-        ) : value ? (
+        ) : hideScanResult ? null : value ? (
           isScanning ? (
             <Alert>
               <Loader2 className="h-4 w-4 animate-spin" />

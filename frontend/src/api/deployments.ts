@@ -3,9 +3,33 @@
  */
 
 import { api } from "../lib/api-client";
-import type { DeploymentResponse, DeploymentUpdate, DeploymentStatsOnly } from "./types";
+import type {
+  BulkRelinkRequest,
+  BulkRelinkResponse,
+  DeploymentResponse,
+  DeploymentStatsOnly,
+  DeploymentUpdate,
+  GroupBrokenGroup,
+  GroupBrokenItem,
+  GroupBrokenRequest,
+  GroupBrokenResponse,
+  SuggestRelinkTargetRequest,
+  SuggestRelinkTargetResponse,
+} from "./types";
 
-export type { DeploymentResponse, DeploymentUpdate, DeploymentStatsOnly };
+export type {
+  BulkRelinkRequest,
+  BulkRelinkResponse,
+  DeploymentResponse,
+  DeploymentStatsOnly,
+  DeploymentUpdate,
+  GroupBrokenGroup,
+  GroupBrokenItem,
+  GroupBrokenRequest,
+  GroupBrokenResponse,
+  SuggestRelinkTargetRequest,
+  SuggestRelinkTargetResponse,
+};
 
 export const deploymentsApi = {
   /**
@@ -42,4 +66,33 @@ export const deploymentsApi = {
     api.get<Record<string, DeploymentStatsOnly>>(
       `/api/deployments/bulk-stats?project_id=${projectId}`
     ),
+
+  /**
+   * Re-stat the deployment's folder_path and refresh folder_status.
+   */
+  checkFolder: (id: string) =>
+    api.post<DeploymentResponse>(`/api/deployments/${id}/check-folder`, {}),
+
+  /**
+   * Relink multiple deployments at once. Returns per-item success / failure.
+   */
+  bulkRelink: (data: BulkRelinkRequest) =>
+    api.post<BulkRelinkResponse>("/api/deployments/bulk-relink", data),
+
+  /**
+   * Suggest a replacement folder for a missing deployment path by
+   * scanning siblings of its deepest existing ancestor.
+   */
+  suggestRelinkTarget: (data: SuggestRelinkTargetRequest) =>
+    api.post<SuggestRelinkTargetResponse>(
+      "/api/deployments/suggest-relink-target",
+      data
+    ),
+
+  /**
+   * Group a list of broken deployments by their deepest missing
+   * ancestor and return per-group auto-suggested replacements.
+   */
+  groupBroken: (data: GroupBrokenRequest) =>
+    api.post<GroupBrokenResponse>("/api/deployments/group-broken", data),
 };

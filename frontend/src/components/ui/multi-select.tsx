@@ -4,9 +4,15 @@
  * Uses Popover + Command + Checkbox for a searchable, accessible dropdown
  * that supports multiple selections. Use this as the go-to multiselect
  * across the app.
+ *
+ * Features (mirrored from AddaxAI-Connect):
+ * - Live search filter
+ * - "Select all" / "Clear all" buttons that operate on the currently
+ *   visible (search-filtered) options
+ * - Footer showing "X of Y selected"
  */
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronsUpDown } from "lucide-react";
 import { Button } from "./button";
 import { Checkbox } from "./checkbox";
@@ -57,14 +63,45 @@ export function MultiSelect({
   capitalize = false,
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const selectedSet = new Set(value);
+  // Reset search when the popover closes so reopening starts fresh.
+  useEffect(() => {
+    if (!open) setSearch("");
+  }, [open]);
+
+  const selectedSet = useMemo(() => new Set(value), [value]);
+
+  // Manual case-insensitive substring filter — replaces cmdk's default
+  // fuzzy match so the Select-all behaviour matches what the user sees.
+  const filteredOptions = useMemo(() => {
+    if (!search.trim()) return options;
+    const q = search.toLowerCase();
+    return options.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [options, search]);
 
   const toggleOption = (optionValue: string) => {
     const next = selectedSet.has(optionValue)
       ? value.filter((v) => v !== optionValue)
       : [...value, optionValue];
     onChange(next);
+  };
+
+  /** Add every currently visible (filtered) option to the selection. */
+  const selectAllVisible = () => {
+    const next = [...value];
+    for (const opt of filteredOptions) {
+      if (!selectedSet.has(opt.value)) {
+        next.push(opt.value);
+      }
+    }
+    onChange(next);
+  };
+
+  /** Remove every currently visible (filtered) option from the selection. */
+  const clearAllVisible = () => {
+    const visibleSet = new Set(filteredOptions.map((o) => o.value));
+    onChange(value.filter((v) => !visibleSet.has(v)));
   };
 
   const triggerLabel =
@@ -88,16 +125,41 @@ export function MultiSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className={`${popoverWidth} p-0`} align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={search}
+            onValueChange={setSearch}
+          />
+
+          {/* Select all / Clear all bar */}
+          <div className="flex items-center justify-between px-3 py-1.5 border-b">
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="text-xs text-muted-foreground hover:underline"
+              disabled={filteredOptions.length === 0}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={clearAllVisible}
+              className="text-xs text-muted-foreground hover:underline"
+              disabled={filteredOptions.length === 0}
+            >
+              Clear all
+            </button>
+          </div>
+
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
-            {options.map((opt) => {
+            {filteredOptions.map((opt) => {
               const selected = selectedSet.has(opt.value);
               return (
                 <CommandItem
                   key={opt.value}
-                  value={opt.label}
+                  value={opt.value}
                   onSelect={() => toggleOption(opt.value)}
                 >
                   <Checkbox
@@ -112,6 +174,11 @@ export function MultiSelect({
               );
             })}
           </CommandList>
+
+          {/* Footer count */}
+          <div className="px-3 py-1.5 border-t text-xs text-muted-foreground">
+            {value.length} of {options.length} selected
+          </div>
         </Command>
       </PopoverContent>
     </Popover>

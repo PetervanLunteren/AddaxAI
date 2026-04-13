@@ -109,7 +109,7 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
             return (
               <div key={i} className="flex items-center gap-2">
                 <Input
-                  placeholder="e.g., Canopy cover"
+                  placeholder="e.g., Baboon risk"
                   value={row.key}
                   onChange={(e) => updateRow(i, "key", e.target.value)}
                   onBlur={() => handleBlur(i, "key")}
@@ -117,7 +117,7 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
                   className={cn("flex-1", isDuplicate && "border-destructive focus-visible:ring-destructive")}
                 />
                 <Input
-                  placeholder="e.g., Dense"
+                  placeholder="e.g., High"
                   value={row.value}
                   onChange={(e) => updateRow(i, "value", e.target.value)}
                   onBlur={() => handleBlur(i, "value")}
@@ -126,10 +126,11 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
                 />
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
-                  className="h-8 w-8 shrink-0"
+                  className="shrink-0"
                   onClick={() => removeRow(i)}
+                  title="Remove tag"
                 >
                   <X className="h-4 w-4" />
                 </Button>

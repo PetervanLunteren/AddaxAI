@@ -24,6 +24,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { deploymentQueueApi } from "@/api/deployment-queue";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { TagsEditor } from "@/components/ui/tags-editor";
 import { FolderSelector } from "./FolderSelector";
 import { SiteSelector } from "./SiteSelector";
 import { AddSiteModal } from "./AddSiteModal";
@@ -44,6 +47,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [touchedFields, setTouchedFields] = useState({ folder: false, site: false });
   const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [tags, setTags] = useState<Record<string, string>>({});
 
   // Get folder scan results for validation
   const { data: scanResult, isLoading: isScanning } = useFolderScan(folderPath);
@@ -62,6 +67,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       video_count: number;
       image_count: number;
       datetime_offset_seconds: number | null;
+      notes: string | null;
+      tags: Record<string, string>;
     }) =>
       deploymentQueueApi.create({
         project_id: projectId,
@@ -70,15 +77,19 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         video_count: data.video_count,
         image_count: data.image_count,
         datetime_offset_seconds: data.datetime_offset_seconds || null,
+        notes: data.notes,
+        tags: data.tags,
       }),
     onSuccess: () => {
       // Refresh queue
       queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
 
-      // Clear folder, site, and offset
+      // Clear form
       setFolderPath(null);
       setSiteId(null);
       setDatetimeOffsetSeconds(0);
+      setNotes("");
+      setTags({});
     },
     onError: (error) => {
       // Only show error alerts
@@ -119,6 +130,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       video_count: scanResult.video_count,
       image_count: scanResult.image_count,
       datetime_offset_seconds: datetimeOffsetSeconds || null,
+      notes: notes.trim() || null,
+      tags,
     });
   };
 
@@ -160,6 +173,21 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             onAddNew={() => setShowAddSiteModal(true)}
             deploymentGps={scanResult?.gps_location ?? null}
           />
+
+          {/* Notes */}
+          <div className="space-y-2">
+            <Label htmlFor="deployment-notes">Notes</Label>
+            <Textarea
+              id="deployment-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              maxLength={1000}
+              placeholder="e.g., Camera angled slightly left to avoid sun glare"
+            />
+          </div>
+
+          {/* Tags */}
+          <TagsEditor value={tags} onChange={setTags} />
         </CardContent>
 
         <CardFooter>

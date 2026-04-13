@@ -6,13 +6,15 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
-import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin } from "lucide-react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, Plus } from "lucide-react";
 import { sitesApi } from "../api/sites";
 import type { SiteWithStats, SiteResponse } from "../api/types";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
+import { FilterBar, type FilterFieldDef, type FilterValues } from "../components/ui/filter-bar";
+import { TagPills } from "../components/ui/tag-pills";
+import { filtersFromSearchParams, filtersToSearchParams, type FilterSchema } from "../lib/filter-url";
 import {
   Table,
   TableBody,
@@ -33,6 +35,13 @@ import { DeleteSiteDialog } from "../components/sites/DeleteSiteDialog";
 type SortField = "name" | "elevation_m" | "habitat_type" | "deployment_count" | "notes" | "tag_count";
 type SortDir = "asc" | "desc";
 
+const FILTER_SCHEMA: FilterSchema = {
+  search: "string",
+  habitat: "string[]",
+  has_deployments: "string",
+  tag_keys: "string[]",
+};
+
 function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
   if (field !== sortField) return null;
   return sortDir === "asc"
@@ -42,17 +51,92 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 
 export function SitesPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(
+    () => filtersFromSearchParams(searchParams, FILTER_SCHEMA),
+    [searchParams]
+  );
+  const search = (filters.search as string | undefined) ?? "";
+  const habitatFilter = (filters.habitat as string[] | undefined) ?? [];
+  const hasDeploymentsFilter = (filters.has_deployments as string | undefined) ?? "";
+  const tagKeysFilter = (filters.tag_keys as string[] | undefined) ?? [];
+
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editingSite, setEditingSite] = useState<SiteResponse | null>(null);
   const [deletingSite, setDeletingSite] = useState<SiteWithStats | null>(null);
+  const [createSiteOpen, setCreateSiteOpen] = useState(false);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites-with-stats", projectId],
     queryFn: () => sitesApi.listWithStats(projectId!),
     enabled: !!projectId,
   });
+
+  const handleFilterChange = (next: FilterValues) => {
+    // "any" is the default for the has_deployments select; drop it from
+    // the URL so it doesn't show up as an active filter chip.
+    const cleaned = { ...next };
+    if (cleaned.has_deployments === "any") {
+      delete cleaned.has_deployments;
+    }
+    setSearchParams(filtersToSearchParams(cleaned, FILTER_SCHEMA));
+  };
+
+  // Distinct habitat types and tag keys derived from loaded sites,
+  // sorted alphabetically. Empty/null habitat types are skipped.
+  const habitatOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of sites ?? []) {
+      if (s.habitat_type && s.habitat_type.trim()) set.add(s.habitat_type);
+    }
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((h) => ({ value: h, label: h }));
+  }, [sites]);
+
+  const tagKeyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of sites ?? []) {
+      for (const k of Object.keys(s.tags ?? {})) {
+        if (k.trim()) set.add(k);
+      }
+    }
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((k) => ({ value: k, label: k }));
+  }, [sites]);
+
+  const filterFields: FilterFieldDef[] = [
+    { kind: "search", key: "search", label: "Search", placeholder: "Search..." },
+    {
+      kind: "multi-select",
+      key: "habitat",
+      label: "Habitat",
+      options: habitatOptions,
+      placeholder: "All habitats",
+      summary: (n) => `${n} habitat${n > 1 ? "s" : ""}`,
+    },
+    {
+      kind: "select",
+      key: "has_deployments",
+      label: "Deployments",
+      options: [
+        { value: "any", label: "Any" },
+        { value: "with", label: "With deployments" },
+        { value: "without", label: "Without deployments" },
+      ],
+      placeholder: "Any",
+    },
+    {
+      kind: "multi-select",
+      key: "tag_keys",
+      label: "Tag keys",
+      options: tagKeyOptions,
+      placeholder: "All tag keys",
+      summary: (n) => `${n} tag${n > 1 ? "s" : ""}`,
+    },
+  ];
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -70,12 +154,41 @@ export function SitesPage() {
     // Text search
     if (search) {
       const q = search.toLowerCase();
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          (s.habitat_type && s.habitat_type.toLowerCase().includes(q)) ||
-          (s.notes && s.notes.toLowerCase().includes(q))
-      );
+      result = result.filter((s) => {
+        if (s.name.toLowerCase().includes(q)) return true;
+        if (s.habitat_type && s.habitat_type.toLowerCase().includes(q)) return true;
+        if (s.notes && s.notes.toLowerCase().includes(q)) return true;
+        for (const [k, v] of Object.entries(s.tags ?? {})) {
+          if (k.toLowerCase().includes(q) || v.toLowerCase().includes(q)) {
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+
+    // Habitat type multi-select
+    if (habitatFilter.length > 0) {
+      const set = new Set(habitatFilter);
+      result = result.filter((s) => s.habitat_type !== null && set.has(s.habitat_type));
+    }
+
+    // Has-deployments select (any / with / without)
+    if (hasDeploymentsFilter === "with") {
+      result = result.filter((s) => s.deployment_count > 0);
+    } else if (hasDeploymentsFilter === "without") {
+      result = result.filter((s) => s.deployment_count === 0);
+    }
+
+    // Tag keys multi-select (site has at least one of the selected keys)
+    if (tagKeysFilter.length > 0) {
+      const set = new Set(tagKeysFilter);
+      result = result.filter((s) => {
+        for (const k of Object.keys(s.tags ?? {})) {
+          if (set.has(k)) return true;
+        }
+        return false;
+      });
     }
 
     // Sort
@@ -100,7 +213,7 @@ export function SitesPage() {
     });
 
     return result;
-  }, [sites, search, sortField, sortDir]);
+  }, [sites, search, habitatFilter, hasDeploymentsFilter, tagKeysFilter, sortField, sortDir]);
 
   if (!projectId) {
     return <div>Project ID missing</div>;
@@ -120,6 +233,10 @@ export function SitesPage() {
                 Manage monitoring locations for this project
               </p>
             </div>
+            <Button onClick={() => setCreateSiteOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New site
+            </Button>
           </div>
         </div>
       </header>
@@ -127,19 +244,12 @@ export function SitesPage() {
       {/* Main content */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Filter bar */}
-        <div className="mb-6 flex items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search sites..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <span className="text-sm text-muted-foreground">
-            {filtered.length} {filtered.length === 1 ? "site" : "sites"}
-          </span>
+        <div className="mb-6">
+          <FilterBar
+            value={filters}
+            onChange={handleFilterChange}
+            fields={filterFields}
+          />
         </div>
 
         {isLoading ? (
@@ -186,14 +296,8 @@ export function SitesPage() {
                     <TableCell className="text-muted-foreground max-w-[300px] truncate">
                       {site.notes ? (site.notes.length > 50 ? `${site.notes.slice(0, 50)}\u2026` : site.notes) : "\u2014"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-[300px] truncate">
-                      {(() => {
-                        const entries = Object.entries(site.tags ?? {});
-                        if (entries.length === 0) return "\u2014";
-                        const first = `${entries[0][0]}: ${entries[0][1]}`;
-                        if (entries.length === 1) return first;
-                        return `${first}, +${entries.length - 1} more`;
-                      })()}
+                    <TableCell className="max-w-[320px]">
+                      <TagPills tags={site.tags} />
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -249,6 +353,12 @@ export function SitesPage() {
           onOpenChange={(open) => !open && setEditingSite(null)}
         />
       )}
+
+      <AddSiteModal
+        projectId={projectId}
+        open={createSiteOpen}
+        onOpenChange={setCreateSiteOpen}
+      />
 
       <DeleteSiteDialog
         site={deletingSite}

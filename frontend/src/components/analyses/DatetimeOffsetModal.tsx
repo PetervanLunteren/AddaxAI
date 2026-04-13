@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { API_BASE_URL } from "@/lib/api-client";
+import { formatOffset } from "@/lib/utils";
 
 interface SampleFile {
   path: string;
@@ -59,38 +60,6 @@ function fmtDate(iso: string | null): string {
 function toDatetimeLocal(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-/** Break total seconds into { days, hours, minutes } (preserving sign). */
-function splitSeconds(totalSeconds: number): {
-  days: number;
-  hours: number;
-  minutes: number;
-} {
-  const sign = totalSeconds < 0 ? -1 : 1;
-  const abs = Math.abs(totalSeconds);
-  const days = Math.floor(abs / 86400);
-  const hours = Math.floor((abs % 86400) / 3600);
-  const minutes = Math.floor((abs % 3600) / 60);
-  return {
-    days: days * sign,
-    hours: hours * sign,
-    minutes: minutes * sign,
-  };
-}
-
-/** Format seconds as a readable string, e.g. "+3 days, 12 hours". */
-function formatOffset(seconds: number): string {
-  if (seconds === 0) return "no offset";
-  const sign = seconds > 0 ? "+" : "";
-  const { days, hours, minutes } = splitSeconds(seconds);
-  const parts: string[] = [];
-  if (days) parts.push(`${days} ${Math.abs(days) === 1 ? "day" : "days"}`);
-  if (hours) parts.push(`${hours} ${Math.abs(hours) === 1 ? "hour" : "hours"}`);
-  if (minutes)
-    parts.push(`${minutes} ${Math.abs(minutes) === 1 ? "minute" : "minutes"}`);
-  if (parts.length === 0) return `${sign}${seconds}s`;
-  return `${sign}${parts.join(", ")}`;
 }
 
 export function DatetimeOffsetModal({

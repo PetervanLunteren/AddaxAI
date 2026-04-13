@@ -13,13 +13,14 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
 from app.api.schemas.detection import DetectionCreate
 from app.core.logging_config import get_logger
 from app.ml.inference.base import PipelineResult
-from app.models import File
+from app.models import Deployment, File
 from app.utils.media_dates import extract_video_dates
 from app.utils.video_utils import _filename_to_frame_number
 
@@ -385,6 +386,25 @@ def load_json_to_database(
 
         # Commit all records
         db.commit()
+
+        # Derive deployment start/end dates from actual file timestamps
+        # so the metadata table shows the real field-deployment window
+        # rather than the date the deployment was created.
+        min_ts, max_ts = db.execute(
+            select(func.min(File.timestamp), func.max(File.timestamp))
+            .where(File.deployment_id == deployment_id)
+        ).one()
+        if min_ts is not None or max_ts is not None:
+            deployment = db.get(Deployment, deployment_id)
+            if deployment is not None:
+                if min_ts is not None:
+                    deployment.start_date = min_ts.date()
+                deployment.end_date = max_ts.date() if max_ts is not None else None
+                db.commit()
+                logger.info(
+                    f"Set deployment {deployment_id} dates from file timestamps: "
+                    f"{deployment.start_date} to {deployment.end_date}"
+                )
 
         logger.info(
             f"Database load complete: {total_detections} detections, "

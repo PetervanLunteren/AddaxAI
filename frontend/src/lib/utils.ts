@@ -29,3 +29,29 @@ export function formatCompact(n: number): string {
   const m = n / 1_000_000;
   return m >= 10 ? `${Math.round(m)}M` : `${m.toFixed(1).replace(/\.0$/, "")}M`;
 }
+
+/**
+ * Format a datetime offset in seconds as a human-readable string.
+ * Shows every non-zero component (days, hours, minutes, seconds).
+ *
+ * Examples:
+ *   0      -> "no offset"
+ *   30     -> "+30 seconds"
+ *   3665   -> "+1 hour, 1 minute, 5 seconds"
+ *   -86400 -> "-1 day"
+ */
+export function formatOffset(seconds: number): string {
+  if (seconds === 0) return "no offset";
+  const sign = seconds > 0 ? "+" : "-";
+  const abs = Math.abs(seconds);
+  const days = Math.floor(abs / 86400);
+  const hours = Math.floor((abs % 86400) / 3600);
+  const minutes = Math.floor((abs % 3600) / 60);
+  const secs = abs % 60;
+  const parts: string[] = [];
+  if (days) parts.push(`${days} ${days === 1 ? "day" : "days"}`);
+  if (hours) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+  if (minutes) parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+  if (secs) parts.push(`${secs} ${secs === 1 ? "second" : "seconds"}`);
+  return `${sign}${parts.join(", ")}`;
+}

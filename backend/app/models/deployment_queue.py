@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -55,6 +55,11 @@ class DeploymentQueue(Base):
     datetime_offset_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
+
+    # Optional metadata entered during deployment creation, carried over to
+    # the final Deployment record when the queue entry is processed.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     # Model configuration now inherited from project (not per-deployment)
 

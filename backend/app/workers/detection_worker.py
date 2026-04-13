@@ -215,9 +215,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 queue_crud.update_queue_status(db, entry_id, status="failed", error=error_msg)
                 continue
 
-            # Create deployment
+            # Create deployment (carry notes and tags from the queue entry)
             deployment = create_deployment(
-                db=db, site_id=entry.site_id, folder_path=str(folder_path)
+                db=db,
+                site_id=entry.site_id,
+                folder_path=str(folder_path),
+                notes=entry.notes,
+                tags=entry.tags or {},
             )
             # Store the datetime offset on the deployment for audit
             if datetime_offset_seconds:
@@ -1271,7 +1275,13 @@ def scan_folder_for_videos(folder_path: Path) -> list[Path]:
     return video_files
 
 
-def create_deployment(db, site_id: str, folder_path: str) -> Deployment:
+def create_deployment(
+    db,
+    site_id: str,
+    folder_path: str,
+    notes: str | None = None,
+    tags: dict[str, str] | None = None,
+) -> Deployment:
     """
     Create deployment record.
 
@@ -1279,6 +1289,8 @@ def create_deployment(db, site_id: str, folder_path: str) -> Deployment:
         db: Database session
         site_id: Site ID
         folder_path: Folder path
+        notes: Optional deployment notes (from queue entry)
+        tags: Optional key:value metadata tags (from queue entry)
 
     Returns:
         Created Deployment
@@ -1290,6 +1302,8 @@ def create_deployment(db, site_id: str, folder_path: str) -> Deployment:
         site_id=site_id,
         folder_path=folder_path,
         start_date=datetime.utcnow().date(),
+        notes=notes,
+        tags=tags or {},
     )
 
     return deployment_crud.create_deployment(db, deployment_data)

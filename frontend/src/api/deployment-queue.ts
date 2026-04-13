@@ -15,6 +15,9 @@ export interface DeploymentQueueEntry {
   video_count: number;
   image_count: number;
   site_id: string | null;
+  datetime_offset_seconds: number | null;
+  notes: string | null;
+  tags: Record<string, string>;
   status: "pending" | "processing" | "completed" | "failed";
   created_at: string;
   processed_at: string | null;
@@ -29,6 +32,8 @@ export interface DeploymentQueueCreate {
   video_count?: number;
   image_count?: number;
   datetime_offset_seconds?: number | null;
+  notes?: string | null;
+  tags?: Record<string, string>;
 }
 
 export interface ProcessQueueRequest {

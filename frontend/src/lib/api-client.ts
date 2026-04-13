@@ -12,6 +12,23 @@ import { logger } from "./logger";
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 /**
+ * Error thrown when the API returns a non-2xx response. Preserves the
+ * HTTP status and the raw `detail` payload so callers can surface
+ * structured error information (e.g., folder-verification mismatches).
+ */
+export class ApiError extends Error {
+  public readonly status: number;
+  public readonly detail: unknown;
+
+  constructor(status: number, detail: unknown, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+/**
  * Base fetch wrapper with error handling.
  *
  * Crashes (throws) on network errors or non-2xx responses.
@@ -42,19 +59,32 @@ async function apiFetch<T>(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const detail = errorData.detail;
-      const errorMsg =
-        typeof detail === "string"
-          ? detail
-          : Array.isArray(detail)
-            ? detail.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join("; ")
-            : `HTTP ${response.status}: ${response.statusText}`;
+
+      let errorMsg: string;
+      if (typeof detail === "string") {
+        errorMsg = detail;
+      } else if (Array.isArray(detail)) {
+        errorMsg = detail
+          .map((e: { msg?: string }) => e.msg || JSON.stringify(e))
+          .join("; ");
+      } else if (
+        detail &&
+        typeof detail === "object" &&
+        "message" in detail &&
+        typeof (detail as { message: unknown }).message === "string"
+      ) {
+        // Structured error (e.g. folder verification failure)
+        errorMsg = (detail as { message: string }).message;
+      } else {
+        errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+      }
 
       logger.error(`API ${method} ${endpoint} failed: ${errorMsg}`, {
         status: response.status,
         endpoint,
       });
 
-      throw new Error(errorMsg);
+      throw new ApiError(response.status, detail, errorMsg);
     }
 
     // Handle 204 No Content
@@ -68,6 +98,11 @@ async function apiFetch<T>(
   } catch (error) {
     // Abort errors are expected (tab switches, React Strict Mode) — re-throw silently
     if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
+    // Preserve ApiError with its structured detail so callers can surface it.
+    if (error instanceof ApiError) {
       throw error;
     }
 

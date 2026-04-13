@@ -20,7 +20,7 @@ class SiteBase(BaseModel):
     longitude: float | None = Field(None, ge=-180, le=180, description="Longitude (-180 to 180)")
     elevation_m: float | None = Field(None, description="Elevation in meters")
     habitat_type: str | None = Field(None, max_length=255, description="Habitat type")
-    notes: str | None = Field(None, description="Additional notes")
+    notes: str | None = Field(None, max_length=1000, description="Additional notes")
     tags: dict[str, str] = Field(
         default_factory=dict, description="Custom key:value metadata tags"
     )
@@ -49,7 +49,7 @@ class SiteUpdate(BaseModel):
     longitude: float | None = Field(None, ge=-180, le=180)
     elevation_m: float | None = None
     habitat_type: str | None = Field(None, max_length=255)
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=1000)
     tags: dict[str, str] | None = None
 
 
