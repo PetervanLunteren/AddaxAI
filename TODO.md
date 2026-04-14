@@ -16,6 +16,15 @@
 - [ ] IN DEPTH PLOT - add new in depth plot: Gantt-style timeline — one horizontal bar per deployment (or per site), showing the active period. Immediately shows gaps, overlaps, and total survey effort. Group by site with one bar per deployment within each site row. 
 - [ ] EXPORT OPTIONS - check AddaxAI Connect and copy from there. 
 - [ ] TIMEZONE SETTING - make a timezone setting in the settings page, check how Connect does it. What should be the default? UTC? I dont know. Perhaps it should be a required setting when creating a project, what do you think? That determines the suncalc in the Activity patterns. When we have that, we can make a plot with activity patterns and sun hour overlays. 
+- [ ] make caption or title of setting timezone more explicit. "Whatever the cameras were set to."
+
+Based on your understanding of the project, what do you propose as the  
+  optimum solution in regarding the DB sotrage of timestamps as read from the data? Local time as rtead from the data stored as is, or stored as UTC and then convertedf back for UI purposes? I do not like the idea of having two different conventions. I also have the 
+   idea that the best prctises would be to store UTC in the DB and show UTC+timezone in the UI. 
+   Do a full audit and provide a recommendation to me. It doesnt matter if we need to adjust    
+  loads of code. Better now than in a year or so. 
+
+
 
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
