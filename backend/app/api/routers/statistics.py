@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import statistics as stats_crud
 from app.api.schemas.statistics import (
+    ActivityOverlapResponse,
     ActivityPatternResponse,
     DashboardOverview,
     DetectionCategories,
@@ -66,6 +67,45 @@ def activity_pattern(
 ) -> ActivityPatternResponse:
     return stats_crud.get_activity_pattern(
         db, project_id, species, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
+    )
+
+
+@router.get("/activity-overlap", response_model=ActivityOverlapResponse)
+def activity_overlap(
+    project_id: str = Query(..., description="Project ID"),
+    species_a: str = Query(..., description="Display name of the first species"),
+    species_b: str | None = Query(
+        None,
+        description="Display name of the second species. Omit for single-species mode.",
+    ),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    taxonomic_rank: str | None = Query(
+        None,
+        description=(
+            "Taxonomic rank for label resolution "
+            "(raw|all|species|genus|family|order|class)"
+        ),
+    ),
+    db: Session = Depends(get_db),
+) -> ActivityOverlapResponse:
+    """
+    Activity overlap payload for the Plots → Activity overlap page.
+
+    Backs a 1-or-2 species comparison with KDE curves, sun bands, diel
+    classification, and (when both species have data) the Ridout &
+    Linkie overlap coefficient \u0394 with a bootstrap CI.
+    """
+    return stats_crud.get_activity_overlap(
+        db,
+        project_id,
+        species_a,
+        species_b,
+        _parse_site_ids(site_ids),
+        date_from,
+        date_to,
+        taxonomic_rank,
     )
 
 

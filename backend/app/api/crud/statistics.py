@@ -628,6 +628,249 @@ def get_activity_pattern(
 
 
 # ---------------------------------------------------------------------------
+# 3b. Activity overlap (Plots → Activity overlap page)
+# ---------------------------------------------------------------------------
+
+
+_DETECTION_TIME_CAP = 5000
+
+
+def _event_decimal_hours_for_species(
+    db: Session,
+    project_id: str,
+    species: str,
+    site_ids: list[str] | None,
+    date_from: str | None,
+    date_to: str | None,
+    taxonomic_rank: str | None,
+) -> list[float]:
+    """
+    Pull every event observation matching one species and return its
+    decimal-hour-of-day, repeated max_n times. The repetition matches
+    the existing get_activity_pattern aggregation (MaxN per event).
+
+    Used by get_activity_overlap to build the input array for the
+    circular KDE. Filters on date range here (unlike the existing
+    get_activity_pattern which currently only uses date_from/date_to
+    for the sun-band reference date — this newer endpoint applies a
+    proper date filter to the events themselves so cross-season
+    comparisons stay clean).
+    """
+    hour_expr = func.cast(
+        func.strftime("%H", Event.event_start_local), Integer
+    ).label("hour")
+    minute_expr = func.cast(
+        func.strftime("%M", Event.event_start_local), Integer
+    ).label("minute")
+
+    query = (
+        select(hour_expr, minute_expr, EventObservation.max_n.label("max_n"))
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
+        .join(Site, Deployment.site_id == Site.id)
+        .where(Site.project_id == project_id)
+    )
+
+    if site_ids:
+        query = query.where(Site.id.in_(site_ids))
+    if date_from:
+        query = query.where(
+            Event.event_start_local >= datetime.fromisoformat(date_from)
+        )
+    if date_to:
+        end_of_day = datetime.combine(
+            date.fromisoformat(date_to), datetime.max.time()
+        )
+        query = query.where(Event.event_start_local <= end_of_day)
+
+    if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
+        display_label = case(
+            (EventObservation.category != "animal", EventObservation.category),
+            else_=func.coalesce(
+                LabelTaxonomy.display_name, EventObservation.label
+            ),
+        )
+        query = query.outerjoin(
+            LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+        )
+        query = query.where(display_label == species)
+    else:
+        col_name = _RANK_COLUMNS.get(taxonomic_rank)
+        if col_name:
+            rank_col = getattr(LabelTaxonomy, col_name)
+            has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
+            if taxonomic_rank == "species":
+                rank_display = case(
+                    (
+                        LabelTaxonomy.taxon_species.isnot(None),
+                        LabelTaxonomy.display_name,
+                    ),
+                    else_=None,
+                )
+            else:
+                rank_display = rank_col
+            label_expr = case(
+                (EventObservation.category != "animal", EventObservation.category),
+                (rank_display.isnot(None), rank_display),
+                (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
+                else_=literal(NO_TAXONOMY),
+            )
+            query = query.outerjoin(
+                LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+            )
+            query = query.where(label_expr == species)
+        else:
+            query = query.where(EventObservation.label == species)
+
+    rows = db.execute(query).all()
+    times: list[float] = []
+    for row in rows:
+        decimal_hour = float(row.hour) + float(row.minute) / 60.0
+        times.extend([decimal_hour] * int(row.max_n))
+    return times
+
+
+def _sample_size_warning(n: int) -> str | None:
+    """Map n to a warning bucket for the UI badge layer."""
+    if n < 30:
+        return "low_n_30"
+    if n < 50:
+        return "low_n_50"
+    if n < 75:
+        return "low_n_75"
+    return None
+
+
+def _build_species_activity(
+    label: str,
+    times: list[float],
+    sun_bands: SunBands | None,
+):
+    """Fit KDE, classify diel, package as a SpeciesActivity payload."""
+    import numpy as np
+
+    from app.api.schemas.statistics import SpeciesActivity
+    from app.ml.activity_analysis import classify_diel, fit_circular_kde
+
+    n = len(times)
+    times_arr = np.asarray(times, dtype=np.float64)
+    grid_hours, density = fit_circular_kde(times_arr)
+    diel_class, density_by_phase = classify_diel(grid_hours, density, sun_bands)
+
+    # Cap the rug payload so the response stays small for huge datasets.
+    if n > _DETECTION_TIME_CAP:
+        rng = np.random.default_rng(seed=hash(label) & 0xFFFFFFFF)
+        sampled = rng.choice(times_arr, size=_DETECTION_TIME_CAP, replace=False)
+        raw_for_payload = sorted(float(x) for x in sampled)
+    else:
+        raw_for_payload = [float(x) for x in times]
+
+    return SpeciesActivity(
+        label=label,
+        n=n,
+        raw_detection_times=raw_for_payload,
+        kde_density=[float(x) for x in density],
+        diel_class=diel_class,
+        diel_density_by_phase=density_by_phase,
+        sample_size_warning=_sample_size_warning(n),
+    )
+
+
+def get_activity_overlap(
+    db: Session,
+    project_id: str,
+    species_a: str,
+    species_b: str | None = None,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    taxonomic_rank: str | None = None,
+):
+    """
+    Build the full Plots → Activity overlap payload for 1 or 2 species.
+
+    Reuses `_avg_site_location` and `_compute_sun_bands` for the sun
+    overlay. Reuses `_RANK_COLUMNS` / `HIGHER_LEVEL_TAXA` / `NO_TAXONOMY`
+    for taxonomic-rank-aware species filtering. The math (KDE, Δ,
+    bootstrap CI, diel classification) lives in
+    `app.ml.activity_analysis` so it can be unit-tested in isolation
+    from the SQL layer.
+    """
+    import numpy as np
+
+    from app.api.schemas.statistics import (
+        ActivityOverlapResponse,
+        OverlapStat,
+    )
+    from app.ml.activity_analysis import (
+        BOOTSTRAP_REPS,
+        bootstrap_overlap_ci,
+        estimator_label,
+    )
+
+    # Sun bands (reused exactly as in get_activity_pattern)
+    sun_bands: SunBands | None = None
+    tz_name = (
+        db.query(Project.timezone).filter(Project.id == project_id).scalar()
+    )
+    if tz_name:
+        location = _avg_site_location(db, project_id, site_ids)
+        if location is not None:
+            lat, lon = location
+            sun_bands = _compute_sun_bands(
+                lat=lat,
+                lon=lon,
+                reference_date=_reference_date_for_sun(date_from, date_to),
+                tz_name=tz_name,
+            )
+
+    # Independence interval echoed back to the UI as read-only metadata
+    independence_seconds = (
+        db.query(Project.independence_interval)
+        .filter(Project.id == project_id)
+        .scalar()
+        or 0
+    )
+
+    times_a = _event_decimal_hours_for_species(
+        db, project_id, species_a, site_ids, date_from, date_to, taxonomic_rank
+    )
+    activity_a = _build_species_activity(species_a, times_a, sun_bands)
+
+    activity_b = None
+    overlap = None
+    if species_b:
+        times_b = _event_decimal_hours_for_species(
+            db, project_id, species_b, site_ids, date_from, date_to, taxonomic_rank
+        )
+        activity_b = _build_species_activity(species_b, times_b, sun_bands)
+
+        if len(times_a) > 0 and len(times_b) > 0:
+            delta, ci_low, ci_high = bootstrap_overlap_ci(
+                np.asarray(times_a, dtype=np.float64),
+                np.asarray(times_b, dtype=np.float64),
+            )
+            min_n = min(len(times_a), len(times_b))
+            overlap = OverlapStat(
+                delta_estimator=estimator_label(min_n),
+                delta=delta,
+                ci_low=ci_low,
+                ci_high=ci_high,
+                bootstrap_reps=BOOTSTRAP_REPS,
+                min_n=min_n,
+            )
+
+    return ActivityOverlapResponse(
+        species_a=activity_a,
+        species_b=activity_b,
+        overlap=overlap,
+        sun_bands=sun_bands,
+        independence_interval_seconds=int(independence_seconds),
+    )
+
+
+# ---------------------------------------------------------------------------
 # 4. Detection trend (daily)
 # ---------------------------------------------------------------------------
 

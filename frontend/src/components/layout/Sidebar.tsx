@@ -10,6 +10,7 @@ import {
   CardSim,
   CheckCircle,
   Download,
+  LineChart,
   Map,
   MapPin,
   Play,
@@ -39,6 +40,7 @@ export function Sidebar() {
     { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
     { to: `/projects/${projectId}/map`, icon: Map, label: "Map" },
     { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
+    { to: `/projects/${projectId}/plots`, icon: LineChart, label: "Plots" },
   ];
 
   // "Config" pages — set up monitoring locations and deployments.

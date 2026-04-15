@@ -16,6 +16,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
 import DashboardPage from "./pages/DashboardPage";
 import { MapPage } from "./pages/MapPage";
+import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -108,6 +109,8 @@ function App() {
             <Route path="review" element={<Navigate to="../verify" replace />} />
             <Route path="map" element={<MapPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="plots" element={<Navigate to="activity-overlap" replace />} />
+            <Route path="plots/activity-overlap" element={<ActivityOverlapPage />} />
             <Route path="sites" element={<SitesPage />} />
             <Route path="deployments" element={<DeploymentsPage />} />
             <Route path="export" element={<ExportPage />} />

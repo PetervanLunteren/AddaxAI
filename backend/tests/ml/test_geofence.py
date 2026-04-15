@@ -253,6 +253,173 @@ class TestBlockRules:
             )
 
 
+# --- geofence_fixes.csv entries ---
+# Per SpeciesNet developer recommendation: include every (taxon,
+# country, state) combination from geofence_fixes.csv (the file used
+# to generate the release geofence from the base geofence). These
+# are the "complicated" cases where bugs are most likely.
+
+FIXES_CSV = Path(__file__).parent / "fixtures" / "geofence_fixes.csv"
+
+
+def _load_fix_cases() -> list[tuple]:
+    """Parse geofence_fixes.csv and expand each row to concrete test cases.
+
+    Each row has: species (taxonomy key), rule (allow/block), country,
+    state. We find all species in the labels file whose taxonomy key
+    matches the row's species (exact or descendant match) and create
+    one test case per matching species.
+    """
+    import csv
+    from collections import defaultdict
+
+    if not FIXES_CSV.exists() or not MODEL_DIR.exists():
+        return []
+
+    labels_path = find_labels_file(MODEL_DIR)
+    if not labels_path:
+        return []
+
+    # Build index: taxonomy key prefix -> list of (full_label, taxonomy_key)
+    species_by_prefix: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    with open(labels_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(";")
+            if len(parts) < 7:
+                continue
+            taxonomy_key = ";".join(parts[1:6])
+            full_label = line
+            # Index at every prefix level
+            for i in range(1, 6):
+                prefix = ";".join(parts[1:1 + i]) + ";" * (5 - i)
+                species_by_prefix[prefix].append((full_label, taxonomy_key))
+
+    cases = []
+    with open(FIXES_CSV) as f:
+        reader = csv.DictReader(
+            line for line in f if not line.strip().startswith("#")
+        )
+        for row in reader:
+            species_key = row["species"]
+            rule = row["rule"]
+            country = row["country_code"]
+            state = row["admin1_region_code"] or None
+            matches = species_by_prefix.get(species_key, [])
+            for full_label, tk in matches:
+                # Exact or descendant match
+                if tk == species_key or tk.startswith(
+                    species_key.rstrip(";") + ";"
+                ):
+                    cases.append((full_label, rule, country, state))
+
+    return cases
+
+
+@requires_model
+@requires_env
+@pytest.mark.slow
+class TestGeofenceFixesMatchOfficialAPI:
+    """Verify AddaxAI matches the official API for every fix case.
+
+    Per SpeciesNet developer recommendation: test every (taxon,
+    country, state) combination in geofence_fixes.csv. If my code
+    matches the official should_geofence_animal_classification() on
+    every fix case, I can be confident about the corner cases.
+    """
+
+    def test_fixes_match_official(self):
+        _parse_labels_cached.cache_clear()
+        _get_allowed_labels_cached.cache_clear()
+        _load_geofence_cached.cache_clear()
+
+        cases = _load_fix_cases()
+        assert cases, "No fix cases loaded"
+
+        geofence_path = find_geofence_file(MODEL_DIR)
+        labels_path = find_labels_file(MODEL_DIR)
+        assert geofence_path and labels_path
+
+        # Run official API via subprocess on all cases
+        queries = [(c[0], c[2], c[3]) for c in cases]
+        script = textwrap.dedent("""\
+            import json, sys
+            from speciesnet.geofence_utils import (
+                should_geofence_animal_classification,
+            )
+
+            geofence_map = json.load(open(sys.argv[1]))
+            queries = json.load(sys.stdin)
+            results = []
+            for label, country, state in queries:
+                result = should_geofence_animal_classification(
+                    label, country, state, geofence_map,
+                    enable_geofence=True,
+                )
+                results.append(result)
+            json.dump(results, sys.stdout)
+        """)
+        proc = subprocess.run(
+            [str(ENV_PYTHON), "-c", script, str(geofence_path)],
+            input=json.dumps(queries),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert proc.returncode == 0, (
+            f"Official API subprocess failed: {proc.stderr}"
+        )
+        official_results = json.loads(proc.stdout)
+
+        # Compare against AddaxAI for each case
+        cache: dict[tuple, list[str]] = {}
+        mismatches = []
+
+        # Build name-dedup mapping same way the test does
+        seen_names: set[str] = set()
+        label_to_name: dict[str, str] = {}
+        with open(labels_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(";")
+                if len(parts) < 7:
+                    continue
+                common_name = parts[6]
+                if not common_name or common_name in seen_names:
+                    taxonomy = [p for p in parts[1:6] if p]
+                    if taxonomy:
+                        common_name = taxonomy[-1]
+                if common_name in seen_names:
+                    common_name = f"{common_name} ({parts[0][:8]})"
+                seen_names.add(common_name)
+                label_to_name[line] = common_name
+
+        for i, (full_label, rule, country, state) in enumerate(cases):
+            key = (country, state)
+            if key not in cache:
+                cache[key] = get_allowed_labels(MODEL_DIR, country, state)
+            common_name = label_to_name.get(full_label)
+            addaxai_allowed = common_name in cache[key]
+            official_blocked = official_results[i]
+            addaxai_blocked = not addaxai_allowed
+
+            if addaxai_blocked != official_blocked:
+                mismatches.append(
+                    f"{common_name} in {country}/{state or '-'}: "
+                    f"official={'block' if official_blocked else 'allow'} "
+                    f"addaxai={'block' if addaxai_blocked else 'allow'}"
+                )
+
+        assert not mismatches, (
+            f"{len(mismatches)} mismatches on {len(cases)} fix cases:\n"
+            + "\n".join(mismatches[:20])
+        )
+
+
 # --- Exhaustive comparison vs official API ---
 
 @requires_model

@@ -198,6 +198,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
             width={76}
             height={32}
             rx={3}
+            fillOpacity={0.85}
             style={{
               fill: "hsl(var(--card))",
               stroke: "hsl(var(--border))",

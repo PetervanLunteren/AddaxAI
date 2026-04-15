@@ -97,6 +97,57 @@ export interface ObservationRateMapFilters {
   labelTaxonomyIds?: string[];
 }
 
+// --- Activity overlap (Plots → Activity overlap page) ---
+
+export type DielClass =
+  | "diurnal"
+  | "nocturnal"
+  | "crepuscular"
+  | "cathemeral";
+
+export type DeltaEstimator = "delta1" | "delta4";
+
+export type SampleSizeWarning = "low_n_30" | "low_n_50" | "low_n_75";
+
+export interface SpeciesActivity {
+  label: string;
+  n: number;
+  /** Decimal hours [0..24) for the rug ticks under the curve. Capped at 5000. */
+  raw_detection_times: number[];
+  /** 240-point von Mises KDE over [0..24), normalized to integrate to 1. */
+  kde_density: number[];
+  diel_class: DielClass;
+  /** {"day": number, "night": number, "twilight": number} summing to ~1. */
+  diel_density_by_phase: Record<string, number>;
+  sample_size_warning: SampleSizeWarning | null;
+}
+
+export interface OverlapStat {
+  delta_estimator: DeltaEstimator;
+  delta: number;
+  ci_low: number;
+  ci_high: number;
+  bootstrap_reps: number;
+  min_n: number;
+}
+
+export interface ActivityOverlapResponse {
+  species_a: SpeciesActivity;
+  species_b: SpeciesActivity | null;
+  overlap: OverlapStat | null;
+  sun_bands: SunBands | null;
+  independence_interval_seconds: number;
+}
+
+export interface ActivityOverlapFilters {
+  speciesA: string;
+  speciesB?: string;
+  siteIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  taxonomicRank?: string;
+}
+
 // --- Shared helpers ---
 
 /**
@@ -198,6 +249,31 @@ export const statisticsApi = {
     }
     return api.get<ObservationRateMapResponse>(
       `/api/statistics/observation-rate-map?${params.toString()}`
+    );
+  },
+
+  /**
+   * Activity overlap payload for the Plots → Activity overlap page.
+   * Returns 1- or 2-species KDE curves, sun bands, diel classification,
+   * and the Ridout & Linkie overlap coefficient Δ with bootstrap CI
+   * (when both species have data).
+   */
+  getActivityOverlap: (
+    projectId: string,
+    filters: ActivityOverlapFilters
+  ) => {
+    const params = new URLSearchParams();
+    params.set("project_id", projectId);
+    params.set("species_a", filters.speciesA);
+    if (filters.speciesB) params.set("species_b", filters.speciesB);
+    if (filters.siteIds?.length) {
+      params.set("site_ids", filters.siteIds.join(","));
+    }
+    if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+    if (filters.dateTo) params.set("date_to", filters.dateTo);
+    if (filters.taxonomicRank) params.set("taxonomic_rank", filters.taxonomicRank);
+    return api.get<ActivityOverlapResponse>(
+      `/api/statistics/activity-overlap?${params.toString()}`
     );
   },
 };

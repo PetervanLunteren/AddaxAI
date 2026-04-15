@@ -158,6 +158,24 @@ There are two kinds of datetimes in this codebase and they must never be mixed i
 
 **Project timezone.** `Project.timezone` is a required IANA string (`"Europe/Amsterdam"`, `"UTC"`, `"Etc/GMT-3"`, etc.) describing what clock the cameras were configured to. The `TimezoneSelect` combobox in `frontend/src/components/ui/timezone-select.tsx` exposes both DST-aware regional zones and fixed-offset `Etc/GMT±N` zones for cameras set to "local winter time" (no DST). Used by the activity-pattern sun overlay (astral) and any future camtrap-dp export. Never used to convert stored datetimes.
 
+## Plots (in-depth analytical views)
+
+The Plots section in the sidebar hosts page-wide, scientifically-grounded visualizations that go deeper than the Dashboard's glanceable summary. Each plot is its own route under `/projects/:id/plots/...` with its own filter bar and URL state persistence (via `frontend/src/lib/filter-url.ts`). Future plots slot in next to the existing ones.
+
+### Activity overlap
+
+`/projects/:id/plots/activity-overlap` — 1- or 2-species temporal activity comparison modelled on the R `overlap` and `activity` packages. Two `SpeciesPicker` dropdowns drive the chart; with two species selected, the page also renders the Ridout & Linkie 2009 overlap coefficient Δ with a 1000-rep percentile bootstrap CI.
+
+The math lives server-side in `backend/app/ml/activity_analysis.py` so it can be unit-tested in isolation:
+- `fit_circular_kde()` — von Mises kernel density on a 240-point grid over [0, 24) hours. Post-normalized numerically rather than computing the closed-form `1/(2π·I₀(κ))`, which avoids a scipy dependency.
+- `overlap_coefficient()` — Δ = ∫ min(f_a, f_b) dt over the grid.
+- `bootstrap_overlap_ci()` — 1000-rep percentile bootstrap, fixed seed for deterministic results.
+- `classify_diel()` — Bennie et al. 2014 ≥ 0.70 density-in-phase rule (diurnal / nocturnal / crepuscular / cathemeral). Falls back to a fixed 06:00-18:00 day window when sun bands are unavailable (polar latitudes, missing tz).
+
+The CRUD function `get_activity_overlap()` in `backend/app/api/crud/statistics.py` reuses `_avg_site_location()` and `_compute_sun_bands()` from the existing activity-pattern endpoint, applies the project's `independence_interval` to event grouping (no per-plot override — the interval is shown as read-only metadata next to the chart), and returns one round-trip with both species' KDE densities, the rug-tick samples, the Δ block, the diel classifications, and the sun bands. Wire format and tz handling follow the conventions in the "Datetime conventions" section below.
+
+References that motivate the design choices: Ridout & Linkie 2009 (J Agric Biol Environ Stat), Meredith & Ridout's `overlap` R package vignette 2014, Rowcliffe et al. 2014 (MEE), Vazquez et al. 2019 (MEE), Lashley et al. 2018 (Sci Rep), Bennie et al. 2014.
+
 ## Best frame selection (videos)
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:

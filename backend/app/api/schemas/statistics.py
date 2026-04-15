@@ -1,6 +1,7 @@
 """Schemas for dashboard statistics endpoints."""
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -95,3 +96,73 @@ class ObservationRateMapFeature(BaseModel):
 
 class ObservationRateMapResponse(BaseModel):
     features: list[ObservationRateMapFeature]
+
+
+# ---------------------------------------------------------------------------
+# Activity overlap (Plots → Activity overlap page)
+# ---------------------------------------------------------------------------
+
+
+SampleSizeWarning = Literal["low_n_30", "low_n_50", "low_n_75"]
+DielClass = Literal["diurnal", "nocturnal", "crepuscular", "cathemeral"]
+DeltaEstimator = Literal["delta1", "delta4"]
+
+
+class SpeciesActivity(BaseModel):
+    """Per-species inputs to the activity-overlap chart.
+
+    `kde_density` is the von Mises KDE evaluated on a 240-point grid
+    over [0, 24) hours (matching `ml.activity_analysis.KDE_GRID_SAMPLES`),
+    normalized so the integral over the grid is 1.0. The frontend draws
+    this as a smooth curve.
+
+    `raw_detection_times` is the underlying sample (decimal hours) used
+    for the rug ticks under the curve. Capped at 5000 entries to bound
+    payload size on huge datasets — the rug only needs visual density,
+    not every single tick.
+
+    `diel_density_by_phase` keys are "day", "night", "twilight" and sum
+    to ~1.0. Surfaced so a UI tooltip can show the exact rule that
+    produced the diel classification.
+    """
+
+    label: str
+    n: int
+    raw_detection_times: list[float]
+    kde_density: list[float]
+    diel_class: DielClass
+    diel_density_by_phase: dict[str, float]
+    sample_size_warning: SampleSizeWarning | None = None
+
+
+class OverlapStat(BaseModel):
+    """Pairwise activity overlap coefficient and bootstrap CI.
+
+    Δ = ∫ min(f_a, f_b) dt over [0, 24], where f_a and f_b are the
+    species' KDE densities. CI is from a 1000-rep percentile bootstrap.
+    `delta_estimator` is the conventional Ridout & Linkie 2009 label
+    (delta4 above min-N=50, delta1 below) — the underlying KDE method
+    is the same for both, the label tells the reader which name to cite.
+    """
+
+    delta_estimator: DeltaEstimator
+    delta: float
+    ci_low: float
+    ci_high: float
+    bootstrap_reps: int
+    min_n: int
+
+
+class ActivityOverlapResponse(BaseModel):
+    """Full payload for the Plots → Activity overlap page.
+
+    `species_b` is None when the user has only picked one species; the
+    chart still renders one curve in that case. `overlap` is None
+    whenever we don't have two non-empty species to compare.
+    """
+
+    species_a: SpeciesActivity
+    species_b: SpeciesActivity | None
+    overlap: OverlapStat | None
+    sun_bands: SunBands | None
+    independence_interval_seconds: int
