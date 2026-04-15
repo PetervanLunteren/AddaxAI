@@ -2,7 +2,7 @@
 - [ ] 
 
 ## Priority 2
-- [ ] 
+- [ ] should we have the save settings button as a hover or a footer bar so that it is always visible? The page has quite a lot of settings and the save button is not very clear. what do you propose in terms of UX UI? 
 
 ## Priority 3
 - [ ] In the deployments page, there should be an "info" option that opens a model that shows the path, the number of files (img/vid), events, observations, average confidences, etc. Just some insights into the deployment for investigation purposes. 

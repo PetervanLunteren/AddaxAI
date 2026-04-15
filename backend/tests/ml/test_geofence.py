@@ -398,7 +398,7 @@ class TestGeofenceFixesMatchOfficialAPI:
                 seen_names.add(common_name)
                 label_to_name[line] = common_name
 
-        for i, (full_label, rule, country, state) in enumerate(cases):
+        for i, (full_label, _rule, country, state) in enumerate(cases):
             key = (country, state)
             if key not in cache:
                 cache[key] = get_allowed_labels(MODEL_DIR, country, state)
