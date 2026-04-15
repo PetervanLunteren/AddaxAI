@@ -5,7 +5,7 @@ Provides endpoints for creating, updating, and deleting detections
 (human-drawn annotations), crop thumbnails, and detection-level verification.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -188,7 +188,7 @@ def verify_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
 
     detection.verified = body.verified
-    detection.verified_at = datetime.utcnow() if body.verified else None
+    detection.verified_at_utc = datetime.now(UTC) if body.verified else None
     db.commit()
     db.refresh(detection)
     _recalculate_max_n(db, [detection_id])
@@ -201,12 +201,12 @@ def bulk_verify_detections(
     db: Session = Depends(get_db),
 ):
     """Bulk verify/unverify detections (max 500)."""
-    now = datetime.utcnow() if body.verified else None
+    now = datetime.now(UTC) if body.verified else None
     updated = (
         db.query(Detection)
         .filter(Detection.id.in_(body.detection_ids))
         .update(
-            {"verified": body.verified, "verified_at": now},
+            {"verified": body.verified, "verified_at_utc": now},
             synchronize_session="fetch",
         )
     )

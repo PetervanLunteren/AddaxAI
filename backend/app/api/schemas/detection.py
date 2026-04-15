@@ -106,8 +106,8 @@ class DetectionResponse(DetectionBase):
     file_id: str
     job_id: str | None
     verified: bool = False
-    verified_at: datetime | None = None
-    created_at: datetime
+    verified_at_utc: datetime | None = None
+    created_at_utc: datetime
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
 

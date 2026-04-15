@@ -138,7 +138,7 @@ def make_deployment(db: Session, *, site_id: str, **kw) -> Deployment:
     defaults = dict(
         id=str(uuid.uuid4()),
         site_id=site_id,
-        start_date=date(2024, 1, 1),
+        start_date_local=date(2024, 1, 1),
     )
     defaults.update(kw)
     obj = Deployment(**defaults)
@@ -151,7 +151,7 @@ def make_file(
     db: Session,
     *,
     deployment_id: str,
-    timestamp: datetime | None = None,
+    captured_at_local: datetime | None = None,
     verified: bool = False,
     **kw,
 ) -> File:
@@ -161,7 +161,7 @@ def make_file(
         file_path=f"/fake/{uuid.uuid4().hex}.jpg",
         file_type="image",
         file_format="jpg",
-        timestamp=timestamp or datetime(2024, 1, 1, 12, 0, 0),
+        captured_at_local=captured_at_local or datetime(2024, 1, 1, 12, 0, 0),
         verified=verified,
     )
     defaults.update(kw)
@@ -212,7 +212,7 @@ def make_event_with_files(
     db: Session,
     *,
     deployment_id: str,
-    start_time: datetime,
+    event_start_local: datetime,
     files_verified: list[bool] | None = None,
     event_id: str | None = None,
 ) -> Event:
@@ -229,8 +229,8 @@ def make_event_with_files(
     ev = Event(
         id=eid,
         deployment_id=deployment_id,
-        start_time=start_time,
-        end_time=start_time,
+        event_start_local=event_start_local,
+        event_end_local=event_start_local,
         file_count=len(files_verified),
     )
     db.add(ev)
@@ -240,7 +240,7 @@ def make_event_with_files(
         f = make_file(
             db,
             deployment_id=deployment_id,
-            timestamp=start_time,
+            captured_at_local=event_start_local,
             verified=verified,
         )
         db.execute(

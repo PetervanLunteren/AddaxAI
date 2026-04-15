@@ -18,6 +18,7 @@ import { detectionsApi } from "../../api/detections";
 import { similarityApi } from "../../api/similarity";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
+import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getDetectionDisplayName } from "../../lib/detection-utils";
 import {
   computePillLayout,
@@ -449,10 +450,8 @@ export function DetectionDetailModal({
                       )}
                     </div>
                     <div>
-                      {detection.timestamp &&
-                        new Date(detection.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{" "}
-                      {detection.timestamp &&
-                        new Date(detection.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                      {formatCameraDate(detection.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
+                      {formatCameraTime(detection.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}
                       {detection.site_name && ` · ${detection.site_name}`}
                     </div>
                     {detection.similarity != null && (

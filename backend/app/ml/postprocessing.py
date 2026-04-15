@@ -82,7 +82,7 @@ def build_sequence_information(
         db.query(File)
         .filter(File.deployment_id == deployment_id)
         .filter(File.file_type.in_(["image", "video"]))
-        .order_by(File.timestamp.asc())
+        .order_by(File.captured_at_local.asc())
         .all()
     )
 
@@ -91,10 +91,10 @@ def build_sequence_information(
 
     sequence_images: list[dict] = []
     current_seq_id = str(uuid.uuid4())
-    prev_timestamp = files[0].timestamp
+    prev_captured = files[0].captured_at_local
 
     for file_record in files:
-        gap = (file_record.timestamp - prev_timestamp).total_seconds()
+        gap = (file_record.captured_at_local - prev_captured).total_seconds()
         if gap > independence_interval:
             current_seq_id = str(uuid.uuid4())
 
@@ -112,10 +112,10 @@ def build_sequence_information(
             {
                 "file_name": rel_path,
                 "seq_id": current_seq_id,
-                "datetime": file_record.timestamp.isoformat(),
+                "datetime": file_record.captured_at_local.isoformat(),
             }
         )
-        prev_timestamp = file_record.timestamp
+        prev_captured = file_record.captured_at_local
 
     return sequence_images
 

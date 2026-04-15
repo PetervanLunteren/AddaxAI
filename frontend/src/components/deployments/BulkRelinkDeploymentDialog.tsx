@@ -204,10 +204,10 @@ export function BulkRelinkDeploymentDialog({
                           <div className="flex-1 min-w-0 space-y-0.5">
                             <div className="font-medium text-sm">
                               {siteName}
-                              {dep?.start_date && (
+                              {dep?.start_date_local && (
                                 <span className="text-muted-foreground font-normal">
                                   {" · "}
-                                  {dep.start_date}
+                                  {dep.start_date_local}
                                 </span>
                               )}
                             </div>
@@ -314,7 +314,7 @@ function ResultPanel({ results, deploymentsById, siteNames }: ResultPanelProps) 
                   <div key={r.deployment_id} className="space-y-0.5">
                     <div className="font-medium">
                       {siteName}
-                      {dep?.start_date && ` · ${dep.start_date}`}
+                      {dep?.start_date_local && ` · ${dep.start_date_local}`}
                     </div>
                     {r.mismatches.length > 0 && (
                       <div className="font-mono text-[10px] opacity-80">

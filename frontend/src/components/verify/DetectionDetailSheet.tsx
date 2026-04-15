@@ -21,6 +21,7 @@ import { Progress } from "../ui/progress";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { API_BASE_URL } from "../../lib/api-client";
+import { formatCameraDateTime } from "../../lib/datetime";
 import { getDetectionColor, getDetectionDisplayName } from "../../lib/detection-utils";
 import type { DetectionSummary } from "../../api/types";
 
@@ -228,10 +229,10 @@ export function DetectionDetailSheet({
                 <p>{detection.site_name}</p>
               </div>
             )}
-            {detection.timestamp && (
+            {detection.captured_at_local && (
               <div>
                 <span className="text-muted-foreground">Date & time</span>
-                <p>{new Date(detection.timestamp).toLocaleString()}</p>
+                <p>{formatCameraDateTime(detection.captured_at_local)}</p>
               </div>
             )}
             {detection.similarity != null && (

@@ -14,7 +14,7 @@ interface QueueEntry {
   classification_model_id: string | null;
   species_list: Record<string, any> | null;
   status: string;
-  created_at: string;
+  created_at_utc: string;
 }
 
 interface QueueEntryCardProps {
@@ -49,7 +49,7 @@ export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
           <div className="flex-1 min-w-0">
             <p className="font-medium text-sm text-gray-900 truncate">{folderName}</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              {new Date(entry.created_at).toLocaleDateString()}
+              {new Date(entry.created_at_utc).toLocaleDateString()}
             </p>
           </div>
           <div className="flex gap-1 shrink-0">

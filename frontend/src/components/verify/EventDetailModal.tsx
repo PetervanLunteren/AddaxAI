@@ -36,6 +36,7 @@ import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
+import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -1350,8 +1351,8 @@ export function EventDetailModal({
                     )}
                   </div>
                   <div>
-                    {new Date(currentFile.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{" "}
-                    {new Date(currentFile.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    {formatCameraDate(currentFile.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
+                    {formatCameraTime(currentFile.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}
                     {event?.site_name && ` · ${event.site_name}`}
                   </div>
                 </div>

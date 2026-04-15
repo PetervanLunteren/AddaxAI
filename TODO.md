@@ -5,7 +5,19 @@
 - [ ] 
 
 ## Priority 3
-- [ ] 
+- [ ] The activity pattern in the dashboard has a card with times and detection counts that show up woth hover. Can we make this card alpha 0.7? Then we still see whats below it (vaguely). 
+- [ ] In the deployments page, there should be an "info" option that opens a model that shows the path, the number of files (img/vid), events, observations, average confidences, etc. Just some insights into the deployment for investigation purposes. 
+
+
+before: img_0044.jpg 27 Jan 2013 16:34 · asd
+
+set to Mountain View
+
+after: img_0044.jpg 27 Jan 2013 16:34 · asd
+
+"event_start_local": "2013-01-27T16:34:24+03:00",
+
+also tested with Tokyo and Sao Poulo, all good!
 
 ## New features
 - [ ] TIMELAPSE STANDALONE APP
@@ -17,6 +29,16 @@
 - [ ] EXPORT OPTIONS - check AddaxAI Connect and copy from there. 
 - [ ] TIMEZONE SETTING - make a timezone setting in the settings page, check how Connect does it. What should be the default? UTC? I dont know. Perhaps it should be a required setting when creating a project, what do you think? That determines the suncalc in the Activity patterns. When we have that, we can make a plot with activity patterns and sun hour overlays. 
 - [ ] make caption or title of setting timezone more explicit. "Whatever the cameras were set to."
+
+
+
+
+
+  - json_pipeline.load_json_to_database now pre-flights every file's capture timestamp   
+  before touching the DB. If any image has no extractable EXIF DateTimeOriginal (or      
+  exiftool date for videos), it raises MissingTimestampError with the file list — no     
+  silent mtime/utcnow fallback. Rollback is free because nothing has been written yet. 
+  -> But MD extracts the datetime, right? It puts it in the JSON. Dont we use that for our DB? 
 
 Based on your understanding of the project, what do you propose as the  
   optimum solution in regarding the DB sotrage of timestamps as read from the data? Local time as rtead from the data stored as is, or stored as UTC and then convertedf back for UI purposes? I do not like the idea of having two different conventions. I also have the 

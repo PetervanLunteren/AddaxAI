@@ -72,7 +72,7 @@ def test_build_sequence_single_file(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0))
     result = build_sequence_information(d.id, 1800, db)
     assert len(result) == 1
     assert "seq_id" in result[0]
@@ -83,8 +83,8 @@ def test_build_sequence_groups_within_interval(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 0, 0))
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 10, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 10, 0))
     result = build_sequence_information(d.id, 1800, db)
     assert len(result) == 2
     # Both should have same seq_id (10 min gap < 30 min interval)
@@ -95,8 +95,8 @@ def test_build_sequence_splits_on_gap(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 0, 0))
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 13, 0, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 13, 0, 0))
     result = build_sequence_information(d.id, 1800, db)
     assert len(result) == 2
     # 60 min gap > 30 min interval → different seq_id
@@ -122,7 +122,7 @@ def test_smoothing_strength_passed_to_subprocess(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 0, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
 
     # Write a minimal results JSON
     results = {
@@ -246,7 +246,7 @@ def test_smoothing_failure_returns_rollup_results(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, timestamp=datetime(2024, 1, 1, 12, 0, 0))
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
 
     results = {
         "images": [

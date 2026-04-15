@@ -17,7 +17,7 @@ interface QueueEntry {
   classification_model_id: string | null;
   species_list: Record<string, any> | null;
   status: string;
-  created_at: string;
+  created_at_utc: string;
 }
 
 interface QueueSectionProps {

@@ -181,7 +181,7 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
 
             {/* Created */}
             <dt className="text-gray-500 font-medium">Created:</dt>
-            <dd className="text-gray-900">{new Date(entry.created_at).toLocaleString()}</dd>
+            <dd className="text-gray-900">{new Date(entry.created_at_utc).toLocaleString()}</dd>
 
             {/* Project settings section */}
             {project && (

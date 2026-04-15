@@ -1,17 +1,18 @@
 """
 Deployment model - camera deployment periods at sites.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit relationships
-- Clear constraints
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `start_date_local` / `end_date_local` are calendar dates in the
+  project's local camera timezone, derived from File.captured_at_local.
+- `created_at_utc` / `last_validated_at_utc` are tz-aware UTC audit
+  timestamps.
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -50,13 +51,14 @@ class Deployment(Base):
     folder_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="valid"
     )  # "valid", "needs_relink"
-    last_validated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
-    )  # When folder was last checked
+    last_validated_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # When folder was last checked (UTC)
 
-    # Deployment metadata
-    start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Deployment metadata. Dates are in the project's local camera timezone,
+    # derived from File.captured_at_local after analysis.
+    start_date_local: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date_local: Mapped[date | None] = mapped_column(Date, nullable=True)
     camera_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     camera_serial: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -69,8 +71,8 @@ class Deployment(Base):
         Integer, nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships
@@ -83,4 +85,7 @@ class Deployment(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Deployment(id={self.id}, site_id={self.site_id}, start_date={self.start_date})>"
+        return (
+            f"<Deployment(id={self.id}, site_id={self.site_id}, "
+            f"start_date_local={self.start_date_local})>"
+        )

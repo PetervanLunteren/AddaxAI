@@ -1,14 +1,14 @@
 """
 Event model - time-clustered groups of files.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Clear relationships
-- Explicit indexes
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `event_start_local` / `event_end_local` are naive wall-clock times in
+  the project's local camera timezone, derived from File.captured_at_local.
+- `created_at_utc` is a tz-aware UTC audit timestamp.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Table
@@ -50,11 +50,11 @@ class Event(Base):
     deployment_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("deployments.id", ondelete="CASCADE"), nullable=False
     )
-    start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    event_start_local: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    event_end_local: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships
@@ -71,8 +71,11 @@ class Event(Base):
     # Indexes
     __table_args__ = (
         Index("idx_events_deployment", "deployment_id"),
-        Index("idx_events_time", "start_time", "end_time"),
+        Index("idx_events_local", "event_start_local", "event_end_local"),
     )
 
     def __repr__(self) -> str:
-        return f"<Event(id={self.id}, start_time={self.start_time}, file_count={self.file_count})>"
+        return (
+            f"<Event(id={self.id}, event_start_local={self.event_start_local}, "
+            f"file_count={self.file_count})>"
+        )

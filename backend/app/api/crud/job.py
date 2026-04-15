@@ -7,7 +7,7 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ def get_jobs(
 
     Returns empty list if no jobs exist.
     """
-    query = select(Job).order_by(Job.created_at.desc())
+    query = select(Job).order_by(Job.created_at_utc.desc())
 
     if job_type:
         query = query.where(Job.type == job_type)
@@ -61,9 +61,9 @@ def create_job(db: Session, job: JobCreate) -> Job:
         payload=job.payload,
         result=None,
         error=None,
-        created_at=datetime.utcnow(),
-        started_at=None,
-        completed_at=None,
+        created_at_utc=datetime.now(UTC),
+        started_at_utc=None,
+        completed_at_utc=None,
     )
     db.add(db_job)
     db.commit()
@@ -89,10 +89,10 @@ def update_job(db: Session, job_id: str, job_update: JobUpdate) -> Job | None:
 
     # Update timestamps based on status changes
     if "status" in update_data:
-        if update_data["status"] == "running" and db_job.started_at is None:
-            db_job.started_at = datetime.utcnow()
+        if update_data["status"] == "running" and db_job.started_at_utc is None:
+            db_job.started_at_utc = datetime.now(UTC)
         elif update_data["status"] in ("completed", "failed", "cancelled"):
-            db_job.completed_at = datetime.utcnow()
+            db_job.completed_at_utc = datetime.now(UTC)
 
     db.commit()
     db.refresh(db_job)
@@ -155,7 +155,7 @@ def get_jobs_by_project(db: Session, project_id: str, job_type: str | None = Non
     Returns:
         List of jobs matching the project_id in payload
     """
-    query = select(Job).order_by(Job.created_at.desc())
+    query = select(Job).order_by(Job.created_at_utc.desc())
 
     if job_type:
         query = query.where(Job.type == job_type)

@@ -25,17 +25,26 @@ from app.services.similarity_service import (
 from app.services.similarity_service import (
     sort_detections as sort_detections_service,
 )
+from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/projects", tags=["similarity"])
 
 
+def _set_project_tz(db: Session, project_id: str) -> None:
+    """Activate the project's timezone in the request context."""
+    tz = db.query(Project.timezone).filter(Project.id == project_id).scalar()
+    if tz:
+        set_active_project_timezone(tz)
+
+
 @router.post("/{project_id}/similarity/sort", response_model=SortResponse)
-def sort_detections(
+async def sort_detections(
     project_id: str,
     body: SortRequest,
     db: Session = Depends(get_db),
 ):
     """Sort detections by visual similarity using greedy nearest-neighbor chain."""
+    _set_project_tz(db, project_id)
     try:
         return sort_detections_service(project_id, body, db)
     except FileNotFoundError as e:
@@ -47,12 +56,13 @@ def sort_detections(
 
 
 @router.post("/{project_id}/similarity/search", response_model=SearchResponse)
-def search_similar(
+async def search_similar(
     project_id: str,
     body: SearchRequest,
     db: Session = Depends(get_db),
 ):
     """Find detections visually similar to an anchor detection."""
+    _set_project_tz(db, project_id)
     try:
         return search_similar_service(project_id, body, db)
     except FileNotFoundError as e:

@@ -66,7 +66,7 @@ def test_get_event_with_files(client, db):
     ev = make_event_with_files(
         db,
         deployment_id=d.id,
-        start_time=datetime(2024, 1, 1, 12, 0),
+        event_start_local=datetime(2024, 1, 1, 12, 0),
     )
     resp = client.get(f"/api/events/{ev.id}")
     assert resp.status_code == 200
@@ -82,7 +82,7 @@ def test_get_adjacent_events(client, db):
     ev = make_event_with_files(
         db,
         deployment_id=d.id,
-        start_time=datetime(2024, 1, 1, 12, 0),
+        event_start_local=datetime(2024, 1, 1, 12, 0),
     )
     resp = client.get(
         f"/api/events/{ev.id}/adjacent?project_id={p.id}"

@@ -36,7 +36,7 @@ def _make_project_with_detections(db, label_list, model_id=MODEL_ID):
     p = make_project(db, classification_model_id=model_id)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
     detections = []
     for lbl in label_list:
@@ -205,7 +205,7 @@ def test_link_detections_null_label_linked_by_category(db):
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(
-        db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0)
+        db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0)
     )
 
     det_with = make_detection(
@@ -232,7 +232,7 @@ def test_link_detections_by_category(db):
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(
-        db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0)
+        db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0)
     )
 
     det_animal = make_detection(
@@ -257,7 +257,7 @@ def test_link_detections_no_model(db):
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(
-        db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0)
+        db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0)
     )
 
     det = make_detection(db, file_id=f.id, label="person")

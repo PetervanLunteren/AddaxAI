@@ -62,8 +62,8 @@ export function HexPopup({ hexCell }: HexPopupProps) {
               >
                 <div className="font-medium text-gray-900">{dep.site_name}</div>
                 <div className="text-gray-600">
-                  {dep.start_date}
-                  {dep.end_date ? ` — ${dep.end_date}` : " — active"}
+                  {dep.start_date_local}
+                  {dep.end_date_local ? ` — ${dep.end_date_local}` : " — active"}
                 </div>
                 <div className="flex justify-between text-gray-700">
                   <span>Trap nights: {dep.trap_nights}</span>

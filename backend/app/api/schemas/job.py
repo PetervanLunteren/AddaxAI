@@ -81,9 +81,9 @@ class JobResponse(BaseModel):
     payload: dict | None
     result: dict | None
     error: str | None
-    created_at: datetime
-    started_at: datetime | None
-    completed_at: datetime | None
+    created_at_utc: datetime
+    started_at_utc: datetime | None
+    completed_at_utc: datetime | None
 
     class Config:
         from_attributes = True

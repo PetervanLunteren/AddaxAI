@@ -1,14 +1,12 @@
 """
 Deployment Queue model - queue entries for batch deployment processing.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit relationships
-- Clear constraints
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` / `processed_at_utc` are tz-aware UTC audit timestamps.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
@@ -67,8 +65,12 @@ class DeploymentQueue(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )  # pending, processing, completed, failed
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    processed_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Result - created deployment ID after processing

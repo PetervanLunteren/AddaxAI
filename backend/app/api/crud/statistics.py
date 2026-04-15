@@ -49,9 +49,9 @@ def _apply_filters(
     if site_ids:
         query = query.where(Site.id.in_(site_ids))
     if date_from:
-        query = query.where(File.timestamp >= date_from)
+        query = query.where(File.captured_at_local >= date_from)
     if date_to:
-        query = query.where(File.timestamp <= date_to)
+        query = query.where(File.captured_at_local <= date_to)
 
     return query
 
@@ -172,14 +172,14 @@ def get_per_deployment_trap_nights(
     Returns a dict mapping deployment_id to its trap nights count (raw,
     no minimum). Used by both the dashboard total and the map endpoint.
     """
-    min_file_date = func.min(func.date(File.timestamp)).label("min_file_date")
-    max_file_date = func.max(func.date(File.timestamp)).label("max_file_date")
+    min_file_date = func.min(func.date(File.captured_at_local)).label("min_file_date")
+    max_file_date = func.max(func.date(File.captured_at_local)).label("max_file_date")
 
     query = (
         select(
             Deployment.id,
-            Deployment.start_date,
-            Deployment.end_date,
+            Deployment.start_date_local,
+            Deployment.end_date_local,
             min_file_date,
             max_file_date,
         )
@@ -187,7 +187,7 @@ def get_per_deployment_trap_nights(
         .join(Site, Deployment.site_id == Site.id)
         .outerjoin(File, File.deployment_id == Deployment.id)
         .where(Site.project_id == project_id)
-        .group_by(Deployment.id, Deployment.start_date, Deployment.end_date)
+        .group_by(Deployment.id, Deployment.start_date_local, Deployment.end_date_local)
     )
 
     if site_ids:
@@ -200,7 +200,7 @@ def get_per_deployment_trap_nights(
 
     nights_by_deployment: dict[str, int] = {}
     for row in rows:
-        dep_start = row.start_date
+        dep_start = row.start_date_local
         if not dep_start:
             nights_by_deployment[row.id] = 0
             continue
@@ -219,7 +219,7 @@ def get_per_deployment_trap_nights(
             max_fd = max_fd.date()
 
         effective_start = min(dep_start, min_fd) if min_fd else dep_start
-        dep_end = row.end_date
+        dep_end = row.end_date_local
         effective_end = dep_end or max_fd or effective_start
 
         if clip_start:
@@ -267,8 +267,8 @@ def get_dashboard_overview(
     file_stats_query = (
         select(
             func.count(distinct(File.id)).label("total_files"),
-            func.min(File.timestamp).label("first_file_date"),
-            func.max(File.timestamp).label("last_file_date"),
+            func.min(File.captured_at_local).label("first_file_date"),
+            func.max(File.captured_at_local).label("last_file_date"),
         )
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
@@ -529,7 +529,7 @@ def get_activity_pattern(
     taxonomic_rank: str | None = None,
 ) -> ActivityPatternResponse:
     """Hourly observation counts (MaxN sum, 0-23) for activity-pattern charts."""
-    hour_expr = func.cast(func.strftime("%H", Event.start_time), Integer)
+    hour_expr = func.cast(func.strftime("%H", Event.event_start_local), Integer)
 
     query = (
         select(
@@ -642,7 +642,7 @@ def get_detection_trend(
     taxonomic_rank: str | None = None,
 ) -> list[DetectionTrendPoint]:
     """Daily observation counts (MaxN sum) for trend charts."""
-    date_expr = func.strftime("%Y-%m-%d", Event.start_time)
+    date_expr = func.strftime("%Y-%m-%d", Event.event_start_local)
 
     query = (
         select(
@@ -864,10 +864,10 @@ def get_observation_rate_map(
     # we want to render.
     event_on: list = [Event.deployment_id == Deployment.id]
     if clip_start:
-        event_on.append(Event.start_time >= clip_start)
+        event_on.append(Event.event_start_local >= clip_start)
     if clip_end:
         end_of_day = datetime.combine(clip_end, datetime.max.time())
-        event_on.append(Event.start_time <= end_of_day)
+        event_on.append(Event.event_start_local <= end_of_day)
 
     obs_on: list = [EventObservation.event_id == Event.id]
     if label_taxonomy_ids:
@@ -877,8 +877,8 @@ def get_observation_rate_map(
         select(
             Deployment.id.label("deployment_id"),
             Deployment.site_id.label("site_id"),
-            Deployment.start_date.label("start_date"),
-            Deployment.end_date.label("end_date"),
+            Deployment.start_date_local.label("start_date_local"),
+            Deployment.end_date_local.label("end_date_local"),
             Site.name.label("site_name"),
             Site.latitude.label("latitude"),
             Site.longitude.label("longitude"),
@@ -892,8 +892,8 @@ def get_observation_rate_map(
         .group_by(
             Deployment.id,
             Deployment.site_id,
-            Deployment.start_date,
-            Deployment.end_date,
+            Deployment.start_date_local,
+            Deployment.end_date_local,
             Site.name,
             Site.latitude,
             Site.longitude,
@@ -931,10 +931,10 @@ def get_observation_rate_map(
         )
 
         if clip_start:
-            breakdown_query = breakdown_query.where(Event.start_time >= clip_start)
+            breakdown_query = breakdown_query.where(Event.event_start_local >= clip_start)
         if clip_end:
             end_of_day = datetime.combine(clip_end, datetime.max.time())
-            breakdown_query = breakdown_query.where(Event.start_time <= end_of_day)
+            breakdown_query = breakdown_query.where(Event.event_start_local <= end_of_day)
         if label_taxonomy_ids:
             breakdown_query = breakdown_query.where(
                 EventObservation.label_taxonomy_id.in_(label_taxonomy_ids)
@@ -969,8 +969,8 @@ def get_observation_rate_map(
                 site_name=row.site_name,
                 latitude=row.latitude,
                 longitude=row.longitude,
-                start_date=row.start_date,
-                end_date=row.end_date,
+                start_date_local=row.start_date_local,
+                end_date_local=row.end_date_local,
                 trap_nights=nights,
                 observation_count=obs,
                 rate_per_100=rate_per_100,

@@ -9,7 +9,7 @@ Mocks: subprocess.run, _get_ml_python_path, _find_classification_model_dir
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -85,7 +85,7 @@ def test_update_db_from_smoothed_results(deployment_scaffold):
     files = (
         db.query(File)
         .filter(File.deployment_id == s["deployment"].id)
-        .order_by(File.timestamp.asc())
+        .order_by(File.captured_at_local.asc())
         .all()
     )
 
@@ -128,7 +128,7 @@ def test_update_db_from_smoothed_results(deployment_scaffold):
     assert counts["errors"] == 0
 
     # Verify DB was updated
-    updated_dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    updated_dets = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
     assert updated_dets[0].label == "zebra"
     assert updated_dets[1].label == "zebra"
     assert updated_dets[2].label == "lion"
@@ -325,20 +325,20 @@ def test_verified_detections_skipped_during_reprocessing(deployment_scaffold):
     _load_basic_images(s)
 
     # Verify initial state: all lion
-    dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    dets = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
     assert len(dets) == 3
     assert all(d.label == "lion" for d in dets)
 
     # Mark first detection as verified
     dets[0].verified = True
-    dets[0].verified_at = datetime.utcnow()
+    dets[0].verified_at_utc = datetime.now(UTC)
     db.flush()
 
     # Build smoothed results changing all 3 to zebra
     files = (
         db.query(File)
         .filter(File.deployment_id == s["deployment"].id)
-        .order_by(File.timestamp.asc())
+        .order_by(File.captured_at_local.asc())
         .all()
     )
     smoothed_images = []
@@ -368,7 +368,7 @@ def test_verified_detections_skipped_during_reprocessing(deployment_scaffold):
     assert counts["updated"] == 2
 
     # Verified detection keeps original label; others updated
-    updated_dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    updated_dets = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
     assert updated_dets[0].label == "lion"
     assert updated_dets[1].label == "zebra"
     assert updated_dets[2].label == "zebra"
@@ -402,12 +402,12 @@ def test_verified_detections_skipped_during_raw_reload(deployment_scaffold):
     )
 
     # Verify all are now zebra
-    dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    dets = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
     assert all(d.label == "zebra" for d in dets)
 
     # Mark first detection as verified (while labeled "zebra")
     dets[0].verified = True
-    dets[0].verified_at = datetime.utcnow()
+    dets[0].verified_at_utc = datetime.now(UTC)
     db.flush()
 
     # Reload raw → would revert to lion, but verified detection should be protected
@@ -420,7 +420,7 @@ def test_verified_detections_skipped_during_raw_reload(deployment_scaffold):
 
     assert counts["skipped_verified"] == 1
 
-    reloaded_dets = db.query(Detection).join(File).order_by(File.timestamp.asc()).all()
+    reloaded_dets = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
     assert reloaded_dets[0].label == "zebra"  # protected
     assert reloaded_dets[1].label == "lion"   # reverted
     assert reloaded_dets[2].label == "lion"   # reverted
@@ -448,7 +448,7 @@ def test_build_sequence_groups_by_interval(deployment_scaffold):
             deployment_id=s["deployment"].id,
             file_path=str(p),
             file_type="image",
-            timestamp=ts,
+            captured_at_local=ts,
         )
     db.flush()
 
@@ -499,7 +499,7 @@ def test_final_sweep_preserves_verified(deployment_scaffold):
     # Mark first detection as verified
     det = db.query(Detection).first()
     det.verified = True
-    det.verified_at = datetime.utcnow()
+    det.verified_at_utc = datetime.now(UTC)
     db.flush()
 
     with open(json_path) as f:

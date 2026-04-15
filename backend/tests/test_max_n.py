@@ -27,7 +27,7 @@ from tests.conftest import (
 )
 
 
-def _make_event_with_detections(db, deployment_id, start_time, file_specs):
+def _make_event_with_detections(db, deployment_id, event_start_local, file_specs):
     """
     Create an event with files and detections.
 
@@ -40,8 +40,8 @@ def _make_event_with_detections(db, deployment_id, start_time, file_specs):
     ev = Event(
         id=eid,
         deployment_id=deployment_id,
-        start_time=start_time,
-        end_time=start_time,
+        event_start_local=event_start_local,
+        event_end_local=event_start_local,
         file_count=len(file_specs),
     )
     db.add(ev)
@@ -53,7 +53,7 @@ def _make_event_with_detections(db, deployment_id, start_time, file_specs):
         f = make_file(
             db,
             deployment_id=deployment_id,
-            timestamp=start_time,
+            captured_at_local=event_start_local,
         )
         db.execute(
             insert(event_files).values(
@@ -173,7 +173,7 @@ def test_blank_event_no_observations(db):
     ev = make_event_with_files(
         db,
         deployment_id=dep.id,
-        start_time=datetime(2024, 1, 1, 12),
+        event_start_local=datetime(2024, 1, 1, 12),
     )
 
     obs = calculate_max_n_for_event(db, ev.id, 0.5)

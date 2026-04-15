@@ -52,27 +52,27 @@ def _build_fixture(db):
     dep_a = make_deployment(
         db,
         site_id=site_a.id,
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 1, 11),  # 10 nights
+        start_date_local=date(2024, 1, 1),
+        end_date_local=date(2024, 1, 11),  # 10 nights
     )
     dep_b = make_deployment(
         db,
         site_id=site_b.id,
-        start_date=date(2024, 2, 1),
-        end_date=date(2024, 2, 6),  # 5 nights
+        start_date_local=date(2024, 2, 1),
+        end_date_local=date(2024, 2, 6),  # 5 nights
     )
 
     # Two events at deployment A
     ev_a1 = make_event_with_files(
-        db, deployment_id=dep_a.id, start_time=datetime(2024, 1, 2, 8, 0)
+        db, deployment_id=dep_a.id, event_start_local=datetime(2024, 1, 2, 8, 0)
     )
     ev_a2 = make_event_with_files(
-        db, deployment_id=dep_a.id, start_time=datetime(2024, 1, 5, 14, 0)
+        db, deployment_id=dep_a.id, event_start_local=datetime(2024, 1, 5, 14, 0)
     )
 
     # One event at deployment B
     ev_b1 = make_event_with_files(
-        db, deployment_id=dep_b.id, start_time=datetime(2024, 2, 3, 9, 0)
+        db, deployment_id=dep_b.id, event_start_local=datetime(2024, 2, 3, 9, 0)
     )
 
     # MaxN observations
@@ -191,8 +191,8 @@ def test_observation_rate_map_endpoint(client, db):
         "site_name",
         "latitude",
         "longitude",
-        "start_date",
-        "end_date",
+        "start_date_local",
+        "end_date_local",
         "trap_nights",
         "observation_count",
         "rate_per_100",

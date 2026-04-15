@@ -21,8 +21,10 @@ class DeploymentBase(BaseModel):
     folder_path: str | None = Field(
         None, description="Absolute path to deployment folder"
     )
-    start_date: date = Field(..., description="Deployment start date")
-    end_date: date | None = Field(None, description="Optional deployment end date")
+    start_date_local: date = Field(..., description="Deployment start date (camera local)")
+    end_date_local: date | None = Field(
+        None, description="Optional deployment end date (camera local)"
+    )
     camera_model: str | None = Field(None, max_length=255, description="Camera model")
     camera_serial: str | None = Field(
         None, max_length=255, description="Camera serial number"
@@ -60,8 +62,8 @@ class DeploymentUpdate(BaseModel):
 
     site_id: str | None = None
     folder_path: str | None = None
-    start_date: date | None = None
-    end_date: date | None = None
+    start_date_local: date | None = None
+    end_date_local: date | None = None
     camera_model: str | None = None
     camera_serial: str | None = None
     notes: str | None = Field(None, max_length=1000)
@@ -81,10 +83,10 @@ class DeploymentResponse(DeploymentBase):
     folder_status: FolderStatus = Field(
         "valid", description="Status of the folder path"
     )
-    last_validated_at: datetime | None = Field(
-        None, description="When folder was last validated"
+    last_validated_at_utc: datetime | None = Field(
+        None, description="When folder was last validated (UTC)"
     )
-    created_at: datetime
+    created_at_utc: datetime
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
 

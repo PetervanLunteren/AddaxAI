@@ -24,8 +24,34 @@ from app.api.schemas.event import (
 from app.api.schemas.file import FileWithDetections
 from app.db.base import get_db
 from app.models import Project
+from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/events", tags=["events"])
+
+
+def _set_project_tz(db: Session, project_id: str) -> None:
+    """
+    Activate the project's timezone in the request context so observational
+    datetime fields get serialized with the correct local offset. See
+    DEVELOPERS.md "Datetime conventions".
+    """
+    tz = (
+        db.query(Project.timezone)
+        .filter(Project.id == project_id)
+        .scalar()
+    )
+    if tz:
+        set_active_project_timezone(tz)
+
+
+def _set_project_tz_for_event(db: Session, event) -> None:
+    """Activate project timezone from a loaded Event's deployment chain."""
+    if (
+        event.deployment
+        and event.deployment.site
+        and event.deployment.site.project
+    ):
+        set_active_project_timezone(event.deployment.site.project.timezone)
 
 
 def _parse_filter_params(
@@ -88,11 +114,19 @@ def generate_events(
 
 
 @router.get("/filter-options", response_model=EventFilterOptions)
-def get_filter_options(
+async def get_filter_options(
     project_id: str = Query(..., description="Project ID"),
     db: Session = Depends(get_db),
 ):
-    """Get available filter options (distinct labels, date range) for a project."""
+    """Get available filter options (distinct labels, date range) for a project.
+
+    `async def` so the active project timezone ContextVar set below is
+    visible to the response field serializer (see DEVELOPERS.md
+    "Datetime conventions"). Sync endpoints run in a threadpool and
+    their ContextVar changes don't propagate to FastAPI's serialization
+    stage, which runs in the event loop task.
+    """
+    _set_project_tz(db, project_id)
     return event_crud.get_filter_options(db, project_id)
 
 
@@ -115,7 +149,7 @@ def get_label_tree(
 
 
 @router.get("", response_model=list[EventSummary])
-def list_events(
+async def list_events(
     project_id: str = Query(..., description="Project ID"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
@@ -128,7 +162,11 @@ def list_events(
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    """List event summaries for a project with optional filters."""
+    """List event summaries for a project with optional filters.
+
+    See note on `get_filter_options` for why this is `async def`.
+    """
+    _set_project_tz(db, project_id)
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
@@ -192,7 +230,7 @@ def get_verification_stats(
 
 
 @router.get("/{event_id}", response_model=EventWithFiles)
-def get_event(
+async def get_event(
     event_id: str,
     db: Session = Depends(get_db),
 ):
@@ -201,8 +239,13 @@ def get_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Sort files by timestamp (sequence order)
-    sorted_files = sorted(event.files, key=lambda f: f.timestamp)
+    # Set the active project timezone for datetime serialization. The
+    # serializer in file.py / event.py uses this to emit local-with-offset
+    # ISO strings for observational datetimes.
+    _set_project_tz_for_event(db, event)
+
+    # Sort files by captured_at_local (sequence order at the camera)
+    sorted_files = sorted(event.files, key=lambda f: f.captured_at_local)
 
     site_name = None
     if event.deployment and event.deployment.site:
@@ -215,11 +258,11 @@ def get_event(
     return EventWithFiles(
         id=event.id,
         deployment_id=event.deployment_id,
-        start_time=event.start_time,
-        end_time=event.end_time,
+        event_start_local=event.event_start_local,
+        event_end_local=event.event_end_local,
         file_count=event.file_count,
         max_n_frames=max_n_frames,
-        created_at=event.created_at,
+        created_at_utc=event.created_at_utc,
         site_name=site_name,
         files=[FileWithDetections.model_validate(f, from_attributes=True) for f in sorted_files],
     )

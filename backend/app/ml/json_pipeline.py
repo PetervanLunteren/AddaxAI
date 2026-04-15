@@ -27,6 +27,56 @@ from app.utils.video_utils import _filename_to_frame_number
 logger = get_logger(__name__)
 
 
+class MissingTimestampError(RuntimeError):
+    """
+    Raised when one or more files have no extractable capture timestamp.
+
+    Observational datetimes are never guessed (no mtime fallback, no
+    utcnow substitution). See DEVELOPERS.md "Datetime conventions".
+    The caller (detection_worker) surfaces the file list to the user via
+    the job's error field so they can fix the source data and retry.
+    """
+
+    def __init__(self, missing_paths: list[str]) -> None:
+        self.missing_paths = missing_paths
+        sample = ", ".join(missing_paths[:5])
+        more = f" (+{len(missing_paths) - 5} more)" if len(missing_paths) > 5 else ""
+        super().__init__(
+            f"No extractable capture timestamp for {len(missing_paths)} file(s): "
+            f"{sample}{more}"
+        )
+
+
+def _resolve_capture_timestamp(
+    absolute_path: Path,
+    *,
+    is_video: bool,
+    exif_metadata: dict | None,
+    video_dates: dict[Path, datetime],
+) -> datetime | None:
+    """
+    Extract the camera's wall-clock capture time for a single file, or
+    return None if nothing is available.
+
+    Videos go through exiftool (`video_dates` pre-populated), images
+    through MegaDetector's embedded EXIF `DateTimeOriginal`. We never
+    substitute a fallback — the caller raises MissingTimestampError for
+    any file that returns None here.
+    """
+    if is_video:
+        ts = video_dates.get(absolute_path)
+        if ts is not None:
+            return ts
+    if exif_metadata and "DateTimeOriginal" in exif_metadata:
+        try:
+            return datetime.strptime(
+                exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
+            )
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def load_json_to_database(
     json_path: Path,
     deployment_id: str,
@@ -104,6 +154,28 @@ def load_json_to_database(
                 video_paths.append(abs_path)
         video_dates = extract_video_dates(video_paths) if video_paths else {}
 
+        # Pre-flight: check every image has an extractable capture timestamp
+        # before we touch the DB. Raising here prevents partial loads when
+        # some files have valid EXIF and others don't — all-or-nothing.
+        # See DEVELOPERS.md "Datetime conventions".
+        missing_timestamps: list[str] = []
+        resolved_timestamps: dict[str, datetime] = {}
+        for img in results.get("images", []):
+            absolute_path = (deployment_folder / img["file"]).resolve()
+            fmt = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
+            ts = _resolve_capture_timestamp(
+                absolute_path,
+                is_video=fmt in video_extensions,
+                exif_metadata=img.get("exif_metadata"),
+                video_dates=video_dates,
+            )
+            if ts is None:
+                missing_timestamps.append(str(absolute_path))
+            else:
+                resolved_timestamps[str(absolute_path)] = ts
+        if missing_timestamps:
+            raise MissingTimestampError(missing_timestamps)
+
         # Group detections by file
         defaultdict(list)
 
@@ -144,31 +216,15 @@ def load_json_to_database(
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
-                # Extract timestamp: exiftool for videos, EXIF for images, mtime fallback
+                # Timestamp already resolved in the pre-flight pass.
+                captured_at_local = resolved_timestamps[str(absolute_path)]
                 exif_metadata = img.get("exif_metadata")
-                timestamp = None
-                if file_type == "video":
-                    timestamp = video_dates.get(absolute_path)
-                if timestamp is None:
-                    if exif_metadata and "DateTimeOriginal" in exif_metadata:
-                        try:
-                            timestamp = datetime.strptime(
-                                exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
-                            )
-                        except (ValueError, TypeError):
-                            pass
-                if timestamp is None:
-                    timestamp = (
-                        datetime.fromtimestamp(absolute_path.stat().st_mtime)
-                        if absolute_path.exists()
-                        else datetime.utcnow()
-                    )
 
                 # Apply user-specified datetime offset (from the "Adjust
                 # dates" modal). This corrects camera firmware clock errors
                 # like factory resets to 1970 or AM/PM mistakes.
-                if datetime_offset_seconds and timestamp:
-                    timestamp += timedelta(seconds=datetime_offset_seconds)
+                if datetime_offset_seconds:
+                    captured_at_local += timedelta(seconds=datetime_offset_seconds)
 
                 # Best frame fields (video only)
                 best_frame_number = img.get("best_frame_number")
@@ -193,7 +249,7 @@ def load_json_to_database(
                     file_type=file_type,
                     file_format=file_format,
                     size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
-                    timestamp=timestamp,
+                    captured_at_local=captured_at_local,
                     width_px=img.get("width"),
                     height_px=img.get("height"),
                     exif_data=exif_metadata,
@@ -214,7 +270,7 @@ def load_json_to_database(
                 frames_subdir = video_frames_dir / relative_video_path
 
                 if frames_subdir.exists():
-                    video_timestamp = file_record.timestamp
+                    video_captured_at_local = file_record.captured_at_local
                     native_frame_rate = img.get("frame_rate") or 30.0
 
                     # Find all extracted frame JPEGs
@@ -238,7 +294,9 @@ def load_json_to_database(
 
                         # Compute timestamp offset from video start
                         frame_offset_seconds = frame_num / native_frame_rate
-                        frame_timestamp = video_timestamp + timedelta(seconds=frame_offset_seconds)
+                        frame_captured_at_local = (
+                            video_captured_at_local + timedelta(seconds=frame_offset_seconds)
+                        )
 
                         frame_file = File(
                             id=str(uuid.uuid4()),
@@ -247,7 +305,7 @@ def load_json_to_database(
                             file_type="frame",
                             file_format="jpg",
                             size_bytes=frame_jpg.stat().st_size if frame_jpg.exists() else None,
-                            timestamp=frame_timestamp,
+                            captured_at_local=frame_captured_at_local,
                             width_px=frame_width,
                             height_px=frame_height,
                             frame_rate=native_frame_rate,
@@ -391,19 +449,19 @@ def load_json_to_database(
         # so the metadata table shows the real field-deployment window
         # rather than the date the deployment was created.
         min_ts, max_ts = db.execute(
-            select(func.min(File.timestamp), func.max(File.timestamp))
+            select(func.min(File.captured_at_local), func.max(File.captured_at_local))
             .where(File.deployment_id == deployment_id)
         ).one()
         if min_ts is not None or max_ts is not None:
             deployment = db.get(Deployment, deployment_id)
             if deployment is not None:
                 if min_ts is not None:
-                    deployment.start_date = min_ts.date()
-                deployment.end_date = max_ts.date() if max_ts is not None else None
+                    deployment.start_date_local = min_ts.date()
+                deployment.end_date_local = max_ts.date() if max_ts is not None else None
                 db.commit()
                 logger.info(
                     f"Set deployment {deployment_id} dates from file timestamps: "
-                    f"{deployment.start_date} to {deployment.end_date}"
+                    f"{deployment.start_date_local} to {deployment.end_date_local}"
                 )
 
         logger.info(
@@ -421,6 +479,11 @@ def load_json_to_database(
             classified_detections=classified_count,
         )
 
+    except MissingTimestampError:
+        # Propagate as-is so the worker can surface the file list
+        # directly; don't bury it inside a generic RuntimeError.
+        logger.error("Phase 6 aborted: files missing capture timestamps")
+        raise
     except Exception as e:
         logger.error(f"Failed to load JSON to database: {e}", exc_info=True)
         raise RuntimeError(f"Database load failed: {e}") from e

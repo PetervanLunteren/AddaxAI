@@ -1,14 +1,13 @@
 """
 Job model - background task tracking.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit status tracking
-- Crash early if status is invalid
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` / `started_at_utc` / `completed_at_utc` are tz-aware
+  UTC audit timestamps.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import JSON, DateTime, Index, Integer, String, Text
@@ -44,16 +43,20 @@ class Job(Base):
         JSON, nullable=True
     )  # Job output/results
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    started_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Indexes
     __table_args__ = (
         Index("idx_jobs_status", "status"),
-        Index("idx_jobs_created", "created_at"),
+        Index("idx_jobs_created", "created_at_utc"),
     )
 
     def __repr__(self) -> str:

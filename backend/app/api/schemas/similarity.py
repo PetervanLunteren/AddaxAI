@@ -6,7 +6,9 @@ Request/response models for similarity sort, search, and embedding stats.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.utils.datetime_serialization import serialize_local_datetime
 
 
 class SimilarityFilters(BaseModel):
@@ -64,9 +66,13 @@ class DetectionSummary(BaseModel):
     neighbor_top_label: str | None = None
     site_name: str | None = None
     deployment_id: str | None = None
-    timestamp: datetime | None = None
+    captured_at_local: datetime | None = None
     crop_url: str
     crop_bbox: CropBbox | None = None
+
+    @field_serializer("captured_at_local")
+    def _serialize_captured_at_local(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value)
 
 
 class SortResponse(BaseModel):

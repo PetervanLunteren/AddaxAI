@@ -180,8 +180,8 @@ class ProjectResponse(ProjectBase):
     """
 
     id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at_utc: datetime
+    updated_at_utc: datetime
     postprocessing_settings_hash: str | None = None
     thumbnail_path: str | None = None
 

@@ -166,10 +166,10 @@ export function DeploymentsPage() {
 
     // Date range filter
     if (dateFrom) {
-      result = result.filter((d) => d.start_date >= dateFrom);
+      result = result.filter((d) => d.start_date_local >= dateFrom);
     }
     if (dateTo) {
-      result = result.filter((d) => d.start_date <= dateTo);
+      result = result.filter((d) => d.start_date_local <= dateTo);
     }
 
     // Text search
@@ -387,9 +387,9 @@ export function DeploymentsPage() {
                         <span>{dep.site_name}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">{dep.start_date}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">{dep.start_date_local}</TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
-                      {dep.end_date || "\u2014"}
+                      {dep.end_date_local || "\u2014"}
                     </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">{dep.file_count}</TableCell>
                     <TableCell className="text-muted-foreground max-w-[300px] truncate">
@@ -415,7 +415,7 @@ export function DeploymentsPage() {
                             onClick={() => setDeletingDeployment({
                               id: dep.id,
                               site_name: dep.site_name,
-                              start_date: dep.start_date,
+                              start_date_local: dep.start_date_local,
                             })}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />

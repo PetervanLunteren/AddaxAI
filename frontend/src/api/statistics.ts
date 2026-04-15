@@ -78,8 +78,8 @@ export interface ObservationRateMapFeature {
   site_name: string;
   latitude: number;
   longitude: number;
-  start_date: string;
-  end_date: string | null;
+  start_date_local: string;
+  end_date_local: string | null;
   trap_nights: number;
   observation_count: number;
   rate_per_100: number;

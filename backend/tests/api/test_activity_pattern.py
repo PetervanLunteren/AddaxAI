@@ -45,12 +45,12 @@ def _build_netherlands_project(db):
     dep = make_deployment(
         db,
         site_id=site.id,
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 12, 31),
+        start_date_local=date(2024, 1, 1),
+        end_date_local=date(2024, 12, 31),
     )
     # One event so total_observations > 0
     ev = make_event_with_files(
-        db, deployment_id=dep.id, start_time=datetime(2024, 6, 15, 7, 30)
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 15, 7, 30)
     )
     _add_observation(db, event_id=ev.id, max_n=3)
     db.flush()

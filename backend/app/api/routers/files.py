@@ -13,8 +13,31 @@ from sqlalchemy.orm import Session
 from app.api.crud import file as file_crud
 from app.api.schemas.file import FileResponse, FileUpdate, FileWithDetections
 from app.db.base import get_db
+from app.models import Deployment, File, Project, Site
+from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/files", tags=["files"])
+
+
+def _set_project_tz_for_file(db: Session, file_id: str) -> None:
+    """Activate project timezone for a file based on its deployment chain."""
+    tz = (
+        db.query(Project.timezone)
+        .join(Site, Site.project_id == Project.id)
+        .join(Deployment, Deployment.site_id == Site.id)
+        .join(File, File.deployment_id == Deployment.id)
+        .filter(File.id == file_id)
+        .scalar()
+    )
+    if tz:
+        set_active_project_timezone(tz)
+
+
+def _set_project_tz(db: Session, project_id: str) -> None:
+    """Activate the project's timezone from project_id."""
+    tz = db.query(Project.timezone).filter(Project.id == project_id).scalar()
+    if tz:
+        set_active_project_timezone(tz)
 
 
 @router.get("/stats/observation-types")
@@ -32,7 +55,7 @@ def get_observation_type_stats(
 
 
 @router.get("", response_model=list[FileResponse])
-def list_files(
+async def list_files(
     deployment_id: str | None = Query(None, description="Filter by deployment ID"),
     project_id: str | None = Query(None, description="Filter by project ID"),
     observation_type: str | None = Query(None, description="Filter by observation type"),
@@ -55,10 +78,20 @@ def list_files(
         List of files
     """
     if project_id:
+        _set_project_tz(db, project_id)
         files = file_crud.get_files_by_project(
             db, project_id, skip=skip, limit=limit, observation_type=observation_type
         )
     elif deployment_id:
+        tz = (
+            db.query(Project.timezone)
+            .join(Site, Site.project_id == Project.id)
+            .join(Deployment, Deployment.site_id == Site.id)
+            .filter(Deployment.id == deployment_id)
+            .scalar()
+        )
+        if tz:
+            set_active_project_timezone(tz)
         files = file_crud.get_files_by_deployment(
             db, deployment_id, skip=skip, limit=limit, observation_type=observation_type
         )
@@ -69,7 +102,7 @@ def list_files(
 
 
 @router.patch("/{file_id}", response_model=FileResponse)
-def update_file(
+async def update_file(
     file_id: str,
     update: FileUpdate,
     db: Session = Depends(get_db),
@@ -80,11 +113,12 @@ def update_file(
     file = file_crud.update_file(db, file_id, update)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
+    _set_project_tz_for_file(db, file_id)
     return file
 
 
 @router.get("/{file_id}", response_model=FileWithDetections)
-def get_file(
+async def get_file(
     file_id: str,
     db: Session = Depends(get_db),
 ):
@@ -105,6 +139,7 @@ def get_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    _set_project_tz_for_file(db, file_id)
     return file
 
 

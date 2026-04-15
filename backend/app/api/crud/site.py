@@ -20,7 +20,7 @@ def get_sites(db: Session, project_id: str | None = None) -> list[Site]:
 
     Returns empty list if no sites exist.
     """
-    query = select(Site).order_by(Site.created_at.desc())
+    query = select(Site).order_by(Site.created_at_utc.desc())
     if project_id is not None:
         query = query.where(Site.project_id == project_id)
 
@@ -115,7 +115,7 @@ def get_sites_with_stats(
         .outerjoin(Deployment, Deployment.site_id == Site.id)
         .where(Site.project_id == project_id)
         .group_by(Site.id)
-        .order_by(Site.created_at.desc())
+        .order_by(Site.created_at_utc.desc())
     ).all()
 
     results = []
@@ -130,7 +130,7 @@ def get_sites_with_stats(
             "habitat_type": site.habitat_type,
             "notes": site.notes,
             "tags": site.tags,
-            "created_at": site.created_at,
+            "created_at_utc": site.created_at_utc,
             "deployment_count": count,
         }
         results.append(site_dict)

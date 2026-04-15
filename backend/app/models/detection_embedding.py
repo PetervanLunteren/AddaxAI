@@ -1,14 +1,12 @@
 """
 Detection embedding model - stores DINOv2 feature vectors for detections.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit relationships
-- Clear indexes
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` is a tz-aware UTC audit timestamp.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String
@@ -41,7 +39,9 @@ class DetectionEmbedding(Base):
     l2_norm: Mapped[float] = mapped_column(
         Float, nullable=False
     )  # pre-computed for cosine similarity
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
 
     # Relationships
     detection: Mapped["Detection"] = relationship("Detection", back_populates="embeddings")

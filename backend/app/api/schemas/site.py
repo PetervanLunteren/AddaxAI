@@ -62,7 +62,7 @@ class SiteResponse(SiteBase):
 
     id: str
     project_id: str
-    created_at: datetime
+    created_at_utc: datetime
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
 

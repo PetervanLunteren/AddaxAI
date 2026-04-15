@@ -8,8 +8,9 @@ Following DEVELOPERS.md principles:
 """
 
 import os
+import shutil
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -35,7 +36,7 @@ def get_deployments(
 
     Returns empty list if no deployments exist.
     """
-    query = select(Deployment).order_by(Deployment.created_at.desc())
+    query = select(Deployment).order_by(Deployment.created_at_utc.desc())
     if site_id:
         query = query.where(Deployment.site_id == site_id)
     if project_id:
@@ -64,8 +65,8 @@ def create_deployment(db: Session, deployment: DeploymentCreate) -> Deployment:
     db_deployment = Deployment(
         site_id=deployment.site_id,
         folder_path=deployment.folder_path,
-        start_date=deployment.start_date,
-        end_date=deployment.end_date,
+        start_date_local=deployment.start_date_local,
+        end_date_local=deployment.end_date_local,
         camera_model=deployment.camera_model,
         camera_serial=deployment.camera_serial,
         notes=deployment.notes,
@@ -99,10 +100,10 @@ def update_deployment(
     # If folder_path is being updated, update validation timestamp
     if "folder_path" in update_data and update_data["folder_path"] is not None:
         db_deployment.folder_status = "valid"
-        db_deployment.last_validated_at = datetime.utcnow()
+        db_deployment.last_validated_at_utc = datetime.now(UTC)
 
-    for field, value in update_data.items():
-        setattr(db_deployment, field, value)
+    for field_name, value in update_data.items():
+        setattr(db_deployment, field_name, value)
 
     db.commit()
     db.refresh(db_deployment)
@@ -114,15 +115,62 @@ def delete_deployment(db: Session, deployment_id: str) -> bool:
     Delete a deployment.
 
     Returns True if deleted, False if deployment doesn't exist.
-    Cascades to all related files and events.
+
+    Cascades to:
+    - related files, events, detections (DB, via SQLAlchemy ondelete=CASCADE)
+    - on-disk ML artifacts in `<folder_path>/.addaxai/projects/<project_id>/`
+      (via _delete_deployment_artifacts; best-effort, never blocks DB delete)
     """
     db_deployment = get_deployment(db, deployment_id)
     if db_deployment is None:
         return False
 
+    # Capture the path info BEFORE the row is deleted; we still need it
+    # to clean up the on-disk artifacts after the DB cascade fires.
+    folder_path = db_deployment.folder_path
+    project_id = db_deployment.site.project_id
+
     db.delete(db_deployment)
     db.commit()
+
+    if folder_path:
+        _delete_deployment_artifacts(folder_path, project_id)
     return True
+
+
+def _delete_deployment_artifacts(folder_path: str, project_id: str) -> None:
+    """
+    Remove the project-scoped .addaxai folder for a deleted deployment.
+
+    Best-effort: missing paths and OS errors are logged and swallowed so
+    that DB deletes never roll back because of a stale filesystem state
+    (e.g. an unmounted external drive). Cleans up empty parent dirs
+    (`.addaxai/projects/`, `.addaxai/`) so the folder is left as the
+    user originally placed it on disk.
+    """
+    project_dir = Path(folder_path) / ".addaxai" / "projects" / project_id
+    projects_dir = project_dir.parent
+    addaxai_dir = projects_dir.parent
+
+    if project_dir.exists():
+        try:
+            shutil.rmtree(project_dir)
+            logger.info(f"Removed deployment artifacts: {project_dir}")
+        except OSError as e:
+            logger.warning(
+                f"Failed to remove deployment artifacts at {project_dir}: {e}"
+            )
+            return
+
+    # Roll up empty parents so the .addaxai marker disappears entirely
+    # when the last project is gone. Only remove if empty; never recurse.
+    for empty_candidate in (projects_dir, addaxai_dir):
+        try:
+            if empty_candidate.exists() and not any(empty_candidate.iterdir()):
+                empty_candidate.rmdir()
+        except OSError as e:
+            logger.warning(f"Failed to clean up empty {empty_candidate}: {e}")
+            return
 
 
 def get_deployment_stats(db: Session, deployment_id: str) -> dict[str, int] | None:
@@ -167,7 +215,8 @@ def get_bulk_deployment_stats(
     """
     Get file/event/detection counts for all deployments in a project.
 
-    Single round-trip per count type. Returns {deployment_id: {file_count, event_count, detection_count}}.
+    Single round-trip per count type. Returns
+    `{deployment_id: {file_count, event_count, detection_count}}`.
     """
     from app.models import Detection
 
@@ -345,7 +394,7 @@ def check_deployment_folder(db: Session, deployment_id: str) -> Deployment | Non
     if db_deployment.folder_path:
         result = verify_deployment_folder(db_deployment, db_deployment.folder_path)
         db_deployment.folder_status = result.status
-    db_deployment.last_validated_at = datetime.utcnow()
+    db_deployment.last_validated_at_utc = datetime.now(UTC)
     db.commit()
     db.refresh(db_deployment)
     return db_deployment
@@ -365,7 +414,7 @@ def check_all_deployment_folders(db: Session) -> dict[str, int]:
     checked = 0
     changed = 0
     skipped = 0
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     for dep in deployments:
         # Legacy data migration: collapse the old "missing" status into
@@ -382,7 +431,7 @@ def check_all_deployment_folders(db: Session) -> dict[str, int]:
         if dep.folder_status != result.status:
             dep.folder_status = result.status
             changed += 1
-        dep.last_validated_at = now
+        dep.last_validated_at_utc = now
         checked += 1
 
     if checked > 0 or changed > 0:
@@ -456,7 +505,7 @@ def relink_deployment(
 
     deployment.folder_path = str(new_folder)
     deployment.folder_status = "valid"
-    deployment.last_validated_at = datetime.utcnow()
+    deployment.last_validated_at_utc = datetime.now(UTC)
 
     db.commit()
     db.refresh(deployment)

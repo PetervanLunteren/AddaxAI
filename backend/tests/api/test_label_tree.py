@@ -52,7 +52,7 @@ def _setup_project_with_detections(db, label_list):
         ev = make_event_with_files(
             db,
             deployment_id=d.id,
-            start_time=datetime(2024, 6, 1, 12, 0),
+            event_start_local=datetime(2024, 6, 1, 12, 0),
         )
         # Get a file from the event to attach detection
         from app.models.event import event_files as ef_table
@@ -158,7 +158,7 @@ def test_build_tree_detection_only(db):
         ev = make_event_with_files(
             db,
             deployment_id=d.id,
-            start_time=datetime(2024, 6, 1, 12, 0),
+            event_start_local=datetime(2024, 6, 1, 12, 0),
         )
         from app.models.event import event_files as ef_table
 

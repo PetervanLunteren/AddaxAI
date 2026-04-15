@@ -1,14 +1,12 @@
 """
 Audit log model - track all data changes.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit action tracking
-- Immutable audit trail
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` is a tz-aware UTC audit timestamp.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import JSON, DateTime, Index, String
@@ -43,14 +41,14 @@ class AuditLog(Base):
     changes: Mapped[dict[str, object] | None] = mapped_column(
         JSON, nullable=True
     )  # Before/after values
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Indexes
     __table_args__ = (
         Index("idx_audit_entity", "entity_type", "entity_id"),
-        Index("idx_audit_timestamp", "timestamp"),
+        Index("idx_audit_created", "created_at_utc"),
     )
 
     def __repr__(self) -> str:

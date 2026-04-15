@@ -155,7 +155,7 @@ def _migrate_missing_columns(engine: Engine) -> None:
         ("projects", "shortcut_labels", "JSON NOT NULL DEFAULT '{}'"),
         ("projects", "embedding_model_id", "VARCHAR(100)"),
         ("detections", "verified", "BOOLEAN NOT NULL DEFAULT 0"),
-        ("detections", "verified_at", "DATETIME"),
+        ("detections", "verified_at_utc", "DATETIME"),
         (
             "detections", "label_taxonomy_id",
             "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL",

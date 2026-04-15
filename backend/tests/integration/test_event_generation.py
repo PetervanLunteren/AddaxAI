@@ -74,8 +74,8 @@ def test_full_pipeline_to_events(deployment_scaffold):
 
     event = db.query(Event).one()
     assert event.file_count == 3
-    assert event.start_time == base
-    assert event.end_time == timestamps[-1]
+    assert event.event_start_local == base
+    assert event.event_end_local == timestamps[-1]
     # MaxN observations should be computed
     assert len(event.observations) > 0
 
@@ -183,12 +183,12 @@ def test_events_temporal_clustering(deployment_scaffold):
     total = generate_events_for_project(db, s["project"].id)
     assert total == 2
 
-    events = db.query(Event).order_by(Event.start_time.asc()).all()
+    events = db.query(Event).order_by(Event.event_start_local.asc()).all()
     assert events[0].file_count == 3
     assert events[1].file_count == 3
 
-    assert events[0].start_time == base
-    assert events[0].end_time == base + timedelta(minutes=10)
+    assert events[0].event_start_local == base
+    assert events[0].event_end_local == base + timedelta(minutes=10)
 
-    assert events[1].start_time == base + timedelta(hours=3)
-    assert events[1].end_time == base + timedelta(hours=3, minutes=10)
+    assert events[1].event_start_local == base + timedelta(hours=3)
+    assert events[1].event_end_local == base + timedelta(hours=3, minutes=10)

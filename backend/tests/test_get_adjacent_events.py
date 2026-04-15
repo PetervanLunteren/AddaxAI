@@ -35,7 +35,9 @@ def _setup_project(db):
 def test_single_event(db):
     """One event: no previous, no next, index=0, total=1."""
     project, dep = _setup_project(db)
-    ev = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 12, 0))
+    ev = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 12, 0)
+    )
 
     result = get_adjacent_events(db, ev.id, project.id)
 
@@ -51,9 +53,15 @@ def test_three_events_middle(db):
     project, dep = _setup_project(db)
 
     # Newest first in DESC order: ev_new > ev_mid > ev_old
-    ev_old = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 10, 0))
-    ev_mid = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 12, 0))
-    ev_new = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 14, 0))
+    ev_old = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 10, 0)
+    )
+    ev_mid = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 12, 0)
+    )
+    ev_new = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 14, 0)
+    )
 
     result = get_adjacent_events(db, ev_mid.id, project.id)
 
@@ -67,8 +75,12 @@ def test_first_event_no_previous(db):
     """Newest event: no previous, next points to the second one."""
     project, dep = _setup_project(db)
 
-    ev_old = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 10, 0))
-    ev_new = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 14, 0))
+    ev_old = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 10, 0)
+    )
+    ev_new = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 14, 0)
+    )
 
     result = get_adjacent_events(db, ev_new.id, project.id)
 
@@ -82,8 +94,12 @@ def test_last_event_no_next(db):
     """Oldest event: previous points to the newer one, no next."""
     project, dep = _setup_project(db)
 
-    ev_old = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 10, 0))
-    ev_new = make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 14, 0))
+    ev_old = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 10, 0)
+    )
+    ev_new = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 14, 0)
+    )
 
     result = get_adjacent_events(db, ev_old.id, project.id)
 
@@ -102,17 +118,17 @@ def test_next_unverified_skips_verified(db):
 
     ev_c = make_event_with_files(
         db, deployment_id=dep.id,
-        start_time=datetime(2024, 6, 1, 10, 0),
+        event_start_local=datetime(2024, 6, 1, 10, 0),
         files_verified=[False],
     )
     make_event_with_files(
         db, deployment_id=dep.id,
-        start_time=datetime(2024, 6, 1, 12, 0),
+        event_start_local=datetime(2024, 6, 1, 12, 0),
         files_verified=[True, True],  # fully verified
     )
     ev_a = make_event_with_files(
         db, deployment_id=dep.id,
-        start_time=datetime(2024, 6, 1, 14, 0),
+        event_start_local=datetime(2024, 6, 1, 14, 0),
         files_verified=[False],
     )
 
@@ -127,12 +143,12 @@ def test_next_unverified_none_remaining(db):
 
     make_event_with_files(
         db, deployment_id=dep.id,
-        start_time=datetime(2024, 6, 1, 10, 0),
+        event_start_local=datetime(2024, 6, 1, 10, 0),
         files_verified=[True],  # fully verified
     )
     ev_new = make_event_with_files(
         db, deployment_id=dep.id,
-        start_time=datetime(2024, 6, 1, 14, 0),
+        event_start_local=datetime(2024, 6, 1, 14, 0),
         files_verified=[False],
     )
 
@@ -144,7 +160,7 @@ def test_next_unverified_none_remaining(db):
 def test_nonexistent_event(db):
     """Query with a bogus event_id returns zeros/nulls."""
     project, dep = _setup_project(db)
-    make_event_with_files(db, deployment_id=dep.id, start_time=datetime(2024, 6, 1, 12, 0))
+    make_event_with_files(db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1, 12, 0))
 
     result = get_adjacent_events(db, "nonexistent-id", project.id)
 
@@ -166,10 +182,10 @@ def test_same_start_time_tiebreak(db):
     ts = datetime(2024, 6, 1, 12, 0)
     # Use fixed IDs so we control the sort order
     ev_lo = make_event_with_files(
-        db, deployment_id=dep.id, start_time=ts, event_id="aaa-lo"
+        db, deployment_id=dep.id, event_start_local=ts, event_id="aaa-lo"
     )
     ev_hi = make_event_with_files(
-        db, deployment_id=dep.id, start_time=ts, event_id="zzz-hi"
+        db, deployment_id=dep.id, event_start_local=ts, event_id="zzz-hi"
     )
 
     # DESC order: ev_hi (same time, higher id) comes first → is "previous" to ev_lo

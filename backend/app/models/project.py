@@ -1,13 +1,15 @@
 """
 Project model - top level container for camera trap projects.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Clear, explicit relationships
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` / `updated_at_utc` are tz-aware UTC audit timestamps.
+- `timezone` records the wall-clock timezone the cameras were
+  configured to; it's metadata used for sun-calc and export, never for
+  converting stored datetimes.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
@@ -35,11 +37,14 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    updated_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Model configuration (project-scoped)

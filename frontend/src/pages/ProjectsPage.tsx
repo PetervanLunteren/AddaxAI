@@ -111,7 +111,7 @@ export function ProjectsPage() {
                   {project.thumbnail_path ? (
                     <div className="aspect-video overflow-hidden rounded-t-lg">
                       <img
-                        src={`${API_BASE_URL}/api/projects/${project.id}/thumbnail?v=${project.updated_at}`}
+                        src={`${API_BASE_URL}/api/projects/${project.id}/thumbnail?v=${project.updated_at_utc}`}
                         alt={project.name}
                         className="h-full w-full object-cover"
                         loading="lazy"

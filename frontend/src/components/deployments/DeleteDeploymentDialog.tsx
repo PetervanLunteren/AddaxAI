@@ -25,7 +25,7 @@ import { Label } from "../ui/label";
 export interface DeleteDeploymentTarget {
   id: string;
   site_name: string;
-  start_date: string;
+  start_date_local: string;
 }
 
 interface DeleteDeploymentDialogProps {
@@ -92,7 +92,7 @@ export function DeleteDeploymentDialog({
           <div className="text-sm">
             <p className="text-muted-foreground">Deployment</p>
             <p className="font-medium">
-              {deployment.site_name} - {deployment.start_date}
+              {deployment.site_name} - {deployment.start_date_local}
             </p>
           </div>
 

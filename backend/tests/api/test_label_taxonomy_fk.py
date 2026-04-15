@@ -38,7 +38,7 @@ def _setup_project_with_linked_detections(db, label_list):
     detections = []
     for sp in label_list:
         ev = make_event_with_files(
-            db, deployment_id=d.id, start_time=datetime(2024, 6, 1, 12, 0),
+            db, deployment_id=d.id, event_start_local=datetime(2024, 6, 1, 12, 0),
         )
         from app.models.event import event_files as ef_table
         file_row = db.execute(
@@ -130,7 +130,7 @@ def test_delete_custom_label_nullifies_fk(client, db):
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
     # Create custom taxonomy entry
     custom_tax = LabelTaxonomy(
@@ -164,7 +164,7 @@ def test_delete_custom_label_preserves_other_detections(client, db):
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
     # Create two custom taxonomy entries
     tax_a = LabelTaxonomy(
@@ -198,7 +198,7 @@ def test_rename_custom_label_relinks_fk(client, db):
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
     # Create custom taxonomy and a detection pointing to a *different* taxonomy row
     old_tax = _add_taxonomy(db, "cow", "species", taxon_class="mammalia")
@@ -230,7 +230,7 @@ def test_update_custom_label_relinks_stale_fk(client, db):
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    f = make_file(db, deployment_id=d.id, timestamp=datetime(2024, 6, 1, 12, 0))
+    f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
     stale_tax = _add_taxonomy(db, "cow", "species")
     custom_tax = LabelTaxonomy(

@@ -22,7 +22,7 @@ def get_projects(db: Session) -> list[Project]:
 
     Returns empty list if no projects exist.
     """
-    result = db.execute(select(Project).order_by(Project.created_at.desc()))
+    result = db.execute(select(Project).order_by(Project.created_at_utc.desc()))
     return list(result.scalars().all())
 
 

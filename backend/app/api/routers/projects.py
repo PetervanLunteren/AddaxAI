@@ -8,7 +8,7 @@ Following DEVELOPERS.md principles:
 """
 
 import shutil
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -567,7 +567,7 @@ def upload_project_thumbnail(
         auto_thumb.unlink()
 
     db_project.thumbnail_path = str(dest)
-    db_project.updated_at = datetime.utcnow()
+    db_project.updated_at_utc = datetime.now(UTC)
     db.commit()
 
     logger.info(f"Uploaded thumbnail for project {project_id}")
@@ -594,7 +594,7 @@ def delete_project_thumbnail(
         if thumb.exists():
             thumb.unlink()
         db_project.thumbnail_path = None
-        db_project.updated_at = datetime.utcnow()
+        db_project.updated_at_utc = datetime.now(UTC)
         db.commit()
         logger.info(f"Deleted thumbnail for project {project_id}")
 
@@ -706,11 +706,11 @@ def get_independent_event_stats(
             SELECT
                 d.label,
                 dep.id AS deployment_id,
-                f.timestamp,
-                LAG(f.timestamp) OVER (
+                f.captured_at_local,
+                LAG(f.captured_at_local) OVER (
                     PARTITION BY dep.id, d.label
-                    ORDER BY f.timestamp
-                ) AS prev_timestamp
+                    ORDER BY f.captured_at_local
+                ) AS prev_captured_at_local
             FROM detections d
             JOIN files f ON d.file_id = f.id
             JOIN deployments dep ON f.deployment_id = dep.id
@@ -722,8 +722,9 @@ def get_independent_event_stats(
         events AS (
             SELECT label
             FROM ordered
-            WHERE prev_timestamp IS NULL
-               OR (julianday(timestamp) - julianday(prev_timestamp)) * 86400 > :interval
+            WHERE prev_captured_at_local IS NULL
+               OR (julianday(captured_at_local) - julianday(prev_captured_at_local)) * 86400
+                  > :interval
         )
         SELECT label, COUNT(*) AS event_count
         FROM events

@@ -7,7 +7,7 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,7 +30,7 @@ def get_queue_entries(
     if status:
         query = query.where(DeploymentQueue.status == status)
 
-    query = query.order_by(DeploymentQueue.created_at.asc())
+    query = query.order_by(DeploymentQueue.created_at_utc.asc())
     result = db.execute(query)
     return list(result.scalars().all())
 
@@ -117,7 +117,7 @@ def update_queue_status(
         db_entry.deployment_id = deployment_id
 
     if status in ["completed", "failed"]:
-        db_entry.processed_at = datetime.utcnow()
+        db_entry.processed_at_utc = datetime.now(UTC)
 
     db.commit()
     db.refresh(db_entry)

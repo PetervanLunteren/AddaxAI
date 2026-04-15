@@ -19,8 +19,8 @@ export interface DeploymentQueueEntry {
   notes: string | null;
   tags: Record<string, string>;
   status: "pending" | "processing" | "completed" | "failed";
-  created_at: string;
-  processed_at: string | null;
+  created_at_utc: string;
+  processed_at_utc: string | null;
   error: string | null;
   deployment_id: string | null;
 }

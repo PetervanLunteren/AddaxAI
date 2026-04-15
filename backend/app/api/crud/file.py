@@ -2,7 +2,7 @@
 CRUD operations for files.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -44,7 +44,7 @@ def get_files(
     query = db.query(File)
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    return query.order_by(File.timestamp.desc()).offset(skip).limit(limit).all()
+    return query.order_by(File.captured_at_local.desc()).offset(skip).limit(limit).all()
 
 
 def get_files_by_deployment(
@@ -70,7 +70,7 @@ def get_files_by_deployment(
     query = db.query(File).filter(File.deployment_id == deployment_id)
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    return query.order_by(File.timestamp.desc()).offset(skip).limit(limit).all()
+    return query.order_by(File.captured_at_local.desc()).offset(skip).limit(limit).all()
 
 
 def get_files_by_project(
@@ -101,7 +101,7 @@ def get_files_by_project(
     )
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    return query.order_by(File.timestamp.desc()).offset(skip).limit(limit).all()
+    return query.order_by(File.captured_at_local.desc()).offset(skip).limit(limit).all()
 
 
 def get_file_with_detections(db: Session, file_id: str) -> File | None:
@@ -127,7 +127,7 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
     """
     Update a file's verification status and/or notes.
 
-    Sets verified_at to current time when verified changes to True,
+    Sets verified_at_utc to current time when verified changes to True,
     clears it when verified changes to False.
     """
     file = db.query(File).filter(File.id == file_id).first()
@@ -136,9 +136,9 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
 
     if update.verified is not None:
         if update.verified and not file.verified:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             file.verified = True
-            file.verified_at = now
+            file.verified_at_utc = now
             # Only verify detections above the project's detection threshold
             # (below-threshold detections are not visible to the user)
             threshold = _get_detection_threshold(db, file)
@@ -148,14 +148,14 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
                 Detection.confidence >= threshold,
             ]
             db.query(Detection).filter(*det_filter).update(
-                {"verified": True, "verified_at": now}
+                {"verified": True, "verified_at_utc": now}
             )
         elif not update.verified and file.verified:
             file.verified = False
-            file.verified_at = None
+            file.verified_at_utc = None
             db.query(Detection).filter(
                 Detection.file_id == file_id,
-            ).update({"verified": False, "verified_at": None})
+            ).update({"verified": False, "verified_at_utc": None})
 
     if update.notes is not None:
         file.notes = update.notes

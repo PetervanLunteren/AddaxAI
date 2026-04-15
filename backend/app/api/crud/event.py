@@ -34,14 +34,14 @@ def _apply_event_filters(
         query = query.filter(Site.id.in_(site_ids))
 
     if date_from is not None:
-        query = query.filter(Event.start_time >= date_from)
+        query = query.filter(Event.event_start_local >= date_from)
 
     if date_to is not None:
         # Include the entire end-of-day
         end_of_day = (
             datetime.combine(date_to.date(), time.max) if isinstance(date_to, datetime) else date_to
         )
-        query = query.filter(Event.start_time <= end_of_day)
+        query = query.filter(Event.event_start_local <= end_of_day)
 
     if labels:
         # EXISTS subquery: event has at least one file with a detection
@@ -187,7 +187,7 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     2. Delete all existing events for every deployment in the project
     3. For each deployment, query files ordered by timestamp ASC
     4. Walk files: start new event when gap > independence_interval seconds
-    5. Create Event records with start_time, end_time, file_count
+    5. Create Event records with event_start_local, event_end_local, file_count
     6. Insert event_files junction rows with sequence_number
 
     Returns total event count created.
@@ -215,7 +215,7 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
             db.query(File)
             .filter(File.deployment_id == deployment.id)
             .filter(File.file_type.in_(["image", "frame"]))
-            .order_by(File.timestamp.asc())
+            .order_by(File.captured_at_local.asc())
             .all()
         )
 
@@ -226,7 +226,9 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
         current_event_files: list[File] = [files[0]]
 
         for i in range(1, len(files)):
-            gap = (files[i].timestamp - files[i - 1].timestamp).total_seconds()
+            gap = (
+                files[i].captured_at_local - files[i - 1].captured_at_local
+            ).total_seconds()
 
             if gap > independence_interval:
                 # Save current event and start new one
@@ -257,8 +259,8 @@ def _create_event(db: Session, deployment_id: str, files: list[File]) -> Event:
     event = Event(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
-        start_time=files[0].timestamp,
-        end_time=files[-1].timestamp,
+        event_start_local=files[0].captured_at_local,
+        event_end_local=files[-1].captured_at_local,
         file_count=len(files),
     )
     db.add(event)
@@ -310,7 +312,7 @@ def get_events_by_project(
     )
     events = (
         query.options(joinedload(Event.files).joinedload(File.detections))
-        .order_by(Event.start_time.desc())
+        .order_by(Event.event_start_local.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -337,7 +339,7 @@ def get_events_by_project(
         # Sort files by sequence within event
         sorted_files = sorted(
             event.files,
-            key=lambda f: f.timestamp,
+            key=lambda f: f.captured_at_local,
         )
 
         # Collect unique taxonomy IDs across all files
@@ -409,8 +411,8 @@ def get_events_by_project(
             {
                 "id": event.id,
                 "deployment_id": event.deployment_id,
-                "start_time": event.start_time,
-                "end_time": event.end_time,
+                "event_start_local": event.event_start_local,
+                "event_end_local": event.event_end_local,
                 "file_count": event.file_count,
                 "thumbnail_file_id": thumbnail_file_id,
                 "max_n_frames": max_n_frames,
@@ -499,7 +501,7 @@ def get_adjacent_events(
     Get adjacent event IDs for navigation.
 
     Returns previous_id, next_id, next_unverified_id, current_index, total_count.
-    Events ordered by start_time DESC (newest first).
+    Events ordered by event_start_local DESC (newest first).
 
     Uses targeted SQL queries instead of loading all events into memory.
     When filters are provided, navigation is scoped to the filtered set.
@@ -514,8 +516,8 @@ def get_adjacent_events(
         max_confidence=max_confidence,
     )
 
-    # 1. Get current event's start_time
-    current = db.query(Event.id, Event.start_time).filter(Event.id == event_id).first()
+    # 1. Get current event's local start time
+    current = db.query(Event.id, Event.event_start_local).filter(Event.id == event_id).first()
     if not current:
         return {
             "previous_id": None,
@@ -525,26 +527,33 @@ def get_adjacent_events(
             "total_count": 0,
         }
 
-    ct = current.start_time
+    ct = current.event_start_local
     cid = current.id
 
     def base():
         q = db.query(Event.id).join(Deployment).join(Site).filter(Site.project_id == project_id)
         return _apply_event_filters(q, db, **filter_kwargs)
 
-    # 2. Previous (newer in DESC order): start_time > current, or same time + higher id
+    newer_than_current = (Event.event_start_local > ct) | (
+        (Event.event_start_local == ct) & (Event.id > cid)
+    )
+    older_than_current = (Event.event_start_local < ct) | (
+        (Event.event_start_local == ct) & (Event.id < cid)
+    )
+
+    # 2. Previous (newer in DESC order): event_start_local > current, or same time + higher id
     prev = (
         base()
-        .filter((Event.start_time > ct) | ((Event.start_time == ct) & (Event.id > cid)))
-        .order_by(Event.start_time.asc(), Event.id.asc())
+        .filter(newer_than_current)
+        .order_by(Event.event_start_local.asc(), Event.id.asc())
         .first()
     )
 
-    # 3. Next (older in DESC order): start_time < current, or same time + lower id
+    # 3. Next (older in DESC order): event_start_local < current, or same time + lower id
     nxt = (
         base()
-        .filter((Event.start_time < ct) | ((Event.start_time == ct) & (Event.id < cid)))
-        .order_by(Event.start_time.desc(), Event.id.desc())
+        .filter(older_than_current)
+        .order_by(Event.event_start_local.desc(), Event.id.desc())
         .first()
     )
 
@@ -560,9 +569,9 @@ def get_adjacent_events(
     )
     nxt_unv = (
         base()
-        .filter((Event.start_time < ct) | ((Event.start_time == ct) & (Event.id < cid)))
+        .filter(older_than_current)
         .filter(exists(unv_subq))
-        .order_by(Event.start_time.desc(), Event.id.desc())
+        .order_by(Event.event_start_local.desc(), Event.id.desc())
         .first()
     )
 
@@ -582,7 +591,7 @@ def get_adjacent_events(
         .join(Deployment)
         .join(Site)
         .filter(Site.project_id == project_id)
-        .filter((Event.start_time > ct) | ((Event.start_time == ct) & (Event.id > cid)))
+        .filter(newer_than_current)
     )
     idx_q = _apply_event_filters(idx_q, db, **filter_kwargs)
     idx = idx_q.scalar() or 0
@@ -752,8 +761,8 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     # Date range from events
     date_row = (
         db.query(
-            func.min(Event.start_time),
-            func.max(Event.start_time),
+            func.min(Event.event_start_local),
+            func.max(Event.event_start_local),
         )
         .join(Deployment)
         .join(Site)

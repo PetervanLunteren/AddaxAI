@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { deploymentQueueApi } from "@/api/deployment-queue";
+import { deploymentsApi } from "@/api/deployments";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsEditor } from "@/components/ui/tags-editor";
@@ -53,10 +54,21 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   // Get folder scan results for validation
   const { data: scanResult, isLoading: isScanning } = useFolderScan(folderPath);
 
-  // Get existing queue entries to check for duplicates
+  // Existing queue entries and project deployments — used to block
+  // re-adding a folder that's already accounted for. We block on:
+  //   - any deployment in this project pointing at the same folder
+  //     (it's already in the DB, no duplicates)
+  //   - any queue entry with status pending/processing (it's about to
+  //     become a deployment)
+  // Failed queue entries do NOT block: they were never persisted as a
+  // deployment, so re-adding the same folder is a legitimate retry.
   const { data: queueEntries } = useQuery({
     queryKey: ["deployment-queue", projectId],
     queryFn: () => deploymentQueueApi.list(projectId),
+  });
+  const { data: projectDeployments } = useQuery({
+    queryKey: ["deployments", projectId],
+    queryFn: () => deploymentsApi.list({ project_id: projectId }),
   });
 
   // Add to queue mutation
@@ -99,9 +111,19 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
 
   // Validation
   const hasFiles = scanResult && scanResult.total_count > 0;
-  const isDuplicate =
-    folderPath && queueEntries?.some((e) => e.folder_path === folderPath);
-  const isValid = folderPath && hasFiles && siteId && !isDuplicate && !isScanning && !scanResult?.missing_datetime;
+  const blockingDeployment = folderPath
+    ? projectDeployments?.find((d) => d.folder_path === folderPath)
+    : undefined;
+  const blockingQueueEntry = folderPath
+    ? queueEntries?.find(
+        (e) =>
+          e.folder_path === folderPath &&
+          (e.status === "pending" || e.status === "processing"),
+      )
+    : undefined;
+  const isDuplicate = Boolean(blockingDeployment || blockingQueueEntry);
+  const isValid =
+    folderPath && hasFiles && siteId && !isDuplicate && !isScanning && !scanResult?.missing_datetime;
 
   // Validation messages (for button tooltip)
   const validationMessages: string[] = [];
@@ -111,8 +133,14 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     validationMessages.push("Scanning folder...");
   } else if (!hasFiles) {
     validationMessages.push("Selected folder contains no images");
-  } else if (isDuplicate) {
-    validationMessages.push("This folder is already in the queue");
+  } else if (blockingDeployment) {
+    validationMessages.push(
+      `This folder is already a deployment in this project (id ${blockingDeployment.id.slice(0, 8)}). Delete it from the Deployments page first.`,
+    );
+  } else if (blockingQueueEntry) {
+    validationMessages.push(
+      `This folder is already in the queue (status: ${blockingQueueEntry.status}). Remove it from the queue first.`,
+    );
   }
   if (scanResult?.missing_datetime) {
     validationMessages.push("DateTime metadata is required but not found in files");
@@ -190,7 +218,36 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           <TagsEditor value={tags} onChange={setTags} />
         </CardContent>
 
-        <CardFooter>
+        <CardFooter className="flex-col gap-3 items-stretch">
+          {/* Surface duplicate-blocker messages above the disabled button so
+              users don't have to hover to see why they're blocked. */}
+          {(blockingDeployment || blockingQueueEntry) && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {blockingDeployment ? (
+                <>
+                  This folder is already a deployment in this project. Delete it
+                  from the{" "}
+                  <a
+                    href={`/projects/${projectId}/deployments`}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    Deployments page
+                  </a>{" "}
+                  first (deployment id{" "}
+                  <code className="font-mono text-xs">
+                    {blockingDeployment.id.slice(0, 8)}
+                  </code>
+                  ).
+                </>
+              ) : (
+                <>
+                  This folder is already in the queue (status:{" "}
+                  <strong>{blockingQueueEntry?.status}</strong>). Remove the
+                  queue entry first if you want to re-add this folder.
+                </>
+              )}
+            </div>
+          )}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

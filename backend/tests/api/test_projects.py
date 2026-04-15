@@ -35,7 +35,7 @@ def test_create_project(client):
     assert data["name"] == "My Project"
     assert data["timezone"] == "UTC"
     assert "id" in data
-    assert "created_at" in data
+    assert "created_at_utc" in data
 
 
 def test_create_project_duplicate_name(client, db):

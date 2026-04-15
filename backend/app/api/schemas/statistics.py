@@ -85,8 +85,8 @@ class ObservationRateMapFeature(BaseModel):
     site_name: str
     latitude: float
     longitude: float
-    start_date: date
-    end_date: date | None
+    start_date_local: date
+    end_date_local: date | None
     trap_nights: int
     observation_count: int
     rate_per_100: float

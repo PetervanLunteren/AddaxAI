@@ -197,15 +197,15 @@ export function FileVerificationPanel({
 
             {/* Verified date + Edit button */}
             <div className="px-3 py-3 space-y-2">
-              {file.verified_at && (
+              {file.verified_at_utc && (
                 <p className="text-xs text-muted-foreground">
                   Verified on{" "}
-                  {new Date(file.verified_at).toLocaleDateString(undefined, {
+                  {new Date(file.verified_at_utc).toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",
                   })}{" "}
                   at{" "}
-                  {new Date(file.verified_at).toLocaleTimeString(undefined, {
+                  {new Date(file.verified_at_utc).toLocaleTimeString(undefined, {
                     hour: "numeric",
                     minute: "2-digit",
                   })}

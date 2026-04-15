@@ -35,7 +35,7 @@ SELECT de.detection_id, de.vector, de.l2_norm,
        d.label, d.label_confidence, d.display_name, d.confidence, d.category,
        d.verified, d.classification_method, d.file_id,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
-       f.deployment_id, f.timestamp, f.width_px, f.height_px,
+       f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
        s.name AS site_name
 FROM detection_embeddings de
 JOIN detections d ON d.id = de.detection_id
@@ -62,11 +62,11 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
         params.extend(filters["site_ids"])
 
     if filters.get("date_from"):
-        clauses.append("f.timestamp >= ?")
+        clauses.append("f.captured_at_local >= ?")
         params.append(filters["date_from"])
 
     if filters.get("date_to"):
-        clauses.append("f.timestamp <= ?")
+        clauses.append("f.captured_at_local <= ?")
         params.append(filters["date_to"])
 
     if filters.get("min_confidence") is not None:
@@ -123,7 +123,7 @@ def _load_embeddings(
         vectors.append(vec)
         detection_ids.append(row["detection_id"])
 
-        ts = row["timestamp"]
+        ts = row["captured_at_local"]
         if ts and isinstance(ts, str):
             # Keep as ISO string for JSON serialization
             pass
@@ -140,7 +140,7 @@ def _load_embeddings(
             "classification_method": row["classification_method"],
             "file_id": row["file_id"],
             "deployment_id": row["deployment_id"],
-            "timestamp": ts,
+            "captured_at_local": ts,
             "site_name": row["site_name"],
             "bbox_x": row["bbox_x"],
             "bbox_y": row["bbox_y"],
@@ -211,7 +211,7 @@ def _build_summary(
         "neighbor_top_label": neighbor_top_label,
         "site_name": meta.get("site_name"),
         "deployment_id": meta.get("deployment_id"),
-        "timestamp": meta.get("timestamp"),
+        "captured_at_local": meta.get("captured_at_local"),
         "crop_url": f"/api/detections/{detection_id}/crop?size=200",
         "crop_bbox": _compute_crop_bbox(meta),
     }
@@ -355,7 +355,7 @@ def _load_anchor_embedding(
            d.label, d.label_confidence, d.display_name, d.confidence, d.category,
            d.verified, d.classification_method, d.file_id,
            d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
-           f.deployment_id, f.timestamp, f.width_px, f.height_px,
+           f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
            s.name AS site_name
     FROM detection_embeddings de
     JOIN detections d ON d.id = de.detection_id
@@ -380,7 +380,7 @@ def _load_anchor_embedding(
     if l2_norm and l2_norm > 0:
         vec = vec / l2_norm
 
-    ts = row["timestamp"]
+    ts = row["captured_at_local"]
     if ts and isinstance(ts, str):
         pass
     elif ts:
@@ -396,7 +396,7 @@ def _load_anchor_embedding(
         "classification_method": row["classification_method"],
         "file_id": row["file_id"],
         "deployment_id": row["deployment_id"],
-        "timestamp": ts,
+        "captured_at_local": ts,
         "site_name": row["site_name"],
         "bbox_x": row["bbox_x"],
         "bbox_y": row["bbox_y"],

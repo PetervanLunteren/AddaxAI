@@ -37,6 +37,9 @@ def write_json(path: Path, data: dict) -> Path:
     return path
 
 
+_DEFAULT_EXIF_DATETIME = "2024:06:15 12:00:00"
+
+
 def build_detection_json(
     images: list[dict],
     classification_categories: dict[str, str] | None = None,
@@ -48,9 +51,15 @@ def build_detection_json(
     Each element of *images* should have keys: file, detections,
     and optionally exif_metadata, width, height, best_frame_number,
     frame_rate, file_id.
+
+    Phase 6 now requires every file to have an extractable timestamp
+    (no silent fallbacks — see DEVELOPERS.md "Datetime conventions").
+    For tests that don't explicitly set exif_metadata, default a
+    plausible DateTimeOriginal so the loader has a timestamp to work
+    with. Tests that care about timestamps set their own.
     """
     result = {
-        "images": images,
+        "images": [_with_default_exif(img) for img in images],
         "detection_categories": {"1": "animal", "2": "person", "3": "vehicle"},
         "info": {"detection_completion_time": "2026-01-01 00:00:00"},
     }
@@ -59,6 +68,22 @@ def build_detection_json(
     if classification_category_descriptions is not None:
         result["classification_category_descriptions"] = classification_category_descriptions
     return result
+
+
+def _with_default_exif(img: dict) -> dict:
+    """
+    Add a default EXIF DateTimeOriginal if the test didn't set one at all.
+
+    If the test explicitly sets `exif_metadata` to any dict (even `{}`),
+    respect it verbatim: that's how the MissingTimestampError failure-path
+    tests simulate "no extractable timestamp".
+    """
+    if "exif_metadata" in img:
+        return img
+    return {
+        **img,
+        "exif_metadata": {"DateTimeOriginal": _DEFAULT_EXIF_DATETIME},
+    }
 
 
 def create_video_frames(

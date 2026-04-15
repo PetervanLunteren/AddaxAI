@@ -4,7 +4,9 @@ File schemas for API requests and responses.
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+
+from app.utils.datetime_serialization import serialize_local_datetime
 
 
 class DetectionResponse(BaseModel):
@@ -39,18 +41,26 @@ class FileResponse(BaseModel):
     size_bytes: int | None
     width_px: int | None
     height_px: int | None
-    timestamp: datetime
-    created_at: datetime
+    captured_at_local: datetime
+    created_at_utc: datetime
     best_frame_number: int | None = None
     best_frame_path: str | None = None
     frame_rate: float | None = None
     observation_type: str = "unclassified"
     verified: bool = False
-    verified_at: datetime | None = None
+    verified_at_utc: datetime | None = None
     notes: str | None = None
     favorited: bool = False
     source_video_id: str | None = None
     source_frame_number: int | None = None
+
+    # captured_at_local is naive wall-clock time at the camera. Rendered
+    # with the offset that applies on the file's local date, read from
+    # the active project timezone in the request context. See
+    # DEVELOPERS.md "Datetime conventions".
+    @field_serializer("captured_at_local")
+    def _serialize_captured_at_local(self, value: datetime) -> str:
+        return serialize_local_datetime(value)  # type: ignore[return-value]
 
     class Config:
         from_attributes = True

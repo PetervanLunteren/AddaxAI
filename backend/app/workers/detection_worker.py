@@ -14,7 +14,7 @@ Created by Claude Code on 2026-01-04
 import asyncio
 import os
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import text
@@ -558,19 +558,37 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info("Phase 6: Loading results to database")
                 await deployment_progress_callback("Loading to database...", 0.0, "saving", 0.75)
 
-                from app.ml.json_pipeline import load_json_to_database
-
-                result = load_json_to_database(
-                    json_path=final_json_path,
-                    deployment_id=deployment.id,
-                    deployment_folder=folder_path,
-                    job_id=job_id,
-                    db=db,
-                    artifacts_folder=artifacts_folder,
-                    taxonomy_name_to_id=taxonomy_name_to_id,
-                    builtin_taxonomy_ids=builtin_taxonomy_ids,
-                    datetime_offset_seconds=datetime_offset_seconds,
+                from app.ml.json_pipeline import (
+                    MissingTimestampError,
+                    load_json_to_database,
                 )
+
+                try:
+                    result = load_json_to_database(
+                        json_path=final_json_path,
+                        deployment_id=deployment.id,
+                        deployment_folder=folder_path,
+                        job_id=job_id,
+                        db=db,
+                        artifacts_folder=artifacts_folder,
+                        taxonomy_name_to_id=taxonomy_name_to_id,
+                        builtin_taxonomy_ids=builtin_taxonomy_ids,
+                        datetime_offset_seconds=datetime_offset_seconds,
+                    )
+                except MissingTimestampError:
+                    # Phase 6 pre-flighted timestamps and aborted before any
+                    # File / Detection rows were written. The placeholder
+                    # Deployment row was created earlier in this iteration
+                    # (with today's date as a stand-in) and would otherwise
+                    # leak into the Deployments page as a 0-file orphan.
+                    # Drop it so the user only sees what successfully loaded.
+                    logger.info(
+                        f"Rolling back placeholder deployment {deployment.id} "
+                        f"after MissingTimestampError"
+                    )
+                    db.delete(deployment)
+                    db.commit()
+                    raise
 
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
@@ -1228,7 +1246,7 @@ def merge_json_files(
             "version": "todo-not-implemented-yet",
             "deployment_id": deployment_id,
             "classification_completion_time": (
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
             ),
         }
         if detection_model_id:
@@ -1297,11 +1315,12 @@ def create_deployment(
     """
     from app.api.schemas.deployment import DeploymentCreate
 
-    # Use current date as start date
+    # Use current UTC date as a placeholder. Phase 6 overwrites this with
+    # the real field-deployment window derived from File.captured_at_local.
     deployment_data = DeploymentCreate(
         site_id=site_id,
         folder_path=folder_path,
-        start_date=datetime.utcnow().date(),
+        start_date_local=datetime.now(UTC).date(),
         notes=notes,
         tags=tags or {},
     )

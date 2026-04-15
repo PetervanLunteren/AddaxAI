@@ -4,9 +4,10 @@ Event schemas for API requests and responses.
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 from app.api.schemas.file import FileWithDetections
+from app.utils.datetime_serialization import serialize_local_datetime
 
 
 class MaxNFrame(BaseModel):
@@ -23,8 +24,8 @@ class EventSummary(BaseModel):
 
     id: str
     deployment_id: str
-    start_time: datetime
-    end_time: datetime
+    event_start_local: datetime
+    event_end_local: datetime
     file_count: int
     thumbnail_file_id: str | None
     max_n_frames: list[MaxNFrame]
@@ -41,19 +42,29 @@ class EventSummary(BaseModel):
     verified_maxn_count: int
     total_maxn_count: int
 
+    # event_start_local / event_end_local are naive wall-clock times in
+    # the project's local camera timezone (see DEVELOPERS.md).
+    @field_serializer("event_start_local", "event_end_local")
+    def _serialize_event_local(self, value: datetime) -> str:
+        return serialize_local_datetime(value)  # type: ignore[return-value]
+
 
 class EventWithFiles(BaseModel):
     """Event with all files and their detections."""
 
     id: str
     deployment_id: str
-    start_time: datetime
-    end_time: datetime
+    event_start_local: datetime
+    event_end_local: datetime
     file_count: int
     max_n_frames: list[MaxNFrame]
-    created_at: datetime
+    created_at_utc: datetime
     site_name: str | None = None
     files: list[FileWithDetections]
+
+    @field_serializer("event_start_local", "event_end_local")
+    def _serialize_event_local(self, value: datetime) -> str:
+        return serialize_local_datetime(value)  # type: ignore[return-value]
 
     class Config:
         from_attributes = True

@@ -1,14 +1,12 @@
 """
 Site model - camera locations within a project.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit foreign key relationships
-- No optional fields where not needed
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` is a tz-aware UTC audit timestamp.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
@@ -44,8 +42,8 @@ class Site(Base):
     habitat_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships

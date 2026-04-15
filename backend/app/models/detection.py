@@ -1,14 +1,12 @@
 """
 Detection model - ML detection results (bounding boxes).
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit relationships
-- Clear indexes
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` / `verified_at_utc` are tz-aware UTC audit timestamps.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
@@ -74,10 +72,12 @@ class Detection(Base):
 
     # Detection-level verification
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships

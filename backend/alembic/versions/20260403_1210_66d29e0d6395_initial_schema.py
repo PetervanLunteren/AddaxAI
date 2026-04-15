@@ -29,11 +29,11 @@ def upgrade() -> None:
         sa.Column("action", sa.String(length=20), nullable=False),
         sa.Column("user_id", sa.String(length=36), nullable=True),
         sa.Column("changes", sa.JSON(), nullable=True),
-        sa.Column("timestamp", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_audit_entity", "audit_log", ["entity_type", "entity_id"], unique=False)
-    op.create_index("idx_audit_timestamp", "audit_log", ["timestamp"], unique=False)
+    op.create_index("idx_audit_created", "audit_log", ["created_at_utc"], unique=False)
     op.create_table(
         "jobs",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -44,12 +44,12 @@ def upgrade() -> None:
         sa.Column("payload", sa.JSON(), nullable=True),
         sa.Column("result", sa.JSON(), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("started_at", sa.DateTime(), nullable=True),
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("started_at_utc", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at_utc", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("idx_jobs_created", "jobs", ["created_at"], unique=False)
+    op.create_index("idx_jobs_created", "jobs", ["created_at_utc"], unique=False)
     op.create_index("idx_jobs_status", "jobs", ["status"], unique=False)
     op.create_table(
         "label_taxonomy",
@@ -65,7 +65,7 @@ def upgrade() -> None:
         sa.Column("display_name", sa.String(length=100), nullable=True),
         sa.Column("is_custom", sa.Boolean(), nullable=False),
         sa.Column("project_id", sa.String(length=36), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "classification_model_id",
@@ -84,8 +84,8 @@ def upgrade() -> None:
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.Column("detection_model_id", sa.String(length=100), nullable=False),
         sa.Column("classification_model_id", sa.String(length=100), nullable=True),
         sa.Column("embedding_model_id", sa.String(length=100), nullable=True),
@@ -117,7 +117,7 @@ def upgrade() -> None:
         sa.Column("elevation_m", sa.Float(), nullable=True),
         sa.Column("habitat_type", sa.String(length=255), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("project_id", "name", name="uq_site_name_per_project"),
@@ -131,8 +131,8 @@ def upgrade() -> None:
         sa.Column("image_count", sa.Integer(), nullable=False),
         sa.Column("site_id", sa.String(length=36), nullable=True),
         sa.Column("status", sa.String(length=20), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("processed_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("processed_at_utc", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column("deployment_id", sa.String(length=36), nullable=True),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -145,13 +145,13 @@ def upgrade() -> None:
         sa.Column("site_id", sa.String(length=36), nullable=False),
         sa.Column("folder_path", sa.Text(), nullable=True),
         sa.Column("folder_status", sa.String(length=20), nullable=False),
-        sa.Column("last_validated_at", sa.DateTime(), nullable=True),
-        sa.Column("start_date", sa.Date(), nullable=False),
-        sa.Column("end_date", sa.Date(), nullable=True),
+        sa.Column("last_validated_at_utc", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("start_date_local", sa.Date(), nullable=False),
+        sa.Column("end_date_local", sa.Date(), nullable=True),
         sa.Column("camera_model", sa.String(length=255), nullable=True),
         sa.Column("camera_serial", sa.String(length=255), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["site_id"], ["sites.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -160,15 +160,17 @@ def upgrade() -> None:
         "events",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("deployment_id", sa.String(length=36), nullable=False),
-        sa.Column("start_time", sa.DateTime(), nullable=False),
-        sa.Column("end_time", sa.DateTime(), nullable=False),
+        sa.Column("event_start_local", sa.DateTime(), nullable=False),
+        sa.Column("event_end_local", sa.DateTime(), nullable=False),
         sa.Column("file_count", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["deployment_id"], ["deployments.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_events_deployment", "events", ["deployment_id"], unique=False)
-    op.create_index("idx_events_time", "events", ["start_time", "end_time"], unique=False)
+    op.create_index(
+        "idx_events_local", "events", ["event_start_local", "event_end_local"], unique=False
+    )
     op.create_table(
         "files",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -179,7 +181,7 @@ def upgrade() -> None:
         sa.Column("size_bytes", sa.Integer(), nullable=True),
         sa.Column("width_px", sa.Integer(), nullable=True),
         sa.Column("height_px", sa.Integer(), nullable=True),
-        sa.Column("timestamp", sa.DateTime(), nullable=False),
+        sa.Column("captured_at_local", sa.DateTime(), nullable=False),
         sa.Column("exif_data", sa.JSON(), nullable=True),
         sa.Column(
             "observation_type", sa.String(length=20), server_default="unclassified", nullable=False
@@ -191,17 +193,17 @@ def upgrade() -> None:
         sa.Column("source_video_id", sa.String(length=36), nullable=True),
         sa.Column("source_frame_number", sa.Integer(), nullable=True),
         sa.Column("verified", sa.Boolean(), server_default="0", nullable=False),
-        sa.Column("verified_at", sa.DateTime(), nullable=True),
+        sa.Column("verified_at_utc", sa.DateTime(timezone=True), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("favorited", sa.Boolean(), server_default="0", nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["deployment_id"], ["deployments.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["source_video_id"], ["files.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_files_deployment", "files", ["deployment_id"], unique=False)
     op.create_index("idx_files_source_video", "files", ["source_video_id"], unique=False)
-    op.create_index("idx_files_timestamp", "files", ["timestamp"], unique=False)
+    op.create_index("idx_files_captured_at_local", "files", ["captured_at_local"], unique=False)
     op.create_index("idx_files_verified", "files", ["verified"], unique=False)
     op.create_table(
         "detections",
@@ -221,8 +223,8 @@ def upgrade() -> None:
         sa.Column("classification_method", sa.String(length=20), nullable=True),
         sa.Column("frame_number", sa.Integer(), nullable=True),
         sa.Column("verified", sa.Boolean(), nullable=False),
-        sa.Column("verified_at", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("verified_at_utc", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["file_id"], ["files.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["job_id"],
@@ -284,7 +286,7 @@ def upgrade() -> None:
         sa.Column("vector", sa.LargeBinary(), nullable=False),
         sa.Column("dimension", sa.Integer(), nullable=False),
         sa.Column("l2_norm", sa.Float(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["detection_id"], ["detections.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
             ["job_id"],
@@ -334,11 +336,11 @@ def downgrade() -> None:
     op.drop_index("idx_detections_category", table_name="detections")
     op.drop_table("detections")
     op.drop_index("idx_files_verified", table_name="files")
-    op.drop_index("idx_files_timestamp", table_name="files")
+    op.drop_index("idx_files_captured_at_local", table_name="files")
     op.drop_index("idx_files_source_video", table_name="files")
     op.drop_index("idx_files_deployment", table_name="files")
     op.drop_table("files")
-    op.drop_index("idx_events_time", table_name="events")
+    op.drop_index("idx_events_local", table_name="events")
     op.drop_index("idx_events_deployment", table_name="events")
     op.drop_table("events")
     op.drop_index(op.f("ix_deployments_site_id"), table_name="deployments")
@@ -353,7 +355,7 @@ def downgrade() -> None:
     op.drop_index("idx_jobs_status", table_name="jobs")
     op.drop_index("idx_jobs_created", table_name="jobs")
     op.drop_table("jobs")
-    op.drop_index("idx_audit_timestamp", table_name="audit_log")
+    op.drop_index("idx_audit_created", table_name="audit_log")
     op.drop_index("idx_audit_entity", table_name="audit_log")
     op.drop_table("audit_log")
     # ### end Alembic commands ###

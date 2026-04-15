@@ -3,10 +3,13 @@ LabelTaxonomy model — one row per label/taxon per classification model.
 
 Stores parsed taxonomy data from taxonomy.csv and rolled-up entries from
 taxonomic rollup. Enables server-side label filter tree building.
+
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `created_at_utc` is a tz-aware UTC audit timestamp.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Index, String, UniqueConstraint
@@ -48,8 +51,8 @@ class LabelTaxonomy(Base):
         Boolean, nullable=False, default=False
     )
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Back-reference to detections linked via FK

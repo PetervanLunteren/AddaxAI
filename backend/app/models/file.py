@@ -1,14 +1,14 @@
 """
 File model - images and videos from camera traps.
 
-Following DEVELOPERS.md principles:
-- Type hints everywhere
-- Explicit constraints
-- No silent failures
+Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
+- `captured_at_local` is naive wall-clock time in the project's local
+  camera timezone. Created from EXIF / exiftool and stored verbatim.
+- `created_at_utc` / `verified_at_utc` are tz-aware UTC audit timestamps.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, Index, Integer, String, Text
@@ -55,10 +55,12 @@ class File(Base):
     width_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Temporal metadata
-    timestamp: Mapped[datetime] = mapped_column(
+    # Naive wall-clock time at the camera, in Project.timezone. From EXIF
+    # `DateTimeOriginal` (images) or exiftool `QuickTime:CreateDate` and
+    # friends (videos). Never converted; see DEVELOPERS.md.
+    captured_at_local: Mapped[datetime] = mapped_column(
         DateTime, nullable=False
-    )  # From EXIF or filename
+    )
     exif_data: Mapped[dict[str, object] | None] = mapped_column(
         JSON, nullable=True
     )  # Full EXIF as JSON blob
@@ -87,14 +89,16 @@ class File(Base):
     verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
     )
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     favorited: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships
@@ -112,10 +116,13 @@ class File(Base):
     # Indexes for common queries
     __table_args__ = (
         Index("idx_files_deployment", "deployment_id"),
-        Index("idx_files_timestamp", "timestamp"),
+        Index("idx_files_captured_at_local", "captured_at_local"),
         Index("idx_files_verified", "verified"),
         Index("idx_files_source_video", "source_video_id"),
     )
 
     def __repr__(self) -> str:
-        return f"<File(id={self.id}, file_path={self.file_path}, timestamp={self.timestamp})>"
+        return (
+            f"<File(id={self.id}, file_path={self.file_path}, "
+            f"captured_at_local={self.captured_at_local})>"
+        )

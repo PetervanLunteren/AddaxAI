@@ -85,8 +85,8 @@ export interface ProjectResponse {
   embedding_batch_size: number | null;
   postprocessing_settings_hash: string | null;
   thumbnail_path: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at_utc: string;
+  updated_at_utc: string;
 }
 
 export interface ProjectWithStats extends ProjectResponse {
@@ -162,7 +162,7 @@ export interface SiteResponse {
   habitat_type: string | null;
   notes: string | null;
   tags: Record<string, string>;
-  created_at: string;
+  created_at_utc: string;
 }
 
 export interface SiteWithStats extends SiteResponse {
@@ -175,20 +175,20 @@ export interface DeploymentResponse {
   site_id: string;
   folder_path: string | null;
   folder_status: "valid" | "needs_relink";
-  last_validated_at: string | null;
-  start_date: string;
-  end_date: string | null;
+  last_validated_at_utc: string | null;
+  start_date_local: string;
+  end_date_local: string | null;
   camera_model: string | null;
   camera_serial: string | null;
   notes: string | null;
   tags: Record<string, string>;
   datetime_offset_seconds: number | null;
-  created_at: string;
+  created_at_utc: string;
 }
 
 export interface DeploymentUpdate {
-  start_date?: string | null;
-  end_date?: string | null;
+  start_date_local?: string | null;
+  end_date_local?: string | null;
   camera_model?: string | null;
   camera_serial?: string | null;
   notes?: string | null;
@@ -310,9 +310,9 @@ export interface JobResponse {
   payload: Record<string, unknown> | null;
   result: Record<string, unknown> | null;
   error: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
+  created_at_utc: string;
+  started_at_utc: string | null;
+  completed_at_utc: string | null;
 }
 
 export interface RunQueueResponse {
@@ -340,7 +340,7 @@ export interface DetectionResponse {
   classification_method: string | null;
   frame_number: number | null;
   verified: boolean;
-  verified_at: string | null;
+  verified_at_utc: string | null;
 }
 
 export interface FileResponse {
@@ -352,14 +352,15 @@ export interface FileResponse {
   size_bytes: number | null;
   width_px: number | null;
   height_px: number | null;
-  timestamp: string;
-  created_at: string;
+  /** ISO 8601 with the project's local UTC offset, e.g. "2026-04-14T07:30:00+02:00". */
+  captured_at_local: string;
+  created_at_utc: string;
   best_frame_number: number | null;
   best_frame_path: string | null;
   frame_rate: number | null;
   observation_type: ObservationType;
   verified: boolean;
-  verified_at: string | null;
+  verified_at_utc: string | null;
   notes: string | null;
   favorited: boolean;
   source_video_id: string | null;
@@ -409,8 +410,9 @@ export interface MaxNFrame {
 export interface EventSummary {
   id: string;
   deployment_id: string;
-  start_time: string;
-  end_time: string;
+  /** ISO 8601 with the project's local UTC offset. */
+  event_start_local: string;
+  event_end_local: string;
   file_count: number;
   thumbnail_file_id: string | null;
   max_n_frames: MaxNFrame[];
@@ -431,11 +433,12 @@ export interface EventSummary {
 export interface EventWithFiles {
   id: string;
   deployment_id: string;
-  start_time: string;
-  end_time: string;
+  /** ISO 8601 with the project's local UTC offset. */
+  event_start_local: string;
+  event_end_local: string;
   file_count: number;
   max_n_frames: MaxNFrame[];
-  created_at: string;
+  created_at_utc: string;
   site_name: string | null;
   files: FileWithDetections[];
 }
@@ -592,7 +595,8 @@ export interface DetectionSummary {
   neighbor_top_label: string | null;
   site_name: string | null;
   deployment_id: string | null;
-  timestamp: string | null;
+  /** ISO 8601 with the project's local UTC offset. */
+  captured_at_local: string | null;
   crop_url: string;
   crop_bbox: CropBbox | null;
 }

@@ -135,6 +135,29 @@ MegaDetector sometimes produces false positive bounding boxes. When a classifica
 | `backend/app/ml/label_exclusion.py` | `NON_LABEL_CLASSES` set, `is_non_label_detection()` helper |
 | `backend/app/ml/json_pipeline.py` | Skip logic in `load_json_to_database()` and `_load_to_database()` |
 
+## Datetime conventions
+
+There are two kinds of datetimes in this codebase and they must never be mixed in arithmetic or comparison:
+
+1. **Observational datetimes** are naive wall-clock time at the camera, in the project's local camera timezone (`Project.timezone`). They come from EXIF `DateTimeOriginal` on images or exiftool `QuickTime:CreateDate` and friends on videos, and are stored verbatim: no conversion, no offset attached at rest. Columns: `File.captured_at_local`, `Event.event_start_local`, `Event.event_end_local`, `Deployment.start_date_local` (Date), `Deployment.end_date_local` (Date).
+
+2. **Audit datetimes** are tz-aware UTC, written via `datetime.now(UTC)` (never the deprecated `datetime.utcnow()`). They record when the server did something: row creation, job scheduling, human verification, folder re-link. Columns all end in `_utc` and are typed `DateTime(timezone=True)`, e.g. `Project.created_at_utc`, `Project.updated_at_utc`, `File.verified_at_utc`, `Detection.verified_at_utc`, `Job.started_at_utc`.
+
+| Type | Naming | SQL type | Write site | Tz |
+|------|--------|----------|------------|-----|
+| Observational | `*_local` (or `*_date_local`) | `DateTime` / `Date` | EXIF / exiftool / event clustering | camera local, naive |
+| Audit | `*_utc` | `DateTime(timezone=True)` | `datetime.now(UTC)` | UTC, tz-aware |
+
+**Wire format.** Observational datetimes are serialized to the frontend as ISO 8601 with the UTC offset that applies to the project's timezone on *that file's local date* (so DST is resolved per-file). The field serializer lives in `backend/app/api/schemas/file.py` and `backend/app/api/schemas/event.py`; it reads the active project timezone from a `ContextVar` set at the top of each endpoint. The helper `app.utils.datetime_serialization.to_local_iso_with_offset` does the actual formatting. Audit datetimes serialize naturally because they're already tz-aware.
+
+**Endpoints that return observational datetimes must be `async def`.** The `ContextVar` is set inside the endpoint body; for sync endpoints FastAPI runs the body in a threadpool, and the ContextVar set there is invisible to the response serialization stage that runs in the event loop task. `async def` keeps the body and serialization in the same task context. Pinned by tests in `backend/tests/api/test_datetime_wire_format.py`.
+
+**Frontend rendering.** The UI must always show the camera's wall-clock time, not the viewer's browser-local time. `new Date(iso).toLocaleString(...)` parses the ISO string to an absolute UTC moment and then converts to the *viewer's* timezone, which silently shows wrong hours for any user not in the project's tz. Use `formatCameraDate` / `formatCameraTime` / `formatCameraDateTime` from `frontend/src/lib/datetime.ts` instead. They strip the offset and render the local components verbatim (locale-aware via `Intl.DateTimeFormat` with `timeZone: "UTC"` after the strip).
+
+**EXIF-missing is a hard failure.** `backend/app/ml/json_pipeline.py:load_json_to_database` pre-flights every image's capture timestamp before touching the DB. If any file has no extractable `DateTimeOriginal` (images) or `QuickTime:CreateDate` (videos), it raises `MissingTimestampError` with the file list. The worker catches it, marks the job failed, and surfaces the list via the queue entry's `error` field. We never substitute `fromtimestamp(mtime)` or `datetime.now(UTC)` — both silently lie about when the animal was actually there. Fix the source data and retry.
+
+**Project timezone.** `Project.timezone` is a required IANA string (`"Europe/Amsterdam"`, `"UTC"`, `"Etc/GMT-3"`, etc.) describing what clock the cameras were configured to. The `TimezoneSelect` combobox in `frontend/src/components/ui/timezone-select.tsx` exposes both DST-aware regional zones and fixed-offset `Etc/GMT±N` zones for cameras set to "local winter time" (no DST). Used by the activity-pattern sun overlay (astral) and any future camtrap-dp export. Never used to convert stored datetimes.
+
 ## Best frame selection (videos)
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:

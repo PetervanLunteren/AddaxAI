@@ -16,6 +16,7 @@ import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
 import { projectsApi } from "../api/projects";
 import { API_BASE_URL } from "../lib/api-client";
+import { formatCameraDate, formatCameraTime } from "../lib/datetime";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -436,19 +437,20 @@ function EventCard({
   detectionThreshold: number;
   onClick: () => void;
 }) {
-  const startTime = new Date(event.start_time);
-  const endTime = new Date(event.end_time);
-  const sameTime = event.start_time === event.end_time;
-  const sameDay = startTime.toDateString() === endTime.toDateString();
-
-  const fmtDate = (d: Date) => d.toLocaleDateString([], { month: "short", day: "numeric" });
-  const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Render observational datetimes as the camera's wall-clock time, not
+  // the viewer's browser-local time. See lib/datetime.ts.
+  const startDate = formatCameraDate(event.event_start_local, { month: "short", day: "numeric" });
+  const startTime = formatCameraTime(event.event_start_local);
+  const endDate = formatCameraDate(event.event_end_local, { month: "short", day: "numeric" });
+  const endTime = formatCameraTime(event.event_end_local);
+  const sameTime = event.event_start_local === event.event_end_local;
+  const sameDay = startDate === endDate;
 
   const dateTimeStr = sameTime
-    ? `${fmtDate(startTime)} · ${fmtTime(startTime)}`
+    ? `${startDate} · ${startTime}`
     : sameDay
-      ? `${fmtDate(startTime)} · ${fmtTime(startTime)} – ${fmtTime(endTime)}`
-      : `${fmtDate(startTime)} ${fmtTime(startTime)} – ${fmtDate(endTime)} ${fmtTime(endTime)}`;
+      ? `${startDate} · ${startTime} – ${endTime}`
+      : `${startDate} ${startTime} – ${endDate} ${endTime}`;
 
   const thumbnailUrl = event.thumbnail_file_id
     ? `${API_BASE_URL}/api/files/${event.thumbnail_file_id}/image`

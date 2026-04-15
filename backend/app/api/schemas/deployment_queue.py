@@ -53,8 +53,8 @@ class DeploymentQueueResponse(DeploymentQueueBase):
     video_count: int = Field(default=0, description="Number of videos in deployment folder")
     image_count: int = Field(default=0, description="Number of images in deployment folder")
     status: str = Field(..., description="Queue status: pending, processing, completed, failed")
-    created_at: datetime
-    processed_at: datetime | None = None
+    created_at_utc: datetime
+    processed_at_utc: datetime | None = None
     error: str | None = None
     deployment_id: str | None = Field(None, description="Created deployment ID after processing")
 
