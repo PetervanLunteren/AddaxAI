@@ -8,6 +8,9 @@
 - [ ] In the deployments page, there should be an "info" option that opens a model that shows the path, the number of files (img/vid), events, observations, average confidences, etc. Just some insights into the deployment for investigation purposes. 
 - [ ] Add the country or region to the TZ dropdown too and make sure the search also does that. So not only "Nairobi" but something like Kenya, Nairobi. What do you think? How would users search? By country, city, or continent? What is good UI UX? I've already implemented this fix in the other project. Check how that is implemented there: /Users/peter/Documents/Repos/AddaxAI-Connect/. It has a few mapping files etc, so make sure you copy it like its being used there. 
 
+
+I want to talk about the [clock time / sun time] setting. What does it do exactly? As far as I can see, it just shows the Twillight bands (same as the "Twilight bands" toggle), and the X axis times are still the same hour ticks (altough the axis label changes from "camera local" to "relative to... ")
+
 ## New features
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] DEPTH ESTIMATION

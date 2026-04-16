@@ -11,7 +11,7 @@
  * presentational.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Info, Loader2 } from "lucide-react";
@@ -33,6 +33,10 @@ import {
   type ActivityOverlapPageFilters,
   type TimeAxis,
 } from "../components/plots/ActivityOverlapFilterBar";
+import {
+  PlotExplainer,
+  type PlotReference,
+} from "../components/plots/PlotExplainer";
 import { Badge } from "../components/ui/badge";
 import {
   Tooltip as UITooltip,
@@ -78,6 +82,33 @@ const SAMPLE_WARNING_CRITICAL: Record<SampleSizeWarning, boolean> = {
   low_n_50: false,
   low_n_75: false,
 };
+
+// -- Scientific explainer content for the "About this plot" section --
+
+const EXPLAINER_REFERENCES: PlotReference[] = [
+  {
+    citation:
+      "Ridout, M. S., & Linkie, M. (2009). Estimating overlap of daily " +
+      "activity patterns from camera trap data. Journal of Agricultural, " +
+      "Biological, and Environmental Statistics, 14(3), 322–337.",
+    url: "https://link.springer.com/article/10.1198/jabes.2009.08038",
+  },
+  {
+    citation:
+      "Vazquez, C., Rowcliffe, J. M., Spoelstra, K., & Jansen, P. A. " +
+      "(2019). Comparing diel activity patterns of wildlife across " +
+      "latitudes and seasons: time transformations using day length. " +
+      "Methods in Ecology and Evolution, 10(12), 2057–2066.",
+    url: "https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13290",
+  },
+  {
+    citation:
+      "Bennie, J. J., Duffy, J. P., Inger, R., & Gaston, K. J. (2014). " +
+      "Biogeography of time partitioning in mammals. PNAS, 111(38), " +
+      "13727–13732.",
+    url: "https://www.pnas.org/doi/10.1073/pnas.1216063110",
+  },
+];
 
 function parseTimeAxis(raw: string | undefined): TimeAxis {
   return raw === "sun" ? "sun" : "clock";
@@ -194,7 +225,48 @@ export function ActivityOverlapPage() {
     };
   }, [searchParams]);
 
-  const handleFiltersChange = (next: ActivityOverlapPageFilters) => {
+  // Species A auto-pick: persisted via sessionStorage, keyed per
+  // project. Survives navigating away and back within a session, but
+  // clears on app/tab close so a fresh session re-evaluates the
+  // most-observed default.
+  //
+  // Storage value semantics (single string key):
+  //   - missing  = never attempted (fire auto-pick when URL is empty)
+  //   - ""       = attempted, Species A is deliberately empty now
+  //                (zero species in scope, or user cleared the picker)
+  //   - "Tiger"  = the Species A currently in use
+  //
+  // Every URL write funnels through `writeFilters`, which is the
+  // single point that keeps sessionStorage in lock-step with the URL.
+  // That way a user pick, a user clear, and the auto-pick itself all
+  // update storage atomically with the URL change, with no ordering
+  // race against the auto-pick query.
+  const storageKey = projectId
+    ? `addaxai:plots:activity-overlap:species-a:${projectId}`
+    : null;
+
+  const readStoredSpeciesA = (): string | null => {
+    if (!storageKey) return null;
+    try {
+      return sessionStorage.getItem(storageKey);
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredSpeciesA = (value: string) => {
+    if (!storageKey) return;
+    try {
+      sessionStorage.setItem(storageKey, value);
+    } catch {
+      /* ignore — private mode or quota, not fatal */
+    }
+  };
+
+  const writeFilters = (
+    next: ActivityOverlapPageFilters,
+    options?: { replace?: boolean },
+  ) => {
     setSearchParams(
       filtersToSearchParams(
         {
@@ -208,8 +280,70 @@ export function ActivityOverlapPage() {
         },
         FILTER_SCHEMA,
       ),
+      options,
     );
+    writeStoredSpeciesA(next.speciesA ?? "");
   };
+
+  const handleFiltersChange = (next: ActivityOverlapPageFilters) => {
+    writeFilters(next);
+  };
+
+  // Only trigger the expensive API call when the URL has no species_a
+  // AND sessionStorage has no record. A stored "" is a decision
+  // ("empty on purpose"), so it disables auto-pick too.
+  const hasStoredDecision = readStoredSpeciesA() !== null;
+  const siteIdsCsv = filters.siteIds.length > 0 ? filters.siteIds.join(",") : undefined;
+  const shouldAutoPickA =
+    !!projectId && filters.speciesA === null && !hasStoredDecision;
+
+  const { data: autoPickCandidates } = useQuery({
+    queryKey: [
+      "statistics",
+      "species",
+      "auto-pick",
+      projectId,
+      siteIdsCsv,
+      filters.dateFrom,
+      filters.dateTo,
+    ],
+    queryFn: () =>
+      statisticsApi.getSpeciesDistribution(
+        projectId!,
+        siteIdsCsv,
+        filters.dateFrom ?? undefined,
+        filters.dateTo ?? undefined,
+      ),
+    enabled: shouldAutoPickA,
+  });
+
+  // Restore-from-session: URL empty but session remembers a species →
+  // write it back to the URL. Runs on mount and on any transition to
+  // speciesA=null (which happens after a user clear; in that case the
+  // stored value is "" and we correctly skip).
+  useEffect(() => {
+    if (!projectId || filters.speciesA !== null) return;
+    const stored = readStoredSpeciesA();
+    if (stored && stored !== "") {
+      writeFilters({ ...filters, speciesA: stored }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, filters.speciesA]);
+
+  // Auto-pick once per session per project: pick the most-observed
+  // species under the current scope, write URL + session storage.
+  // A zero-result query still writes "" to storage so we don't retry.
+  useEffect(() => {
+    if (!shouldAutoPickA || !autoPickCandidates) return;
+    if (autoPickCandidates.length === 0) {
+      writeStoredSpeciesA("");
+      return;
+    }
+    const top = [...autoPickCandidates].sort((a, b) => b.count - a.count)[0];
+    if (!top) return;
+    writeFilters({ ...filters, speciesA: top.species }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoPickA, autoPickCandidates]);
 
   const enabled = !!projectId && !!filters.speciesA;
 
@@ -245,10 +379,7 @@ export function ActivityOverlapPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold tracking-tight">Activity overlap</h1>
           <p className="text-sm text-muted-foreground">
-            Compare daily activity patterns between species using a von
-            Mises kernel density estimate. The Δ overlap coefficient
-            (Ridout &amp; Linkie 2009) and bootstrap 95% CI are shown
-            when two species are selected.
+            Compare daily activity patterns between species.
           </p>
         </div>
       </header>
@@ -296,14 +427,67 @@ export function ActivityOverlapPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
               <Info className="h-3.5 w-3.5" />
-              Independence interval:{" "}
-              {Math.round(data.independence_interval_seconds / 60)} min
-              (project setting)
+              <span>Timezone: {data.project_timezone}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                Independence interval:{" "}
+                {Math.round(data.independence_interval_seconds / 60)} min
+              </span>
+              <span className="text-muted-foreground/70">(project settings)</span>
             </div>
           </div>
         )}
+
+        <PlotExplainer
+          plotKey="activity-overlap"
+          what={
+            <p>
+              Two smooth curves, one per species, showing how often
+              each species was detected at each hour of the day. Each
+              curve is normalised so the area under it sums to 1. The
+              peaks show when the species is active, not how many
+              detections there were. When two species are picked, the
+              shaded region between the curves is the overlap
+              coefficient Δ. Rug ticks at the bottom show the raw
+              detection times behind each curve.
+            </p>
+          }
+          how={
+            <p>
+              Detections are grouped into events using the project's
+              independence interval, and the MaxN per species in each
+              event becomes the sample count at that event's time of
+              day. Samples are fit with a von Mises circular kernel
+              density on a 240-point grid over [0, 24) hours (κ = 5).
+              The overlap coefficient Δ = ∫ min(f<sub>a</sub>,
+              f<sub>b</sub>) dt over the full day, with the label
+              flipping between Δ<sub>1</sub> and Δ<sub>4</sub> based on
+              the smaller sample size (Δ<sub>4</sub> for min-N ≥ 50,
+              Δ<sub>1</sub> below) following the `overlap` R package
+              convention. A 95% percentile bootstrap CI comes from
+              1000 resamples with a fixed seed. Diel classification
+              follows Bennie et al. 2014: when ≥ 70% of activity
+              density falls in one phase (day, twilight, or night, as
+              defined by the project's sun bands), the species gets
+              that label, otherwise it is labelled cathemeral.
+            </p>
+          }
+          caveats={
+            <p>
+              Sample size matters: below ~50 detections the KDE curves
+              are spiky and the Δ estimate is unstable, and below ~30
+              the chart is mostly noise. Warnings appear in the legend
+              row when n falls below these thresholds. Seasonal pooling
+              is also a problem: if the filter range spans large shifts
+              in day length, clock-time peaks spread out artificially,
+              so use the sun-time x-axis toggle for high-latitude or
+              multi-season data, or narrow the date range.
+            </p>
+          }
+          references={EXPLAINER_REFERENCES}
+        />
       </main>
     </div>
   );

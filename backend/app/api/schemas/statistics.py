@@ -159,10 +159,16 @@ class ActivityOverlapResponse(BaseModel):
     `species_b` is None when the user has only picked one species; the
     chart still renders one curve in that case. `overlap` is None
     whenever we don't have two non-empty species to compare.
+
+    `project_timezone` and `independence_interval_seconds` are
+    read-only echoes of the two project settings that the user needs
+    to know when reading the chart (x-axis interpretation and event
+    grouping). The frontend surfaces them in the footer.
     """
 
     species_a: SpeciesActivity
     species_b: SpeciesActivity | None
     overlap: OverlapStat | None
     sun_bands: SunBands | None
+    project_timezone: str
     independence_interval_seconds: int

@@ -136,6 +136,8 @@ export interface ActivityOverlapResponse {
   species_b: SpeciesActivity | null;
   overlap: OverlapStat | null;
   sun_bands: SunBands | null;
+  /** IANA timezone the project's camera clocks are set to. */
+  project_timezone: string;
   independence_interval_seconds: number;
 }
 

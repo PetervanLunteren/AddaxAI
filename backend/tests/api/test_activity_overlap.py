@@ -252,6 +252,7 @@ def test_get_activity_overlap_two_species_basic_shape(db):
     assert len(resp.species_a.kde_density) == 240
     assert len(resp.species_b.kde_density) == 240
     assert resp.independence_interval_seconds > 0
+    assert resp.project_timezone == "Europe/Amsterdam"
 
 
 def test_get_activity_overlap_diel_classification(db):
@@ -406,9 +407,11 @@ def test_activity_overlap_endpoint_response_shape(client, db):
         "species_b",
         "overlap",
         "sun_bands",
+        "project_timezone",
         "independence_interval_seconds",
     ):
         assert key in data
+    assert data["project_timezone"] == "Europe/Amsterdam"
     assert data["species_a"]["label"] == "leopard"
     assert data["species_b"]["label"] == "cattle"
     assert data["overlap"]["bootstrap_reps"] == 1000

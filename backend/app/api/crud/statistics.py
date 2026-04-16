@@ -809,11 +809,13 @@ def get_activity_overlap(
         estimator_label,
     )
 
-    # Sun bands (reused exactly as in get_activity_pattern)
+    # Sun bands (reused exactly as in get_activity_pattern). The tz
+    # name is also echoed back to the UI so the footer can show which
+    # clock the chart is in.
     sun_bands: SunBands | None = None
     tz_name = (
         db.query(Project.timezone).filter(Project.id == project_id).scalar()
-    )
+    ) or "UTC"
     if tz_name:
         location = _avg_site_location(db, project_id, site_ids)
         if location is not None:
@@ -866,6 +868,7 @@ def get_activity_overlap(
         species_b=activity_b,
         overlap=overlap,
         sun_bands=sun_bands,
+        project_timezone=tz_name,
         independence_interval_seconds=int(independence_seconds),
     )
 

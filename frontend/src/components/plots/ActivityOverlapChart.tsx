@@ -49,11 +49,11 @@ ChartJS.register(
   Filler,
 );
 
-// Color-blind safe palette — same hues as the rest of the app's species
-// colors but pinned to slots A and B so the picker swatches and chart
-// curves never disagree.
-export const SPECIES_A_COLOR = "#1f77b4";
-export const SPECIES_B_COLOR = "#ff7f0e";
+// Species colors pinned to slots A and B so the picker swatches, the
+// chart curves, and the legend badges always agree. Picked to match
+// the AddaxAI palette (teal + accent orange).
+export const SPECIES_A_COLOR = "#0f6064";
+export const SPECIES_B_COLOR = "#ff8945";
 const OVERLAP_FILL = "rgba(120, 120, 120, 0.28)";
 const RUG_HEIGHT_PX = 6;
 
