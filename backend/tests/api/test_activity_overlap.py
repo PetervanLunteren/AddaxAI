@@ -428,3 +428,171 @@ def test_activity_overlap_endpoint_single_species(client, db):
     data = resp.json()
     assert data["species_b"] is None
     assert data["overlap"] is None
+
+
+# ---------------------------------------------------------------------------
+# 4. Sun-time mode (Vazquez 2019 double-anchor transform)
+# ---------------------------------------------------------------------------
+
+
+def test_get_activity_overlap_defaults_to_clock_axis(db):
+    project = _build_two_species_project(db)
+    resp = stats_crud.get_activity_overlap(
+        db, project.id, species_a="leopard", species_b="cattle"
+    )
+    assert resp.time_axis == "clock"
+    assert resp.anchor_sun_bands is None
+    # Clock-mode sun bands still populated for the overlay.
+    assert resp.sun_bands is not None
+
+
+def test_get_activity_overlap_sun_mode_basic(db):
+    project = _build_two_species_project(db)
+    resp = stats_crud.get_activity_overlap(
+        db,
+        project.id,
+        species_a="leopard",
+        species_b="cattle",
+        time_axis="sun",
+    )
+    assert resp.time_axis == "sun"
+    assert resp.anchor_sun_bands is not None
+    # Anchor bands obey the dawn < sunrise < sunset < dusk ordering.
+    a = resp.anchor_sun_bands
+    assert a.dawn < a.sunrise < a.sunset < a.dusk
+    # No polar drops for Amsterdam in June.
+    assert resp.species_a.dropped_polar == 0
+    assert resp.species_b.dropped_polar == 0
+
+
+def test_get_activity_overlap_sun_mode_fixed_offset_tz(db):
+    """Projects with fixed-offset timezones (cameras set to UTC, say)
+    should round-trip through the sun-time pipeline without
+    zoneinfo resolution issues."""
+    project = make_project(db, timezone="UTC")
+    site = make_site(
+        db, project_id=project.id, name="Camp", latitude=-1.28, longitude=36.82
+    )
+    dep = make_deployment(
+        db,
+        site_id=site.id,
+        start_date_local=date(2024, 3, 1),
+        end_date_local=date(2024, 3, 31),
+    )
+    for i in range(40):
+        ev = make_event_with_files(
+            db,
+            deployment_id=dep.id,
+            event_start_local=datetime(2024, 3, 15, 12, i % 60),
+        )
+        _add_obs(db, event_id=ev.id, label="zebra")
+    db.flush()
+
+    resp = stats_crud.get_activity_overlap(
+        db, project.id, species_a="zebra", time_axis="sun"
+    )
+    assert resp.time_axis == "sun"
+    assert resp.anchor_sun_bands is not None
+    assert resp.species_a.dropped_polar == 0
+    # Classification is still valid: the zebra cluster is at UTC 12:00,
+    # and Nairobi is only 3 h off UTC so midday stays "day" in the
+    # anchored frame.
+    assert resp.species_a.diel_class == "diurnal"
+
+
+def test_get_activity_overlap_sun_mode_drops_polar_observations(db):
+    """High-latitude project in midwinter: every observation lands in
+    polar night, so every observation is dropped. The response still
+    falls back cleanly (time_axis="clock" because anchors couldn't be
+    computed), and the chart remains renderable."""
+    project = make_project(db, timezone="UTC")
+    site = make_site(
+        db, project_id=project.id, name="PolarCamp", latitude=85.0, longitude=0.0
+    )
+    dep = make_deployment(
+        db,
+        site_id=site.id,
+        start_date_local=date(2024, 12, 1),
+        end_date_local=date(2024, 12, 31),
+    )
+    for i in range(30):
+        ev = make_event_with_files(
+            db,
+            deployment_id=dep.id,
+            event_start_local=datetime(2024, 12, 15, 12, i),
+        )
+        _add_obs(db, event_id=ev.id, label="arctic_fox")
+    db.flush()
+
+    resp = stats_crud.get_activity_overlap(
+        db, project.id, species_a="arctic_fox", time_axis="sun"
+    )
+    # All dates polar -> can't build anchors -> fall back to clock.
+    assert resp.time_axis == "clock"
+    assert resp.anchor_sun_bands is None
+    assert resp.species_a.n == 30
+    assert resp.species_a.dropped_polar == 0  # no partial drop, full fallback
+
+
+def test_get_activity_overlap_sun_mode_partial_polar_drops(db):
+    """High-latitude project with observations split across polar and
+    non-polar dates: the non-polar observations anchor the transform
+    and the polar ones are counted as dropped.
+
+    At 70N / UTC: March 15 is non-polar (sunrise ~04:41, sunset ~16:18),
+    June 15 is polar (continuous twilight), so the month split
+    cleanly exercises both code paths.
+    """
+    project = make_project(db, timezone="UTC")
+    site = make_site(
+        db,
+        project_id=project.id,
+        name="ArcticCamp",
+        latitude=70.0,
+        longitude=25.0,
+    )
+    dep = make_deployment(
+        db,
+        site_id=site.id,
+        start_date_local=date(2024, 1, 1),
+        end_date_local=date(2024, 12, 31),
+    )
+    # 20 observations in March (non-polar) + 20 in June (polar).
+    for i in range(20):
+        ev = make_event_with_files(
+            db,
+            deployment_id=dep.id,
+            event_start_local=datetime(2024, 3, 15, 12, i % 60),
+        )
+        _add_obs(db, event_id=ev.id, label="arctic_fox")
+    for i in range(20):
+        ev = make_event_with_files(
+            db,
+            deployment_id=dep.id,
+            event_start_local=datetime(2024, 6, 15, 12, i % 60),
+        )
+        _add_obs(db, event_id=ev.id, label="arctic_fox")
+    db.flush()
+
+    resp = stats_crud.get_activity_overlap(
+        db, project.id, species_a="arctic_fox", time_axis="sun"
+    )
+    # March observations survive, June observations drop.
+    assert resp.time_axis == "sun"
+    assert resp.anchor_sun_bands is not None
+    assert resp.species_a.n == 20
+    assert resp.species_a.dropped_polar == 20
+
+
+def test_activity_overlap_endpoint_sun_mode_query_param(client, db):
+    project = _build_two_species_project(db)
+    resp = client.get(
+        f"/api/statistics/activity-overlap?project_id={project.id}"
+        "&species_a=leopard&species_b=cattle&time_axis=sun"
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["time_axis"] == "sun"
+    assert data["anchor_sun_bands"] is not None
+    assert "dropped_polar" in data["species_a"]
+    assert data["species_a"]["dropped_polar"] == 0

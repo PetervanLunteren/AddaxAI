@@ -106,6 +106,7 @@ class ObservationRateMapResponse(BaseModel):
 SampleSizeWarning = Literal["low_n_30", "low_n_50", "low_n_75"]
 DielClass = Literal["diurnal", "nocturnal", "crepuscular", "cathemeral"]
 DeltaEstimator = Literal["delta1", "delta4"]
+TimeAxis = Literal["clock", "sun"]
 
 
 class SpeciesActivity(BaseModel):
@@ -133,6 +134,9 @@ class SpeciesActivity(BaseModel):
     diel_class: DielClass
     diel_density_by_phase: dict[str, float]
     sample_size_warning: SampleSizeWarning | None = None
+    # Count of observations skipped because their date had no defined
+    # sunrise (polar night / day). Always 0 in clock mode.
+    dropped_polar: int = 0
 
 
 class OverlapStat(BaseModel):
@@ -170,5 +174,12 @@ class ActivityOverlapResponse(BaseModel):
     species_b: SpeciesActivity | None
     overlap: OverlapStat | None
     sun_bands: SunBands | None
+    # Mean dawn / sunrise / sunset / dusk across every observation's
+    # date. Populated only in sun-time mode; the chart uses it to paint
+    # twilight bands at the anchor positions.
+    anchor_sun_bands: SunBands | None = None
+    # Axis convention of the returned KDE: "clock" = raw wall-clock
+    # hour, "sun" = Vazquez-anchored sun time.
+    time_axis: TimeAxis = "clock"
     project_timezone: str
     independence_interval_seconds: int

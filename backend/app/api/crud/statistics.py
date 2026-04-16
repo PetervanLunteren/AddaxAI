@@ -643,28 +643,22 @@ def _event_decimal_hours_for_species(
     date_from: str | None,
     date_to: str | None,
     taxonomic_rank: str | None,
-) -> list[float]:
+) -> list[tuple[float, date]]:
     """
-    Pull every event observation matching one species and return its
-    decimal-hour-of-day, repeated max_n times. The repetition matches
-    the existing get_activity_pattern aggregation (MaxN per event).
+    Pull every event observation matching one species and return
+    `(decimal_hour_of_day, local_date)` tuples, each repeated max_n
+    times. The repetition matches the existing get_activity_pattern
+    aggregation (MaxN per event).
 
     Used by get_activity_overlap to build the input array for the
-    circular KDE. Filters on date range here (unlike the existing
-    get_activity_pattern which currently only uses date_from/date_to
-    for the sun-band reference date — this newer endpoint applies a
-    proper date filter to the events themselves so cross-season
-    comparisons stay clean).
+    circular KDE. The local date travels alongside the hour so the
+    sun-time transform can look up that day's sunrise / sunset.
     """
-    hour_expr = func.cast(
-        func.strftime("%H", Event.event_start_local), Integer
-    ).label("hour")
-    minute_expr = func.cast(
-        func.strftime("%M", Event.event_start_local), Integer
-    ).label("minute")
-
     query = (
-        select(hour_expr, minute_expr, EventObservation.max_n.label("max_n"))
+        select(
+            Event.event_start_local.label("event_start"),
+            EventObservation.max_n.label("max_n"),
+        )
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
@@ -724,11 +718,13 @@ def _event_decimal_hours_for_species(
             query = query.where(EventObservation.label == species)
 
     rows = db.execute(query).all()
-    times: list[float] = []
+    out: list[tuple[float, date]] = []
     for row in rows:
-        decimal_hour = float(row.hour) + float(row.minute) / 60.0
-        times.extend([decimal_hour] * int(row.max_n))
-    return times
+        dt: datetime = row.event_start
+        decimal_hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
+        local_date = dt.date()
+        out.extend([(decimal_hour, local_date)] * int(row.max_n))
+    return out
 
 
 def _sample_size_warning(n: int) -> str | None:
@@ -746,8 +742,17 @@ def _build_species_activity(
     label: str,
     times: list[float],
     sun_bands: SunBands | None,
+    *,
+    dropped_polar: int = 0,
 ):
-    """Fit KDE, classify diel, package as a SpeciesActivity payload."""
+    """Fit KDE, classify diel, package as a SpeciesActivity payload.
+
+    `times` are already in the axis convention the caller wants: raw
+    clock hours in clock mode, Vazquez-anchored sun hours in sun mode.
+    `sun_bands` should be the bands relevant to that axis (single-ref
+    clock bands in clock mode, mean-anchor bands in sun mode) so the
+    diel classification matches the visible curves.
+    """
     import numpy as np
 
     from app.api.schemas.statistics import SpeciesActivity
@@ -774,6 +779,7 @@ def _build_species_activity(
         diel_class=diel_class,
         diel_density_by_phase=density_by_phase,
         sample_size_warning=_sample_size_warning(n),
+        dropped_polar=dropped_polar,
     )
 
 
@@ -786,6 +792,7 @@ def get_activity_overlap(
     date_from: str | None = None,
     date_to: str | None = None,
     taxonomic_rank: str | None = None,
+    time_axis: str = "clock",
 ):
     """
     Build the full Plots → Activity overlap payload for 1 or 2 species.
@@ -794,8 +801,14 @@ def get_activity_overlap(
     overlay. Reuses `_RANK_COLUMNS` / `HIGHER_LEVEL_TAXA` / `NO_TAXONOMY`
     for taxonomic-rank-aware species filtering. The math (KDE, Δ,
     bootstrap CI, diel classification) lives in
-    `app.ml.activity_analysis` so it can be unit-tested in isolation
-    from the SQL layer.
+    `app.ml.activity_analysis`; the Vazquez sun-time transform lives in
+    `app.ml.sun_time`.
+
+    `time_axis="sun"` routes each observation through the Vazquez 2019
+    double-anchored transform before KDE fitting, so detections pooled
+    across seasons or latitudes share a common reference frame. Degrades
+    silently to clock mode when project lat / lon is missing or every
+    observation's date falls in a polar window.
     """
     import numpy as np
 
@@ -808,26 +821,31 @@ def get_activity_overlap(
         bootstrap_overlap_ci,
         estimator_label,
     )
+    from app.ml.sun_time import (
+        compute_anchor_bands,
+        compute_anchors,
+        per_date_sun_phases,
+        transform_to_sun_time,
+    )
 
-    # Sun bands (reused exactly as in get_activity_pattern). The tz
-    # name is also echoed back to the UI so the footer can show which
-    # clock the chart is in.
+    # Single-reference clock sun bands (same as get_activity_pattern).
+    # Always populated when we can, independent of axis; the frontend
+    # uses it for the clock-mode overlay. The tz name is echoed back
+    # so the footer can show which clock the chart is in.
     sun_bands: SunBands | None = None
     tz_name = (
         db.query(Project.timezone).filter(Project.id == project_id).scalar()
     ) or "UTC"
-    if tz_name:
-        location = _avg_site_location(db, project_id, site_ids)
-        if location is not None:
-            lat, lon = location
-            sun_bands = _compute_sun_bands(
-                lat=lat,
-                lon=lon,
-                reference_date=_reference_date_for_sun(date_from, date_to),
-                tz_name=tz_name,
-            )
+    location = _avg_site_location(db, project_id, site_ids)
+    if location is not None:
+        lat, lon = location
+        sun_bands = _compute_sun_bands(
+            lat=lat,
+            lon=lon,
+            reference_date=_reference_date_for_sun(date_from, date_to),
+            tz_name=tz_name,
+        )
 
-    # Independence interval echoed back to the UI as read-only metadata
     independence_seconds = (
         db.query(Project.independence_interval)
         .filter(Project.id == project_id)
@@ -835,25 +853,81 @@ def get_activity_overlap(
         or 0
     )
 
-    times_a = _event_decimal_hours_for_species(
+    obs_a = _event_decimal_hours_for_species(
         db, project_id, species_a, site_ids, date_from, date_to, taxonomic_rank
     )
-    activity_a = _build_species_activity(species_a, times_a, sun_bands)
+    obs_b: list[tuple[float, date]] = []
+    if species_b:
+        obs_b = _event_decimal_hours_for_species(
+            db, project_id, species_b, site_ids, date_from, date_to, taxonomic_rank
+        )
+
+    # Decide which axis we can actually deliver. Sun mode needs a
+    # project location AND at least one non-polar date across both
+    # species; otherwise we silently fall back to clock.
+    effective_axis: str = "clock"
+    anchor_sun_bands: SunBands | None = None
+    hours_a: list[float]
+    hours_b: list[float]
+    dropped_a = 0
+    dropped_b = 0
+
+    if time_axis == "sun" and location is not None and (obs_a or obs_b):
+        lat, lon = location
+        all_dates = [d for _, d in obs_a] + [d for _, d in obs_b]
+        phases = per_date_sun_phases(
+            all_dates, lat=lat, lon=lon, tz_name=tz_name
+        )
+        anchors = compute_anchors(phases)
+        anchor_bands_tuple = compute_anchor_bands(phases)
+        if anchors is not None and anchor_bands_tuple is not None:
+            anchor_sunrise, anchor_sunset = anchors
+            hours_a, dropped_a = transform_to_sun_time(
+                obs_a,
+                phases,
+                anchor_sunrise=anchor_sunrise,
+                anchor_sunset=anchor_sunset,
+            )
+            hours_b, dropped_b = transform_to_sun_time(
+                obs_b,
+                phases,
+                anchor_sunrise=anchor_sunrise,
+                anchor_sunset=anchor_sunset,
+            )
+            dawn, sunrise, sunset, dusk = anchor_bands_tuple
+            anchor_sun_bands = SunBands(
+                dawn=dawn, sunrise=sunrise, sunset=sunset, dusk=dusk
+            )
+            effective_axis = "sun"
+        else:
+            hours_a = [h for h, _ in obs_a]
+            hours_b = [h for h, _ in obs_b]
+    else:
+        hours_a = [h for h, _ in obs_a]
+        hours_b = [h for h, _ in obs_b]
+
+    # Diel classification uses whichever bands match the axis: anchor
+    # bands in sun mode, single-reference clock bands in clock mode.
+    # This keeps the legend label consistent with the visible curves.
+    diel_bands = anchor_sun_bands if effective_axis == "sun" else sun_bands
+
+    activity_a = _build_species_activity(
+        species_a, hours_a, diel_bands, dropped_polar=dropped_a
+    )
 
     activity_b = None
     overlap = None
     if species_b:
-        times_b = _event_decimal_hours_for_species(
-            db, project_id, species_b, site_ids, date_from, date_to, taxonomic_rank
+        activity_b = _build_species_activity(
+            species_b, hours_b, diel_bands, dropped_polar=dropped_b
         )
-        activity_b = _build_species_activity(species_b, times_b, sun_bands)
 
-        if len(times_a) > 0 and len(times_b) > 0:
+        if len(hours_a) > 0 and len(hours_b) > 0:
             delta, ci_low, ci_high = bootstrap_overlap_ci(
-                np.asarray(times_a, dtype=np.float64),
-                np.asarray(times_b, dtype=np.float64),
+                np.asarray(hours_a, dtype=np.float64),
+                np.asarray(hours_b, dtype=np.float64),
             )
-            min_n = min(len(times_a), len(times_b))
+            min_n = min(len(hours_a), len(hours_b))
             overlap = OverlapStat(
                 delta_estimator=estimator_label(min_n),
                 delta=delta,
@@ -868,6 +942,8 @@ def get_activity_overlap(
         species_b=activity_b,
         overlap=overlap,
         sun_bands=sun_bands,
+        anchor_sun_bands=anchor_sun_bands,
+        time_axis=effective_axis,
         project_timezone=tz_name,
         independence_interval_seconds=int(independence_seconds),
     )

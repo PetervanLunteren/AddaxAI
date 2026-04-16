@@ -180,6 +180,11 @@ function SpeciesLegend({ species, swatchColor }: SpeciesLegendProps) {
           {SAMPLE_WARNING_LABEL[warning]}
         </Badge>
       )}
+      {species.dropped_polar > 0 && (
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+          {species.dropped_polar} dropped (polar date)
+        </Badge>
+      )}
     </div>
   );
 }
@@ -357,6 +362,7 @@ export function ActivityOverlapPage() {
       filters.siteIds.join(","),
       filters.dateFrom,
       filters.dateTo,
+      filters.timeAxis,
     ],
     queryFn: () =>
       statisticsApi.getActivityOverlap(projectId!, {
@@ -365,6 +371,7 @@ export function ActivityOverlapPage() {
         siteIds: filters.siteIds.length > 0 ? filters.siteIds : undefined,
         dateFrom: filters.dateFrom ?? undefined,
         dateTo: filters.dateTo ?? undefined,
+        timeAxis: filters.timeAxis,
       }),
     enabled,
   });
@@ -408,7 +415,6 @@ export function ActivityOverlapPage() {
           <div className="space-y-4 rounded-lg border bg-card p-4">
             <ActivityOverlapChart
               data={data}
-              timeAxis={filters.timeAxis}
               bandsVisible={filters.bandsVisible}
             />
 
@@ -471,7 +477,14 @@ export function ActivityOverlapPage() {
               follows Bennie et al. 2014: when ≥ 70% of activity
               density falls in one phase (day, twilight, or night, as
               defined by the project's sun bands), the species gets
-              that label, otherwise it is labelled cathemeral.
+              that label, otherwise it is labelled cathemeral. When
+              sun time is selected, each detection's clock hour is
+              transformed via the Vazquez et al. 2019 double-anchored
+              mapping: that day's sunrise and sunset (from astral, in
+              the project's timezone) are stretched or compressed to
+              match the dataset's mean sunrise and sunset. Observations
+              on dates without a defined sunrise (polar night or day)
+              are dropped and counted in the legend.
             </p>
           }
           caveats={
@@ -483,7 +496,10 @@ export function ActivityOverlapPage() {
               is also a problem: if the filter range spans large shifts
               in day length, clock-time peaks spread out artificially,
               so use the sun-time x-axis toggle for high-latitude or
-              multi-season data, or narrow the date range.
+              multi-season data, or narrow the date range. In sun-time
+              mode, observations on dates without a defined sunrise
+              (polar night or day) are excluded; the dropped count
+              appears in the legend.
             </p>
           }
           references={EXPLAINER_REFERENCES}

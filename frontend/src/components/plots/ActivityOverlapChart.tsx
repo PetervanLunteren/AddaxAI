@@ -9,8 +9,9 @@
  *     a pre-fit 240-point density grid, so the chart just plots it)
  *   - shaded overlap region = pointwise min(species_a, species_b)
  *   - twilight bands (dawn/sunrise/sunset/dusk) drawn as a background
- *     plugin in clock mode; auto-suppressed in sun-time mode (which
- *     anchors to mean sunrise/sunset by definition)
+ *     plugin. In clock mode they come from a single reference date's
+ *     dawn/sunrise/sunset/dusk; in sun mode they come from the mean
+ *     anchor bands across the observation set.
  *   - rug ticks under the curves showing raw detection times
  *
  * The math (KDE fit, sun-band computation) lives server-side in
@@ -146,9 +147,7 @@ ChartJS.register(twilightBandsPlugin, rugTicksPlugin);
 
 interface ActivityOverlapChartProps {
   data: ActivityOverlapResponse;
-  /** "clock" = 0..24h camera local time, "sun" = sun-anchored. */
-  timeAxis: "clock" | "sun";
-  /** When false, hide the dawn/dusk overlay even in clock mode. */
+  /** When false, hide the twilight overlay. */
   bandsVisible: boolean;
 }
 
@@ -162,9 +161,31 @@ const GRID_HOURS: number[] = Array.from(
 
 export function ActivityOverlapChart({
   data,
-  timeAxis,
   bandsVisible,
 }: ActivityOverlapChartProps) {
+  // Use the effective axis the backend actually delivered, not the
+  // user's toggle. Sun mode can silently downgrade to clock when a
+  // project has no site coordinates or every observation's date is
+  // polar; in that case the x-axis title + bands should reflect clock.
+  const timeAxis = data.time_axis;
+
+  // In sun mode we shift the x-axis so the anchor sunrise lands at 0
+  // and the anchor sunset lands at +day_length. Axis range becomes
+  // [-anchor_sunrise, 24 - anchor_sunrise]. Shifted data is monotonic
+  // within a "day that starts 6 h before sunrise and ends 18 h after
+  // sunrise", which is low-density for most ecological plots, so the
+  // midnight wrap cut is visually clean. Falls back to 0 shift when
+  // the backend downgraded to clock or bands are missing.
+  const sunShift =
+    timeAxis === "sun" && data.anchor_sun_bands
+      ? data.anchor_sun_bands.sunrise
+      : 0;
+
+  const gridX: number[] = useMemo(
+    () => GRID_HOURS.map((h) => h - sunShift),
+    [sunShift],
+  );
+
   const overlapMin = useMemo(() => {
     if (!data.species_b) return null;
     const a = data.species_a.kde_density;
@@ -216,16 +237,51 @@ export function ActivityOverlapChart({
     }
 
     return {
-      labels: GRID_HOURS,
+      labels: gridX,
       datasets,
     };
-  }, [data, overlapMin]);
+  }, [data, overlapMin, gridX]);
 
   const options: ChartOptions<"line"> = useMemo(() => {
-    const xTitle =
-      timeAxis === "clock"
-        ? "Hour of day (camera local)"
-        : "Hour of day (relative to mean sunrise/sunset)";
+    const isSun = timeAxis === "sun";
+    const xTitle = isSun ? "" : "Hour of day (camera local)";
+    // In sun mode use the mean-anchor bands; in clock mode use the
+    // single-reference bands. Both are shifted by `sunShift` so they
+    // land correctly on the axis.
+    const rawBands = isSun ? data.anchor_sun_bands : data.sun_bands;
+    const bandsForMode = rawBands
+      ? {
+          dawn: rawBands.dawn - sunShift,
+          sunrise: rawBands.sunrise - sunShift,
+          sunset: rawBands.sunset - sunShift,
+          dusk: rawBands.dusk - sunShift,
+        }
+      : null;
+    // Axis range: clock mode stays [0, 24). Sun mode is [−sunrise, 24−sunrise]
+    // so sunrise sits at 0 and the cut points are the opposing midnight.
+    const xMin = 0 - sunShift;
+    const xMax = 24 - sunShift;
+    // Phase tick positions in the shifted sun-time frame. In sun mode
+    // we show only these (no numeric hour labels), because hours are
+    // fictional on the synthetic anchor day; the sun events are the
+    // only markers that carry biological meaning.
+    const dayLength = rawBands ? rawBands.sunset - rawBands.sunrise : 0;
+    const dawnPos = bandsForMode?.dawn ?? 0;
+    const sunrisePos = 0;
+    const noonPos = dayLength / 2;
+    const sunsetPos = dayLength;
+    const duskPos = bandsForMode?.dusk ?? 0;
+    const TOL = 0.01;
+    const fmtTick = (value: number): string => {
+      if (!isSun) return `${String(value).padStart(2, "0")}:00`;
+      if (Math.abs(value - xMin) < TOL || Math.abs(value - xMax) < TOL) return "midnight";
+      if (Math.abs(value - dawnPos) < TOL) return "dawn";
+      if (Math.abs(value - sunrisePos) < TOL) return "sunrise";
+      if (Math.abs(value - noonPos) < TOL) return "noon";
+      if (Math.abs(value - sunsetPos) < TOL) return "sunset";
+      if (Math.abs(value - duskPos) < TOL) return "dusk";
+      return "";
+    };
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -234,13 +290,33 @@ export function ActivityOverlapChart({
       scales: {
         x: {
           type: "linear",
-          min: 0,
-          max: 24,
+          min: xMin,
+          max: xMax,
           ticks: {
-            stepSize: 3,
-            callback: (value) => `${String(value).padStart(2, "0")}:00`,
+            ...(isSun
+              ? {
+                  autoSkip: false,
+                  callback: (v) => fmtTick(Number(v)),
+                }
+              : {
+                  stepSize: 3,
+                  callback: (v) => fmtTick(Number(v)),
+                }),
           },
-          title: { display: true, text: xTitle },
+          afterBuildTicks: isSun && rawBands
+            ? (scale) => {
+                scale.ticks = [
+                  { value: xMin },
+                  { value: dawnPos },
+                  { value: sunrisePos },
+                  { value: noonPos },
+                  { value: sunsetPos },
+                  { value: duskPos },
+                  { value: xMax },
+                ];
+              }
+            : undefined,
+          title: { display: !!xTitle, text: xTitle },
         },
         y: {
           beginAtZero: true,
@@ -261,9 +337,16 @@ export function ActivityOverlapChart({
         tooltip: {
           callbacks: {
             title: (items) => {
-              const hour = Number(items[0]?.label ?? 0);
-              const h = Math.floor(hour);
-              const m = Math.round((hour - h) * 60);
+              const x = Number(items[0]?.label ?? 0);
+              if (isSun) {
+                if (x < dawnPos) return "night";
+                if (x < sunrisePos) return "dawn";
+                if (x < sunsetPos) return "day";
+                if (x < duskPos) return "dusk";
+                return "night";
+              }
+              const h = Math.floor(x);
+              const m = Math.round((x - h) * 60);
               return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
             },
             label: (item) => {
@@ -274,19 +357,19 @@ export function ActivityOverlapChart({
         },
         // @ts-expect-error custom plugin options aren't in Chart.js's typings
         twilightBands: {
-          sunBands: timeAxis === "clock" && bandsVisible ? data.sun_bands : null,
-          visible: timeAxis === "clock" && bandsVisible,
+          sunBands: bandsVisible ? bandsForMode : null,
+          visible: bandsVisible && bandsForMode !== null,
         },
         // @ts-expect-error custom plugin options aren't in Chart.js's typings
         rugTicks: {
-          speciesA: data.species_a.raw_detection_times,
-          speciesB: data.species_b?.raw_detection_times,
+          speciesA: data.species_a.raw_detection_times.map((t) => t - sunShift),
+          speciesB: data.species_b?.raw_detection_times.map((t) => t - sunShift),
           colorA: SPECIES_A_COLOR,
           colorB: SPECIES_B_COLOR,
         },
       },
     };
-  }, [data, timeAxis, bandsVisible]);
+  }, [data, timeAxis, bandsVisible, sunShift]);
 
   return (
     <div className="h-[420px] w-full">

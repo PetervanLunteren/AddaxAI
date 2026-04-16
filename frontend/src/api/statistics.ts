@@ -109,6 +109,8 @@ export type DeltaEstimator = "delta1" | "delta4";
 
 export type SampleSizeWarning = "low_n_30" | "low_n_50" | "low_n_75";
 
+export type TimeAxis = "clock" | "sun";
+
 export interface SpeciesActivity {
   label: string;
   n: number;
@@ -120,6 +122,8 @@ export interface SpeciesActivity {
   /** {"day": number, "night": number, "twilight": number} summing to ~1. */
   diel_density_by_phase: Record<string, number>;
   sample_size_warning: SampleSizeWarning | null;
+  /** Observations skipped because their date had no defined sunrise (polar). */
+  dropped_polar: number;
 }
 
 export interface OverlapStat {
@@ -135,7 +139,14 @@ export interface ActivityOverlapResponse {
   species_a: SpeciesActivity;
   species_b: SpeciesActivity | null;
   overlap: OverlapStat | null;
+  /** Single-reference clock-time bands (midpoint date, project avg lat/lon). */
   sun_bands: SunBands | null;
+  /** Mean-anchored dawn/sunrise/sunset/dusk across observations. Non-null only in sun mode. */
+  anchor_sun_bands: SunBands | null;
+  /** The axis the returned KDE is in. May differ from the requested axis when
+   * sun mode was not possible (no site coordinates, all-polar dataset) and
+   * the backend silently downgraded to clock. */
+  time_axis: TimeAxis;
   /** IANA timezone the project's camera clocks are set to. */
   project_timezone: string;
   independence_interval_seconds: number;
@@ -148,6 +159,7 @@ export interface ActivityOverlapFilters {
   dateFrom?: string;
   dateTo?: string;
   taxonomicRank?: string;
+  timeAxis?: TimeAxis;
 }
 
 // --- Shared helpers ---
@@ -274,6 +286,7 @@ export const statisticsApi = {
     if (filters.dateFrom) params.set("date_from", filters.dateFrom);
     if (filters.dateTo) params.set("date_to", filters.dateTo);
     if (filters.taxonomicRank) params.set("taxonomic_rank", filters.taxonomicRank);
+    if (filters.timeAxis) params.set("time_axis", filters.timeAxis);
     return api.get<ActivityOverlapResponse>(
       `/api/statistics/activity-overlap?${params.toString()}`
     );

@@ -1,5 +1,7 @@
 """Statistics router for dashboard analytics."""
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -88,6 +90,14 @@ def activity_overlap(
             "(raw|all|species|genus|family|order|class)"
         ),
     ),
+    time_axis: Literal["clock", "sun"] = Query(
+        "clock",
+        description=(
+            "clock = raw wall-clock hour; sun = Vazquez 2019 double-anchored "
+            "transform using per-date sunrise / sunset from the project's "
+            "timezone. Degrades to clock when no site coordinates exist."
+        ),
+    ),
     db: Session = Depends(get_db),
 ) -> ActivityOverlapResponse:
     """
@@ -106,6 +116,7 @@ def activity_overlap(
         date_from,
         date_to,
         taxonomic_rank,
+        time_axis,
     )
 
 

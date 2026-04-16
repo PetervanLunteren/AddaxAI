@@ -214,21 +214,19 @@ export function ActivityOverlapFilterBar({
           </button>
         </div>
 
-        {/* Twilight bands toggle (only meaningful in clock mode) */}
+        {/* Twilight bands toggle. In clock mode the bands come from a
+            single-reference date; in sun mode they come from the mean
+            anchor dawn / sunrise / sunset / dusk, so the toggle is
+            meaningful in both axes. */}
         <div className="flex items-center gap-2">
           <Switch
             id="twilight-bands"
             checked={filters.bandsVisible}
             onCheckedChange={(checked) => update({ bandsVisible: checked })}
-            disabled={filters.timeAxis !== "clock"}
           />
           <Label
             htmlFor="twilight-bands"
-            className={
-              filters.timeAxis !== "clock"
-                ? "text-xs text-muted-foreground cursor-not-allowed"
-                : "text-xs text-muted-foreground cursor-pointer"
-            }
+            className="text-xs text-muted-foreground cursor-pointer"
           >
             Twilight bands
           </Label>
