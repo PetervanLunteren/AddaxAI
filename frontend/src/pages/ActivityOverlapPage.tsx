@@ -44,6 +44,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { formatCameraDate } from "../lib/datetime";
 import {
   filtersFromSearchParams,
   filtersToSearchParams,
@@ -58,7 +59,6 @@ const FILTER_SCHEMA: FilterSchema = {
   date_from: "date",
   date_to: "date",
   time_axis: "string",
-  bands_visible: "string",
 };
 
 const DIEL_LABEL: Record<DielClass, string> = {
@@ -83,7 +83,7 @@ const SAMPLE_WARNING_CRITICAL: Record<SampleSizeWarning, boolean> = {
   low_n_75: false,
 };
 
-// -- Scientific explainer content for the "About this plot" section --
+// -- Scientific explainer content for the "About this view" section --
 
 const EXPLAINER_REFERENCES: PlotReference[] = [
   {
@@ -112,10 +112,6 @@ const EXPLAINER_REFERENCES: PlotReference[] = [
 
 function parseTimeAxis(raw: string | undefined): TimeAxis {
   return raw === "sun" ? "sun" : "clock";
-}
-
-function parseBandsVisible(raw: string | undefined): boolean {
-  return raw !== "false"; // default true
 }
 
 function formatPhase(phase: string, value: number): string {
@@ -161,27 +157,33 @@ function SpeciesLegend({ species, swatchColor }: SpeciesLegendProps) {
           <TooltipContent side="top" className="max-w-xs">
             <p>{DIEL_TOOLTIP_RULE}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              day {(species.diel_density_by_phase.day ?? 0) * 100} %
-              · twilight {(species.diel_density_by_phase.twilight ?? 0) * 100} %
-              · night {(species.diel_density_by_phase.night ?? 0) * 100} %
+              day {((species.diel_density_by_phase.day ?? 0) * 100).toFixed(1)} %
+              · twilight{" "}
+              {((species.diel_density_by_phase.twilight ?? 0) * 100).toFixed(1)} %
+              · night {((species.diel_density_by_phase.night ?? 0) * 100).toFixed(1)} %
             </p>
           </TooltipContent>
         </UITooltip>
       </TooltipProvider>
       {warning && (
         <Badge
-          variant={SAMPLE_WARNING_CRITICAL[warning] ? "destructive" : "outline"}
-          className={
-            SAMPLE_WARNING_CRITICAL[warning]
-              ? undefined
-              : "border-amber-300 bg-amber-50 text-amber-900"
-          }
+          variant="outline"
+          className="border-transparent text-white"
+          style={{
+            backgroundColor: SAMPLE_WARNING_CRITICAL[warning]
+              ? "#882000"
+              : "#71b7ba",
+          }}
         >
           {SAMPLE_WARNING_LABEL[warning]}
         </Badge>
       )}
       {species.dropped_polar > 0 && (
-        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+        <Badge
+          variant="outline"
+          className="border-transparent text-white"
+          style={{ backgroundColor: "#71b7ba" }}
+        >
           {species.dropped_polar} dropped (polar date)
         </Badge>
       )}
@@ -226,7 +228,6 @@ export function ActivityOverlapPage() {
       dateFrom: (parsed.date_from as string | undefined) ?? null,
       dateTo: (parsed.date_to as string | undefined) ?? null,
       timeAxis: parseTimeAxis(parsed.time_axis as string | undefined),
-      bandsVisible: parseBandsVisible(parsed.bands_visible as string | undefined),
     };
   }, [searchParams]);
 
@@ -281,7 +282,6 @@ export function ActivityOverlapPage() {
           date_from: next.dateFrom ?? undefined,
           date_to: next.dateTo ?? undefined,
           time_axis: next.timeAxis === "sun" ? "sun" : undefined,
-          bands_visible: next.bandsVisible ? undefined : "false",
         },
         FILTER_SCHEMA,
       ),
@@ -412,11 +412,10 @@ export function ActivityOverlapPage() {
         )}
 
         {enabled && data && (
-          <div className="space-y-4 rounded-lg border bg-card p-4">
-            <ActivityOverlapChart
-              data={data}
-              bandsVisible={filters.bandsVisible}
-            />
+          <div className="flex h-[600px] flex-col space-y-4 rounded-lg border bg-card p-4">
+            <div className="min-h-0 flex-1">
+              <ActivityOverlapChart data={data} />
+            </div>
 
             {data.overlap && <OverlapReadout data={data} />}
 
@@ -441,7 +440,15 @@ export function ActivityOverlapPage() {
                 Independence interval:{" "}
                 {Math.round(data.independence_interval_seconds / 60)} min
               </span>
-              <span className="text-muted-foreground/70">(project settings)</span>
+              {data.time_axis === "clock" && data.sun_bands_reference_date && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    Sun bands drawn for midpoint (
+                    {formatCameraDate(data.sun_bands_reference_date)})
+                  </span>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -485,21 +492,6 @@ export function ActivityOverlapPage() {
               match the dataset's mean sunrise and sunset. Observations
               on dates without a defined sunrise (polar night or day)
               are dropped and counted in the legend.
-            </p>
-          }
-          caveats={
-            <p>
-              Sample size matters: below ~50 detections the KDE curves
-              are spiky and the Δ estimate is unstable, and below ~30
-              the chart is mostly noise. Warnings appear in the legend
-              row when n falls below these thresholds. Seasonal pooling
-              is also a problem: if the filter range spans large shifts
-              in day length, clock-time peaks spread out artificially,
-              so use the sun-time x-axis toggle for high-latitude or
-              multi-season data, or narrow the date range. In sun-time
-              mode, observations on dates without a defined sunrise
-              (polar night or day) are excluded; the dropped count
-              appears in the legend.
             </p>
           }
           references={EXPLAINER_REFERENCES}

@@ -831,20 +831,26 @@ def get_activity_overlap(
     # Single-reference clock sun bands (same as get_activity_pattern).
     # Always populated when we can, independent of axis; the frontend
     # uses it for the clock-mode overlay. The tz name is echoed back
-    # so the footer can show which clock the chart is in.
+    # so the footer can show which clock the chart is in. The reference
+    # date (filter midpoint) is also echoed so the chart can caption
+    # which day's sun events the bands represent.
     sun_bands: SunBands | None = None
+    sun_bands_reference_date: date | None = None
     tz_name = (
         db.query(Project.timezone).filter(Project.id == project_id).scalar()
     ) or "UTC"
     location = _avg_site_location(db, project_id, site_ids)
     if location is not None:
         lat, lon = location
+        reference_date = _reference_date_for_sun(date_from, date_to)
         sun_bands = _compute_sun_bands(
             lat=lat,
             lon=lon,
-            reference_date=_reference_date_for_sun(date_from, date_to),
+            reference_date=reference_date,
             tz_name=tz_name,
         )
+        if sun_bands is not None:
+            sun_bands_reference_date = reference_date
 
     independence_seconds = (
         db.query(Project.independence_interval)
@@ -942,6 +948,7 @@ def get_activity_overlap(
         species_b=activity_b,
         overlap=overlap,
         sun_bands=sun_bands,
+        sun_bands_reference_date=sun_bands_reference_date,
         anchor_sun_bands=anchor_sun_bands,
         time_axis=effective_axis,
         project_timezone=tz_name,

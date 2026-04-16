@@ -124,7 +124,7 @@ export function SpeciesPicker({
     value && (options.find((o) => o.value === value)?.label ?? normalizeLabel(value));
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex w-full items-center gap-1">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -133,7 +133,7 @@ export function SpeciesPicker({
             role="combobox"
             aria-expanded={open}
             disabled={disabled || isLoading}
-            className="w-full justify-between h-9 text-sm font-normal"
+            className="flex-1 min-w-0 justify-between h-9 text-sm font-normal"
           >
             <span className="flex items-center gap-2 truncate">
               {swatchColor && (

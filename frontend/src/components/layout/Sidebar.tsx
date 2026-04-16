@@ -6,12 +6,12 @@ import { useState } from "react";
 import { NavLink, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart3,
   Camera,
   CardSim,
   CheckCircle,
   ChevronRight,
   Download,
+  LayoutDashboard,
   LineChart,
   Map,
   MapPin,
@@ -50,15 +50,19 @@ export function Sidebar() {
   const workItems: NavItem[] = [
     { to: `/projects/${projectId}/analyses`, icon: Play, label: "Process" },
     { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
-    { to: `/projects/${projectId}/map`, icon: Map, label: "Map" },
-    { to: `/projects/${projectId}/dashboard`, icon: BarChart3, label: "Dashboard" },
+    { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
     {
-      to: `/projects/${projectId}/plots`,
+      to: `/projects/${projectId}/insights`,
       icon: LineChart,
-      label: "Plots",
+      label: "Insights",
       children: [
         {
-          to: `/projects/${projectId}/plots/activity-overlap`,
+          to: `/projects/${projectId}/insights/map`,
+          icon: Map,
+          label: "Map",
+        },
+        {
+          to: `/projects/${projectId}/insights/activity-overlap`,
           icon: LineChart,
           label: "Activity overlap",
         },

@@ -8,8 +8,6 @@
 - [ ] In the deployments page, there should be an "info" option that opens a model that shows the path, the number of files (img/vid), events, observations, average confidences, etc. Just some insights into the deployment for investigation purposes. 
 - [ ] Add the country or region to the TZ dropdown too and make sure the search also does that. So not only "Nairobi" but something like Kenya, Nairobi. What do you think? How would users search? By country, city, or continent? What is good UI UX? I've already implemented this fix in the other project. Check how that is implemented there: /Users/peter/Documents/Repos/AddaxAI-Connect/. It has a few mapping files etc, so make sure you copy it like its being used there. 
 
-SHould we add the map to the plots section too as nested page? Then probabaly rename the nested "plots" to something like "insights" or "Analyses". What do you think? 
-
 ## New features
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] DEPTH ESTIMATION

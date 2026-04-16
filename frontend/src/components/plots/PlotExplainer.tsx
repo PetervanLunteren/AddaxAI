@@ -1,5 +1,5 @@
 /**
- * Reusable "About this plot" section for pages under /plots.
+ * Reusable "About this view" section for pages under /insights.
  *
  * Every plot page drops this in at the bottom, below the chart and
  * footer, and passes its own content for each of the five fixed
@@ -114,7 +114,7 @@ export function PlotExplainer({
             expanded && "rotate-90",
           )}
         />
-        <span>About this plot</span>
+        <span>About this view</span>
       </button>
 
       {expanded && (
@@ -125,14 +125,13 @@ export function PlotExplainer({
           {caveats && <Section title="Caveats">{caveats}</Section>}
 
           {settings && settings.length > 0 && (
-            <Section title="Project settings that affect this plot">
+            <Section title="Project settings">
               <ul className="list-disc space-y-1 pl-5">
                 {settings.map((setting) => (
                   <li key={setting.label}>
                     <span className="font-medium text-foreground">
-                      {setting.label}
-                    </span>
-                    {" — "}
+                      {setting.label}:
+                    </span>{" "}
                     {setting.detail}
                   </li>
                 ))}

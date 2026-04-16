@@ -107,10 +107,10 @@ function App() {
             <Route path="analyses" element={<AnalysesPage />} />
             <Route path="verify" element={<VerifyPage />} />
             <Route path="review" element={<Navigate to="../verify" replace />} />
-            <Route path="map" element={<MapPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="plots" element={<Navigate to="activity-overlap" replace />} />
-            <Route path="plots/activity-overlap" element={<ActivityOverlapPage />} />
+            <Route path="insights" element={<Navigate to="map" replace />} />
+            <Route path="insights/map" element={<MapPage />} />
+            <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
             <Route path="sites" element={<SitesPage />} />
             <Route path="deployments" element={<DeploymentsPage />} />
             <Route path="export" element={<ExportPage />} />

@@ -147,8 +147,6 @@ ChartJS.register(twilightBandsPlugin, rugTicksPlugin);
 
 interface ActivityOverlapChartProps {
   data: ActivityOverlapResponse;
-  /** When false, hide the twilight overlay. */
-  bandsVisible: boolean;
 }
 
 const SAMPLES = 240;
@@ -161,7 +159,6 @@ const GRID_HOURS: number[] = Array.from(
 
 export function ActivityOverlapChart({
   data,
-  bandsVisible,
 }: ActivityOverlapChartProps) {
   // Use the effective axis the backend actually delivered, not the
   // user's toggle. Sun mode can silently downgrade to clock when a
@@ -305,13 +302,15 @@ export function ActivityOverlapChart({
           },
           afterBuildTicks: isSun && rawBands
             ? (scale) => {
+                // dawn and dusk ticks dropped: they sit so close to
+                // sunrise / sunset that their labels always collide.
+                // The twilight bands themselves still mark those
+                // transitions visually.
                 scale.ticks = [
                   { value: xMin },
-                  { value: dawnPos },
                   { value: sunrisePos },
                   { value: noonPos },
                   { value: sunsetPos },
-                  { value: duskPos },
                   { value: xMax },
                 ];
               }
@@ -357,8 +356,8 @@ export function ActivityOverlapChart({
         },
         // @ts-expect-error custom plugin options aren't in Chart.js's typings
         twilightBands: {
-          sunBands: bandsVisible ? bandsForMode : null,
-          visible: bandsVisible && bandsForMode !== null,
+          sunBands: bandsForMode,
+          visible: bandsForMode !== null,
         },
         // @ts-expect-error custom plugin options aren't in Chart.js's typings
         rugTicks: {
@@ -369,10 +368,10 @@ export function ActivityOverlapChart({
         },
       },
     };
-  }, [data, timeAxis, bandsVisible, sunShift]);
+  }, [data, timeAxis, sunShift]);
 
   return (
-    <div className="h-[420px] w-full">
+    <div className="h-full w-full">
       <Line data={chartData} options={options} />
     </div>
   );

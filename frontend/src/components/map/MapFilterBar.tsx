@@ -28,8 +28,8 @@ import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
 import { Button } from "../ui/button";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
+import { SegmentedControl } from "../ui/segmented-control";
 import { LabelFilterModal } from "../verify/LabelFilterModal";
-import { cn } from "../../lib/utils";
 
 export type ViewMode = "hexbins" | "points" | "clusters";
 export type BaseLayer = "positron" | "satellite" | "osm";
@@ -94,7 +94,7 @@ export function MapFilterBar({
     })) ?? [];
 
   return (
-    <div className="rounded-lg border bg-white pt-2 pb-3 px-3 space-y-4">
+    <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* View mode */}
         <div className="space-y-1.5">
@@ -255,43 +255,3 @@ export function MapFilterBar({
   );
 }
 
-interface SegmentedOption {
-  value: string;
-  /** Shown as a native hover tooltip via the `title` attribute. */
-  title: string;
-  icon: React.ReactNode;
-}
-
-interface SegmentedControlProps {
-  options: SegmentedOption[];
-  value: string;
-  onChange: (value: string) => void;
-}
-
-function SegmentedControl({ options, value, onChange }: SegmentedControlProps) {
-  return (
-    <div className="flex h-9 w-full rounded-md border border-input bg-background overflow-hidden">
-      {options.map((opt, i) => {
-        const active = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            title={opt.title}
-            aria-label={opt.title}
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              "flex-1 inline-flex items-center justify-center transition-colors",
-              i > 0 && "border-l border-input",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            {opt.icon}
-          </button>
-        );
-      })}
-    </div>
-  );
-}

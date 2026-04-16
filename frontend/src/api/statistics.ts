@@ -141,6 +141,8 @@ export interface ActivityOverlapResponse {
   overlap: OverlapStat | null;
   /** Single-reference clock-time bands (midpoint date, project avg lat/lon). */
   sun_bands: SunBands | null;
+  /** ISO date (YYYY-MM-DD) the clock-mode bands were computed for. Null when sun_bands is null. */
+  sun_bands_reference_date: string | null;
   /** Mean-anchored dawn/sunrise/sunset/dusk across observations. Non-null only in sun mode. */
   anchor_sun_bands: SunBands | null;
   /** The axis the returned KDE is in. May differ from the requested axis when

@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import L, { latLngBounds } from "leaflet";
+import { Info } from "lucide-react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 import { statisticsApi } from "../../api/statistics";
@@ -169,7 +170,7 @@ export function ObservationRateMap({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-white">
+      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-card">
         <div className="text-muted-foreground">Loading map data...</div>
       </div>
     );
@@ -177,7 +178,7 @@ export function ObservationRateMap({
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-white">
+      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-card">
         <div className="text-destructive">
           Failed to load map:{" "}
           {error instanceof Error ? error.message : "unknown error"}
@@ -188,7 +189,7 @@ export function ObservationRateMap({
 
   if (features.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-white text-center px-6">
+      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-card text-center px-6">
         <div className="text-muted-foreground">
           No deployments match these filters. Try clearing them, or run an
           analysis to populate the map.
@@ -200,12 +201,12 @@ export function ObservationRateMap({
   const tile = getTileLayer(baseLayer);
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-[600px] flex-col overflow-hidden rounded-lg border bg-card">
       <MapContainer
         center={mapCenter}
         zoom={12}
-        style={{ height: "600px", width: "100%" }}
-        className="rounded-lg border"
+        style={{ width: "100%" }}
+        className="min-h-0 flex-1"
       >
         <TileLayer
           key={baseLayer}
@@ -248,11 +249,15 @@ export function ObservationRateMap({
         <FullscreenControl />
       </MapContainer>
 
-      <p className="text-xs text-muted-foreground">
-        {visibleDeployments.length} deployment
-        {visibleDeployments.length === 1 ? "" : "s"} shown. Rate is
-        observations (MaxN per event) per 100 trap nights.
-      </p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t px-4 py-3 text-xs text-muted-foreground">
+        <Info className="h-3.5 w-3.5" />
+        <span>
+          {visibleDeployments.length} deployment
+          {visibleDeployments.length === 1 ? "" : "s"} shown
+        </span>
+        <span aria-hidden="true">·</span>
+        <span>Rate is observations (MaxN per event) per 100 trap nights</span>
+      </div>
     </div>
   );
 }

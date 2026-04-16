@@ -174,6 +174,11 @@ class ActivityOverlapResponse(BaseModel):
     species_b: SpeciesActivity | None
     overlap: OverlapStat | None
     sun_bands: SunBands | None
+    # Reference date the clock-mode `sun_bands` were computed for
+    # (the midpoint of the filter range by default). Echoed so the
+    # chart can caption the bands with the day they represent. Null
+    # when sun_bands is null.
+    sun_bands_reference_date: date | None = None
     # Mean dawn / sunrise / sunset / dusk across every observation's
     # date. Populated only in sun-time mode; the chart uses it to paint
     # twilight bands at the anchor positions.

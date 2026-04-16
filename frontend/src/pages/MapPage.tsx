@@ -21,6 +21,7 @@ import {
   type ViewMode,
 } from "../components/map/MapFilterBar";
 import { ObservationRateMap } from "../components/map/ObservationRateMap";
+import { PlotExplainer } from "../components/plots/PlotExplainer";
 import {
   filtersFromSearchParams,
   filtersToSearchParams,
@@ -115,8 +116,7 @@ export function MapPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Map</h1>
               <p className="text-sm text-muted-foreground">
-                Observation rate per deployment, expressed as observations
-                per 100 trap nights
+                Observation rate per 100 trap nights, mapped by deployment.
               </p>
             </div>
           </div>
@@ -138,6 +138,34 @@ export function MapPage() {
           filters={apiFilters}
           viewMode={viewMode}
           baseLayer={baseLayer}
+        />
+
+        <PlotExplainer
+          plotKey="map"
+          what={
+            <p>
+              A marker per deployment, coloured by its observation rate
+              per 100 trap nights. Three layer modes: hexbins aggregate
+              nearby deployments onto a hex grid, points show each
+              deployment individually, and clusters group nearby points
+              into a single circle with the count inside. The labels
+              filter restricts the observation count to the selected
+              taxa.
+            </p>
+          }
+          how={
+            <p>
+              rate = observations / trap_nights × 100, where
+              observations is the sum of MaxN across all events passing
+              the active filters, and trap_nights is the deployment's
+              active days. Events respect the project's detection
+              threshold with the verified override applied, so verified
+              detections count even when they fall below threshold.
+              Hexbin colour scaling is per-render, so a hex's shade
+              reflects its rank within the current view rather than an
+              absolute comparison across projects.
+            </p>
+          }
         />
       </main>
     </div>
