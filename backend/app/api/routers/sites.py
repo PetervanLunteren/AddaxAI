@@ -12,7 +12,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import site as crud_site
-from app.api.schemas.site import SiteCreate, SiteResponse, SiteUpdate, SiteWithStats
+from app.api.schemas.site import (
+    SiteCreate,
+    SiteInfoResponse,
+    SiteResponse,
+    SiteUpdate,
+    SiteWithStats,
+)
 from app.core.logging_config import get_logger
 from app.db.base import get_db
 
@@ -77,6 +83,31 @@ def list_sites_with_stats(
     """
     rows = crud_site.get_sites_with_stats(db, project_id=project_id)
     return [SiteWithStats(**row) for row in rows]
+
+
+@router.get("/{site_id}/info", response_model=SiteInfoResponse)
+async def site_info(
+    site_id: str, db: Session = Depends(get_db)
+) -> SiteInfoResponse:
+    """
+    Investigation-level payload for the Sites → Info sheet.
+
+    Aggregates across every deployment at this site: file and size
+    totals, verification progress, event / observation counts, the
+    detection-category breakdown, top species, trap nights, rate, and
+    the first and last capture timestamps. Returns 404 if the site
+    does not exist.
+
+    `async def` so the project-timezone ContextVar reaches the
+    response serializer.
+    """
+    info = crud_site.get_site_info(db, site_id)
+    if info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Site with id '{site_id}' not found",
+        )
+    return info
 
 
 @router.get("/{site_id}", response_model=SiteResponse)

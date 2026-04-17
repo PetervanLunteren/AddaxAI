@@ -22,6 +22,7 @@ from app.api.routers import (
     deployments_router,
     detections_router,
     events_router,
+    export_router,
     files_router,
     jobs_router,
     logs_router,
@@ -214,6 +215,7 @@ def create_app() -> FastAPI:
     app.include_router(deployment_queue_router)
     app.include_router(detections_router)
     app.include_router(events_router)
+    app.include_router(export_router)
     app.include_router(files_router)
     app.include_router(jobs_router)
     app.include_router(logs_router)

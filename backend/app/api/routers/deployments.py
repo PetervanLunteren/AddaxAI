@@ -25,6 +25,7 @@ from app.api.schemas.deployment import (
     BulkRelinkResponse,
     BulkRelinkResultItem,
     DeploymentCreate,
+    DeploymentInfoResponse,
     DeploymentResponse,
     DeploymentStatsOnly,
     DeploymentUpdate,
@@ -677,6 +678,31 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> None
             detail=f"Deployment with id '{deployment_id}' not found",
         )
     logger.info(f"Deleted deployment: {deployment_id} (cascaded to files and events)")
+
+
+@router.get("/{deployment_id}/info", response_model=DeploymentInfoResponse)
+async def deployment_info(
+    deployment_id: str, db: Session = Depends(get_db)
+) -> DeploymentInfoResponse:
+    """
+    Investigation-level payload for the Deployments → Info sheet.
+
+    Combines deployment metadata (folder path, site, start / end dates),
+    file-type split, event and observation counts, mean detection and
+    classification confidence (respecting the project's detection
+    threshold with the verified override), and the first and last
+    capture timestamps. Returns 404 if the deployment does not exist.
+
+    `async def` so the project-timezone ContextVar set by the
+    datetime-offset middleware reaches the response serializer.
+    """
+    info = crud_deployment.get_deployment_info(db, deployment_id)
+    if info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Deployment with id '{deployment_id}' not found",
+        )
+    return info
 
 
 @router.get("/{deployment_id}/stats", response_model=DeploymentWithStats)

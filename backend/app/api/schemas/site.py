@@ -71,3 +71,71 @@ class SiteWithStats(SiteResponse):
     """Site response with deployment count for table views."""
 
     deployment_count: int = 0
+
+
+class SiteFileCounts(BaseModel):
+    """File-type breakdown for a single site."""
+
+    total: int
+    images: int
+    videos: int
+
+
+class SiteTopSpecies(BaseModel):
+    """One row in the top-species leaderboard for a site."""
+
+    label: str
+    display_name: str | None
+    count: int
+
+
+class SiteDetectionCategories(BaseModel):
+    """Observation counts split by detection category + blank files."""
+
+    animal: int
+    person: int
+    vehicle: int
+    empty: int
+
+
+class SiteVerification(BaseModel):
+    """File verification progress aggregated across the site's deployments."""
+
+    verified: int
+    total: int
+
+
+class SiteInfoResponse(BaseModel):
+    """
+    Investigation-level payload for the Sites → Info sheet.
+
+    Aggregates across every deployment at this site: file and size
+    totals, verification progress, event and observation counts, the
+    detection-category breakdown, the top species, trap nights and the
+    observation rate, plus the first and last capture timestamps.
+    """
+
+    site_id: str
+    name: str
+    latitude: float
+    longitude: float
+    elevation_m: float | None
+    habitat_type: str | None
+    notes: str | None
+    tags: dict[str, str]
+    deployment_count: int
+    files: SiteFileCounts
+    # Sum of File.size_bytes across the site's files. 0 when no files
+    # or when size_bytes is null for every file.
+    total_size_bytes: int
+    verification: SiteVerification
+    event_count: int
+    observation_count: int
+    detection_categories: SiteDetectionCategories
+    top_species: list[SiteTopSpecies]
+    # Sum of per-deployment (end - start + 1) days. None when the site
+    # has no deployments or any deployment is open-ended (no end_date).
+    trap_nights: int | None
+    observation_rate_per_100_trap_nights: float | None
+    first_captured_at_local: datetime | None
+    last_captured_at_local: datetime | None

@@ -7,7 +7,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, Plus } from "lucide-react";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, Plus, Info } from "lucide-react";
 import { sitesApi } from "../api/sites";
 import type { SiteWithStats, SiteResponse } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -31,6 +31,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { AddSiteModal } from "../components/analyses/AddSiteModal";
 import { DeleteSiteDialog } from "../components/sites/DeleteSiteDialog";
+import { SiteInfoSheet } from "../components/sites/SiteInfoSheet";
 
 type SortField = "name" | "elevation_m" | "habitat_type" | "deployment_count" | "notes" | "tag_count";
 type SortDir = "asc" | "desc";
@@ -65,6 +66,7 @@ export function SitesPage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editingSite, setEditingSite] = useState<SiteResponse | null>(null);
   const [deletingSite, setDeletingSite] = useState<SiteWithStats | null>(null);
+  const [infoSiteId, setInfoSiteId] = useState<string | null>(null);
   const [createSiteOpen, setCreateSiteOpen] = useState(false);
 
   const { data: sites, isLoading } = useQuery({
@@ -282,7 +284,11 @@ export function SitesPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((site) => (
-                  <TableRow key={site.id}>
+                  <TableRow
+                    key={site.id}
+                    onClick={() => setInfoSiteId(site.id)}
+                    className="cursor-pointer"
+                  >
                     <TableCell className="font-medium">{site.name}</TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {site.elevation_m != null ? `${site.elevation_m}m` : "\u2014"}
@@ -299,7 +305,7 @@ export function SitesPage() {
                     <TableCell className="max-w-[320px]">
                       <TagPills tags={site.tags} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -307,6 +313,10 @@ export function SitesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setInfoSiteId(site.id)}>
+                            <Info className="mr-2 h-4 w-4" />
+                            Info
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setEditingSite(site)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
@@ -364,6 +374,24 @@ export function SitesPage() {
         site={deletingSite}
         open={!!deletingSite}
         onOpenChange={(open) => !open && setDeletingSite(null)}
+      />
+
+      <SiteInfoSheet
+        siteId={infoSiteId}
+        open={infoSiteId !== null}
+        onOpenChange={(open) => !open && setInfoSiteId(null)}
+        onEdit={() => {
+          if (!infoSiteId) return;
+          const site = sites?.find((s) => s.id === infoSiteId);
+          setInfoSiteId(null);
+          if (site) setEditingSite(site);
+        }}
+        onDelete={() => {
+          if (!infoSiteId) return;
+          const site = sites?.find((s) => s.id === infoSiteId);
+          setInfoSiteId(null);
+          if (site) setDeletingSite(site);
+        }}
       />
     </div>
   );

@@ -169,6 +169,55 @@ export interface SiteWithStats extends SiteResponse {
   deployment_count: number;
 }
 
+export interface SiteFileCounts {
+  total: number;
+  images: number;
+  videos: number;
+}
+
+export interface SiteTopSpecies {
+  label: string;
+  display_name: string | null;
+  count: number;
+}
+
+export interface SiteDetectionCategories {
+  animal: number;
+  person: number;
+  vehicle: number;
+  empty: number;
+}
+
+export interface SiteVerification {
+  verified: number;
+  total: number;
+}
+
+export interface SiteInfo {
+  site_id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  elevation_m: number | null;
+  habitat_type: string | null;
+  notes: string | null;
+  tags: Record<string, string>;
+  deployment_count: number;
+  files: SiteFileCounts;
+  total_size_bytes: number;
+  verification: SiteVerification;
+  event_count: number;
+  observation_count: number;
+  detection_categories: SiteDetectionCategories;
+  top_species: SiteTopSpecies[];
+  /** Sum of per-deployment (end - start + 1) days. Null when any
+   * deployment is open-ended or the site has no deployments. */
+  trap_nights: number | null;
+  observation_rate_per_100_trap_nights: number | null;
+  first_captured_at_local: string | null;
+  last_captured_at_local: string | null;
+}
+
 // Deployment types
 export interface DeploymentResponse {
   id: string;
@@ -250,6 +299,58 @@ export interface DeploymentStatsOnly {
   file_count: number;
   event_count: number;
   detection_count: number;
+}
+
+export interface DeploymentFileCounts {
+  total: number;
+  images: number;
+  videos: number;
+}
+
+export interface DeploymentTopSpecies {
+  label: string;
+  display_name: string | null;
+  count: number;
+}
+
+export interface DeploymentDetectionCategories {
+  animal: number;
+  person: number;
+  vehicle: number;
+  empty: number;
+}
+
+export interface DeploymentVerification {
+  verified: number;
+  total: number;
+}
+
+export interface DeploymentInfo {
+  deployment_id: string;
+  folder_path: string | null;
+  site_id: string;
+  site_name: string;
+  start_date_local: string;
+  end_date_local: string | null;
+  files: DeploymentFileCounts;
+  /** Sum of File.size_bytes across files in this deployment. */
+  total_size_bytes: number;
+  verification: DeploymentVerification;
+  event_count: number;
+  /** Sum of EventObservation.max_n across all events in this deployment. */
+  observation_count: number;
+  detection_categories: DeploymentDetectionCategories;
+  top_species: DeploymentTopSpecies[];
+  /** (end - start) + 1 days. Null when end_date_local is null. */
+  trap_nights: number | null;
+  /** observations / trap_nights * 100. Null when trap_nights is null or 0. */
+  observation_rate_per_100_trap_nights: number | null;
+  /** Null when no detections pass the threshold-with-verified filter. */
+  mean_detection_confidence: number | null;
+  /** Null when no detection has a classification label. */
+  mean_classification_confidence: number | null;
+  first_captured_at_local: string | null;
+  last_captured_at_local: string | null;
 }
 
 // Job types

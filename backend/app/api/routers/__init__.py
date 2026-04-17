@@ -4,6 +4,7 @@ from .deployment_queue import router as deployment_queue_router
 from .deployments import router as deployments_router
 from .detections import router as detections_router
 from .events import router as events_router
+from .export import router as export_router
 from .files import router as files_router
 from .jobs import router as jobs_router
 from .logs import router as logs_router
@@ -19,6 +20,7 @@ __all__ = [
     "deployments_router",
     "detections_router",
     "events_router",
+    "export_router",
     "files_router",
     "jobs_router",
     "logs_router",

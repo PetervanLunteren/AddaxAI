@@ -837,7 +837,7 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 pb-20 sm:px-6 lg:px-8 space-y-6">
         {/* Settings form */}
         <TooltipProvider>
           <Form {...form}>
@@ -857,14 +857,13 @@ export default function SettingsPage() {
                   render={({ field }) => (
                     <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
-                        <FormLabel>Timezone</FormLabel>
+                        <FormLabel>Camera timezone</FormLabel>
                         <FormDescription className="text-sm">
-                          The timezone your cameras are set to. Used for
+                          Whatever your cameras were set to. Used for
                           exports and activity charts. Doesn't change any
-                          stored timestamps. If your camera uses a fixed UTC
-                          offset, pick one of the "UTC±X (fixed)" options.
-                          If it follows a regional timezone with daylight
-                          saving, pick the city name.
+                          stored timestamps. If the camera follows a
+                          regional timezone with daylight saving, pick the
+                          city name.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1499,68 +1498,87 @@ export default function SettingsPage() {
               </p>
             )}
 
-            {/* Action buttons */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    // Use setValue (not reset) so the saved project values stay as the
-                    // dirty-check baseline. This way isDirty becomes true and the user
-                    // must press "Save changes" to persist the defaults.
-                    form.setValue("detection_model_id", "MD5A-0-0", { shouldDirty: true });
-                    form.setValue("video_fps", 1.0, { shouldDirty: true });
-                    form.setValue("detection_threshold", 0.5, { shouldDirty: true });
-                    form.setValue("event_smoothing", true, { shouldDirty: true });
-                    form.setValue("smoothing_strength", "normal", { shouldDirty: true });
-                    form.setValue("taxonomic_rollup", true, { shouldDirty: true });
-                    form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
-                    form.setValue("independence_interval", 1800, { shouldDirty: true });
-                    form.setValue("detection_batch_size", null, { shouldDirty: true });
-                    form.setValue("classification_batch_size", null, { shouldDirty: true });
-                    form.setValue("embedding_batch_size", null, { shouldDirty: true });
-                  }}
-                  disabled={updateMutation.isPending}
-                >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Restore defaults
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleReset}
-                  disabled={!isDirty || updateMutation.isPending}
-                >
-                  <Undo2 className="h-4 w-4 mr-2" />
-                  Reset changes
-                </Button>
+            {/* Sticky footer. Always visible so the primary actions
+                (Restore defaults, Reset, Save) are one click away no matter
+                how far the user has scrolled. The "unsaved changes" dot
+                and label appear only when the form is dirty. Stays inside
+                the <form> so the Save button's type="submit" still
+                triggers form.handleSubmit. */}
+            <div className="fixed bottom-0 left-64 right-0 z-40 border-t bg-card/95 backdrop-blur-sm">
+              <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  {isDirty && (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: "#71b7ba" }}
+                      />
+                      You have unsaved changes
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      // Use setValue (not reset) so the saved project values stay as the
+                      // dirty-check baseline. This way isDirty becomes true and the user
+                      // must press "Save changes" to persist the defaults.
+                      form.setValue("detection_model_id", "MD5A-0-0", { shouldDirty: true });
+                      form.setValue("video_fps", 1.0, { shouldDirty: true });
+                      form.setValue("detection_threshold", 0.5, { shouldDirty: true });
+                      form.setValue("event_smoothing", true, { shouldDirty: true });
+                      form.setValue("smoothing_strength", "normal", { shouldDirty: true });
+                      form.setValue("taxonomic_rollup", true, { shouldDirty: true });
+                      form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
+                      form.setValue("independence_interval", 1800, { shouldDirty: true });
+                      form.setValue("detection_batch_size", null, { shouldDirty: true });
+                      form.setValue("classification_batch_size", null, { shouldDirty: true });
+                      form.setValue("embedding_batch_size", null, { shouldDirty: true });
+                    }}
+                    disabled={updateMutation.isPending}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Restore defaults
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleReset}
+                    disabled={!isDirty || updateMutation.isPending}
+                  >
+                    <Undo2 className="h-4 w-4 mr-2" />
+                    Reset changes
+                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          type="submit"
+                          disabled={
+                            !isDirty ||
+                            updateMutation.isPending ||
+                            !!saveJobId ||
+                            detectionModelStatus?.status !== "ready" ||
+                            (hasClassificationModel && classificationModelStatus?.status !== "ready") ||
+                            (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
+                          }
+                        >
+                          <Save className="h-4 w-4 mr-2" />
+                          {updateMutation.isPending ? "Saving..." : "Save changes"}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {(detectionModelStatus?.status !== "ready" || (hasClassificationModel && classificationModelStatus?.status !== "ready") || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
+                      <TooltipContent>
+                        <p>Model needs preparing first</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </div>
               </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button
-                      type="submit"
-                      disabled={
-                        !isDirty ||
-                        updateMutation.isPending ||
-                        !!saveJobId ||
-                        detectionModelStatus?.status !== "ready" ||
-                        (hasClassificationModel && classificationModelStatus?.status !== "ready") ||
-                        (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
-                      }
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      {updateMutation.isPending ? "Saving..." : "Save changes"}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {(detectionModelStatus?.status !== "ready" || (hasClassificationModel && classificationModelStatus?.status !== "ready") || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
-                  <TooltipContent>
-                    <p>Model needs preparing first</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
             </div>
           </form>
         </Form>

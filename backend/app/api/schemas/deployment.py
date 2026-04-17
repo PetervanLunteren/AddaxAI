@@ -113,6 +113,88 @@ class DeploymentStatsOnly(BaseModel):
     detection_count: int = 0
 
 
+class DeploymentFileCounts(BaseModel):
+    """File-type breakdown for a single deployment."""
+
+    total: int
+    images: int
+    videos: int
+
+
+class DeploymentTopSpecies(BaseModel):
+    """One row in the top-species leaderboard for a deployment."""
+
+    label: str
+    # Optional display-name override from label_taxonomy (e.g. "B. taurus").
+    display_name: str | None
+    count: int
+
+
+class DeploymentDetectionCategories(BaseModel):
+    """Observation counts split by detection category + blank files.
+
+    Animal / person / vehicle are MaxN sums over events (matches the
+    dashboard's `get_detection_categories`). Empty is the count of
+    files whose `observation_type == "blank"` (no usable detections).
+    """
+
+    animal: int
+    person: int
+    vehicle: int
+    empty: int
+
+
+class DeploymentVerification(BaseModel):
+    """File verification progress for a deployment."""
+
+    verified: int
+    total: int
+
+
+class DeploymentInfoResponse(BaseModel):
+    """
+    Investigation-level payload for the Deployments → Info sheet.
+
+    Read-only snapshot combining deployment metadata, file-type split,
+    event and observation counts, mean detection and classification
+    confidence (respecting the project's detection threshold with the
+    verified override), storage size, verification progress, the top
+    species, detection-category breakdown, trap nights, observation
+    rate, and the first and last capture timestamps.
+    """
+
+    deployment_id: str
+    folder_path: str | None
+    site_id: str
+    site_name: str
+    start_date_local: date
+    end_date_local: date | None
+    files: DeploymentFileCounts
+    # Sum of File.size_bytes across files in this deployment. 0 when no
+    # files or when size_bytes is null for every file.
+    total_size_bytes: int
+    verification: DeploymentVerification
+    event_count: int
+    # Sum of EventObservation.max_n across all events in this deployment.
+    observation_count: int
+    detection_categories: DeploymentDetectionCategories
+    # Top 5 species by observation count within this deployment. Empty
+    # list when the deployment has no observations yet.
+    top_species: list[DeploymentTopSpecies]
+    # (end_date - start_date) + 1 days. None when end_date_local is None.
+    trap_nights: int | None
+    # observation_count / trap_nights * 100. None when trap_nights is
+    # None or 0.
+    observation_rate_per_100_trap_nights: float | None
+    # None when no detections pass the threshold-with-verified filter.
+    mean_detection_confidence: float | None
+    # None when no detection has a classification label.
+    mean_classification_confidence: float | None
+    # Earliest and latest File.captured_at_local in the deployment.
+    first_captured_at_local: datetime | None
+    last_captured_at_local: datetime | None
+
+
 class BulkRelinkItem(BaseModel):
     """Single deployment relink instruction."""
 

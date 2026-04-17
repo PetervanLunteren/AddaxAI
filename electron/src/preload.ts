@@ -25,6 +25,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Open a file or directory with the OS default handler.
+   * For directories this opens the folder in the system file manager.
+   * Returns an error string on failure, empty string on success.
+   */
+  openPath: async (targetPath: string): Promise<string> => {
+    return await ipcRenderer.invoke('shell:openPath', targetPath);
+  },
+
+  /**
    * Check if running in Electron (vs browser)
    */
   isElectron: (): boolean => {

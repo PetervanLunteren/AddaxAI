@@ -264,6 +264,246 @@ def get_bulk_deployment_stats(
     }
 
 
+def get_deployment_info(db: Session, deployment_id: str):
+    """
+    Build the investigation-level payload for the Deployments → Info sheet.
+
+    Returns `None` when the deployment does not exist so the router can
+    map it to a 404. Applies the project's detection threshold with the
+    verified override when averaging confidences.
+    """
+    from sqlalchemy import case
+
+    from app.api.crud.statistics import _apply_threshold, _get_detection_threshold
+    from app.api.schemas.deployment import (
+        DeploymentDetectionCategories,
+        DeploymentFileCounts,
+        DeploymentInfoResponse,
+        DeploymentTopSpecies,
+        DeploymentVerification,
+    )
+    from app.models import Detection, EventObservation, LabelTaxonomy
+
+    deployment = get_deployment(db, deployment_id)
+    if deployment is None:
+        return None
+
+    # Site name + project_id via the relationship. project_id is needed
+    # to look up the detection threshold.
+    site = db.get(Site, deployment.site_id)
+    site_name = site.name if site is not None else ""
+    site_id = deployment.site_id
+    project_id = site.project_id if site is not None else None
+
+    # File counts split by file_type + verification + total size in one
+    # grouped query.
+    file_row = db.execute(
+        select(
+            func.count(File.id),
+            func.coalesce(
+                func.sum(case((File.file_type == "image", 1), else_=0)), 0
+            ),
+            func.coalesce(
+                func.sum(case((File.file_type == "video", 1), else_=0)), 0
+            ),
+            func.coalesce(
+                func.sum(case((File.verified.is_(True), 1), else_=0)), 0
+            ),
+            func.coalesce(func.sum(File.size_bytes), 0),
+        )
+        .select_from(File)
+        .where(File.deployment_id == deployment_id)
+    ).one()
+    total_files, images, videos, verified_files, total_size_bytes = file_row
+
+    event_count = (
+        db.scalar(
+            select(func.count(Event.id)).where(
+                Event.deployment_id == deployment_id
+            )
+        )
+        or 0
+    )
+
+    # Sum of MaxN across event observations belonging to this deployment.
+    observation_count = (
+        db.scalar(
+            select(func.coalesce(func.sum(EventObservation.max_n), 0))
+            .select_from(EventObservation)
+            .join(Event, Event.id == EventObservation.event_id)
+            .where(Event.deployment_id == deployment_id)
+        )
+        or 0
+    )
+
+    # Detection categories (animal / person / vehicle) via MaxN sums
+    # grouped by EventObservation.category. Matches the dashboard's
+    # `get_detection_categories` so the numbers line up.
+    cat_row = db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (EventObservation.category == "animal", EventObservation.max_n),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (EventObservation.category == "person", EventObservation.max_n),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (EventObservation.category == "vehicle", EventObservation.max_n),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        )
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .where(Event.deployment_id == deployment_id)
+    ).one()
+    animal_count, person_count, vehicle_count = (
+        int(cat_row[0]),
+        int(cat_row[1]),
+        int(cat_row[2]),
+    )
+
+    # Empty = files whose all detections were skipped (observation_type
+    # == "blank"). Scoped to this deployment.
+    empty_count = (
+        db.scalar(
+            select(func.count(File.id))
+            .where(File.deployment_id == deployment_id)
+            .where(File.observation_type == "blank")
+        )
+        or 0
+    )
+
+    # Top 5 species by MaxN sum. Only counts animal observations; people
+    # / vehicles have their own row in the categories block already. Uses
+    # LabelTaxonomy.display_name when available (matches the label
+    # coalesce pattern in the activity-overlap CRUD).
+    top_species_rows = db.execute(
+        select(
+            EventObservation.label,
+            LabelTaxonomy.display_name,
+            func.sum(EventObservation.max_n),
+        )
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .outerjoin(
+            LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+        )
+        .where(Event.deployment_id == deployment_id)
+        .where(EventObservation.category == "animal")
+        .where(EventObservation.label.isnot(None))
+        .group_by(EventObservation.label, LabelTaxonomy.display_name)
+        .order_by(func.sum(EventObservation.max_n).desc())
+        .limit(5)
+    ).all()
+
+    top_species = [
+        DeploymentTopSpecies(
+            label=row[0],
+            display_name=row[1],
+            count=int(row[2]),
+        )
+        for row in top_species_rows
+    ]
+
+    # First / last capture timestamps across files in this deployment.
+    timestamps_row = db.execute(
+        select(
+            func.min(File.captured_at_local),
+            func.max(File.captured_at_local),
+        ).where(File.deployment_id == deployment_id)
+    ).one()
+    first_captured_at_local, last_captured_at_local = timestamps_row
+
+    # Trap nights = (end - start) + 1 days, only when end_date_local is
+    # known. Rate = obs / trap_nights * 100 when trap_nights > 0.
+    trap_nights: int | None = None
+    rate: float | None = None
+    if deployment.end_date_local is not None:
+        days = (deployment.end_date_local - deployment.start_date_local).days + 1
+        trap_nights = max(0, days)
+        if trap_nights > 0:
+            rate = float(observation_count) / trap_nights * 100.0
+
+    # Mean confidences. Detection mean applies the threshold-with-verified
+    # filter (per CONVENTIONS.md). Classification mean uses the same
+    # filter plus `label_confidence IS NOT NULL` so we only average over
+    # detections that were actually classified.
+    mean_detection_confidence: float | None = None
+    mean_classification_confidence: float | None = None
+    if project_id is not None:
+        threshold = _get_detection_threshold(db, project_id)
+        detection_q = _apply_threshold(
+            select(func.avg(Detection.confidence))
+            .join(File, Detection.file_id == File.id)
+            .where(File.deployment_id == deployment_id),
+            threshold,
+        )
+        mean_det = db.scalar(detection_q)
+        mean_detection_confidence = (
+            float(mean_det) if mean_det is not None else None
+        )
+
+        classification_q = _apply_threshold(
+            select(func.avg(Detection.label_confidence))
+            .join(File, Detection.file_id == File.id)
+            .where(File.deployment_id == deployment_id)
+            .where(Detection.label_confidence.isnot(None)),
+            threshold,
+        )
+        mean_cls = db.scalar(classification_q)
+        mean_classification_confidence = (
+            float(mean_cls) if mean_cls is not None else None
+        )
+
+    return DeploymentInfoResponse(
+        deployment_id=deployment.id,
+        folder_path=deployment.folder_path,
+        site_id=site_id,
+        site_name=site_name,
+        start_date_local=deployment.start_date_local,
+        end_date_local=deployment.end_date_local,
+        files=DeploymentFileCounts(
+            total=int(total_files), images=int(images), videos=int(videos)
+        ),
+        total_size_bytes=int(total_size_bytes),
+        verification=DeploymentVerification(
+            verified=int(verified_files), total=int(total_files)
+        ),
+        event_count=int(event_count),
+        observation_count=int(observation_count),
+        detection_categories=DeploymentDetectionCategories(
+            animal=animal_count,
+            person=person_count,
+            vehicle=vehicle_count,
+            empty=int(empty_count),
+        ),
+        top_species=top_species,
+        trap_nights=trap_nights,
+        observation_rate_per_100_trap_nights=rate,
+        mean_detection_confidence=mean_detection_confidence,
+        mean_classification_confidence=mean_classification_confidence,
+        first_captured_at_local=first_captured_at_local,
+        last_captured_at_local=last_captured_at_local,
+    )
+
+
 @dataclass
 class VerifyResult:
     """Outcome of verifying a deployment folder against its file records."""

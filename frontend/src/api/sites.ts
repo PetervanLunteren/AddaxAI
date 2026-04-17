@@ -7,10 +7,30 @@
  */
 
 import { api } from "../lib/api-client";
-import type { SiteCreate, SiteResponse, SiteUpdate, SiteWithStats } from "./types";
+import type {
+  SiteCreate,
+  SiteDetectionCategories,
+  SiteFileCounts,
+  SiteInfo,
+  SiteResponse,
+  SiteTopSpecies,
+  SiteUpdate,
+  SiteVerification,
+  SiteWithStats,
+} from "./types";
 
 // Re-export types
-export type { SiteCreate, SiteResponse, SiteUpdate, SiteWithStats };
+export type {
+  SiteCreate,
+  SiteDetectionCategories,
+  SiteFileCounts,
+  SiteInfo,
+  SiteResponse,
+  SiteTopSpecies,
+  SiteUpdate,
+  SiteVerification,
+  SiteWithStats,
+};
 
 export const sitesApi = {
   /**
@@ -49,4 +69,10 @@ export const sitesApi = {
    */
   listWithStats: (projectId: string) =>
     api.get<SiteWithStats[]>(`/api/sites/with-stats?project_id=${projectId}`),
+
+  /**
+   * Investigation-level payload for the Sites → Info sheet.
+   * Aggregates across every deployment at this site.
+   */
+  getInfo: (id: string) => api.get<SiteInfo>(`/api/sites/${id}/info`),
 };

@@ -233,6 +233,14 @@ ipcMain.handle('shell:showItemInFolder', async (_event, filePath: string) => {
   shell.showItemInFolder(filePath);
 });
 
+// Open a file or directory in the OS default handler. For directories
+// this opens the folder's contents in Finder / Explorer / etc, rather
+// than highlighting it in the parent (which is what showItemInFolder
+// does). Returns an error string on failure, empty string on success.
+ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
+  return await shell.openPath(targetPath);
+});
+
 /**
  * Application lifecycle handlers
  */

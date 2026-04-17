@@ -7,6 +7,8 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -99,6 +101,247 @@ def delete_site(db: Session, site_id: str) -> bool:
     db.delete(db_site)
     db.commit()
     return True
+
+
+def get_site_info(db: Session, site_id: str):
+    """
+    Build the investigation-level payload for the Sites → Info sheet.
+
+    Aggregates across every deployment at the site. Returns `None` when
+    the site does not exist so the router can map to a 404. Trap nights
+    is the sum of per-deployment `(end - start + 1)` days and is `None`
+    whenever any deployment at the site is open-ended (no `end_date`),
+    since a partial sum could mislead the user.
+    """
+    from sqlalchemy import case
+
+    from app.api.schemas.site import (
+        SiteDetectionCategories,
+        SiteFileCounts,
+        SiteInfoResponse,
+        SiteTopSpecies,
+        SiteVerification,
+    )
+    from app.models import Event, EventObservation, File, LabelTaxonomy
+
+    site = get_site(db, site_id)
+    if site is None:
+        return None
+
+    # Deployment ids scoped to this site. Most aggregate queries filter
+    # files / events by `deployment_id IN (...)`. Using a list keeps the
+    # downstream SQL simple.
+    deployment_rows = db.execute(
+        select(Deployment.id, Deployment.start_date_local, Deployment.end_date_local)
+        .where(Deployment.site_id == site_id)
+    ).all()
+    deployment_ids = [row[0] for row in deployment_rows]
+    deployment_count = len(deployment_ids)
+
+    # File counts split by file_type + verification + total size. One
+    # grouped query. Returns zeros when the site has no files.
+    if deployment_ids:
+        file_row = db.execute(
+            select(
+                func.count(File.id),
+                func.coalesce(
+                    func.sum(case((File.file_type == "image", 1), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((File.file_type == "video", 1), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((File.verified.is_(True), 1), else_=0)), 0
+                ),
+                func.coalesce(func.sum(File.size_bytes), 0),
+            )
+            .select_from(File)
+            .where(File.deployment_id.in_(deployment_ids))
+        ).one()
+        total_files, images, videos, verified_files, total_size_bytes = file_row
+    else:
+        total_files = images = videos = verified_files = total_size_bytes = 0
+
+    event_count = 0
+    observation_count = 0
+    animal_count = person_count = vehicle_count = 0
+    empty_count = 0
+    top_species: list[SiteTopSpecies] = []
+    first_captured_at_local = None
+    last_captured_at_local = None
+
+    if deployment_ids:
+        event_count = (
+            db.scalar(
+                select(func.count(Event.id)).where(
+                    Event.deployment_id.in_(deployment_ids)
+                )
+            )
+            or 0
+        )
+
+        observation_count = (
+            db.scalar(
+                select(func.coalesce(func.sum(EventObservation.max_n), 0))
+                .select_from(EventObservation)
+                .join(Event, Event.id == EventObservation.event_id)
+                .where(Event.deployment_id.in_(deployment_ids))
+            )
+            or 0
+        )
+
+        cat_row = db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                EventObservation.category == "animal",
+                                EventObservation.max_n,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                EventObservation.category == "person",
+                                EventObservation.max_n,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                EventObservation.category == "vehicle",
+                                EventObservation.max_n,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+            )
+            .select_from(EventObservation)
+            .join(Event, Event.id == EventObservation.event_id)
+            .where(Event.deployment_id.in_(deployment_ids))
+        ).one()
+        animal_count = int(cat_row[0])
+        person_count = int(cat_row[1])
+        vehicle_count = int(cat_row[2])
+
+        empty_count = (
+            db.scalar(
+                select(func.count(File.id))
+                .where(File.deployment_id.in_(deployment_ids))
+                .where(File.observation_type == "blank")
+            )
+            or 0
+        )
+
+        top_species_rows = db.execute(
+            select(
+                EventObservation.label,
+                LabelTaxonomy.display_name,
+                func.sum(EventObservation.max_n),
+            )
+            .select_from(EventObservation)
+            .join(Event, Event.id == EventObservation.event_id)
+            .outerjoin(
+                LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+            )
+            .where(Event.deployment_id.in_(deployment_ids))
+            .where(EventObservation.category == "animal")
+            .where(EventObservation.label.isnot(None))
+            .group_by(EventObservation.label, LabelTaxonomy.display_name)
+            .order_by(func.sum(EventObservation.max_n).desc())
+            .limit(5)
+        ).all()
+        top_species = [
+            SiteTopSpecies(
+                label=row[0], display_name=row[1], count=int(row[2])
+            )
+            for row in top_species_rows
+        ]
+
+        timestamps_row = db.execute(
+            select(
+                func.min(File.captured_at_local),
+                func.max(File.captured_at_local),
+            ).where(File.deployment_id.in_(deployment_ids))
+        ).one()
+        first_captured_at_local, last_captured_at_local = timestamps_row
+
+    # Trap nights: sum of per-deployment (end - start + 1) days. When a
+    # deployment has no `end_date_local`, fall back to the latest
+    # `File.captured_at_local` for that deployment so we give a useful
+    # number instead of n/a. A deployment contributes 0 when it has
+    # neither an explicit end nor any captures. `None` only when the
+    # whole sum ends up 0 (e.g. empty site).
+    trap_nights: int | None = None
+    if deployment_ids:
+        last_capture_by_dep: dict[str, datetime] = dict(
+            db.execute(
+                select(File.deployment_id, func.max(File.captured_at_local))
+                .where(File.deployment_id.in_(deployment_ids))
+                .group_by(File.deployment_id)
+            ).all()
+        )
+        days = 0
+        for dep_id, start_date, end_date in deployment_rows:
+            if start_date is None:
+                continue
+            effective_end = end_date
+            if effective_end is None:
+                fallback = last_capture_by_dep.get(dep_id)
+                if fallback is not None:
+                    effective_end = fallback.date()
+            if effective_end is not None:
+                days += max(0, (effective_end - start_date).days + 1)
+        trap_nights = days if days > 0 else None
+
+    rate: float | None = None
+    if trap_nights is not None and trap_nights > 0:
+        rate = float(observation_count) / trap_nights * 100.0
+
+    return SiteInfoResponse(
+        site_id=site.id,
+        name=site.name,
+        latitude=site.latitude,
+        longitude=site.longitude,
+        elevation_m=site.elevation_m,
+        habitat_type=site.habitat_type,
+        notes=site.notes,
+        tags=site.tags or {},
+        deployment_count=deployment_count,
+        files=SiteFileCounts(
+            total=int(total_files), images=int(images), videos=int(videos)
+        ),
+        total_size_bytes=int(total_size_bytes),
+        verification=SiteVerification(
+            verified=int(verified_files), total=int(total_files)
+        ),
+        event_count=int(event_count),
+        observation_count=int(observation_count),
+        detection_categories=SiteDetectionCategories(
+            animal=animal_count,
+            person=person_count,
+            vehicle=vehicle_count,
+            empty=int(empty_count),
+        ),
+        top_species=top_species,
+        trap_nights=trap_nights,
+        observation_rate_per_100_trap_nights=rate,
+        first_captured_at_local=first_captured_at_local,
+        last_captured_at_local=last_captured_at_local,
+    )
 
 
 def get_sites_with_stats(

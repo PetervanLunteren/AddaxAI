@@ -1,8 +1,19 @@
 """Tests for the /api/deployments endpoints."""
 
+from datetime import date, datetime
 from unittest.mock import patch
 
-from tests.conftest import make_deployment, make_project, make_site
+import pytest
+
+from app.models.event_observation import EventObservation
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_event_with_files,
+    make_file,
+    make_project,
+    make_site,
+)
 
 
 def test_list_deployments_empty(client):
@@ -186,3 +197,184 @@ def test_preview_folder_not_found(client):
     ):
         resp = client.get("/api/deployments/preview-folder?path=/missing")
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# /info endpoint
+# ---------------------------------------------------------------------------
+
+
+def _build_info_fixture(db):
+    """Project + site + deployment with mixed images/videos and a few
+    classified, verified, and below-threshold detections."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Camp A")
+    dep = make_deployment(
+        db,
+        site_id=site.id,
+        folder_path="/tmp/demo",
+        start_date_local=date(2024, 6, 1),
+        end_date_local=date(2024, 6, 30),
+    )
+    # 3 images, 2 videos.
+    image_files = [
+        make_file(
+            db,
+            deployment_id=dep.id,
+            file_type="image",
+            file_format="jpg",
+            captured_at_local=datetime(2024, 6, 15, 8, i),
+        )
+        for i in range(3)
+    ]
+    for i in range(2):
+        make_file(
+            db,
+            deployment_id=dep.id,
+            file_type="video",
+            file_format="mp4",
+            captured_at_local=datetime(2024, 6, 16, 9, i),
+        )
+    # Detections: one well above threshold, one verified below threshold,
+    # one unverified below threshold (should NOT be averaged in).
+    make_detection(
+        db, file_id=image_files[0].id, confidence=0.9,
+        label="lion", label_confidence=0.8,
+    )
+    make_detection(
+        db, file_id=image_files[1].id, confidence=0.2,
+        verified=True, label="leopard", label_confidence=0.4,
+    )
+    make_detection(
+        db, file_id=image_files[2].id, confidence=0.1,  # below threshold, dropped
+    )
+    # One event with one observation of MaxN=3. Pass files_verified=[]
+    # so the helper does not auto-create an extra file (we have the
+    # explicit images above and want the file count assertions to be
+    # exact).
+    event = make_event_with_files(
+        db,
+        deployment_id=dep.id,
+        event_start_local=datetime(2024, 6, 15, 8, 0),
+        files_verified=[],
+    )
+    db.add(
+        EventObservation(
+            event_id=event.id,
+            label="lion",
+            label_taxonomy_id=None,
+            category="animal",
+            max_n=3,
+        )
+    )
+    db.flush()
+    return dep
+
+
+def test_deployment_info_happy_path(client, db):
+    dep = _build_info_fixture(db)
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["deployment_id"] == dep.id
+    assert data["folder_path"] == "/tmp/demo"
+    assert data["site_name"] == "Camp A"
+    assert data["site_id"] == dep.site_id
+    assert data["files"] == {"total": 5, "images": 3, "videos": 2}
+    assert data["event_count"] == 1
+    assert data["observation_count"] == 3
+    # One animal observation with MaxN=3 from _build_info_fixture.
+    assert data["detection_categories"]["animal"] == 3
+    assert data["detection_categories"]["person"] == 0
+    assert data["detection_categories"]["vehicle"] == 0
+    assert data["detection_categories"]["empty"] == 0
+    # Top species block: single lion entry with count=3.
+    assert data["top_species"] == [
+        {"label": "lion", "display_name": None, "count": 3}
+    ]
+    # Trap nights = 30 (June 1 to June 30 inclusive). Rate = 3/30 * 100.
+    assert data["trap_nights"] == 30
+    assert data["observation_rate_per_100_trap_nights"] == pytest.approx(10.0)
+    # Verification: no files verified in the fixture.
+    assert data["verification"] == {"verified": 0, "total": 5}
+    # Total size is 0 because test factory doesn't set size_bytes.
+    assert data["total_size_bytes"] == 0
+    # Threshold-with-verified filter should include the verified 0.2
+    # and the unverified 0.9 but NOT the unverified 0.1.
+    # Mean detection = (0.9 + 0.2) / 2 = 0.55
+    assert data["mean_detection_confidence"] == pytest.approx(0.55)
+    # Classification mean = (0.8 + 0.4) / 2 = 0.6
+    assert data["mean_classification_confidence"] == pytest.approx(0.6)
+    assert data["first_captured_at_local"].startswith("2024-06-15T08:00")
+    assert data["last_captured_at_local"].startswith("2024-06-16T09:01")
+
+
+def test_deployment_info_not_found(client):
+    resp = client.get("/api/deployments/nonexistent/info")
+    assert resp.status_code == 404
+
+
+def test_deployment_info_empty_deployment(client, db):
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Empty Camp")
+    dep = make_deployment(db, site_id=site.id, folder_path=None)
+
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["files"] == {"total": 0, "images": 0, "videos": 0}
+    assert data["event_count"] == 0
+    assert data["observation_count"] == 0
+    assert data["mean_detection_confidence"] is None
+    assert data["mean_classification_confidence"] is None
+    assert data["first_captured_at_local"] is None
+    assert data["last_captured_at_local"] is None
+
+
+def test_deployment_info_images_only(client, db):
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Images Camp")
+    dep = make_deployment(db, site_id=site.id)
+    make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
+    make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    data = resp.json()
+    assert data["files"] == {"total": 2, "images": 2, "videos": 0}
+
+
+def test_deployment_info_videos_only(client, db):
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Videos Camp")
+    dep = make_deployment(db, site_id=site.id)
+    make_file(db, deployment_id=dep.id, file_type="video", file_format="mp4")
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    data = resp.json()
+    assert data["files"] == {"total": 1, "images": 0, "videos": 1}
+
+
+def test_deployment_info_no_classifications(client, db):
+    """A detection with no `label_confidence` should produce a null
+    classification mean, even when the detection mean is populated."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Det Only")
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
+    make_detection(db, file_id=f.id, confidence=0.8)  # no label_confidence
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    data = resp.json()
+    assert data["mean_detection_confidence"] == 0.8
+    assert data["mean_classification_confidence"] is None
+
+
+def test_deployment_info_verified_below_threshold_is_counted(client, db):
+    """A verified detection with confidence < threshold must still count
+    in the mean because of the verified override rule."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Camp V")
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
+    # Only detection is below threshold but verified.
+    make_detection(db, file_id=f.id, confidence=0.3, verified=True)
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    data = resp.json()
+    assert data["mean_detection_confidence"] == 0.3

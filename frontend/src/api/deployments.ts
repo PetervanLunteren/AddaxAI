@@ -6,9 +6,14 @@ import { api } from "../lib/api-client";
 import type {
   BulkRelinkRequest,
   BulkRelinkResponse,
+  DeploymentDetectionCategories,
+  DeploymentFileCounts,
+  DeploymentInfo,
   DeploymentResponse,
   DeploymentStatsOnly,
+  DeploymentTopSpecies,
   DeploymentUpdate,
+  DeploymentVerification,
   GroupBrokenGroup,
   GroupBrokenItem,
   GroupBrokenRequest,
@@ -20,9 +25,14 @@ import type {
 export type {
   BulkRelinkRequest,
   BulkRelinkResponse,
+  DeploymentDetectionCategories,
+  DeploymentFileCounts,
+  DeploymentInfo,
   DeploymentResponse,
   DeploymentStatsOnly,
+  DeploymentTopSpecies,
   DeploymentUpdate,
+  DeploymentVerification,
   GroupBrokenGroup,
   GroupBrokenItem,
   GroupBrokenRequest,
@@ -66,6 +76,14 @@ export const deploymentsApi = {
     api.get<Record<string, DeploymentStatsOnly>>(
       `/api/deployments/bulk-stats?project_id=${projectId}`
     ),
+
+  /**
+   * Investigation-level payload for the Deployments → Info sheet.
+   * Read-only snapshot of the deployment's counts, confidences, and
+   * first/last capture timestamps.
+   */
+  getInfo: (id: string) =>
+    api.get<DeploymentInfo>(`/api/deployments/${id}/info`),
 
   /**
    * Re-stat the deployment's folder_path and refresh folder_status.

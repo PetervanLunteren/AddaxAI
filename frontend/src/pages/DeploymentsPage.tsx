@@ -7,7 +7,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus } from "lucide-react";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
 import { sitesApi } from "../api/sites";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
@@ -36,6 +36,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { filtersFromSearchParams, filtersToSearchParams, type FilterSchema } from "../lib/filter-url";
+import { DeploymentInfoSheet } from "../components/deployments/DeploymentInfoSheet";
 import { EditDeploymentDialog } from "../components/deployments/EditDeploymentDialog";
 import {
   DeleteDeploymentDialog,
@@ -93,6 +94,7 @@ export function DeploymentsPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [editingDeployment, setEditingDeployment] = useState<DeploymentResponse | null>(null);
   const [deletingDeployment, setDeletingDeployment] = useState<DeleteDeploymentTarget | null>(null);
+  const [infoDeploymentId, setInfoDeploymentId] = useState<string | null>(null);
 
   const handleFilterChange = (next: FilterValues) => {
     setSearchParams(filtersToSearchParams(next, FILTER_SCHEMA));
@@ -366,7 +368,11 @@ export function DeploymentsPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((dep) => (
-                  <TableRow key={dep.id}>
+                  <TableRow
+                    key={dep.id}
+                    onClick={() => setInfoDeploymentId(dep.id)}
+                    className="cursor-pointer"
+                  >
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         {dep.folder_status === "needs_relink" && (
@@ -398,7 +404,7 @@ export function DeploymentsPage() {
                     <TableCell className="max-w-[320px]">
                       <TagPills tags={dep.tags} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -406,6 +412,10 @@ export function DeploymentsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setInfoDeploymentId(dep.id)}>
+                            <Info className="mr-2 h-4 w-4" />
+                            Info
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setEditingDeployment(dep)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
@@ -462,6 +472,30 @@ export function DeploymentsPage() {
         projectId={projectId}
         open={!!deletingDeployment}
         onOpenChange={(open) => !open && setDeletingDeployment(null)}
+      />
+
+      <DeploymentInfoSheet
+        deploymentId={infoDeploymentId}
+        open={infoDeploymentId !== null}
+        onOpenChange={(open) => !open && setInfoDeploymentId(null)}
+        onEdit={() => {
+          if (!infoDeploymentId) return;
+          const dep = deploymentsById.get(infoDeploymentId);
+          setInfoDeploymentId(null);
+          if (dep) setEditingDeployment(dep);
+        }}
+        onDelete={() => {
+          if (!infoDeploymentId) return;
+          const row = rows.find((r) => r.id === infoDeploymentId);
+          setInfoDeploymentId(null);
+          if (row) {
+            setDeletingDeployment({
+              id: row.id,
+              site_name: row.site_name,
+              start_date_local: row.start_date_local,
+            });
+          }
+        }}
       />
 
     </div>
