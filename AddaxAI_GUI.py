@@ -3218,7 +3218,8 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                     progress_window.update_values(process = f"{data_type}_det",
                                                 status = "extracting frames",
                                                 extracting_frames_txt = [f"Extracting frames... {line[:3]}%",
-                                                                        f"Extrayendo fotogramas... {line[:3]}%"])
+                                                                        f"Extrayendo fotogramas... {line[:3]}%",
+                                                                        f"Extraction des trames... {line[:3]}%"])
             if "Extracted frames for" in line and \
                 data_type == "vid":
                     extracting_frames_mode = False
@@ -8460,7 +8461,7 @@ class ProgressWindow:
         seconds_per_image_txt = ["Seconds per image:", "Segundos por imagen:", "Secondes par image:"]
         animals_per_second_txt = ["Animals per second:", "Animales por segundo:", "Animaux par seconde:"]
         seconds_per_animal_txt = ["Seconds per animal:", "Segundos por animal:", "Secondes par animal:"]
-        frames_per_second_txt = ["Frames per second:", "Fotogramas por segundo:"], "Trames par seconde:"
+        frames_per_second_txt = ["Frames per second:", "Fotogramas por segundo:", "Trames par seconde:"]
         seconds_per_frame_txt = ["Seconds per frame:", "Segundos por fotograma:", "Secondes par trame:"]
         videos_per_second_txt = ["Videos per second:", "Vídeos por segundo:", "Vidéos par seconde:"]
         seconds_per_video_txt = ["Seconds per video:", "Segundos por vídeo:", "Secondes par vidéo:"]
