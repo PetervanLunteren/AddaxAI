@@ -31,7 +31,7 @@ from app.api.schemas.project import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.models import Deployment, Detection, File, Job, Project, Site
+from app.models import Deployment, Detection, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.label_taxonomy import LabelTaxonomy
 
@@ -389,8 +389,7 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
     # Collect deployment folder paths before cascade deletes them
     deployments = (
         db.query(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .all()
     )
     folder_paths = [Path(d.folder_path) for d in deployments]
@@ -614,8 +613,7 @@ def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
         db.query(Detection.category, func.count(Detection.id).label("count"))
         .join(File)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
         .group_by(Detection.category)
         .all()
@@ -642,8 +640,7 @@ def get_detection_count(
         db.query(func.count(Detection.id))
         .join(File)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
         .scalar()
     ) or 0
@@ -667,8 +664,7 @@ def get_label_stats(
         db.query(Detection.label, func.count(Detection.id).label("count"))
         .join(File)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(Detection.label.isnot(None))
     )
     if threshold > 0:
@@ -978,8 +974,7 @@ def update_custom_label(
                     Detection.file_id.in_(
                         db.query(File.id)
                         .join(Deployment)
-                        .join(Site)
-                        .filter(Site.project_id == project_id)
+                        .filter(Deployment.project_id == project_id)
                     ),
                 )
                 .update(
@@ -1014,8 +1009,7 @@ def update_custom_label(
     project_file_ids = (
         db.query(File.id)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
     )
     (
         db.query(Detection)
@@ -1079,13 +1073,12 @@ def delete_custom_label(
 
 
 def _delete_project_embeddings(db: Session, project_id: str) -> int:
-    """Delete all embeddings for a project via Detection→File→Deployment→Site chain."""
+    """Delete all embeddings for a project via Detection→File→Deployment chain."""
     detection_ids = (
         db.query(Detection.id)
         .join(File)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .subquery()
     )
     count = (
@@ -1147,6 +1140,33 @@ async def re_embed_detections(
     return {"message": "Re-embedding started", "job_id": job.id}
 
 
+@router.get("/{project_id}/deployments-without-site")
+def get_deployments_without_site(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Report deployments in this project that have no camera site.
+
+    Used by the pages that need camera lat/lon (Map, Activity overlap
+    sun-time mode, Dashboard activity sun bands, CamtrapDP / GeoJSON
+    exports) to render a banner pointing users at the deployments that
+    will be silently excluded.
+
+    Returns ``{"count": N, "deployment_ids": [...]}``. The list is
+    small in practice (a handful of backlog folders, typically) and is
+    used by the banner button to deep-link into the deployments page
+    with the (no site) filter applied.
+    """
+    rows = (
+        db.query(Deployment.id)
+        .filter(Deployment.project_id == project_id)
+        .filter(Deployment.site_id.is_(None))
+        .all()
+    )
+    ids = [r[0] for r in rows]
+    return {"count": len(ids), "deployment_ids": ids}
+
+
 @router.get("/{project_id}/postprocessing-status")
 def get_postprocessing_status(
     project_id: str,
@@ -1172,8 +1192,7 @@ def get_postprocessing_status(
         db.query(Detection.id)
         .join(File)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(Detection.label.isnot(None))
         .limit(1)
         .first()

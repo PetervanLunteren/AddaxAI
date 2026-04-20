@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { Folder, Info, CheckCircle2, AlertCircle, Loader2, ChevronDown, Image, Video, MapPin, MapPinOff, Calendar } from "lucide-react";
+import { Folder, CheckCircle2, AlertCircle, Loader2, ChevronDown, Image, Video, MapPin, MapPinOff, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -115,39 +115,9 @@ export function FolderSelector({
   return (
     <TooltipProvider>
       <div className="space-y-2">
-        {/* Label with info tooltip (suppressed when the parent provides its own label) */}
+        {/* Label (suppressed when the parent provides its own label) */}
         {!hideLabel && (
-          <label className="flex items-center gap-1.5 text-sm font-medium">
-            Folder
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="max-w-sm space-y-2">
-                  <p>
-                    Select a folder that contains all images and videos from a single deployment.
-                    A deployment is one camera SD card from start to end at a single site.
-                  </p>
-                  <p>
-                    Add exactly one complete deployment at a time. Do not add partial deployments
-                    or multiple deployments in a single folder. This ensures accurate statistics,
-                    exports, maps, and graphs.
-                  </p>
-                  <p>
-                    The system will recursively scan all subfolders for images and videos. To add
-                    multiple deployments, queue each one separately.
-                  </p>
-                  <p>
-                    The selected folder must already be in its final location. AddaxAI does not
-                    store the media files themselves, only the file paths. If the folder is moved
-                    or renamed after analysis, the files can no longer be found. You can relink
-                    them at any time.
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </label>
+          <label className="text-sm font-medium">Folder</label>
         )}
 
         {/* Input or button */}

@@ -2,14 +2,14 @@
  * Site Selector Component
  *
  * Simplified version matching Create Project modal style.
- * - Clean select dropdown with info tooltip
+ * - Clean select dropdown
  * - Button to add new site
  * - Inline validation
  */
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Plus, Info } from "lucide-react";
+import { MapPin, Plus } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -19,19 +19,21 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { sitesApi } from "@/api/sites";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+
+// Reserved option value that maps to `null` in the parent's state.
+// shadcn's Select refuses empty-string item values, so we pick an
+// unambiguous sentinel and translate it at the component boundary.
+const NO_SITE_OPTION = "__no_site__";
 
 interface SiteSelectorProps {
   projectId: string;
   value: string | null;
-  onChange: (id: string) => void;
+  onChange: (id: string | null) => void;
   onAddNew: () => void;
   deploymentGps?: { latitude: number; longitude: number } | null;
+  /** When true, exposes a "Leave blank if unknown or from multiple
+   * locations" option and allows submitting `null` as the site. */
+  allowEmpty?: boolean;
 }
 
 export function SiteSelector({
@@ -40,13 +42,12 @@ export function SiteSelector({
   onChange,
   onAddNew,
   deploymentGps,
+  allowEmpty = false,
 }: SiteSelectorProps) {
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites", projectId],
     queryFn: () => sitesApi.list(projectId),
   });
-
-  const selectedSite = sites?.find((s) => s.id === value);
 
   // Auto-select closest site when deployment GPS is available
   useEffect(() => {
@@ -109,82 +110,88 @@ export function SiteSelector({
   };
 
   return (
-    <TooltipProvider>
-      <div className="space-y-2">
-        {/* Label with info tooltip */}
-        <label className="flex items-center gap-1.5 text-sm font-medium">
-          Camera site
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="max-w-xs">
-                The camera trap location where these images were captured. You can add a new site if needed.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </label>
+    <div className="space-y-2">
+      <label className="text-sm font-medium">Camera site</label>
 
-        {/* Select + Add button */}
-        <div className="flex gap-2">
-          <Select value={value ?? ""} onValueChange={onChange} disabled={isLoading}>
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder={isLoading ? "Loading sites..." : "Select a site"} />
-            </SelectTrigger>
-            <SelectContent>
-              {sites && sites.length > 0 ? (
-                sites.map((site) => {
-                  // Calculate distance if both deployment GPS and site GPS are available
-                  let distanceText = null;
-                  if (
-                    deploymentGps &&
-                    site.latitude != null &&
-                    site.longitude != null
-                  ) {
-                    const distance = calculateDistance(
-                      deploymentGps.latitude,
-                      deploymentGps.longitude,
-                      site.latitude,
-                      site.longitude
-                    );
-                    distanceText = formatDistance(distance);
-                  }
-
-                  return (
-                    <SelectItem key={site.id} value={site.id}>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-gray-400" />
-                        <span>{site.name}</span>
-                        {distanceText && (
-                          <span className="text-xs text-gray-500">
-                            ({distanceText})
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  );
-                })
-              ) : (
-                <div className="p-2 text-sm text-gray-500 text-center">
-                  No sites found - click + to add one
+      {/* Select + Add button */}
+      <div className="flex gap-2">
+        <Select
+          value={value ?? ""}
+          onValueChange={(v) => onChange(v === NO_SITE_OPTION ? null : v)}
+          disabled={isLoading}
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue
+              placeholder={
+                isLoading
+                  ? "Loading sites..."
+                  : allowEmpty
+                    ? "Optionally select a site"
+                    : "Select a site"
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {allowEmpty && (
+              <SelectItem key={NO_SITE_OPTION} value={NO_SITE_OPTION}>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">(no site)</span>
                 </div>
-              )}
-            </SelectContent>
-          </Select>
+              </SelectItem>
+            )}
+            {sites && sites.length > 0 ? (
+              sites.map((site) => {
+                // Calculate distance if both deployment GPS and site GPS are available
+                let distanceText = null;
+                if (
+                  deploymentGps &&
+                  site.latitude != null &&
+                  site.longitude != null
+                ) {
+                  const distance = calculateDistance(
+                    deploymentGps.latitude,
+                    deploymentGps.longitude,
+                    site.latitude,
+                    site.longitude
+                  );
+                  distanceText = formatDistance(distance);
+                }
 
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={onAddNew}
-            title="Add new site"
-            className="shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
+                return (
+                  <SelectItem key={site.id} value={site.id}>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-gray-400" />
+                      <span>{site.name}</span>
+                      {distanceText && (
+                        <span className="text-xs text-gray-500">
+                          ({distanceText})
+                        </span>
+                      )}
+                    </div>
+                  </SelectItem>
+                );
+              })
+            ) : (
+              !allowEmpty && (
+                <div className="p-2 text-sm text-gray-500 text-center">
+                  No sites found, click + to add one
+                </div>
+              )
+            )}
+          </SelectContent>
+        </Select>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={onAddNew}
+          title="Add new site"
+          className="shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
-    </TooltipProvider>
+    </div>
   );
 }

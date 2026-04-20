@@ -25,6 +25,35 @@ logger = get_logger(__name__)
 # Number of files to sample when verifying a deployment folder's identity.
 _VERIFY_SAMPLE_SIZE = 10
 
+# Reserved token used inside site_ids URL filters to mean "deployments
+# with no site". Frontend emits the literal string "null" alongside
+# real site UUIDs; backend translates it to `site_id IS NULL`.
+NO_SITE_SENTINEL: str = "null"
+
+
+def site_ids_filter(site_ids: list[str] | None):
+    """
+    Turn a list of site_ids (optionally containing NO_SITE_SENTINEL)
+    into a SQLAlchemy boolean clause on Deployment.site_id. Returns
+    None when there is no filter to apply.
+    """
+    from sqlalchemy import or_
+
+    if not site_ids:
+        return None
+    real_ids = [s for s in site_ids if s != NO_SITE_SENTINEL]
+    include_null = NO_SITE_SENTINEL in site_ids
+    clauses = []
+    if real_ids:
+        clauses.append(Deployment.site_id.in_(real_ids))
+    if include_null:
+        clauses.append(Deployment.site_id.is_(None))
+    if not clauses:
+        return None
+    if len(clauses) == 1:
+        return clauses[0]
+    return or_(*clauses)
+
 
 def get_deployments(
     db: Session,
@@ -40,7 +69,7 @@ def get_deployments(
     if site_id:
         query = query.where(Deployment.site_id == site_id)
     if project_id:
-        query = query.join(Site).where(Site.project_id == project_id)
+        query = query.where(Deployment.project_id == project_id)
     result = db.execute(query)
     return list(result.scalars().all())
 
@@ -59,10 +88,11 @@ def create_deployment(db: Session, deployment: DeploymentCreate) -> Deployment:
     """
     Create a new deployment.
 
-    Crashes if database constraint violated (e.g., invalid site_id).
-    This is intentional - we want to surface errors immediately.
+    Crashes if database constraint violated (e.g., invalid project_id
+    or site_id). site_id may be None for deployment-agnostic batches.
     """
     db_deployment = Deployment(
+        project_id=deployment.project_id,
         site_id=deployment.site_id,
         folder_path=deployment.folder_path,
         start_date_local=deployment.start_date_local,
@@ -128,7 +158,7 @@ def delete_deployment(db: Session, deployment_id: str) -> bool:
     # Capture the path info BEFORE the row is deleted; we still need it
     # to clean up the on-disk artifacts after the DB cascade fires.
     folder_path = db_deployment.folder_path
-    project_id = db_deployment.site.project_id
+    project_id = db_deployment.project_id
 
     db.delete(db_deployment)
     db.commit()
@@ -223,8 +253,7 @@ def get_bulk_deployment_stats(
     # All deployment IDs in project
     dep_ids_subq = (
         select(Deployment.id)
-        .join(Site)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
         .subquery()
     )
 
@@ -288,12 +317,11 @@ def get_deployment_info(db: Session, deployment_id: str):
     if deployment is None:
         return None
 
-    # Site name + project_id via the relationship. project_id is needed
-    # to look up the detection threshold.
-    site = db.get(Site, deployment.site_id)
-    site_name = site.name if site is not None else ""
+    # Site is optional. project_id comes directly from the deployment.
     site_id = deployment.site_id
-    project_id = site.project_id if site is not None else None
+    project_id = deployment.project_id
+    site = db.get(Site, site_id) if site_id is not None else None
+    site_name = site.name if site is not None else None
 
     # File counts split by file_type + verification + total size in one
     # grouped query.
@@ -445,32 +473,29 @@ def get_deployment_info(db: Session, deployment_id: str):
     # filter (per CONVENTIONS.md). Classification mean uses the same
     # filter plus `label_confidence IS NOT NULL` so we only average over
     # detections that were actually classified.
-    mean_detection_confidence: float | None = None
-    mean_classification_confidence: float | None = None
-    if project_id is not None:
-        threshold = _get_detection_threshold(db, project_id)
-        detection_q = _apply_threshold(
-            select(func.avg(Detection.confidence))
-            .join(File, Detection.file_id == File.id)
-            .where(File.deployment_id == deployment_id),
-            threshold,
-        )
-        mean_det = db.scalar(detection_q)
-        mean_detection_confidence = (
-            float(mean_det) if mean_det is not None else None
-        )
+    threshold = _get_detection_threshold(db, project_id)
+    detection_q = _apply_threshold(
+        select(func.avg(Detection.confidence))
+        .join(File, Detection.file_id == File.id)
+        .where(File.deployment_id == deployment_id),
+        threshold,
+    )
+    mean_det = db.scalar(detection_q)
+    mean_detection_confidence = (
+        float(mean_det) if mean_det is not None else None
+    )
 
-        classification_q = _apply_threshold(
-            select(func.avg(Detection.label_confidence))
-            .join(File, Detection.file_id == File.id)
-            .where(File.deployment_id == deployment_id)
-            .where(Detection.label_confidence.isnot(None)),
-            threshold,
-        )
-        mean_cls = db.scalar(classification_q)
-        mean_classification_confidence = (
-            float(mean_cls) if mean_cls is not None else None
-        )
+    classification_q = _apply_threshold(
+        select(func.avg(Detection.label_confidence))
+        .join(File, Detection.file_id == File.id)
+        .where(File.deployment_id == deployment_id)
+        .where(Detection.label_confidence.isnot(None)),
+        threshold,
+    )
+    mean_cls = db.scalar(classification_q)
+    mean_classification_confidence = (
+        float(mean_cls) if mean_cls is not None else None
+    )
 
     return DeploymentInfoResponse(
         deployment_id=deployment.id,

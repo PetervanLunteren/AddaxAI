@@ -45,13 +45,13 @@ def _set_project_tz(db: Session, project_id: str) -> None:
 
 
 def _set_project_tz_for_event(db: Session, event) -> None:
-    """Activate project timezone from a loaded Event's deployment chain."""
-    if (
-        event.deployment
-        and event.deployment.site
-        and event.deployment.site.project
-    ):
-        set_active_project_timezone(event.deployment.site.project.timezone)
+    """Activate project timezone from a loaded Event's deployment chain.
+
+    Goes through Deployment.project directly so null-site deployments
+    still resolve a timezone.
+    """
+    if event.deployment and event.deployment.project:
+        set_active_project_timezone(event.deployment.project.timezone)
 
 
 def _parse_filter_params(

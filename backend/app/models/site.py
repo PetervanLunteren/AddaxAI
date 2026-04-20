@@ -48,8 +48,11 @@ class Site(Base):
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="sites")
+    # No cascade: deleting a site nulls out its deployments' site_id
+    # (FK is ondelete=SET NULL). Deployments are owned by the project,
+    # not by the site, and must survive a site being removed.
     deployments: Mapped[list["Deployment"]] = relationship(
-        "Deployment", back_populates="site", cascade="all, delete-orphan"
+        "Deployment", back_populates="site"
     )
 
     # Constraints

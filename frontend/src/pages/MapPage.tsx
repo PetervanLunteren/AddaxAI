@@ -21,7 +21,9 @@ import {
   type ViewMode,
 } from "../components/map/MapFilterBar";
 import { ObservationRateMap } from "../components/map/ObservationRateMap";
+import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
+import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import {
   filtersFromSearchParams,
   filtersToSearchParams,
@@ -103,6 +105,8 @@ export function MapPage() {
     [filters]
   );
 
+  const { data: noSite } = useNoSiteDeployments(projectId);
+
   if (!projectId) {
     return <div>Project ID missing</div>;
   }
@@ -124,6 +128,11 @@ export function MapPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        <NoSiteBanner
+          projectId={projectId}
+          count={noSite?.count ?? 0}
+          reason="They are not shown on the map."
+        />
         <MapFilterBar
           projectId={projectId}
           filters={filters}

@@ -18,7 +18,7 @@ from app.api.schemas.similarity import (
     SortResponse,
 )
 from app.db.base import get_db
-from app.models import Deployment, Detection, DetectionEmbedding, File, Project, Site
+from app.models import Deployment, Detection, DetectionEmbedding, File, Project
 from app.services.similarity_service import (
     search_similar as search_similar_service,
 )
@@ -91,8 +91,7 @@ def get_similarity_stats(
         db.query(func.count(Detection.id))
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .scalar()
     ) or 0
 
@@ -103,8 +102,7 @@ def get_similarity_stats(
             .join(Detection, Detection.id == DetectionEmbedding.detection_id)
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)
-            .join(Site, Site.id == Deployment.site_id)
-            .filter(Site.project_id == project_id)
+            .filter(Deployment.project_id == project_id)
             .filter(DetectionEmbedding.embedding_model_id == embedding_model_id)
             .scalar()
         ) or 0
@@ -117,8 +115,7 @@ def get_similarity_stats(
         .join(Detection, Detection.id == DetectionEmbedding.detection_id)
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .limit(1)
         .first()
     )

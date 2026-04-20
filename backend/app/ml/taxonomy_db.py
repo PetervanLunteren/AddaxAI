@@ -302,7 +302,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     Returns:
         Count of detections linked.
     """
-    from app.models import Deployment, File, Project, Site
+    from app.models import Deployment, File, Project
 
     # Get the project's classification model
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -314,9 +314,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     # Subquery: file IDs belonging to this project
     project_file_ids = (
         db.query(File.id)
-        .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .filter(Deployment.project_id == project_id)
         .subquery()
     )
 

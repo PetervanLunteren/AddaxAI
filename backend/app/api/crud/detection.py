@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.detection import DetectionCreate, DetectionCreateHuman, DetectionUpdate
-from app.models import Deployment, Detection, File, Site
+from app.models import Deployment, Detection, File
 
 
 def get_detection(db: Session, detection_id: str) -> Detection | None:
@@ -294,11 +294,10 @@ def delete_detections_by_file(db: Session, file_id: str) -> int:
 
 
 def _get_project_id_for_detection(db: Session, detection: Detection) -> str | None:
-    """Resolve project_id from Detection → File → Deployment → Site."""
+    """Resolve project_id from Detection → File → Deployment."""
     row = (
-        db.query(Site.project_id)
-        .join(Deployment)
-        .join(File)
+        db.query(Deployment.project_id)
+        .join(File, File.deployment_id == Deployment.id)
         .filter(File.id == detection.file_id)
         .first()
     )

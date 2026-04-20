@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.crud import file as file_crud
 from app.api.schemas.file import FileResponse, FileUpdate, FileWithDetections
 from app.db.base import get_db
-from app.models import Deployment, File, Project, Site
+from app.models import Deployment, File, Project
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -23,8 +23,7 @@ def _set_project_tz_for_file(db: Session, file_id: str) -> None:
     """Activate project timezone for a file based on its deployment chain."""
     tz = (
         db.query(Project.timezone)
-        .join(Site, Site.project_id == Project.id)
-        .join(Deployment, Deployment.site_id == Site.id)
+        .join(Deployment, Deployment.project_id == Project.id)
         .join(File, File.deployment_id == Deployment.id)
         .filter(File.id == file_id)
         .scalar()
@@ -85,8 +84,7 @@ async def list_files(
     elif deployment_id:
         tz = (
             db.query(Project.timezone)
-            .join(Site, Site.project_id == Project.id)
-            .join(Deployment, Deployment.site_id == Site.id)
+            .join(Deployment, Deployment.project_id == Project.id)
             .filter(Deployment.id == deployment_id)
             .scalar()
         )

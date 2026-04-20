@@ -26,6 +26,8 @@ import {
   type ObservationFormat,
   type SpatialFormat,
 } from "../api/export";
+import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
+import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 
 /** Trigger a browser download for a Blob. */
 function downloadBlob(blob: Blob, filename: string) {
@@ -121,6 +123,7 @@ export default function ExportPage() {
     queryFn: () => projectsApi.get(projectId!),
     enabled: !!projectId,
   });
+  const { data: noSite } = useNoSiteDeployments(projectId);
 
   const [obsFormat, setObsFormat] = useState<ObservationFormat>("csv");
   const [spatialFormat, setSpatialFormat] = useState<SpatialFormat>("geojson");
@@ -195,6 +198,13 @@ export default function ExportPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        {projectId && (
+          <NoSiteBanner
+            projectId={projectId}
+            count={noSite?.count ?? 0}
+            reason="They are skipped from CamtrapDP and GeoJSON exports (CSV includes them with blank lat/lon)."
+          />
+        )}
         <Card>
           <CardHeader>
             <CardTitle>Observations</CardTitle>

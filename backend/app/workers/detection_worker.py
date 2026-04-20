@@ -208,16 +208,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             total_files += len(video_files) + len(image_files)
 
-            # Validate site selection from queue entry
-            if not entry.site_id:
-                error_msg = f"Queue entry {entry_id} has no site selected"
-                logger.error(error_msg)
-                queue_crud.update_queue_status(db, entry_id, status="failed", error=error_msg)
-                continue
-
-            # Create deployment (carry notes and tags from the queue entry)
+            # Create deployment (carry notes and tags from the queue entry).
+            # site_id may be None for deployment-agnostic batches.
             deployment = create_deployment(
                 db=db,
+                project_id=entry.project_id,
                 site_id=entry.site_id,
                 folder_path=str(folder_path),
                 notes=entry.notes,
@@ -1295,7 +1290,8 @@ def scan_folder_for_videos(folder_path: Path) -> list[Path]:
 
 def create_deployment(
     db,
-    site_id: str,
+    project_id: str,
+    site_id: str | None,
     folder_path: str,
     notes: str | None = None,
     tags: dict[str, str] | None = None,
@@ -1305,7 +1301,8 @@ def create_deployment(
 
     Args:
         db: Database session
-        site_id: Site ID
+        project_id: Project ID (required, every deployment belongs to a project)
+        site_id: Site ID; None for deployment-agnostic batches
         folder_path: Folder path
         notes: Optional deployment notes (from queue entry)
         tags: Optional key:value metadata tags (from queue entry)
@@ -1318,6 +1315,7 @@ def create_deployment(
     # Use current UTC date as a placeholder. Phase 6 overwrites this with
     # the real field-deployment window derived from File.captured_at_local.
     deployment_data = DeploymentCreate(
+        project_id=project_id,
         site_id=site_id,
         folder_path=folder_path,
         start_date_local=datetime.now(UTC).date(),

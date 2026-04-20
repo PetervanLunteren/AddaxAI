@@ -52,15 +52,24 @@ def test_site_unique_name_per_project(db):
         make_site(db, project_id=p1.id, name="shared-name")
 
 
-def test_site_cascade_deletes_deployments(db):
+def test_site_delete_nulls_out_deployment_site_id(db):
+    """Deleting a site should null out its deployments' site_id (SET NULL),
+    not cascade-delete them. Deployments are owned by the project, not
+    the site; nullable site_id is the supported state for
+    deployment-agnostic batches."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     dep_id = d.id
     db.delete(s)
     db.flush()
+    db.expire_all()
     from app.models.deployment import Deployment
-    assert db.get(Deployment, dep_id) is None
+
+    kept = db.get(Deployment, dep_id)
+    assert kept is not None, "deployment should survive site deletion"
+    assert kept.site_id is None
+    assert kept.project_id == p.id
 
 
 def test_deployment_cascade_deletes_files(db):

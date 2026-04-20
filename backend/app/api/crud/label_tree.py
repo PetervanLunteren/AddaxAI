@@ -10,7 +10,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.models import Deployment, Detection, Event, File, Project, Site
+from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.label_taxonomy import LabelTaxonomy
 
@@ -49,8 +49,7 @@ def build_label_filter_tree(
             )
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)
-            .join(Site, Site.id == Deployment.site_id)
-            .filter(Site.project_id == project_id)
+            .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
             .group_by(Detection.label_taxonomy_id)
@@ -66,8 +65,7 @@ def build_label_filter_tree(
             .join(event_files, event_files.c.file_id == File.id)
             .join(Event, Event.id == event_files.c.event_id)
             .join(Deployment, Deployment.id == Event.deployment_id)
-            .join(Site, Site.id == Deployment.site_id)
-            .filter(Site.project_id == project_id)
+            .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
             .group_by(Detection.label_taxonomy_id)

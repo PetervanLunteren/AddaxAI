@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.models import Deployment, Detection, Event, File, Project, Site
+from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
 
@@ -145,8 +145,7 @@ def recalculate_max_n_for_project(
     event_ids = (
         db.query(Event.id)
         .join(Deployment, Deployment.id == Event.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .all()
     )
 
@@ -231,8 +230,7 @@ def get_project_threshold_for_detections(
     """Get the project detection_threshold for the given detections."""
     row = (
         db.query(Project.detection_threshold)
-        .join(Site, Site.project_id == Project.id)
-        .join(Deployment, Deployment.site_id == Site.id)
+        .join(Deployment, Deployment.project_id == Project.id)
         .join(File, File.deployment_id == Deployment.id)
         .join(Detection, Detection.file_id == File.id)
         .filter(Detection.id.in_(detection_ids))

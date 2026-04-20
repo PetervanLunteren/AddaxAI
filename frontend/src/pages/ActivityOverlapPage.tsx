@@ -37,6 +37,7 @@ import {
   PlotExplainer,
   type PlotReference,
 } from "../components/plots/PlotExplainer";
+import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { Badge } from "../components/ui/badge";
 import {
   Tooltip as UITooltip,
@@ -392,6 +393,13 @@ export function ActivityOverlapPage() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+        {filters.timeAxis === "sun" && data && data.deployments_without_site > 0 && (
+          <NoSiteBanner
+            projectId={projectId}
+            count={data.deployments_without_site}
+            reason="They are excluded from the sun-time average."
+          />
+        )}
         <ActivityOverlapFilterBar
           projectId={projectId}
           filters={filters}

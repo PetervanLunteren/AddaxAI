@@ -24,7 +24,7 @@ from app.ml.postprocessing import (
     run_postprocessing_for_deployment,
     update_database_from_smoothed_results,
 )
-from app.models import Deployment, Detection, File, Site
+from app.models import Deployment, Detection, File
 
 logger = get_logger(__name__)
 
@@ -35,8 +35,7 @@ def _get_label_counts(db: Session, project_id: str) -> dict[str, int]:
         db.query(Detection.label, func.count(Detection.id))
         .join(File)
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(Detection.label.isnot(None))
         .group_by(Detection.label)
         .all()
@@ -95,8 +94,7 @@ async def process_postprocessing_job(job_id: str) -> None:
         # Find all deployments with classifications
         deployments_with_cls = (
             db.query(Deployment)
-            .join(Site)
-            .filter(Site.project_id == project_id)
+            .filter(Deployment.project_id == project_id)
             .join(File, File.deployment_id == Deployment.id)
             .join(Detection, Detection.file_id == File.id)
             .filter(Detection.label.isnot(None))

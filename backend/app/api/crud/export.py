@@ -152,11 +152,15 @@ def get_scoped_detection_rows(
         Detection.verified.is_(True),
     )
 
+    # Outer join on Site so deployments without an assigned site still
+    # appear in the export; the CSV serializer emits blank lat/lon cells
+    # for those rows, and CamtrapDP / GeoJSON skip them with a separate
+    # skipped_deployment_ids list.
     query = (
         select(File, Detection, Deployment, Site, LabelTaxonomy)
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
+        .outerjoin(Site, Deployment.site_id == Site.id)
         .outerjoin(
             Detection,
             and_(Detection.file_id == File.id, threshold_clause),
@@ -164,7 +168,7 @@ def get_scoped_detection_rows(
         .outerjoin(
             LabelTaxonomy, LabelTaxonomy.id == Detection.label_taxonomy_id
         )
-        .where(Site.project_id == project.id)
+        .where(Deployment.project_id == project.id)
         .where(File.file_type.in_(("image", "frame")))
         .order_by(File.captured_at_local.asc(), File.id, Detection.id)
     )
@@ -329,7 +333,9 @@ def build_observation_rows(
     rows: list[list[Any]] = []
     for file_obj, _deployment, site, detections in _group_rows_by_file(scoped_rows):
         captured = _iso_datetime(file_obj.captured_at_local, tz_name)
-        camera_name = site.name
+        camera_name = site.name if site is not None else ""
+        latitude = site.latitude if site is not None else ""
+        longitude = site.longitude if site is not None else ""
         filename = _filename_from_path(file_obj.file_path)
 
         if not detections or file_obj.observation_type == "blank":
@@ -339,8 +345,8 @@ def build_observation_rows(
                     filename,
                     captured,
                     camera_name,
-                    site.latitude,
-                    site.longitude,
+                    latitude,
+                    longitude,
                     not_reviewed,
                 )
             )
@@ -375,8 +381,8 @@ def build_observation_rows(
                     filename,
                     captured,
                     camera_name,
-                    site.latitude,
-                    site.longitude,
+                    latitude,
+                    longitude,
                     data["species"],
                     data["scientific_name"],
                     data["count"],
@@ -398,8 +404,8 @@ def _blank_flat_row(
     filename: str,
     captured: str,
     camera_name: str,
-    lat: float,
-    lon: float,
+    lat: float | str,
+    lon: float | str,
     not_reviewed: str,
 ) -> list[Any]:
     if file_obj.verified:
@@ -437,14 +443,19 @@ def _blank_flat_row(
 
 def build_spatial_layers(
     db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
-) -> dict[str, list[dict[str, Any]]]:
-    """Build the three spatial layers: deployments, observations, species_summary."""
+) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    """Build the three spatial layers: deployments, observations, species_summary.
+
+    Returns ``(layers, skipped_deployment_ids)``. The skipped list
+    contains deployments that were excluded from the GeoJSON /
+    Shapefile / GeoPackage because they have no site coordinates.
+    """
     _headers, flat_rows = build_observation_rows(db, project, scoped_rows)
 
     # Build a deployment-level detection count map from the scoped rows so
     # we don't re-query. Also build trap-days per deployment.
     det_count_by_dep: dict[str, int] = defaultdict(int)
-    site_by_deployment: dict[str, Site] = {}
+    site_by_deployment: dict[str, Site | None] = {}
     deployments_seen: dict[str, Deployment] = {}
     for row in scoped_rows:
         file_obj, detection, deployment, site, _taxonomy = row
@@ -453,22 +464,29 @@ def build_spatial_layers(
         if detection is not None:
             det_count_by_dep[deployment.id] += 1
 
-    # Include project deployments that had no in-scope files (so deployments
-    # layer lists every deployment, not only those with detections).
+    # Include project deployments that had no in-scope files (so the
+    # deployments layer lists every deployment, not only those with
+    # detections). Outer join on Site so null-site deployments are not
+    # filtered out here; we skip them below when building features
+    # (GeoJSON needs coordinates) and record them separately.
     all_deployments = (
         db.query(Deployment, Site)
-        .join(Site, Deployment.site_id == Site.id)
-        .filter(Site.project_id == project.id)
+        .outerjoin(Site, Deployment.site_id == Site.id)
+        .filter(Deployment.project_id == project.id)
         .all()
     )
 
     deployments_features: list[dict[str, Any]] = []
     trap_days_by_dep: dict[str, int] = {}
+    skipped_deployment_ids: list[str] = []
     for deployment, site in all_deployments:
         trap_days = _trap_days(deployment)
         trap_days_by_dep[deployment.id] = trap_days
         det_count = det_count_by_dep.get(deployment.id, 0)
         rate = (det_count / trap_days * 100) if trap_days > 0 else 0.0
+        if site is None:
+            skipped_deployment_ids.append(deployment.id)
+            continue
         deployments_features.append(
             {
                 "lon": site.longitude,
@@ -532,6 +550,8 @@ def build_spatial_layers(
     trap_days_by_site: dict[str, int] = defaultdict(int)
     site_coords: dict[str, tuple[float, float]] = {}
     for deployment, site in all_deployments:
+        if site is None:
+            continue
         trap_days_by_site[site.id] += trap_days_by_dep.get(deployment.id, 0)
         site_coords[site.id] = (site.longitude, site.latitude)
 
@@ -577,11 +597,14 @@ def build_spatial_layers(
             }
         )
 
-    return {
-        "deployments": deployments_features,
-        "observations": observations_features,
-        "species_summary": species_summary_features,
-    }
+    return (
+        {
+            "deployments": deployments_features,
+            "observations": observations_features,
+            "species_summary": species_summary_features,
+        },
+        skipped_deployment_ids,
+    )
 
 
 def _trap_days(deployment: Deployment) -> int:
@@ -599,11 +622,20 @@ def _trap_days(deployment: Deployment) -> int:
 
 def build_camtrap_dp_tables(
     db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
-) -> tuple[list[list[Any]], list[list[Any]], list[list[Any]], dict[str, Any]]:
+) -> tuple[
+    list[list[Any]],
+    list[list[Any]],
+    list[list[Any]],
+    dict[str, Any],
+    list[str],
+]:
     """
     Build CamTrap DP deployments/media/observations rows and datapackage dict.
 
-    Returns (deployments_rows, media_rows, observations_rows, datapackage_dict).
+    Returns (deployments_rows, media_rows, observations_rows, datapackage_dict,
+    skipped_deployment_ids). Deployments without a site are skipped
+    because CamtrapDP requires lat/lon; the caller can surface the list
+    to the user.
     """
     tz_name = project.timezone
     classified_by = _classifier_label(project)
@@ -617,14 +649,21 @@ def build_camtrap_dp_tables(
     last_captured: datetime | None = None
     sites_seen: dict[str, Site] = {}
 
-    # deployments.csv: every deployment in the project
+    # deployments.csv: every deployment in the project with a site.
+    # Null-site deployments are skipped because CamtrapDP requires
+    # deploymentLocation (lat/lon). The caller receives their ids via
+    # the returned `camtrap_skipped_deployment_ids` list.
+    camtrap_skipped_deployment_ids: list[str] = []
     for deployment, site in (
         db.query(Deployment, Site)
-        .join(Site, Deployment.site_id == Site.id)
-        .filter(Site.project_id == project.id)
+        .outerjoin(Site, Deployment.site_id == Site.id)
+        .filter(Deployment.project_id == project.id)
         .order_by(Deployment.start_date_local)
         .all()
     ):
+        if site is None:
+            camtrap_skipped_deployment_ids.append(deployment.id)
+            continue
         sites_seen[site.id] = site
         camera_model = deployment.camera_model or ""
         camera_id = deployment.camera_serial or deployment.camera_model or deployment.id
@@ -642,8 +681,14 @@ def build_camtrap_dp_tables(
             ]
         )
 
-    # media.csv + observations.csv: iterate scoped rows grouped by file
+    # media.csv + observations.csv: iterate scoped rows grouped by file.
+    # Files whose deployment has no site were already skipped at the
+    # deployments.csv stage (CamtrapDP requires lat/lon). Skip their
+    # media and observations rows here so the package stays consistent.
+    skipped_dep_set = set(camtrap_skipped_deployment_ids)
     for file_obj, deployment, _site, detections in _group_rows_by_file(scoped_rows):
+        if deployment.id in skipped_dep_set:
+            continue
         if first_captured is None or file_obj.captured_at_local < first_captured:
             first_captured = file_obj.captured_at_local
         if last_captured is None or file_obj.captured_at_local > last_captured:
@@ -734,7 +779,13 @@ def build_camtrap_dp_tables(
         observed_taxa,
     )
 
-    return deployments_rows, media_rows, observations_rows, datapackage
+    return (
+        deployments_rows,
+        media_rows,
+        observations_rows,
+        datapackage,
+        camtrap_skipped_deployment_ids,
+    )
 
 
 def _obs_type_from_category(category: str) -> str:

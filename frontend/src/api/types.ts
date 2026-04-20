@@ -221,7 +221,11 @@ export interface SiteInfo {
 // Deployment types
 export interface DeploymentResponse {
   id: string;
-  site_id: string;
+  project_id: string;
+  /** Null means the deployment has no camera site assigned
+   * (deployment-agnostic batch, unknown location, or data spanning
+   * multiple sites). Features that need GPS skip null-site rows. */
+  site_id: string | null;
   folder_path: string | null;
   folder_status: "valid" | "needs_relink";
   last_validated_at_utc: string | null;
@@ -236,6 +240,8 @@ export interface DeploymentResponse {
 }
 
 export interface DeploymentUpdate {
+  /** Null clears the site (user moved deployment to a site-less batch). */
+  site_id?: string | null;
   start_date_local?: string | null;
   end_date_local?: string | null;
   camera_model?: string | null;
@@ -328,8 +334,10 @@ export interface DeploymentVerification {
 export interface DeploymentInfo {
   deployment_id: string;
   folder_path: string | null;
-  site_id: string;
-  site_name: string;
+  /** Null when the deployment has no camera site assigned. */
+  site_id: string | null;
+  /** Null when the deployment has no camera site assigned. */
+  site_name: string | null;
   start_date_local: string;
   end_date_local: string | null;
   files: DeploymentFileCounts;

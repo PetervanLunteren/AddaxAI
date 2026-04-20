@@ -125,9 +125,9 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
     # Count deployments
     deployment_count = (
         db.scalar(
-            select(func.count(Deployment.id))
-            .join(Site)
-            .where(Site.project_id == project_id)
+            select(func.count(Deployment.id)).where(
+                Deployment.project_id == project_id
+            )
         )
         or 0
     )
@@ -136,9 +136,8 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
     file_count = (
         db.scalar(
             select(func.count(File.id))
-            .join(Deployment)
-            .join(Site)
-            .where(Site.project_id == project_id)
+            .join(Deployment, File.deployment_id == Deployment.id)
+            .where(Deployment.project_id == project_id)
         )
         or 0
     )
@@ -149,8 +148,7 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
             select(func.coalesce(func.sum(EventObservation.max_n), 0))
             .join(Event, Event.id == EventObservation.event_id)
             .join(Deployment, Event.deployment_id == Deployment.id)
-            .join(Site, Deployment.site_id == Site.id)
-            .where(Site.project_id == project_id)
+            .where(Deployment.project_id == project_id)
         )
         or 0
     )
@@ -171,54 +169,57 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
     Get statistics for all projects in bulk.
 
     Returns a dict keyed by project_id, each containing counts for
-    sites, deployments, files, detections, and trap nights.
+    sites, deployments, files, observations, and trap nights.
+    Deployments with no site (site_id=None) still belong to their
+    project and are counted.
     """
-    # Query 1: site, deployment, file counts per project
-    rows = db.execute(
-        select(
-            Site.project_id,
-            func.count(func.distinct(Site.id)).label("site_count"),
-            func.count(func.distinct(Deployment.id)).label("deployment_count"),
-            func.count(func.distinct(File.id)).label("file_count"),
+    site_rows = db.execute(
+        select(Site.project_id, func.count(Site.id)).group_by(Site.project_id)
+    ).all()
+    dep_rows = db.execute(
+        select(Deployment.project_id, func.count(Deployment.id)).group_by(
+            Deployment.project_id
         )
-        .select_from(Site)
-        .outerjoin(Deployment, Deployment.site_id == Site.id)
-        .outerjoin(File, File.deployment_id == Deployment.id)
-        .group_by(Site.project_id)
+    ).all()
+    file_rows = db.execute(
+        select(Deployment.project_id, func.count(File.id))
+        .join(File, File.deployment_id == Deployment.id)
+        .group_by(Deployment.project_id)
+    ).all()
+    obs_rows = db.execute(
+        select(
+            Deployment.project_id,
+            func.coalesce(func.sum(EventObservation.max_n), 0),
+        )
+        .join(Event, Event.deployment_id == Deployment.id)
+        .join(EventObservation, EventObservation.event_id == Event.id)
+        .group_by(Deployment.project_id)
     ).all()
 
     stats: dict[str, dict[str, int]] = {}
-    project_ids_with_sites: list[str] = []
 
-    for row in rows:
-        project_id = row.project_id
-        project_ids_with_sites.append(project_id)
-        stats[project_id] = {
-            "site_count": row.site_count,
-            "deployment_count": row.deployment_count,
-            "file_count": row.file_count,
-            "observation_count": 0,
-            "trap_nights": 0,
-        }
-
-    # Query 2: observation counts (MaxN sum) per project
-    obs_rows = db.execute(
-        select(
-            Site.project_id,
-            func.coalesce(func.sum(EventObservation.max_n), 0).label("obs_count"),
+    def _bucket(project_id: str) -> dict[str, int]:
+        return stats.setdefault(
+            project_id,
+            {
+                "site_count": 0,
+                "deployment_count": 0,
+                "file_count": 0,
+                "observation_count": 0,
+                "trap_nights": 0,
+            },
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .group_by(Site.project_id)
-    ).all()
-    for row in obs_rows:
-        if row.project_id in stats:
-            stats[row.project_id]["observation_count"] = int(row.obs_count)
 
-    # Compute trap nights per project
-    for project_id in project_ids_with_sites:
+    for project_id, count in site_rows:
+        _bucket(project_id)["site_count"] = int(count)
+    for project_id, count in dep_rows:
+        _bucket(project_id)["deployment_count"] = int(count)
+    for project_id, count in file_rows:
+        _bucket(project_id)["file_count"] = int(count)
+    for project_id, count in obs_rows:
+        _bucket(project_id)["observation_count"] = int(count)
+
+    for project_id in list(stats.keys()):
         stats[project_id]["trap_nights"] = get_trap_nights(db, project_id)
 
     return stats

@@ -47,6 +47,10 @@ export interface ActivityPatternResponse {
   total_observations: number;
   /** Null when the project has no sites or astral can't compute. */
   sun_bands: SunBands | null;
+  /** Deployments in the filtered set that have no camera site assigned.
+   * They are silently excluded from sun-band averaging; the UI
+   * surfaces a banner when this is non-zero. */
+  deployments_without_site: number;
 }
 
 export interface DetectionTrendPoint {
@@ -88,6 +92,9 @@ export interface ObservationRateMapFeature {
 
 export interface ObservationRateMapResponse {
   features: ObservationRateMapFeature[];
+  /** Deployments that passed the filter but have no site (and thus no
+   * lat/lon). Surfaces in the map page as a banner. */
+  deployments_without_site: number;
 }
 
 export interface ObservationRateMapFilters {
@@ -152,6 +159,10 @@ export interface ActivityOverlapResponse {
   /** IANA timezone the project's camera clocks are set to. */
   project_timezone: string;
   independence_interval_seconds: number;
+  /** Deployments in the filtered set that have no camera site assigned.
+   * They are silently excluded from sun-band averaging; the UI
+   * surfaces a banner in sun mode when this is non-zero. */
+  deployments_without_site: number;
 }
 
 export interface ActivityOverlapFilters {

@@ -11,7 +11,7 @@ from sqlalchemy import Integer, and_, delete, exists, func, insert, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
-from app.models import Deployment, Detection, Event, File, Project, Site
+from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
 
@@ -29,9 +29,12 @@ def _apply_event_filters(
     min_confidence: float | None = None,
     max_confidence: float | None = None,
 ):
-    """Apply shared filters to an event query. Expects Event already joined to Deployment→Site."""
-    if site_ids:
-        query = query.filter(Site.id.in_(site_ids))
+    """Apply shared filters to an event query. Expects Event already joined to Deployment."""
+    from app.api.crud.deployment import site_ids_filter
+
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.filter(site_clause)
 
     if date_from is not None:
         query = query.filter(Event.event_start_local >= date_from)
@@ -201,7 +204,9 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     independence_interval = project.independence_interval  # seconds
 
     # Get all deployments for this project
-    deployments = db.query(Deployment).join(Site).filter(Site.project_id == project_id).all()
+    deployments = (
+        db.query(Deployment).filter(Deployment.project_id == project_id).all()
+    )
 
     # Delete existing events for all deployments in this project
     deployment_ids = [d.id for d in deployments]
@@ -298,7 +303,11 @@ def get_events_by_project(
     Returns event data with representative file, label list,
     observation type, and verification progress.
     """
-    query = db.query(Event).join(Deployment).join(Site).filter(Site.project_id == project_id)
+    query = (
+        db.query(Event)
+        .join(Deployment)
+        .filter(Deployment.project_id == project_id)
+    )
     query = _apply_event_filters(
         query,
         db,
@@ -467,8 +476,7 @@ def get_event_count_by_project(
     query = (
         db.query(func.count(Event.id))
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
     )
     query = _apply_event_filters(
         query,
@@ -531,7 +539,11 @@ def get_adjacent_events(
     cid = current.id
 
     def base():
-        q = db.query(Event.id).join(Deployment).join(Site).filter(Site.project_id == project_id)
+        q = (
+            db.query(Event.id)
+            .join(Deployment)
+            .filter(Deployment.project_id == project_id)
+        )
         return _apply_event_filters(q, db, **filter_kwargs)
 
     newer_than_current = (Event.event_start_local > ct) | (
@@ -579,8 +591,7 @@ def get_adjacent_events(
     total_q = (
         db.query(func.count(Event.id))
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
     )
     total_q = _apply_event_filters(total_q, db, **filter_kwargs)
     total = total_q.scalar() or 0
@@ -589,8 +600,7 @@ def get_adjacent_events(
     idx_q = (
         db.query(func.count(Event.id))
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(newer_than_current)
     )
     idx_q = _apply_event_filters(idx_q, db, **filter_kwargs)
@@ -629,7 +639,9 @@ def get_event_verification_stats(
 
     # Base: filtered event IDs
     event_ids_q = (
-        db.query(Event.id).join(Deployment).join(Site).filter(Site.project_id == project_id)
+        db.query(Event.id)
+        .join(Deployment)
+        .filter(Deployment.project_id == project_id)
     )
     event_ids_q = _apply_event_filters(event_ids_q, db, **filter_kwargs)
     event_ids_subq = event_ids_q.subquery()
@@ -722,8 +734,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         )
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(threshold_clause)
         .distinct()
@@ -747,8 +758,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         .join(event_files, event_files.c.file_id == File.id)
         .join(Event, Event.id == event_files.c.event_id)
         .join(Deployment, Deployment.id == Event.deployment_id)
-        .join(Site, Site.id == Deployment.site_id)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(threshold_clause)
         .group_by(Detection.label_taxonomy_id)
@@ -765,8 +775,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
             func.max(Event.event_start_local),
         )
         .join(Deployment)
-        .join(Site)
-        .filter(Site.project_id == project_id)
+        .filter(Deployment.project_id == project_id)
         .first()
     )
 

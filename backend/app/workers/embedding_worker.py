@@ -18,7 +18,7 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
-from app.models import Deployment, Detection, File, Site
+from app.models import Deployment, Detection, File
 from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
@@ -61,8 +61,7 @@ async def process_re_embedding_job(job_id: str) -> None:
         # Find all deployments with detections
         deployments = (
             db.query(Deployment)
-            .join(Site)
-            .filter(Site.project_id == project_id)
+            .filter(Deployment.project_id == project_id)
             .join(File, File.deployment_id == Deployment.id)
             .join(Detection, Detection.file_id == File.id)
             .distinct()

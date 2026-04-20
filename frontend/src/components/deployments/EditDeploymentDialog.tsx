@@ -50,7 +50,7 @@ export function EditDeploymentDialog({
 }: EditDeploymentDialogProps) {
   const queryClient = useQueryClient();
 
-  const [siteId, setSiteId] = useState<string>(deployment.site_id);
+  const [siteId, setSiteId] = useState<string | null>(deployment.site_id);
   const [datetimeOffset, setDatetimeOffset] = useState<number>(
     deployment.datetime_offset_seconds ?? 0
   );
@@ -67,6 +67,10 @@ export function EditDeploymentDialog({
       setTags(deployment.tags ?? {});
     }
   }, [open, deployment]);
+
+  // Reserved Select value that represents "no site". shadcn's Select
+  // won't accept an empty string, so we translate at the boundary.
+  const NO_SITE_OPTION = "__no_site__";
 
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -115,14 +119,23 @@ export function EditDeploymentDialog({
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Site picker */}
+            {/* Site picker. Optional: leaving it blank marks the
+                deployment as site-less (batch or unknown location). */}
             <div className="space-y-2">
               <Label htmlFor="edit-deployment-site">Site</Label>
-              <Select value={siteId} onValueChange={setSiteId}>
+              <Select
+                value={siteId ?? ""}
+                onValueChange={(v) =>
+                  setSiteId(v === NO_SITE_OPTION ? null : v)
+                }
+              >
                 <SelectTrigger id="edit-deployment-site">
-                  <SelectValue placeholder="Select a site" />
+                  <SelectValue placeholder="Optionally select a site" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={NO_SITE_OPTION}>
+                    <span className="text-muted-foreground">(no site)</span>
+                  </SelectItem>
                   {(sites ?? []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
@@ -194,7 +207,7 @@ export function EditDeploymentDialog({
             <Button
               type="button"
               onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending || !siteId}
+              disabled={updateMutation.isPending}
             >
               {updateMutation.isPending ? "Saving..." : "Save changes"}
             </Button>

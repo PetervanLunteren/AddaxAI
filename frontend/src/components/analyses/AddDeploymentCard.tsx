@@ -68,14 +68,14 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   });
   const { data: projectDeployments } = useQuery({
     queryKey: ["deployments", projectId],
-    queryFn: () => deploymentsApi.list({ project_id: projectId }),
+    queryFn: () => deploymentsApi.list({ projectId }),
   });
 
   // Add to queue mutation
   const addToQueue = useMutation({
     mutationFn: (data: {
       folder_path: string;
-      site_id: string;
+      site_id: string | null;
       video_count: number;
       image_count: number;
       datetime_offset_seconds: number | null;
@@ -123,9 +123,11 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     : undefined;
   const isDuplicate = Boolean(blockingDeployment || blockingQueueEntry);
   const isValid =
-    folderPath && hasFiles && siteId && !isDuplicate && !isScanning && !scanResult?.missing_datetime;
+    folderPath && hasFiles && !isDuplicate && !isScanning && !scanResult?.missing_datetime;
 
-  // Validation messages (for button tooltip)
+  // Validation messages (for button tooltip). Site is optional (users
+  // can run deployment-agnostic batches), so a missing site no longer
+  // blocks submission.
   const validationMessages: string[] = [];
   if (!folderPath) {
     validationMessages.push("Select a folder");
@@ -145,12 +147,9 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   if (scanResult?.missing_datetime) {
     validationMessages.push("DateTime metadata is required but not found in files");
   }
-  if (!siteId) {
-    validationMessages.push("Select a camera site");
-  }
 
   const handleSubmit = () => {
-    if (!folderPath || !siteId || !scanResult) return;
+    if (!folderPath || !scanResult) return;
 
     addToQueue.mutate({
       folder_path: folderPath,
@@ -190,7 +189,10 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             onAdjustDates={() => setOffsetModalOpen(true)}
           />
 
-          {/* Site selector */}
+          {/* Site selector (optional). When the user leaves it blank
+              the deployment is created without a camera site, which is
+              valid for batches spanning multiple locations or backlog
+              data where the location is unknown. */}
           <SiteSelector
             projectId={projectId}
             value={siteId}
@@ -200,6 +202,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             }}
             onAddNew={() => setShowAddSiteModal(true)}
             deploymentGps={scanResult?.gps_location ?? null}
+            allowEmpty
           />
 
           {/* Notes */}

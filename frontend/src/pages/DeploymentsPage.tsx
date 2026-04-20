@@ -35,7 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { filtersFromSearchParams, filtersToSearchParams, type FilterSchema } from "../lib/filter-url";
+import { filtersFromSearchParams, filtersToSearchParams, NO_SITE_SENTINEL, type FilterSchema } from "../lib/filter-url";
 import { DeploymentInfoSheet } from "../components/deployments/DeploymentInfoSheet";
 import { EditDeploymentDialog } from "../components/deployments/EditDeploymentDialog";
 import {
@@ -62,6 +62,7 @@ const FILTER_SCHEMA: FilterSchema = {
 };
 
 interface DeploymentRow extends DeploymentResponse {
+  /** Rendered site name, `-` when the deployment has no site. */
   site_name: string;
   file_count: number;
   event_count: number;
@@ -137,7 +138,8 @@ export function DeploymentsPage() {
     }
   };
 
-  // Merge deployments with site names and stats
+  // Merge deployments with site names and stats. Renders a dash when
+  // the deployment has no site assigned.
   const rows: DeploymentRow[] = useMemo(() => {
     if (!deployments) return [];
     return deployments.map((d) => {
@@ -146,9 +148,10 @@ export function DeploymentsPage() {
         event_count: 0,
         detection_count: 0,
       };
+      const siteName = d.site_id ? (siteMap.get(d.site_id) ?? "Unknown") : "-";
       return {
         ...d,
-        site_name: siteMap.get(d.site_id) ?? "Unknown",
+        site_name: siteName,
         file_count: stats.file_count,
         event_count: stats.event_count,
         detection_count: stats.detection_count,
@@ -160,10 +163,16 @@ export function DeploymentsPage() {
   const filtered = useMemo(() => {
     let result = [...rows];
 
-    // Site filter (multi-select)
+    // Site filter (multi-select). The reserved NO_SITE_SENTINEL token
+    // matches deployments with site_id IS NULL.
     if (siteIds.length > 0) {
-      const idSet = new Set(siteIds);
-      result = result.filter((d) => idSet.has(d.site_id));
+      const wantsNoSite = siteIds.includes(NO_SITE_SENTINEL);
+      const realIds = new Set(siteIds.filter((id) => id !== NO_SITE_SENTINEL));
+      result = result.filter((d) => {
+        if (wantsNoSite && d.site_id == null) return true;
+        if (d.site_id != null && realIds.has(d.site_id)) return true;
+        return false;
+      });
     }
 
     // Date range filter
@@ -276,7 +285,10 @@ export function DeploymentsPage() {
       kind: "multi-select",
       key: "site_ids",
       label: "Sites",
-      options: (sites ?? []).map((s) => ({ value: s.id, label: s.name })),
+      options: [
+        { value: NO_SITE_SENTINEL, label: "(no site)" },
+        ...(sites ?? []).map((s) => ({ value: s.id, label: s.name })),
+      ],
       placeholder: "All sites",
       summary: (n) => `${n} site${n > 1 ? "s" : ""}`,
     },

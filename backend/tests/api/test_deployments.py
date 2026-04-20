@@ -26,16 +26,32 @@ def test_create_deployment(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     resp = client.post("/api/deployments", json={
+        "project_id": p.id,
         "site_id": s.id,
         "start_date_local": "2024-01-01",
     })
     assert resp.status_code == 201
     data = resp.json()
     assert data["site_id"] == s.id
+    assert data["project_id"] == p.id
 
 
-def test_create_deployment_invalid_site(client):
+def test_create_deployment_without_site(client, db):
+    p = make_project(db)
     resp = client.post("/api/deployments", json={
+        "project_id": p.id,
+        "start_date_local": "2024-01-01",
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["site_id"] is None
+    assert data["project_id"] == p.id
+
+
+def test_create_deployment_invalid_site(client, db):
+    p = make_project(db)
+    resp = client.post("/api/deployments", json={
+        "project_id": p.id,
         "site_id": "nonexistent",
         "start_date_local": "2024-01-01",
     })

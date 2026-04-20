@@ -20,6 +20,17 @@ import type {
 // Re-export types for convenience
 export type { ProjectCreate, ProjectResponse, ProjectUpdate, ProjectWithStats };
 
+/**
+ * Banner payload returned by /deployments-without-site. Used by
+ * GPS-dependent pages (Map, Activity overlap sun mode, Dashboard sun
+ * bands, CamtrapDP / GeoJSON exports) to render a "X deployments
+ * without a site" notice.
+ */
+export interface DeploymentsWithoutSiteResponse {
+  count: number;
+  deployment_ids: string[];
+}
+
 export const projectsApi = {
   /**
    * List all projects with statistics
@@ -73,6 +84,15 @@ export const projectsApi = {
   reEmbed: (id: string) =>
     api.post<{ message: string; job_id: string | null }>(
       `/api/projects/${id}/re-embed`
+    ),
+
+  /**
+   * Count of deployments in this project that have no camera site.
+   * Feeds the NoSiteBanner on GPS-dependent pages.
+   */
+  getDeploymentsWithoutSite: (id: string) =>
+    api.get<DeploymentsWithoutSiteResponse>(
+      `/api/projects/${id}/deployments-without-site`,
     ),
 
   /**

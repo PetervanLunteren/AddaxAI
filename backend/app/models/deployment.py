@@ -20,6 +20,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from .event import Event
     from .file import File
+    from .project import Project
     from .site import Site
 
 
@@ -40,8 +41,23 @@ class Deployment(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    site_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True
+    # Direct project linkage. Required so a deployment still knows its
+    # project when site is unknown (users can run deployment-agnostic
+    # batches where site is left blank).
+    project_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Site is optional: null means the data spans multiple sites or the
+    # location is unknown. When a site is deleted its deployments stay
+    # (site_id goes NULL) rather than cascading away.
+    site_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("sites.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # File storage
@@ -76,7 +92,12 @@ class Deployment(Base):
     )
 
     # Relationships
-    site: Mapped["Site"] = relationship("Site", back_populates="deployments")
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="deployments"
+    )
+    site: Mapped["Site | None"] = relationship(
+        "Site", back_populates="deployments"
+    )
     files: Mapped[list["File"]] = relationship(
         "File", back_populates="deployment", cascade="all, delete-orphan"
     )
@@ -86,6 +107,6 @@ class Deployment(Base):
 
     def __repr__(self) -> str:
         return (
-            f"<Deployment(id={self.id}, site_id={self.site_id}, "
-            f"start_date_local={self.start_date_local})>"
+            f"<Deployment(id={self.id}, project_id={self.project_id}, "
+            f"site_id={self.site_id}, start_date_local={self.start_date_local})>"
         )

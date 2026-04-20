@@ -44,11 +44,17 @@ class DeploymentCreate(DeploymentBase):
     """
     Schema for creating a new deployment.
 
-    Requires site_id and start_date. folder_path should be provided
-    to enable file scanning.
+    Requires project_id and start_date. site_id is optional (users can
+    run deployment-agnostic batches where the location is unknown or
+    spans multiple sites). folder_path should be provided to enable
+    file scanning.
     """
 
-    site_id: str = Field(..., description="ID of the site for this deployment")
+    project_id: str = Field(..., description="ID of the project this deployment belongs to")
+    site_id: str | None = Field(
+        None,
+        description="ID of the site for this deployment; null if unknown or spans sites",
+    )
 
 
 class DeploymentUpdate(BaseModel):
@@ -79,7 +85,8 @@ class DeploymentResponse(DeploymentBase):
     """
 
     id: str
-    site_id: str
+    project_id: str
+    site_id: str | None
     folder_status: FolderStatus = Field(
         "valid", description="Status of the folder path"
     )
@@ -165,8 +172,8 @@ class DeploymentInfoResponse(BaseModel):
 
     deployment_id: str
     folder_path: str | None
-    site_id: str
-    site_name: str
+    site_id: str | None
+    site_name: str | None
     start_date_local: date
     end_date_local: date | None
     files: DeploymentFileCounts

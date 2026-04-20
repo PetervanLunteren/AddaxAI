@@ -8,15 +8,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.schemas.file import FileUpdate
-from app.models import Deployment, Detection, File, Project, Site
+from app.models import Deployment, Detection, File, Project
 
 
 def _get_detection_threshold(db: Session, file: File) -> float:
     """Get the project's detection threshold for a file."""
     row = (
         db.query(Project.detection_threshold)
-        .join(Site, Site.project_id == Project.id)
-        .join(Deployment, Deployment.site_id == Site.id)
+        .join(Deployment, Deployment.project_id == Project.id)
         .filter(Deployment.id == file.deployment_id)
         .first()
     )

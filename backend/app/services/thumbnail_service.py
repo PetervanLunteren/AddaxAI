@@ -14,7 +14,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.models import Deployment, Detection, File, Project, Site
+from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
 
@@ -103,9 +103,8 @@ def _auto_select_for_project(
         db.query(Detection, File)
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
         .filter(
-            Site.project_id == project.id,
+            Deployment.project_id == project.id,
             Detection.category == "animal",
         )
         .order_by(desc(Detection.confidence))

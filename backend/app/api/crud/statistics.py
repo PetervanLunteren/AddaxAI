@@ -43,11 +43,20 @@ def _apply_filters(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> Select:
-    """Apply project, site, and date filters to a joined query."""
-    query = query.where(Site.project_id == project_id)
+    """Apply project, site, and date filters to a joined query.
 
-    if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+    Expects Deployment to already be present in the join chain so the
+    filter can hit Deployment.project_id and Deployment.site_id
+    directly. site_ids may include the NO_SITE_SENTINEL reserved token
+    to match deployments whose site_id is NULL.
+    """
+    from app.api.crud.deployment import site_ids_filter
+
+    query = query.where(Deployment.project_id == project_id)
+
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
     if date_from:
         query = query.where(File.captured_at_local >= date_from)
     if date_to:
@@ -175,6 +184,8 @@ def get_per_deployment_trap_nights(
     min_file_date = func.min(func.date(File.captured_at_local)).label("min_file_date")
     max_file_date = func.max(func.date(File.captured_at_local)).label("max_file_date")
 
+    from app.api.crud.deployment import site_ids_filter
+
     query = (
         select(
             Deployment.id,
@@ -184,14 +195,14 @@ def get_per_deployment_trap_nights(
             max_file_date,
         )
         .select_from(Deployment)
-        .join(Site, Deployment.site_id == Site.id)
         .outerjoin(File, File.deployment_id == Deployment.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
         .group_by(Deployment.id, Deployment.start_date_local, Deployment.end_date_local)
     )
 
-    if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
 
     rows = db.execute(query).all()
 
@@ -263,6 +274,8 @@ def get_dashboard_overview(
     date_to: str | None = None,
 ) -> DashboardOverview:
     """Aggregate counts for the top-level dashboard cards."""
+    from app.api.crud.deployment import site_ids_filter
+
     # Files and date range (not filtered by threshold)
     file_stats_query = (
         select(
@@ -272,7 +285,6 @@ def get_dashboard_overview(
         )
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
     )
     file_stats_query = _apply_filters(
         file_stats_query, project_id, site_ids, date_from, date_to,
@@ -285,40 +297,45 @@ def get_dashboard_overview(
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
     )
-    if site_ids:
-        obs_count_query = obs_count_query.where(Site.id.in_(site_ids))
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        obs_count_query = obs_count_query.where(site_clause)
     total_observations = db.execute(obs_count_query).scalar() or 0
 
-    # Events count (Event -> Deployment -> Site)
+    # Events count (Event -> Deployment)
     events_query = (
         select(func.count(distinct(Event.id)))
         .select_from(Event)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
     )
-    if site_ids:
-        events_query = events_query.where(Site.id.in_(site_ids))
+    if site_clause is not None:
+        events_query = events_query.where(site_clause)
     total_events = db.execute(events_query).scalar() or 0
 
     # Deployments count
     deployments_query = (
         select(func.count(distinct(Deployment.id)))
         .select_from(Deployment)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
     )
-    if site_ids:
-        deployments_query = deployments_query.where(Site.id.in_(site_ids))
+    if site_clause is not None:
+        deployments_query = deployments_query.where(site_clause)
     total_deployments = db.execute(deployments_query).scalar() or 0
 
-    # Sites count
+    # Sites count. Ignore NO_SITE_SENTINEL here (the sentinel has no
+    # meaning for counting sites themselves).
+    from app.api.crud.deployment import NO_SITE_SENTINEL
+
     sites_query = select(func.count(Site.id)).where(Site.project_id == project_id)
     if site_ids:
-        sites_query = sites_query.where(Site.id.in_(site_ids))
+        real_site_ids = [s for s in site_ids if s != NO_SITE_SENTINEL]
+        if real_site_ids:
+            sites_query = sites_query.where(Site.id.in_(real_site_ids))
+        else:
+            sites_query = sites_query.where(Site.id.is_(None))  # always false
     total_sites = db.execute(sites_query).scalar() or 0
 
     # Trap nights
@@ -406,6 +423,8 @@ def get_species_distribution(
     else:
         count_expr = func.count(distinct(Event.id))
 
+    from app.api.crud.deployment import site_ids_filter
+
     query = (
         select(
             label_expr.label("species"),
@@ -414,8 +433,7 @@ def get_species_distribution(
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
         .group_by(label_expr)
         .order_by(count_expr.desc())
         .limit(10)
@@ -427,8 +445,9 @@ def get_species_distribution(
             LabelTaxonomy.id == EventObservation.label_taxonomy_id,
         )
 
-    if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
 
     rows = db.execute(query).all()
     return [
@@ -442,6 +461,35 @@ def get_species_distribution(
 # ---------------------------------------------------------------------------
 
 
+def _count_deployments_without_site(
+    db: Session,
+    project_id: str,
+    site_ids: list[str] | None = None,
+) -> int:
+    """
+    How many deployments in the filtered project set have no site?
+
+    Used by GPS-dependent dashboards so the UI can render a banner.
+    Ignores the NO_SITE_SENTINEL if present in site_ids (a user
+    explicitly filtering TO the no-site set already knows about them).
+    """
+    from app.api.crud.deployment import NO_SITE_SENTINEL
+
+    query = (
+        select(func.count(Deployment.id))
+        .where(Deployment.project_id == project_id)
+        .where(Deployment.site_id.is_(None))
+    )
+    if site_ids:
+        real_ids = [s for s in site_ids if s != NO_SITE_SENTINEL]
+        if real_ids:
+            # The user picked specific sites; null-site deployments
+            # are already filtered out of the result set, so none are
+            # "skipped".
+            return 0
+    return int(db.scalar(query) or 0)
+
+
 def _avg_site_location(
     db: Session,
     project_id: str,
@@ -451,14 +499,21 @@ def _avg_site_location(
 
     Returns None when the project has no sites in the filtered set.
     Site.latitude / Site.longitude are NOT NULL columns, so the only
-    way this returns None is if there are zero matching sites.
+    way this returns None is if there are zero matching sites. The
+    NO_SITE_SENTINEL is ignored here: deployments without a site have
+    no coordinates to contribute.
     """
+    from app.api.crud.deployment import NO_SITE_SENTINEL
+
     query = select(
         func.avg(Site.latitude).label("lat"),
         func.avg(Site.longitude).label("lon"),
     ).where(Site.project_id == project_id)
     if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+        real_ids = [s for s in site_ids if s != NO_SITE_SENTINEL]
+        if not real_ids:
+            return None
+        query = query.where(Site.id.in_(real_ids))
     row = db.execute(query).one()
     if row.lat is None or row.lon is None:
         return None
@@ -539,8 +594,7 @@ def get_activity_pattern(
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
         .group_by(hour_expr)
         .order_by(hour_expr)
     )
@@ -590,8 +644,11 @@ def get_activity_pattern(
             else:
                 query = query.where(EventObservation.label == species)
 
-    if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+    from app.api.crud.deployment import site_ids_filter
+
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
 
     rows = db.execute(query).all()
     counts_by_hour = {row.hour: row.count for row in rows}
@@ -623,7 +680,12 @@ def get_activity_pattern(
             )
 
     return ActivityPatternResponse(
-        hours=hours, total_observations=total, sun_bands=sun_bands
+        hours=hours,
+        total_observations=total,
+        sun_bands=sun_bands,
+        deployments_without_site=_count_deployments_without_site(
+            db, project_id, site_ids
+        ),
     )
 
 
@@ -654,6 +716,8 @@ def _event_decimal_hours_for_species(
     circular KDE. The local date travels alongside the hour so the
     sun-time transform can look up that day's sunrise / sunset.
     """
+    from app.api.crud.deployment import site_ids_filter
+
     query = (
         select(
             Event.event_start_local.label("event_start"),
@@ -662,12 +726,12 @@ def _event_decimal_hours_for_species(
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
     )
 
-    if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
     if date_from:
         query = query.where(
             Event.event_start_local >= datetime.fromisoformat(date_from)
@@ -953,6 +1017,9 @@ def get_activity_overlap(
         time_axis=effective_axis,
         project_timezone=tz_name,
         independence_interval_seconds=int(independence_seconds),
+        deployments_without_site=_count_deployments_without_site(
+            db, project_id, site_ids
+        ),
     )
 
 
@@ -981,8 +1048,7 @@ def get_detection_trend(
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
         .group_by(date_expr)
         .order_by(date_expr.asc())
     )
@@ -1032,8 +1098,11 @@ def get_detection_trend(
             else:
                 query = query.where(EventObservation.label == species)
 
-    if site_ids:
-        query = query.where(Site.id.in_(site_ids))
+    from app.api.crud.deployment import site_ids_filter
+
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
 
     rows = db.execute(query).all()
     return [
@@ -1056,6 +1125,8 @@ def get_detection_categories(
 ) -> DetectionCategories:
     """Count observations (MaxN sum) by category plus blank-file count."""
     # Category counts from EventObservation (MaxN-based)
+    from app.api.crud.deployment import site_ids_filter
+
     category_query = (
         select(
             func.coalesce(
@@ -1080,11 +1151,11 @@ def get_detection_categories(
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .where(Site.project_id == project_id)
+        .where(Deployment.project_id == project_id)
     )
-    if site_ids:
-        category_query = category_query.where(Site.id.in_(site_ids))
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        category_query = category_query.where(site_clause)
     cat_row = db.execute(category_query).one()
 
     # Empty (blank) file count
@@ -1092,7 +1163,6 @@ def get_detection_categories(
         select(func.count(File.id))
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
         .where(File.observation_type == "blank")
     )
     empty_query = _apply_filters(empty_query, project_id, site_ids, date_from, date_to)
@@ -1126,7 +1196,6 @@ def get_verification_progress(
         )
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
     )
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
     row = db.execute(query).one()
@@ -1202,6 +1271,8 @@ def get_observation_rate_map(
     if label_taxonomy_ids:
         obs_on.append(EventObservation.label_taxonomy_id.in_(label_taxonomy_ids))
 
+    # Outer join Site so deployments with site_id IS NULL still come
+    # back; the UI counts them as skipped.
     count_query = (
         select(
             Deployment.id.label("deployment_id"),
@@ -1214,7 +1285,7 @@ def get_observation_rate_map(
             func.coalesce(func.sum(EventObservation.max_n), 0).label("obs_count"),
         )
         .select_from(Deployment)
-        .join(Site, Deployment.site_id == Site.id)
+        .outerjoin(Site, Deployment.site_id == Site.id)
         .outerjoin(Event, and_(*event_on))
         .outerjoin(EventObservation, and_(*obs_on))
         .where(Deployment.id.in_(eligible_dep_ids))
@@ -1280,12 +1351,19 @@ def get_observation_rate_map(
             )
 
     # 4) Build the feature list. Drop deployments with neither effort nor
-    #    observations (truly empty under the active filters).
+    #    observations (truly empty under the active filters). Skip rows
+    #    with no site coordinates and count them separately so the
+    #    frontend can surface a "X deployments without a site" banner.
     features: list[ObservationRateMapFeature] = []
+    deployments_without_site = 0
     for row in rows:
         nights = trap_nights_by_dep.get(row.deployment_id, 0)
         obs = int(row.obs_count or 0)
         if nights == 0 and obs == 0:
+            continue
+
+        if row.latitude is None or row.longitude is None:
+            deployments_without_site += 1
             continue
 
         rate_per_100 = (obs / nights * 100) if nights > 0 else 0.0
@@ -1307,4 +1385,7 @@ def get_observation_rate_map(
             )
         )
 
-    return ObservationRateMapResponse(features=features)
+    return ObservationRateMapResponse(
+        features=features,
+        deployments_without_site=deployments_without_site,
+    )

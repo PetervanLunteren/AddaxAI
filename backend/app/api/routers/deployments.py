@@ -73,18 +73,28 @@ def create_deployment(
     """
     Create a new deployment.
 
-    Returns 400 if site_id is invalid (foreign key constraint).
+    Returns 400 if project_id or site_id is invalid (foreign key
+    constraint). site_id may be null for deployment-agnostic batches.
     """
     try:
         db_deployment = crud_deployment.create_deployment(db, deployment)
-        logger.info(f"Created deployment for site {deployment.site_id} (ID: {db_deployment.id})")
+        logger.info(
+            f"Created deployment in project {deployment.project_id} "
+            f"(site={deployment.site_id}, id={db_deployment.id})"
+        )
         return DeploymentResponse.model_validate(db_deployment)
     except IntegrityError as e:
-        # Foreign key constraint violation (invalid site_id)
-        logger.warning(f"Failed to create deployment: site {deployment.site_id} not found")
+        # Foreign key constraint violation (invalid project_id or site_id)
+        logger.warning(
+            f"Failed to create deployment: project={deployment.project_id}, "
+            f"site={deployment.site_id}; FK constraint violated"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid site_id: {deployment.site_id}",
+            detail=(
+                f"Invalid project_id {deployment.project_id} "
+                f"or site_id {deployment.site_id}"
+            ),
         ) from e
 
 
@@ -599,8 +609,10 @@ def update_deployment(
             detail=f"Deployment with id '{deployment_id}' not found",
         )
 
-    # If site_id is changing, validate the new site exists and
-    # belongs to the same project as the current one.
+    # If site_id is changing to a new site, validate the new site
+    # exists and belongs to this deployment's project. Compare against
+    # `current.project_id` directly (not through current.site) because
+    # the current deployment may be site-less.
     if "site_id" in update_fields and update_fields["site_id"] is not None:
         new_site_id = update_fields["site_id"]
         if new_site_id != current.site_id:
@@ -610,7 +622,7 @@ def update_deployment(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Site with id '{new_site_id}' not found",
                 )
-            if new_site.project_id != current.site.project_id:
+            if new_site.project_id != current.project_id:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Cannot move deployment to a site in a different project",

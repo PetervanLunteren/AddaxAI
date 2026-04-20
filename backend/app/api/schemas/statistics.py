@@ -46,6 +46,10 @@ class ActivityPatternResponse(BaseModel):
     hours: list[HourlyCount]
     total_observations: int
     sun_bands: SunBands | None = None
+    # Number of deployments in the filtered set that have no site
+    # assigned. They are silently excluded from the sun-time
+    # computation; the UI renders a banner when this is non-zero.
+    deployments_without_site: int = 0
 
 
 class DetectionTrendPoint(BaseModel):
@@ -79,6 +83,8 @@ class ObservationRateMapFeature(BaseModel):
     `observation_count` is the sum of EventObservation.max_n across
     events that pass the active filters. `rate_per_100` is that count
     divided by trap nights * 100, matching the dashboard's metric.
+    Features are only built for deployments that have a site, so
+    `site_id`, `site_name`, `latitude` and `longitude` are non-null.
     """
 
     deployment_id: str
@@ -96,6 +102,10 @@ class ObservationRateMapFeature(BaseModel):
 
 class ObservationRateMapResponse(BaseModel):
     features: list[ObservationRateMapFeature]
+    # Number of deployments that otherwise passed the filters but had
+    # no camera site assigned. Surfaced so the UI can render a
+    # "X deployments without a site" banner.
+    deployments_without_site: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -188,3 +198,8 @@ class ActivityOverlapResponse(BaseModel):
     time_axis: TimeAxis = "clock"
     project_timezone: str
     independence_interval_seconds: int
+    # Number of deployments in the filtered set that have no site
+    # assigned. They are silently excluded from sun-time averaging;
+    # the UI renders a banner when this is non-zero and sun mode is
+    # active.
+    deployments_without_site: int = 0

@@ -134,9 +134,33 @@ def make_site(db: Session, *, project_id: str, **kw) -> Site:
     return obj
 
 
-def make_deployment(db: Session, *, site_id: str, **kw) -> Deployment:
+def make_deployment(
+    db: Session,
+    *,
+    site_id: str | None = None,
+    project_id: str | None = None,
+    **kw,
+) -> Deployment:
+    """Create a Deployment for tests.
+
+    Deployment.project_id is required. If a caller passes only site_id,
+    we resolve project_id from that site so existing call sites keep
+    working without edits. Pass project_id explicitly when building a
+    null-site deployment.
+    """
+    if project_id is None:
+        if site_id is None:
+            raise ValueError(
+                "make_deployment needs project_id or site_id to resolve "
+                "Deployment.project_id"
+            )
+        site = db.get(Site, site_id)
+        if site is None:
+            raise ValueError(f"Site {site_id} not found in make_deployment")
+        project_id = site.project_id
     defaults = dict(
         id=str(uuid.uuid4()),
+        project_id=project_id,
         site_id=site_id,
         start_date_local=date(2024, 1, 1),
     )

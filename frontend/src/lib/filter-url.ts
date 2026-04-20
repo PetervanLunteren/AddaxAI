@@ -3,8 +3,16 @@
  *
  * Lets pages persist filter state in the URL via react-router-dom's
  * useSearchParams. Multi-value fields are encoded as comma-separated
- * lists (e.g. ?site_ids=a,b,c) — same convention as the Verify page.
+ * lists (e.g. ?site_ids=a,b,c), same convention as the Verify page.
+ *
+ * Site filter sentinel: the string "null" inside a `site_ids` list
+ * is a reserved token meaning "deployments whose site_id IS NULL"
+ * (deployment-agnostic batches). The backend expands it to a SQL
+ * IS NULL clause via `app.api.crud.deployment.site_ids_filter`.
+ * Import `NO_SITE_SENTINEL` rather than typing the literal.
  */
+
+export const NO_SITE_SENTINEL = "null" as const;
 
 export type FilterFieldKind = "string" | "string[]" | "date";
 export type FilterSchema = Record<string, FilterFieldKind>;

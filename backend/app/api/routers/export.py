@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.db.base import get_db
-from app.models import Deployment, Project, Site
+from app.models import Deployment, Project
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/projects/{project_id}/export", tags=["Export"])
@@ -94,28 +94,36 @@ async def export_spatial(
     """Spatial layers (deployments, observations, species summary)."""
     project = _resolve_project(project_id, db)
     scoped = export_crud.get_scoped_detection_rows(db, project)
-    layers = export_crud.build_spatial_layers(db, project, scoped)
+    layers, skipped_deployment_ids = export_crud.build_spatial_layers(
+        db, project, scoped
+    )
 
     base = _filename_base(project, "spatial")
     if format == "shapefile":
         payload = export_formats.serialize_shapefile_zip(layers)
-        return StreamingResponse(
-            BytesIO(payload),
-            media_type="application/zip",
-            headers=_attachment_headers(f"{base}.zip"),
-        )
-    if format == "gpkg":
+        media_type = "application/zip"
+        filename = f"{base}.zip"
+    elif format == "gpkg":
         payload = export_formats.serialize_geopackage(layers)
-        return StreamingResponse(
-            BytesIO(payload),
-            media_type="application/geopackage+sqlite3",
-            headers=_attachment_headers(f"{base}.gpkg"),
+        media_type = "application/geopackage+sqlite3"
+        filename = f"{base}.gpkg"
+    else:
+        payload = export_formats.serialize_geojson(layers)
+        media_type = "application/geo+json"
+        filename = f"{base}.geojson"
+
+    response_headers = _attachment_headers(filename)
+    if skipped_deployment_ids:
+        response_headers["X-Skipped-Deployment-Ids"] = ",".join(
+            skipped_deployment_ids
         )
-    payload = export_formats.serialize_geojson(layers)
+        response_headers["Access-Control-Expose-Headers"] = (
+            "X-Skipped-Deployment-Ids"
+        )
     return StreamingResponse(
         BytesIO(payload),
-        media_type="application/geo+json",
-        headers=_attachment_headers(f"{base}.geojson"),
+        media_type=media_type,
+        headers=response_headers,
     )
 
 
@@ -127,25 +135,31 @@ async def export_camtrap_dp(
     """CamTrap DP v1.0 package (ZIP with datapackage.json + three CSVs)."""
     project = _resolve_project(project_id, db)
 
-    has_deployments = (
+    has_deployment_with_site = (
         db.query(Deployment.id)
-        .join(Site, Deployment.site_id == Site.id)
-        .filter(Site.project_id == project.id)
+        .filter(Deployment.project_id == project.id)
+        .filter(Deployment.site_id.isnot(None))
         .first()
         is not None
     )
-    if not has_deployments:
+    if not has_deployment_with_site:
         raise HTTPException(
             status_code=422,
             detail=(
-                "CamTrap DP requires at least one deployment in the project."
+                "CamTrap DP requires at least one deployment with a camera "
+                "site (deployments without a site have no lat/lon and are "
+                "excluded from this format)."
             ),
         )
 
     scoped = export_crud.get_scoped_detection_rows(db, project)
-    deps_rows, media_rows, obs_rows, datapackage = export_crud.build_camtrap_dp_tables(
-        db, project, scoped
-    )
+    (
+        deps_rows,
+        media_rows,
+        obs_rows,
+        datapackage,
+        skipped_deployment_ids,
+    ) = export_crud.build_camtrap_dp_tables(db, project, scoped)
     deps_h, media_h, obs_h = export_crud.camtrap_dp_headers()
 
     deps_csv = export_formats.serialize_csv(deps_h, deps_rows)
@@ -159,8 +173,16 @@ async def export_camtrap_dp(
     )
 
     base = _filename_base(project, "camtrap-dp")
+    response_headers = _attachment_headers(f"{base}.zip")
+    if skipped_deployment_ids:
+        response_headers["X-Skipped-Deployment-Ids"] = ",".join(
+            skipped_deployment_ids
+        )
+        response_headers["Access-Control-Expose-Headers"] = (
+            "X-Skipped-Deployment-Ids"
+        )
     return StreamingResponse(
         BytesIO(payload),
         media_type="application/zip",
-        headers=_attachment_headers(f"{base}.zip"),
+        headers=response_headers,
     )
