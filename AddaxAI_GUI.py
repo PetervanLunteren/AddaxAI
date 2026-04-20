@@ -2121,6 +2121,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         with open(file_list_txt) as f:
             for line in f:
                 img = line.rstrip()
+                if not img:
+                    continue
                 annotation = return_xml_path(img)
 
                 # check which need converting to json
@@ -2317,6 +2319,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     with open(file_list_txt) as f:
         for line in f:
             img = line.rstrip()
+            if not img:
+                continue
             annotation = return_xml_path(img)
             if check_if_img_needs_converting(img):
                 imgs_needing_converting.append(img)
@@ -4221,8 +4225,10 @@ def produce_graph(file_list_txt = None, dir = None):
         with open(file_list_txt) as f:
             for line in f:
 
-                # open xml 
+                # open xml
                 img = line.rstrip()
+                if not img:
+                    continue
                 annotation = return_xml_path(img)
                 tree = ET.parse(annotation)
                 root = tree.getroot()
@@ -4537,9 +4543,10 @@ def select_detections(selection_dict, prepare_files):
             sorted_lines = sorted(previous_lines, key=natural_sort_key)
         
             # and write them back in aphabetical order
+            # strip first: readlines() keeps the trailing newline, so line + '\n' would double it
             with open(file_list_txt, 'w') as f:
                 for line in sorted_lines:
-                    f.write(line + '\n')
+                    f.write(line.rstrip('\r\n') + '\n')
         
     # update total number of images
     lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][lang_idx])
