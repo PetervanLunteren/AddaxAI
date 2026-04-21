@@ -184,6 +184,10 @@ Note: MegaDetector 5a is pre-installed with AddaxAI. If it is missing, reinstall
   - [`model.keras`](https://huggingface.co/alexvmt/TeraiNet/resolve/main/model.keras?download=true)
   - [`class_list.yaml`](https://huggingface.co/alexvmt/TeraiNet/resolve/main/class_list.yaml?download=true)
 
+### Global - SpeciesNet - Google
+
+SpeciesNet is not downloaded the same way as the other models. Its weights are fetched automatically by the `speciesnet` Python package the first time it runs. If that download fails, make sure the `speciesnet` environment is installed first — see [manual-download-environments.md](https://github.com/PetervanLunteren/AddaxAI/blob/main/markdown/manual-download-environments.md).
+
 ### Tasmanian vertebrates
 
 - **Target folder:** `models/cls/Tasmanian vertebrates/`
