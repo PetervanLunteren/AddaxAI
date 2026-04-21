@@ -361,6 +361,29 @@ export interface DeploymentInfo {
   last_captured_at_local: string | null;
 }
 
+export interface SplitPreviewTarget {
+  folder_path: string;
+  name: string;
+  image_count: number;
+  video_count: number;
+}
+
+export interface SplitPreview {
+  original_folder: string | null;
+  depth: number;
+  max_depth: number;
+  can_decrease: boolean;
+  can_increase: boolean;
+  targets: SplitPreviewTarget[];
+  /** Non-null when the split cannot proceed. UI shows it, disables OK. */
+  blocked_reason: string | null;
+}
+
+export interface SplitResponse {
+  created_deployment_ids: string[];
+  message: string;
+}
+
 // Job types
 export type JobType =
   | "deployment_analysis"

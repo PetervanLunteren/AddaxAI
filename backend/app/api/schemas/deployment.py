@@ -308,6 +308,61 @@ class SampleFile(BaseModel):
     )
 
 
+class SplitPreviewTarget(BaseModel):
+    """One prospective child deployment in a split preview."""
+
+    folder_path: str = Field(..., description="Absolute path to the child subfolder")
+    name: str = Field(..., description="Display name derived from the subfolder basename")
+    image_count: int = Field(..., description="Number of image files under this target")
+    video_count: int = Field(..., description="Number of video files under this target")
+
+
+class SplitPreviewResponse(BaseModel):
+    """
+    Preview of what a split would produce at a given depth.
+
+    `blocked_reason` is populated when splitting is impossible (folder
+    needs relink, active job, nothing to split, etc.). The frontend
+    shows this as a disabled OK button with the reason displayed.
+    """
+
+    original_folder: str | None = Field(
+        None, description="Absolute path of the deployment being split"
+    )
+    depth: int = Field(..., description="Chosen descent depth (1 = direct children)")
+    max_depth: int = Field(
+        ..., description="Deepest leaf depth reachable from the parent folder"
+    )
+    can_decrease: bool = Field(
+        ..., description="True when depth > 1"
+    )
+    can_increase: bool = Field(
+        ...,
+        description="True when at least one branch has children below the current depth",
+    )
+    targets: list[SplitPreviewTarget] = Field(
+        default_factory=list, description="Non-empty subfolders at the chosen depth"
+    )
+    blocked_reason: str | None = Field(
+        None, description="Human-readable reason this deployment cannot be split"
+    )
+
+
+class SplitRequest(BaseModel):
+    """Request body for POST /api/deployments/{id}/split."""
+
+    depth: int = Field(..., ge=1, description="Descent depth (1 = direct children)")
+
+
+class SplitResponse(BaseModel):
+    """Result of a successful split."""
+
+    created_deployment_ids: list[str] = Field(
+        ..., description="IDs of the newly created child deployments"
+    )
+    message: str
+
+
 class FolderPreviewResponse(BaseModel):
     """
     Preview of a deployment folder before running analysis.

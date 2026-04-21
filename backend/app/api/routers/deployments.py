@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment as crud_deployment
+from app.api.crud import deployment_split as crud_split
 from app.api.crud import site as crud_site
 from app.api.schemas.deployment import (
     BulkRelinkRequest,
@@ -37,6 +38,9 @@ from app.api.schemas.deployment import (
     GroupBrokenRequest,
     GroupBrokenResponse,
     SampleFile,
+    SplitPreviewResponse,
+    SplitRequest,
+    SplitResponse,
     SuggestRelinkTargetRequest,
     SuggestRelinkTargetResponse,
 )
@@ -690,6 +694,70 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> None
             detail=f"Deployment with id '{deployment_id}' not found",
         )
     logger.info(f"Deleted deployment: {deployment_id} (cascaded to files and events)")
+
+
+@router.get(
+    "/{deployment_id}/split-preview",
+    response_model=SplitPreviewResponse,
+)
+def split_preview(
+    deployment_id: str,
+    depth: int = Query(1, ge=1, description="Descent depth (1 = direct children)"),
+    db: Session = Depends(get_db),
+) -> SplitPreviewResponse:
+    """
+    Preview what splitting this deployment at the given depth would produce.
+
+    Returns 404 if the deployment doesn't exist. Otherwise returns the list
+    of non-empty target subfolders with per-target image/video counts, plus
+    `blocked_reason` when splitting is impossible (folder needs relink, a
+    job is active, or the depth yields <= 1 non-empty target).
+    """
+    try:
+        return crud_split.build_split_preview(db, deployment_id, depth)
+    except crud_split.SplitError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail=str(exc)
+        ) from exc
+
+
+@router.post(
+    "/{deployment_id}/split",
+    response_model=SplitResponse,
+)
+def split_deployment(
+    deployment_id: str,
+    request: SplitRequest,
+    db: Session = Depends(get_db),
+) -> SplitResponse:
+    """
+    Split a deployment into N children along the folder hierarchy.
+
+    Copies the deployment's `.addaxai/projects/<project_id>/` artifacts into
+    each child subfolder, reassigns files / detections / events to the
+    correct child (duplicating events that straddle multiple children),
+    deletes the parent row, and removes the parent's old `.addaxai` folder.
+
+    Returns 404 if the deployment doesn't exist, 409 when an active job or
+    queue entry blocks the split, 400 on any other precondition failure.
+    """
+    try:
+        created_ids = crud_split.split_deployment(
+            db, deployment_id, request.depth
+        )
+    except crud_split.SplitError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail=str(exc)
+        ) from exc
+
+    logger.info(
+        f"Split deployment {deployment_id} into {len(created_ids)} children "
+        f"at depth {request.depth}"
+    )
+    return SplitResponse(
+        created_deployment_ids=created_ids,
+        message=f"Split into {len(created_ids)} deployments",
+    )
 
 
 @router.get("/{deployment_id}/info", response_model=DeploymentInfoResponse)

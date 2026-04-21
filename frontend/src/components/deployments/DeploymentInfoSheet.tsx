@@ -11,7 +11,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, Pencil, Trash2 } from "lucide-react";
+import { FolderOpen, FolderTree, Pencil, Trash2 } from "lucide-react";
 
 import { deploymentsApi, type DeploymentInfo } from "../../api/deployments";
 import { formatCameraDateTime } from "../../lib/datetime";
@@ -39,6 +39,8 @@ interface DeploymentInfoSheetProps {
   onOpenChange: (open: boolean) => void;
   /** Opens the Edit dialog for this deployment. Parent closes the sheet. */
   onEdit?: () => void;
+  /** Opens the Split dialog for this deployment. Parent closes the sheet. */
+  onSplit?: () => void;
   /** Opens the Delete confirmation for this deployment. Parent closes the sheet. */
   onDelete?: () => void;
 }
@@ -48,6 +50,7 @@ export function DeploymentInfoSheet({
   open,
   onOpenChange,
   onEdit,
+  onSplit,
   onDelete,
 }: DeploymentInfoSheetProps) {
   const { data, isLoading, isError } = useQuery({
@@ -66,7 +69,7 @@ export function DeploymentInfoSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <Button
             type="button"
             variant="outline"
@@ -93,6 +96,15 @@ export function DeploymentInfoSheet({
           >
             <FolderOpen className="mr-2 h-4 w-4" />
             Open folder
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onSplit}
+            disabled={!onSplit || !data?.folder_path}
+          >
+            <FolderTree className="mr-2 h-4 w-4" />
+            Split
           </Button>
           <Button
             type="button"
