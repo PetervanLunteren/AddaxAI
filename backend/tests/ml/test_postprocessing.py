@@ -6,7 +6,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from app.ml.postprocessing import (
-    build_sequence_information,
+    build_smoother_input,
     compute_postprocessing_settings_hash,
     run_postprocessing_for_deployment,
 )
@@ -60,46 +60,86 @@ def test_hash_changes_on_country_code():
     assert compute_postprocessing_settings_hash(p1) != compute_postprocessing_settings_hash(p2)
 
 
-def test_build_sequence_empty_deployment(db):
+def test_smoother_input_empty_deployment(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    result = build_sequence_information(d.id, 1800, db)
+    result = build_smoother_input(d.id, 1800, db)
     assert result == []
 
 
-def test_build_sequence_single_file(db):
+def test_smoother_input_single_file(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
     make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0))
-    result = build_sequence_information(d.id, 1800, db)
+    result = build_smoother_input(d.id, 1800, db)
     assert len(result) == 1
+    # seq_id is MegaDetector's CCT contract — kept in the emitted rows.
     assert "seq_id" in result[0]
     assert "file_name" in result[0]
 
 
-def test_build_sequence_groups_within_interval(db):
+def test_smoother_input_groups_within_interval(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
-    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 10, 0))
-    result = build_sequence_information(d.id, 1800, db)
+    f1 = make_file(
+        db, deployment_id=d.id,
+        file_path="/fake/folder/img_001.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 0),
+    )
+    f2 = make_file(
+        db, deployment_id=d.id,
+        file_path="/fake/folder/img_002.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 10, 0),
+    )
+    _ = (f1, f2)
+    result = build_smoother_input(d.id, 1800, db)
     assert len(result) == 2
-    # Both should have same seq_id (10 min gap < 30 min interval)
+    # Both share seq_id (10 min gap < 30 min interval, same folder).
     assert result[0]["seq_id"] == result[1]["seq_id"]
 
 
-def test_build_sequence_splits_on_gap(db):
+def test_smoother_input_splits_on_gap(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
-    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
-    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 13, 0, 0))
-    result = build_sequence_information(d.id, 1800, db)
+    make_file(
+        db, deployment_id=d.id,
+        file_path="/fake/folder/img_001.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 0),
+    )
+    make_file(
+        db, deployment_id=d.id,
+        file_path="/fake/folder/img_002.jpg",
+        captured_at_local=datetime(2024, 1, 1, 13, 0, 0),
+    )
+    result = build_smoother_input(d.id, 1800, db)
     assert len(result) == 2
-    # 60 min gap > 30 min interval → different seq_id
+    # 60 min gap > 30 min interval → different seq_id.
+    assert result[0]["seq_id"] != result[1]["seq_id"]
+
+
+def test_smoother_input_splits_on_folder_boundary(db):
+    """A backlog deployment with files in two folders must give two
+    distinct seq_ids, even when timestamps fall inside the interval."""
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id, folder_path="/data/backlog")
+    make_file(
+        db, deployment_id=d.id,
+        file_path="/data/backlog/card_a/img_001.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 0),
+    )
+    make_file(
+        db, deployment_id=d.id,
+        file_path="/data/backlog/card_b/img_001.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 5, 0),
+    )
+    result = build_smoother_input(d.id, 1800, db)
+    assert len(result) == 2
+    # Different folder → different seq_id, matching Event behaviour.
     assert result[0]["seq_id"] != result[1]["seq_id"]
 
 

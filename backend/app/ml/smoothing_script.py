@@ -11,8 +11,12 @@ Where options_json contains:
     {
         "event_smoothing": bool,
         "smoothing_strength": "mild" | "normal" | "aggressive",
-        "sequence_info": list[dict] | null
+        "smoother_input": list[dict] | null
     }
+
+`smoother_input` is the CCT-format list produced by
+`app.ml.postprocessing.build_smoother_input`. It is passed through to
+MegaDetector's `cct_sequence_information=` parameter verbatim.
 
 Label exclusion and taxonomic rollup are handled upstream before this
 script runs. The input JSON already has those transformations applied.
@@ -77,7 +81,7 @@ def main() -> None:
     event_smoothing = opts.get("event_smoothing", False)
     detection_threshold = opts.get("detection_threshold", 0.15)
     smoothing_strength = opts.get("smoothing_strength", "normal")
-    sequence_info = opts.get("sequence_info")
+    smoother_input = opts.get("smoother_input")
 
     # Configure smoothing options
     options = ClassificationSmoothingOptions()
@@ -111,11 +115,11 @@ def main() -> None:
         options=options,
     )
 
-    # Sequence-level smoothing (if event_smoothing and sequence info provided)
-    if event_smoothing and sequence_info:
+    # Event-level (aka sequence-level in MegaDetector) smoothing.
+    if event_smoothing and smoother_input:
         smoothed = smooth_classification_results_sequence_level(
             input_file=smoothed,
-            cct_sequence_information=sequence_info,
+            cct_sequence_information=smoother_input,
             output_file=None,
             options=options,
         )

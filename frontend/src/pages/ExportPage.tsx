@@ -8,9 +8,9 @@
  */
 
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Download, Loader2 } from "lucide-react";
+import { AlertCircle, Download, Info, Loader2 } from "lucide-react";
 
 import {
   Card,
@@ -288,6 +288,25 @@ export default function ExportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+              <p>
+                CamTrap DP expects one row per deployment (one camera, one
+                location, one continuous period). If any of your deployments
+                cover mixed folders, split them on the{" "}
+                {projectId ? (
+                  <Link
+                    to={`/projects/${projectId}/deployments`}
+                    className="underline underline-offset-2 hover:text-blue-700"
+                  >
+                    Deployments page
+                  </Link>
+                ) : (
+                  "Deployments page"
+                )}{" "}
+                before exporting.
+              </p>
+            </div>
             {dpError && <ErrorBanner message={dpError} />}
             <div className="flex items-center justify-end gap-4">
               <Button

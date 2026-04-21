@@ -7,7 +7,6 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -109,9 +108,9 @@ def get_site_info(db: Session, site_id: str):
 
     Aggregates across every deployment at the site. Returns `None` when
     the site does not exist so the router can map to a 404. Trap nights
-    is the sum of per-deployment `(end - start + 1)` days and is `None`
-    whenever any deployment at the site is open-ended (no `end_date`),
-    since a partial sum could mislead the user.
+    is the sum of each deployment's folder-aware count (see
+    `app.api.crud.trap_nights`); `None` when the total is 0 so the UI
+    can render "n/a" instead of a misleading zero rate.
     """
     from sqlalchemy import case
 
@@ -131,11 +130,12 @@ def get_site_info(db: Session, site_id: str):
     # Deployment ids scoped to this site. Most aggregate queries filter
     # files / events by `deployment_id IN (...)`. Using a list keeps the
     # downstream SQL simple.
-    deployment_rows = db.execute(
-        select(Deployment.id, Deployment.start_date_local, Deployment.end_date_local)
-        .where(Deployment.site_id == site_id)
-    ).all()
-    deployment_ids = [row[0] for row in deployment_rows]
+    deployment_ids = [
+        row[0]
+        for row in db.execute(
+            select(Deployment.id).where(Deployment.site_id == site_id)
+        ).all()
+    ]
     deployment_count = len(deployment_ids)
 
     # File counts split by file_type + verification + total size. One
@@ -279,33 +279,18 @@ def get_site_info(db: Session, site_id: str):
         ).one()
         first_captured_at_local, last_captured_at_local = timestamps_row
 
-    # Trap nights: sum of per-deployment (end - start + 1) days. When a
-    # deployment has no `end_date_local`, fall back to the latest
-    # `File.captured_at_local` for that deployment so we give a useful
-    # number instead of n/a. A deployment contributes 0 when it has
-    # neither an explicit end nor any captures. `None` only when the
-    # whole sum ends up 0 (e.g. empty site).
+    # Trap nights: sum of each deployment's folder-aware trap-nights count.
+    # For a clean single-folder deployment this equals (end - start + 1);
+    # for a mixed backlog it sums each folder's own span so the offline
+    # gaps between SD cards don't inflate the denominator. `None` when
+    # the whole sum ends up 0 (e.g. empty site).
+    from app.api.crud.trap_nights import compute_trap_nights_for_deployments
+
     trap_nights: int | None = None
     if deployment_ids:
-        last_capture_by_dep: dict[str, datetime] = dict(
-            db.execute(
-                select(File.deployment_id, func.max(File.captured_at_local))
-                .where(File.deployment_id.in_(deployment_ids))
-                .group_by(File.deployment_id)
-            ).all()
-        )
-        days = 0
-        for dep_id, start_date, end_date in deployment_rows:
-            if start_date is None:
-                continue
-            effective_end = end_date
-            if effective_end is None:
-                fallback = last_capture_by_dep.get(dep_id)
-                if fallback is not None:
-                    effective_end = fallback.date()
-            if effective_end is not None:
-                days += max(0, (effective_end - start_date).days + 1)
-        trap_nights = days if days > 0 else None
+        per_dep = compute_trap_nights_for_deployments(db, deployment_ids)
+        total_nights = sum(per_dep.values())
+        trap_nights = total_nights if total_nights > 0 else None
 
     rate: float | None = None
     if trap_nights is not None and trap_nights > 0:

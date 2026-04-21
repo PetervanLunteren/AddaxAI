@@ -2,7 +2,7 @@
 Integration tests: postprocessing pipeline (smoothing, exclusion, reload).
 
 Tests update_database_from_smoothed_results(), run_postprocessing_for_deployment(),
-reload_raw_classifications_from_json(), and build_sequence_information().
+reload_raw_classifications_from_json(), and build_smoother_input().
 
 Mocks: subprocess.run, _get_ml_python_path, _find_classification_model_dir
 (to avoid needing the ML conda env and model files).
@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from app.ml.json_pipeline import load_json_to_database
 from app.ml.postprocessing import (
-    build_sequence_information,
+    build_smoother_input,
     reload_raw_classifications_from_json,
     run_postprocessing_for_deployment,
     update_database_from_smoothed_results,
@@ -426,7 +426,7 @@ def test_verified_detections_skipped_during_raw_reload(deployment_scaffold):
     assert reloaded_dets[2].label == "lion"   # reverted
 
 
-def test_build_sequence_groups_by_interval(deployment_scaffold):
+def test_smoother_input_groups_by_interval(deployment_scaffold):
     """Files within interval → same seq_id; gap > interval → different seq_id."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
@@ -452,17 +452,21 @@ def test_build_sequence_groups_by_interval(deployment_scaffold):
         )
     db.flush()
 
-    seq_info = build_sequence_information(
+    rows = build_smoother_input(
         deployment_id=s["deployment"].id,
         independence_interval=1800,  # 30 min
         db=db,
     )
 
-    assert len(seq_info) == 4
-    # First 3 should share a seq_id, 4th should differ
-    assert seq_info[0]["seq_id"] == seq_info[1]["seq_id"]
-    assert seq_info[1]["seq_id"] == seq_info[2]["seq_id"]
-    assert seq_info[2]["seq_id"] != seq_info[3]["seq_id"]
+    assert len(rows) == 4
+    # First 3 share a seq_id, 4th differs.
+    rows_by_name = {r["file_name"]: r for r in rows}
+    sid0 = rows_by_name["seq_img_0.jpg"]["seq_id"]
+    sid1 = rows_by_name["seq_img_1.jpg"]["seq_id"]
+    sid2 = rows_by_name["seq_img_2.jpg"]["seq_id"]
+    sid3 = rows_by_name["seq_img_3.jpg"]["seq_id"]
+    assert sid0 == sid1 == sid2
+    assert sid3 != sid0
 
 
 def test_final_sweep_clears_excluded_labels(deployment_scaffold):

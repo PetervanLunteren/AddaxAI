@@ -476,12 +476,16 @@ def build_spatial_layers(
         .all()
     )
 
+    from app.api.crud.trap_nights import compute_trap_nights_for_deployments
+
+    trap_days_by_dep = compute_trap_nights_for_deployments(
+        db, [d.id for d, _ in all_deployments]
+    )
+
     deployments_features: list[dict[str, Any]] = []
-    trap_days_by_dep: dict[str, int] = {}
     skipped_deployment_ids: list[str] = []
     for deployment, site in all_deployments:
-        trap_days = _trap_days(deployment)
-        trap_days_by_dep[deployment.id] = trap_days
+        trap_days = trap_days_by_dep.get(deployment.id, 0)
         det_count = det_count_by_dep.get(deployment.id, 0)
         rate = (det_count / trap_days * 100) if trap_days > 0 else 0.0
         if site is None:
@@ -605,14 +609,6 @@ def build_spatial_layers(
         },
         skipped_deployment_ids,
     )
-
-
-def _trap_days(deployment: Deployment) -> int:
-    """Inclusive day count from start to end (end defaults to today)."""
-    if deployment.start_date_local is None:
-        return 0
-    end = deployment.end_date_local or date.today()
-    return max(0, (end - deployment.start_date_local).days + 1)
 
 
 # ---------------------------------------------------------------------------

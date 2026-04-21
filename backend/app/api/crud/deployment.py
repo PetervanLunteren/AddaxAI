@@ -459,15 +459,17 @@ def get_deployment_info(db: Session, deployment_id: str):
     ).one()
     first_captured_at_local, last_captured_at_local = timestamps_row
 
-    # Trap nights = (end - start) + 1 days, only when end_date_local is
-    # known. Rate = obs / trap_nights * 100 when trap_nights > 0.
-    trap_nights: int | None = None
+    # Trap nights is folder-aware: each SD-card-folder contributes its own
+    # (max - min) + 1 day span, summed. For a clean single-folder
+    # deployment this equals the old `(end - start) + 1` formula; for a
+    # mixed backlog it correctly excludes the offline gaps between cards.
+    # See `app.api.crud.trap_nights` for detail.
+    from app.api.crud.trap_nights import compute_trap_nights_for_deployment
+
+    trap_nights = compute_trap_nights_for_deployment(db, deployment_id)
     rate: float | None = None
-    if deployment.end_date_local is not None:
-        days = (deployment.end_date_local - deployment.start_date_local).days + 1
-        trap_nights = max(0, days)
-        if trap_nights > 0:
-            rate = float(observation_count) / trap_nights * 100.0
+    if trap_nights is not None and trap_nights > 0:
+        rate = float(observation_count) / trap_nights * 100.0
 
     # Mean confidences. Detection mean applies the threshold-with-verified
     # filter (per CONVENTIONS.md). Classification mean uses the same

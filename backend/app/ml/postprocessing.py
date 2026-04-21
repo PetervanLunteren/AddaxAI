@@ -54,70 +54,75 @@ def compute_postprocessing_settings_hash(project) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def build_sequence_information(
+def build_smoother_input(
     deployment_id: str,
     independence_interval: int,
     db: Session,
 ) -> list[dict]:
     """
-    Build COCO Camera Traps sequence information from file timestamps.
+    Package a deployment's events for MegaDetector's sequence-level smoother.
 
-    Groups files into sequences: a new sequence starts when the time gap
-    between consecutive files exceeds ``independence_interval`` seconds.
+    Clustering uses `app.services.event_clustering.cluster_files_into_events`
+    — the same primitive that produces `Event` rows in the UI — so the
+    smoother operates on identical groupings to what the user sees.
+
+    The returned format is the COCO Camera Traps "images" shape that
+    `smooth_classification_results_sequence_level` expects. Each dict
+    carries `seq_id` (MegaDetector's contract for event membership),
+    `file_name` (relative to the deployment folder), and `datetime`.
 
     Args:
         deployment_id: Deployment UUID
-        independence_interval: Gap in seconds to start a new sequence
+        independence_interval: Gap in seconds that starts a new event
         db: Database session
 
     Returns:
-        List of dicts with keys: file_name, seq_id, datetime
-        (COCO Camera Traps "images" format expected by
-        ``smooth_classification_results_sequence_level``)
+        List of dicts with keys: file_name, seq_id, datetime. Empty list
+        when the deployment has no files to cluster.
     """
-    # Use image + video (not frame) for smoothing sequence info because
-    # the smoothing script matches file_name against the raw JSON which
-    # has video-level entries, not frame-level JPEG paths.
+    from sqlalchemy.orm import joinedload
+
+    from app.services.event_clustering import cluster_files_into_events
+
+    # Use image + video (not frame) because the smoothing script matches
+    # file_name against the raw JSON which has video-level entries, not
+    # frame-level JPEG paths.
     files = (
         db.query(File)
+        .options(joinedload(File.source_video))
         .filter(File.deployment_id == deployment_id)
         .filter(File.file_type.in_(["image", "video"]))
-        .order_by(File.captured_at_local.asc())
         .all()
     )
-
     if not files:
         return []
 
-    sequence_images: list[dict] = []
-    current_seq_id = str(uuid.uuid4())
-    prev_captured = files[0].captured_at_local
+    deployment = (
+        db.query(Deployment).filter(Deployment.id == deployment_id).first()
+    )
+    deployment_folder = deployment.folder_path if deployment else None
 
-    for file_record in files:
-        gap = (file_record.captured_at_local - prev_captured).total_seconds()
-        if gap > independence_interval:
-            current_seq_id = str(uuid.uuid4())
-
-        # Compute relative path from deployment folder
-        deployment = db.query(Deployment).filter(Deployment.id == deployment_id).first()
-        if deployment and deployment.folder_path:
-            try:
-                rel_path = str(Path(file_record.file_path).relative_to(deployment.folder_path))
-            except ValueError:
+    smoother_input: list[dict] = []
+    for cluster in cluster_files_into_events(files, independence_interval):
+        seq_id = str(uuid.uuid4())
+        for file_record in cluster:
+            if deployment_folder:
+                try:
+                    rel_path = str(
+                        Path(file_record.file_path).relative_to(deployment_folder)
+                    )
+                except ValueError:
+                    rel_path = file_record.file_path
+            else:
                 rel_path = file_record.file_path
-        else:
-            rel_path = file_record.file_path
-
-        sequence_images.append(
-            {
-                "file_name": rel_path,
-                "seq_id": current_seq_id,
-                "datetime": file_record.captured_at_local.isoformat(),
-            }
-        )
-        prev_captured = file_record.captured_at_local
-
-    return sequence_images
+            smoother_input.append(
+                {
+                    "file_name": rel_path,
+                    "seq_id": seq_id,
+                    "datetime": file_record.captured_at_local.isoformat(),
+                }
+            )
+    return smoother_input
 
 
 def _find_classification_model_dir(project, db: Session) -> Path | None:
@@ -314,22 +319,25 @@ def run_postprocessing_for_deployment(
     if not project.event_smoothing:
         return md_results
 
-    # Build sequence info for event smoothing
-    sequence_info = build_sequence_information(
+    # Package events for the smoother. Uses the same clustering primitive
+    # as the UI's Event rows, so the smoother sees the same boundaries.
+    smoother_input = build_smoother_input(
         deployment_id, project.independence_interval, db
     )
-    if sequence_info:
+    if smoother_input:
         logger.info(
-            f"Running sequence-level smoothing with {len(sequence_info)} images "
-            f"(interval={project.independence_interval}s)"
+            f"Running event-level smoothing on {len(smoother_input)} file "
+            f"rows (independence_interval={project.independence_interval}s)"
         )
 
-    # Build options for the subprocess script
+    # Build options for the subprocess script. `smoother_input` is the
+    # CCT-format dict list; `smoothing_script.py` passes it through to
+    # MegaDetector's `cct_sequence_information=` parameter unchanged.
     smoothing_options = {
         "event_smoothing": project.event_smoothing,
         "smoothing_strength": project.smoothing_strength,
         "detection_threshold": project.detection_threshold,
-        "sequence_info": sequence_info,
+        "smoother_input": smoother_input,
     }
 
     # Run smoothing as subprocess in the ML environment

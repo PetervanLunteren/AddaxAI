@@ -90,14 +90,17 @@ def _build_fixture(db):
 
 
 def test_per_deployment_trap_nights_sums_to_total(db):
+    """Trap nights is folder-aware and driven by actual file captures.
+    dep_a has files at Jan 2 and Jan 5 (same folder) → 4 inclusive days.
+    dep_b has a single file at Feb 3 → 1 day. Total 5."""
     project, _, _, dep_a, dep_b = _build_fixture(db)
 
     per_dep = stats_crud.get_per_deployment_trap_nights(db, project.id)
-    assert per_dep[dep_a.id] == 10
-    assert per_dep[dep_b.id] == 5
+    assert per_dep[dep_a.id] == 4
+    assert per_dep[dep_b.id] == 1
 
     total = stats_crud.get_trap_nights(db, project.id)
-    assert total == 15
+    assert total == 5
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +119,18 @@ def test_observation_rate_map_returns_one_feature_per_deployment(db):
     assert feature_a.site_name == "Alpha"
     assert feature_a.latitude == 10.0
     assert feature_a.longitude == 20.0
-    assert feature_a.trap_nights == 10
+    # Folder-aware trap nights: Jan 2 and Jan 5 in the same folder
+    # → 4 inclusive days. Rate = 5 obs / 4 nights * 100.
+    assert feature_a.trap_nights == 4
     assert feature_a.observation_count == 5  # 2 + 3
-    assert feature_a.rate_per_100 == 50.0  # 5 / 10 * 100
+    assert feature_a.rate_per_100 == 125.0
 
     feature_b = by_id[dep_b.id]
     assert feature_b.site_name == "Beta"
-    assert feature_b.trap_nights == 5
+    # Single file at Feb 3 → 1 trap night. Rate = 1 / 1 * 100.
+    assert feature_b.trap_nights == 1
     assert feature_b.observation_count == 1
-    assert feature_b.rate_per_100 == 20.0  # 1 / 5 * 100
+    assert feature_b.rate_per_100 == 100.0
 
 
 def test_observation_rate_map_filters_by_site(db):

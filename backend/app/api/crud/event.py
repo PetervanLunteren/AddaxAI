@@ -184,18 +184,15 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     """
     Generate events for all deployments in a project.
 
-    Idempotent: deletes existing events before regenerating.
-
-    1. Fetch project's independence_interval
-    2. Delete all existing events for every deployment in the project
-    3. For each deployment, query files ordered by timestamp ASC
-    4. Walk files: start new event when gap > independence_interval seconds
-    5. Create Event records with event_start_local, event_end_local, file_count
-    6. Insert event_files junction rows with sequence_number
+    Idempotent: deletes existing events before regenerating. Clustering
+    logic lives in `app.services.event_clustering.cluster_files_into_events`
+    — the single source of truth shared with the smoothing adapter, so
+    events and smoother inputs never disagree.
 
     Returns total event count created.
     """
     from app.models import Project
+    from app.services.event_clustering import cluster_files_into_events
 
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -218,34 +215,14 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     for deployment in deployments:
         files = (
             db.query(File)
+            .options(joinedload(File.source_video))
             .filter(File.deployment_id == deployment.id)
             .filter(File.file_type.in_(["image", "frame"]))
-            .order_by(File.captured_at_local.asc())
             .all()
         )
 
-        if not files:
-            continue
-
-        # Walk files and cluster into events
-        current_event_files: list[File] = [files[0]]
-
-        for i in range(1, len(files)):
-            gap = (
-                files[i].captured_at_local - files[i - 1].captured_at_local
-            ).total_seconds()
-
-            if gap > independence_interval:
-                # Save current event and start new one
-                _create_event(db, deployment.id, current_event_files)
-                total_events += 1
-                current_event_files = [files[i]]
-            else:
-                current_event_files.append(files[i])
-
-        # Save last event
-        if current_event_files:
-            _create_event(db, deployment.id, current_event_files)
+        for cluster in cluster_files_into_events(files, independence_interval):
+            _create_event(db, deployment.id, cluster)
             total_events += 1
 
     db.flush()
