@@ -54,3 +54,29 @@ IN terms of UX, where and how should this feature live? A separate page where us
 - [ ] Some users might have run analysis over a bunch of deployments at the saem time (backlog of data with 3 sites and 10 deployments). So if he want to show them all in the map and in the exports etc, he needs a way of splitting the deployment over several smaller ones that all have a single site. SO we need to add this feature. Investigate. Same for splitting deployments, we might need to add a feature that merges them. Same as splitting, but exactly the opposite.
 
 - [ ] After that we can think about how we want to make sure the CamtrapDP export checks for deployments. I think a fully automatic check is error prone. WOuldnt it just be easiest if it just is a text model where it is described and refered to the deploymetns page where users can merge and split deployments to make a single deployment per unit. Do you understand what I'm saying? 
+
+- [ ] Add the "(no site)" option to all site filters trhoughout the app. That way users can select the data that has no site attached to them. Only show if there actually are data with no sites attached. Makes sense? 
+
+- [ ] Right now we have key:value tags and notes for both sites and deployments, which is good. But might also be confusing... "Didnt I alreay filled this in?". SHould we rename them to "Site notes" / "Deployment notes" (might be bad idae as we duplicate words and add visual clutter). Perhaps better to update the placeholder to match the site and deployment specific inpupts better. What do you thnink? 
+
+- [ ] currently there is a check at the end of analysis (see below). Should we check all timestamps before analysis and warn user upfront (might add extra processing time before startiong analyis), or we check it after detection has been done (like now is implemented, but we show it as a warning instead of an error). "These did not have any tiemstamps and are therefore excluded in analysis." Agree? Now if there is a single image with currupted metadata, it blocks everything. We should bascially just make a log file structure or something like that. "There were some warnings, see ... for more info." And then just continue with the ones that are in order. What do you think? 
+                                                                                                                       
+            No extractable capture timestamp for 10 file(s):                                                                     
+            /Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001/01_dan_IMG_0004.AVI,                          
+            /Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001/02_bobcat_IMG_0180.AVI,                       
+            /Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001/03_bobcat_IMG_0256.AVI,                       
+            /Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001/04_coyote_IMG_0096.AVI,                       
+            /Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001/05_owl_IMG_0108.AVI (+5 more)                 
+                                                                                                                                
+            Does this mean no data was added to the DB? Or that only these were skipped? 
+
+
+- [ ] If you select "no embedding model" in the settings, then you obviously dont have any embeddings to verify similarity. Currently it says the below. It should say something like, to use this feature, you need to slelect an embedding model in the settings and save. It will then run embedding on all your data. (related but other bug: when doing this, i embedde everything with dinov2, success, but the similarity verification is still empty after hard reload. ALso no placeholder text. Just empty - missing grid, but filters are visible. Is that because they are all attached to '(no site)' and this one is not selected in the site selector? Probabaly, haha.)
+
+              No embeddings yet
+
+              Run an analysis with an embedding model selected to use similarity features. Embeddings are computed from detection crops using DINOv2.
+
+- [ ] wehn running MD only (no cls model), and adding a box via event verification, accepting auto label "animal". It shows up as two labels with two colors, both "Animal". I have a hiunch that it is about capitalisation. The MD produced ones are "Animal" and the bbox added ones are "animal", right? Fix this. 
+
+- [ ] Almost everything depends on having the analysis done per deployment (event creation - if overlapping DateTime stamps in different fodler - merged into one), the trap nights (affects all statistics, maps, exports, etc). Should we not add a warning at the analysis step? Maybe a note like (should be one deployment per analysis. Affects all statistics, events, plots, smoothing, settings, and exports. If analysing a backlog and you dont want to care about structure, that is fine, but please take this into account. You can always split your backlog folder into proper deployments... )

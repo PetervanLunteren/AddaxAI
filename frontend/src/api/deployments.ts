@@ -18,6 +18,9 @@ import type {
   GroupBrokenItem,
   GroupBrokenRequest,
   GroupBrokenResponse,
+  SplitPreview,
+  SplitPreviewTarget,
+  SplitResponse,
   SuggestRelinkTargetRequest,
   SuggestRelinkTargetResponse,
 } from "./types";
@@ -37,6 +40,9 @@ export type {
   GroupBrokenItem,
   GroupBrokenRequest,
   GroupBrokenResponse,
+  SplitPreview,
+  SplitPreviewTarget,
+  SplitResponse,
   SuggestRelinkTargetRequest,
   SuggestRelinkTargetResponse,
 };
@@ -113,4 +119,22 @@ export const deploymentsApi = {
    */
   groupBroken: (data: GroupBrokenRequest) =>
     api.post<GroupBrokenResponse>("/api/deployments/group-broken", data),
+
+  /**
+   * Preview splitting a deployment into N children at the given folder
+   * depth. Returns per-target image/video counts plus a `blocked_reason`
+   * when the split cannot proceed.
+   */
+  getSplitPreview: (id: string, depth: number) =>
+    api.get<SplitPreview>(
+      `/api/deployments/${id}/split-preview?depth=${depth}`
+    ),
+
+  /**
+   * Split a deployment at the given folder depth. Creates one child per
+   * non-empty subfolder, reassigns files and events, slices .addaxai
+   * artifacts, and removes the original deployment.
+   */
+  split: (id: string, depth: number) =>
+    api.post<SplitResponse>(`/api/deployments/${id}/split`, { depth }),
 };

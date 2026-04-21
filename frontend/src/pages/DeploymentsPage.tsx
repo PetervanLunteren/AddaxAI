@@ -7,7 +7,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info } from "lucide-react";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, FolderTree } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
 import { sitesApi } from "../api/sites";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
@@ -42,6 +42,10 @@ import {
   DeleteDeploymentDialog,
   type DeleteDeploymentTarget,
 } from "../components/deployments/DeleteDeploymentDialog";
+import {
+  SplitDeploymentDialog,
+  type SplitDeploymentTarget,
+} from "../components/deployments/SplitDeploymentDialog";
 import { RelinkGroupBanner } from "../components/deployments/RelinkGroupBanner";
 
 type SortField =
@@ -95,6 +99,7 @@ export function DeploymentsPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [editingDeployment, setEditingDeployment] = useState<DeploymentResponse | null>(null);
   const [deletingDeployment, setDeletingDeployment] = useState<DeleteDeploymentTarget | null>(null);
+  const [splittingDeployment, setSplittingDeployment] = useState<SplitDeploymentTarget | null>(null);
   const [infoDeploymentId, setInfoDeploymentId] = useState<string | null>(null);
 
   const handleFilterChange = (next: FilterValues) => {
@@ -433,6 +438,16 @@ export function DeploymentsPage() {
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onClick={() => setSplittingDeployment({
+                              id: dep.id,
+                              folder_path: dep.folder_path,
+                            })}
+                            disabled={!dep.folder_path}
+                          >
+                            <FolderTree className="mr-2 h-4 w-4" />
+                            Split
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             className="text-destructive"
                             onClick={() => setDeletingDeployment({
                               id: dep.id,
@@ -486,6 +501,13 @@ export function DeploymentsPage() {
         onOpenChange={(open) => !open && setDeletingDeployment(null)}
       />
 
+      <SplitDeploymentDialog
+        deployment={splittingDeployment}
+        projectId={projectId}
+        open={!!splittingDeployment}
+        onOpenChange={(open) => !open && setSplittingDeployment(null)}
+      />
+
       <DeploymentInfoSheet
         deploymentId={infoDeploymentId}
         open={infoDeploymentId !== null}
@@ -495,6 +517,17 @@ export function DeploymentsPage() {
           const dep = deploymentsById.get(infoDeploymentId);
           setInfoDeploymentId(null);
           if (dep) setEditingDeployment(dep);
+        }}
+        onSplit={() => {
+          if (!infoDeploymentId) return;
+          const dep = deploymentsById.get(infoDeploymentId);
+          setInfoDeploymentId(null);
+          if (dep) {
+            setSplittingDeployment({
+              id: dep.id,
+              folder_path: dep.folder_path,
+            });
+          }
         }}
         onDelete={() => {
           if (!infoDeploymentId) return;
