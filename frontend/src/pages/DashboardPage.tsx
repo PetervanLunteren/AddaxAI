@@ -32,8 +32,6 @@ import {
   AlertCounters,
   VerificationProgressChart,
 } from "../components/dashboard";
-import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
-import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
@@ -62,8 +60,6 @@ export default function DashboardPage() {
     () => (sites ?? []).map((s) => ({ value: s.id, label: s.name })),
     [sites]
   );
-
-  const { data: noSite } = useNoSiteDeployments(projectId);
 
   // Fetch overview
   const { data: overview, isLoading: overviewLoading } = useQuery({
@@ -173,13 +169,6 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        {projectId && (
-          <NoSiteBanner
-            projectId={projectId}
-            count={noSite?.count ?? 0}
-            reason="They are excluded from the sun-time bands on the activity-pattern chart."
-          />
-        )}
         {/* Summary Cards */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (

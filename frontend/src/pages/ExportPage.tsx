@@ -8,9 +8,9 @@
  */
 
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Download, Info, Loader2 } from "lucide-react";
+import { AlertCircle, Download, Loader2 } from "lucide-react";
 
 import {
   Card,
@@ -26,8 +26,9 @@ import {
   type ObservationFormat,
   type SpatialFormat,
 } from "../api/export";
-import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
+import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
+import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
 
 /** Trigger a browser download for a Blob. */
 function downloadBlob(blob: Blob, filename: string) {
@@ -136,8 +137,12 @@ export default function ExportPage() {
   const [spatialError, setSpatialError] = useState<string | null>(null);
   const [dpError, setDpError] = useState<string | null>(null);
 
+  const [spatialConfirmOpen, setSpatialConfirmOpen] = useState(false);
+  const [dpConfirmOpen, setDpConfirmOpen] = useState(false);
+
   const projectSlug = slugify(project?.name ?? "project");
   const today = todayIso();
+  const noSiteCount = noSite?.count ?? 0;
 
   const handleDownloadObservations = async () => {
     if (!projectId) return;
@@ -153,7 +158,19 @@ export default function ExportPage() {
     }
   };
 
-  const handleDownloadSpatial = async () => {
+  // Click handler for the Spatial download button. Opens the confirm
+  // dialog when any deployment has no site (those would be silently
+  // dropped from the export); otherwise goes straight to download.
+  const onSpatialClick = () => {
+    if (!projectId) return;
+    if (noSiteCount > 0) {
+      setSpatialConfirmOpen(true);
+    } else {
+      void runSpatialExport();
+    }
+  };
+
+  const runSpatialExport = async () => {
     if (!projectId) return;
     setSpatialLoading(true);
     setSpatialError(null);
@@ -172,7 +189,15 @@ export default function ExportPage() {
     }
   };
 
-  const handleDownloadCamtrapDP = async () => {
+  // CamtrapDP: always open the pre-flight dialog first — the format has
+  // hard schema requirements (one camera / one location / one period per
+  // deployment) that the user should explicitly confirm are satisfied.
+  const onCamtrapDPClick = () => {
+    if (!projectId) return;
+    setDpConfirmOpen(true);
+  };
+
+  const runCamtrapDPExport = async () => {
     if (!projectId) return;
     setDpLoading(true);
     setDpError(null);
@@ -198,13 +223,6 @@ export default function ExportPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        {projectId && (
-          <NoSiteBanner
-            projectId={projectId}
-            count={noSite?.count ?? 0}
-            reason="They are skipped from CamtrapDP and GeoJSON exports (CSV includes them with blank lat/lon)."
-          />
-        )}
         <Card>
           <CardHeader>
             <CardTitle>Observations</CardTitle>
@@ -257,7 +275,7 @@ export default function ExportPage() {
                 onChange={setSpatialFormat}
               />
               <Button
-                onClick={handleDownloadSpatial}
+                onClick={onSpatialClick}
                 disabled={spatialLoading}
                 className="flex items-center gap-2"
               >
@@ -288,29 +306,10 @@ export default function ExportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-              <p>
-                CamTrap DP expects one row per deployment (one camera, one
-                location, one continuous period). If any of your deployments
-                cover mixed folders, split them on the{" "}
-                {projectId ? (
-                  <Link
-                    to={`/projects/${projectId}/deployments`}
-                    className="underline underline-offset-2 hover:text-blue-700"
-                  >
-                    Deployments page
-                  </Link>
-                ) : (
-                  "Deployments page"
-                )}{" "}
-                before exporting.
-              </p>
-            </div>
             {dpError && <ErrorBanner message={dpError} />}
             <div className="flex items-center justify-end gap-4">
               <Button
-                onClick={handleDownloadCamtrapDP}
+                onClick={onCamtrapDPClick}
                 disabled={dpLoading}
                 className="flex items-center gap-2"
               >
@@ -330,6 +329,29 @@ export default function ExportPage() {
           </CardContent>
         </Card>
       </main>
+
+      {projectId && (
+        <>
+          <SpatialExportConfirmDialog
+            projectId={projectId}
+            count={noSiteCount}
+            formatLabel={
+              SPATIAL_OPTIONS.find((o) => o.value === spatialFormat)?.label ??
+              spatialFormat.toUpperCase()
+            }
+            open={spatialConfirmOpen}
+            onOpenChange={setSpatialConfirmOpen}
+            onProceed={() => void runSpatialExport()}
+          />
+          <CamtrapDPExportConfirmDialog
+            projectId={projectId}
+            noSiteCount={noSiteCount}
+            open={dpConfirmOpen}
+            onOpenChange={setDpConfirmOpen}
+            onProceed={() => void runCamtrapDPExport()}
+          />
+        </>
+      )}
     </div>
   );
 }

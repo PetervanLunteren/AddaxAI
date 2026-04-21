@@ -19,24 +19,45 @@ import { NO_SITE_SENTINEL } from "../../lib/filter-url";
 
 interface NoSiteBannerProps {
   projectId: string;
-  count: number;
+  /**
+   * Count of deployments with no camera site. When `message` is not
+   * provided, the banner uses this to auto-format
+   *   "{count} deployment(s) have no camera site. {reason}"
+   * and hides itself when count is 0.
+   */
+  count?: number;
   /**
    * One sentence describing what is missing on *this* page because of
    * the null-site deployments. Keep it short and direct (no
    * exclamation marks). Example:
    *   "They are not shown on the map."
-   *   "They are excluded from the sun-time average."
    *   "They are skipped from CamtrapDP and GeoJSON exports."
    */
-  reason: string;
+  reason?: string;
+  /**
+   * Full banner text, used verbatim when the count-based framing is
+   * not a good fit (e.g. "no camera sites have GPS at all" rather than
+   * "N deployments have no site"). When provided, `count` and `reason`
+   * are ignored and the banner renders unconditionally.
+   */
+  message?: string;
 }
 
-export function NoSiteBanner({ projectId, count, reason }: NoSiteBannerProps) {
+export function NoSiteBanner({
+  projectId,
+  count,
+  reason,
+  message,
+}: NoSiteBannerProps) {
   const navigate = useNavigate();
 
-  if (count <= 0) return null;
-
-  const label = `${count} deployment${count === 1 ? "" : "s"} have no camera site. ${reason}`;
+  let label: string;
+  if (message !== undefined) {
+    label = message;
+  } else {
+    if ((count ?? 0) <= 0) return null;
+    label = `${count} deployment${count === 1 ? "" : "s"} have no camera site. ${reason ?? ""}`.trim();
+  }
 
   return (
     <div

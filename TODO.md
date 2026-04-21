@@ -12,6 +12,8 @@
 - [ ] DEPTH ESTIMATION
 - [ ] PROCESS BATCH RESULTS - https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 - [ ] IN DEPTH PLOT - add new in depth plot: Gantt-style timeline — one horizontal bar per deployment (or per site), showing the active period. Immediately shows gaps, overlaps, and total survey effort. Group by site with one bar per deployment within each site row. do webqueries on how other platforms do this, and what the standard is, and what is usually reported in terms of metrics. Research scientific papers etc. 
+- [ ] IN DEPTH PLOT - confusion matrix
+- [ ] IN DEPTH PLOT - confusion table
 
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
@@ -20,24 +22,12 @@
 ## Nice to haves
 - [ ] SUBSAHARA GEOFILE - Add a geolocation file for the Sub Saharan model too, like SpeciesNet, so users of the SSmodel can also prefil by country. 
 - [ ] CLS THRESH - add a classification threshold and a per species override. Check how that is one in AddaxAI-Connect. I want something like that.  
-- [ ] DINOv3 - would it make sense to upgrade the app to use DINOv3 instead of DINOv2?
-- [ ] ROLLDOWN - exlusion rollup currently works like this (corect me if i'm wrong!):
-    > raw: wolf 60%, dog 20%, bear 10%, cat 10%.
-    > exluded wolf, included dog, cat, bear: dog 20%, bear 10%, cat 10%, wolf 0%. 
-    > Detection was wolf top-1, which is excluded, so it check the parent taxon to see if that is included. Canidea is included (via dog), so the deteciton gets the prediction (canidae 80%), am I correct? 
-    > What if we also allow rolldown if there is only one child taxon present? The above example would then go to canidae 80% and see that there is only one canidae possible, so it must be that one, so it rollsdown to dog 80%. What do you think? If the raw prediction was wolf 60%, dog 20%, fox 10%, cat 10%, the rolldown wouldn't have worked since then there are two childs of the canidae, and hence the prediciton would remain canidae 80%. Agree? What do yout think of this appraoch? And what would it take to implement it? 
 - [ ]
 
 
-
-
-
-- [ ] After that we can think about how we want to make sure the CamtrapDP export checks for deployments. I think a fully automatic check is error prone. WOuldnt it just be easiest if it just is a text model where it is described and refered to the deploymetns page where users can merge and split deployments to make a single deployment per unit. Do you understand what I'm saying? 
-- [ ] Almost everything depends on having the analysis done per deployment (event creation - if overlapping DateTime stamps in different fodler - merged into one), the trap nights (affects all statistics, maps, exports, etc). Should we not add a warning at the analysis step? Maybe a note like (should be one deployment per analysis. Affects all statistics, events, plots, smoothing, settings, and exports. If analysing a backlog and you dont want to care about structure, that is fine, but please take this into account. You can always split your backlog folder into proper deployments... )
-
-- [ ] reevaluate the trap nights calculation. If we can make that one also mixed-deployment proof, that would save us a lot of headaches later when analysing backlogs. 
-
 # other
+
+- [ ] Should we add the [+] button to the Edit deployment Modal next to the dropdown. Now it is just the dropdown and you need to move to the sites page to add one, then move back. In the analysis form we have the dropdown with a [+] next to it. That is what i also want in the Edit deployment Modal. 
 
 - [ ] the Detection trend card in the dashboard reports only the ticks it finds, not 0 days or months. Do you see what I mean? A observation on 1 jan, and one on 1 juli would show as a two tick straight line. It should also shjow the empty ticks. 
 

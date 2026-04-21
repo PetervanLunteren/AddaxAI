@@ -178,23 +178,16 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
 
         <CardContent className="space-y-6">
           {/* Folder selector */}
-          <div className="space-y-1.5">
-            <FolderSelector
-              value={folderPath}
-              onChange={(path) => {
-                setFolderPath(path);
-                setDatetimeOffsetSeconds(0); // Reset offset when folder changes
-                setTouchedFields((prev) => ({ ...prev, folder: true }));
-              }}
-              datetimeOffsetSeconds={datetimeOffsetSeconds}
-              onAdjustDates={() => setOffsetModalOpen(true)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Ideally one camera, one place, one time period. Backlog or
-              mixed folders also work; stats, maps, and exports will
-              blend them together (events stay separated by folder).
-            </p>
-          </div>
+          <FolderSelector
+            value={folderPath}
+            onChange={(path) => {
+              setFolderPath(path);
+              setDatetimeOffsetSeconds(0); // Reset offset when folder changes
+              setTouchedFields((prev) => ({ ...prev, folder: true }));
+            }}
+            datetimeOffsetSeconds={datetimeOffsetSeconds}
+            onAdjustDates={() => setOffsetModalOpen(true)}
+          />
 
           {/* Site selector (optional). When the user leaves it blank
               the deployment is created without a camera site, which is

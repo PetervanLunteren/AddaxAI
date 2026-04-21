@@ -393,11 +393,10 @@ export function ActivityOverlapPage() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-        {filters.timeAxis === "sun" && data && data.deployments_without_site > 0 && (
+        {filters.timeAxis === "sun" && data && data.anchor_sun_bands === null && (
           <NoSiteBanner
             projectId={projectId}
-            count={data.deployments_without_site}
-            reason="They are excluded from the sun-time average."
+            message="Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time."
           />
         )}
         <ActivityOverlapFilterBar
