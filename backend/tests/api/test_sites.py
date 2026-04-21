@@ -225,12 +225,14 @@ def test_site_info_happy_path(client, db):
     assert data["top_species"] == [
         {"label": "lion", "display_name": None, "count": 2}
     ]
-    # Trap nights: 10 (dep1) + 5 (dep2) = 15.
-    assert data["trap_nights"] == 15
-    # Rate: 2 obs / 15 nights * 100.
-    assert data["observation_rate_per_100_trap_nights"] == pytest.approx(
-        2.0 / 15.0 * 100
-    )
+    # Trap nights is folder-aware (sum per deployment of per-folder
+    # (max - min + 1) over actual captures). dep1's 4 files all fall on
+    # June 5 → 1 night. dep2's single file is July 3 → 1 night. Total 2.
+    # The manually-set Deployment.start_date_local / end_date_local are
+    # ignored now (they're display-only).
+    assert data["trap_nights"] == 2
+    # Rate: 2 obs / 2 nights * 100 = 100.
+    assert data["observation_rate_per_100_trap_nights"] == pytest.approx(100.0)
     assert data["verification"] == {"verified": 0, "total": 5}
 
 
@@ -258,40 +260,41 @@ def test_site_info_empty_site(client, db):
     assert data["last_captured_at_local"] is None
 
 
-def test_site_info_open_ended_deployment_falls_back_to_last_capture(client, db):
-    """A deployment without an explicit end_date falls back to the
-    date of its latest captured file so trap_nights still gives a
-    useful number. A deployment with neither an end nor any captures
-    contributes 0."""
+def test_site_info_trap_nights_from_file_spans(client, db):
+    """Trap nights is folder-aware: each deployment contributes the sum
+    of per-folder (max - min + 1) day spans over its actual files. A
+    deployment with no files contributes 0. The manually-set
+    start_date_local / end_date_local on the Deployment row are no
+    longer consulted for this calculation."""
     project = make_project(db, detection_threshold=0.5)
     site = make_site(
         db, project_id=project.id, name="Mixed", latitude=0.0, longitude=0.0
     )
-    dep_with_end = make_deployment(
+    dep_with_files = make_deployment(
         db,
         site_id=site.id,
         start_date_local=date(2024, 6, 1),
-        end_date_local=date(2024, 6, 10),  # 10 nights
+        end_date_local=date(2024, 6, 10),  # display-only
     )
-    dep_open = make_deployment(
+    dep_empty = make_deployment(
         db,
         site_id=site.id,
         start_date_local=date(2024, 7, 1),
         end_date_local=None,
     )
-    # dep_open has no explicit end but has captures up to July 5 -> 5 nights
-    make_file(
-        db,
-        deployment_id=dep_open.id,
-        file_type="image",
-        file_format="jpg",
-        captured_at_local=datetime(2024, 7, 5, 12, 0),
-    )
-    # dep_with_end is not given any files; its explicit end date is used.
-    _ = dep_with_end  # silence unused-name check
+    # 3 files spanning June 5 .. June 7 = 3 inclusive days.
+    for day in (5, 6, 7):
+        make_file(
+            db,
+            deployment_id=dep_with_files.id,
+            file_type="image",
+            file_format="jpg",
+            captured_at_local=datetime(2024, 6, day, 12, 0),
+        )
+    # dep_empty has no files; contributes 0.
+    _ = dep_empty
 
     resp = client.get(f"/api/sites/{site.id}/info")
     data = resp.json()
     assert data["deployment_count"] == 2
-    # 10 (dep_with_end) + 5 (fallback from dep_open's last capture).
-    assert data["trap_nights"] == 15
+    assert data["trap_nights"] == 3

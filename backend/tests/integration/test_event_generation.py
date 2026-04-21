@@ -192,3 +192,174 @@ def test_events_temporal_clustering(deployment_scaffold):
 
     assert events[1].event_start_local == base + timedelta(hours=3)
     assert events[1].event_end_local == base + timedelta(hours=3, minutes=10)
+
+
+def test_events_split_at_folder_boundary(deployment_scaffold):
+    """
+    Files from different folders must not cluster together, even when
+    their timestamps fall inside the independence interval. Models the
+    backlog case where one deployment wraps multiple SD-card folders.
+    """
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    s["project"].independence_interval = 1800  # 30 min
+    db.flush()
+
+    # Two folders, each with two images, timestamps 1 minute apart
+    # everywhere. Under time-only clustering this is one event of 4.
+    # With folder awareness, two events of two.
+    base = datetime(2024, 6, 15, 10, 0, 0)
+    (deploy_dir / "card_a").mkdir()
+    (deploy_dir / "card_b").mkdir()
+    images = []
+    schedule = [
+        ("card_a/img_000.jpg", base),
+        ("card_a/img_001.jpg", base + timedelta(minutes=1)),
+        ("card_b/img_000.jpg", base + timedelta(minutes=2)),
+        ("card_b/img_001.jpg", base + timedelta(minutes=3)),
+    ]
+    for rel, ts in schedule:
+        create_tiny_jpeg(deploy_dir / rel)
+        images.append({
+            "file": rel,
+            "exif_metadata": {
+                "DateTimeOriginal": ts.strftime("%Y:%m:%d %H:%M:%S"),
+            },
+            "detections": [
+                {"category": "1", "conf": 0.9,
+                 "bbox": [0.1, 0.2, 0.3, 0.4],
+                 "classifications": [[1, 0.8]]},
+            ],
+        })
+    md_json = build_detection_json(
+        images, classification_categories={"1": "zebra"}
+    )
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+    with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+        load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
+
+    total = generate_events_for_project(db, s["project"].id)
+    assert total == 2
+    events = db.query(Event).order_by(Event.event_start_local.asc()).all()
+    assert events[0].file_count == 2
+    assert events[1].file_count == 2
+    # First event's files all live under card_a.
+    for f in events[0].files:
+        assert "/card_a/" in f.file_path
+    for f in events[1].files:
+        assert "/card_b/" in f.file_path
+
+
+def test_events_interleaved_parallel_folders(deployment_scaffold):
+    """
+    Two cameras in two folders firing in parallel — timestamps interleave
+    one second apart. The naive single-walk would break on every folder
+    change and produce one event per file. Correct behaviour: bucket by
+    folder first, then cluster, yielding one event per folder.
+    """
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    s["project"].independence_interval = 1800
+    db.flush()
+
+    base = datetime(2024, 6, 15, 10, 0, 0)
+    (deploy_dir / "cam_a").mkdir()
+    (deploy_dir / "cam_b").mkdir()
+    schedule = [
+        ("cam_a/img_000.jpg", base),
+        ("cam_b/img_000.jpg", base + timedelta(seconds=1)),
+        ("cam_a/img_001.jpg", base + timedelta(seconds=2)),
+        ("cam_b/img_001.jpg", base + timedelta(seconds=3)),
+        ("cam_a/img_002.jpg", base + timedelta(seconds=4)),
+        ("cam_b/img_002.jpg", base + timedelta(seconds=5)),
+    ]
+    images = []
+    for rel, ts in schedule:
+        create_tiny_jpeg(deploy_dir / rel)
+        images.append({
+            "file": rel,
+            "exif_metadata": {
+                "DateTimeOriginal": ts.strftime("%Y:%m:%d %H:%M:%S"),
+            },
+            "detections": [
+                {"category": "1", "conf": 0.9,
+                 "bbox": [0.1, 0.2, 0.3, 0.4],
+                 "classifications": [[1, 0.8]]},
+            ],
+        })
+    md_json = build_detection_json(
+        images, classification_categories={"1": "zebra"}
+    )
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+    with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+        load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
+
+    total = generate_events_for_project(db, s["project"].id)
+    assert total == 2
+    events = db.query(Event).all()
+    assert sorted(e.file_count for e in events) == [3, 3]
+    for e in events:
+        folders = {f.file_path.rsplit("/", 1)[0] for f in e.files}
+        assert len(folders) == 1, "event spans multiple folders"
+
+
+def test_events_same_folder_still_cluster(deployment_scaffold):
+    """Sanity: files that live in the SAME folder still cluster by time
+    as before. The folder constraint is additive, not replacing the gap
+    rule."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    s["project"].independence_interval = 1800
+    db.flush()
+
+    base = datetime(2024, 6, 15, 10, 0, 0)
+    (deploy_dir / "card_a").mkdir()
+    images = []
+    for i in range(3):
+        rel = f"card_a/img_{i:03d}.jpg"
+        create_tiny_jpeg(deploy_dir / rel)
+        images.append({
+            "file": rel,
+            "exif_metadata": {
+                "DateTimeOriginal": (base + timedelta(minutes=i * 2)).strftime(
+                    "%Y:%m:%d %H:%M:%S"
+                ),
+            },
+            "detections": [
+                {"category": "1", "conf": 0.9,
+                 "bbox": [0.1, 0.2, 0.3, 0.4],
+                 "classifications": [[1, 0.8]]},
+            ],
+        })
+    md_json = build_detection_json(
+        images, classification_categories={"1": "zebra"}
+    )
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+    with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+        load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
+
+    total = generate_events_for_project(db, s["project"].id)
+    assert total == 1
+    event = db.query(Event).one()
+    assert event.file_count == 3

@@ -308,9 +308,12 @@ def test_deployment_info_happy_path(client, db):
     assert data["top_species"] == [
         {"label": "lion", "display_name": None, "count": 3}
     ]
-    # Trap nights = 30 (June 1 to June 30 inclusive). Rate = 3/30 * 100.
-    assert data["trap_nights"] == 30
-    assert data["observation_rate_per_100_trap_nights"] == pytest.approx(10.0)
+    # Trap nights is folder-aware: sum of (max - min + 1) per folder over
+    # file captures. Here all 5 files live under /fake/ and span June 15
+    # to June 16, so trap_nights = 2 regardless of the manually-set
+    # Deployment.start_date_local / end_date_local. Rate = 3 / 2 * 100.
+    assert data["trap_nights"] == 2
+    assert data["observation_rate_per_100_trap_nights"] == pytest.approx(150.0)
     # Verification: no files verified in the fixture.
     assert data["verification"] == {"verified": 0, "total": 5}
     # Total size is 0 because test factory doesn't set size_bytes.

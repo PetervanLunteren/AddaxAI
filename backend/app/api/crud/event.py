@@ -5,7 +5,9 @@ Events are time-clustered groups of files within a deployment.
 """
 
 import uuid
+from collections import defaultdict
 from datetime import datetime, time
+from pathlib import Path
 
 from sqlalchemy import Integer, and_, delete, exists, func, insert, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
@@ -180,6 +182,24 @@ def _apply_event_filters(
     return query
 
 
+def _folder_key(f: File) -> str:
+    """
+    Return the clustering folder for a file.
+
+    For images, it's the file's own parent directory. For extracted video
+    frames (`file_type='frame'`), the frame itself lives inside
+    `.addaxai/video_frames/...`, which is a pipeline artifact path — not
+    where the camera actually was. Fall back to the source video's parent
+    so frames of one video cluster with images shot at the same camera.
+
+    A frame row without a source_video (shouldn't happen in healthy data)
+    falls back to its own file_path, which at worst over-splits by one.
+    """
+    if f.file_type == "frame" and f.source_video is not None:
+        return str(Path(f.source_video.file_path).parent)
+    return str(Path(f.file_path).parent)
+
+
 def generate_events_for_project(db: Session, project_id: str) -> int:
     """
     Generate events for all deployments in a project.
@@ -189,7 +209,12 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     1. Fetch project's independence_interval
     2. Delete all existing events for every deployment in the project
     3. For each deployment, query files ordered by timestamp ASC
-    4. Walk files: start new event when gap > independence_interval seconds
+    4. Walk files: start a new event when *either* the gap exceeds
+       `independence_interval` *or* the next file lives in a different
+       folder than the previous one. The folder check means that when a
+       user runs a backlog of multiple SD cards as one deployment, events
+       never bridge across SD-card folders, even if timestamps happen to
+       overlap. Frame rows use their source video's parent as the folder.
     5. Create Event records with event_start_local, event_end_local, file_count
     6. Insert event_files junction rows with sequence_number
 
@@ -218,35 +243,46 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     for deployment in deployments:
         files = (
             db.query(File)
+            .options(joinedload(File.source_video))
             .filter(File.deployment_id == deployment.id)
             .filter(File.file_type.in_(["image", "frame"]))
-            .order_by(File.captured_at_local.asc())
             .all()
         )
 
         if not files:
             continue
 
-        # Walk files and cluster into events
-        current_event_files: list[File] = [files[0]]
+        # Bucket by folder first, then cluster each bucket by time. A
+        # single linear walk over (time-sorted) files would create one
+        # event per file when timestamps interleave across folders
+        # (two cameras firing in parallel). Bucketing first means each
+        # folder's clustering is independent of the others.
+        by_folder: dict[str, list[File]] = defaultdict(list)
+        for f in files:
+            by_folder[_folder_key(f)].append(f)
 
-        for i in range(1, len(files)):
-            gap = (
-                files[i].captured_at_local - files[i - 1].captured_at_local
-            ).total_seconds()
-
-            if gap > independence_interval:
-                # Save current event and start new one
+        # Iterate folders in a deterministic order so tests and logs
+        # are stable; event ordering within the deployment is
+        # downstream-sorted by event_start_local anyway.
+        for folder_key in sorted(by_folder):
+            folder_files = sorted(
+                by_folder[folder_key], key=lambda f: f.captured_at_local
+            )
+            current_event_files: list[File] = [folder_files[0]]
+            for i in range(1, len(folder_files)):
+                gap = (
+                    folder_files[i].captured_at_local
+                    - folder_files[i - 1].captured_at_local
+                ).total_seconds()
+                if gap > independence_interval:
+                    _create_event(db, deployment.id, current_event_files)
+                    total_events += 1
+                    current_event_files = [folder_files[i]]
+                else:
+                    current_event_files.append(folder_files[i])
+            if current_event_files:
                 _create_event(db, deployment.id, current_event_files)
                 total_events += 1
-                current_event_files = [files[i]]
-            else:
-                current_event_files.append(files[i])
-
-        # Save last event
-        if current_event_files:
-            _create_event(db, deployment.id, current_event_files)
-            total_events += 1
 
     db.flush()
 

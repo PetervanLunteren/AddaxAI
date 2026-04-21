@@ -170,77 +170,29 @@ def get_per_deployment_trap_nights(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> dict[str, int]:
-    """Calculate trap nights for each deployment in a project.
+    """Folder-aware trap-nights count per deployment in a project.
 
-    For each deployment:
-        effective_start = min(start_date, first file date)
-        effective_end = end_date or last file date or start_date
-        nights = max(0, (effective_end - effective_start).days)
-
-    Clips to date_from/date_to range if provided. Includes 0-file deployments.
-    Returns a dict mapping deployment_id to its trap nights count (raw,
-    no minimum). Used by both the dashboard total and the map endpoint.
+    Delegates to `compute_trap_nights_for_deployments` which buckets each
+    deployment's files by folder (SD-card boundary) and sums per-folder
+    `(max - min) + 1` day spans. Empty deployments get 0.
     """
-    min_file_date = func.min(func.date(File.captured_at_local)).label("min_file_date")
-    max_file_date = func.max(func.date(File.captured_at_local)).label("max_file_date")
-
     from app.api.crud.deployment import site_ids_filter
+    from app.api.crud.trap_nights import compute_trap_nights_for_deployments
 
-    query = (
-        select(
-            Deployment.id,
-            Deployment.start_date_local,
-            Deployment.end_date_local,
-            min_file_date,
-            max_file_date,
-        )
-        .select_from(Deployment)
-        .outerjoin(File, File.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
-        .group_by(Deployment.id, Deployment.start_date_local, Deployment.end_date_local)
-    )
-
+    query = select(Deployment.id).where(Deployment.project_id == project_id)
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.where(site_clause)
-
-    rows = db.execute(query).all()
+    deployment_ids = [row[0] for row in db.execute(query).all()]
 
     clip_start = date.fromisoformat(date_from) if date_from else None
     clip_end = date.fromisoformat(date_to) if date_to else None
 
-    nights_by_deployment: dict[str, int] = {}
-    for row in rows:
-        dep_start = row.start_date_local
-        if not dep_start:
-            nights_by_deployment[row.id] = 0
-            continue
-
-        # Parse file dates (SQLite returns strings)
-        min_fd = row.min_file_date
-        if min_fd and isinstance(min_fd, str):
-            min_fd = date.fromisoformat(min_fd)
-        elif min_fd and isinstance(min_fd, datetime):
-            min_fd = min_fd.date()
-
-        max_fd = row.max_file_date
-        if max_fd and isinstance(max_fd, str):
-            max_fd = date.fromisoformat(max_fd)
-        elif max_fd and isinstance(max_fd, datetime):
-            max_fd = max_fd.date()
-
-        effective_start = min(dep_start, min_fd) if min_fd else dep_start
-        dep_end = row.end_date_local
-        effective_end = dep_end or max_fd or effective_start
-
-        if clip_start:
-            effective_start = max(effective_start, clip_start)
-        if clip_end:
-            effective_end = min(effective_end, clip_end)
-
-        nights_by_deployment[row.id] = max(0, (effective_end - effective_start).days)
-
-    return nights_by_deployment
+    nights = compute_trap_nights_for_deployments(
+        db, deployment_ids, clip_start=clip_start, clip_end=clip_end
+    )
+    # Ensure every deployment is represented, including those with no files.
+    return {dep_id: nights.get(dep_id, 0) for dep_id in deployment_ids}
 
 
 def get_trap_nights(
