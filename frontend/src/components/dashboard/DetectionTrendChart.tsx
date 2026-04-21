@@ -49,36 +49,75 @@ function getMonthKey(dateStr: string): string {
   return dateStr.slice(0, 7); // "YYYY-MM"
 }
 
+/**
+ * Generate every bucket key between `from` and `to` inclusive, at the
+ * given granularity. Iterates day-by-day and dedupes so week and month
+ * keys come out without gaps even though the calendar inside them is
+ * irregular (ISO weeks don't line up with 7-day increments starting
+ * mid-week; months have variable length).
+ */
+function denseRangeKeys(
+  from: Date,
+  to: Date,
+  keyOf: (dateStr: string) => string,
+): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  const cursor = new Date(from);
+  // UTC-based advance to avoid DST edge cases shifting the cursor.
+  while (cursor.getTime() <= to.getTime()) {
+    const iso = cursor.toISOString().slice(0, 10);
+    const k = keyOf(iso);
+    if (!seen.has(k)) {
+      seen.add(k);
+      keys.push(k);
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
 function groupData(
   points: DetectionTrendPoint[],
   granularity: Granularity,
+  rangeStart: string | null,
+  rangeEnd: string | null,
 ): { labels: string[]; values: number[] } {
-  if (granularity === "day") {
-    return {
-      labels: points.map((p) => p.date),
-      values: points.map((p) => p.count),
-    };
-  }
+  const keyOf: (d: string) => string =
+    granularity === "day"
+      ? (d) => d
+      : granularity === "week"
+        ? getWeekKey
+        : getMonthKey;
 
-  const grouped = new Map<string, number>();
+  // Bucket observed counts by key (multiple point.date values can
+  // collapse to the same week or month key).
+  const bucketed = new Map<string, number>();
   for (const point of points) {
-    const key = granularity === "week" ? getWeekKey(point.date) : getMonthKey(point.date);
-    grouped.set(key, (grouped.get(key) ?? 0) + point.count);
+    const k = keyOf(point.date);
+    bucketed.set(k, (bucketed.get(k) ?? 0) + point.count);
   }
 
-  const sortedKeys = [...grouped.keys()].sort();
-  return {
-    labels: sortedKeys,
-    values: sortedKeys.map((k) => grouped.get(k)!),
-  };
+  // Inclusive range bounds: user's filter wins; otherwise fall back to
+  // the first and last observed dates in the data.
+  const from = rangeStart ?? points[0]?.date;
+  const to = rangeEnd ?? points[points.length - 1]?.date;
+  if (!from || !to) return { labels: [], values: [] };
+
+  // Dense list of bucket keys across the whole range, then zero-fill.
+  const labels = denseRangeKeys(new Date(from), new Date(to), keyOf);
+  const values = labels.map((k) => bucketed.get(k) ?? 0);
+  return { labels, values };
 }
 
 /**
- * Pick a sensible default granularity based on the number of raw data points.
+ * Pick a sensible default granularity based on the span of the range
+ * in days. Days for short surveys, weeks for quarters, months for
+ * multi-year projects.
  */
-function pickGranularity(pointCount: number): Granularity {
-  if (pointCount > 180) return "month";
-  if (pointCount > 60) return "week";
+function pickGranularity(days: number): Granularity {
+  if (days > 365) return "month";
+  if (days > 90) return "week";
   return "day";
 }
 
@@ -146,16 +185,33 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       }),
   });
 
-  // Auto-select optimal granularity when data arrives
+  // Auto-select optimal granularity when data arrives. Keyed on the
+  // span of the chart's range in days (user filter wins, else the first
+  // and last observed dates), not the point count — after zero-filling
+  // empty days the point count is roughly equal to the span anyway.
   useEffect(() => {
-    if (trendData) {
-      setGranularity(pickGranularity(trendData.length));
-    }
-  }, [trendData]);
+    if (!trendData || trendData.length === 0) return;
+    const first = dateRange.startDate ?? trendData[0].date;
+    const last =
+      dateRange.endDate ?? trendData[trendData.length - 1].date;
+    const days =
+      Math.round(
+        (new Date(last).getTime() - new Date(first).getTime()) / 86400000,
+      ) + 1;
+    setGranularity(pickGranularity(days));
+  }, [trendData, dateRange.startDate, dateRange.endDate]);
 
   const { labels, values } = useMemo(
-    () => (trendData ? groupData(trendData, granularity) : { labels: [], values: [] }),
-    [trendData, granularity],
+    () =>
+      trendData
+        ? groupData(
+            trendData,
+            granularity,
+            dateRange.startDate,
+            dateRange.endDate,
+          )
+        : { labels: [], values: [] },
+    [trendData, granularity, dateRange.startDate, dateRange.endDate],
   );
 
   const normalizedValues = useMemo(() => values.map(norm), [values, trapNights]);

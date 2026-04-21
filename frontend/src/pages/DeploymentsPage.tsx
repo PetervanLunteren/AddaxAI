@@ -7,7 +7,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, FolderTree } from "lucide-react";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, Scissors } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
 import { sitesApi } from "../api/sites";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
@@ -50,12 +50,26 @@ import {
 import { RelinkGroupBanner } from "../components/deployments/RelinkGroupBanner";
 
 type SortField =
+  | "folder"
   | "site_name"
   | "period"
   | "file_count"
   | "notes"
   | "tag_count";
 type SortDir = "asc" | "desc";
+
+/**
+ * Leaf segment of a folder path. Used as a deployment's primary
+ * identifier in the table ("deployment_001" out of
+ * `/data/project/site/deployment_001`). Falls back to an em-dash when
+ * folder_path is null (legacy / unlinked deployments).
+ */
+function folderBasename(path: string | null): string {
+  if (!path) return "—";
+  const trimmed = path.replace(/\/$/, "");
+  const i = trimmed.lastIndexOf("/");
+  return i >= 0 ? trimmed.slice(i + 1) : trimmed;
+}
 
 /**
  * Render a deployment's period as a single readable string.
@@ -86,6 +100,8 @@ const FILTER_SCHEMA: FilterSchema = {
 interface DeploymentRow extends DeploymentResponse {
   /** Rendered site name, `-` when the deployment has no site. */
   site_name: string;
+  /** Leaf of folder_path, used as the primary table identifier. */
+  folder_basename: string;
   file_count: number;
   event_count: number;
   detection_count: number;
@@ -171,10 +187,11 @@ export function DeploymentsPage() {
         event_count: 0,
         detection_count: 0,
       };
-      const siteName = d.site_id ? (siteMap.get(d.site_id) ?? "Unknown") : "-";
+      const siteName = d.site_id ? (siteMap.get(d.site_id) ?? "Unknown") : "(no site)";
       return {
         ...d,
         site_name: siteName,
+        folder_basename: folderBasename(d.folder_path),
         file_count: stats.file_count,
         event_count: stats.event_count,
         detection_count: stats.detection_count,
@@ -210,6 +227,7 @@ export function DeploymentsPage() {
     if (search) {
       const q = search.toLowerCase();
       result = result.filter((d) => {
+        if (d.folder_basename.toLowerCase().includes(q)) return true;
         if (d.site_name.toLowerCase().includes(q)) return true;
         if (d.notes && d.notes.toLowerCase().includes(q)) return true;
         for (const [k, v] of Object.entries(d.tags ?? {})) {
@@ -239,6 +257,7 @@ export function DeploymentsPage() {
     ): string | number | null => {
       if (field === "tag_count") return Object.keys(d.tags ?? {}).length;
       if (field === "period") return d.start_date_local;
+      if (field === "folder") return d.folder_basename;
       return d[field];
     };
 
@@ -385,6 +404,9 @@ export function DeploymentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className={headClass} onClick={() => toggleSort("folder")}>
+                    Folder<SortIcon field="folder" sortField={sortField} sortDir={sortDir} />
+                  </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("site_name")}>
                     Site<SortIcon field="site_name" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
@@ -427,8 +449,11 @@ export function DeploymentsPage() {
                             </Tooltip>
                           </TooltipProvider>
                         )}
-                        <span>{dep.site_name}</span>
+                        <span>{dep.folder_basename}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {dep.site_name}
                     </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {formatPeriod(dep.start_date_local, dep.end_date_local)}
@@ -463,7 +488,7 @@ export function DeploymentsPage() {
                             })}
                             disabled={!dep.folder_path}
                           >
-                            <FolderTree className="mr-2 h-4 w-4" />
+                            <Scissors className="mr-2 h-4 w-4" />
                             Split
                           </DropdownMenuItem>
                           <DropdownMenuItem

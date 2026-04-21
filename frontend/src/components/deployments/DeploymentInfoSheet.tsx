@@ -11,7 +11,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, FolderTree, Pencil, Trash2 } from "lucide-react";
+import { FolderOpen, Pencil, Scissors, Trash2 } from "lucide-react";
 
 import { deploymentsApi, type DeploymentInfo } from "../../api/deployments";
 import { formatCameraDateTime } from "../../lib/datetime";
@@ -103,7 +103,7 @@ export function DeploymentInfoSheet({
             onClick={onSplit}
             disabled={!onSplit || !data?.folder_path}
           >
-            <FolderTree className="mr-2 h-4 w-4" />
+            <Scissors className="mr-2 h-4 w-4" />
             Split
           </Button>
           <Button

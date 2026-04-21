@@ -33,9 +33,9 @@
 
 - [x] In the deployment page, lets merge the start and end date cols into one. Show it as human redable dates and the duration, like this "1 Apr 2011 - 23 Apr 2011 (23 days)". Agree? Lets make a plan! 
 
-- [ ] Sometimes it is confusing that both the deployments and the sites tables have the sitename as first and bold column. Should we add a deployment name to the table (auto detect in first instance, and make editable)? Should we also give users the option to give a deployment name at the analysis form? Or do you think that is cluttering with extra inputs? WOuld it make sense to have an advanced card (collapsable, default hidden), with all the input widgets like notes, tags, name. What do you think? 
+- [x] Sometimes it is confusing that both the deployments and the sites tables have the sitename as first and bold column. Should we add a deployment name to the table (auto detect in first instance, and make editable)? Should we also give users the option to give a deployment name at the analysis form? Or do you think that is cluttering with extra inputs? WOuld it make sense to have an advanced card (collapsable, default hidden), with all the input widgets like notes, tags, name. What do you think? 
 
-- [ ] change the split into deployments feature icon from "folder-tree" to "scissors"
+- [x] change the split deployments feature icon from "folder-tree" to "scissors"
 
 - [ ] Right now we have key:value tags and notes for both sites and deployments, which is good. But might also be confusing... "Didnt I alreay filled this in?". SHould we rename them to "Site notes" / "Deployment notes" (might be bad idae as we duplicate words and add visual clutter). Perhaps better to update the placeholder to match the site and deployment specific inpupts better. What do you thnink? 
 
