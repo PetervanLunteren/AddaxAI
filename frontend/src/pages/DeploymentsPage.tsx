@@ -36,6 +36,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { filtersFromSearchParams, filtersToSearchParams, NO_SITE_SENTINEL, type FilterSchema } from "../lib/filter-url";
+import { formatShortDate } from "../lib/datetime";
 import { DeploymentInfoSheet } from "../components/deployments/DeploymentInfoSheet";
 import { EditDeploymentDialog } from "../components/deployments/EditDeploymentDialog";
 import {
@@ -50,12 +51,29 @@ import { RelinkGroupBanner } from "../components/deployments/RelinkGroupBanner";
 
 type SortField =
   | "site_name"
-  | "start_date"
-  | "end_date"
+  | "period"
   | "file_count"
   | "notes"
   | "tag_count";
 type SortDir = "asc" | "desc";
+
+/**
+ * Render a deployment's period as a single readable string.
+ *
+ * Null end date (no files loaded yet) → just the start date. Same-day
+ * deployments collapse to one date plus "(1 day)". Multi-day
+ * deployments show start-end with an inclusive day count.
+ */
+function formatPeriod(start: string, end: string | null): string {
+  const s = formatShortDate(start);
+  if (!end) return s;
+  if (start === end) return `${s} (1 day)`;
+  const days =
+    Math.round(
+      (new Date(end).getTime() - new Date(start).getTime()) / 86_400_000,
+    ) + 1;
+  return `${s} - ${formatShortDate(end)} (${days} days)`;
+}
 
 const FILTER_SCHEMA: FilterSchema = {
   search: "string",
@@ -95,7 +113,7 @@ export function DeploymentsPage() {
   const dateTo = (filters.date_to as string | undefined) ?? "";
   const tagKeysFilter = (filters.tag_keys as string[] | undefined) ?? [];
 
-  const [sortField, setSortField] = useState<SortField>("start_date");
+  const [sortField, setSortField] = useState<SortField>("period");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [editingDeployment, setEditingDeployment] = useState<DeploymentResponse | null>(null);
   const [deletingDeployment, setDeletingDeployment] = useState<DeleteDeploymentTarget | null>(null);
@@ -214,14 +232,19 @@ export function DeploymentsPage() {
       });
     }
 
-    // Sort
+    // Sort. `period` sorts by start date (ISO strings lex-sort chronologically).
+    const getSortValue = (
+      d: DeploymentRow,
+      field: SortField,
+    ): string | number | null => {
+      if (field === "tag_count") return Object.keys(d.tags ?? {}).length;
+      if (field === "period") return d.start_date_local;
+      return d[field];
+    };
+
     result.sort((a, b) => {
-      let aVal: string | number | null = sortField === "tag_count"
-        ? Object.keys(a.tags ?? {}).length
-        : a[sortField];
-      let bVal: string | number | null = sortField === "tag_count"
-        ? Object.keys(b.tags ?? {}).length
-        : b[sortField];
+      let aVal = getSortValue(a, sortField);
+      let bVal = getSortValue(b, sortField);
 
       if (aVal == null && bVal == null) return 0;
       if (aVal == null) return 1;
@@ -365,11 +388,8 @@ export function DeploymentsPage() {
                   <TableHead className={headClass} onClick={() => toggleSort("site_name")}>
                     Site<SortIcon field="site_name" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("start_date")}>
-                    Start date<SortIcon field="start_date" sortField={sortField} sortDir={sortDir} />
-                  </TableHead>
-                  <TableHead className={headClass} onClick={() => toggleSort("end_date")}>
-                    End date<SortIcon field="end_date" sortField={sortField} sortDir={sortDir} />
+                  <TableHead className={headClass} onClick={() => toggleSort("period")}>
+                    Period<SortIcon field="period" sortField={sortField} sortDir={sortDir} />
                   </TableHead>
                   <TableHead className={headClass} onClick={() => toggleSort("file_count")}>
                     Files<SortIcon field="file_count" sortField={sortField} sortDir={sortDir} />
@@ -410,9 +430,8 @@ export function DeploymentsPage() {
                         <span>{dep.site_name}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">{dep.start_date_local}</TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
-                      {dep.end_date_local || "\u2014"}
+                      {formatPeriod(dep.start_date_local, dep.end_date_local)}
                     </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">{dep.file_count}</TableCell>
                     <TableCell className="text-muted-foreground max-w-[300px] truncate">

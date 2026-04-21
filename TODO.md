@@ -27,11 +27,15 @@
 
 # other
 
-- [ ] Should we add the [+] button to the Edit deployment Modal next to the dropdown. Now it is just the dropdown and you need to move to the sites page to add one, then move back. In the analysis form we have the dropdown with a [+] next to it. That is what i also want in the Edit deployment Modal. 
-
 - [ ] the Detection trend card in the dashboard reports only the ticks it finds, not 0 days or months. Do you see what I mean? A observation on 1 jan, and one on 1 juli would show as a two tick straight line. It should also shjow the empty ticks. 
 
-- [ ] Add the "(no site)" option to all site filters trhoughout the app. That way users can select the data that has no site attached to them. Only show if there actually are data with no sites attached. Makes sense? 
+- [x] Add the "(no site)" option to all site filters trhoughout the app. That way users can select the data that has no site attached to them. Only show if there actually are data with no sites attached. Makes sense? 
+
+- [x] In the deployment page, lets merge the start and end date cols into one. Show it as human redable dates and the duration, like this "1 Apr 2011 - 23 Apr 2011 (23 days)". Agree? Lets make a plan! 
+
+- [ ] Sometimes it is confusing that both the deployments and the sites tables have the sitename as first and bold column. Should we add a deployment name to the table (auto detect in first instance, and make editable)? Should we also give users the option to give a deployment name at the analysis form? Or do you think that is cluttering with extra inputs? WOuld it make sense to have an advanced card (collapsable, default hidden), with all the input widgets like notes, tags, name. What do you think? 
+
+- [ ] change the split into deployments feature icon from "folder-tree" to "scissors"
 
 - [ ] Right now we have key:value tags and notes for both sites and deployments, which is good. But might also be confusing... "Didnt I alreay filled this in?". SHould we rename them to "Site notes" / "Deployment notes" (might be bad idae as we duplicate words and add visual clutter). Perhaps better to update the placeholder to match the site and deployment specific inpupts better. What do you thnink? 
 

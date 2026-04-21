@@ -89,3 +89,28 @@ export function formatCameraDateTime(
 export function asCameraDate(iso: string | null | undefined): Date | null {
   return parseLocalAsUtc(iso);
 }
+
+/**
+ * Format a plain `YYYY-MM-DD` date string (no time component, no tz) in
+ * the viewer's locale, e.g. "1 Apr 2011" on en-GB or "Apr 1, 2011" on
+ * en-US. Used for deployment bound dates which are stored as SQL Date.
+ *
+ * `timeZone: "UTC"` is important: `new Date("2024-01-01")` parses to
+ * UTC midnight, and without the timeZone override `toLocaleDateString`
+ * converts to the viewer's tz and can render the previous day in
+ * western timezones.
+ */
+export function formatShortDate(
+  date: string | null | undefined,
+  locale?: string | string[],
+): string {
+  if (!date) return "";
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}

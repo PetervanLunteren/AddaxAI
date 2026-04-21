@@ -19,6 +19,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Clock, Sun } from "lucide-react";
 
 import { sitesApi } from "../../api/sites";
+import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
+import { buildSiteOptions } from "../../lib/site-filter-options";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import { SegmentedControl } from "../ui/segmented-control";
 import { SpeciesPicker } from "./SpeciesPicker";
@@ -54,10 +56,11 @@ export function ActivityOverlapFilterBar({
     queryFn: () => sitesApi.list(projectId),
     enabled: !!projectId,
   });
+  const { data: noSite } = useNoSiteDeployments(projectId);
 
   const siteOptions: MultiSelectOption[] = useMemo(
-    () => (sites ?? []).map((s) => ({ value: s.id, label: s.name })),
-    [sites],
+    () => buildSiteOptions(sites, noSite?.count ?? 0),
+    [sites, noSite],
   );
 
   const update = (patch: Partial<ActivityOverlapPageFilters>) =>

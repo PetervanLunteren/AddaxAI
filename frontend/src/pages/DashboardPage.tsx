@@ -22,6 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
+import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
+import { buildSiteOptions } from "../lib/site-filter-options";
 import { normalizeLabel } from "../utils/labels";
 import { getSpeciesColor, getSpeciesColorWithAlpha, setSpeciesContext } from "../utils/species-colors";
 import {
@@ -55,10 +57,11 @@ export default function DashboardPage() {
     queryFn: () => sitesApi.list(projectId),
     enabled: !!projectId,
   });
+  const { data: noSite } = useNoSiteDeployments(projectId);
 
   const siteOptions = useMemo(
-    () => (sites ?? []).map((s) => ({ value: s.id, label: s.name })),
-    [sites]
+    () => buildSiteOptions(sites, noSite?.count ?? 0),
+    [sites, noSite],
   );
 
   // Fetch overview

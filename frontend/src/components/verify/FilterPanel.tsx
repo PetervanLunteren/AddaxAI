@@ -10,6 +10,8 @@ import { useState } from "react";
 import { ListTodo } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
+import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
+import { buildSiteOptions } from "../../lib/site-filter-options";
 import type { EventFilterParams, VerificationFilter } from "../../api/types";
 import { Button } from "../ui/button";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
@@ -60,6 +62,7 @@ export function FilterPanel({
     queryFn: () => sitesApi.list(projectId),
     enabled: !!projectId,
   });
+  const { data: noSite } = useNoSiteDeployments(projectId);
 
   // Fetch filter options (label list, date range)
   const { data: filterOptions } = useQuery({
@@ -78,8 +81,10 @@ export function FilterPanel({
 
   const [labelModalOpen, setLabelModalOpen] = useState(false);
 
-  const siteOptions: MultiSelectOption[] =
-    sites?.map((s) => ({ value: s.id, label: s.name })) ?? [];
+  const siteOptions: MultiSelectOption[] = buildSiteOptions(
+    sites,
+    noSite?.count ?? 0,
+  );
 
   const labelFilterOptions: MultiSelectOption[] =
     filterOptions?.labels.map((lbl) => ({

@@ -7,10 +7,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { deploymentsApi } from "../../api/deployments";
-import { sitesApi } from "../../api/sites";
 import type { DeploymentResponse } from "../../api/types";
 import { useFolderScan } from "../../hooks/useFolderScan";
 import { formatOffset } from "../../lib/utils";
@@ -24,16 +23,11 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Label } from "../ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { TagsEditor } from "../ui/tags-editor";
+import { AddSiteModal } from "../analyses/AddSiteModal";
 import { DatetimeOffsetModal } from "../analyses/DatetimeOffsetModal";
+import { SiteSelector } from "../analyses/SiteSelector";
 
 interface EditDeploymentDialogProps {
   deployment: DeploymentResponse;
@@ -57,6 +51,7 @@ export function EditDeploymentDialog({
   const [notes, setNotes] = useState<string>(deployment.notes ?? "");
   const [tags, setTags] = useState<Record<string, string>>(deployment.tags ?? {});
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
+  const [showAddSiteModal, setShowAddSiteModal] = useState(false);
 
   // Reset all state when the modal opens with a different deployment
   useEffect(() => {
@@ -67,16 +62,6 @@ export function EditDeploymentDialog({
       setTags(deployment.tags ?? {});
     }
   }, [open, deployment]);
-
-  // Reserved Select value that represents "no site". shadcn's Select
-  // won't accept an empty string, so we translate at the boundary.
-  const NO_SITE_OPTION = "__no_site__";
-
-  const { data: sites } = useQuery({
-    queryKey: ["sites", projectId],
-    queryFn: () => sitesApi.list(projectId),
-    enabled: !!projectId && open,
-  });
 
   // Only scan the folder when the dialog is open AND the folder is
   // known to be valid — otherwise the scan just errors out.
@@ -120,30 +105,16 @@ export function EditDeploymentDialog({
 
           <div className="space-y-4">
             {/* Site picker. Optional: leaving it blank marks the
-                deployment as site-less (batch or unknown location). */}
-            <div className="space-y-2">
-              <Label htmlFor="edit-deployment-site">Site</Label>
-              <Select
-                value={siteId ?? ""}
-                onValueChange={(v) =>
-                  setSiteId(v === NO_SITE_OPTION ? null : v)
-                }
-              >
-                <SelectTrigger id="edit-deployment-site">
-                  <SelectValue placeholder="Optionally select a site" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_SITE_OPTION}>
-                    <span className="text-muted-foreground">(no site)</span>
-                  </SelectItem>
-                  {(sites ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                deployment as site-less (batch or unknown location).
+                Reuses the analyses SiteSelector so the [+] new-site
+                affordance is consistent across the app. */}
+            <SiteSelector
+              projectId={projectId}
+              value={siteId}
+              onChange={setSiteId}
+              onAddNew={() => setShowAddSiteModal(true)}
+              allowEmpty
+            />
 
             {/* Datetime offset (opens DatetimeOffsetModal on click) */}
             <div className="space-y-2">
@@ -226,6 +197,15 @@ export function EditDeploymentDialog({
           onApply={setDatetimeOffset}
         />
       )}
+
+      {/* Add-site modal triggered by the [+] button in SiteSelector.
+          Selects the newly-created site automatically. */}
+      <AddSiteModal
+        projectId={projectId}
+        open={showAddSiteModal}
+        onOpenChange={setShowAddSiteModal}
+        onSiteCreated={(newSiteId) => setSiteId(newSiteId)}
+      />
     </>
   );
 }
