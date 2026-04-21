@@ -317,6 +317,80 @@ def test_events_interleaved_parallel_folders(deployment_scaffold):
         assert len(folders) == 1, "event spans multiple folders"
 
 
+def test_events_and_smoother_input_agree_on_boundaries(deployment_scaffold):
+    """
+    The UI's Event rows and the smoother's input must group files into
+    the same clusters. Both call `cluster_files_into_events` — if that
+    invariant ever broke, downstream stats would disagree with what the
+    smoother operates on.
+    """
+    from app.ml.postprocessing import build_smoother_input
+
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    s["project"].independence_interval = 1800
+    db.flush()
+
+    (deploy_dir / "card_a").mkdir()
+    (deploy_dir / "card_b").mkdir()
+    base = datetime(2024, 6, 15, 10, 0, 0)
+    schedule = [
+        ("card_a/img_000.jpg", base),
+        ("card_a/img_001.jpg", base + timedelta(minutes=1)),
+        ("card_b/img_000.jpg", base + timedelta(minutes=2)),
+        ("card_b/img_001.jpg", base + timedelta(hours=3)),  # gap → new event
+    ]
+    images = []
+    for rel, ts in schedule:
+        create_tiny_jpeg(deploy_dir / rel)
+        images.append({
+            "file": rel,
+            "exif_metadata": {
+                "DateTimeOriginal": ts.strftime("%Y:%m:%d %H:%M:%S"),
+            },
+            "detections": [
+                {"category": "1", "conf": 0.9,
+                 "bbox": [0.1, 0.2, 0.3, 0.4],
+                 "classifications": [[1, 0.8]]},
+            ],
+        })
+    md_json = build_detection_json(
+        images, classification_categories={"1": "zebra"}
+    )
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+    with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+        load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
+
+    # Generate events the way the UI would.
+    generate_events_for_project(db, s["project"].id)
+    events = db.query(Event).order_by(Event.event_start_local.asc()).all()
+    event_file_groups = [
+        frozenset(f.file_path for f in ev.files) for ev in events
+    ]
+
+    # Ask the smoother for its input on the same deployment.
+    smoother_rows = build_smoother_input(
+        s["deployment"].id, 1800, db
+    )
+    smoother_groups: dict[str, set[str]] = {}
+    for row in smoother_rows:
+        smoother_groups.setdefault(row["seq_id"], set()).add(
+            str(deploy_dir / row["file_name"])
+        )
+    smoother_file_groups = [frozenset(v) for v in smoother_groups.values()]
+
+    assert sorted(event_file_groups, key=sorted) == sorted(
+        smoother_file_groups, key=sorted
+    )
+
+
 def test_events_same_folder_still_cluster(deployment_scaffold):
     """Sanity: files that live in the SAME folder still cluster by time
     as before. The folder constraint is additive, not replacing the gap
