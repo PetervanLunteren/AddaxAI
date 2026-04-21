@@ -16,8 +16,8 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path aliases */
-    "baseUrl": ".",
+    /* Path aliases. `paths` resolves relative to this tsconfig's
+       directory since TS 5, so no baseUrl is needed. */
     "paths": {
       "@/*": ["./src/*"]
     },

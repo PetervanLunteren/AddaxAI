@@ -213,12 +213,17 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               maxLength={1000}
-              placeholder="e.g., Camera angled slightly left to avoid sun glare"
+              placeholder="e.g., Lens was covered in baboon fingerprints"
             />
           </div>
 
           {/* Tags */}
-          <TagsEditor value={tags} onChange={setTags} />
+          <TagsEditor
+            value={tags}
+            onChange={setTags}
+            keyPlaceholder="e.g., season"
+            valuePlaceholder="e.g., wet"
+          />
         </CardContent>
 
         <CardFooter className="flex-col gap-3 items-stretch">

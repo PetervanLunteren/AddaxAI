@@ -27,7 +27,7 @@
 
 # other
 
-- [ ] the Detection trend card in the dashboard reports only the ticks it finds, not 0 days or months. Do you see what I mean? A observation on 1 jan, and one on 1 juli would show as a two tick straight line. It should also shjow the empty ticks. 
+- [x] the Detection trend card in the dashboard reports only the ticks it finds, not 0 days or months. Do you see what I mean? A observation on 1 jan, and one on 1 juli would show as a two tick straight line. It should also shjow the empty ticks. 
 
 - [x] Add the "(no site)" option to all site filters trhoughout the app. That way users can select the data that has no site attached to them. Only show if there actually are data with no sites attached. Makes sense? 
 
@@ -37,7 +37,7 @@
 
 - [x] change the split deployments feature icon from "folder-tree" to "scissors"
 
-- [ ] Right now we have key:value tags and notes for both sites and deployments, which is good. But might also be confusing... "Didnt I alreay filled this in?". SHould we rename them to "Site notes" / "Deployment notes" (might be bad idae as we duplicate words and add visual clutter). Perhaps better to update the placeholder to match the site and deployment specific inpupts better. What do you thnink? 
+- [x] Right now we have key:value tags and notes for both sites and deployments, which is good. But might also be confusing... "Didnt I alreay filled this in?". SHould we rename them to "Site notes" / "Deployment notes" (might be bad idae as we duplicate words and add visual clutter). Perhaps better to update the placeholder to match the site and deployment specific inpupts better. What do you thnink? 
 
 - [ ] currently there is a check at the end of analysis (see below). Should we check all timestamps before analysis and warn user upfront (might add extra processing time before startiong analyis), or we check it after detection has been done (like now is implemented, but we show it as a warning instead of an error). "These did not have any tiemstamps and are therefore excluded in analysis." Agree? Now if there is a single image with currupted metadata, it blocks everything. We should bascially just make a log file structure or something like that. "There were some warnings, see ... for more info." And then just continue with the ones that are in order. What do you think? 
                                                                                                                        

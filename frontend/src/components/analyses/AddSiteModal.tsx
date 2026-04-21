@@ -354,12 +354,17 @@ export function AddSiteModal({
               id="notes"
               {...register("notes")}
               maxLength={1000}
-              placeholder="e.g., Watch out for the curious baboons near this site"
+              placeholder="e.g., Honey badgers keep stealing the SD cards"
             />
           </div>
 
           {/* Tags */}
-          <TagsEditor value={tags} onChange={setTags} />
+          <TagsEditor
+            value={tags}
+            onChange={setTags}
+            keyPlaceholder="e.g., access"
+            valuePlaceholder="e.g., 4x4 only"
+          />
 
           {/* Error message */}
           {mutation.isError && (

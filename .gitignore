@@ -40,6 +40,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -81,6 +82,9 @@ secrets.yaml
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Linter caches
+.ruff_cache/
 
 # Alembic
 alembic/versions/*.pyc

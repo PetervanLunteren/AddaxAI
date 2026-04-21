@@ -26,6 +26,13 @@ interface TagsEditorProps {
   /** Initial tags. Only read on mount (component re-mounts when entity changes). */
   value: Record<string, string>;
   onChange: (tags: Record<string, string>) => void;
+  /** Placeholder shown in the key input. Callers typically pass a
+   * context-specific example so users can tell site tags from
+   * deployment tags without repeating scope in the field label. */
+  keyPlaceholder?: string;
+  /** Placeholder shown in the value input. Same rationale as
+   * keyPlaceholder. */
+  valuePlaceholder?: string;
 }
 
 function toRows(tags: Record<string, string>): TagRow[] {
@@ -43,7 +50,12 @@ function toDict(rows: TagRow[]): Record<string, string> {
   return dict;
 }
 
-export function TagsEditor({ value, onChange }: TagsEditorProps) {
+export function TagsEditor({
+  value,
+  onChange,
+  keyPlaceholder = "e.g., Baboon risk",
+  valuePlaceholder = "e.g., High",
+}: TagsEditorProps) {
   const [rows, setRows] = useState<TagRow[]>(() => {
     const existing = toRows(value);
     return existing.length > 0 ? existing : [{ key: "", value: "" }];
@@ -109,7 +121,7 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
             return (
               <div key={i} className="flex items-center gap-2">
                 <Input
-                  placeholder="e.g., Baboon risk"
+                  placeholder={keyPlaceholder}
                   value={row.key}
                   onChange={(e) => updateRow(i, "key", e.target.value)}
                   onBlur={() => handleBlur(i, "key")}
@@ -117,7 +129,7 @@ export function TagsEditor({ value, onChange }: TagsEditorProps) {
                   className={cn("flex-1", isDuplicate && "border-destructive focus-visible:ring-destructive")}
                 />
                 <Input
-                  placeholder="e.g., High"
+                  placeholder={valuePlaceholder}
                   value={row.value}
                   onChange={(e) => updateRow(i, "value", e.target.value)}
                   onBlur={() => handleBlur(i, "value")}
