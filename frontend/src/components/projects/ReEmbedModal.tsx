@@ -23,9 +23,10 @@ interface ReEmbedModalProps {
   onOpenChange: (open: boolean) => void;
   jobId: string | null;
   onComplete?: () => void;
+  onError?: (message: string) => void;
 }
 
-export function ReEmbedModal({ open, onOpenChange, jobId, onComplete }: ReEmbedModalProps) {
+export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }: ReEmbedModalProps) {
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isComplete, setIsComplete] = useState(false);
@@ -65,6 +66,7 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete }: ReEmbedM
     onError: (msg) => {
       setHasError(true);
       setErrorMessage(msg);
+      onError?.(msg);
     },
   });
 

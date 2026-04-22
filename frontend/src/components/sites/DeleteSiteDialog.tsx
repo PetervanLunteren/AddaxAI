@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { sitesApi } from "../../api/sites";
 import type { SiteWithStats } from "../../api/types";
+import { invalidateProjectData } from "../../lib/invalidate-project";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -48,8 +49,12 @@ export function DeleteSiteDialog({
   const deleteMutation = useMutation({
     mutationFn: () => sitesApi.delete(site!.id),
     onSuccess: () => {
+      // Site deletion nulls out site_id on any linked deployments and
+      // changes site filter options / map overlays. Blanket invalidate.
+      if (projectId) {
+        invalidateProjectData(queryClient, projectId);
+      }
       queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
       onOpenChange(false);
     },
     onError: (error: Error) => {

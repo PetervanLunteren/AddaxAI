@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { deploymentsApi } from "../../api/deployments";
 import { ApiError } from "../../lib/api-client";
+import { invalidateProjectData } from "../../lib/invalidate-project";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -66,10 +67,10 @@ export function SplitDeploymentDialog({
   const splitMutation = useMutation({
     mutationFn: () => deploymentsApi.split(deploymentId!, depth),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
-      queryClient.invalidateQueries({
-        queryKey: ["deployment-stats", projectId],
-      });
+      // Split creates new deployment rows and re-partitions files,
+      // detections, and events. Blanket invalidate so every page picks
+      // up the new structure.
+      invalidateProjectData(queryClient, projectId);
       queryClient.invalidateQueries({
         queryKey: ["sites-with-stats", projectId],
       });

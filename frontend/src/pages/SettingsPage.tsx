@@ -91,6 +91,7 @@ import {
 } from "../components/ui/form";
 import { TimezoneSelect } from "../components/ui/timezone-select";
 import { cn } from "../lib/utils";
+import { invalidateProjectData } from "../lib/invalidate-project";
 
 const settingsSchema = z.object({
   detection_model_id: z.string().min(1, "Detection model is required"),
@@ -573,20 +574,13 @@ export default function SettingsPage() {
     onComplete: async () => {
       setSaveJobId(null);
       setIsSaving(false);
-      // Invalidate all project-related caches so every page (images, dashboard,
-      // review, etc.) picks up the reprocessed labels/annotations immediately.
+      // Blanket invalidate so every page (images, dashboard, review,
+      // insights) picks up the reprocessed labels/annotations
+      // immediately.
+      if (projectId) {
+        invalidateProjectData(queryClient, projectId);
+      }
       queryClient.invalidateQueries({ queryKey: ["postprocessing-status", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["label-stats", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["observation-type-stats", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["files", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["event-count"] });
-      queryClient.invalidateQueries({ queryKey: ["statistics"] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-      queryClient.invalidateQueries({ queryKey: ["project-label-stats"] });
 
       // Fetch after-stats now that reprocessing is done
       const pending = pendingBeforeStats.current;
@@ -616,6 +610,11 @@ export default function SettingsPage() {
       setIsSaving(false);
       pendingBeforeStats.current = null;
       toast.error("Reprocessing failed");
+      // Some deployments may have been touched before the error; make
+      // sure every page reflects whatever state the DB is actually in.
+      if (projectId) {
+        invalidateProjectData(queryClient, projectId);
+      }
     },
   });
 

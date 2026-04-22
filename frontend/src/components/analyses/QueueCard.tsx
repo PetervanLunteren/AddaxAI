@@ -12,6 +12,7 @@ import { Play, Loader2, ListTodo } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { deploymentQueueApi } from "@/api/deployment-queue";
+import { invalidateProjectData } from "@/lib/invalidate-project";
 import { QueueItem } from "./QueueItem";
 import { RunQueueModal } from "./RunQueueModal";
 
@@ -155,23 +156,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
         jobIds={jobIds}
         projectId={projectId}
         queueEntryIds={runQueueEntryIds}
-        onAnalysisComplete={() => {
-          // Invalidate all project-related caches so Images, Dashboard,
-          // Verify pages show fresh data without a hard reload.
-          queryClient.invalidateQueries({ queryKey: ["files", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["file"] });
-          queryClient.invalidateQueries({ queryKey: ["detection-stats", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["label-stats", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["observation-type-stats", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
-          queryClient.invalidateQueries({ queryKey: ["events"] });
-          queryClient.invalidateQueries({ queryKey: ["event-count"] });
-          queryClient.invalidateQueries({ queryKey: ["statistics"] });
-          queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-          queryClient.invalidateQueries({ queryKey: ["project-label-stats"] });
-        }}
+        onAnalysisComplete={() => invalidateProjectData(queryClient, projectId)}
       />
     </>
   );

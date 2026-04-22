@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Slider } from "../ui/slider";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
+import { invalidateProjectData } from "../../lib/invalidate-project";
 import { CropGrid } from "./CropGrid";
 import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
@@ -732,9 +733,8 @@ export function SimilarityTab({
         open={!!reEmbedJobId}
         onOpenChange={(open) => { if (!open) setReEmbedJobId(null); }}
         jobId={reEmbedJobId}
-        onComplete={() => {
-          queryClient.invalidateQueries({ queryKey: ["similarity-stats", projectId] });
-        }}
+        onComplete={() => invalidateProjectData(queryClient, projectId)}
+        onError={() => invalidateProjectData(queryClient, projectId)}
       />
 
       {/* Unified toolbar with segmented control */}

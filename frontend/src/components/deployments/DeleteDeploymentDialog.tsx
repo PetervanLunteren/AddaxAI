@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { deploymentsApi } from "../../api/deployments";
+import { invalidateProjectData } from "../../lib/invalidate-project";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -53,8 +54,9 @@ export function DeleteDeploymentDialog({
   const deleteMutation = useMutation({
     mutationFn: () => deploymentsApi.delete(deployment!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["deployment-stats", projectId] });
+      // Deletion cascades to files, detections, and events. Blanket
+      // invalidate so every page reflects the removed data.
+      invalidateProjectData(queryClient, projectId);
       queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
       onOpenChange(false);
     },
