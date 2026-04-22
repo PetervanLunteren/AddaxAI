@@ -973,18 +973,27 @@ export function SimilarityTab({
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : !hasResults ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
-              No search active
-            </p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Right-click on a detection and select &quot;Find similar&quot; to search
-              for visually similar observations.
-            </p>
-          </CardContent>
-        </Card>
+        viewMode === "search" ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <p className="text-lg font-medium text-muted-foreground">
+                No search active
+              </p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Right-click on a detection and select &quot;Find similar&quot; to search
+                for visually similar observations.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          // Sort mode auto-runs, so !hasResults here means the mutation
+          // has not fired yet (e.g. stats still loading). Show a spinner
+          // rather than the misleading "No search active" card.
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )
       ) : allDetections.length === 0 && totalCount > 0 && verificationFilter === "suspicious" ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <p className="text-sm">No suspicious labels in the current selection.</p>
@@ -996,6 +1005,18 @@ export function SimilarityTab({
           <p className="text-sm">All {totalCount} detections in this view are verified.</p>
           <p className="text-xs mt-1">Switch to &quot;All&quot; to see them.</p>
         </div>
+      ) : allDetections.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <p className="text-lg font-medium text-muted-foreground">
+              No detections match your filters
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              Try adjusting or clearing your filters to see more detections.
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
           <CropGrid

@@ -41,8 +41,8 @@ FROM detection_embeddings de
 JOIN detections d ON d.id = de.detection_id
 JOIN files f ON f.id = d.file_id
 JOIN deployments dep ON dep.id = f.deployment_id
-JOIN sites s ON s.id = dep.site_id
-WHERE s.project_id = ?
+LEFT JOIN sites s ON s.id = dep.site_id
+WHERE dep.project_id = ?
 """
 
 
@@ -57,9 +57,22 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
         params.extend(filters["labels"])
 
     if filters.get("site_ids"):
-        placeholders = ",".join("?" for _ in filters["site_ids"])
-        clauses.append(f"s.id IN ({placeholders})")
-        params.extend(filters["site_ids"])
+        # "null" is the reserved NO_SITE_SENTINEL token for deployments
+        # with site_id IS NULL. Translate into the equivalent SQL and
+        # handle mixed (sentinel + real site IDs) correctly.
+        site_ids = list(filters["site_ids"])
+        include_null = "null" in site_ids
+        real_ids = [s for s in site_ids if s != "null"]
+        if include_null and real_ids:
+            placeholders = ",".join("?" for _ in real_ids)
+            clauses.append(f"(dep.site_id IS NULL OR dep.site_id IN ({placeholders}))")
+            params.extend(real_ids)
+        elif include_null:
+            clauses.append("dep.site_id IS NULL")
+        elif real_ids:
+            placeholders = ",".join("?" for _ in real_ids)
+            clauses.append(f"dep.site_id IN ({placeholders})")
+            params.extend(real_ids)
 
     if filters.get("date_from"):
         clauses.append("f.captured_at_local >= ?")
@@ -361,7 +374,7 @@ def _load_anchor_embedding(
     JOIN detections d ON d.id = de.detection_id
     JOIN files f ON f.id = d.file_id
     JOIN deployments dep ON dep.id = f.deployment_id
-    JOIN sites s ON s.id = dep.site_id
+    LEFT JOIN sites s ON s.id = dep.site_id
     WHERE de.detection_id = ?
     """
 
