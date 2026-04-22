@@ -428,12 +428,52 @@ def build_camtrap_dp_zip(
     deployments_csv: bytes,
     media_csv: bytes,
     observations_csv: bytes,
+    thumbnails: dict[str, bytes] | None = None,
 ) -> bytes:
-    """Assemble the four CamTrap DP files into a single ZIP at the root."""
+    """Assemble the four CamTrap DP files into a single ZIP at the root.
+
+    If `thumbnails` is provided, each entry is written under `media/` with
+    the dict key as the filename. Callers must rewrite `filePath` in
+    `media.csv` to match these relative paths before calling.
+    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("datapackage.json", datapackage_json)
         zf.writestr("deployments.csv", deployments_csv)
         zf.writestr("media.csv", media_csv)
         zf.writestr("observations.csv", observations_csv)
+        if thumbnails:
+            for name, data in thumbnails.items():
+                zf.writestr(f"media/{name}", data)
     return buf.getvalue()
+
+
+def generate_thumbnail(
+    source_path: str,
+    max_width: int = 640,
+    quality: int = 80,
+) -> bytes | None:
+    """Produce a JPEG thumbnail as bytes. Returns None if the source
+    can't be opened (missing file, unsupported format). Downscales to
+    `max_width` preserving aspect ratio; never upscales.
+    """
+    from pathlib import Path
+
+    from PIL import Image, ImageOps
+
+    path = Path(source_path)
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        with Image.open(path) as im:
+            im = ImageOps.exif_transpose(im)
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            if im.width > max_width:
+                new_h = round(im.height * (max_width / im.width))
+                im = im.resize((max_width, new_h), Image.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=quality, optimize=True)
+            return buf.getvalue()
+    except Exception:
+        return None

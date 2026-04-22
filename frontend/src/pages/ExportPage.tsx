@@ -29,6 +29,7 @@ import {
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
+import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
 import { downloadBlob } from "../lib/download";
 
 function slugify(name: string): string {
@@ -51,6 +52,13 @@ const SPATIAL_OPTIONS: { value: SpatialFormat; label: string }[] = [
   { value: "geojson", label: "GeoJSON" },
   { value: "shapefile", label: "Shapefile" },
   { value: "gpkg", label: "GeoPackage" },
+];
+
+type CamtrapMedia = "metadata" | "thumbnails";
+
+const CAMTRAP_MEDIA_OPTIONS: { value: CamtrapMedia; label: string }[] = [
+  { value: "metadata", label: "Metadata only" },
+  { value: "thumbnails", label: "Include thumbnails" },
 ];
 
 interface TextToggleProps<T extends string> {
@@ -117,6 +125,7 @@ export default function ExportPage() {
 
   const [obsFormat, setObsFormat] = useState<ObservationFormat>("csv");
   const [spatialFormat, setSpatialFormat] = useState<SpatialFormat>("geojson");
+  const [dpMedia, setDpMedia] = useState<CamtrapMedia>("metadata");
 
   const [obsLoading, setObsLoading] = useState(false);
   const [spatialLoading, setSpatialLoading] = useState(false);
@@ -128,6 +137,8 @@ export default function ExportPage() {
 
   const [spatialConfirmOpen, setSpatialConfirmOpen] = useState(false);
   const [dpConfirmOpen, setDpConfirmOpen] = useState(false);
+  const [dpJobId, setDpJobId] = useState<string | null>(null);
+  const [dpJobIncludesThumbnails, setDpJobIncludesThumbnails] = useState(false);
 
   const projectSlug = slugify(project?.name ?? "project");
   const today = todayIso();
@@ -186,18 +197,44 @@ export default function ExportPage() {
     setDpConfirmOpen(true);
   };
 
-  const runCamtrapDPExport = async () => {
+  const runCamtrapDPExport = async (includeThumbnails: boolean) => {
     if (!projectId) return;
     setDpLoading(true);
     setDpError(null);
     try {
-      const blob = await exportApi.downloadCamtrapDP(projectId);
+      const { job_id } = await exportApi.prepareCamtrapDP(projectId, includeThumbnails);
+      // The progress modal subscribes to the job over WebSocket via
+      // useTaskProgress. When it completes, it calls downloadCamtrapDPZip.
+      setDpJobId(job_id);
+      setDpJobIncludesThumbnails(includeThumbnails);
+    } catch (err) {
+      setDpError(errorMessage(err));
+      setDpLoading(false);
+    }
+  };
+
+  // Called by the progress modal once the job reports complete.
+  const finalizeCamtrapDPExport = async (jobId: string) => {
+    if (!projectId) {
+      setDpLoading(false);
+      setDpJobId(null);
+      return;
+    }
+    try {
+      const blob = await exportApi.downloadCamtrapDPZip(projectId, jobId);
       downloadBlob(blob, `camtrap-dp-${projectSlug}-${today}.zip`);
     } catch (err) {
       setDpError(errorMessage(err));
     } finally {
       setDpLoading(false);
+      setDpJobId(null);
     }
+  };
+
+  const abortCamtrapDPExport = (msg: string | null) => {
+    if (msg) setDpError(msg);
+    setDpLoading(false);
+    setDpJobId(null);
   };
 
   return (
@@ -287,16 +324,20 @@ export default function ExportPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>CamTrap DP</CardTitle>
+            <CardTitle>Camtrap DP</CardTitle>
             <CardDescription>
-              Camera Trap Data Package for sharing with GBIF and biodiversity
-              platforms. File paths inside media.csv refer to this machine;
-              bundle files alongside the ZIP if sharing externally.
+              A standardized, community-developed data exchange format to
+              and archive camera trap data.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {dpError && <ErrorBanner message={dpError} />}
-            <div className="flex items-center justify-end gap-4">
+            <div className="flex items-center justify-between gap-4">
+              <TextToggle
+                options={CAMTRAP_MEDIA_OPTIONS}
+                value={dpMedia}
+                onChange={setDpMedia}
+              />
               <Button
                 onClick={onCamtrapDPClick}
                 disabled={dpLoading}
@@ -337,7 +378,16 @@ export default function ExportPage() {
             noSiteCount={noSiteCount}
             open={dpConfirmOpen}
             onOpenChange={setDpConfirmOpen}
-            onProceed={() => void runCamtrapDPExport()}
+            onProceed={() =>
+              void runCamtrapDPExport(dpMedia === "thumbnails")
+            }
+          />
+
+          <CamtrapDPProgressModal
+            jobId={dpJobId}
+            includesThumbnails={dpJobIncludesThumbnails}
+            onComplete={finalizeCamtrapDPExport}
+            onError={abortCamtrapDPExport}
           />
         </>
       )}

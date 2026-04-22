@@ -268,14 +268,23 @@ async function fetchStats(
   projectId: string,
   threshold: number,
   interval: number,
-): Promise<{ observations: StatSnapshot; events: StatSnapshot }> {
-  const [detectionCount, labelStats, eventStats] = await Promise.all([
+): Promise<{
+  observations: StatSnapshot;
+  independent_observations: StatSnapshot;
+  events: StatSnapshot;
+}> {
+  const [detectionCount, labelStats, indepObsStats, eventStats] = await Promise.all([
     projectsApi.getDetectionCount(projectId, threshold),
     projectsApi.getLabelStats(projectId, threshold),
+    projectsApi.getIndependentObservationStats(projectId, interval, threshold),
     projectsApi.getIndependentEventStats(projectId, interval, threshold),
   ]);
   return {
     observations: { total: detectionCount.count, labels: labelStats },
+    independent_observations: {
+      total: indepObsStats.total,
+      labels: indepObsStats.labels,
+    },
     events: { total: eventStats.total, labels: eventStats.labels },
   };
 }
@@ -304,7 +313,11 @@ export default function SettingsPage() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stores before-stats + new settings values while reprocessing runs
   const pendingBeforeStats = useRef<{
-    before: { observations: StatSnapshot; events: StatSnapshot };
+    before: {
+      observations: StatSnapshot;
+      independent_observations: StatSnapshot;
+      events: StatSnapshot;
+    };
     newThreshold: number;
     newInterval: number;
   } | null>(null);
@@ -318,9 +331,48 @@ export default function SettingsPage() {
   const [reEmbedDetectionCount, setReEmbedDetectionCount] = useState(0);
   const pendingFormData = useRef<SettingsFormData | null>(null);
 
-  /** Show the custom save toast with auto-dismiss. */
+  /** Show the save toast. When before/after stats are identical the
+   * change didn't touch any counts (e.g., switching to a new model
+   * that only affects future analyses), so fall back to a plain
+   * "Settings saved!" without the "See effect" link that would open
+   * an empty diff modal. Equal totals aren't enough: relabel /
+   * rollup changes can shuffle counts between labels and net to zero
+   * at the aggregate level, so also compare per-label counts. */
   const showSaveToast = useCallback((results: SaveResults) => {
+    const snapshotsDiffer = (
+      before: { total: number; labels: { label: string; count: number }[] },
+      after: { total: number; labels: { label: string; count: number }[] },
+    ): boolean => {
+      if (before.total !== after.total) return true;
+      const beforeByLabel = new Map(
+        before.labels.map((l) => [l.label, l.count]),
+      );
+      const afterByLabel = new Map(after.labels.map((l) => [l.label, l.count]));
+      const allLabels = new Set([
+        ...beforeByLabel.keys(),
+        ...afterByLabel.keys(),
+      ]);
+      for (const label of allLabels) {
+        if ((beforeByLabel.get(label) ?? 0) !== (afterByLabel.get(label) ?? 0)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const changed =
+      snapshotsDiffer(results.observations.before, results.observations.after) ||
+      snapshotsDiffer(
+        results.independent_observations.before,
+        results.independent_observations.after,
+      ) ||
+      snapshotsDiffer(results.events.before, results.events.after);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    if (!changed) {
+      setToastResults(null);
+      toast.success("Settings saved!");
+      return;
+    }
     setToastResults(results);
     toastTimerRef.current = setTimeout(() => setToastResults(null), 5000);
   }, []);
@@ -595,8 +647,18 @@ export default function SettingsPage() {
           projectId, pending.newThreshold, pending.newInterval,
         );
         const results: SaveResults = {
-          observations: { before: pending.before.observations, after: afterStats.observations },
-          events: { before: pending.before.events, after: afterStats.events },
+          observations: {
+            before: pending.before.observations,
+            after: afterStats.observations,
+          },
+          independent_observations: {
+            before: pending.before.independent_observations,
+            after: afterStats.independent_observations,
+          },
+          events: {
+            before: pending.before.events,
+            after: afterStats.events,
+          },
         };
         pendingBeforeStats.current = null;
         showSaveToast(results);
@@ -729,8 +791,18 @@ export default function SettingsPage() {
       );
 
       const results: SaveResults = {
-        observations: { before: beforeStats.observations, after: afterStats.observations },
-        events: { before: beforeStats.events, after: afterStats.events },
+        observations: {
+          before: beforeStats.observations,
+          after: afterStats.observations,
+        },
+        independent_observations: {
+          before: beforeStats.independent_observations,
+          after: afterStats.independent_observations,
+        },
+        events: {
+          before: beforeStats.events,
+          after: afterStats.events,
+        },
       };
 
       showSaveToast(results);

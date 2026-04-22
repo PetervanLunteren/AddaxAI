@@ -47,6 +47,28 @@ export const exportApi = {
   downloadSpatial: (projectId: string, format: SpatialFormat): Promise<Blob> =>
     fetchBlob(`/api/projects/${projectId}/export/spatial?format=${format}`),
 
-  downloadCamtrapDP: (projectId: string): Promise<Blob> =>
-    fetchBlob(`/api/projects/${projectId}/export/camtrap-dp`),
+  /** Kick off a CamTrap DP export job. Returns job_id; the client
+   * tracks progress via the existing /ws/jobs/{job_id} WebSocket and
+   * then calls `downloadCamtrapDPZip(projectId, job_id)` when the
+   * WebSocket reports completion. */
+  prepareCamtrapDP: async (
+    projectId: string,
+    includeThumbnails: boolean = false,
+  ): Promise<{ job_id: string }> => {
+    const res = await fetch(
+      `${API_BASE_URL}/api/projects/${projectId}/export/camtrap-dp/prepare?include_thumbnails=${includeThumbnails}`,
+      { method: "POST" },
+    );
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(detail || `Export prepare failed (${res.status})`);
+    }
+    return res.json();
+  },
+
+  /** Fetch the finished CamTrap DP ZIP for a completed export job. */
+  downloadCamtrapDPZip: (projectId: string, jobId: string): Promise<Blob> =>
+    fetchBlob(
+      `/api/projects/${projectId}/export/camtrap-dp/download?job_id=${jobId}`,
+    ),
 };

@@ -1,9 +1,14 @@
 /**
  * Modal showing before/after statistics after a settings change.
  *
- * Two cards: Observations (detection counts) and Independent events.
- * Each card shows total before → after with percentage change,
- * plus a collapsible per-label breakdown.
+ * Three cards mirroring the camera-trap stats hierarchy:
+ * 1. Detections — raw count above confidence threshold.
+ * 2. Independent observations — MaxN (peak individuals) per event,
+ *    summed across events. The number most ecology analyses feed on.
+ * 3. Independent events — distinct events after independence grouping.
+ *
+ * Each card shows total before → after plus a collapsible per-label
+ * breakdown with a trailing "N other labels unchanged" line.
  */
 
 import { useEffect, useState } from "react";
@@ -29,7 +34,11 @@ export interface StatSnapshot {
 }
 
 export interface SaveResults {
+  /** Raw detection counts above threshold. */
   observations: { before: StatSnapshot; after: StatSnapshot };
+  /** MaxN per event, summed across events. */
+  independent_observations: { before: StatSnapshot; after: StatSnapshot };
+  /** Distinct events after independence grouping. */
   events: { before: StatSnapshot; after: StatSnapshot };
 }
 
@@ -85,23 +94,31 @@ function computeLabelDiff(
 
 function StatCard({
   title,
+  subtitle,
   before,
   after,
   expanded,
   onToggle,
 }: {
   title: string;
+  subtitle: string;
   before: StatSnapshot;
   after: StatSnapshot;
   expanded: boolean;
   onToggle: () => void;
 }) {
   const diff = computeLabelDiff(before.labels, after.labels);
+  const totalLabels = new Set([
+    ...before.labels.map((l) => l.label),
+    ...after.labels.map((l) => l.label),
+  ]).size;
+  const unchangedCount = totalLabels - diff.length;
 
   return (
     <Card>
       <CardContent className="pt-4 pb-4">
         <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
 
         <p className="text-sm text-muted-foreground mt-1">
           <Code>{before.total.toLocaleString()}</Code>
@@ -122,8 +139,8 @@ function StatCard({
               ) : (
                 <ChevronDown className="h-3 w-3" />
               )}
-              {expanded ? "Hide" : "Show"} breakdown ({diff.length} labels
-              changed)
+              {expanded ? "Hide" : "Show"} breakdown ({diff.length} label
+              {diff.length === 1 ? "" : "s"} changed)
             </button>
 
             {expanded && (
@@ -142,6 +159,12 @@ function StatCard({
                     </span>
                   </div>
                 ))}
+                {unchangedCount > 0 && (
+                  <p className="text-xs text-muted-foreground italic pt-1">
+                    {unchangedCount} other label
+                    {unchangedCount === 1 ? "" : "s"} unchanged
+                  </p>
+                )}
               </div>
             )}
           </>
@@ -158,13 +181,15 @@ export function SaveResultsModal({
   onOpenChange,
   results,
 }: SaveResultsModalProps) {
-  const [obsExpanded, setObsExpanded] = useState(false);
+  const [detectionsExpanded, setDetectionsExpanded] = useState(false);
+  const [indepObsExpanded, setIndepObsExpanded] = useState(false);
   const [eventsExpanded, setEventsExpanded] = useState(false);
 
   // Reset collapse state each time modal opens
   useEffect(() => {
     if (open) {
-      setObsExpanded(false);
+      setDetectionsExpanded(false);
+      setIndepObsExpanded(false);
       setEventsExpanded(false);
     }
   }, [open]);
@@ -178,14 +203,24 @@ export function SaveResultsModal({
 
         <div className="space-y-3 overflow-y-auto min-h-0">
           <StatCard
-            title="Observations"
+            title="Detections"
+            subtitle="All detections above confidence threshold"
             before={results.observations.before}
             after={results.observations.after}
-            expanded={obsExpanded}
-            onToggle={() => setObsExpanded(!obsExpanded)}
+            expanded={detectionsExpanded}
+            onToggle={() => setDetectionsExpanded(!detectionsExpanded)}
+          />
+          <StatCard
+            title="Independent observations"
+            subtitle="Maximum individuals per event, summed across events"
+            before={results.independent_observations.before}
+            after={results.independent_observations.after}
+            expanded={indepObsExpanded}
+            onToggle={() => setIndepObsExpanded(!indepObsExpanded)}
           />
           <StatCard
             title="Independent events"
+            subtitle="Distinct events after independence grouping"
             before={results.events.before}
             after={results.events.after}
             expanded={eventsExpanded}

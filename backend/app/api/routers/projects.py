@@ -681,6 +681,80 @@ def get_label_stats(
     return [{"label": label_name, "count": count} for label_name, count in stats]
 
 
+@router.get("/{project_id}/independent-observation-stats")
+def get_independent_observation_stats(
+    project_id: str,
+    interval: float = 1800,
+    threshold: float = 0.0,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Sum MaxN (peak individuals per event) across events, per label.
+
+    For each (deployment, label), consecutive files within `interval`
+    seconds form one independent event. MaxN = max number of
+    detections of that label in any single file within the event.
+    Returns ``{total, labels}`` where total is the grand sum across
+    all labels and labels is the per-label breakdown.
+    """
+    sql = text("""
+        WITH file_counts AS (
+            SELECT
+                dep.id AS deployment_id,
+                f.id AS file_id,
+                f.captured_at_local AS ts,
+                d.label,
+                COUNT(*) AS file_count
+            FROM detections d
+            JOIN files f ON d.file_id = f.id
+            JOIN deployments dep ON f.deployment_id = dep.id
+            WHERE dep.project_id = :project_id
+              AND d.label IS NOT NULL
+              AND (:threshold <= 0 OR d.confidence >= :threshold OR d.verified = 1)
+            GROUP BY dep.id, f.id, f.captured_at_local, d.label
+        ),
+        ordered AS (
+            SELECT *, LAG(ts) OVER (
+                PARTITION BY deployment_id, label ORDER BY ts
+            ) AS prev_ts
+            FROM file_counts
+        ),
+        with_flags AS (
+            SELECT *,
+                CASE
+                    WHEN prev_ts IS NULL
+                      OR (julianday(ts) - julianday(prev_ts)) * 86400 > :interval
+                    THEN 1 ELSE 0
+                END AS new_event
+            FROM ordered
+        ),
+        with_events AS (
+            SELECT *, SUM(new_event) OVER (
+                PARTITION BY deployment_id, label ORDER BY ts
+            ) AS event_id
+            FROM with_flags
+        ),
+        event_max AS (
+            SELECT deployment_id, label, event_id, MAX(file_count) AS max_n
+            FROM with_events
+            GROUP BY deployment_id, label, event_id
+        )
+        SELECT label, SUM(max_n) AS total_max_n
+        FROM event_max
+        GROUP BY label
+        ORDER BY total_max_n DESC
+    """)
+
+    rows = db.execute(
+        sql,
+        {"project_id": project_id, "interval": interval, "threshold": threshold},
+    ).fetchall()
+
+    total = sum(row[1] for row in rows)
+    label_counts = [{"label": row[0], "count": row[1]} for row in rows]
+    return {"total": total, "labels": label_counts}
+
+
 @router.get("/{project_id}/independent-event-stats")
 def get_independent_event_stats(
     project_id: str,

@@ -7,6 +7,7 @@ by reading raw predictions from JSON files and writing smoothed results to DB.
 Created by Claude Code on 2026-02-14
 """
 
+import asyncio
 from pathlib import Path
 
 from sqlalchemy import func, text
@@ -140,16 +141,28 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         total_updated = 0
         total_errors = 0
+        loop = asyncio.get_event_loop()
 
         for idx, deployment in enumerate(deployments_with_cls, start=1):
             folder_path = Path(deployment.folder_path)
             json_path = folder_path / ".addaxai" / "projects" / project_id / "results.json"
 
+            # Emit progress BEFORE the heavy work for this deployment and
+            # include metrics so the modal can render a real counter.
             progress = (idx - 1) / total
             await ws_manager.send_progress(
                 job_id,
                 f"Processing deployment {idx}/{total}...",
                 progress,
+                phase="postprocessing",
+                phase_progress=progress,
+                data={
+                    "metrics": {
+                        "current": idx,
+                        "total": total,
+                        "unit": "deployment",
+                    }
+                },
             )
 
             if not json_path.exists():
@@ -176,8 +189,17 @@ async def process_postprocessing_job(job_id: str) -> None:
                     excluded_tax_ids = {r[0] for r in exc_rows}
 
                 if smoothing_enabled:
-                    smoothed = run_postprocessing_for_deployment(
-                        deployment.id, json_path, folder_path, project, db
+                    # Heavy: subprocess + rollup. Run off-loop so the
+                    # progress frame we just emitted actually flushes
+                    # to the client.
+                    smoothed = await loop.run_in_executor(
+                        None,
+                        run_postprocessing_for_deployment,
+                        deployment.id,
+                        json_path,
+                        folder_path,
+                        project,
+                        db,
                     )
                     # Load taxonomy for display_name formatting
                     pp_taxonomy = None
@@ -200,12 +222,23 @@ async def process_postprocessing_job(job_id: str) -> None:
                         db,
                     ) if project.classification_model_id else None
 
-                    result = update_database_from_smoothed_results(
-                        deployment.id, smoothed, folder_path, db, pp_taxonomy,
-                        excluded_classes=project.excluded_classes,
-                        excluded_taxonomy_ids=excluded_tax_ids,
-                        taxonomy_name_to_id=pp_name_to_id,
-                    )
+                    def _apply_smoothed(
+                        _dep_id=deployment.id,
+                        _sm=smoothed,
+                        _fp=folder_path,
+                        _ptax=pp_taxonomy,
+                        _exc=project.excluded_classes,
+                        _exc_tax=excluded_tax_ids,
+                        _n2i=pp_name_to_id,
+                    ):
+                        return update_database_from_smoothed_results(
+                            _dep_id, _sm, _fp, db, _ptax,
+                            excluded_classes=_exc,
+                            excluded_taxonomy_ids=_exc_tax,
+                            taxonomy_name_to_id=_n2i,
+                        )
+
+                    result = await loop.run_in_executor(None, _apply_smoothed)
                 else:
                     # Build excluded_names and geofence keys for rollup
                     excluded_names = frozenset(
@@ -226,13 +259,24 @@ async def process_postprocessing_job(job_id: str) -> None:
                             )
                         except FileNotFoundError:
                             pass
-                    result = reload_raw_classifications_from_json(
-                        deployment.id, json_path, folder_path, db,
-                        excluded_classes=project.excluded_classes,
-                        taxonomy_csv_path=taxonomy_csv,
-                        excluded_names=excluded_names,
-                        allowed_taxonomy_keys=geo_keys,
-                    )
+                    def _reload_raw(
+                        _dep_id=deployment.id,
+                        _jp=json_path,
+                        _fp=folder_path,
+                        _exc=project.excluded_classes,
+                        _tax_csv=taxonomy_csv,
+                        _exc_names=excluded_names,
+                        _geo=geo_keys,
+                    ):
+                        return reload_raw_classifications_from_json(
+                            _dep_id, _jp, _fp, db,
+                            excluded_classes=_exc,
+                            taxonomy_csv_path=_tax_csv,
+                            excluded_names=_exc_names,
+                            allowed_taxonomy_keys=_geo,
+                        )
+
+                    result = await loop.run_in_executor(None, _reload_raw)
 
                 total_updated += result.get("updated", 0)
                 total_errors += result.get("errors", 0)

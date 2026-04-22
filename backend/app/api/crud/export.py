@@ -87,48 +87,81 @@ _FLAT_OBS_HEADERS = [
     "is_verified",
 ]
 
+# CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
+# even optional ones (the frictionless validator flags omitted columns
+# as schema violations). We emit every column; unused optionals are
+# blank. Column-index references elsewhere in this file assume this
+# exact order.
 _CAMTRAP_DEPLOYMENTS_HEADERS = [
-    "deploymentID",
-    "latitude",
-    "longitude",
-    "deploymentStart",
-    "deploymentEnd",
-    "cameraID",
-    "cameraModel",
+    "deploymentID",          # 0  required
+    "locationID",            # 1
+    "locationName",          # 2
+    "latitude",              # 3  required
+    "longitude",             # 4  required
+    "coordinateUncertainty", # 5
+    "deploymentStart",       # 6  required
+    "deploymentEnd",         # 7  required
+    "setupBy",               # 8
+    "cameraID",              # 9
+    "cameraModel",           # 10
+    "cameraDelay",           # 11
+    "cameraHeight",          # 12
+    "cameraDepth",           # 13
+    "cameraTilt",            # 14
+    "cameraHeading",         # 15
+    "detectionDistance",     # 16
+    "timestampIssues",       # 17
+    "baitUse",               # 18
+    "featureType",           # 19
+    "habitat",               # 20
+    "deploymentGroups",      # 21
+    "deploymentTags",        # 22
+    "deploymentComments",    # 23
 ]
 
 _CAMTRAP_MEDIA_HEADERS = [
-    "mediaID",
-    "deploymentID",
-    "captureMethod",
-    "timestamp",
-    "filePath",
-    "filePublic",
-    "fileMediatype",
+    "mediaID",          # 0  required
+    "deploymentID",     # 1  required
+    "captureMethod",    # 2
+    "timestamp",        # 3  required
+    "filePath",         # 4  required
+    "filePublic",       # 5  required
+    "fileName",         # 6
+    "fileMediatype",    # 7  required
+    "exifData",         # 8
+    "favorite",         # 9
+    "mediaComments",    # 10
 ]
 
 _CAMTRAP_OBS_HEADERS = [
-    "observationID",
-    "deploymentID",
-    "mediaID",
-    "eventID",
-    "eventStart",
-    "eventEnd",
-    "observationLevel",
-    "observationType",
-    "scientificName",
-    "count",
-    "sex",
-    "lifeStage",
-    "behavior",
-    "classificationMethod",
-    "classifiedBy",
-    "classificationProbability",
-    "bboxX",
-    "bboxY",
-    "bboxWidth",
-    "bboxHeight",
-    "observationComments",
+    "observationID",              # 0  required
+    "deploymentID",               # 1  required
+    "mediaID",                    # 2
+    "eventID",                    # 3
+    "eventStart",                 # 4  required
+    "eventEnd",                   # 5  required
+    "observationLevel",           # 6  required
+    "observationType",            # 7  required
+    "cameraSetupType",            # 8
+    "scientificName",             # 9
+    "count",                      # 10
+    "lifeStage",                  # 11
+    "sex",                        # 12
+    "behavior",                   # 13
+    "individualID",               # 14
+    "individualPositionRadius",   # 15
+    "individualPositionAngle",    # 16
+    "individualSpeed",            # 17
+    "bboxX",                      # 18
+    "bboxY",                      # 19
+    "bboxWidth",                  # 20
+    "bboxHeight",                 # 21
+    "classificationMethod",       # 22
+    "classifiedBy",               # 23
+    "classificationTimestamp",    # 24
+    "classificationProbability",  # 25
+    "observationTags",            # 26
+    "observationComments",        # 27
 ]
 
 
@@ -663,17 +696,35 @@ def build_camtrap_dp_tables(
         sites_seen[site.id] = site
         camera_model = deployment.camera_model or ""
         camera_id = deployment.camera_serial or deployment.camera_model or deployment.id
+        # Row order must match _CAMTRAP_DEPLOYMENTS_HEADERS exactly.
         deployments_rows.append(
             [
-                deployment.id,
-                site.latitude,
-                site.longitude,
-                _iso_date_at_midnight(deployment.start_date_local, tz_name),
+                deployment.id,                                                # deploymentID
+                "",                                                           # locationID
+                site.name or "",                                              # locationName
+                site.latitude,                                                # latitude
+                site.longitude,                                               # longitude
+                "",                                                          # coordinateUncertainty
+                _iso_date_at_midnight(deployment.start_date_local, tz_name),  # deploymentStart
                 _iso_date_at_midnight(
                     deployment.end_date_local or date.today(), tz_name
-                ),
-                camera_id,
-                camera_model,
+                ),                                                            # deploymentEnd
+                "",                                                           # setupBy
+                camera_id,                                                    # cameraID
+                camera_model,                                                 # cameraModel
+                "",                                                           # cameraDelay
+                "",                                                           # cameraHeight
+                "",                                                           # cameraDepth
+                "",                                                           # cameraTilt
+                "",                                                           # cameraHeading
+                "",                                                           # detectionDistance
+                "",                                                           # timestampIssues
+                "",                                                           # baitUse
+                "",                                                           # featureType
+                "",                                                           # habitat
+                "",                                                           # deploymentGroups
+                "",                                                           # deploymentTags
+                deployment.notes or "",                                       # deploymentComments
             ]
         )
 
@@ -690,15 +741,20 @@ def build_camtrap_dp_tables(
         if last_captured is None or file_obj.captured_at_local > last_captured:
             last_captured = file_obj.captured_at_local
 
+        # Row order must match _CAMTRAP_MEDIA_HEADERS exactly.
         media_rows.append(
             [
-                file_obj.id,
-                deployment.id,
-                "activityDetection",
-                _iso_datetime(file_obj.captured_at_local, tz_name),
-                file_obj.file_path,
-                "false",
-                _media_type_for(file_obj.file_format),
+                file_obj.id,                                        # mediaID
+                deployment.id,                                      # deploymentID
+                "activityDetection",                                # captureMethod
+                _iso_datetime(file_obj.captured_at_local, tz_name), # timestamp
+                file_obj.file_path,                                 # filePath
+                "false",                                            # filePublic
+                "",                                                 # fileName
+                _media_type_for(file_obj.file_format),              # fileMediatype
+                "",                                                 # exifData
+                "",                                                 # favorite
+                "",                                                 # mediaComments
             ]
         )
 
@@ -741,29 +797,37 @@ def build_camtrap_dp_tables(
                 else ""
             )
 
+            # Row order must match _CAMTRAP_OBS_HEADERS exactly.
             observations_rows.append(
                 [
-                    f"{obs_id_prefix}-{detection.id}",
-                    deployment.id,
-                    file_obj.id,
-                    event_id,
-                    event_start or captured_iso,
-                    event_end or captured_iso,
-                    "media",
-                    obs_type,
-                    sci_name,
-                    1,
-                    "unknown",
-                    "unknown",
-                    "unknown",
-                    method,
-                    classified_by,
-                    prob,
-                    round(detection.bbox_x, 6),
-                    round(detection.bbox_y, 6),
-                    round(detection.bbox_width, 6),
-                    round(detection.bbox_height, 6),
-                    comments,
+                    f"{obs_id_prefix}-{detection.id}",    # observationID
+                    deployment.id,                         # deploymentID
+                    file_obj.id,                           # mediaID
+                    event_id,                              # eventID
+                    event_start or captured_iso,           # eventStart
+                    event_end or captured_iso,             # eventEnd
+                    "media",                               # observationLevel
+                    obs_type,                              # observationType
+                    "",                                    # cameraSetupType
+                    sci_name,                              # scientificName
+                    1,                                     # count
+                    "",                                    # lifeStage (enum)
+                    "",                                    # sex (enum)
+                    "",                                    # behavior
+                    "",                                    # individualID
+                    "",                                    # individualPositionRadius
+                    "",                                    # individualPositionAngle
+                    "",                                    # individualSpeed
+                    round(detection.bbox_x, 6),            # bboxX
+                    round(detection.bbox_y, 6),            # bboxY
+                    round(detection.bbox_width, 6),        # bboxWidth
+                    round(detection.bbox_height, 6),       # bboxHeight
+                    method,                                # classificationMethod
+                    classified_by,                         # classifiedBy
+                    "",                                    # classificationTimestamp
+                    prob,                                  # classificationProbability
+                    "",                                    # observationTags
+                    comments,                              # observationComments
                 ]
             )
 
@@ -802,30 +866,41 @@ def _camtrap_blank_row(
     event_end: str,
     not_reviewed: str,
 ) -> list[Any]:
+    """Observation row for a file with no in-scope detections (blank).
+
+    Order must match _CAMTRAP_OBS_HEADERS exactly.
+    """
     method = "human" if file_obj.verified else "machine"
     comments = "Human identification" if file_obj.verified else not_reviewed
     return [
-        f"obs-blank-{file_obj.id}",
-        deployment_id,
-        file_obj.id,
-        event_id,
-        event_start,
-        event_end,
-        "media",
-        "blank",
-        "",
-        "",
-        "",
-        "",
-        "",
-        method,
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        comments,
+        f"obs-blank-{file_obj.id}",  # observationID
+        deployment_id,                # deploymentID
+        file_obj.id,                  # mediaID
+        event_id,                     # eventID
+        event_start,                  # eventStart
+        event_end,                    # eventEnd
+        "media",                      # observationLevel
+        "blank",                      # observationType
+        "",                           # cameraSetupType
+        "",                           # scientificName
+        "",                           # count
+        "",                           # lifeStage
+        "",                           # sex
+        "",                           # behavior
+        "",                           # individualID
+        "",                           # individualPositionRadius
+        "",                           # individualPositionAngle
+        "",                           # individualSpeed
+        "",                           # bboxX
+        "",                           # bboxY
+        "",                           # bboxWidth
+        "",                           # bboxHeight
+        method,                       # classificationMethod
+        "",                           # classifiedBy
+        "",                           # classificationTimestamp
+        "",                           # classificationProbability
+        "",                           # observationTags
+        comments,                     # observationComments
     ]
 
 

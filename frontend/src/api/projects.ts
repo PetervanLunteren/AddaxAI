@@ -184,4 +184,16 @@ export const projectsApi = {
     api.get<{ total: number; labels: { label: string; count: number }[] }>(
       `/api/projects/${id}/independent-event-stats?interval=${interval}${threshold ? `&threshold=${threshold}` : ""}`
     ),
+
+  /**
+   * Sum of MaxN (peak individuals per event), per label, for a given interval
+   */
+  getIndependentObservationStats: (
+    id: string,
+    interval: number,
+    threshold?: number,
+  ) =>
+    api.get<{ total: number; labels: { label: string; count: number }[] }>(
+      `/api/projects/${id}/independent-observation-stats?interval=${interval}${threshold ? `&threshold=${threshold}` : ""}`
+    ),
 };

@@ -13,17 +13,20 @@ See ``app/api/crud/export.py`` for the data layer and
 
 from __future__ import annotations
 
-import json as _json
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
+from app.api.crud import job as job_crud
+from app.api.schemas.job import JobCreate
+from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.models import Deployment, Project
 from app.utils.datetime_serialization import set_active_project_timezone
@@ -127,12 +130,23 @@ async def export_spatial(
     )
 
 
-@router.get("/camtrap-dp")
-async def export_camtrap_dp(
+@router.post("/camtrap-dp/prepare", status_code=202)
+async def prepare_camtrap_dp(
     project_id: str,
+    include_thumbnails: bool = Query(
+        False,
+        description=(
+            "When true, generate JPEG thumbnails for every media file and "
+            "bundle them under `media/` in the ZIP with paths rewritten to "
+            "relative names. Resulting package is self-contained."
+        ),
+    ),
     db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """CamTrap DP v1.0 package (ZIP with datapackage.json + three CSVs)."""
+) -> dict[str, str]:
+    """Start a CamTrap DP export job. Returns `job_id` the client uses
+    to track progress via WebSocket and then follow the `/download`
+    endpoint to fetch the finished ZIP.
+    """
     project = _resolve_project(project_id, db)
 
     has_deployment_with_site = (
@@ -152,37 +166,53 @@ async def export_camtrap_dp(
             ),
         )
 
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    (
-        deps_rows,
-        media_rows,
-        obs_rows,
-        datapackage,
-        skipped_deployment_ids,
-    ) = export_crud.build_camtrap_dp_tables(db, project, scoped)
-    deps_h, media_h, obs_h = export_crud.camtrap_dp_headers()
+    job = job_crud.create_job(
+        db,
+        JobCreate(
+            type="camtrap_export",
+            payload={
+                "project_id": project.id,
+                "include_thumbnails": include_thumbnails,
+            },
+        ),
+    )
 
-    deps_csv = export_formats.serialize_csv(deps_h, deps_rows)
-    media_csv = export_formats.serialize_csv(media_h, media_rows)
-    obs_csv = export_formats.serialize_csv(obs_h, obs_rows)
-    datapackage_bytes = _json.dumps(datapackage, indent=2, ensure_ascii=False).encode(
-        "utf-8"
+    from app.workers.camtrap_export_worker import process_camtrap_export_job
+
+    ws_manager.register_start(
+        job.id, lambda jid=job.id: process_camtrap_export_job(jid)
     )
-    payload = export_formats.build_camtrap_dp_zip(
-        datapackage_bytes, deps_csv, media_csv, obs_csv
-    )
+    return {"job_id": job.id}
+
+
+@router.get("/camtrap-dp/download")
+async def download_camtrap_dp(
+    project_id: str,
+    job_id: str = Query(..., description="Job id returned by /camtrap-dp/prepare"),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """Fetch the finished CamTrap DP ZIP for a completed export job."""
+    project = _resolve_project(project_id, db)
+
+    job = job_crud.get_job(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Export job not found")
+    payload = job.payload or {}
+    if payload.get("project_id") != project.id:
+        raise HTTPException(status_code=404, detail="Export job not found")
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Export not ready (status={job.status})",
+        )
+    zip_path = payload.get("zip_path")
+    if not zip_path or not Path(zip_path).exists():
+        raise HTTPException(status_code=410, detail="Export ZIP expired")
 
     base = _filename_base(project, "camtrap-dp")
-    response_headers = _attachment_headers(f"{base}.zip")
-    if skipped_deployment_ids:
-        response_headers["X-Skipped-Deployment-Ids"] = ",".join(
-            skipped_deployment_ids
-        )
-        response_headers["Access-Control-Expose-Headers"] = (
-            "X-Skipped-Deployment-Ids"
-        )
-    return StreamingResponse(
-        BytesIO(payload),
+    return FileResponse(
+        zip_path,
         media_type="application/zip",
-        headers=response_headers,
+        filename=f"{base}.zip",
+        headers=_attachment_headers(f"{base}.zip"),
     )
