@@ -175,6 +175,9 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     Create a human-drawn detection.
 
     Sets job_id=None, classification_method="human", confidence=1.0.
+    Resolves label_taxonomy_id + display_name so the new detection
+    shares the same taxonomy row (and therefore the same display color)
+    as other detections with the same label / builtin category.
     """
     db_detection = Detection(
         file_id=data.file_id,
@@ -190,6 +193,39 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
         classification_method="human",
     )
     db.add(db_detection)
+    db.flush()  # populate id so _resolve_detection_taxonomy can find the project
+
+    if data.label:
+        db_detection.label_taxonomy_id = _resolve_detection_taxonomy(
+            db, db_detection, data.label
+        )
+        if db_detection.label_taxonomy_id:
+            from app.models.label_taxonomy import LabelTaxonomy
+
+            tax = db.query(LabelTaxonomy).get(db_detection.label_taxonomy_id)
+            db_detection.display_name = (
+                tax.display_name if tax else data.label[0].upper() + data.label[1:]
+            )
+        else:
+            db_detection.display_name = data.label[0].upper() + data.label[1:]
+    else:
+        # Unclassified (MD-only) — share the builtin taxonomy row so
+        # this detection gets the same color as the MD-produced ones.
+        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+        from app.models.label_taxonomy import LabelTaxonomy
+
+        builtin = (
+            db.query(LabelTaxonomy)
+            .filter(
+                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
+                LabelTaxonomy.name == data.category,
+            )
+            .first()
+        )
+        if builtin:
+            db_detection.label_taxonomy_id = builtin.id
+            db_detection.display_name = builtin.display_name
+
     db.commit()
     db.refresh(db_detection)
     return db_detection

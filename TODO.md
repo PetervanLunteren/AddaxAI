@@ -27,13 +27,12 @@
 
 # other
 
-- [ ] wehn running MD only (no cls model), and adding a box via event verification, accepting auto label "animal". It shows up as two labels with two colors, both "Animal". I have a hiunch that it is about capitalisation. The MD produced ones are "Animal" and the bbox added ones are "animal", right? Fix this. 
-
 - [ ] There is currently no cancel button when running ML (proicessing deployments). Is it difficult to add that? And would it be difficult to add a pauze button? The cancel button is pretty improtant, but the pauze button not so much. Dont make it too complex. KISS. 
 
 
+Succes message on finished analyses is now this
 
 Processed 1 deployment.
 Successfully analysed 46 images.
 
-should me one line “Successfully processed 3 deployments with 46 images and 23 videos.”
+Make it “Successfully processed 3 deployments with 46 images and 23 videos.” without the 0 media parts if there are no images or videos
