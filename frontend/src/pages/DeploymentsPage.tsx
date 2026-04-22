@@ -4,7 +4,7 @@
  * Table-based view of all deployments in a project with sorting, filters, and edit actions.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, Scissors } from "lucide-react";
@@ -135,6 +135,21 @@ export function DeploymentsPage() {
   const [deletingDeployment, setDeletingDeployment] = useState<DeleteDeploymentTarget | null>(null);
   const [splittingDeployment, setSplittingDeployment] = useState<SplitDeploymentTarget | null>(null);
   const [infoDeploymentId, setInfoDeploymentId] = useState<string | null>(null);
+
+  // Deep link support: `?info=<id>` auto-opens the info sheet for a
+  // specific deployment (used by the queue's "already a deployment"
+  // banner). Strip the param after reading so back/refresh doesn't
+  // repeatedly re-open the sheet.
+  useEffect(() => {
+    const id = searchParams.get("info");
+    if (id) {
+      setInfoDeploymentId(id);
+      const next = new URLSearchParams(searchParams);
+      next.delete("info");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFilterChange = (next: FilterValues) => {
     setSearchParams(filtersToSearchParams(next, FILTER_SCHEMA));

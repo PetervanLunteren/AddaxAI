@@ -56,6 +56,14 @@ class DeploymentQueueResponse(DeploymentQueueBase):
     created_at_utc: datetime
     processed_at_utc: datetime | None = None
     error: str | None = None
+    warnings: str | None = Field(
+        None,
+        description=(
+            "Non-fatal warnings from the last ingest, newline-joined. "
+            "Populated e.g. when some files were skipped because they "
+            "had no extractable capture timestamp."
+        ),
+    )
     deployment_id: str | None = Field(None, description="Created deployment ID after processing")
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models

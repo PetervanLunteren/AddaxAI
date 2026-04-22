@@ -1,11 +1,16 @@
 """
-Integration test: Phase 6 aborts with MissingTimestampError when any file
-in the batch has no extractable capture timestamp.
+Integration tests: capture-timestamp handling during JSON load.
+
+Partial failures (some files have a timestamp, some don't) are a
+**soft** skip: the unresolvable rows are dropped, the list surfaces
+via `PipelineResult.skipped_missing_timestamp`, and the rest of the
+deployment loads normally. The all-broken case (zero resolvable
+timestamps) is still a hard `MissingTimestampError` so the worker
+rolls back the placeholder deployment instead of leaving a zombie
+empty row in the DB.
 
 Observational datetimes are never guessed — see DEVELOPERS.md
-"Datetime conventions". This test guards the failure path end-to-end:
-the bad file is reported, no DB rows are left behind, and other files in
-the same batch don't leak through.
+"Datetime conventions".
 """
 
 from unittest.mock import patch
@@ -31,11 +36,12 @@ def _image_entry(rel_path: str, exif: dict | None = None) -> dict:
     return entry
 
 
-def test_missing_timestamp_raises_and_leaves_no_rows(deployment_scaffold):
+def test_missing_timestamp_partial_soft_skip(deployment_scaffold):
     """
-    One file with a valid DateTimeOriginal, one without. Phase 6 must
-    raise MissingTimestampError, list the bad file, and roll back: no
-    File / Detection / Deployment-date changes should persist.
+    One file has a valid DateTimeOriginal, one does not. The loader must
+    keep going, load the good file normally, report the bad file in
+    `PipelineResult.skipped_missing_timestamp`, and leave the Deployment
+    row in place. No exception.
     """
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
@@ -45,54 +51,51 @@ def test_missing_timestamp_raises_and_leaves_no_rows(deployment_scaffold):
 
     images = [
         _image_entry(good_rel, {"DateTimeOriginal": "2024:06:15 12:00:00"}),
-        # Passing an empty dict so build_detection_json doesn't auto-fill.
-        _image_entry(bad_rel, {}),
+        _image_entry(bad_rel, {}),  # empty exif => no DateTimeOriginal
     ]
     md_json = build_detection_json(images)
-    # The builder only defaults exif_metadata when DateTimeOriginal is
-    # missing, but the copy we just wrote still has an empty dict — which
-    # is the same as "no extractable timestamp". Assert that condition is
-    # still present post-build so the test stays faithful to intent.
-    assert "DateTimeOriginal" not in md_json["images"][1].get("exif_metadata", {})
-
     json_path = write_json(s["artifacts"] / "results.json", md_json)
 
     with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
-        with pytest.raises(MissingTimestampError) as exc_info:
-            load_json_to_database(
-                json_path=json_path,
-                deployment_id=s["deployment"].id,
-                deployment_folder=deploy_dir,
-                job_id=s["job"].id,
-                db=db,
-                artifacts_folder=s["artifacts"],
-            )
+        result = load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
 
-    err = exc_info.value
-    assert len(err.missing_paths) == 1
-    assert bad_rel in err.missing_paths[0]
-    assert "1 file(s)" in str(err)
+    # Good file loaded, bad file skipped.
+    file_count = (
+        db.query(File).filter(File.deployment_id == s["deployment"].id).count()
+    )
+    assert file_count == 1
 
-    # Phase 6 pre-flights timestamps before touching the DB, so nothing
-    # should have been written even for the "good" file.
-    file_count = db.query(File).filter(File.deployment_id == s["deployment"].id).count()
     det_count = (
         db.query(Detection)
         .join(File, File.id == Detection.file_id)
         .filter(File.deployment_id == s["deployment"].id)
         .count()
     )
-    assert file_count == 0
-    assert det_count == 0
-    # Deployment dates were untouched (Phase 6 derives them from
-    # File.captured_at_local on success only).
+    assert det_count == 1
+
+    # Skipped paths surfaced in the result.
+    assert len(result.skipped_missing_timestamp) == 1
+    assert bad_rel in result.skipped_missing_timestamp[0]
+
+    # Deployment dates derived from the one good file's timestamp.
     dep = db.query(Deployment).filter(Deployment.id == s["deployment"].id).one()
-    assert dep.start_date_local.isoformat() == "2024-01-01"
+    assert dep.start_date_local.isoformat() == "2024-06-15"
+    assert dep.end_date_local.isoformat() == "2024-06-15"
 
 
-def test_multiple_missing_files_all_reported(deployment_scaffold):
-    """Every file missing a timestamp ends up in missing_paths; the first
-    5 are surfaced in the exception message for log brevity."""
+def test_all_files_missing_timestamps_raises(deployment_scaffold):
+    """
+    Zero files have a resolvable timestamp. Nothing to ingest — the
+    loader must raise `MissingTimestampError` so the worker can roll
+    back the placeholder deployment. No partial DB state should survive.
+    """
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -118,3 +121,52 @@ def test_multiple_missing_files_all_reported(deployment_scaffold):
     err = exc_info.value
     assert len(err.missing_paths) == 3
     assert "3 file(s)" in str(err)
+
+    # No File / Detection rows were created (we raised before the main
+    # insert loop had anything to persist).
+    file_count = (
+        db.query(File).filter(File.deployment_id == s["deployment"].id).count()
+    )
+    det_count = (
+        db.query(Detection)
+        .join(File, File.id == Detection.file_id)
+        .filter(File.deployment_id == s["deployment"].id)
+        .count()
+    )
+    assert file_count == 0
+    assert det_count == 0
+
+
+def test_all_files_present_no_warning(deployment_scaffold):
+    """Every file has a DateTimeOriginal → clean load, empty skip list."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+
+    images = []
+    for i, p in enumerate(s["img_paths"]):
+        rel = str(p.relative_to(deploy_dir))
+        images.append(
+            _image_entry(
+                rel,
+                {"DateTimeOriginal": f"2024:06:{15 + i:02d} 12:00:00"},
+            )
+        )
+
+    md_json = build_detection_json(images)
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+
+    with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+        result = load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
+
+    assert result.skipped_missing_timestamp == []
+    file_count = (
+        db.query(File).filter(File.deployment_id == s["deployment"].id).count()
+    )
+    assert file_count == len(s["img_paths"])

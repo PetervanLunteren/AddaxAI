@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
   Card,
@@ -137,7 +138,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     validationMessages.push("Selected folder contains no images");
   } else if (blockingDeployment) {
     validationMessages.push(
-      `This folder is already a deployment in this project (id ${blockingDeployment.id.slice(0, 8)}). Delete it from the Deployments page first.`,
+      "This folder is already a deployment in this project. Open it on the Deployments page to review or delete it.",
     );
   } else if (blockingQueueEntry) {
     validationMessages.push(
@@ -230,29 +231,30 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           {/* Surface duplicate-blocker messages above the disabled button so
               users don't have to hover to see why they're blocked. */}
           {(blockingDeployment || blockingQueueEntry) && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {blockingDeployment ? (
-                <>
-                  This folder is already a deployment in this project. Delete it
-                  from the{" "}
-                  <a
-                    href={`/projects/${projectId}/deployments`}
-                    className="font-medium underline underline-offset-2"
+            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <div className="flex-1">
+                {blockingDeployment ? (
+                  <>This folder is already a deployment in this project.</>
+                ) : (
+                  <>
+                    This folder is already in the queue (status:{" "}
+                    <strong>{blockingQueueEntry?.status}</strong>).
+                  </>
+                )}
+              </div>
+              {blockingDeployment && (
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                >
+                  <Link
+                    to={`/projects/${projectId}/deployments?info=${blockingDeployment.id}`}
                   >
-                    Deployments page
-                  </a>{" "}
-                  first (deployment id{" "}
-                  <code className="font-mono text-xs">
-                    {blockingDeployment.id.slice(0, 8)}
-                  </code>
-                  ).
-                </>
-              ) : (
-                <>
-                  This folder is already in the queue (status:{" "}
-                  <strong>{blockingQueueEntry?.status}</strong>). Remove the
-                  queue entry first if you want to re-add this folder.
-                </>
+                    View
+                  </Link>
+                </Button>
               )}
             </div>
           )}

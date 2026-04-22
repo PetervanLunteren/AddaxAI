@@ -23,6 +23,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
   const queryClient = useQueryClient();
   const [showRunModal, setShowRunModal] = useState(false);
   const [jobIds, setJobIds] = useState<string[]>([]);
+  const [runQueueEntryIds, setRunQueueEntryIds] = useState<string[]>([]);
   const [processingCount, setProcessingCount] = useState(0);
 
   // Fetch queue entries
@@ -71,6 +72,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
       setProcessingCount(pendingCount);
       const result = await processQueueMutation.mutateAsync();
       setJobIds(result.job_ids);
+      setRunQueueEntryIds(result.queue_entry_ids);
       setShowRunModal(true);
     } catch (error) {
       console.error("[QueueCard] Failed to process queue:", error);
@@ -116,16 +118,18 @@ export function QueueCard({ projectId }: QueueCardProps) {
           {entries && entries.filter((e) => e.status !== "completed").length > 0 ? (
             <div className="space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
               {entries
-                .filter((entry) => entry.status !== "completed")
+                .filter((e) => e.status !== "completed")
                 .map((entry) => (
                   <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
                 ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500">
-              <ListTodo className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-sm">No deployments in queue</p>
-              <p className="text-xs mt-1">Add deployments using the form on the left</p>
+            <div className="border border-gray-200 rounded-lg p-3">
+              <div className="text-center py-12 text-gray-500">
+                <ListTodo className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm">No deployments in queue</p>
+                <p className="text-xs mt-1">Add deployments using the form on the left</p>
+              </div>
             </div>
           )}
         </CardContent>
@@ -149,6 +153,8 @@ export function QueueCard({ projectId }: QueueCardProps) {
         onOpenChange={setShowRunModal}
         queueCount={processingCount}
         jobIds={jobIds}
+        projectId={projectId}
+        queueEntryIds={runQueueEntryIds}
         onAnalysisComplete={() => {
           // Invalidate all project-related caches so Images, Dashboard,
           // Verify pages show fresh data without a hard reload.

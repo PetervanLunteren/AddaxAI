@@ -10,7 +10,7 @@ Following DEVELOPERS.md principles:
 Created by Claude Code on 2026-01-04
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -50,6 +50,11 @@ class PipelineResult:
     classified_detections: int
     person_detections: int = 0
     vehicle_detections: int = 0
+    # Absolute paths of files that were dropped from ingest because no
+    # `DateTimeOriginal` / exiftool date could be resolved. The caller
+    # surfaces these to the user as a non-fatal warning on the queue
+    # entry. Empty list when everything loaded cleanly.
+    skipped_missing_timestamp: list[str] = field(default_factory=list)
 
 
 class DetectionModel:

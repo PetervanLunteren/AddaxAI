@@ -114,7 +114,12 @@ async def process_queue(
 
     if not pending_entries:
         logger.info(f"No pending queue entries for project: {request.project_id}")
-        return {"message": "No pending queue entries to process", "jobs_started": 0, "job_ids": []}
+        return {
+            "message": "No pending queue entries to process",
+            "jobs_started": 0,
+            "job_ids": [],
+            "queue_entry_ids": [],
+        }
 
     entry_count = len(pending_entries)
     logger.info(
@@ -150,4 +155,5 @@ async def process_queue(
         ),
         "jobs_started": 1,
         "job_ids": [job.id],
+        "queue_entry_ids": entry_ids,
     }

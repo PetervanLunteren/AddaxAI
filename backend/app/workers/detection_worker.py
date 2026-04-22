@@ -12,6 +12,7 @@ Created by Claude Code on 2026-01-04
 """
 
 import asyncio
+import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -587,6 +588,25 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
+
+                # Soft-fail: files without a capture timestamp get skipped
+                # rather than blocking the whole deployment. Persist a
+                # typed log so the UI can render warnings alongside any
+                # future categories in one unified table.
+                if result.skipped_missing_timestamp:
+                    logger.warning(
+                        f"Skipped {len(result.skipped_missing_timestamp)} "
+                        "file(s) with no extractable capture timestamp"
+                    )
+                    log_entries = [
+                        {"type": "missing_timestamp", "path": p}
+                        for p in result.skipped_missing_timestamp
+                    ]
+                    queue_crud.update_queue_warnings(
+                        db,
+                        entry_id,
+                        json.dumps(log_entries),
+                    )
 
                 # Defensive fallback: link any detections that weren't
                 # resolved inline (should be a no-op)

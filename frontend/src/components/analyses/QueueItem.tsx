@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Folder, MapPin, Image, MoreVertical, Trash2, Eye } from "lucide-react";
+import { Folder, MoreVertical, Trash2, Eye, EyeOff } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,11 +16,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { TagPills } from "@/components/ui/tag-pills";
 import { sitesApi } from "@/api/sites";
-import { projectsApi } from "@/api/projects";
-import { modelsApi } from "@/api/models";
 import { useFolderScan } from "@/hooks/useFolderScan";
 import type { DeploymentQueueEntry } from "@/api/deployment-queue";
+
+function formatDatetimeOffset(seconds: number): string {
+  const sign = seconds >= 0 ? "+" : "-";
+  const abs = Math.abs(seconds);
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  const s = abs % 60;
+  const parts: string[] = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+  return `${sign}${parts.join(" ")}`;
+}
 
 interface QueueItemProps {
   entry: DeploymentQueueEntry;
@@ -37,48 +49,19 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
     enabled: !!entry.site_id,
   });
 
-  // Fetch project info
-  const { data: project } = useQuery({
-    queryKey: ["projects", entry.project_id],
-    queryFn: () => projectsApi.get(entry.project_id),
-    enabled: showDetails, // Only fetch when details are shown
-  });
-
-  // Fetch model info for friendly names
-  const { data: detectionModels } = useQuery({
-    queryKey: ["models", "detection"],
-    queryFn: () => modelsApi.listDetectionModels(),
-    enabled: showDetails,
-  });
-
-  const { data: classificationModels } = useQuery({
-    queryKey: ["models", "classification"],
-    queryFn: () => modelsApi.listClassificationModels(),
-    enabled: showDetails,
-  });
-
   // Get file count from folder scan
   const { data: scanResult, isLoading: isScanning } = useFolderScan(entry.folder_path);
 
   // Derive deployment name from folder path
   const deploymentName = entry.folder_path.split("/").pop() || "Unknown";
 
-  // Get friendly model names
-  const getDetectionModelName = (modelId: string) => {
-    const model = detectionModels?.find((m) => m.model_id === modelId);
-    return model?.friendly_name || modelId;
-  };
+  const siteLabel = entry.site_id
+    ? (site?.name ?? "Loading...")
+    : "(no site)";
 
-  const getClassificationModelName = (modelId: string | null) => {
-    if (!modelId) return "None";
-    const model = classificationModels?.find((m) => m.model_id === modelId);
-    return model?.friendly_name || modelId;
-  };
-
-  // Show last 50 characters of path
-  const truncatedPath = entry.folder_path.length > 50
-    ? "..." + entry.folder_path.slice(-50)
-    : entry.folder_path;
+  const hasTags = entry.tags && Object.keys(entry.tags).length > 0;
+  const hasOffset =
+    entry.datetime_offset_seconds != null && entry.datetime_offset_seconds !== 0;
 
   // Status badge styling
   const getStatusBadge = () => {
@@ -94,6 +77,11 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
         return {
           classes: `${baseClasses} bg-teal-50 text-teal-700`,
           label: "Processing"
+        };
+      case "completed":
+        return {
+          classes: `${baseClasses} bg-green-50 text-green-700`,
+          label: "Completed"
         };
       case "failed":
         return {
@@ -126,9 +114,14 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             </span>
           </div>
 
-          {/* Path */}
-          <p className="text-xs text-gray-500 font-mono truncate" title={entry.folder_path}>
-            {truncatedPath}
+          {/* Path: width-based truncation from the start so the
+              trailing deployment folder stays visible. */}
+          <p
+            dir="rtl"
+            className="text-xs text-gray-500 font-mono truncate text-left"
+            title={entry.folder_path}
+          >
+            <bdi>{entry.folder_path}</bdi>
           </p>
         </div>
 
@@ -159,13 +152,9 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
       {showDetails && (
         <div className="mt-3 pt-3 border-t border-gray-200">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
-            {/* Folder */}
-            <dt className="text-gray-500 font-medium">Folder:</dt>
-            <dd className="text-gray-900 font-mono break-all">{entry.folder_path}</dd>
-
             {/* Site */}
             <dt className="text-gray-500 font-medium">Site:</dt>
-            <dd className="text-gray-900">{site ? site.name : "Loading..."}</dd>
+            <dd className="text-gray-900">{siteLabel}</dd>
 
             {/* Files */}
             <dt className="text-gray-500 font-medium">Files:</dt>
@@ -183,36 +172,33 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             <dt className="text-gray-500 font-medium">Created:</dt>
             <dd className="text-gray-900">{new Date(entry.created_at_utc).toLocaleString()}</dd>
 
-            {/* Project settings section */}
-            {project && (
+            {/* Datetime offset (only when non-zero) */}
+            {hasOffset && (
               <>
-                <dt className="text-gray-500 font-medium mt-2 col-span-2 text-[11px] uppercase tracking-wide">
-                  Project Settings
-                </dt>
-
-                {/* Detection model */}
-                <dt className="text-gray-500 font-medium">Detection model:</dt>
+                <dt className="text-gray-500 font-medium">Time offset:</dt>
                 <dd className="text-gray-900">
-                  {getDetectionModelName(project.detection_model_id)}
+                  {formatDatetimeOffset(entry.datetime_offset_seconds!)}
                 </dd>
+              </>
+            )}
 
-                {/* Classification model */}
-                <dt className="text-gray-500 font-medium">Classification model:</dt>
+            {/* Notes */}
+            {entry.notes && (
+              <>
+                <dt className="text-gray-500 font-medium">Notes:</dt>
+                <dd className="text-gray-900 whitespace-pre-wrap break-words">
+                  {entry.notes}
+                </dd>
+              </>
+            )}
+
+            {/* Tags */}
+            {hasTags && (
+              <>
+                <dt className="text-gray-500 font-medium">Tags:</dt>
                 <dd className="text-gray-900">
-                  {getClassificationModelName(project.classification_model_id)}
+                  <TagPills tags={entry.tags} maxVisible={8} />
                 </dd>
-
-                {/* Label selection */}
-                {project.excluded_classes && (
-                  <>
-                    <dt className="text-gray-500 font-medium">Label selection:</dt>
-                    <dd className="text-gray-900">
-                      {project.excluded_classes.length === 0
-                        ? "All labels"
-                        : `${project.excluded_classes.length} labels excluded`}
-                    </dd>
-                  </>
-                )}
               </>
             )}
 
@@ -226,11 +212,12 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
           </div>
 
           <Button
-            variant="link"
+            variant="outline"
             size="sm"
             onClick={() => setShowDetails(false)}
-            className="px-0 mt-3"
+            className="mt-3"
           >
+            <EyeOff className="h-4 w-4 mr-2" />
             Hide details
           </Button>
         </div>

@@ -92,17 +92,38 @@ def update_queue_counts(
     return db_entry
 
 
+def update_queue_warnings(
+    db: Session, entry_id: str, warnings: str | None
+) -> DeploymentQueue | None:
+    """
+    Record non-fatal warnings on an in-flight queue entry without
+    changing its status. Used mid-run, e.g. after the JSON loader
+    reports files skipped due to missing capture timestamps.
+    """
+    db_entry = get_queue_entry(db, entry_id)
+    if db_entry is None:
+        return None
+
+    db_entry.warnings = warnings
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
+
 def update_queue_status(
     db: Session,
     entry_id: str,
     status: str,
     error: str | None = None,
     deployment_id: str | None = None,
+    warnings: str | None = None,
 ) -> DeploymentQueue | None:
     """
     Update queue entry status.
 
-    Returns None if entry doesn't exist.
+    Returns None if entry doesn't exist. `warnings` carries non-fatal
+    ingest messages (e.g. files skipped because they had no capture
+    timestamp). Newline-joined paths so the frontend can split them.
     """
     db_entry = get_queue_entry(db, entry_id)
     if db_entry is None:
@@ -112,6 +133,9 @@ def update_queue_status(
 
     if error:
         db_entry.error = error
+
+    if warnings:
+        db_entry.warnings = warnings
 
     if deployment_id:
         db_entry.deployment_id = deployment_id

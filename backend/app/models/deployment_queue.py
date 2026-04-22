@@ -72,6 +72,11 @@ class DeploymentQueue(Base):
         DateTime(timezone=True), nullable=True
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Non-fatal warnings accumulated during ingest (e.g. files skipped
+    # because they had no extractable capture timestamp). Newline-joined
+    # paths, mirroring the `error` column shape so the frontend can
+    # split/truncate it the same way. None when nothing to warn about.
+    warnings: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Result - created deployment ID after processing
     deployment_id: Mapped[str | None] = mapped_column(

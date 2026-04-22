@@ -29,18 +29,7 @@ import {
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
-
-/** Trigger a browser download for a Blob. */
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+import { downloadBlob } from "../lib/download";
 
 function slugify(name: string): string {
   return (
