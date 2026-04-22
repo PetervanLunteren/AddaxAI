@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Play, Loader2, ListTodo } from "lucide-react";
+import { Play, Loader2, ListTodo, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { deploymentQueueApi } from "@/api/deployment-queue";
@@ -26,6 +26,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
   const [jobIds, setJobIds] = useState<string[]>([]);
   const [runQueueEntryIds, setRunQueueEntryIds] = useState<string[]>([]);
   const [processingCount, setProcessingCount] = useState(0);
+  const [showAllStatuses, setShowAllStatuses] = useState(false);
 
   // Fetch queue entries
   const { data: entries, isLoading } = useQuery({
@@ -84,6 +85,10 @@ export function QueueCard({ projectId }: QueueCardProps) {
 
   const pendingCount = entries?.filter((e) => e.status === "pending").length || 0;
   const hasPending = pendingCount > 0;
+  const otherCount = (entries?.length || 0) - pendingCount;
+  const visibleEntries = showAllStatuses
+    ? (entries || [])
+    : (entries || []).filter((e) => e.status === "pending");
 
   if (isLoading) {
     return (
@@ -101,28 +106,48 @@ export function QueueCard({ projectId }: QueueCardProps) {
     <>
       <Card>
         <CardHeader>
-          <CardTitle>
-            Analysis queue
-          </CardTitle>
-          <CardDescription>
-            {entries && entries.length > 0 ? (
-              <span>
-                {pendingCount} {pendingCount === 1 ? "deployment" : "deployments"} pending
-              </span>
-            ) : (
-              <span>No deployments in queue yet</span>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Analysis queue</CardTitle>
+              <CardDescription>
+                {entries && entries.length > 0 ? (
+                  <span>
+                    {pendingCount} {pendingCount === 1 ? "deployment" : "deployments"} pending
+                  </span>
+                ) : (
+                  <span>No deployments in queue yet</span>
+                )}
+              </CardDescription>
+            </div>
+            {otherCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => setShowAllStatuses((v) => !v)}
+              >
+                {showAllStatuses ? (
+                  <>
+                    <EyeOff className="h-4 w-4 mr-2" />
+                    Hide {otherCount}
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Show {otherCount} more
+                  </>
+                )}
+              </Button>
             )}
-          </CardDescription>
+          </div>
         </CardHeader>
 
         <CardContent>
-          {entries && entries.filter((e) => e.status !== "completed").length > 0 ? (
+          {visibleEntries.length > 0 ? (
             <div className="space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
-              {entries
-                .filter((e) => e.status !== "completed")
-                .map((entry) => (
-                  <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
-                ))}
+              {visibleEntries.map((entry) => (
+                <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
+              ))}
             </div>
           ) : (
             <div className="border border-gray-200 rounded-lg p-3">

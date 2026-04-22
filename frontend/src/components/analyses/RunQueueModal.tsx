@@ -452,7 +452,9 @@ export function RunQueueModal({
 
   return (
     <Dialog open={open} onOpenChange={inTerminalState ? onOpenChange : undefined}>
-      <DialogContent className={showLogTable ? "sm:max-w-3xl" : "sm:max-w-lg"}>
+      <DialogContent
+        className={`${showLogTable ? "sm:max-w-3xl" : "sm:max-w-lg"} [&>button.absolute]:hidden`}
+      >
         <DialogHeader>
           <DialogTitle>
             {isComplete

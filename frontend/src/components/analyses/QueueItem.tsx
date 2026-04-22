@@ -8,13 +8,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Folder, MoreVertical, Trash2, Eye, EyeOff } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Folder, Trash2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TagPills } from "@/components/ui/tag-pills";
 import { sitesApi } from "@/api/sites";
@@ -125,27 +119,31 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
           </p>
         </div>
 
-        {/* Actions dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setShowDetails(true)}>
-              <Eye className="h-4 w-4 mr-2" />
-              View details
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onDelete(entry.id)}
-              className="text-red-600 focus:text-red-600"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Inline actions — fast clicking, no dropdown hop. */}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setShowDetails((v) => !v)}
+            title={showDetails ? "Hide details" : "View details"}
+          >
+            {showDetails ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+            onClick={() => onDelete(entry.id)}
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Details section */}
@@ -167,6 +165,37 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
                 "No files"
               )}
             </dd>
+
+            {/* GPS (from folder scan) */}
+            {!isScanning && scanResult && (
+              <>
+                <dt className="text-gray-500 font-medium">GPS:</dt>
+                <dd className="text-gray-900">
+                  {scanResult.gps_location ? "Found in EXIF" : "Not found"}
+                </dd>
+              </>
+            )}
+
+            {/* Date range (from folder scan, includes any datetime offset) */}
+            {!isScanning && scanResult?.start_date && scanResult?.end_date && (() => {
+              const fmt = (d: Date) =>
+                d.toLocaleString([], {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              const offsetMs = (entry.datetime_offset_seconds ?? 0) * 1000;
+              const start = new Date(new Date(scanResult.start_date).getTime() + offsetMs);
+              const end = new Date(new Date(scanResult.end_date).getTime() + offsetMs);
+              return (
+                <>
+                  <dt className="text-gray-500 font-medium">Date range:</dt>
+                  <dd className="text-gray-900">{`${fmt(start)} – ${fmt(end)}`}</dd>
+                </>
+              );
+            })()}
 
             {/* Created */}
             <dt className="text-gray-500 font-medium">Created:</dt>
@@ -210,16 +239,6 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               </>
             )}
           </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowDetails(false)}
-            className="mt-3"
-          >
-            <EyeOff className="h-4 w-4 mr-2" />
-            Hide details
-          </Button>
         </div>
       )}
     </div>
