@@ -4,7 +4,7 @@ Integration tests: postprocessing pipeline (smoothing, exclusion, reload).
 Tests update_database_from_smoothed_results(), run_postprocessing_for_deployment(),
 reload_raw_classifications_from_json(), and build_smoother_input().
 
-Mocks: subprocess.run, _get_ml_python_path, _find_classification_model_dir
+Mocks: popen_group, _get_ml_python_path, _find_classification_model_dir
 (to avoid needing the ML conda env and model files).
 """
 
@@ -230,26 +230,38 @@ def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
 
     captured_input = {}
 
-    def fake_subprocess_run(cmd, **kwargs):
-        """Capture the input JSON passed to subprocess and write output."""
+    def fake_popen(cmd, **kwargs):
+        """Simulate the smoothing subprocess: read input, write passthrough
+        output, return a completed-process stub. Matches the call shape of
+        app.core.subprocess_group.popen_group which run_postprocessing_for_deployment
+        uses so we can intercept without actually spawning a subprocess.
+        """
         input_path = cmd[2]  # [python, script, input, opts, output]
         output_path = cmd[4]
 
         with open(input_path) as f:
             captured_input["data"] = json.load(f)
 
-        # Write input as output (passthrough)
         with open(output_path, "w") as f:
             json.dump(captured_input["data"], f)
 
-        class FakeResult:
+        class FakeProcess:
+            pid = 12345
             returncode = 0
-            stderr = ""
 
-        return FakeResult()
+            def communicate(self, timeout=None):
+                return ("", "")
+
+            def poll(self):
+                return 0
+
+            def kill(self):
+                return None
+
+        return FakeProcess()
 
     with (
-        patch("app.ml.postprocessing.subprocess.run", side_effect=fake_subprocess_run),
+        patch("app.ml.postprocessing.popen_group", side_effect=fake_popen),
         patch("app.ml.postprocessing._get_ml_python_path", return_value="/fake/python"),
         patch("app.ml.postprocessing._find_classification_model_dir", return_value=None),
     ):

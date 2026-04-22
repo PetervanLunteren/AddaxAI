@@ -2,7 +2,7 @@
  * WebSocket hook for tracking task progress (model preparation, job execution, etc.)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { API_BASE_URL } from "../lib/api-client";
 
@@ -17,7 +17,7 @@ export interface TqdmMetrics {
 }
 
 export interface ProgressMessage {
-  type: "progress" | "complete" | "error";
+  type: "progress" | "complete" | "error" | "cancelled";
   job_id: string;
   message: string;
   progress?: number; // 0.0-1.0 (overall progress, for backward compatibility)
@@ -49,12 +49,14 @@ interface UseTaskProgressOptions {
   taskId: string | null;
   onComplete?: (data?: Record<string, unknown>) => void;
   onError?: (message: string) => void;
+  onCancelled?: (message: string) => void;
 }
 
 export function useTaskProgress({
   taskId,
   onComplete,
   onError,
+  onCancelled,
 }: UseTaskProgressOptions) {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
@@ -216,6 +218,20 @@ export function useTaskProgress({
             if (onError) {
               onError(data.message);
             }
+          } else if (data.type === "cancelled") {
+            console.debug(`[useTaskProgress] CANCELLED received for job_id=${data.job_id}`);
+            taskCompletedRef.current = true;
+
+            if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+            }
+
+            flushSync(() => {
+              setMessage(data.message);
+            });
+            if (onCancelled) {
+              onCancelled(data.message);
+            }
           }
         } catch (error) {
           console.error("Failed to parse WebSocket message:", error);
@@ -276,6 +292,15 @@ export function useTaskProgress({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]); // Only re-run when taskId changes, not when callbacks change
 
+  const cancel = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !taskId) {
+      console.warn("[useTaskProgress] cancel() called but socket not open");
+      return;
+    }
+    ws.send(JSON.stringify({ type: "cancel", job_id: taskId }));
+  }, [taskId]);
+
   return {
     progress,
     message,
@@ -285,5 +310,6 @@ export function useTaskProgress({
     deploymentContext,
     metrics,
     computeDevice,
+    cancel,
   };
 }

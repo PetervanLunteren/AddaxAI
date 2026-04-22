@@ -29,3 +29,6 @@
 
 - [ ] There is currently no cancel button when running ML (proicessing deployments). Is it difficult to add that? And would it be difficult to add a pauze button? The cancel button is pretty improtant, but the pauze button not so much. Dont make it too complex. KISS. 
 
+what is the cross button doein in the analysis pbar modal? 
+
+what is the reason we have anything else than "pending" status in the process queue? "processing" is done in Modal, and never without modal, so you wont see it. And why is "failed" in there? Isnt all the failed info given at the end with errors/warnings? It might just be extra noise where users have to manually delete the failed ones form the queue every time. Are there any other statusses I dont know about? What do you think? Be honest, no sugar coating. 

@@ -16,7 +16,13 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    is_cancel_requested,
+    track_subprocess,
+)
 from app.core.logging_config import get_logger
+from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 
 logger = get_logger(__name__)
@@ -65,6 +71,7 @@ class VideoDetectionModel:
         fps: float,
         confidence_threshold: float,
         progress_callback: Callable[[str, float], None] | None = None,
+        job_id: str | None = None,
     ) -> Path:
         """
         Run MegaDetector on videos using process_video module.
@@ -116,8 +123,9 @@ class VideoDetectionModel:
             progress_callback("Starting video detection...", 0.0)
 
         try:
-            # Run subprocess with progress streaming
-            process = subprocess.Popen(
+            # Run subprocess with progress streaming in its own process
+            # group so cancel can take the whole tree down.
+            process = popen_group(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -128,58 +136,65 @@ class VideoDetectionModel:
 
             # Stream output and parse progress
             last_progress = 0.0
-            for line in process.stdout:
-                line = line.strip()
+            with track_subprocess(job_id, process):
+                for line in process.stdout:
+                    line = line.strip()
 
-                # Log output
-                logger.debug(f"[VideoDetector] {line}")
+                    # Log output
+                    logger.debug(f"[VideoDetector] {line}")
 
-                # Parse device from PTDetector output (appears once during init)
-                if "PTDetector using device" in line and progress_callback:
-                    raw = line.split("PTDetector using device")[-1].strip()
-                    device_name = self._format_device_name(raw)
-                    try:
-                        progress_callback(
-                            "Initializing detector...", 0.0, {"compute_device": device_name}
-                        )
-                    except TypeError:
-                        pass
-
-                # Parse progress from tqdm output
-                # Look for patterns like: "45/100" or "Processing video 5/10"
-                progress_match = re.search(r"(\d+)/(\d+)", line)
-                if progress_match and progress_callback:
-                    current, total = map(int, progress_match.groups())
-                    phase_progress = current / total
-
-                    # Only update if progress changed significantly
-                    if phase_progress - last_progress >= 0.01:
-                        # Parse full tqdm metrics from line
-                        metrics = self._parse_tqdm_metrics(line)
-
-                        # Debug: Log what we parsed
-                        if metrics:
-                            logger.info(f"[VideoDetector] Parsed metrics: {metrics}")
-                        else:
-                            logger.info(f"[VideoDetector] No metrics parsed from: {line}")
-
-                        # Send raw line and metrics
+                    # Parse device from PTDetector output (appears once during init)
+                    if "PTDetector using device" in line and progress_callback:
+                        raw = line.split("PTDetector using device")[-1].strip()
+                        device_name = self._format_device_name(raw)
                         try:
                             progress_callback(
-                                line if metrics else f"Processing video {current}/{total}",
-                                phase_progress,
-                                metrics,
+                                "Initializing detector...", 0.0, {"compute_device": device_name}
                             )
                         except TypeError:
-                            # Fallback for callbacks that don't accept metrics
-                            progress_callback(
-                                f"Processing video {current}/{total}",
-                                phase_progress,
-                            )
-                        last_progress = phase_progress
+                            pass
 
-            process.stdout.close()
-            return_code = process.wait()
+                    # Parse progress from tqdm output
+                    # Look for patterns like: "45/100" or "Processing video 5/10"
+                    progress_match = re.search(r"(\d+)/(\d+)", line)
+                    if progress_match and progress_callback:
+                        current, total = map(int, progress_match.groups())
+                        phase_progress = current / total
+
+                        # Only update if progress changed significantly
+                        if phase_progress - last_progress >= 0.01:
+                            # Parse full tqdm metrics from line
+                            metrics = self._parse_tqdm_metrics(line)
+
+                            # Debug: Log what we parsed
+                            if metrics:
+                                logger.info(f"[VideoDetector] Parsed metrics: {metrics}")
+                            else:
+                                logger.info(f"[VideoDetector] No metrics parsed from: {line}")
+
+                            # Send raw line and metrics
+                            try:
+                                progress_callback(
+                                    line if metrics else f"Processing video {current}/{total}",
+                                    phase_progress,
+                                    metrics,
+                                )
+                            except TypeError:
+                                # Fallback for callbacks that don't accept metrics
+                                progress_callback(
+                                    f"Processing video {current}/{total}",
+                                    phase_progress,
+                                )
+                            last_progress = phase_progress
+
+                process.stdout.close()
+                return_code = process.wait()
+
+            # If we were cancelled mid-stream, the process was killed and
+            # returned non-zero; surface that as a cancel rather than an
+            # opaque RuntimeError.
+            if is_cancel_requested(job_id) if job_id else False:
+                raise JobCancelledError()
 
             # Send final 100% update
             if progress_callback and last_progress < 1.0:
@@ -197,6 +212,8 @@ class VideoDetectionModel:
 
             return output_json
 
+        except JobCancelledError:
+            raise
         except subprocess.SubprocessError as e:
             logger.error(f"Video detection subprocess error: {e}", exc_info=True)
             raise RuntimeError(f"Video detection failed: {e}") from e

@@ -261,6 +261,43 @@ class ConnectionManager:
         # Clean up state after 60s
         self._schedule_cleanup(self._cleanup_state(job_id, delay=60))
 
+    async def send_cancelled(
+        self, job_id: str, message: str = "Run cancelled"
+    ) -> None:
+        """Broadcast a 'cancelled' terminal message to all subscribers.
+
+        Mirrors send_complete / send_error so the frontend can treat
+        cancellation as a first-class terminal state.
+        """
+        logger.info(f"send_cancelled() called for job {job_id}")
+
+        cancelled_data = {
+            "type": "cancelled",
+            "job_id": job_id,
+            "message": message,
+        }
+
+        async with self._lock:
+            self.current_state[job_id] = cancelled_data
+            if job_id in self.active_connections:
+                connections_to_send = list(self.active_connections[job_id])
+            else:
+                connections_to_send = []
+
+        for connection in connections_to_send:
+            try:
+                await connection.send_json(cancelled_data)
+            except Exception as e:
+                logger.warning(f"Failed to send cancellation to client: {e}")
+                async with self._lock:
+                    if (
+                        job_id in self.active_connections
+                        and connection in self.active_connections[job_id]
+                    ):
+                        self.active_connections[job_id].remove(connection)
+
+        self._schedule_cleanup(self._cleanup_state(job_id, delay=60))
+
     def get_connection_count(self, job_id: str) -> int:
         """Get number of active connections for a job."""
         return len(self.active_connections.get(job_id, []))

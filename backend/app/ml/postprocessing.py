@@ -20,7 +20,13 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    is_cancel_requested,
+    track_subprocess,
+)
 from app.core.logging_config import get_logger
+from app.core.subprocess_group import popen_group
 from app.models import Deployment, Detection, File
 
 logger = get_logger(__name__)
@@ -207,6 +213,7 @@ def run_postprocessing_for_deployment(
     deployment_folder: Path,
     project,
     db: Session,
+    job_id: str | None = None,
 ) -> dict:
     """
     Run classification postprocessing (smoothing + taxonomic rollup) on a deployment.
@@ -359,15 +366,27 @@ def run_postprocessing_for_deployment(
 
     try:
         logger.info(f"Running smoothing subprocess for deployment {deployment_id}")
-        result = subprocess.run(
+        # Popen + wait (instead of subprocess.run) so cancel can kill
+        # the process group mid-smoothing.
+        process = popen_group(
             [str(python_path), str(script_path), input_path, opts_path, output_path],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=300,
         )
+        with track_subprocess(job_id, process):
+            try:
+                stdout, stderr = process.communicate(timeout=300)
+            except subprocess.TimeoutExpired as e:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise RuntimeError("Smoothing script timed out after 300s") from e
 
-        if result.returncode != 0:
-            error_detail = result.stderr or result.stdout or "(no output)"
+        if job_id and is_cancel_requested(job_id):
+            raise JobCancelledError()
+
+        if process.returncode != 0:
+            error_detail = stderr or stdout or "(no output)"
             raise RuntimeError(f"Smoothing script failed: {error_detail}")
 
         with open(output_path) as f:
@@ -375,6 +394,8 @@ def run_postprocessing_for_deployment(
 
         return smoothed
 
+    except JobCancelledError:
+        raise
     except Exception as e:
         logger.error(
             f"Event smoothing failed for deployment {deployment_id}, "

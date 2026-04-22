@@ -17,7 +17,13 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    is_cancel_requested,
+    track_subprocess,
+)
 from app.core.logging_config import get_logger
+from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.base import DetectionModel
 
@@ -177,6 +183,7 @@ class MegaDetectorV1000(DetectionModel):
         batch_size: int | None = None,
         progress_callback: Callable[[str, float], None] | None = None,
         output_path: Path | None = None,
+        job_id: str | None = None,
     ) -> Path:
         """
         Run MegaDetector and save results directly to JSON file (for JSON-based pipeline).
@@ -266,8 +273,9 @@ class MegaDetectorV1000(DetectionModel):
                 if progress_callback:
                     progress_callback(f"Running detection on {len(image_paths)} images...", 0.1)
 
-                # Execute MegaDetector with streaming output
-                process = subprocess.Popen(
+                # Execute MegaDetector with streaming output in its own
+                # process group so cancel can take the whole tree down.
+                process = popen_group(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -276,66 +284,72 @@ class MegaDetectorV1000(DetectionModel):
                 )
 
                 # Monitor progress from stdout
-                for line in process.stdout:
-                    line = line.strip()
-                    if line:
-                        # Print TQDM progress directly to console for debugging
-                        print(f"[MEGADETECTOR] {line}", flush=True)
-                        logger.info(f"MegaDetector: {line}")
+                with track_subprocess(job_id, process):
+                    for line in process.stdout:
+                        line = line.strip()
+                        if line:
+                            # Print TQDM progress directly to console for debugging
+                            print(f"[MEGADETECTOR] {line}", flush=True)
+                            logger.info(f"MegaDetector: {line}")
 
-                        # Parse device from PTDetector output (appears once during init)
-                        if "PTDetector using device" in line and progress_callback:
-                            raw = line.split("PTDetector using device")[-1].strip()
-                            device_name = self._format_device_name(raw)
-                            try:
-                                progress_callback(
-                                    "Initializing detector...", 0.0, {"compute_device": device_name}
-                                )
-                            except TypeError:
-                                pass
-
-                        # Parse tqdm progress and metrics if callback provided
-                        if progress_callback and ("Processing image" in line or "%" in line):
-                            progress = self._parse_progress_line(line)
-                            metrics = self._parse_tqdm_metrics(line)
-
-                            # When batch_size > 1, MegaDetector's tqdm
-                            # iterates over batches, not images. Remap
-                            # to image-level counts so the UI shows the
-                            # correct total and throughput.
-                            if (
-                                batch_size is not None
-                                and batch_size > 1
-                                and metrics
-                            ):
-                                total_batches = metrics.get("total", 0)
-                                if total_batches > 0:
-                                    fraction = (
-                                        metrics.get("current", 0)
-                                        / total_batches
-                                    )
-                                    metrics["total"] = len(image_paths)
-                                    metrics["current"] = round(
-                                        fraction * len(image_paths)
-                                    )
-                                if "rate" in metrics:
-                                    metrics["rate"] *= batch_size
-
-                            if progress is not None:
-                                # Try to send metrics if callback accepts
-                                # 3 params, else fallback to 2
+                            # Parse device from PTDetector output (appears once during init)
+                            if "PTDetector using device" in line and progress_callback:
+                                raw = line.split("PTDetector using device")[-1].strip()
+                                device_name = self._format_device_name(raw)
                                 try:
                                     progress_callback(
-                                        line if metrics else line[:80],
-                                        0.1 + progress * 0.8,
-                                        metrics,
+                                        "Initializing detector...",
+                                        0.0,
+                                        {"compute_device": device_name},
                                     )
                                 except TypeError:
-                                    # Callback only accepts 2 params (backward compatibility)
-                                    progress_callback(line[:80], 0.1 + progress * 0.8)
+                                    pass
 
-                process.stdout.close()
-                process.wait()
+                            # Parse tqdm progress and metrics if callback provided
+                            if progress_callback and ("Processing image" in line or "%" in line):
+                                progress = self._parse_progress_line(line)
+                                metrics = self._parse_tqdm_metrics(line)
+
+                                # When batch_size > 1, MegaDetector's tqdm
+                                # iterates over batches, not images. Remap
+                                # to image-level counts so the UI shows the
+                                # correct total and throughput.
+                                if (
+                                    batch_size is not None
+                                    and batch_size > 1
+                                    and metrics
+                                ):
+                                    total_batches = metrics.get("total", 0)
+                                    if total_batches > 0:
+                                        fraction = (
+                                            metrics.get("current", 0)
+                                            / total_batches
+                                        )
+                                        metrics["total"] = len(image_paths)
+                                        metrics["current"] = round(
+                                            fraction * len(image_paths)
+                                        )
+                                    if "rate" in metrics:
+                                        metrics["rate"] *= batch_size
+
+                                if progress is not None:
+                                    # Try to send metrics if callback accepts
+                                    # 3 params, else fallback to 2
+                                    try:
+                                        progress_callback(
+                                            line if metrics else line[:80],
+                                            0.1 + progress * 0.8,
+                                            metrics,
+                                        )
+                                    except TypeError:
+                                        # Callback only accepts 2 params (backward compatibility)
+                                        progress_callback(line[:80], 0.1 + progress * 0.8)
+
+                    process.stdout.close()
+                    process.wait()
+
+                if job_id and is_cancel_requested(job_id):
+                    raise JobCancelledError()
 
                 if process.returncode != 0:
                     raise RuntimeError(f"MegaDetector failed with return code {process.returncode}")
@@ -368,6 +382,8 @@ class MegaDetectorV1000(DetectionModel):
 
                 return output_file
 
+        except JobCancelledError:
+            raise
         except Exception as e:
             logger.error(f"Detection failed: {e}", exc_info=True)
             raise RuntimeError(f"MegaDetector execution failed: {e}") from e

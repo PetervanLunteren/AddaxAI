@@ -12,6 +12,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import job as job_crud
+from app.core.job_cancellation import request_cancel
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -121,8 +122,12 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
             if text and text.strip() != "ping":
                 try:
                     msg = json.loads(text)
-                    if msg.get("type") == "ready":
+                    msg_type = msg.get("type")
+                    if msg_type == "ready":
                         await ws_manager.handle_ready(job_id)
+                    elif msg_type == "cancel":
+                        logger.info(f"Cancel requested for job {job_id}")
+                        request_cancel(job_id)
                 except (json.JSONDecodeError, AttributeError):
                     pass  # Ignore malformed messages
 

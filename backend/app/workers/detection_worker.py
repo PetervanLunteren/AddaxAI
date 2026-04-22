@@ -25,6 +25,7 @@ from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
+from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.core.websocket_manager import ws_manager
@@ -110,9 +111,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
     total_detections = 0
     total_files = 0
+    # Reset per-iteration; only non-None if the current deployment row
+    # was already created when cancel hit, so we know what to roll back.
+    deployment: Deployment | None = None
 
     try:
         for idx, entry_id in enumerate(queue_entry_ids, start=1):
+            deployment = None  # reset: each iteration creates its own
             # Get queue entry
             entry = queue_crud.get_queue_entry(db, entry_id)
             if not entry:
@@ -311,12 +316,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     None,
                     lambda _vd=video_detector,
                     _fp=folder_path,
-                    _vjp=video_json_path: _vd.detect_videos_to_json(
+                    _vjp=video_json_path,
+                    _jid=job_id: _vd.detect_videos_to_json(
                         video_folder=_fp,
                         output_json=_vjp,
                         fps=project.video_fps,
                         confidence_threshold=0.1,
                         progress_callback=sync_video_detection_progress,
+                        job_id=_jid,
                     ),
                 )
 
@@ -333,6 +340,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         project.video_fps,
                         env_manager,
                         output_dir=artifacts_folder / "video_frames",
+                        job_id=job_id,
                     )
                     logger.info("Video frame extraction complete")
                 except Exception as e:
@@ -387,6 +395,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     progress_callback=video_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     video_frames_base_dir=artifacts_folder / "video_frames",
+                    job_id=job_id,
                 )
 
                 logger.info("Video classification complete")
@@ -428,13 +437,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     lambda _if=image_files,
                     _fp=folder_path,
                     _ijp=image_json_path,
-                    _bs=project.detection_batch_size: detection_model.detect_to_json(
+                    _bs=project.detection_batch_size,
+                    _jid=job_id: detection_model.detect_to_json(
                         image_paths=_if,
                         deployment_folder=_fp,
                         confidence_threshold=0.1,
                         batch_size=_bs,
                         progress_callback=sync_image_detection_progress,
                         output_path=_ijp,
+                        job_id=_jid,
                     ),
                 )
 
@@ -469,6 +480,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     progress_callback=image_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     video_frames_base_dir=artifacts_folder / "video_frames",
+                    job_id=job_id,
                 )
 
                 logger.info("Image classification complete")
@@ -629,7 +641,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 )
 
                 smoothed = run_postprocessing_for_deployment(
-                    deployment.id, final_json_path, folder_path, project, db
+                    deployment.id, final_json_path, folder_path, project, db,
+                    job_id=job_id,
                 )
                 # Load taxonomy for display_name formatting
                 taxonomy_csv = None
@@ -732,8 +745,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     lambda _em=embedding_model,
                     _eij=embedding_input_json,
                     _eon=embedding_output_npz,
-                    _bs=project.embedding_batch_size: _em.compute_embeddings(
-                        _eij, _eon, _bs, sync_embedding_progress
+                    _bs=project.embedding_batch_size,
+                    _jid=job_id: _em.compute_embeddings(
+                        _eij, _eon, _bs, sync_embedding_progress, job_id=_jid,
                     ),
                 )
 
@@ -805,6 +819,39 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             f"{total_files} files, {total_detections} detections"
         )
 
+    except JobCancelledError:
+        # User hit Cancel. Roll back the in-flight deployment (if its
+        # placeholder row exists), mark the current queue entry as
+        # failed with a "Cancelled by user" note, and reset any
+        # untouched-pending entries back to pending so they are
+        # re-runnable. `entry_id` is bound from the for loop.
+        logger.info(f"Batch job {job_id}: cancelled by user during entry {entry_id}")
+
+        if deployment is not None:
+            try:
+                db.delete(deployment)
+                db.commit()
+                logger.info(
+                    f"Rolled back placeholder deployment {deployment.id} after cancel"
+                )
+            except Exception as rb:
+                logger.warning(f"Placeholder rollback failed after cancel: {rb}")
+                db.rollback()
+
+        # Put the in-flight entry and every remaining "processing"
+        # entry back to "pending" so they're indistinguishable from
+        # entries that never started. The user can re-run them by
+        # hitting Run queue again.
+        for other_id in queue_entry_ids:
+            other = queue_crud.get_queue_entry(db, other_id)
+            if other and other.status == "processing":
+                queue_crud.update_queue_status(
+                    db, other_id, status="pending", error=None
+                )
+
+        job_crud.update_job_status(db, job_id, "cancelled")
+        await ws_manager.send_cancelled(job_id, "Run cancelled by user")
+
     except Exception as e:
         logger.error(f"Batch job {job_id} failed: {e}", exc_info=True)
         job_crud.update_job_status(db, job_id, "failed")
@@ -817,6 +864,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
         await ws_manager.send_error(job_id, str(e))
         raise
+
+    finally:
+        clear_cancel(job_id)
 
 
 async def process_deployment_analysis(job_id: str) -> None:
@@ -936,6 +986,7 @@ async def run_classification_on_json(
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
     classification_model_dir: Path | None = None,
     video_frames_base_dir: Path | None = None,
+    job_id: str | None = None,
 ) -> None:
     """
     Run classification on detection JSON file.
@@ -1077,6 +1128,7 @@ async def run_classification_on_json(
         logger.info("[DEBUG] Calling classify_detections()...")
         results, class_names, compute_device = classification_model.classify_detections(
             items, batch_size=batch_size, progress_callback=on_progress,
+            job_id=job_id,
         )
         logger.info(
             f"[DEBUG] classify_detections() returned: "

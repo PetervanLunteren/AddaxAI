@@ -19,7 +19,13 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    is_cancel_requested,
+    track_subprocess,
+)
 from app.core.logging_config import get_logger
+from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.base import ClassificationResult
 
@@ -78,6 +84,7 @@ class CustomClassificationModel:
         items: list[dict],
         batch_size: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        job_id: str | None = None,
     ) -> tuple[list[ClassificationResult | None], dict[str, str], str]:
         """
         Classify a batch of detections in a one-shot subprocess.
@@ -139,8 +146,9 @@ class CustomClassificationModel:
             logger.info(f"Starting one-shot classification worker for {self.model_dir.name}")
             logger.info(f"[DEBUG] Command: {' '.join(cmd)}")
 
-            # Launch subprocess — no stdin, no stdout, stderr for progress
-            process = subprocess.Popen(
+            # Launch subprocess in its own process group so cancel can
+            # kill the whole tree; stderr is used for progress messages.
+            process = popen_group(
                 cmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -149,35 +157,39 @@ class CustomClassificationModel:
                 env=env,
             )
 
-            # Read stderr line by line for progress
             compute_device = "CPU"
-            for line in process.stderr:
-                line = line.strip()
-                if not line:
-                    continue
+            with track_subprocess(job_id, process):
+                # Read stderr line by line for progress
+                for line in process.stderr:
+                    line = line.strip()
+                    if not line:
+                        continue
 
-                # Try parsing as JSON status/progress
-                try:
-                    msg = json.loads(line)
-                    if "status" in msg and msg["status"] == "ready":
-                        compute_device = msg.get("compute_device", "CPU")
-                        logger.info(
-                            f"Worker ready (Device: {compute_device}) "
-                            f"for {self.model_dir.name}"
-                        )
-                    elif "current" in msg and "total" in msg:
-                        if progress_callback:
-                            progress_callback(msg["current"], msg["total"])
-                except json.JSONDecodeError:
-                    # Regular log line from worker
-                    logger.info(f"[Worker] {line}")
-                    # TODO: remove this print after verifying batching works in production
-                    print(f"[Worker] {line}")
+                    # Try parsing as JSON status/progress
+                    try:
+                        msg = json.loads(line)
+                        if "status" in msg and msg["status"] == "ready":
+                            compute_device = msg.get("compute_device", "CPU")
+                            logger.info(
+                                f"Worker ready (Device: {compute_device}) "
+                                f"for {self.model_dir.name}"
+                            )
+                        elif "current" in msg and "total" in msg:
+                            if progress_callback:
+                                progress_callback(msg["current"], msg["total"])
+                    except json.JSONDecodeError:
+                        # Regular log line from worker
+                        logger.info(f"[Worker] {line}")
+                        # TODO: remove this print after verifying batching works in production
+                        print(f"[Worker] {line}")
 
-            # Wait for process to finish
-            process.wait()
+                # Wait for process to finish
+                process.wait()
 
             logger.info(f"[DEBUG] Worker exited with code {process.returncode}")
+
+            if job_id and is_cancel_requested(job_id):
+                raise JobCancelledError()
 
             if process.returncode != 0:
                 raise RuntimeError(

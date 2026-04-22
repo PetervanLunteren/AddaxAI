@@ -12,7 +12,13 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    is_cancel_requested,
+    track_subprocess,
+)
 from app.core.logging_config import get_logger
+from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.schemas.model_manifest import ModelManifest
 
@@ -68,6 +74,7 @@ class EmbeddingModel:
         output_npz_path: Path,
         batch_size: int | None = None,
         progress_callback: Callable[[str, float, dict | None], None] | None = None,
+        job_id: str | None = None,
     ) -> int:
         """
         Run embedding subprocess. Returns number of embeddings computed.
@@ -123,7 +130,7 @@ class EmbeddingModel:
 
         env = {**_os.environ, "PYTHONUNBUFFERED": "1"}
 
-        process = subprocess.Popen(
+        process = popen_group(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -134,46 +141,54 @@ class EmbeddingModel:
 
         embedded_count = 0
 
-        # Parse stderr for tqdm progress and compute device
-        for line in iter(process.stderr.readline, ""):
-            if not line:
-                break
+        with track_subprocess(job_id, process):
+            # Parse stderr for tqdm progress and compute device
+            for line in iter(process.stderr.readline, ""):
+                if not line:
+                    break
 
-            line = line.strip()
-            if not line:
-                continue
+                line = line.strip()
+                if not line:
+                    continue
 
-            logger.debug(f"embedding: {line}")
+                logger.debug(f"embedding: {line}")
 
-            # Parse compute device (printed once during init)
-            if line.startswith("COMPUTE_DEVICE:") and progress_callback:
-                device_type = line.split(":", 1)[1].strip()
-                device_name = _format_device_name(device_type)
-                progress_callback("Computing embeddings...", 0.0, {"compute_device": device_name})
-                continue
-
-            # Parse tqdm progress
-            if progress_callback and "%" in line:
-                metrics = _parse_tqdm_metrics(line)
-                if metrics:
-                    progress = (
-                        metrics["current"] / metrics["total"] if metrics["total"] > 0 else 0.0
-                    )
+                # Parse compute device (printed once during init)
+                if line.startswith("COMPUTE_DEVICE:") and progress_callback:
+                    device_type = line.split(":", 1)[1].strip()
+                    device_name = _format_device_name(device_type)
                     progress_callback(
-                        metrics.get("raw_line", line[:80]),
-                        progress,
-                        metrics,
+                        "Computing embeddings...",
+                        0.0,
+                        {"compute_device": device_name},
                     )
-                    embedded_count = metrics["current"]
+                    continue
 
-            # Parse final count from "Saved N embeddings" line
-            if "Saved" in line and "embeddings" in line:
-                match = re.search(r"Saved (\d+) embeddings", line)
-                if match:
-                    embedded_count = int(match.group(1))
+                # Parse tqdm progress
+                if progress_callback and "%" in line:
+                    metrics = _parse_tqdm_metrics(line)
+                    if metrics:
+                        progress = (
+                            metrics["current"] / metrics["total"] if metrics["total"] > 0 else 0.0
+                        )
+                        progress_callback(
+                            metrics.get("raw_line", line[:80]),
+                            progress,
+                            metrics,
+                        )
+                        embedded_count = metrics["current"]
 
-        process.stderr.close()
-        stdout, _ = process.communicate()
+                # Parse final count from "Saved N embeddings" line
+                if "Saved" in line and "embeddings" in line:
+                    match = re.search(r"Saved (\d+) embeddings", line)
+                    if match:
+                        embedded_count = int(match.group(1))
+
+            process.stderr.close()
+            stdout, _ = process.communicate()
+
+        if job_id and is_cancel_requested(job_id):
+            raise JobCancelledError()
 
         if process.returncode != 0:
             raise RuntimeError(

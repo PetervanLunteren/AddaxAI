@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, CheckCircle2, Download } from "lucide-react";
+import { Loader2, CheckCircle2, Download, Ban } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -311,12 +311,16 @@ export function RunQueueModal({
   const [errorMessage, setErrorMessage] = useState("");
   const [isComplete, setIsComplete] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [hasCancelled, setHasCancelled] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     setHasError(false);
     setErrorMessage("");
     setIsComplete(false);
     setIsClosing(false);
+    setHasCancelled(false);
+    setIsCancelling(false);
   }, [open]);
 
   const jobId = jobIds[0] || null;
@@ -326,10 +330,12 @@ export function RunQueueModal({
       setIsComplete(false);
       setHasError(false);
       setErrorMessage("");
+      setHasCancelled(false);
+      setIsCancelling(false);
     }
   }, [jobId]);
 
-  const { message, phase, phaseProgress, isConnected, deploymentContext, metrics, computeDevice } = useTaskProgress({
+  const { message, phase, phaseProgress, isConnected, deploymentContext, metrics, computeDevice, cancel } = useTaskProgress({
     taskId: jobId,
     onComplete: () => {
       setIsComplete(true);
@@ -338,6 +344,16 @@ export function RunQueueModal({
     onError: (msg) => {
       setHasError(true);
       setErrorMessage(msg);
+      // Even on failure some deployments may have completed before the
+      // crash — refresh so the UI reflects whatever did land.
+      onAnalysisComplete?.();
+    },
+    onCancelled: () => {
+      setHasCancelled(true);
+      setIsCancelling(false);
+      // Run is done and DB state has updated; let the rest of the app
+      // refresh just like on normal completion.
+      onAnalysisComplete?.();
     },
   });
 
@@ -346,7 +362,7 @@ export function RunQueueModal({
   const { data: allEntries } = useQuery({
     queryKey: ["deployment-queue", projectId],
     queryFn: () => deploymentQueueApi.list(projectId),
-    enabled: open && (isComplete || hasError),
+    enabled: open && (isComplete || hasError || hasCancelled),
   });
 
   const runEntries = (allEntries || []).filter((e) => queueEntryIds.includes(e.id));
@@ -364,8 +380,9 @@ export function RunQueueModal({
   }
 
   const hasJob = Boolean(jobId);
-  const isWaitingForJob = !hasError && !isComplete && !hasJob;
-  const isProcessing = !isComplete && !hasError && hasJob;
+  const isWaitingForJob = !hasError && !isComplete && !hasCancelled && !hasJob;
+  const isProcessing =
+    !isComplete && !hasError && !hasCancelled && hasJob && !isCancelling;
 
   const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "saving", "embedding", "finalize"];
   const currentPhaseIndex = phase ? phaseOrder.indexOf(phase) : -1;
@@ -393,8 +410,15 @@ export function RunQueueModal({
     if (isClosing) return;
     setIsClosing(true);
     try {
+      // Only delete entries that reached a terminal state in this run.
+      // After a cancel, entries reset back to "pending" must survive so
+      // the user can re-run them without re-adding the folders.
+      const terminalStatuses = new Set(["completed", "failed"]);
+      const idsToDelete = runEntries
+        .filter((e) => terminalStatuses.has(e.status))
+        .map((e) => e.id);
       await Promise.all(
-        queueEntryIds.map((id) =>
+        idsToDelete.map((id) =>
           deploymentQueueApi.remove(id).catch(() => null),
         ),
       );
@@ -406,7 +430,7 @@ export function RunQueueModal({
     }
   };
 
-  const inTerminalState = isComplete || hasError;
+  const inTerminalState = isComplete || hasError || hasCancelled;
   const completedEntries = runEntries.filter((e) => e.status === "completed");
   const successCount = completedEntries.length;
   const completedImageTotal = completedEntries.reduce(
@@ -431,16 +455,28 @@ export function RunQueueModal({
       <DialogContent className={showLogTable ? "sm:max-w-3xl" : "sm:max-w-lg"}>
         <DialogHeader>
           <DialogTitle>
-            {isComplete ? "Analysis complete" : hasError ? "Analysis failed" : "Analyzing"}
+            {isComplete
+              ? "Analysis complete"
+              : hasCancelled
+                ? "Analysis cancelled"
+                : hasError
+                  ? "Analysis failed"
+                  : isCancelling
+                    ? "Cancelling..."
+                    : "Analyzing"}
           </DialogTitle>
           <DialogDescription>
             {isComplete
               ? "Review the results below, then close to clear the queue."
-              : hasError
-                ? "The run stopped before finishing. Review the details below."
-                : isWaitingForJob
-                  ? "Preparing the deployment queue..."
-                  : "This analysis is resource intensive. Please avoid other heavy tasks while it runs."}
+              : hasCancelled
+                ? "Review what finished before the run was stopped."
+                : hasError
+                  ? "The run stopped before finishing. Review the details below."
+                  : isCancelling
+                    ? "Stopping the current deployment..."
+                    : isWaitingForJob
+                      ? "Preparing the deployment queue..."
+                      : "This analysis is resource intensive. Please avoid other heavy tasks while it runs."}
           </DialogDescription>
         </DialogHeader>
 
@@ -507,14 +543,50 @@ export function RunQueueModal({
             );
           })()}
 
+          {hasCancelled && (() => {
+            const completedCount = runEntries.filter(
+              (e) => e.status === "completed",
+            ).length;
+            const pendingCount = runEntries.filter(
+              (e) => e.status === "pending",
+            ).length;
+            const totalInRun = runEntries.length || queueCount;
+
+            const parts: string[] = [
+              `${completedCount} of ${totalInRun} deployment${totalInRun === 1 ? '' : 's'} completed`,
+            ];
+            if (pendingCount > 0) {
+              parts.push(
+                `${pendingCount} returned to the queue`,
+              );
+            }
+            return (
+              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                <Ban className="h-5 w-5 shrink-0 mt-0.5" />
+                <div className="text-sm font-medium">
+                  {parts.join('. ')}.
+                </div>
+              </div>
+            );
+          })()}
+
           {showLogTable && <LogTable rows={logRows} />}
 
-          {!isComplete && !hasError && (
+          {!inTerminalState && (
             <>
               {showSpinner && (
                 <div className="flex items-center gap-3">
                   <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />
                   <span className="text-sm font-medium">{message || "Initializing..."}</span>
+                </div>
+              )}
+
+              {isCancelling && (
+                <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span className="text-sm font-medium">
+                    Stopping the current deployment...
+                  </span>
                 </div>
               )}
 
@@ -556,7 +628,7 @@ export function RunQueueModal({
           )}
         </div>
 
-        {inTerminalState && (
+        {inTerminalState ? (
           <DialogFooter>
             <Button onClick={handleClose} disabled={isClosing}>
               {isClosing ? (
@@ -569,7 +641,20 @@ export function RunQueueModal({
               )}
             </Button>
           </DialogFooter>
-        )}
+        ) : hasJob && !isCancelling ? (
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCancelling(true);
+                cancel();
+              }}
+            >
+              <Ban className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

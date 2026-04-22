@@ -11,7 +11,13 @@ Created by Claude Code on 2026-02-20
 import subprocess
 from pathlib import Path
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    is_cancel_requested,
+    track_subprocess,
+)
 from app.core.logging_config import get_logger
+from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 
 logger = get_logger(__name__)
@@ -25,6 +31,7 @@ def extract_all_video_frames(
     video_fps: float,
     env_manager: EnvironmentManager,
     output_dir: Path,
+    job_id: str | None = None,
 ) -> Path:
     """
     Extract all analyzed frames from videos in a deployment folder.
@@ -72,7 +79,7 @@ def extract_all_video_frames(
     logger.info(f"Extracting video frames: {' '.join(command)}")
 
     try:
-        process = subprocess.Popen(
+        process = popen_group(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -81,13 +88,17 @@ def extract_all_video_frames(
             universal_newlines=True,
         )
 
-        for line in process.stdout:
-            line = line.strip()
-            if line:
-                logger.debug(f"[FrameExtract] {line}")
+        with track_subprocess(job_id, process):
+            for line in process.stdout:
+                line = line.strip()
+                if line:
+                    logger.debug(f"[FrameExtract] {line}")
 
-        process.stdout.close()
-        return_code = process.wait()
+            process.stdout.close()
+            return_code = process.wait()
+
+        if job_id and is_cancel_requested(job_id):
+            raise JobCancelledError()
 
         if return_code != 0:
             raise RuntimeError(
@@ -97,6 +108,8 @@ def extract_all_video_frames(
         logger.info(f"Frame extraction complete: {output_dir}")
         return output_dir
 
+    except JobCancelledError:
+        raise
     except subprocess.SubprocessError as e:
         logger.error(f"Frame extraction subprocess error: {e}", exc_info=True)
         raise RuntimeError(f"Frame extraction failed: {e}") from e
