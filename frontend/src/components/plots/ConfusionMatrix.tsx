@@ -31,8 +31,15 @@ interface ConfusionMatrixProps {
 
 const PCT = new Intl.NumberFormat("en", {
   style: "percent",
+  minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
+
+function formatPct(value: number): string {
+  const s = PCT.format(value);
+  // 100% always renders without trailing ".0" for visual cleanliness.
+  return s === "100.0%" ? "100%" : s;
+}
 
 export function ConfusionMatrix({
   data,
@@ -209,11 +216,11 @@ export function ConfusionMatrix({
                         ? "·"
                         : mode === "counts"
                           ? count
-                          : PCT.format(ratio);
+                          : formatPct(ratio);
                     const tooltipValue =
                       mode === "counts"
                         ? count
-                        : `${count} (${PCT.format(ratio)} ${
+                        : `${count} (${formatPct(ratio)} ${
                             mode === "recall" ? "of row" : "of column"
                           })`;
                     return (

@@ -13,6 +13,7 @@ import {
   Download,
   Grid3x3,
   LayoutDashboard,
+  Lightbulb,
   LineChart,
   Map,
   MapPin,
@@ -55,7 +56,7 @@ export function Sidebar() {
     { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
     {
       to: `/projects/${projectId}/insights`,
-      icon: LineChart,
+      icon: Lightbulb,
       label: "Insights",
       children: [
         {
@@ -74,9 +75,9 @@ export function Sidebar() {
           label: "Confusion matrix",
         },
         {
-          to: `/projects/${projectId}/insights/classification-report`,
+          to: `/projects/${projectId}/insights/per-class-performance`,
           icon: Table2,
-          label: "Classification report",
+          label: "Per-class performance",
         },
       ],
     },
@@ -155,7 +156,7 @@ const parentLinkClass = (isActive: boolean) =>
 
 const childLinkClass = (isActive: boolean) =>
   cn(
-    "flex items-center gap-2 rounded-md py-1.5 pl-9 pr-3 text-sm transition-colors",
+    "flex items-center gap-2 rounded-md py-1.5 pl-7 pr-3 text-sm transition-colors",
     isActive
       ? "bg-primary/10 text-primary font-medium"
       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -223,6 +224,7 @@ function CollapsibleNavGroup({ item }: { item: NavItem }) {
               end
               className={({ isActive }) => childLinkClass(isActive)}
             >
+              <child.icon className="h-3.5 w-3.5" />
               {child.label}
             </NavLink>
           ))}

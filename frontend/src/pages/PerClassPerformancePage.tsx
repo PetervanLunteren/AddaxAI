@@ -1,17 +1,17 @@
 /**
- * Classification report insight view.
+ * Per-class performance insight view.
  *
- * Per-class precision / recall / F1 / support derived from the same
- * data as the confusion matrix, plus macro and weighted averages. Row
- * click deep-links to the Verify page filtered to that class.
+ * Precision, recall, F1, and support per class, plus macro and weighted
+ * averages, computed from the same verified-detection pairs as the
+ * confusion matrix.
  */
 
 import { useMemo } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { performanceApi } from "../api/performance";
-import { ClassificationReportTable } from "../components/plots/ClassificationReportTable";
+import { PerClassPerformanceTable } from "../components/plots/PerClassPerformanceTable";
 import {
   PerformanceFilterBar,
   type PerformancePageFilters,
@@ -35,10 +35,9 @@ function isTopN(value: string | undefined): value is TopN {
   return value === "10" || value === "20" || value === "all";
 }
 
-export function ClassificationReportPage() {
+export function PerClassPerformancePage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const filters = useMemo<PerformancePageFilters>(() => {
     const parsed = filtersFromSearchParams(searchParams, FILTER_SCHEMA);
@@ -90,26 +89,15 @@ export function ClassificationReportPage() {
 
   if (!projectId) return null;
 
-  const handleRowClick = (args: {
-    className: string;
-    taxonomyId: string | null;
-  }) => {
-    if (args.className === "other") return;
-    const params = new URLSearchParams();
-    if (args.taxonomyId) params.set("labels", args.taxonomyId);
-    const qs = params.toString();
-    navigate(`/projects/${projectId}/verify${qs ? `?${qs}` : ""}`);
-  };
-
   return (
     <>
       <header className="border-b bg-white/80 backdrop-blur-sm px-4 py-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <h1 className="text-2xl font-bold tracking-tight">
-            Classification report
+            Per-class performance
           </h1>
           <p className="text-sm text-muted-foreground">
-            Per-class precision, recall, and F1 derived from the confusion matrix.
+            Precision, recall, and F1 score for each class.
           </p>
         </div>
       </header>
@@ -120,35 +108,33 @@ export function ClassificationReportPage() {
           onChange={handleFiltersChange}
         />
 
-        <ClassificationReportTable
+        <PerClassPerformanceTable
           data={data}
           loading={isLoading || isFetching}
-          onRowClick={handleRowClick}
         />
 
         <PlotExplainer
-          plotKey="classification-report"
+          plotKey="per-class-performance"
           what={
             <p>
-              One row per class. Support is the number of verified detections
-              with that class as the current label. Precision is the share of
-              detections predicted as this class that really were it. Recall
-              is the share of real detections of this class the classifier
-              caught. F1 is the harmonic mean of precision and recall. The F1
-              column uses the project status palette, so weak classes are
-              easy to spot. Macro averages treat every class the same.
-              Weighted averages use support. Click a row to open the matching
-              detections in the Verify page.
+              One row per class. Support counts the verified detections for
+              each class. Precision shows how often the AI was right when
+              it predicted the class. Recall shows how often the AI caught
+              the real detections of the class. F1 combines precision and
+              recall into one number. Macro averages give every class the
+              same weight. Weighted averages give bigger classes more
+              weight.
             </p>
           }
           how={
             <p>
-              The metrics come from the same verified-detection pairs as the
-              confusion matrix, computed server-side. Predictions come from
-              the raw classifier output captured at analysis time. Classes
-              are grouped at the selected taxonomic rank. The top-N filter
-              folds smaller classes into an "Other" row, which is shown but
-              not clickable.
+              Same verified detections as the confusion matrix. The AI
+              prediction is the raw top-1 saved at analysis time, not the
+              post-processed label. Classes are grouped at the selected
+              taxonomic rank. The top-N filter keeps the biggest classes
+              and puts the rest in an "Other" row. The Other row shows in
+              the table but is not counted in the macro or weighted
+              averages.
             </p>
           }
         />
@@ -157,4 +143,4 @@ export function ClassificationReportPage() {
   );
 }
 
-export default ClassificationReportPage;
+export default PerClassPerformancePage;

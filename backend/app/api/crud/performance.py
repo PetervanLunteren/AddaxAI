@@ -356,10 +356,22 @@ def get_classification_performance(
             )
         )
 
-    precisions = [m.precision for m in per_class]
-    recalls = [m.recall for m in per_class]
-    f1s = [m.f1 for m in per_class]
-    supports = [m.support for m in per_class]
+    # Macro / weighted averages are meant to summarise the AI's
+    # per-class performance. Detector categories reflect the detector,
+    # not the classifier; semantic buckets and the top-N "other" row
+    # are not classes at all. Excluding all of them keeps the averages
+    # honest.
+    averaged_over = {
+        c for c in ordered
+        if c not in DETECTOR_CATEGORIES
+        and c not in SEMANTIC_BUCKETS
+        and c != OTHER_BUCKET
+    }
+    metrics_for_avg = [m for m in per_class if m.class_name in averaged_over]
+    precisions = [m.precision for m in metrics_for_avg]
+    recalls = [m.recall for m in metrics_for_avg]
+    f1s = [m.f1 for m in metrics_for_avg]
+    supports = [m.support for m in metrics_for_avg]
 
     return PerformanceResponse(
         taxonomic_rank=taxonomic_rank,

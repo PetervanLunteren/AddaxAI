@@ -104,7 +104,7 @@ export function ConfusionMatrixPage() {
         <div className="mx-auto max-w-7xl">
           <h1 className="text-2xl font-bold tracking-tight">Confusion matrix</h1>
           <p className="text-sm text-muted-foreground">
-            Where the classifier and the human labels agree, and where they don't.
+            Where the AI and the human labels agree, and where they don't.
           </p>
         </div>
       </header>
@@ -126,10 +126,10 @@ export function ConfusionMatrixPage() {
           plotKey="confusion-matrix"
           what={
             <p>
-              One cell per bounding box. Row is the current label after human
-              verification. Column is what the classifier originally predicted.
+              One cell per detection. Row is the current label after human
+              verification. Column is what the AI originally predicted.
               Diagonal cells are agreements. Off-diagonal cells show which
-              class the classifier mistook for which. Cell colour is darker
+              class the AI mistook for which. Cell colour is darker
               when the cell dominates its row (or its column in precision
               mode), so the strong pairs stand out.
             </p>
@@ -137,7 +137,7 @@ export function ConfusionMatrixPage() {
           how={
             <p>
               Only verified detections count. The predicted column comes from
-              the raw classifier output captured at analysis time and is never
+              the raw AI output captured at analysis time and is never
               changed by rollup, smoothing, or relabels. Classes are grouped
               at the selected taxonomic rank. The top-N filter keeps the
               biggest classes and folds the rest into an "Other" row and

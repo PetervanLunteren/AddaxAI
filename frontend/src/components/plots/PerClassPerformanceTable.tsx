@@ -1,7 +1,7 @@
 /**
- * Classification report renderer.
+ * Per-class performance table.
  *
- * Per-class precision / recall / F1 / support, plus macro and weighted
+ * Precision / recall / F1 / support per class, plus macro and weighted
  * averages, computed server-side from the same data as the confusion
  * matrix. The F1 column uses the diverging status palette; the other
  * metric columns stay plain.
@@ -12,25 +12,42 @@ import { Info, Loader2 } from "lucide-react";
 import { f1DivergingColor } from "../../lib/metric-colors";
 import type { PerformanceResponse } from "../../api/performance";
 
-interface ClassificationReportTableProps {
+interface PerClassPerformanceTableProps {
   data: PerformanceResponse | undefined;
   loading: boolean;
-  onRowClick?: (args: {
-    className: string;
-    taxonomyId: string | null;
-  }) => void;
 }
+
+const PCT = new Intl.NumberFormat("en", {
+  style: "percent",
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
 
 function fmt(value: number | null): string {
   if (value === null) return "–";
-  return value.toFixed(3);
+  const s = PCT.format(value);
+  // 100% always renders without trailing ".0" for visual cleanliness.
+  return s === "100.0%" ? "100%" : s;
 }
 
-export function ClassificationReportTable({
+// Rows that are not classifier predictions in the normal sense.
+// Styled muted + italic so they read as context, not as species rows,
+// and flagged so their tooltips can explain the distinction.
+const DETECTOR_CATS = new Set(["animal", "person", "vehicle"]);
+const SEMANTIC_BUCKETS = new Set(["Higher-level taxa", "No taxonomy"]);
+
+function nonClassifierRow(className: string): boolean {
+  return (
+    className === "other"
+    || DETECTOR_CATS.has(className)
+    || SEMANTIC_BUCKETS.has(className)
+  );
+}
+
+export function PerClassPerformanceTable({
   data,
   loading,
-  onRowClick,
-}: ClassificationReportTableProps) {
+}: PerClassPerformanceTableProps) {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center rounded-lg border bg-card p-16">
@@ -60,8 +77,9 @@ export function ClassificationReportTable({
 
   return (
     <div className="rounded-lg border bg-card">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto p-4">
+        <div className="inline-block overflow-hidden rounded-md border bg-background">
+          <table className="text-sm">
           <thead className="border-b">
             <tr className="text-xs text-muted-foreground">
               <th className="text-left py-2 pl-4 pr-6 font-medium">Class</th>
@@ -72,21 +90,21 @@ export function ClassificationReportTable({
             </tr>
           </thead>
           <tbody>
-            {data.per_class.map((m, i) => {
+            {data.per_class.filter((m) => m.support > 0).map((m) => {
               const f1Style = f1DivergingColor(m.f1);
               const isOther = m.class_name === "other";
+              const isNonAI = nonClassifierRow(m.class_name);
+              const rowTitle = isNonAI
+                ? "Not averaged into the macro / weighted rows below"
+                : undefined;
               return (
                 <tr
                   key={m.class_name}
-                  onClick={() =>
-                    onRowClick?.({
-                      className: m.class_name,
-                      taxonomyId: data.class_taxonomy_ids[i],
-                    })
-                  }
-                  className="border-b hover:bg-accent/40"
+                  title={rowTitle}
+                  className={`border-b ${
+                    isNonAI ? "italic text-muted-foreground" : ""
+                  }`}
                   style={{
-                    cursor: onRowClick ? "pointer" : "default",
                     borderStyle: isOther ? "dashed" : undefined,
                   }}
                 >
@@ -94,7 +112,7 @@ export function ClassificationReportTable({
                     {m.display_name}
                   </td>
                   <td className="py-1.5 px-6 text-right tabular-nums">
-                    {m.support}
+                    {m.support.toLocaleString()}
                   </td>
                   <td className="py-1.5 px-6 text-right tabular-nums">
                     {fmt(m.precision)}
@@ -130,6 +148,7 @@ export function ClassificationReportTable({
             />
           </tfoot>
         </table>
+        </div>
       </div>
 
       <ReportFooter data={data} />

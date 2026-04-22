@@ -141,6 +141,11 @@ def add_rollup_taxonomy_entry(
     genus_val = (
         ancestors.get("genus") if level in ("genus", "species") else None
     )
+    # Kingdom rollup lands on the literal string "animal", but the
+    # scientifically correct kingdom name is "Animalia". Matches the
+    # Latin naming we use for other rollup rows (Bovidae, Felidae, ...)
+    # and makes the matrix cell stand apart from the detector category.
+    display_name = "Animalia" if level == "kingdom" else name.capitalize()
     taxonomy_entry = LabelTaxonomy(
         classification_model_id=model_id,
         name=name,
@@ -150,7 +155,7 @@ def add_rollup_taxonomy_entry(
         taxon_genus=genus_val,
         taxon_species=None,  # Rolled-up entries never have species
         level=level,
-        display_name=name.capitalize(),
+        display_name=display_name,
         is_custom=False,
     )
     db.add(taxonomy_entry)
