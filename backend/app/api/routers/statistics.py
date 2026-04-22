@@ -215,7 +215,9 @@ def classification_performance(
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    rank: Literal["class", "order", "family", "genus", "species"] = Query("species"),
+    taxonomic_rank: Literal[
+        "all", "class", "order", "family", "genus", "species"
+    ] = Query("all"),
     top_n: str = Query("20", description="Integer or the literal 'all'"),
     db: Session = Depends(get_db),
 ) -> PerformanceResponse:
@@ -227,7 +229,7 @@ def classification_performance(
             site_ids=_parse_site_ids(site_ids),
             date_from=_parse_date(date_from, "date_from"),
             date_to=_parse_date(date_to, "date_to"),
-            rank=rank,
+            taxonomic_rank=taxonomic_rank,
             top_n=_parse_top_n(top_n),
         )
     except ValueError as err:

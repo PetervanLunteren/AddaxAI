@@ -16,7 +16,10 @@ class ClassMetrics(BaseModel):
 
 
 class PerformanceResponse(BaseModel):
-    rank: str = Field(..., description="Aggregation rank used (class/order/family/genus/species)")
+    taxonomic_rank: str = Field(
+        ...,
+        description="Aggregation rank used (all / class / order / family / genus / species)",
+    )
     classes: list[str] = Field(..., description="Class identifiers in matrix order")
     class_display_names: list[str] = Field(
         ...,

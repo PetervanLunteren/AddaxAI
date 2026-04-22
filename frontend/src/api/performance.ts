@@ -3,8 +3,7 @@
  */
 
 import { api } from "../lib/api-client";
-
-export type PerformanceRank = "class" | "order" | "family" | "genus" | "species";
+import type { TaxonomicRank } from "../lib/taxonomic-rank";
 
 export interface ClassMetrics {
   class_name: string;
@@ -16,7 +15,7 @@ export interface ClassMetrics {
 }
 
 export interface PerformanceResponse {
-  rank: PerformanceRank;
+  taxonomic_rank: TaxonomicRank;
   classes: string[];
   class_display_names: string[];
   class_taxonomy_ids: (string | null)[];
@@ -42,7 +41,7 @@ export interface PerformanceFilters {
   siteIds?: string[];
   dateFrom?: string;
   dateTo?: string;
-  rank?: PerformanceRank;
+  taxonomicRank?: TaxonomicRank;
   /** Integer or the literal 'all'. Defaults to 20 server-side. */
   topN?: string;
 }
@@ -54,7 +53,7 @@ export const performanceApi = {
     if (filters.siteIds?.length) params.set("site_ids", filters.siteIds.join(","));
     if (filters.dateFrom) params.set("date_from", filters.dateFrom);
     if (filters.dateTo) params.set("date_to", filters.dateTo);
-    if (filters.rank) params.set("rank", filters.rank);
+    if (filters.taxonomicRank) params.set("taxonomic_rank", filters.taxonomicRank);
     if (filters.topN) params.set("top_n", filters.topN);
     return api.get<PerformanceResponse>(
       `/api/statistics/performance?${params.toString()}`

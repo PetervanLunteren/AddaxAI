@@ -2,10 +2,10 @@
 Tests for the classification performance endpoint
 (confusion matrix + classification report).
 
-Three layers:
-1. CRUD tests on get_classification_performance with synthetic data,
-   covering verified-only ground truth, taxonomy rollup, top-N collapse,
-   detector-only projects, and the skipped counters.
+1. CRUD tests on get_classification_performance with synthetic data
+   covering ground truth vs prediction pairs, taxonomy rollup, the
+   "Higher-level taxa" and "No taxonomy" buckets, detector-only
+   projects, top-N collapse, and the skipped counters.
 2. HTTP endpoint shape via FastAPI TestClient.
 """
 
@@ -15,6 +15,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.api.crud import performance as performance_crud
+from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import make_deployment, make_detection, make_file, make_project, make_site
 
@@ -50,9 +51,6 @@ def _mk_taxonomy_row(
 
 
 def _bootstrap_classified_project(db: Session, model_id: str = "CLS-TEST-v1"):
-    """Project with a classifier and a two-species taxonomy (leopard,
-    lynx) plus the builtin animal/person/vehicle rows the real JSON
-    pipeline would populate. Returns (project, site, deployment, file)."""
     project = make_project(db, classification_model_id=model_id)
     site = make_site(db, project_id=project.id)
     deployment = make_deployment(db, site_id=site.id)
@@ -105,60 +103,121 @@ def _bootstrap_classified_project(db: Session, model_id: str = "CLS-TEST-v1"):
 def test_species_matrix_counts_verified_pairs(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
 
-    # 3 true leopards: 2 predicted leopard, 1 predicted lynx (confusion)
+    # 3 true leopards: 2 predicted leopard, 1 predicted lynx
     for predicted in ("leopard", "leopard", "lynx"):
         make_detection(
-            db,
-            file_id=f.id,
-            label="leopard",
-            original_label=predicted,
-            verified=True,
+            db, file_id=f.id,
+            label="leopard", original_label=predicted, verified=True,
         )
     # 1 true lynx correctly predicted
     make_detection(
-        db,
-        file_id=f.id,
-        label="lynx",
-        original_label="lynx",
-        verified=True,
+        db, file_id=f.id,
+        label="lynx", original_label="lynx", verified=True,
     )
 
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=None,
+        db, project.id, taxonomic_rank="species", top_n=None,
     )
     assert resp.has_classifier is True
-    assert set(resp.classes) == {"leopard", "lynx"}
-    i_leo = resp.classes.index("leopard")
-    i_lynx = resp.classes.index("lynx")
-    # leopard row: 2 TP, 1 confused as lynx
+    # Species rank uses display_name when present.
+    assert set(resp.classes) == {"P. pardus", "Lynx lynx"}
+    i_leo = resp.classes.index("P. pardus")
+    i_lynx = resp.classes.index("Lynx lynx")
     assert resp.matrix[i_leo][i_leo] == 2
     assert resp.matrix[i_leo][i_lynx] == 1
-    # lynx row: 1 TP
     assert resp.matrix[i_lynx][i_lynx] == 1
     assert resp.grand_total == 4
     assert resp.skipped_unverified == 0
     assert resp.skipped_no_prediction == 0
 
 
+def test_most_specific_default_uses_raw_labels(db: Session) -> None:
+    project, _site, _dep, f = _bootstrap_classified_project(db)
+    make_detection(
+        db, file_id=f.id,
+        label="leopard", display_name="P. pardus",
+        original_label="leopard", verified=True,
+    )
+
+    # Default taxonomic_rank is "all"
+    resp = performance_crud.get_classification_performance(db, project.id, top_n=None)
+    # display_name wins in "all" mode, so the class is the pretty label
+    assert resp.classes == ["P. pardus"]
+    assert resp.grand_total == 1
+
+
 def test_matrix_rolls_up_to_family(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
-
-    # Two felids confused with each other still roll up to the same
-    # family cell.
     make_detection(db, file_id=f.id, label="leopard", original_label="lynx", verified=True)
     make_detection(db, file_id=f.id, label="lynx", original_label="leopard", verified=True)
-    # A deer correctly classified
     make_detection(db, file_id=f.id, label="deer", original_label="deer", verified=True)
 
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="family", top_n=None,
+        db, project.id, taxonomic_rank="family", top_n=None,
     )
-    assert set(resp.classes) == {"felidae", "cervidae"}
-    i_fel = resp.classes.index("felidae")
-    i_cerv = resp.classes.index("cervidae")
-    assert resp.matrix[i_fel][i_fel] == 2  # both felid confusions collapse to the diagonal
+    # Family names are stored lowercase in taxon_family but displayed
+    # capitalised (convention; matches the dashboard after the rank
+    # normalisation).
+    assert set(resp.classes) == {"Felidae", "Cervidae"}
+    i_fel = resp.classes.index("Felidae")
+    i_cerv = resp.classes.index("Cervidae")
+    assert resp.matrix[i_fel][i_fel] == 2
     assert resp.matrix[i_cerv][i_cerv] == 1
     assert resp.grand_total == 3
+
+
+def test_rollup_row_at_species_buckets_into_higher_level_taxa(db: Session) -> None:
+    # Postprocessing taxonomic rollup writes a family-level entry into
+    # label_taxonomy (taxon_species is NULL). At rank=species the matrix
+    # must bucket it into "Higher-level taxa", not show it as a pseudo-
+    # species row — this was the user-visible issue that triggered the
+    # whole alignment with the dashboard.
+    project, _site, _dep, f = _bootstrap_classified_project(db)
+    _mk_taxonomy_row(
+        db,
+        model_id="CLS-TEST-v1",
+        name="Felidae",
+        taxon_class="mammalia",
+        taxon_order="carnivora",
+        taxon_family="Felidae",
+        level="family",
+        display_name="Felidae",
+    )
+    # Current label is a family-level rollup; original is a species.
+    make_detection(
+        db, file_id=f.id,
+        label="Felidae", original_label="leopard", verified=True,
+    )
+
+    resp = performance_crud.get_classification_performance(
+        db, project.id, taxonomic_rank="species", top_n=None,
+    )
+    # Row (current) is the rollup → "Higher-level taxa"
+    # Col (prediction) resolves via taxonomy → "P. pardus"
+    assert HIGHER_LEVEL_TAXA in resp.classes
+    assert "P. pardus" in resp.classes
+    i_higher = resp.classes.index(HIGHER_LEVEL_TAXA)
+    i_leo = resp.classes.index("P. pardus")
+    assert resp.matrix[i_higher][i_leo] == 1
+    assert resp.grand_total == 1
+
+
+def test_label_with_no_taxonomy_row_buckets_into_no_taxonomy(db: Session) -> None:
+    # A detection with a label that has no matching LabelTaxonomy row
+    # (custom label, stale label from a previous model, etc.) lands in
+    # the "No taxonomy" bucket at specific ranks.
+    project, _site, _dep, f = _bootstrap_classified_project(db)
+    make_detection(
+        db, file_id=f.id,
+        label="mystery_label", original_label="mystery_label", verified=True,
+    )
+
+    resp = performance_crud.get_classification_performance(
+        db, project.id, taxonomic_rank="species", top_n=None,
+    )
+    assert NO_TAXONOMY in resp.classes
+    i = resp.classes.index(NO_TAXONOMY)
+    assert resp.matrix[i][i] == 1
 
 
 def test_unverified_detections_are_counted_but_not_used(db: Session) -> None:
@@ -166,7 +225,7 @@ def test_unverified_detections_are_counted_but_not_used(db: Session) -> None:
     make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=True)
     make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=False)
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=None,
+        db, project.id, taxonomic_rank="species", top_n=None,
     )
     assert resp.skipped_unverified == 1
     assert resp.grand_total == 1
@@ -174,13 +233,11 @@ def test_unverified_detections_are_counted_but_not_used(db: Session) -> None:
 
 def test_null_original_label_counts_as_skipped_no_prediction(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
-    # Verified animal with no original_label (pre-migration data)
     make_detection(db, file_id=f.id, label="leopard", original_label=None, verified=True)
-    # A well-formed one alongside so we know the endpoint still produces a matrix
     make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=True)
 
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=None,
+        db, project.id, taxonomic_rank="species", top_n=None,
     )
     assert resp.skipped_no_prediction == 1
     assert resp.grand_total == 1
@@ -188,30 +245,19 @@ def test_null_original_label_counts_as_skipped_no_prediction(db: Session) -> Non
 
 def test_person_and_vehicle_detections_are_included(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
-    # Person / vehicle detections never get classified; both original and
-    # current class should resolve to the category.
     make_detection(
-        db,
-        file_id=f.id,
-        category="person",
-        label=None,
-        original_label=None,
-        verified=True,
+        db, file_id=f.id, category="person",
+        label=None, original_label=None, verified=True,
     )
     make_detection(
-        db,
-        file_id=f.id,
-        category="vehicle",
-        label=None,
-        original_label=None,
-        verified=True,
+        db, file_id=f.id, category="vehicle",
+        label=None, original_label=None, verified=True,
     )
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=None,
+        db, project.id, taxonomic_rank="species", top_n=None,
     )
     assert "person" in resp.classes
     assert "vehicle" in resp.classes
-    # both should land on their own diagonal
     i_p = resp.classes.index("person")
     i_v = resp.classes.index("vehicle")
     assert resp.matrix[i_p][i_p] == 1
@@ -219,21 +265,18 @@ def test_person_and_vehicle_detections_are_included(db: Session) -> None:
     assert resp.skipped_no_prediction == 0
 
 
-def test_detector_only_project_renders_category_matrix(db: Session) -> None:
-    # No classifier configured → all detections have original_label NULL,
-    # but person / vehicle categories and animal category still populate
-    # a 3-class matrix.
+def test_detector_only_project_at_all_rank_shows_category_matrix(db: Session) -> None:
+    # Detector-only: unclassified animal + person + vehicle.
+    # At "all" (Most specific) the animal row renders as the category.
     project = make_project(db, classification_model_id=None)
     site = make_site(db, project_id=project.id)
     deployment = make_deployment(db, site_id=site.id)
     f = make_file(db, deployment_id=deployment.id)
 
-    # User verified an animal detection as-is (no relabel).
     make_detection(
         db, file_id=f.id, category="animal",
         label=None, original_label=None, verified=True,
     )
-    # And a person + vehicle.
     make_detection(
         db, file_id=f.id, category="person",
         label=None, original_label=None, verified=True,
@@ -244,55 +287,70 @@ def test_detector_only_project_renders_category_matrix(db: Session) -> None:
     )
 
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=None,
+        db, project.id, taxonomic_rank="all", top_n=None,
     )
     assert resp.has_classifier is False
     assert resp.classes == ["animal", "person", "vehicle"]
-    # everything on the diagonal: category == category
     assert resp.matrix == [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     assert resp.skipped_no_prediction == 0
 
 
+def test_detector_only_animal_at_species_rank_becomes_no_taxonomy(db: Session) -> None:
+    # Same detector-only fixture but asking at rank=species.
+    # Animals have no taxonomy at all → "No taxonomy"; person / vehicle
+    # remain on their own category regardless of rank.
+    project = make_project(db, classification_model_id=None)
+    site = make_site(db, project_id=project.id)
+    deployment = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=deployment.id)
+
+    make_detection(
+        db, file_id=f.id, category="animal",
+        label=None, original_label=None, verified=True,
+    )
+    make_detection(
+        db, file_id=f.id, category="person",
+        label=None, original_label=None, verified=True,
+    )
+
+    resp = performance_crud.get_classification_performance(
+        db, project.id, taxonomic_rank="species", top_n=None,
+    )
+    assert NO_TAXONOMY in resp.classes
+    assert "person" in resp.classes
+
+
 def test_precision_recall_f1_on_tiny_fixture(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
-    # 3 leopards (2 correctly, 1 confused as lynx)
     make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=True)
     make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=True)
     make_detection(db, file_id=f.id, label="leopard", original_label="lynx", verified=True)
-    # 2 lynx (both correct)
     make_detection(db, file_id=f.id, label="lynx", original_label="lynx", verified=True)
     make_detection(db, file_id=f.id, label="lynx", original_label="lynx", verified=True)
 
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=None,
+        db, project.id, taxonomic_rank="species", top_n=None,
     )
-    # Match by class_name
     by_name = {m.class_name: m for m in resp.per_class}
-    leo = by_name["leopard"]
-    lynx = by_name["lynx"]
+    leo = by_name["P. pardus"]
+    lynx = by_name["Lynx lynx"]
 
-    # leopard: support=3, TP=2, col_total=2 → precision=1.0, recall=2/3
     assert leo.support == 3
     assert leo.precision == 1.0
     assert leo.recall == 2 / 3
-    # f1 = 2 * 1 * (2/3) / (1 + 2/3) = 0.8
     assert abs(leo.f1 - 0.8) < 1e-9
 
-    # lynx: support=2, TP=2, col_total=3 → precision=2/3, recall=1.0
     assert lynx.support == 2
     assert lynx.precision == 2 / 3
     assert lynx.recall == 1.0
     assert abs(lynx.f1 - 0.8) < 1e-9
 
-    # macro F1 = (0.8 + 0.8) / 2
     assert abs(resp.macro_f1 - 0.8) < 1e-9
-    # weighted F1 = (0.8 * 3 + 0.8 * 2) / 5 = 0.8
     assert abs(resp.weighted_f1 - 0.8) < 1e-9
 
 
 def test_top_n_collapses_tail_into_other(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
-    # leopard (5), lynx (3), deer (2)
     for _ in range(5):
         make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=True)
     for _ in range(3):
@@ -301,20 +359,18 @@ def test_top_n_collapses_tail_into_other(db: Session) -> None:
         make_detection(db, file_id=f.id, label="deer", original_label="deer", verified=True)
 
     resp = performance_crud.get_classification_performance(
-        db, project.id, rank="species", top_n=2,
+        db, project.id, taxonomic_rank="species", top_n=2,
     )
     assert resp.other_bucket_present is True
     assert "other" in resp.classes
     assert resp.grand_total == 10
-    # leopard and lynx remain; deer folds into "other"
-    assert "leopard" in resp.classes
-    assert "lynx" in resp.classes
-    assert "deer" not in resp.classes
+    assert "P. pardus" in resp.classes
+    assert "Lynx lynx" in resp.classes
+    assert "C. capreolus" not in resp.classes
 
 
 def test_site_and_date_filters(db: Session) -> None:
     project = make_project(db, classification_model_id="CLS-TEST-v1")
-    # Two sites, two deployments, different dates.
     site_a = make_site(db, project_id=project.id)
     site_b = make_site(db, project_id=project.id)
     dep_a = make_deployment(db, site_id=site_a.id)
@@ -352,21 +408,18 @@ def test_site_and_date_filters(db: Session) -> None:
         label="leopard", original_label="leopard", verified=True,
     )
 
-    # Only site_a
     resp = performance_crud.get_classification_performance(
-        db, project.id, site_ids=[site_a.id], rank="species", top_n=None,
+        db, project.id, site_ids=[site_a.id], taxonomic_rank="species", top_n=None,
     )
     assert resp.grand_total == 2
 
-    # Date clip — only early files
     from datetime import date
 
     resp = performance_crud.get_classification_performance(
-        db,
-        project.id,
+        db, project.id,
         date_from=date(2024, 1, 1),
         date_to=date(2024, 3, 1),
-        rank="species",
+        taxonomic_rank="species",
         top_n=None,
     )
     assert resp.grand_total == 2
@@ -384,28 +437,39 @@ def test_performance_endpoint_returns_expected_shape(db: Session, client) -> Non
 
     resp = client.get(
         "/api/statistics/performance",
-        params={"project_id": project.id, "rank": "species", "top_n": "20"},
+        params={
+            "project_id": project.id,
+            "taxonomic_rank": "species",
+            "top_n": "20",
+        },
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["rank"] == "species"
-    assert body["classes"] == ["leopard"]
+    assert body["taxonomic_rank"] == "species"
+    assert body["classes"] == ["P. pardus"]
     assert body["matrix"] == [[1]]
     assert body["has_classifier"] is True
-    assert body["per_class"][0]["class_name"] == "leopard"
+    assert body["per_class"][0]["class_name"] == "P. pardus"
 
 
-def test_performance_endpoint_top_n_all(db: Session, client) -> None:
+def test_performance_endpoint_default_rank_is_most_specific(db: Session, client) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
-    make_detection(db, file_id=f.id, label="leopard", original_label="leopard", verified=True)
+    make_detection(
+        db, file_id=f.id,
+        label="leopard", display_name="P. pardus",
+        original_label="leopard", verified=True,
+    )
     db.commit()
 
+    # No taxonomic_rank passed — should default to "all".
     resp = client.get(
         "/api/statistics/performance",
         params={"project_id": project.id, "top_n": "all"},
     )
     assert resp.status_code == 200
-    assert resp.json()["top_n_applied"] is None
+    body = resp.json()
+    assert body["taxonomic_rank"] == "all"
+    assert body["top_n_applied"] is None
 
 
 def test_performance_endpoint_bad_rank_returns_422(db: Session, client) -> None:
@@ -413,7 +477,7 @@ def test_performance_endpoint_bad_rank_returns_422(db: Session, client) -> None:
     db.commit()
     resp = client.get(
         "/api/statistics/performance",
-        params={"project_id": project.id, "rank": "kingdom"},
+        params={"project_id": project.id, "taxonomic_rank": "kingdom"},
     )
     assert resp.status_code == 422
 

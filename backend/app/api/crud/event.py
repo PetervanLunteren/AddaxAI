@@ -28,7 +28,6 @@ def _apply_event_filters(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
-    original_label: str | None = None,
 ):
     """Apply shared filters to an event query. Expects Event already joined to Deployment."""
     from app.api.crud.deployment import site_ids_filter
@@ -80,21 +79,6 @@ def _apply_event_filters(
         if max_confidence is not None:
             conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
         query = query.filter(exists(conf_subq))
-
-    if original_label:
-        # Matrix deep-link: keep only events with at least one detection
-        # whose raw machine prediction matches. String compare is
-        # case-insensitive so 'Leopard' and 'leopard' both hit.
-        from sqlalchemy import func as sa_func
-
-        orig_subq = (
-            select(event_files.c.event_id)
-            .join(File, File.id == event_files.c.file_id)
-            .join(Detection, Detection.file_id == File.id)
-            .where(event_files.c.event_id == Event.id)
-            .where(sa_func.lower(Detection.original_label) == original_label.lower())
-        )
-        query = query.filter(exists(orig_subq))
 
     if verification and verification != "all":
         if verification == "fully_verified":
@@ -289,7 +273,6 @@ def get_events_by_project(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
-    original_label: str | None = None,
 ) -> list[dict]:
     """
     Get event summaries for a project.
@@ -312,7 +295,6 @@ def get_events_by_project(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
-        original_label=original_label,
     )
     events = (
         query.options(joinedload(Event.files).joinedload(File.detections))
@@ -466,7 +448,6 @@ def get_event_count_by_project(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
-    original_label: str | None = None,
 ) -> int:
     """Get total event count for a project."""
     query = (
@@ -484,7 +465,6 @@ def get_event_count_by_project(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
-        original_label=original_label,
     )
     count = query.scalar()
     return count or 0
@@ -501,7 +481,6 @@ def get_adjacent_events(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
-    original_label: str | None = None,
 ) -> dict:
     """
     Get adjacent event IDs for navigation.
@@ -520,7 +499,6 @@ def get_adjacent_events(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
-        original_label=original_label,
     )
 
     # 1. Get current event's local start time
@@ -624,7 +602,6 @@ def get_event_verification_stats(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
-    original_label: str | None = None,
 ) -> dict[str, int]:
     """Get aggregate file verification stats across filtered events."""
     filter_kwargs = dict(
@@ -635,7 +612,6 @@ def get_event_verification_stats(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
-        original_label=original_label,
     )
 
     # Base: filtered event IDs

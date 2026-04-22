@@ -6,47 +6,53 @@ Per-detection comparison of original machine prediction
 (after human verification or relabel). Only verified detections count.
 Metrics are computed server-side so the React page stays thin and the
 math is unit-testable in isolation.
+
+Taxonomic rank resolution is shared with the dashboard via
+`app.ml.taxonomic_rank.resolve_rank` so both views produce the same
+"Higher-level taxa" and "No taxonomy" buckets from the same rules.
 """
 
 from collections import Counter, defaultdict
 from datetime import date
-from typing import Literal
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas.performance import ClassMetrics, PerformanceResponse
+from app.ml.taxonomic_rank import (
+    HIGHER_LEVEL_TAXA,
+    MOST_SPECIFIC,
+    NO_TAXONOMY,
+    TaxonomicRank,
+    resolve_rank,
+)
 from app.models.deployment import Deployment
 from app.models.detection import Detection
 from app.models.file import File
 from app.models.label_taxonomy import LabelTaxonomy
 from app.models.project import Project
 
-Rank = Literal["class", "order", "family", "genus", "species"]
-
 DETECTOR_CATEGORIES: tuple[str, ...] = ("animal", "person", "vehicle")
-RANKS: tuple[Rank, ...] = ("class", "order", "family", "genus", "species")
 OTHER_BUCKET = "other"
-UNCLASSIFIED = "animal"  # animal detections with no classifier output
-
-
-def _taxon_at_rank(row: LabelTaxonomy | None, rank: Rank) -> str | None:
-    """
-    Value used to group a taxonomy row at the requested rank.
-
-    At the species rank we use the unique leaf name rather than
-    `taxon_species` alone, which is often just the species epithet
-    (e.g. 'pardus') and would collide across genera.
-    """
-    if row is None:
-        return None
-    if rank == "species":
-        return row.name
-    return getattr(row, f"taxon_{rank}", None)
+# Rank-resolver buckets (not detector categories) kept fixed at the
+# bottom of the class ordering and exempt from top-N collapse.
+SEMANTIC_BUCKETS: tuple[str, ...] = (HIGHER_LEVEL_TAXA, NO_TAXONOMY)
 
 
 def _display_for(name: str, row: LabelTaxonomy | None) -> str:
-    """Human-friendly label for the matrix axis."""
-    if name in DETECTOR_CATEGORIES or name == OTHER_BUCKET:
+    """
+    Human-friendly label for the matrix axis.
+
+    Detector categories and the semantic buckets pass through as-is;
+    species fall back to the taxonomy row's display_name when present.
+    Non-species names (family / genus / order / class) are already
+    capitalised by resolve_rank, so they reach here display-ready.
+    """
+    if name == OTHER_BUCKET:
+        return "Other"
+    if name in DETECTOR_CATEGORIES:
+        return name
+    if name in SEMANTIC_BUCKETS:
         return name
     if row is not None and row.display_name:
         return row.display_name
@@ -60,8 +66,9 @@ def _build_taxonomy_lookup(
     Map label name (lowercased) to the taxonomy row used to roll it up.
 
     Includes rows scoped to the project's classification model plus any
-    project-scoped custom rows. Also includes built-in detector rows
-    (animal / person / vehicle) which sit on a dedicated model id.
+    project-scoped custom rows. Detector-only projects have no classifier
+    rows, so the lookup is empty — every animal detection then lands in
+    either "animal" (at "all" rank) or "No taxonomy" (at a specific rank).
     """
     if project.classification_model_id is None:
         return {}
@@ -82,30 +89,25 @@ def _build_taxonomy_lookup(
 
 
 def _class_for_current(
-    det: Detection, taxonomy_lookup: dict[str, LabelTaxonomy], rank: Rank,
+    det: Detection,
+    taxonomy_lookup: dict[str, LabelTaxonomy],
+    rank: TaxonomicRank,
 ) -> str:
-    """
-    Current (ground-truth) class at the requested rank.
-
-    Person / vehicle detections always use their category. Animals with
-    no label are bucketed as 'animal'. Animals with a label resolve via
-    taxonomy when possible; otherwise fall back to the label itself.
-    """
-    if det.category in ("person", "vehicle"):
-        return det.category
-    if not det.label:
-        return UNCLASSIFIED
-    row = taxonomy_lookup.get(det.label.lower())
-    value = _taxon_at_rank(row, rank)
-    if value:
-        return value
-    return det.label
+    """Current (ground-truth) class at the requested rank."""
+    row = taxonomy_lookup.get(det.label.lower()) if det.label else None
+    return resolve_rank(
+        category=det.category,
+        label=det.label,
+        display_name=det.display_name,
+        taxonomy_row=row,
+        rank=rank,
+    )
 
 
 def _class_for_original(
     det: Detection,
     taxonomy_lookup: dict[str, LabelTaxonomy],
-    rank: Rank,
+    rank: TaxonomicRank,
     *,
     has_classifier: bool,
 ) -> str | None:
@@ -114,35 +116,49 @@ def _class_for_original(
     don't know what the model said.
 
     Detector-only projects never ran a classifier, so an unclassified
-    animal is a valid 'animal' prediction. Classifier-enabled projects
-    with no original_label indicate pre-migration data — those we skip.
+    animal is a valid prediction (resolve_rank turns category="animal"
+    into "animal" at rank="all" and "No taxonomy" at specific ranks).
+    Classifier-enabled projects with a NULL original_label on an animal
+    indicate pre-migration data and are skipped instead of resolved.
     """
     if det.category in ("person", "vehicle"):
         return det.category
     if not det.original_label:
-        if not has_classifier:
-            return UNCLASSIFIED
-        return None
+        if has_classifier:
+            return None
+        return resolve_rank(
+            category=det.category,
+            label=None,
+            display_name=None,
+            taxonomy_row=None,
+            rank=rank,
+        )
     row = taxonomy_lookup.get(det.original_label.lower())
-    value = _taxon_at_rank(row, rank)
-    if value:
-        return value
-    return det.original_label
+    return resolve_rank(
+        category=det.category,
+        label=det.original_label,
+        display_name=row.display_name if row is not None else None,
+        taxonomy_row=row,
+        rank=rank,
+    )
 
 
 def _ordered_classes(
     all_classes: set[str], row_totals: dict[str, int],
 ) -> list[str]:
     """
-    Stable ordering: detector categories first (if they appeared), then
-    the rest by descending support with alphabetical tiebreaker.
+    Stable ordering: detector head (animal / person / vehicle), then
+    real classes by descending support with alphabetical tiebreaker,
+    then the semantic buckets (Higher-level taxa / No taxonomy) pinned
+    to the bottom.
     """
     head = [c for c in DETECTOR_CATEGORIES if c in all_classes]
+    buckets = [c for c in SEMANTIC_BUCKETS if c in all_classes]
     rest = sorted(
-        (c for c in all_classes if c not in head),
+        (c for c in all_classes if c not in head and c not in buckets),
         key=lambda c: (-row_totals.get(c, 0), c.lower()),
     )
-    return head + rest
+    return head + rest + buckets
 
 
 def _apply_top_n(
@@ -152,24 +168,23 @@ def _apply_top_n(
     top_n: int | None,
 ) -> tuple[list[str], Counter, bool]:
     """
-    Keep the top-N classes by row support; collapse the rest into a
-    single 'other' row and column so matrix totals stay conserved.
-
-    Detector categories in the fixed head are always kept.
+    Keep the top-N classes by row support; fold the rest into a single
+    'other' row + column. Detector categories and the semantic buckets
+    are exempt and always kept.
     """
-    if top_n is None or len(ordered) <= top_n:
+    exempt = set(DETECTOR_CATEGORIES) | set(SEMANTIC_BUCKETS)
+    real = [c for c in ordered if c not in exempt]
+    if top_n is None or len(real) <= top_n:
         return ordered, counts, False
 
-    head = [c for c in ordered if c in DETECTOR_CATEGORIES]
-    remaining_budget = max(top_n - len(head), 0)
-    tail = [c for c in ordered if c not in head]
-    # tail is already sorted by descending support
-    kept_tail = tail[:remaining_budget]
-    dropped = set(tail[remaining_budget:])
+    kept_real = real[:top_n]
+    dropped = set(real[top_n:])
     if not dropped:
         return ordered, counts, False
 
-    kept = head + kept_tail + [OTHER_BUCKET]
+    head = [c for c in ordered if c in DETECTOR_CATEGORIES]
+    buckets = [c for c in ordered if c in SEMANTIC_BUCKETS]
+    kept = head + kept_real + [OTHER_BUCKET] + buckets
 
     folded: Counter = Counter()
     for (true_c, pred_c), n in counts.items():
@@ -219,7 +234,7 @@ def get_classification_performance(
     site_ids: list[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    rank: Rank = "species",
+    taxonomic_rank: TaxonomicRank = MOST_SPECIFIC,
     top_n: int | None = 20,
 ) -> PerformanceResponse:
     """
@@ -235,12 +250,25 @@ def get_classification_performance(
         raise ValueError(f"Project {project_id} not found")
 
     has_classifier = project.classification_model_id is not None
+    threshold = project.detection_threshold
 
+    # User-facing scope: only detections that would appear in the Verify
+    # page (confidence at or above the project threshold, OR already
+    # verified so the override applies). Sub-threshold detections
+    # cannot be verified by the user because they never surface in the
+    # UI, so counting them as "unverified" is misleading.
+    # See DEVELOPERS.md section "Detection threshold and verified override".
     q = (
         db.query(Detection)
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
+        .filter(
+            or_(
+                Detection.confidence >= threshold,
+                Detection.verified == True,  # noqa: E712
+            )
+        )
     )
     if site_ids:
         q = q.filter(Deployment.site_id.in_(site_ids))
@@ -261,12 +289,12 @@ def get_classification_performance(
 
     for det in verified_detections:
         predicted = _class_for_original(
-            det, taxonomy_lookup, rank, has_classifier=has_classifier,
+            det, taxonomy_lookup, taxonomic_rank, has_classifier=has_classifier,
         )
         if predicted is None:
             skipped_no_prediction += 1
             continue
-        true_c = _class_for_current(det, taxonomy_lookup, rank)
+        true_c = _class_for_current(det, taxonomy_lookup, taxonomic_rank)
         counts[(true_c, predicted)] += 1
         row_totals[true_c] += 1
 
@@ -281,22 +309,29 @@ def get_classification_performance(
         ordered, counts, row_totals, top_n,
     )
 
-    # Rebuild totals from the (possibly folded) counts.
     matrix = [[0] * len(ordered) for _ in ordered]
     idx = {c: i for i, c in enumerate(ordered)}
     for (t, p), n in counts.items():
         matrix[idx[t]][idx[p]] = n
 
     row_totals_list = [sum(row) for row in matrix]
-    col_totals_list = [sum(matrix[r][c] for r in range(len(ordered))) for c in range(len(ordered))]
+    col_totals_list = [
+        sum(matrix[r][c] for r in range(len(ordered)))
+        for c in range(len(ordered))
+    ]
     grand_total = sum(row_totals_list)
 
     display_lookup: dict[str, str] = {}
     taxonomy_id_lookup: dict[str, str | None] = {}
     for c in ordered:
+        # Semantic buckets and detector categories have no taxonomy row.
+        # For species/taxa classes we look up by lowercased name, which
+        # works for the dashboard-style values returned by resolve_rank
+        # at family / order / class ranks (those are taxon names that
+        # also exist as LabelTaxonomy.name rows for rollup entries).
         row = (
             None
-            if c in DETECTOR_CATEGORIES or c == OTHER_BUCKET
+            if c in DETECTOR_CATEGORIES or c == OTHER_BUCKET or c in SEMANTIC_BUCKETS
             else taxonomy_lookup.get(c.lower())
         )
         display_lookup[c] = _display_for(c, row)
@@ -327,7 +362,7 @@ def get_classification_performance(
     supports = [m.support for m in per_class]
 
     return PerformanceResponse(
-        rank=rank,
+        taxonomic_rank=taxonomic_rank,
         classes=ordered,
         class_display_names=[display_lookup[c] for c in ordered],
         class_taxonomy_ids=[taxonomy_id_lookup[c] for c in ordered],

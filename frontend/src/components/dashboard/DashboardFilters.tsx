@@ -8,18 +8,14 @@ import { useState } from "react";
 import { Filter } from "lucide-react";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { TaxonomicRankPicker } from "../ui/taxonomic-rank-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
+import {
+  DEFAULT_TAXONOMIC_RANK,
+  isTaxonomicRank,
+  type TaxonomicRank,
+} from "../../lib/taxonomic-rank";
 import type { DateRange } from "./index";
-
-const TAXONOMIC_RANKS = [
-  { value: "all", label: "Most specific" },
-  { value: "species", label: "Species" },
-  { value: "genus", label: "Genus" },
-  { value: "family", label: "Family" },
-  { value: "order", label: "Order" },
-  { value: "class", label: "Class" },
-];
 
 interface DashboardFiltersProps {
   siteOptions: MultiSelectOption[];
@@ -50,13 +46,17 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
     selectedSiteIds.length +
     (dateRange.startDate ? 1 : 0) +
     (dateRange.endDate ? 1 : 0) +
-    (taxonomicRank !== "all" ? 1 : 0);
+    (taxonomicRank !== DEFAULT_TAXONOMIC_RANK ? 1 : 0);
 
   const clearAll = () => {
     onSiteIdsChange([]);
     onDateRangeChange({ startDate: null, endDate: null });
-    onTaxonomicRankChange("all");
+    onTaxonomicRankChange(DEFAULT_TAXONOMIC_RANK);
   };
+
+  const rankValue: TaxonomicRank = isTaxonomicRank(taxonomicRank)
+    ? taxonomicRank
+    : DEFAULT_TAXONOMIC_RANK;
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -129,18 +129,10 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
 
         <div className="space-y-2">
           <label className="text-sm font-medium">Taxonomic rank</label>
-          <Select value={taxonomicRank} onValueChange={onTaxonomicRankChange}>
-            <SelectTrigger className="w-full h-9 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TAXONOMIC_RANKS.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <TaxonomicRankPicker
+            value={rankValue}
+            onChange={onTaxonomicRankChange}
+          />
         </div>
 
         {activeCount > 0 && (

@@ -9,13 +9,14 @@
  */
 
 import { useMemo } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { performanceApi, type PerformanceRank } from "../api/performance";
+import { performanceApi } from "../api/performance";
 import { ConfusionMatrix } from "../components/plots/ConfusionMatrix";
 import {
   PerformanceFilterBar,
+  type MatrixMode,
   type PerformancePageFilters,
   type TopN,
 } from "../components/plots/PerformanceFilterBar";
@@ -25,46 +26,38 @@ import {
   filtersToSearchParams,
   type FilterSchema,
 } from "../lib/filter-url";
+import { DEFAULT_TAXONOMIC_RANK, isTaxonomicRank } from "../lib/taxonomic-rank";
 
 const FILTER_SCHEMA: FilterSchema = {
   site_ids: "string[]",
-  date_from: "date",
-  date_to: "date",
-  rank: "string",
+  taxonomic_rank: "string",
   top_n: "string",
+  mode: "string",
 };
 
-function isRank(value: string | undefined): value is PerformanceRank {
-  return (
-    value === "class" ||
-    value === "order" ||
-    value === "family" ||
-    value === "genus" ||
-    value === "species"
-  );
+function isTopN(value: string | undefined): value is TopN {
+  return value === "10" || value === "20" || value === "all";
 }
 
-function isTopN(value: string | undefined): value is TopN {
-  return value === "10" || value === "20" || value === "50" || value === "all";
+function isMode(value: string | undefined): value is MatrixMode {
+  return value === "counts" || value === "recall" || value === "precision";
 }
 
 export function ConfusionMatrixPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const filters = useMemo<PerformancePageFilters>(() => {
     const parsed = filtersFromSearchParams(searchParams, FILTER_SCHEMA);
+    const rawRank = parsed.taxonomic_rank as string | undefined;
+    const rawMode = parsed.mode as string | undefined;
     return {
       siteIds: (parsed.site_ids as string[] | undefined) ?? [],
-      dateFrom: (parsed.date_from as string | undefined) ?? null,
-      dateTo: (parsed.date_to as string | undefined) ?? null,
-      rank: isRank(parsed.rank as string | undefined)
-        ? (parsed.rank as PerformanceRank)
-        : "species",
+      taxonomicRank: isTaxonomicRank(rawRank) ? rawRank : DEFAULT_TAXONOMIC_RANK,
       topN: isTopN(parsed.top_n as string | undefined)
         ? (parsed.top_n as TopN)
         : "20",
+      mode: isMode(rawMode) ? rawMode : "counts",
     };
   }, [searchParams]);
 
@@ -73,10 +66,9 @@ export function ConfusionMatrixPage() {
       filtersToSearchParams(
         {
           site_ids: next.siteIds,
-          date_from: next.dateFrom ?? undefined,
-          date_to: next.dateTo ?? undefined,
-          rank: next.rank,
+          taxonomic_rank: next.taxonomicRank,
           top_n: next.topN,
+          mode: next.mode === "counts" ? undefined : next.mode,
         },
         FILTER_SCHEMA,
       ),
@@ -93,34 +85,18 @@ export function ConfusionMatrixPage() {
       "performance",
       projectId,
       siteKey,
-      filters.dateFrom,
-      filters.dateTo,
-      filters.rank,
+      filters.taxonomicRank,
       filters.topN,
     ],
     queryFn: () =>
       performanceApi.get(projectId!, {
         siteIds: filters.siteIds,
-        dateFrom: filters.dateFrom ?? undefined,
-        dateTo: filters.dateTo ?? undefined,
-        rank: filters.rank,
+        taxonomicRank: filters.taxonomicRank,
         topN: filters.topN,
       }),
   });
 
   if (!projectId) return null;
-
-  const handleCellClick = (args: {
-    rowClass: string;
-    rowTaxonomyId: string | null;
-    colClass: string;
-  }) => {
-    const params = new URLSearchParams();
-    if (args.rowTaxonomyId) params.set("labels", args.rowTaxonomyId);
-    if (args.colClass !== "other") params.set("original_label", args.colClass);
-    const qs = params.toString();
-    navigate(`/projects/${projectId}/verify${qs ? `?${qs}` : ""}`);
-  };
 
   return (
     <>
@@ -137,101 +113,37 @@ export function ConfusionMatrixPage() {
           projectId={projectId}
           filters={filters}
           onChange={handleFiltersChange}
+          showModeToggle
         />
 
         <ConfusionMatrix
           data={data}
           loading={isLoading || isFetching}
-          onCellClick={handleCellClick}
+          mode={filters.mode}
         />
-
-        {data && (data.skipped_no_prediction > 0 || data.skipped_unverified > 0) && (
-          <div className="text-xs text-muted-foreground">
-            {data.skipped_no_prediction > 0 && (
-              <p>
-                {data.skipped_no_prediction} verified detection
-                {data.skipped_no_prediction === 1 ? "" : "s"} excluded because no
-                original machine prediction is on record. Re-run analysis on
-                affected deployments to populate them.
-              </p>
-            )}
-            {data.skipped_unverified > 0 && (
-              <p>
-                {data.skipped_unverified} detection
-                {data.skipped_unverified === 1 ? "" : "s"} in the filtered range
-                are not yet verified; only verified detections count toward the matrix.
-              </p>
-            )}
-          </div>
-        )}
 
         <PlotExplainer
           plotKey="confusion-matrix"
           what={
             <p>
-              Each bounding box contributes one cell. The row is the current label
-              (after human verification or relabel), the column is what the
-              classifier originally predicted. The diagonal is agreements, the
-              off-diagonal cells are the species the classifier confuses for which.
-              Cell colour scales per-row from light to dark teal so the dominant
-              prediction for each true class stands out. Click a non-zero cell to
-              open the underlying detections in the Verify page.
+              One cell per bounding box. Row is the current label after human
+              verification. Column is what the classifier originally predicted.
+              Diagonal cells are agreements. Off-diagonal cells show which
+              class the classifier mistook for which. Cell colour is darker
+              when the cell dominates its row (or its column in precision
+              mode), so the strong pairs stand out.
             </p>
           }
           how={
             <p>
-              Only verified detections count. Predictions come from the
-              original_label column captured at JSON load time and are never
-              modified by rollup, smoothing, or user relabels. Classes roll up to
-              the chosen taxonomic rank via the label_taxonomy table. The
-              largest classes by support sit in the fixed head; everything outside
-              the top-N falls into an "other" row and column so totals stay
-              conserved.
+              Only verified detections count. The predicted column comes from
+              the raw classifier output captured at analysis time and is never
+              changed by rollup, smoothing, or relabels. Classes are grouped
+              at the selected taxonomic rank. The top-N filter keeps the
+              biggest classes and folds the rest into an "Other" row and
+              column so the totals still add up.
             </p>
           }
-          caveats={
-            <ul className="list-disc space-y-1 pl-5">
-              <li>
-                <span className="font-medium text-foreground">Detection errors vs classification errors.</span>{" "}
-                Cells on the animal, person, or vehicle row reflect detector decisions
-                rather than classifier ones. The detector decides whether a box
-                shows up at all; the classifier only speaks on the crops it gets.
-              </li>
-              <li>
-                <span className="font-medium text-foreground">Missed animals are invisible.</span>{" "}
-                If the detector never drew a box, there is no row here at all.
-                This matrix counts misclassifications, not missed observations.
-              </li>
-              <li>
-                <span className="font-medium text-foreground">Non-label classes are stripped.</span>{" "}
-                Detections classified as blank, empty, vide, bait, etc. never
-                reach the database and so never appear here.
-              </li>
-              <li>
-                <span className="font-medium text-foreground">Detector-only projects.</span>{" "}
-                Projects with no classifier see a three-class matrix of animal,
-                person, vehicle. Attach a classification model to get
-                species-level resolution.
-              </li>
-            </ul>
-          }
-          settings={[
-            {
-              label: "Detection threshold",
-              detail:
-                "Low-confidence detections get hidden from the Verify page but stay eligible here once verified.",
-            },
-            {
-              label: "Taxonomic rollup",
-              detail:
-                "Turning it off keeps labels at the leaf (raw classifier top-1). Turning it on means the matrix may show family- or genus-level rolled-up labels.",
-            },
-            {
-              label: "Excluded classes",
-              detail:
-                "Classes in the project exclusion list are stripped before detections land in the database.",
-            },
-          ]}
         />
       </main>
     </>

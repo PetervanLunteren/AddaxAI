@@ -7,7 +7,7 @@
  * metric columns stay plain.
  */
 
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 
 import { f1DivergingColor } from "../../lib/metric-colors";
 import type { PerformanceResponse } from "../../api/performance";
@@ -131,6 +131,41 @@ export function ClassificationReportTable({
           </tfoot>
         </table>
       </div>
+
+      <ReportFooter data={data} />
+    </div>
+  );
+}
+
+function ReportFooter({ data }: { data: PerformanceResponse }) {
+  const totalInScope =
+    data.grand_total + data.skipped_unverified + data.skipped_no_prediction;
+  if (totalInScope === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t px-4 py-3 text-xs text-muted-foreground">
+      <Info className="h-3.5 w-3.5" />
+      <span>
+        Based on {data.grand_total.toLocaleString()} verified detection
+        {data.grand_total === 1 ? "" : "s"} of {totalInScope.toLocaleString()}{" "}
+        in the filtered range
+      </span>
+      {data.skipped_unverified > 0 && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>
+            {data.skipped_unverified.toLocaleString()} not yet verified
+          </span>
+        </>
+      )}
+      {data.skipped_no_prediction > 0 && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>
+            {data.skipped_no_prediction.toLocaleString()} excluded (no stored
+            prediction; re-run analysis to include them)
+          </span>
+        </>
+      )}
     </div>
   );
 }

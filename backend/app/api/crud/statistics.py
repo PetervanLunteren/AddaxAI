@@ -22,6 +22,8 @@ from app.api.schemas.statistics import (
     SunBands,
     VerificationProgress,
 )
+from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
+from app.ml.taxonomic_rank import RANK_COLUMNS as _RANK_COLUMNS
 from app.models.deployment import Deployment
 from app.models.detection import Detection
 from app.models.event import Event
@@ -88,18 +90,6 @@ def _apply_threshold(query: Select, threshold: float) -> Select:
 # Taxonomic rank resolution
 # ---------------------------------------------------------------------------
 
-_RANK_COLUMNS = {
-    "class": "taxon_class",
-    "order": "taxon_order",
-    "family": "taxon_family",
-    "genus": "taxon_genus",
-    "species": "taxon_species",
-}
-
-HIGHER_LEVEL_TAXA = "Higher-level taxa"
-NO_TAXONOMY = "No taxonomy"
-
-
 def _rank_display_label(taxonomic_rank: str | None):
     """Return (label_expr, needs_join) for the given taxonomic rank.
 
@@ -147,7 +137,13 @@ def _rank_display_label(taxonomic_rank: str | None):
             else_=None,
         )
     else:
-        rank_display = rank_col
+        # The taxon_* columns are stored lowercase (CSV convention).
+        # Family / genus / order / class names are conventionally
+        # capitalised, so upper-case the first letter for display.
+        # Mirrors app.ml.taxonomic_rank.to_display_case.
+        rank_display = func.upper(func.substr(rank_col, 1, 1)).concat(
+            func.substr(rank_col, 2)
+        )
 
     label_expr = case(
         (Detection.category != "animal", Detection.category),

@@ -3,7 +3,7 @@ Pure-math tests for confusion matrix and classification report.
 
 Exercises the helpers in app.api.crud.performance that don't touch the
 DB: top-N folding, macro / weighted averages, F1 harmonic mean, class
-ordering, rank value resolution.
+ordering. Rank-resolution tests live in tests/ml/test_taxonomic_rank.py.
 """
 
 from collections import Counter
@@ -13,62 +13,14 @@ import pytest
 from app.api.crud.performance import (
     DETECTOR_CATEGORIES,
     OTHER_BUCKET,
+    SEMANTIC_BUCKETS,
     _apply_top_n,
     _harmonic_mean,
     _macro,
     _ordered_classes,
-    _taxon_at_rank,
     _weighted,
 )
-
-
-class _Row:
-    """Minimal stand-in for a LabelTaxonomy row."""
-
-    def __init__(
-        self,
-        name: str,
-        *,
-        taxon_class: str | None = None,
-        taxon_order: str | None = None,
-        taxon_family: str | None = None,
-        taxon_genus: str | None = None,
-        taxon_species: str | None = None,
-    ) -> None:
-        self.name = name
-        self.taxon_class = taxon_class
-        self.taxon_order = taxon_order
-        self.taxon_family = taxon_family
-        self.taxon_genus = taxon_genus
-        self.taxon_species = taxon_species
-
-
-# ---------------------------------------------------------------------------
-# _taxon_at_rank
-# ---------------------------------------------------------------------------
-
-
-def test_taxon_at_rank_reads_family_column() -> None:
-    row = _Row("leopard", taxon_family="felidae", taxon_genus="panthera")
-    assert _taxon_at_rank(row, "family") == "felidae"
-    assert _taxon_at_rank(row, "genus") == "panthera"
-
-
-def test_taxon_at_rank_species_uses_unique_leaf_name() -> None:
-    row = _Row("panthera_pardus", taxon_species="pardus", taxon_genus="panthera")
-    # species rank returns row.name, not taxon_species, so it doesn't
-    # collide across genera with the same species epithet
-    assert _taxon_at_rank(row, "species") == "panthera_pardus"
-
-
-def test_taxon_at_rank_missing_column_returns_none() -> None:
-    row = _Row("bird", taxon_class="aves")
-    assert _taxon_at_rank(row, "family") is None
-
-
-def test_taxon_at_rank_none_row() -> None:
-    assert _taxon_at_rank(None, "family") is None
-
+from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 
 # ---------------------------------------------------------------------------
 # _ordered_classes
@@ -79,9 +31,7 @@ def test_ordered_classes_puts_detector_head_first() -> None:
     all_classes = {"wolf", "deer", "person", "animal", "vehicle"}
     totals = {"wolf": 10, "deer": 30, "person": 5, "animal": 2, "vehicle": 1}
     ordered = _ordered_classes(all_classes, totals)
-    # animal, person, vehicle always first in fixed order
     assert ordered[:3] == ["animal", "person", "vehicle"]
-    # remaining classes sorted by descending support
     assert ordered[3:] == ["deer", "wolf"]
 
 
@@ -99,6 +49,23 @@ def test_ordered_classes_alphabetical_tiebreaker() -> None:
     totals = {"alpha": 5, "beta": 5, "gamma": 5}
     ordered = _ordered_classes(all_classes, totals)
     assert ordered == ["alpha", "beta", "gamma"]
+
+
+def test_ordered_classes_pins_semantic_buckets_to_bottom() -> None:
+    all_classes = {"wolf", "deer", HIGHER_LEVEL_TAXA, NO_TAXONOMY, "animal"}
+    totals = {
+        "wolf": 3,
+        "deer": 2,
+        HIGHER_LEVEL_TAXA: 50,  # tons of support, but still pinned bottom
+        NO_TAXONOMY: 10,
+        "animal": 1,
+    }
+    ordered = _ordered_classes(all_classes, totals)
+    assert ordered[0] == "animal"  # detector head first
+    # Real species in the middle, sorted by support
+    assert ordered[1:3] == ["wolf", "deer"]
+    # Semantic buckets pinned to the bottom, in SEMANTIC_BUCKETS order
+    assert ordered[-2:] == list(SEMANTIC_BUCKETS)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +89,7 @@ def test_apply_top_n_folds_tail_into_other() -> None:
         {
             ("a", "a"): 10,
             ("b", "b"): 8,
-            ("c", "d"): 2,   # c confuses with d
+            ("c", "d"): 2,
             ("d", "c"): 3,
             ("e", "a"): 1,
         }
@@ -131,18 +98,15 @@ def test_apply_top_n_folds_tail_into_other() -> None:
     new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, 2)
     assert new_ordered == ["a", "b", OTHER_BUCKET]
     assert other is True
-    # c, d, e collapse into "other" on both axes; totals must be preserved
     assert sum(new_counts.values()) == sum(counts.values())
-    # a row stays as-is
     assert new_counts[("a", "a")] == 10
-    # e row collapses to other row, and predicts a
     assert new_counts[(OTHER_BUCKET, "a")] == 1
-    # c and d get folded entirely into (other, other) because they only
-    # confused with each other
     assert new_counts[(OTHER_BUCKET, OTHER_BUCKET)] == 5
 
 
-def test_apply_top_n_keeps_detector_head_within_budget() -> None:
+def test_apply_top_n_exempts_detector_head_from_budget() -> None:
+    # top_n counts only real species; detector categories never get
+    # squeezed out no matter how small their support.
     ordered = ["animal", "person", "wolf", "deer", "bear"]
     counts: Counter = Counter(
         {
@@ -154,10 +118,34 @@ def test_apply_top_n_keeps_detector_head_within_budget() -> None:
         }
     )
     totals = {"wolf": 20, "deer": 15, "bear": 10, "animal": 2, "person": 1}
-    # top_n=3 but detector head has 2 entries → only 1 species slot left
-    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 3)
+    # top_n=2 means keep 2 real classes; detector head is always present.
+    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 2)
     assert new_ordered[:2] == ["animal", "person"]
-    assert "wolf" in new_ordered  # best species by support
+    assert "wolf" in new_ordered
+    assert "deer" in new_ordered
+    assert "bear" not in new_ordered
+    assert OTHER_BUCKET in new_ordered
+    assert other is True
+
+
+def test_apply_top_n_exempts_semantic_buckets() -> None:
+    ordered = ["wolf", "deer", "bear", HIGHER_LEVEL_TAXA, NO_TAXONOMY]
+    counts: Counter = Counter(
+        {
+            ("wolf", "wolf"): 20,
+            ("deer", "deer"): 15,
+            ("bear", "bear"): 10,
+            (HIGHER_LEVEL_TAXA, "wolf"): 5,
+            (NO_TAXONOMY, NO_TAXONOMY): 1,
+        }
+    )
+    totals = {"wolf": 20, "deer": 15, "bear": 10, HIGHER_LEVEL_TAXA: 5, NO_TAXONOMY: 1}
+    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 2)
+    # Semantic buckets stay regardless of top-N
+    assert HIGHER_LEVEL_TAXA in new_ordered
+    assert NO_TAXONOMY in new_ordered
+    # Bear falls into "other"
+    assert "bear" not in new_ordered
     assert OTHER_BUCKET in new_ordered
     assert other is True
 
@@ -173,7 +161,7 @@ def test_apply_top_n_none_disables_collapse() -> None:
 
 
 # ---------------------------------------------------------------------------
-# metric helpers
+# Metric helpers
 # ---------------------------------------------------------------------------
 
 
@@ -199,12 +187,10 @@ def test_macro_all_none_returns_none() -> None:
 
 
 def test_weighted_support_weighted() -> None:
-    # two classes with f1=1.0 and 0.0, supports 9 and 1 → weighted 0.9
     assert _weighted([1.0, 0.0], [9, 1]) == pytest.approx(0.9)
 
 
 def test_weighted_none_values_skipped() -> None:
-    # the class with None is ignored entirely, including its weight
     assert _weighted([None, 0.5], [10, 2]) == pytest.approx(0.5)
 
 
