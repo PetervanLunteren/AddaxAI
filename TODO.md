@@ -25,4 +25,3 @@
 - [ ] 
 
 
-what is the cross button doing in the analysis pbar modal? Is it the same as cancel? Or just close and proceed in the background....
