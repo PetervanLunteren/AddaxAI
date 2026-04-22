@@ -576,64 +576,64 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
             rows = pd.DataFrame(rows)
             rows.to_csv(csv_for_detections, encoding='utf-8', mode='a', index=False, header=False)
 
-            # separate files (with optional "keep whole series" feature)
-            if sep:
-                if n_detections == 0:
+        # separate files (with optional "keep whole series" feature)
+        if sep:
+            if n_detections == 0:
+                detection_type = "empty"
+            else:
+                if len(unique_labels) > 1:
+                    detection_type = "_".join(unique_labels)
+                elif len(unique_labels) == 0:
                     detection_type = "empty"
                 else:
-                    if len(unique_labels) > 1:
-                        detection_type = "_".join(unique_labels)
-                    elif len(unique_labels) == 0:
-                        detection_type = "empty"
-                    else:
-                        detection_type = label
+                    detection_type = label
 
-                # keep-series configuration
-                should_keep_series = False
-                if keep_series:
-                    # allow caller to pass the list; otherwise fall back to persisted GUI setting
-                    if keep_series_species is None:
-                        keep_series_species = global_vars.get('var_keep_series_species', [])
+            # keep-series configuration
+            should_keep_series = False
+            if keep_series:
+                # allow caller to pass the list; otherwise fall back to persisted GUI setting
+                if keep_series_species is None:
+                    keep_series_species = global_vars.get('var_keep_series_species', [])
 
-                    labels_in_detection = set(unique_labels) if n_detections > 0 else set()
+                labels_in_detection = set(unique_labels) if n_detections > 0 else set()
 
-                    # Interpret selection relative to CURRENT cls model
-                    try:
-                        cur_model_vars = load_model_vars(model_type="cls")
-                        cur_model_classes = set(cur_model_vars.get("all_classes", []) or [])
-                    except Exception:
-                        cur_model_classes = set()
+                # Interpret selection relative to CURRENT cls model
+                try:
+                    cur_model_vars = load_model_vars(model_type="cls")
+                    cur_model_classes = set(cur_model_vars.get("all_classes", []) or [])
+                except Exception:
+                    cur_model_classes = set()
 
-                    keep_series_species_effective = [c for c in keep_series_species if c in cur_model_classes]
-                    keep_series_species_effective_set = set(keep_series_species_effective)
+                keep_series_species_effective = [c for c in keep_series_species if c in cur_model_classes]
+                keep_series_species_effective_set = set(keep_series_species_effective)
 
-                    # If user selected trigger species *that exist in the current model*: filter by those.
-                    # Otherwise (no overlap): treat as "Any animal detection".
-                    if keep_series_species_effective:
-                        should_keep_series = bool(labels_in_detection.intersection(keep_series_species_effective_set))
-                    else:
-                        should_keep_series = bool(labels_in_detection.difference({'person', 'vehicle'}))
-
-                if should_keep_series:
-                    # move/copy the whole series (files within +/- window_seconds)
-                    series_files = find_series_images(file, timestamp_index, window_seconds=keep_series_seconds)
-                    for sf in series_files:
-                        if sf in already_moved_files:
-                            continue
-                        moved_rel = move_files(sf, detection_type, file_placement, max_detection_conf, sep_conf,
-                                               dst_dir, src_dir, manually_checked)
-                        # record original relative path as moved so we don't try to move it again
-                        already_moved_files.add(sf)
-                        # if this is the current loop item, update the 'file' variable used later for visualization
-                        if sf == file:
-                            file = moved_rel
+                # If user selected trigger species *that exist in the current model*: filter by those.
+                # Otherwise (no overlap): treat as "Any animal detection".
+                if keep_series_species_effective:
+                    should_keep_series = bool(labels_in_detection.intersection(keep_series_species_effective_set))
                 else:
-                    # default behaviour: move/copy single file
-                    if file not in already_moved_files:
-                        orig_file_for_move = file
-                        file = move_files(orig_file_for_move, detection_type, file_placement, max_detection_conf,
-                                          sep_conf, dst_dir, src_dir, manually_checked)
-                        already_moved_files.add(orig_file_for_move)
+                    should_keep_series = bool(labels_in_detection.difference({'person', 'vehicle'}))
+
+            if should_keep_series:
+                # move/copy the whole series (files within +/- window_seconds)
+                series_files = find_series_images(file, timestamp_index, window_seconds=keep_series_seconds)
+                for sf in series_files:
+                    if sf in already_moved_files:
+                        continue
+                    moved_rel = move_files(sf, detection_type, file_placement, max_detection_conf, sep_conf,
+                                           dst_dir, src_dir, manually_checked)
+                    # record original relative path as moved so we don't try to move it again
+                    already_moved_files.add(sf)
+                    # if this is the current loop item, update the 'file' variable used later for visualization
+                    if sf == file:
+                        file = moved_rel
+            else:
+                # default behaviour: move/copy single file
+                if file not in already_moved_files:
+                    orig_file_for_move = file
+                    file = move_files(orig_file_for_move, detection_type, file_placement, max_detection_conf,
+                                      sep_conf, dst_dir, src_dir, manually_checked)
+                    already_moved_files.add(orig_file_for_move)
     
         # visualize images
         if vis and len(bbox_info) > 0:
