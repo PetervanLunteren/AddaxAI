@@ -445,37 +445,67 @@ export function RunQueueModal({
         </DialogHeader>
 
         <div className="space-y-3">
-          {isComplete && !hasError && (
-            <div className="flex items-start gap-3">
-              <CheckCircle2
-                className="h-5 w-5 shrink-0 mt-0.5"
-                style={{ color: '#156065' }}
-              />
-              <div className="text-sm font-medium" style={{ color: '#156065' }}>
-                <div>
-                  Processed {successCount > 0 ? successCount : queueCount} deployment
-                  {(successCount || queueCount) === 1 ? '' : 's'}.
+          {isComplete && !hasError && (() => {
+            const failureCount = logRows.filter((r) => r.severity === "error").length;
+            const warningCount = logRows.filter((r) => r.severity === "warning").length;
+            const totalAttempted = successCount + failureCount;
+            const stillLoading = runEntries.length === 0;
+
+            // Deployment phrase: "M of N deployments" when some failed,
+            // otherwise "N deployments". Fall back to the pre-run queue
+            // count while the terminal-state fetch is still in flight.
+            const deploymentN = stillLoading ? queueCount : successCount;
+            const deploymentsText =
+              failureCount > 0
+                ? `${successCount} of ${totalAttempted} deployments`
+                : `${deploymentN} deployment${deploymentN === 1 ? '' : 's'}`;
+
+            const mediaParts: string[] = [];
+            if (savedImageCount > 0) {
+              mediaParts.push(
+                `${savedImageCount} image${savedImageCount === 1 ? '' : 's'}`,
+              );
+            }
+            if (savedVideoCount > 0) {
+              mediaParts.push(
+                `${savedVideoCount} video${savedVideoCount === 1 ? '' : 's'}`,
+              );
+            }
+            const mediaText = mediaParts.length > 0 ? ` with ${mediaParts.join(' and ')}` : '';
+
+            const hasIssues = !stillLoading && (warningCount > 0 || failureCount > 0);
+            const prefix = hasIssues ? "Processed" : "Successfully processed";
+
+            // Hint at the log table so users know where the details are.
+            const issueBits: string[] = [];
+            if (warningCount > 0) {
+              issueBits.push(`${warningCount} file${warningCount === 1 ? '' : 's'} skipped`);
+            }
+            if (failureCount > 0) {
+              issueBits.push(
+                `${failureCount} deployment${failureCount === 1 ? '' : 's'} failed`,
+              );
+            }
+            const issueText = issueBits.length > 0 ? ` See details below: ${issueBits.join(', ')}.` : '';
+
+            const iconColor = failureCount > 0
+              ? '#882000'
+              : warningCount > 0
+                ? '#b45309'
+                : '#156065';
+
+            return (
+              <div className="flex items-start gap-3">
+                <CheckCircle2
+                  className="h-5 w-5 shrink-0 mt-0.5"
+                  style={{ color: iconColor }}
+                />
+                <div className="text-sm font-medium" style={{ color: iconColor }}>
+                  {prefix} {deploymentsText}{mediaText}.{issueText}
                 </div>
-                {(savedImageCount > 0 || savedVideoCount > 0) && (
-                  <div>
-                    Successfully analysed{" "}
-                    {savedImageCount > 0 && (
-                      <>
-                        {savedImageCount} image{savedImageCount === 1 ? '' : 's'}
-                      </>
-                    )}
-                    {savedImageCount > 0 && savedVideoCount > 0 && " and "}
-                    {savedVideoCount > 0 && (
-                      <>
-                        {savedVideoCount} video{savedVideoCount === 1 ? '' : 's'}
-                      </>
-                    )}
-                    .
-                  </div>
-                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {showLogTable && <LogTable rows={logRows} />}
 

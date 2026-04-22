@@ -29,10 +29,3 @@
 
 - [ ] There is currently no cancel button when running ML (proicessing deployments). Is it difficult to add that? And would it be difficult to add a pauze button? The cancel button is pretty improtant, but the pauze button not so much. Dont make it too complex. KISS. 
 
-
-Succes message on finished analyses is now this
-
-Processed 1 deployment.
-Successfully analysed 46 images.
-
-Make it “Successfully processed 3 deployments with 46 images and 23 videos.” without the 0 media parts if there are no images or videos
