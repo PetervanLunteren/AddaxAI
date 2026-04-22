@@ -17,6 +17,8 @@ import { AnalysesPage } from "./pages/AnalysesPage";
 import DashboardPage from "./pages/DashboardPage";
 import { MapPage } from "./pages/MapPage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
+import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
+import { ClassificationReportPage } from "./pages/ClassificationReportPage";
 import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -111,6 +113,8 @@ function App() {
             <Route path="insights" element={<Navigate to="map" replace />} />
             <Route path="insights/map" element={<MapPage />} />
             <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
+            <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />
+            <Route path="insights/classification-report" element={<ClassificationReportPage />} />
             <Route path="sites" element={<SitesPage />} />
             <Route path="deployments" element={<DeploymentsPage />} />
             <Route path="export" element={<ExportPage />} />

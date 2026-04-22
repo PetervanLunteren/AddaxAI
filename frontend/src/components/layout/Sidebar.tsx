@@ -11,12 +11,14 @@ import {
   CheckCircle,
   ChevronRight,
   Download,
+  Grid3x3,
   LayoutDashboard,
   LineChart,
   Map,
   MapPin,
   Play,
   Settings,
+  Table2,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
@@ -65,6 +67,16 @@ export function Sidebar() {
           to: `/projects/${projectId}/insights/activity-overlap`,
           icon: LineChart,
           label: "Activity overlap",
+        },
+        {
+          to: `/projects/${projectId}/insights/confusion-matrix`,
+          icon: Grid3x3,
+          label: "Confusion matrix",
+        },
+        {
+          to: `/projects/${projectId}/insights/classification-report`,
+          icon: Table2,
+          label: "Classification report",
         },
       ],
     },

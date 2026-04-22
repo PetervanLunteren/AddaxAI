@@ -62,6 +62,7 @@ def _parse_filter_params(
     verification: str | None,
     min_confidence: float | None,
     max_confidence: float | None,
+    original_label: str | None = None,
 ) -> dict:
     """Parse common filter query params into kwargs for CRUD functions."""
     parsed_labels = labels.split(",") if labels else None
@@ -74,6 +75,7 @@ def _parse_filter_params(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        original_label=original_label,
     )
 
 
@@ -158,6 +160,13 @@ async def list_events(
     verification: str | None = Query(None, description="Verification filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    original_label: str | None = Query(
+        None,
+        description=(
+            "Match events with any detection whose raw machine label "
+            "equals this (case-insensitive)"
+        ),
+    ),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -169,7 +178,7 @@ async def list_events(
     _set_project_tz(db, project_id)
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
-        min_confidence, max_confidence,
+        min_confidence, max_confidence, original_label,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_events_by_project(
@@ -187,12 +196,13 @@ def get_event_count(
     verification: str | None = Query(None, description="Verification filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    original_label: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Get total event count for a project with optional filters."""
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
-        min_confidence, max_confidence,
+        min_confidence, max_confidence, original_label,
     )
     _apply_project_threshold(filters, project_id, db)
     count = event_crud.get_event_count_by_project(
@@ -211,6 +221,7 @@ def get_verification_stats(
     verification: str | None = Query(None, description="Verification filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    original_label: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Get aggregate file verification stats across filtered events."""
@@ -222,6 +233,7 @@ def get_verification_stats(
         verification,
         min_confidence,
         max_confidence,
+        original_label,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_event_verification_stats(
@@ -279,12 +291,13 @@ def get_adjacent_events(
     verification: str | None = Query(None, description="Verification filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    original_label: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Get adjacent event IDs for navigation, scoped to filtered set."""
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
-        min_confidence, max_confidence,
+        min_confidence, max_confidence, original_label,
     )
     _apply_project_threshold(filters, project_id, db)
     result = event_crud.get_adjacent_events(

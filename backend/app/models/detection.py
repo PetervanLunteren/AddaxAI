@@ -57,6 +57,13 @@ class Detection(Base):
     label_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # Raw top-1 classifier output captured at JSON load time.
+    # Never mutated by postprocessing, rollup, or user relabels.
+    # NULL for detector-only projects, person/vehicle detections,
+    # and detections analysed before this column existed.
+    original_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    original_label_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # FK to LabelTaxonomy — source of truth for taxonomy lookups (exports, filter tree).
     # Nullable: existing detections won't have it, and inference creates detections
     # before taxonomy rows exist. Linked during postprocessing.
@@ -101,6 +108,7 @@ class Detection(Base):
         Index("idx_detections_label_taxonomy", "label_taxonomy_id"),
         Index("idx_detections_frame_number", "frame_number"),
         Index("idx_detections_verified", "verified"),
+        Index("idx_detections_original_label", "original_label"),
     )
 
     def __repr__(self) -> str:

@@ -417,6 +417,10 @@ def load_json_to_database(
                 if label:
                     detection_record.label = label
                     detection_record.label_confidence = label_confidence
+                    # Preserve the raw top-1 classifier output; postprocessing
+                    # rollup and user relabels must never touch these columns.
+                    detection_record.original_label = label
+                    detection_record.original_label_confidence = label_confidence
                     detection_record.classification_method = "machine"
                     # Resolve taxonomy ID and display_name inline
                     if taxonomy_name_to_id:

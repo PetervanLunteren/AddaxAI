@@ -1,11 +1,14 @@
 """Statistics router for dashboard analytics."""
 
+from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.crud import performance as performance_crud
 from app.api.crud import statistics as stats_crud
+from app.api.schemas.performance import PerformanceResponse
 from app.api.schemas.statistics import (
     ActivityOverlapResponse,
     ActivityPatternResponse,
@@ -179,3 +182,53 @@ def observation_rate_map(
         date_to,
         _parse_site_ids(label_taxonomy_ids),
     )
+
+
+def _parse_date(value: str | None, field: str) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid ISO date for {field}: {value}",
+        ) from err
+
+
+def _parse_top_n(value: str) -> int | None:
+    if value == "all":
+        return None
+    try:
+        n = int(value)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid top_n: {value}",
+        ) from err
+    if n <= 0:
+        raise HTTPException(status_code=422, detail="top_n must be positive")
+    return n
+
+
+@router.get("/performance", response_model=PerformanceResponse)
+def classification_performance(
+    project_id: str = Query(...),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    rank: Literal["class", "order", "family", "genus", "species"] = Query("species"),
+    top_n: str = Query("20", description="Integer or the literal 'all'"),
+    db: Session = Depends(get_db),
+) -> PerformanceResponse:
+    """Confusion matrix + per-class metrics for verified detections."""
+    try:
+        return performance_crud.get_classification_performance(
+            db,
+            project_id,
+            site_ids=_parse_site_ids(site_ids),
+            date_from=_parse_date(date_from, "date_from"),
+            date_to=_parse_date(date_to, "date_to"),
+            rank=rank,
+            top_n=_parse_top_n(top_n),
+        )
+    except ValueError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
