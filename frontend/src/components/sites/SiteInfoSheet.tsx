@@ -16,6 +16,7 @@ import { formatCameraDateTime } from "../../lib/datetime";
 import { normalizeLabel } from "../../utils/labels";
 import { Button } from "../ui/button";
 import {
+  IdWithCopy,
   NotSet,
   Row,
   Section,
@@ -128,6 +129,12 @@ function InfoBody({ info }: { info: SiteInfo }) {
   return (
     <div className="mt-6 space-y-6 text-sm">
       <SiteLocationMap latitude={info.latitude} longitude={info.longitude} />
+
+      <Section title="Reference">
+        <Row label="Site ID" value={<IdWithCopy value={info.site_id} />} />
+      </Section>
+
+      <Separator />
 
       <Section title="Metadata">
         <Row

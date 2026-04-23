@@ -110,7 +110,7 @@ export function SitesPage() {
   }, [sites]);
 
   const filterFields: FilterFieldDef[] = [
-    { kind: "search", key: "search", label: "Search", placeholder: "Search..." },
+    { kind: "search", key: "search", label: "Search", placeholder: "Search names, IDs, etc..." },
     {
       kind: "multi-select",
       key: "habitat",
@@ -158,6 +158,7 @@ export function SitesPage() {
       const q = search.toLowerCase();
       result = result.filter((s) => {
         if (s.name.toLowerCase().includes(q)) return true;
+        if (s.id.toLowerCase().includes(q)) return true;
         if (s.habitat_type && s.habitat_type.toLowerCase().includes(q)) return true;
         if (s.notes && s.notes.toLowerCase().includes(q)) return true;
         for (const [k, v] of Object.entries(s.tags ?? {})) {

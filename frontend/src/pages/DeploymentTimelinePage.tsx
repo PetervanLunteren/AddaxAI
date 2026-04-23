@@ -21,10 +21,7 @@ import {
 } from "../components/plots/DeploymentTimelineFilterBar";
 import { DeploymentTimelineMetrics } from "../components/plots/DeploymentTimelineMetrics";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
-import {
-  PlotExplainer,
-  type PlotReference,
-} from "../components/plots/PlotExplainer";
+import { PlotExplainer } from "../components/plots/PlotExplainer";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import {
   filtersFromSearchParams,
@@ -39,41 +36,6 @@ const FILTER_SCHEMA: FilterSchema = {
   sort: "string",
   density: "string",
 };
-
-const EXPLAINER_REFERENCES: PlotReference[] = [
-  {
-    citation:
-      "Bubnicki, J. W., Norton, B., Baskauf, S. J., et al. (2024). "
-      + "Camtrap DP: an open standard for the FAIR exchange and reuse of "
-      + "camera trap data. Remote Sensing in Ecology and Conservation.",
-    url: "https://zslpublications.onlinelibrary.wiley.com/doi/10.1002/rse2.374",
-  },
-  {
-    citation:
-      "Niedballa, J., Sollmann, R., Courtiol, A., & Wilting, A. (2016). "
-      + "camtrapR: an R package for efficient camera trap data management. "
-      + "Methods in Ecology and Evolution, 7(12), 1457–1462.",
-    url: "https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12600",
-  },
-  {
-    citation:
-      "Meek, P. D., Ballard, G., Claridge, A., et al. (2014). "
-      + "Recommended guiding principles for reporting on camera trapping "
-      + "research. Biodiversity and Conservation, 23(9), 2321–2343.",
-  },
-  {
-    citation:
-      "Rovero, F., & Zimmermann, F. (2016). Camera Trapping for Wildlife "
-      + "Research. Pelagic Publishing.",
-  },
-  {
-    citation:
-      "Burton, A. C., Neilson, E., Moreira, D., et al. (2015). Wildlife "
-      + "camera trapping: a review and recommendations for linking surveys "
-      + "to ecological processes. Journal of Applied Ecology, 52(3), 675–685.",
-    url: "https://besjournals.onlinelibrary.wiley.com/doi/abs/10.1111/1365-2664.12432",
-  },
-];
 
 const VALID_SORTS: TimelineSort[] = [
   "alpha",
@@ -268,34 +230,24 @@ export function DeploymentTimelinePage() {
           how={
             <>
               <p>
-                Trap-night intervals are computed the same way the Dashboard
-                counts trap-nights, because both read the same primitive:
-                files are bucketed by their parent subfolder, each subfolder
-                becomes an inclusive [first-file, last-file] interval, and
-                every interval is plotted as its own bar. The deployment's
-                total is the sum of each subfolder's inclusive day count,
-                minus 1 for every pair of subfolders that share an exact
-                boundary day (the Reconyx / Bushnell rollover case where
-                `100MEDIA` ends on the same day `101MEDIA` starts). The
-                concurrent-cameras chart is a sweep line over every
-                interval's endpoints, so parallel subfolders raise the
-                concurrent count. Dates are rendered in the project's
-                camera-local timezone; there is no timezone conversion.
+                Each teal bar is one continuous camera session: the span
+                from that camera's first capture to its last. Quiet days
+                inside a session still count as active trap-nights, matching
+                the standard convention used across the camera-trap
+                literature. Whitespace between bars on a row means the site
+                wasn't being monitored.
               </p>
               <p>
-                Each teal bar is a continuous capture interval: a
-                subfolder's first-file to last-file span, with adjacent
-                rollover subfolders (where one's end date equals the
-                next's start date) merged into one bar. Quiet days inside
-                an interval are still counted as trap-nights. Gaps only
-                appear when no subfolder covers that window. This matches
-                the trap-night convention used in the wider camera-trap
-                literature (Rovero &amp; Zimmermann 2016, Meek et al.
-                2014).
+                Stacked bars on one row mean the deployment contained files
+                from multiple cameras running at the same time. The
+                concurrent-cameras chart underneath counts how many cameras
+                were recording on each calendar day. Rows with many gaps, or
+                deployments with tall stacks, usually flag uneven sampling
+                effort, worth mentioning in methods or controlling for in
+                downstream analyses.
               </p>
             </>
           }
-          references={EXPLAINER_REFERENCES}
         />
       </main>
     </div>

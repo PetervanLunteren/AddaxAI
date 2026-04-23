@@ -34,6 +34,9 @@ interface EditDeploymentDialogProps {
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Opens the Split dialog for the same deployment. Parent is expected to
+   * close this Edit dialog before opening the Split one. */
+  onSplit?: () => void;
 }
 
 export function EditDeploymentDialog({
@@ -41,6 +44,7 @@ export function EditDeploymentDialog({
   projectId,
   open,
   onOpenChange,
+  onSplit,
 }: EditDeploymentDialogProps) {
   const queryClient = useQueryClient();
 
@@ -108,13 +112,28 @@ export function EditDeploymentDialog({
                 deployment as site-less (batch or unknown location).
                 Reuses the analyses SiteSelector so the [+] new-site
                 affordance is consistent across the app. */}
-            <SiteSelector
-              projectId={projectId}
-              value={siteId}
-              onChange={setSiteId}
-              onAddNew={() => setShowAddSiteModal(true)}
-              allowEmpty
-            />
+            <div>
+              <SiteSelector
+                projectId={projectId}
+                value={siteId}
+                onChange={setSiteId}
+                onAddNew={() => setShowAddSiteModal(true)}
+                allowEmpty
+              />
+              {onSplit && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  If this deployment contains files from multiple sites,{" "}
+                  <button
+                    type="button"
+                    onClick={onSplit}
+                    className="text-primary underline underline-offset-2"
+                  >
+                    split
+                  </button>
+                  {" "}it first, then assign each part its site.
+                </p>
+              )}
+            </div>
 
             {/* Datetime offset (opens DatetimeOffsetModal on click) */}
             <div className="space-y-2">

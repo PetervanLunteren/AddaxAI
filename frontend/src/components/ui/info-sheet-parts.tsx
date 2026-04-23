@@ -7,6 +7,9 @@
  * evolve.
  */
 
+import { Check, Copy } from "lucide-react";
+import { useState } from "react";
+
 export function Section({
   title,
   children,
@@ -39,6 +42,44 @@ export function Row({
 
 export function NotSet() {
   return <span className="italic text-muted-foreground">n/a</span>;
+}
+
+/**
+ * Monospace ID with a one-click copy button. The icon flips to a
+ * checkmark for ~1.4 s on success; silent on failure (rare: non-HTTPS
+ * contexts in some browsers).
+ */
+export function IdWithCopy({ value }: { value: string }) {
+  const [justCopied, setJustCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setJustCopied(true);
+      setTimeout(() => setJustCopied(false), 1400);
+    } catch {
+      /* ignore; the missing checkmark is the user's cue */
+    }
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs">
+        {value}
+      </code>
+      <button
+        type="button"
+        onClick={copy}
+        title="Copy ID"
+        aria-label="Copy ID"
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      >
+        {justCopied ? (
+          <Check className="h-3.5 w-3.5" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </button>
+    </div>
+  );
 }
 
 /** Human-readable byte size. 0 renders as "0 B". */

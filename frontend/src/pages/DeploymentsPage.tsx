@@ -244,6 +244,7 @@ export function DeploymentsPage() {
       result = result.filter((d) => {
         if (d.folder_basename.toLowerCase().includes(q)) return true;
         if (d.site_name.toLowerCase().includes(q)) return true;
+        if (d.id.toLowerCase().includes(q)) return true;
         if (d.notes && d.notes.toLowerCase().includes(q)) return true;
         for (const [k, v] of Object.entries(d.tags ?? {})) {
           if (k.toLowerCase().includes(q) || v.toLowerCase().includes(q)) {
@@ -342,7 +343,7 @@ export function DeploymentsPage() {
   })();
 
   const filterFields: FilterFieldDef[] = [
-    { kind: "search", key: "search", label: "Search", placeholder: "Search..." },
+    { kind: "search", key: "search", label: "Search", placeholder: "Search names, IDs, etc..." },
     {
       kind: "multi-select",
       key: "site_ids",
@@ -550,6 +551,14 @@ export function DeploymentsPage() {
           projectId={projectId}
           open={!!editingDeployment}
           onOpenChange={(open) => !open && setEditingDeployment(null)}
+          onSplit={() => {
+            const dep = editingDeployment;
+            setEditingDeployment(null);
+            setSplittingDeployment({
+              id: dep.id,
+              folder_path: dep.folder_path,
+            });
+          }}
         />
       )}
 

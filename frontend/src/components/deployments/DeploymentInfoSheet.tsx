@@ -19,6 +19,7 @@ import { isElectron } from "../../lib/platform";
 import { normalizeLabel } from "../../utils/labels";
 import { Button } from "../ui/button";
 import {
+  IdWithCopy,
   NotSet,
   Row,
   Section,
@@ -140,6 +141,15 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
 
   return (
     <div className="mt-6 space-y-6 text-sm">
+      <Section title="Reference">
+        <Row
+          label="Deployment ID"
+          value={<IdWithCopy value={info.deployment_id} />}
+        />
+      </Section>
+
+      <Separator />
+
       <Section title="Location">
         <Row label="Path" value={info.folder_path ?? <NotSet />} />
         <Row label="Site" value={info.site_name} />

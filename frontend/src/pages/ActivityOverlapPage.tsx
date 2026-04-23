@@ -481,8 +481,8 @@ export function ActivityOverlapPage() {
               event becomes the sample count at that event's time of
               day. Samples are fit with a von Mises circular kernel
               density on a 240-point grid over [0, 24) hours (κ = 5).
-              The overlap coefficient Δ = ∫ min(f<sub>a</sub>,
-              f<sub>b</sub>) dt over the full day, with the label
+              The overlap coefficient Δ (Ridout &amp; Linkie 2009) =
+              ∫ min(f<sub>a</sub>, f<sub>b</sub>) dt over the full day, with the label
               flipping between Δ<sub>1</sub> and Δ<sub>4</sub> based on
               the smaller sample size (Δ<sub>4</sub> for min-N ≥ 50,
               Δ<sub>1</sub> below) following the `overlap` R package
