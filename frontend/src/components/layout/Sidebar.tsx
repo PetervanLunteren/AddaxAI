@@ -11,6 +11,7 @@ import {
   CheckCircle,
   ChevronRight,
   Download,
+  GanttChartSquare,
   Grid3x3,
   LayoutDashboard,
   Lightbulb,
@@ -63,6 +64,11 @@ export function Sidebar() {
           to: `/projects/${projectId}/insights/map`,
           icon: Map,
           label: "Map",
+        },
+        {
+          to: `/projects/${projectId}/insights/timeline`,
+          icon: GanttChartSquare,
+          label: "Deployment timeline",
         },
         {
           to: `/projects/${projectId}/insights/activity-overlap`,

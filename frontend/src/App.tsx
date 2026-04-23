@@ -16,6 +16,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
 import DashboardPage from "./pages/DashboardPage";
 import { MapPage } from "./pages/MapPage";
+import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
@@ -112,6 +113,7 @@ function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="insights" element={<Navigate to="map" replace />} />
             <Route path="insights/map" element={<MapPage />} />
+            <Route path="insights/timeline" element={<DeploymentTimelinePage />} />
             <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
             <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />
             <Route path="insights/per-class-performance" element={<PerClassPerformancePage />} />

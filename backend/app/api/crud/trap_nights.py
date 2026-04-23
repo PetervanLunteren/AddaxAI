@@ -1,31 +1,53 @@
 """
-Folder-aware trap-nights calculation.
+Subfolder-aware trap-nights calculation.
 
 Survey effort for a camera-trap deployment is the inclusive count of days
-the camera was deployed. For a clean single-folder deployment that's
-`max(capture) - min(capture) + 1`. For a mixed backlog (one AddaxAI
-deployment row wrapping several SD-card folders spaced apart in time), that
-naive span includes the offline gaps between cards and wildly inflates the
-denominator of any `observations / trap_nights * 100` rate.
+the camera(s) were deployed. For a clean single-subfolder deployment that's
+`max(capture) - min(capture) + 1`. For any other shape the deployment may
+contain several subfolders, each with its own capture range; we treat each
+subfolder as an independent interval and sum them, with a small correction
+for camera-manufacturer rollovers.
 
 The algorithm:
 
-1. Bucket files by their parent directory. Each folder becomes a date
-   interval `[min_capture, max_capture]`, inclusive.
-2. Merge overlapping intervals within a deployment, then sum
-   `(end - start).days + 1` across the merged result.
+1. Bucket files by their parent directory. Each subfolder becomes an
+   inclusive interval `[min_capture, max_capture]`.
+2. Apply the optional clip window to each interval.
+3. Sum `(end - start).days + 1` across the surviving intervals.
+4. Subtract 1 for every ordered pair of subfolders within the same
+   deployment where one's end date equals another's start date. This
+   collapses the Reconyx / Bushnell rollover case where `100MEDIA` ends on
+   Jan 15 and `101MEDIA` starts on Jan 15 so the shared day is counted
+   once, not twice.
 
-For a clean single-folder deployment this equals `max - min + 1` — one
-folder, one interval, no merging. For a backlog with three disjoint SD
-cards it equals the sum of each card's run length (intervals don't
-overlap so merging is a no-op). For a camera-manufacturer rollover where
-two adjacent folders share a boundary day (`100MEDIA` ending on Jan 15
-and `101MEDIA` starting on Jan 15), the overlap causes the shared day to
-collapse so the count stays 30 rather than 31.
+Worked cases (one deployment):
+
+- Single subfolder, Jan 1 - Jan 31 → 31.
+- Two sequential SDs with rollover boundary (100MEDIA Jan 1 - Jan 15,
+  101MEDIA Jan 15 - Jan 31) → 15 + 17 - 1 = 31.
+- Two SDs with a clear gap (Jan 1 - Jan 15 and Feb 1 - Feb 15) → 15 + 15
+  = 30.
+- Ten parallel cameras bundled as one deployment, each capturing Jan 1 -
+  Mar 31 → 10 × 90 = 900. This is the motivating fix: the prior
+  merge-overlapping algorithm silently collapsed them into 90.
+
+Known edge cases the boundary-subtraction rule does not fully solve:
+
+- **Duplicate-folder accident**: the same SD card imported twice into one
+  deployment produces two identical intervals with no shared boundary
+  day, so the count doubles. Users usually notice because the file count
+  doubles too; a post-hoc check could be added but is out of scope here.
+- **Genuine partial multi-day overlap**: e.g. SD1 Jan 1 - Jan 20 and SD2
+  Jan 15 - Feb 5. We interpret this as two parallel cameras (sum = 42),
+  which is correct for the "bundled backlog" scenario but overcounts the
+  rare "one camera with overlapping timestamps due to a clock bug" case.
+- **Triple boundary at one day**: three subfolders with pairwise
+  end↔start matches on one date over-subtract by 1 (counts the shared
+  day zero times instead of once). Rare; off by one day.
 
 Frame rows (`file_type='frame'`) are pipeline artifacts living inside
-`.addaxai/video_frames/...` — they are filtered out. Each original
-capture is already represented by an `image` or `video` row.
+`.addaxai/video_frames/...`; they are filtered out. Each original capture
+is represented by an `image` or `video` row.
 """
 
 from __future__ import annotations
@@ -45,8 +67,8 @@ def _clip_interval(
     clip_start: date | None,
     clip_end: date | None,
 ) -> tuple[date, date] | None:
-    """Inclusive [min, max] for a folder's dates, clamped to the clip
-    window. Returns None if the folder has no dates or the clip window
+    """Inclusive [min, max] for a subfolder's dates, clamped to the clip
+    window. Returns None if the subfolder has no dates or the clip window
     excludes everything."""
     if not dates:
         return None
@@ -61,44 +83,38 @@ def _clip_interval(
     return mn, mx
 
 
-def _merge_overlapping(
-    intervals: list[tuple[date, date]]
-) -> list[tuple[date, date]]:
-    """Merge intervals that share any day. Two intervals `[a, b]` and
-    `[c, d]` with `a <= c` are considered overlapping when `c <= b`.
-    Adjacent intervals that don't share a day (e.g. `[a, b]` then
-    `[b+1, d]`) are left separate — adjacency doesn't affect the total
-    inclusive day count."""
-    if not intervals:
-        return []
-    ordered = sorted(intervals)
-    merged: list[tuple[date, date]] = [ordered[0]]
-    for start, end in ordered[1:]:
-        last_start, last_end = merged[-1]
-        if start <= last_end:
-            merged[-1] = (last_start, max(last_end, end))
-        else:
-            merged.append((start, end))
-    return merged
+def _count_boundary_matches(intervals: list[tuple[date, date]]) -> int:
+    """Number of ordered pairs (i, j) with i != j where `intervals[i].end`
+    equals `intervals[j].start`. Each match corresponds to one shared
+    boundary day that would otherwise be double-counted when summing
+    per-subfolder spans."""
+    count = 0
+    for i, (_, end_i) in enumerate(intervals):
+        for j, (start_j, _) in enumerate(intervals):
+            if i != j and end_i == start_j:
+                count += 1
+    return count
 
 
-def _sum_intervals(intervals: list[tuple[date, date]]) -> int:
-    """Inclusive day count across a set of already-merged intervals."""
-    return sum((end - start).days + 1 for start, end in intervals)
+def _trap_nights_from_intervals(intervals: list[tuple[date, date]]) -> int:
+    """Sum subfolder spans, then subtract boundary matches."""
+    total = sum((end - start).days + 1 for start, end in intervals)
+    return total - _count_boundary_matches(intervals)
 
 
-def _trap_nights_from_folder_dates(
+def _intervals_from_folder_dates(
     by_folder: dict[str, list[date]],
     clip_start: date | None,
     clip_end: date | None,
-) -> int:
-    """Shared kernel: per-folder intervals, merge overlaps, sum."""
+) -> list[tuple[date, date]]:
+    """Per-subfolder intervals, clipped and sorted by start date.
+    No merging: two overlapping subfolders stay as two intervals."""
     intervals = [
-        interval
+        iv
         for dates in by_folder.values()
-        if (interval := _clip_interval(dates, clip_start, clip_end)) is not None
+        if (iv := _clip_interval(dates, clip_start, clip_end)) is not None
     ]
-    return _sum_intervals(_merge_overlapping(intervals))
+    return sorted(intervals)
 
 
 def compute_trap_nights_for_deployment(
@@ -109,12 +125,12 @@ def compute_trap_nights_for_deployment(
     clip_end: date | None = None,
 ) -> int | None:
     """
-    Folder-aware trap-nights count for a single deployment.
+    Subfolder-aware trap-nights count for a single deployment.
 
     Returns `None` when the deployment has no capture-bearing file rows.
     Returns `0` when files exist but the clip window excludes all of them.
-    Otherwise returns the inclusive day count of the merged per-folder
-    intervals — see the module docstring for the algorithm.
+    Otherwise returns the sum of per-subfolder inclusive day counts, minus
+    1 per shared boundary day — see the module docstring for the algorithm.
     """
     rows = db.execute(
         select(File.file_path, File.captured_at_local)
@@ -131,23 +147,28 @@ def compute_trap_nights_for_deployment(
         folder = str(Path(file_path).parent)
         by_folder[folder].append(captured_at.date())
 
-    return _trap_nights_from_folder_dates(by_folder, clip_start, clip_end)
+    intervals = _intervals_from_folder_dates(by_folder, clip_start, clip_end)
+    return _trap_nights_from_intervals(intervals)
 
 
-def compute_trap_nights_for_deployments(
+def compute_intervals_for_deployments(
     db: Session,
     deployment_ids: list[str],
     *,
     clip_start: date | None = None,
     clip_end: date | None = None,
-) -> dict[str, int]:
+) -> dict[str, list[tuple[date, date]]]:
     """
-    Folder-aware trap-nights count for many deployments in one query.
+    Per-subfolder capture intervals for many deployments in one query.
 
-    Used by dashboard-style aggregations where iterating per deployment
-    would amplify the query cost. Returns `{deployment_id: nights}` with
-    `0` for deployments that have no capture-bearing files (not `None` —
-    bulk callers divide and want a numeric zero, not a missing key).
+    Shared primitive for trap-nights accounting and for the deployment
+    timeline view. Returns `{deployment_id: [(start, end), ...]}` with an
+    empty list for deployments that have no capture-bearing files within
+    the clip window. Intervals are inclusive `[start, end]`, sorted by
+    start date, and **not merged**: two parallel subfolders within one
+    deployment produce two separate intervals.
+
+    See the module docstring for the algorithm.
     """
     if not deployment_ids:
         return {}
@@ -166,9 +187,38 @@ def compute_trap_nights_for_deployments(
         folder = str(Path(file_path).parent)
         by_dep_folder[deployment_id][folder].append(captured_at.date())
 
-    totals: dict[str, int] = {dep_id: 0 for dep_id in deployment_ids}
+    result: dict[str, list[tuple[date, date]]] = {
+        dep_id: [] for dep_id in deployment_ids
+    }
     for dep_id, by_folder in by_dep_folder.items():
-        totals[dep_id] = _trap_nights_from_folder_dates(
+        result[dep_id] = _intervals_from_folder_dates(
             by_folder, clip_start, clip_end
         )
-    return totals
+    return result
+
+
+def compute_trap_nights_for_deployments(
+    db: Session,
+    deployment_ids: list[str],
+    *,
+    clip_start: date | None = None,
+    clip_end: date | None = None,
+) -> dict[str, int]:
+    """
+    Subfolder-aware trap-nights count for many deployments in one query.
+
+    Used by dashboard-style aggregations where iterating per deployment
+    would amplify the query cost. Returns `{deployment_id: nights}` with
+    `0` for deployments that have no capture-bearing files (not `None` —
+    bulk callers divide and want a numeric zero, not a missing key).
+
+    Thin wrapper around `compute_intervals_for_deployments`: single source
+    of truth for the subfolder-bucketing logic.
+    """
+    intervals = compute_intervals_for_deployments(
+        db, deployment_ids, clip_start=clip_start, clip_end=clip_end
+    )
+    return {
+        dep_id: _trap_nights_from_intervals(ivs)
+        for dep_id, ivs in intervals.items()
+    }

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import performance as performance_crud
 from app.api.crud import statistics as stats_crud
+from app.api.crud import timeline as timeline_crud
 from app.api.schemas.performance import PerformanceResponse
 from app.api.schemas.statistics import (
     ActivityOverlapResponse,
@@ -19,6 +20,7 @@ from app.api.schemas.statistics import (
     SpeciesCount,
     VerificationProgress,
 )
+from app.api.schemas.timeline import TimelineResponse
 from app.db.base import get_db
 
 router = APIRouter(prefix="/api/statistics", tags=["statistics"])
@@ -181,6 +183,24 @@ def observation_rate_map(
         date_from,
         date_to,
         _parse_site_ids(label_taxonomy_ids),
+    )
+
+
+@router.get("/timeline", response_model=TimelineResponse)
+def deployment_timeline(
+    project_id: str = Query(...),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> TimelineResponse:
+    """Deployment timeline payload for the Insights → Deployment timeline page."""
+    return timeline_crud.get_deployment_timeline(
+        db,
+        project_id,
+        site_ids=_parse_site_ids(site_ids),
+        date_from=_parse_date(date_from, "date_from"),
+        date_to=_parse_date(date_to, "date_to"),
     )
 
 
