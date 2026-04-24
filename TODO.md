@@ -2,7 +2,8 @@
 - [ ] 
 
 ## Priority 2
-- [ ]
+- [ ] Add flag button to and files. See addaxai. 
+- [ ] remove the "today" legend item of the timeline plot, no need for that. 
 
 ## Priority 3 
 - [ ] FILE VERIFICATION - add a section for image verification. Or at least thinik about it. You have something for events and detections (called similarity now). Should we make a thrid tab, files? exactly the same as events, but then on the file level. if you search fot wolf, you get all the images or frames with a wolf. Now in events you still have to search trhough the event to find it. events verify MaxN (and files if you want), files verify files (and if lucky its a maxN too), decections (or did we choose to call it observations? I think so), verify on the instance level. Here we do the embedding too. SO basically, just leave events and similarity as they are (perhaps rename similarity), and add a new one for files (which is almost the same as events, just not grouping for events). And while we're at it, should we make these their separate pages? Then we have all levels: sites, deployments, events, files, observations. Or would you advise against that and keep it all three in verify page as tabs? What is you recommendation in terms of UX UI? Be honest, dont sugar coat. 
