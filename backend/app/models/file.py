@@ -97,6 +97,15 @@ class File(Base):
         Boolean, nullable=False, server_default="0", default=False
     )
 
+    # Flag for review — user-set marker that this file warrants a second look.
+    # Independent of verification; a flagged file can also be verified.
+    flagged: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
+    )
+    flagged_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
@@ -118,6 +127,7 @@ class File(Base):
         Index("idx_files_deployment", "deployment_id"),
         Index("idx_files_captured_at_local", "captured_at_local"),
         Index("idx_files_verified", "verified"),
+        Index("idx_files_flagged", "flagged"),
         Index("idx_files_source_video", "source_video_id"),
     )
 

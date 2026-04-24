@@ -12,7 +12,7 @@ import type {
   SortResponse,
   SearchRequest,
   SearchResponse,
-  SimilarityStatsResponse,
+  ObservationStatsResponse,
 } from "./types";
 
 export const observationsApi = {
@@ -39,8 +39,8 @@ export const observationsApi = {
   },
 
   /** Get embedding coverage stats for a project. */
-  stats: async (projectId: string): Promise<SimilarityStatsResponse> => {
-    return api.get<SimilarityStatsResponse>(
+  stats: async (projectId: string): Promise<ObservationStatsResponse> => {
+    return api.get<ObservationStatsResponse>(
       `/api/projects/${projectId}/observations/stats`
     );
   },

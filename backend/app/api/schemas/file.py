@@ -51,6 +51,8 @@ class FileResponse(BaseModel):
     verified_at_utc: datetime | None = None
     notes: str | None = None
     favorited: bool = False
+    flagged: bool = False
+    flagged_at_utc: datetime | None = None
     source_video_id: str | None = None
     source_frame_number: int | None = None
 
@@ -76,11 +78,12 @@ class FileWithDetections(FileResponse):
 
 
 class FileUpdate(BaseModel):
-    """Schema for updating a file (verification, notes, favorited)."""
+    """Schema for updating a file (verification, notes, favorited, flagged)."""
 
     verified: bool | None = None
     notes: str | None = None
     favorited: bool | None = None
+    flagged: bool | None = None
 
 
 class FileSummaryDetection(BaseModel):
@@ -118,6 +121,7 @@ class FileSummary(BaseModel):
     display_labels: dict[str, str]
     verified: bool
     favorited: bool
+    flagged: bool
     source_video_id: str | None
     detections: list[FileSummaryDetection]
 

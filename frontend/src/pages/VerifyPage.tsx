@@ -31,6 +31,7 @@ import { HelpSheet } from "../components/verify/HelpSheet";
 import { FilesTab } from "../components/verify/FilesTab";
 import { ObservationsTab } from "../components/verify/ObservationsTab";
 import { EventsStatsToolbar } from "../components/verify/EventsStatsToolbar";
+import { StatusBadgeCluster } from "../components/verify/StatusBadgeCluster";
 
 type VerifyTab = "events" | "files" | "observations";
 
@@ -63,6 +64,10 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (labels) filters.labels = labels.split(",");
   const verification = sp.get("verification") as VerificationFilter | null;
   if (verification && verification !== "all") filters.verification = verification;
+  const flagged = sp.get("flagged") as EventFilterParams["flagged"] | null;
+  if (flagged && flagged !== "all") filters.flagged = flagged;
+  const favorited = sp.get("favorited") as EventFilterParams["favorited"] | null;
+  if (favorited && favorited !== "all") filters.favorited = favorited;
   return filters;
 }
 
@@ -75,6 +80,10 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
   if (filters.labels?.length) sp.set("labels", filters.labels.join(","));
   if (filters.verification && filters.verification !== "all")
     sp.set("verification", filters.verification);
+  if (filters.flagged && filters.flagged !== "all")
+    sp.set("flagged", filters.flagged);
+  if (filters.favorited && filters.favorited !== "all")
+    sp.set("favorited", filters.favorited);
   return sp;
 }
 
@@ -85,7 +94,9 @@ function hasActiveFilters(filters: EventFilterParams): boolean {
     !!filters.date_from ||
     !!filters.date_to ||
     (filters.labels?.length ?? 0) > 0 ||
-    (!!filters.verification && filters.verification !== "all")
+    (!!filters.verification && filters.verification !== "all") ||
+    (!!filters.flagged && filters.flagged !== "all") ||
+    (!!filters.favorited && filters.favorited !== "all")
   );
 }
 
@@ -494,13 +505,21 @@ function EventCard({
   });
 
 
+  const allVerified =
+    event.verified_count === event.total_count && event.total_count > 0;
+
   return (
     <Card
-      className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+      className="relative hover:shadow-lg transition-shadow cursor-pointer"
       onClick={onClick}
     >
+      <StatusBadgeCluster
+        verified={allVerified}
+        favorited={event.any_file_favorited}
+        flagged={event.any_file_flagged}
+      />
       {/* Thumbnail */}
-      <div className="aspect-video bg-muted relative">
+      <div className="aspect-video bg-muted relative overflow-hidden rounded-t-lg">
         {thumbnailUrl ? (
           <img
             src={thumbnailUrl}

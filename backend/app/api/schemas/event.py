@@ -41,6 +41,10 @@ class EventSummary(BaseModel):
     total_count: int
     verified_maxn_count: int
     total_maxn_count: int
+    # True if any file in the event has the flag set. Aggregated here so
+    # the card corner cluster can light up without a second round trip.
+    any_file_flagged: bool
+    any_file_favorited: bool
 
     # event_start_local / event_end_local are naive wall-clock times in
     # the project's local camera timezone (see DEVELOPERS.md).

@@ -162,6 +162,14 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
     if update.favorited is not None:
         file.favorited = update.favorited
 
+    if update.flagged is not None:
+        if update.flagged and not file.flagged:
+            file.flagged = True
+            file.flagged_at_utc = datetime.now(UTC)
+        elif not update.flagged and file.flagged:
+            file.flagged = False
+            file.flagged_at_utc = None
+
     db.commit()
     db.refresh(file)
     return file
@@ -201,6 +209,8 @@ def _apply_file_verify_filters(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ):
     """Apply shared filters to a File query. Expects File already joined to Deployment.
 
@@ -287,6 +297,16 @@ def _apply_file_verify_filters(
     elif verification == "unverified":
         query = query.filter(File.verified == False)  # noqa: E712
 
+    if flagged == "flagged":
+        query = query.filter(File.flagged == True)  # noqa: E712
+    elif flagged == "not_flagged":
+        query = query.filter(File.flagged == False)  # noqa: E712
+
+    if favorited == "favorited":
+        query = query.filter(File.favorited == True)  # noqa: E712
+    elif favorited == "not_favorited":
+        query = query.filter(File.favorited == False)  # noqa: E712
+
     return query
 
 
@@ -302,6 +322,8 @@ def get_files_for_verify(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> list[dict]:
     """List file summaries for the Files verify tab.
 
@@ -323,6 +345,8 @@ def get_files_for_verify(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
     files = (
         query.options(
@@ -398,6 +422,7 @@ def get_files_for_verify(
                 "display_labels": label_to_display,
                 "verified": f.verified,
                 "favorited": f.favorited,
+                "flagged": f.flagged,
                 "source_video_id": f.source_video_id,
                 "detections": [
                     {
@@ -428,6 +453,8 @@ def count_files_for_verify(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> int:
     """Total file count for the Files verify tab with the given filters."""
     query = (
@@ -444,6 +471,8 @@ def count_files_for_verify(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
     return query.scalar() or 0
 
@@ -458,6 +487,8 @@ def get_file_verification_stats(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> dict[str, int]:
     """Aggregate verified/total file counts for the Files verify tab."""
     query = (
@@ -477,6 +508,8 @@ def get_file_verification_stats(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
     total, verified = query.one()
     return {
@@ -496,6 +529,8 @@ def get_adjacent_files_for_verify(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> dict:
     """Adjacent file IDs in the Files verify tab's filtered list.
 
@@ -510,6 +545,8 @@ def get_adjacent_files_for_verify(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
 
     current = (

@@ -495,6 +495,8 @@ export interface FileResponse {
   verified_at_utc: string | null;
   notes: string | null;
   favorited: boolean;
+  flagged: boolean;
+  flagged_at_utc: string | null;
   source_video_id: string | null;
   source_frame_number: number | null;
 }
@@ -521,12 +523,17 @@ export type VerificationFilter =
   | "some_maxn_verified"
   | "none_verified";
 
+export type FlaggedFilter = "all" | "flagged" | "not_flagged";
+export type FavoritedFilter = "all" | "favorited" | "not_favorited";
+
 export interface EventFilterParams {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
   labels?: string[];
   verification?: VerificationFilter;
+  flagged?: FlaggedFilter;
+  favorited?: FavoritedFilter;
   min_confidence?: number;
   max_confidence?: number;
 }
@@ -561,6 +568,7 @@ export interface FileSummary {
   display_labels: Record<string, string>;
   verified: boolean;
   favorited: boolean;
+  flagged: boolean;
   source_video_id: string | null;
   detections: FileSummaryDetection[];
 }
@@ -615,6 +623,8 @@ export interface EventSummary {
   total_count: number;
   verified_maxn_count: number;
   total_maxn_count: number;
+  any_file_flagged: boolean;
+  any_file_favorited: boolean;
 }
 
 export interface EventWithFiles {
@@ -736,8 +746,10 @@ export interface GeofenceResponse {
   total_count?: number;
 }
 
-// Similarity types
-export interface SimilarityFilters {
+// Observations types (embedding-backed sort + search for the Observations
+// verify tab). Filter shape carries site/date/label predicates; the
+// underlying cosine-similarity algorithm lives in the subprocess script.
+export interface ObservationFilters {
   labels?: string[];
   site_ids?: string[];
   date_from?: string;
@@ -748,13 +760,13 @@ export interface SimilarityFilters {
 }
 
 export interface SortRequest {
-  filters?: SimilarityFilters;
+  filters?: ObservationFilters;
   reverse?: boolean;
 }
 
 export interface SearchRequest {
   anchor_detection_id: string;
-  filters?: SimilarityFilters;
+  filters?: ObservationFilters;
   limit?: number;
   threshold?: number;
 }
@@ -800,7 +812,7 @@ export interface SearchResponse {
   threshold_applied: number;
 }
 
-export interface SimilarityStatsResponse {
+export interface ObservationStatsResponse {
   total_detections: number;
   embedded_detections: number;
   missing_embeddings: number;

@@ -1,11 +1,14 @@
 """
-Similarity service — subprocess dispatcher.
+Observations service — subprocess dispatcher for the Observations verify tab.
 
-Delegates similarity sort and FAISS search to similarity_script.py
-running in the addaxai-base conda environment. The main backend process
-never imports numpy or faiss.
+Delegates sort (greedy nearest-neighbor chain) and search (FAISS k-NN) to
+ml/inference/similarity_script.py running in the addaxai-base conda
+environment. The main backend process never imports numpy or faiss.
 
-Stats queries and detection summary building stay in-process (pure SQL).
+The subprocess script is named for the underlying algorithm (cosine
+similarity); this service is named for the feature it serves (the
+Observations tab). Stats queries and detection summary building stay
+in-process (pure SQL).
 """
 
 from __future__ import annotations
@@ -18,11 +21,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.api.schemas.similarity import (
+from app.api.schemas.observation import (
     DetectionSummary,
+    ObservationFilters,
     SearchRequest,
     SearchResponse,
-    SimilarityFilters,
     SortRequest,
     SortResponse,
 )
@@ -55,8 +58,8 @@ def _get_db_path() -> str:
     raise ValueError(f"Unsupported database URL format: {url}")
 
 
-def _filters_to_dict(filters: SimilarityFilters) -> dict[str, Any]:
-    """Convert Pydantic SimilarityFilters to a JSON-safe dict."""
+def _filters_to_dict(filters: ObservationFilters) -> dict[str, Any]:
+    """Convert Pydantic ObservationFilters to a JSON-safe dict."""
     d: dict[str, Any] = {}
     if filters.labels:
         # Strip :unspecified suffix from rolled-up taxonomy leaf IDs
@@ -78,7 +81,7 @@ def _filters_to_dict(filters: SimilarityFilters) -> dict[str, Any]:
     return d
 
 
-def _run_similarity_subprocess(
+def _run_observations_subprocess(
     operation: str, project_id: str, params: dict[str, Any]
 ) -> dict[str, Any]:
     """Run similarity_script.py as subprocess and return parsed JSON."""
@@ -94,7 +97,7 @@ def _run_similarity_subprocess(
         "--params", json.dumps(params, default=str),
     ]
 
-    logger.info(f"Running similarity subprocess: {operation} for project {project_id}")
+    logger.info(f"Running observations subprocess: {operation} for project {project_id}")
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
@@ -120,18 +123,18 @@ def _run_similarity_subprocess(
         if "No embedding found" in error_msg:
             raise ValueError(error_msg.replace("ERROR: ", ""))
         raise RuntimeError(
-            f"Similarity computation failed: {error_msg}"
+            f"Observations computation failed: {error_msg}"
         )
 
     if not stdout.strip():
-        raise RuntimeError("Similarity script produced no output")
+        raise RuntimeError("Observations script produced no output")
 
     return json.loads(stdout)
 
 
 def _apply_project_threshold(
-    filters: SimilarityFilters, project_id: str, db: Session
-) -> SimilarityFilters:
+    filters: ObservationFilters, project_id: str, db: Session
+) -> ObservationFilters:
     """Apply the project's detection_threshold as min_confidence."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if project and project.detection_threshold:
@@ -150,7 +153,7 @@ def sort_detections(
         "filters": _filters_to_dict(filters),
         "reverse": body.reverse,
     }
-    result = _run_similarity_subprocess("sort", project_id, params)
+    result = _run_observations_subprocess("sort", project_id, params)
     return SortResponse(**result)
 
 
@@ -165,7 +168,7 @@ def search_similar(
         "limit": body.limit,
         "threshold": body.threshold,
     }
-    result = _run_similarity_subprocess("search", project_id, params)
+    result = _run_observations_subprocess("search", project_id, params)
     return SearchResponse(**result)
 
 

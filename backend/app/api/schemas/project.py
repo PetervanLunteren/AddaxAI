@@ -97,7 +97,7 @@ class ProjectBase(BaseModel):
         default=1800, ge=0, description="Minimum time between independent events (seconds)"
     )
 
-    # Similarity clustering defaults (HDBSCAN params)
+    # Clustering defaults (HDBSCAN params)
     min_cluster_size: int = Field(5, ge=2, le=100, description="HDBSCAN min_cluster_size parameter")
     min_samples: int = Field(3, ge=1, le=50, description="HDBSCAN min_samples parameter")
 

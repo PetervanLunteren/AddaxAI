@@ -55,6 +55,8 @@ def _parse_verify_filter_params(
     verification: str | None,
     min_confidence: float | None,
     max_confidence: float | None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> dict:
     """Parse shared filter query params for the Files verify endpoints."""
     return dict(
@@ -65,6 +67,8 @@ def _parse_verify_filter_params(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
 
 
@@ -94,6 +98,12 @@ async def list_files_for_verify(
     verification: str | None = Query(
         None, description="Filter: 'verified', 'unverified', or 'all'"
     ),
+    flagged: str | None = Query(
+        None, description="Filter: 'flagged', 'not_flagged', or 'all'"
+    ),
+    favorited: str | None = Query(
+        None, description="Filter: 'favorited', 'not_favorited', or 'all'"
+    ),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     skip: int = Query(0, ge=0),
@@ -113,6 +123,7 @@ async def list_files_for_verify(
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_files_for_verify(
@@ -128,6 +139,8 @@ def count_files_for_verify(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated taxonomy IDs"),
     verification: str | None = Query(None),
+    flagged: str | None = Query(None),
+    favorited: str | None = Query(None),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
@@ -136,6 +149,7 @@ def count_files_for_verify(
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     count = file_crud.count_files_for_verify(db, project_id, **filters)
@@ -150,6 +164,8 @@ def get_file_verification_stats_endpoint(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated taxonomy IDs"),
     verification: str | None = Query(None),
+    flagged: str | None = Query(None),
+    favorited: str | None = Query(None),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
@@ -158,6 +174,7 @@ def get_file_verification_stats_endpoint(
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_file_verification_stats(db, project_id, **filters)
@@ -365,6 +382,8 @@ def get_adjacent_files(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated taxonomy IDs"),
     verification: str | None = Query(None),
+    flagged: str | None = Query(None),
+    favorited: str | None = Query(None),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
@@ -373,6 +392,7 @@ def get_adjacent_files(
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_adjacent_files_for_verify(

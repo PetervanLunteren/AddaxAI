@@ -27,6 +27,10 @@ function appendFilterParams(
     searchParams.set("labels", filters.labels.join(","));
   if (filters.verification && filters.verification !== "all")
     searchParams.set("verification", filters.verification);
+  if (filters.flagged && filters.flagged !== "all")
+    searchParams.set("flagged", filters.flagged);
+  if (filters.favorited && filters.favorited !== "all")
+    searchParams.set("favorited", filters.favorited);
   if (filters.min_confidence !== undefined)
     searchParams.set("min_confidence", filters.min_confidence.toString());
   if (filters.max_confidence !== undefined)

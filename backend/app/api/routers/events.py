@@ -62,6 +62,8 @@ def _parse_filter_params(
     verification: str | None,
     min_confidence: float | None,
     max_confidence: float | None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> dict:
     """Parse common filter query params into kwargs for CRUD functions."""
     parsed_labels = labels.split(",") if labels else None
@@ -74,6 +76,8 @@ def _parse_filter_params(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
 
 
@@ -163,6 +167,8 @@ async def list_events(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated labels"),
     verification: str | None = Query(None, description="Verification filter"),
+    flagged: str | None = Query(None, description="Flagged filter"),
+    favorited: str | None = Query(None, description="Favorited filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     skip: int = Query(0, ge=0),
@@ -177,6 +183,7 @@ async def list_events(
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_events_by_project(
@@ -192,6 +199,8 @@ def get_event_count(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated labels"),
     verification: str | None = Query(None, description="Verification filter"),
+    flagged: str | None = Query(None, description="Flagged filter"),
+    favorited: str | None = Query(None, description="Favorited filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
@@ -200,6 +209,7 @@ def get_event_count(
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     count = event_crud.get_event_count_by_project(
@@ -216,6 +226,8 @@ def get_verification_stats(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated labels"),
     verification: str | None = Query(None, description="Verification filter"),
+    flagged: str | None = Query(None, description="Flagged filter"),
+    favorited: str | None = Query(None, description="Favorited filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
@@ -229,6 +241,8 @@ def get_verification_stats(
         verification,
         min_confidence,
         max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_event_verification_stats(
@@ -284,6 +298,8 @@ def get_adjacent_events(
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     labels: str | None = Query(None, description="Comma-separated labels"),
     verification: str | None = Query(None, description="Verification filter"),
+    flagged: str | None = Query(None, description="Flagged filter"),
+    favorited: str | None = Query(None, description="Favorited filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
@@ -292,6 +308,7 @@ def get_adjacent_events(
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
+        flagged=flagged, favorited=favorited,
     )
     _apply_project_threshold(filters, project_id, db)
     result = event_crud.get_adjacent_events(

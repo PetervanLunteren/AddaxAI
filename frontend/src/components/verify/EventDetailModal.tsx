@@ -20,6 +20,7 @@ import {
   Pencil,
   SquarePlus,
   Download,
+  Flag,
   Heart,
   ZoomIn,
   ZoomOut,
@@ -441,6 +442,21 @@ export function EventDetailModal({
     },
   });
 
+  // Flag mutation — toggles flagged on the currently viewed file. Flag
+  // lives at the file level; the Event card badge lights up if any file
+  // in the event is flagged.
+  const flagMutation = useMutation({
+    mutationFn: () => {
+      if (!currentFile) return Promise.resolve(null);
+      return filesApi.update(currentFile.id, { flagged: !currentFile.flagged });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["file"] });
+    },
+  });
+
   // Filtered detections for the current file (for Tab cycling)
   const filteredDetections = useMemo(() => {
     if (!currentFile) return [];
@@ -753,6 +769,11 @@ export function EventDetailModal({
           e.preventDefault();
           verifyMutation.mutate();
           break;
+        case "f":
+        case "F":
+          e.preventDefault();
+          flagMutation.mutate();
+          break;
         case "a":
         case "A":
           e.preventDefault();
@@ -805,6 +826,7 @@ export function EventDetailModal({
     selectedFileIndex,
     files.length,
     verifyMutation,
+    flagMutation,
     markBlankMutation,
     addBoxMutation,
     hiddenDetections,
@@ -1172,6 +1194,21 @@ export function EventDetailModal({
                   className={cn(
                     "h-4 w-4",
                     currentFile.favorited && "fill-[#882000] text-[#882000]"
+                  )}
+                />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => flagMutation.mutate()}
+                disabled={flagMutation.isPending}
+                title={currentFile.flagged ? "Remove flag" : "Flag for review (F)"}
+              >
+                <Flag
+                  className={cn(
+                    "h-4 w-4",
+                    currentFile.flagged && "fill-[#71b7ba] text-[#71b7ba]"
                   )}
                 />
               </Button>

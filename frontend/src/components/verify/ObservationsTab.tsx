@@ -38,7 +38,7 @@ import type {
   SortResponse,
   SearchResponse,
   DetectionSummary,
-  SimilarityFilters,
+  ObservationFilters,
   EventFilterParams,
 } from "../../api/types";
 
@@ -86,8 +86,8 @@ function obsFiltersToSearchParams(
   return sp;
 }
 
-/** Convert ObservationsFilterState → SimilarityFilters for API calls. */
-function toSimilarityFilters(f: ObservationsFilterState): SimilarityFilters {
+/** Convert ObservationsFilterState → ObservationFilters for API calls. */
+function toObservationFilters(f: ObservationsFilterState): ObservationFilters {
   return {
     labels: f.labels,
     site_ids: f.site_ids,
@@ -267,7 +267,7 @@ export function ObservationsTab({
   const sortMutation = useMutation({
     mutationFn: () =>
       observationsApi.sort(projectId, {
-        filters: toSimilarityFilters(obsFilters),
+        filters: toObservationFilters(obsFilters),
         reverse: reverseSort,
       }),
     onMutate: () => setIsSorting(true),
@@ -283,7 +283,7 @@ export function ObservationsTab({
   });
 
   // Stable key for filter + settings comparison
-  const filtersKey = JSON.stringify(toSimilarityFilters(obsFilters));
+  const filtersKey = JSON.stringify(toObservationFilters(obsFilters));
   const sortKey = `${filtersKey}|${reverseSort}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
@@ -300,7 +300,7 @@ export function ObservationsTab({
     mutationFn: (anchor: string) =>
       observationsApi.search(projectId, {
         anchor_detection_id: anchor,
-        filters: toSimilarityFilters(obsFilters),
+        filters: toObservationFilters(obsFilters),
         limit: 100,
         threshold,
       }),

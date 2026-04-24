@@ -28,8 +28,16 @@ def _apply_event_filters(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ):
-    """Apply shared filters to an event query. Expects Event already joined to Deployment."""
+    """Apply shared filters to an event query. Expects Event already joined to Deployment.
+
+    `flagged` / `favorited` filter at the file level (EXISTS a file in the
+    event with File.flagged / File.favorited set). Per the decided mental
+    model, flag and heart live on files; an event is flagged only in the
+    sense that it contains at least one flagged file.
+    """
     from app.api.crud.deployment import site_ids_filter
 
     site_clause = site_ids_filter(site_ids)
@@ -177,6 +185,30 @@ def _apply_event_filters(
             )
             query = query.filter(~exists(verified_subq))
 
+    if flagged in ("flagged", "not_flagged"):
+        flagged_subq = (
+            select(event_files.c.event_id)
+            .join(File, File.id == event_files.c.file_id)
+            .where(event_files.c.event_id == Event.id)
+            .where(File.flagged == True)  # noqa: E712
+        )
+        if flagged == "flagged":
+            query = query.filter(exists(flagged_subq))
+        else:
+            query = query.filter(~exists(flagged_subq))
+
+    if favorited in ("favorited", "not_favorited"):
+        favorited_subq = (
+            select(event_files.c.event_id)
+            .join(File, File.id == event_files.c.file_id)
+            .where(event_files.c.event_id == Event.id)
+            .where(File.favorited == True)  # noqa: E712
+        )
+        if favorited == "favorited":
+            query = query.filter(exists(favorited_subq))
+        else:
+            query = query.filter(~exists(favorited_subq))
+
     return query
 
 
@@ -273,6 +305,8 @@ def get_events_by_project(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> list[dict]:
     """
     Get event summaries for a project.
@@ -295,6 +329,8 @@ def get_events_by_project(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
     events = (
         query.options(joinedload(Event.files).joinedload(File.detections))
@@ -377,6 +413,8 @@ def get_events_by_project(
             }
         )
         verified_count = sum(1 for f in sorted_files if f.verified)
+        any_file_flagged = any(f.flagged for f in sorted_files)
+        any_file_favorited = any(f.favorited for f in sorted_files)
 
         # MaxN verification counts
         max_n_frames = max_n_by_event.get(event.id, [])
@@ -418,6 +456,8 @@ def get_events_by_project(
                 "total_count": len(sorted_files),
                 "verified_maxn_count": verified_maxn_count,
                 "total_maxn_count": total_maxn_count,
+                "any_file_flagged": any_file_flagged,
+                "any_file_favorited": any_file_favorited,
             }
         )
 
@@ -448,6 +488,8 @@ def get_event_count_by_project(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> int:
     """Get total event count for a project."""
     query = (
@@ -465,6 +507,8 @@ def get_event_count_by_project(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
     count = query.scalar()
     return count or 0
@@ -481,6 +525,8 @@ def get_adjacent_events(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> dict:
     """
     Get adjacent event IDs for navigation.
@@ -499,6 +545,8 @@ def get_adjacent_events(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
 
     # 1. Get current event's local start time
@@ -602,6 +650,8 @@ def get_event_verification_stats(
     verification: str | None = None,
     min_confidence: float | None = None,
     max_confidence: float | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
 ) -> dict[str, int]:
     """Get aggregate file verification stats across filtered events."""
     filter_kwargs = dict(
@@ -612,6 +662,8 @@ def get_event_verification_stats(
         verification=verification,
         min_confidence=min_confidence,
         max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
     )
 
     # Base: filtered event IDs

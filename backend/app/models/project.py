@@ -108,7 +108,7 @@ class Project(Base):
         Float, nullable=False, default=1.0  # Frames per second to extract
     )
 
-    # Similarity clustering defaults (HDBSCAN params)
+    # Clustering defaults (HDBSCAN params)
     min_cluster_size: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5
     )

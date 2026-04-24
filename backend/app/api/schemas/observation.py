@@ -1,7 +1,11 @@
 """
-Pydantic schemas for Similarity API.
+Pydantic schemas for the Observations API.
 
-Request/response models for similarity sort, search, and embedding stats.
+Request/response models for the Observations verify tab: sort (greedy
+nearest-neighbor chain), search (find similar), and embedding coverage
+stats. The underlying technique is cosine similarity on DINOv2 crop
+embeddings; the schemas here are named after the tab (observations),
+not the algorithm.
 """
 
 from datetime import datetime
@@ -11,7 +15,7 @@ from pydantic import BaseModel, Field, field_serializer
 from app.utils.datetime_serialization import serialize_local_datetime
 
 
-class SimilarityFilters(BaseModel):
+class ObservationFilters(BaseModel):
     """Filters for selecting detections to sort or search."""
 
     labels: list[str] | None = None
@@ -24,17 +28,17 @@ class SimilarityFilters(BaseModel):
 
 
 class SortRequest(BaseModel):
-    """Request body for similarity-sorting detections."""
+    """Request body for the Observations sort endpoint."""
 
-    filters: SimilarityFilters = Field(default_factory=SimilarityFilters)
+    filters: ObservationFilters = Field(default_factory=ObservationFilters)
     reverse: bool = False
 
 
 class SearchRequest(BaseModel):
-    """Request body for finding similar detections."""
+    """Request body for the Observations search endpoint."""
 
     anchor_detection_id: str
-    filters: SimilarityFilters = Field(default_factory=SimilarityFilters)
+    filters: ObservationFilters = Field(default_factory=ObservationFilters)
     limit: int = Field(100, ge=1, le=500)
     threshold: float = Field(0.0, ge=-1.0, le=1.0)
 
@@ -76,14 +80,14 @@ class DetectionSummary(BaseModel):
 
 
 class SortResponse(BaseModel):
-    """Response for similarity sort endpoint."""
+    """Response for the Observations sort endpoint."""
 
     detections: list[DetectionSummary]
     total_detections: int
 
 
 class SearchResponse(BaseModel):
-    """Response for search endpoint."""
+    """Response for the Observations search endpoint."""
 
     anchor: DetectionSummary
     results: list[DetectionSummary]
@@ -91,7 +95,7 @@ class SearchResponse(BaseModel):
     threshold_applied: float
 
 
-class SimilarityStatsResponse(BaseModel):
+class ObservationStatsResponse(BaseModel):
     """Embedding coverage stats."""
 
     total_detections: int

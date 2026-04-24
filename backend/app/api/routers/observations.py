@@ -12,19 +12,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.schemas.similarity import (
+from app.api.schemas.observation import (
+    ObservationStatsResponse,
     SearchRequest,
     SearchResponse,
-    SimilarityStatsResponse,
     SortRequest,
     SortResponse,
 )
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
-from app.services.similarity_service import (
+from app.services.observation_service import (
     search_similar as search_similar_service,
 )
-from app.services.similarity_service import (
+from app.services.observation_service import (
     sort_detections as sort_detections_service,
 )
 from app.utils.datetime_serialization import set_active_project_timezone
@@ -77,7 +77,7 @@ async def search_similar(
 
 @router.get(
     "/{project_id}/observations/stats",
-    response_model=SimilarityStatsResponse,
+    response_model=ObservationStatsResponse,
 )
 def get_observation_stats(
     project_id: str,
@@ -122,7 +122,7 @@ def get_observation_stats(
         .first()
     )
 
-    return SimilarityStatsResponse(
+    return ObservationStatsResponse(
         total_detections=total,
         embedded_detections=embedded,
         missing_embeddings=total - embedded,

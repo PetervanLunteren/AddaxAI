@@ -98,9 +98,11 @@ export function FilterPanel({
 
   if (!isOpen) return null;
 
+  const showVerification = verificationSection !== null;
+
   return (
     <div className="rounded-lg border bg-white pt-2 pb-3 px-3 space-y-4">
-      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${verificationSection !== null ? "xl:grid-cols-5" : "xl:grid-cols-4"} gap-4`}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {/* Sites multiselect */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
@@ -251,6 +253,72 @@ export function FilterPanel({
               </SelectContent>
             </Select>
           </div>
+        )}
+
+        {/* Favorited + Flagged filters. Mirror Connect's pattern of three
+            separate dropdowns alongside verification. Shown on any tab that
+            renders a verification dropdown; Observations passes
+            verificationSection={null} and hides both. */}
+        {showVerification && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Favorited
+              </label>
+              <Select
+                value={filters.favorited ?? "all"}
+                onValueChange={(v) =>
+                  onChange({
+                    ...filters,
+                    favorited:
+                      v === "all"
+                        ? undefined
+                        : (v as "favorited" | "not_favorited"),
+                  })
+                }
+              >
+                <SelectTrigger className="h-9 min-h-0 text-sm">
+                  <span className="truncate">
+                    <SelectValue />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="favorited">Favorited</SelectItem>
+                  <SelectItem value="not_favorited">Not favorited</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Flagged
+              </label>
+              <Select
+                value={filters.flagged ?? "all"}
+                onValueChange={(v) =>
+                  onChange({
+                    ...filters,
+                    flagged:
+                      v === "all"
+                        ? undefined
+                        : (v as "flagged" | "not_flagged"),
+                  })
+                }
+              >
+                <SelectTrigger className="h-9 min-h-0 text-sm">
+                  <span className="truncate">
+                    <SelectValue />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="flagged">Flagged</SelectItem>
+                  <SelectItem value="not_flagged">Not flagged</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
         )}
 
       </div>

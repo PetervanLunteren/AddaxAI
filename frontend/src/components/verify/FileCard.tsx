@@ -2,8 +2,9 @@
  * FileCard - single-file tile for the Files verify tab.
  *
  * Shows the file's thumbnail (best_frame for videos via /api/files/{id}/image),
- * detection overlay, observation_type + label badges, date/site, and a
- * verified tick. Clicking opens FileDetailModal.
+ * detection overlay, observation_type + label badges, date/site, and the
+ * status badge cluster (verified / favorited / flagged) clipped to the
+ * card's top-right corner. Clicking opens FileDetailModal.
  */
 
 import { Check, Circle, Layers, Video as VideoIcon } from "lucide-react";
@@ -13,6 +14,7 @@ import { getDetectionColor, getObservationBadge } from "../../lib/detection-util
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import { Badge } from "../ui/badge";
 import { Card, CardContent } from "../ui/card";
+import { StatusBadgeCluster } from "./StatusBadgeCluster";
 import type { FileSummary } from "../../api/types";
 
 interface FileCardProps {
@@ -33,10 +35,15 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
 
   return (
     <Card
-      className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+      className="relative hover:shadow-lg transition-shadow cursor-pointer"
       onClick={onClick}
     >
-      <div className="aspect-video bg-muted relative">
+      <StatusBadgeCluster
+        verified={file.verified}
+        favorited={file.favorited}
+        flagged={file.flagged}
+      />
+      <div className="aspect-video bg-muted relative overflow-hidden rounded-t-lg">
         <img
           src={thumbnailUrl}
           alt="File thumbnail"
@@ -51,13 +58,6 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
           <div className="absolute top-2 left-2 bg-black/55 text-white rounded px-1.5 py-0.5 text-[10px] flex items-center gap-1">
             <VideoIcon className="h-3 w-3" />
             Video
-          </div>
-        )}
-
-        {/* Verified tick */}
-        {file.verified && (
-          <div className="absolute top-2 right-2 bg-primary rounded-full p-1 shadow-sm">
-            <Check className="h-3 w-3 text-primary-foreground" />
           </div>
         )}
 

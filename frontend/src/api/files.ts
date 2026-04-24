@@ -26,6 +26,10 @@ function appendFileFilterParams(
     searchParams.set("labels", filters.labels.join(","));
   if (filters.verification && filters.verification !== "all")
     searchParams.set("verification", filters.verification);
+  if (filters.flagged && filters.flagged !== "all")
+    searchParams.set("flagged", filters.flagged);
+  if (filters.favorited && filters.favorited !== "all")
+    searchParams.set("favorited", filters.favorited);
   if (filters.min_confidence !== undefined)
     searchParams.set("min_confidence", filters.min_confidence.toString());
   if (filters.max_confidence !== undefined)
@@ -54,7 +58,12 @@ export const filesApi = {
    */
   update: async (
     id: string,
-    data: { verified?: boolean; notes?: string; favorited?: boolean }
+    data: {
+      verified?: boolean;
+      notes?: string;
+      favorited?: boolean;
+      flagged?: boolean;
+    }
   ): Promise<FileResponse> => {
     return api.patch<FileResponse>(`/api/files/${id}`, data);
   },

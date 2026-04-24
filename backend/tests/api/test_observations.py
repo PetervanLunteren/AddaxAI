@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from app.api.schemas.similarity import (
+from app.api.schemas.observation import (
     DetectionSummary,
     SearchResponse,
     SortResponse,

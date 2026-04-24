@@ -25,12 +25,24 @@ function formatLabel(raw: string, displayLabels?: Record<string, string>): strin
 }
 
 const VERIFICATION_LABELS: Record<string, string> = {
+  verified: "Verified",
+  unverified: "Unverified",
   none_verified: "None verified",
   unverified_maxn: "No MaxN verified",
   some_maxn_verified: "Some MaxN verified",
   all_maxn_verified: "All MaxN verified",
   not_fully_verified: "Partially verified",
   fully_verified: "Fully verified",
+};
+
+const FLAGGED_LABELS: Record<string, string> = {
+  flagged: "Flagged",
+  not_flagged: "Not flagged",
+};
+
+const FAVORITED_LABELS: Record<string, string> = {
+  favorited: "Favorited",
+  not_favorited: "Not favorited",
 };
 
 
@@ -113,6 +125,23 @@ export function FilterChips({
     });
   }
 
+  // Favorited chip
+  if (filters.favorited && filters.favorited !== "all") {
+    chips.push({
+      key: "favorited",
+      label: FAVORITED_LABELS[filters.favorited] ?? filters.favorited,
+      onRemove: () => onChange({ ...filters, favorited: undefined }),
+    });
+  }
+
+  // Flagged chip
+  if (filters.flagged && filters.flagged !== "all") {
+    chips.push({
+      key: "flagged",
+      label: FLAGGED_LABELS[filters.flagged] ?? filters.flagged,
+      onRemove: () => onChange({ ...filters, flagged: undefined }),
+    });
+  }
 
   if (chips.length === 0) return null;
 

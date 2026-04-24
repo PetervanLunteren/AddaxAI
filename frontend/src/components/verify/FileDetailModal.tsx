@@ -21,6 +21,7 @@ import {
   Pencil,
   SquarePlus,
   Download,
+  Flag,
   Heart,
   ZoomIn,
   ZoomOut,
@@ -258,6 +259,14 @@ export function FileDetailModal({
     onSuccess: invalidateAfterMutation,
   });
 
+  const flagMutation = useMutation({
+    mutationFn: () => {
+      if (!file) return Promise.resolve(null);
+      return filesApi.update(file.id, { flagged: !file.flagged });
+    },
+    onSuccess: invalidateAfterMutation,
+  });
+
   // Hidden detections for "add box" — below threshold, minimum 0.2
   const hiddenDetections = useMemo(() => {
     if (!file) return [];
@@ -441,6 +450,11 @@ export function FileDetailModal({
           e.preventDefault();
           verifyMutation.mutate();
           break;
+        case "f":
+        case "F":
+          e.preventDefault();
+          flagMutation.mutate();
+          break;
         case "a":
         case "A":
           if (e.metaKey || e.ctrlKey) break;
@@ -477,6 +491,7 @@ export function FileDetailModal({
     onClose,
     selectedDetectionId,
     verifyMutation,
+    flagMutation,
     markBlankMutation,
     addBoxMutation,
     hiddenDetections,
@@ -788,6 +803,21 @@ export function FileDetailModal({
                   className={cn(
                     "h-4 w-4",
                     file.favorited && "fill-[#882000] text-[#882000]",
+                  )}
+                />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => flagMutation.mutate()}
+                disabled={flagMutation.isPending}
+                title={file.flagged ? "Remove flag" : "Flag for review (F)"}
+              >
+                <Flag
+                  className={cn(
+                    "h-4 w-4",
+                    file.flagged && "fill-[#71b7ba] text-[#71b7ba]",
                   )}
                 />
               </Button>

@@ -56,6 +56,21 @@ def test_update_file_verified(client, db):
     assert resp.json()["verified"] is True
 
 
+def test_update_file_flagged_sets_timestamp(client, db):
+    d, _ = _setup_deployment(db)
+    f = make_file(db, deployment_id=d.id)
+    resp = client.patch(f"/api/files/{f.id}", json={"flagged": True})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["flagged"] is True
+    assert body["flagged_at_utc"] is not None
+    resp = client.patch(f"/api/files/{f.id}", json={"flagged": False})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["flagged"] is False
+    assert body["flagged_at_utc"] is None
+
+
 def test_get_file_image_success(client, db):
     d, _ = _setup_deployment(db)
     # Create a real temp JPEG file
@@ -261,3 +276,63 @@ def test_label_tree_rejects_invalid_count_by(client, db):
         f"/api/events/label-tree?project_id={p.id}&count_by=bogus"
     )
     assert resp.status_code == 400
+
+
+def test_list_for_verify_flagged_filter(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    flagged = make_file(db, deployment_id=d.id, file_type="image")
+    unflagged = make_file(db, deployment_id=d.id, file_type="image")
+    # Files verify tab filters to files with at least one visible detection.
+    make_detection(db, file_id=flagged.id, confidence=0.9)
+    make_detection(db, file_id=unflagged.id, confidence=0.9)
+    db.commit()
+    client.patch(f"/api/files/{flagged.id}", json={"flagged": True})
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&flagged=flagged"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert flagged.id in ids
+    assert unflagged.id not in ids
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&flagged=not_flagged"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert flagged.id not in ids
+    assert unflagged.id in ids
+
+
+def test_list_for_verify_favorited_filter(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    fav = make_file(db, deployment_id=d.id, file_type="image")
+    not_fav = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(db, file_id=fav.id, confidence=0.9)
+    make_detection(db, file_id=not_fav.id, confidence=0.9)
+    db.commit()
+    client.patch(f"/api/files/{fav.id}", json={"favorited": True})
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&favorited=favorited"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert fav.id in ids
+    assert not_fav.id not in ids
+
+
+def test_file_summary_includes_flagged(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    f = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(db, file_id=f.id, confidence=0.9)
+    db.commit()
+    client.patch(f"/api/files/{f.id}", json={"flagged": True})
+
+    resp = client.get(f"/api/files/list-for-verify?project_id={p.id}")
+    rows = {row["id"]: row for row in resp.json()}
+    assert rows[f.id]["flagged"] is True
