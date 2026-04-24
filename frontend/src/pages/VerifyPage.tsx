@@ -28,8 +28,11 @@ import { EventDetailModal } from "../components/verify/EventDetailModal";
 import { FilterPanel } from "../components/verify/FilterPanel";
 import { FilterChips } from "../components/verify/FilterChips";
 import { HelpSheet } from "../components/verify/HelpSheet";
-import { SimilarityTab } from "../components/verify/SimilarityTab";
+import { FilesTab } from "../components/verify/FilesTab";
+import { ObservationsTab } from "../components/verify/ObservationsTab";
 import { EventsStatsToolbar } from "../components/verify/EventsStatsToolbar";
+
+type VerifyTab = "events" | "files" | "observations";
 
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
@@ -95,27 +98,36 @@ export default function VerifyPage() {
   const [helpOpen, setHelpOpen] = useState(false);
 
   // Tab state from URL
-  const activeTab = (searchParams.get("tab") as "events" | "similarity") || "events";
+  const rawTab = searchParams.get("tab");
+  const activeTab: VerifyTab =
+    rawTab === "files" || rawTab === "observations" ? rawTab : "events";
   const setActiveTab = useCallback(
-    (tab: "events" | "similarity") => {
-      // Cancel in-flight event queries to free browser connections
-      if (tab === "similarity") {
+    (tab: VerifyTab) => {
+      // Cancel in-flight queries for the tab we are leaving so the browser
+      // connection pool isn't tied up loading data that is about to be hidden.
+      if (tab !== "events") {
         queryClient.cancelQueries({ queryKey: ["events"] });
         queryClient.cancelQueries({ queryKey: ["event-count-filtered"] });
-        queryClient.cancelQueries({ queryKey: ["file"] });
+      }
+      if (tab !== "files") {
+        queryClient.cancelQueries({ queryKey: ["files-for-verify"] });
+        queryClient.cancelQueries({ queryKey: ["files-count-for-verify"] });
+        queryClient.cancelQueries({ queryKey: ["files-verification-stats"] });
       }
       setSearchParams(
         (prev) => {
           if (tab === "events") {
             prev.delete("tab");
-            prev.delete("mode");
-            prev.delete("anchor");
-            // Clean sim_* params when leaving Similarity tab
-            for (const key of [...prev.keys()]) {
-              if (key.startsWith("sim_")) prev.delete(key);
-            }
           } else {
             prev.set("tab", tab);
+          }
+          // Observations-only params are stripped when leaving the Observations tab.
+          if (tab !== "observations") {
+            prev.delete("mode");
+            prev.delete("anchor");
+            for (const key of [...prev.keys()]) {
+              if (key.startsWith("obs_")) prev.delete(key);
+            }
           }
           return prev;
         },
@@ -153,6 +165,14 @@ export default function VerifyPage() {
       if (mode) sp.set("mode", mode);
       const anchor = searchParams.get("anchor");
       if (anchor) sp.set("anchor", anchor);
+      // Preserve Observations-owned filter params (obs_*). Events and Files
+      // share the unprefixed filter params above; Observations has its own
+      // namespace and must survive a shared-filter edit from another tab.
+      for (const key of [...searchParams.keys()]) {
+        if (key.startsWith("obs_")) {
+          sp.set(key, searchParams.get(key)!);
+        }
+      }
       setSearchParams(sp, { replace: true });
     },
     [setSearchParams, activeTab, searchParams]
@@ -192,14 +212,18 @@ export default function VerifyPage() {
     enabled: !!projectId && isDebouncedFiltered,
   });
 
-  // Get verification stats across filtered events
+  // Get verification stats across filtered events (only for Events tab)
   const { data: verificationStats } = useQuery({
     queryKey: ["events", "verification-stats", projectId, debouncedFilters],
     queryFn: () => eventsApi.verificationStats(projectId!, debouncedFilters),
     enabled: !!projectId && activeTab === "events",
   });
 
-  // Get events with debounced filters
+  // Data queries for Events and Files share filters, so Events-only data
+  // fetches below gate on activeTab === "events" to avoid busy connections
+  // while sitting on the Files or Observations tab.
+
+  // Get events with debounced filters (only when Events tab is active)
   const {
     data: events,
     isLoading,
@@ -214,7 +238,7 @@ export default function VerifyPage() {
         limit: PAGE_SIZE,
         filters: debouncedFilters,
       }),
-    enabled: !!projectId,
+    enabled: !!projectId && activeTab === "events",
     placeholderData: (prev) => prev,
   });
 
@@ -273,7 +297,7 @@ export default function VerifyPage() {
               <h1 className="text-2xl font-bold tracking-tight">Verify</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
-                  ? "Review and verify AI detections. Events verifies at the file level, similarity at the detection level."
+                  ? "Review and verify AI results. Events groups files by time, Files is one tile per image or video, Observations is one per detection."
                   : "Run a deployment analysis to get started"}
               </p>
             </div>
@@ -284,30 +308,36 @@ export default function VerifyPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-4">
         {/* Tab strip */}
         <div className="flex items-center gap-1 border-b">
-          <button
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "events"
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab("events")}
-          >
-            Events
-          </button>
-          <button
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "similarity"
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab("similarity")}
-          >
-            Similarity
-          </button>
+          {(
+            [
+              ["events", "Events"],
+              ["files", "Files"],
+              ["observations", "Observations"],
+            ] as const
+          ).map(([tab, label]) => (
+            <button
+              key={tab}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Tab content */}
-        {activeTab === "events" ? (
+        {activeTab === "files" ? (
+          <FilesTab
+            projectId={projectId!}
+            filters={filters}
+            onFiltersChange={setFilters}
+            classificationModelId={project?.classification_model_id ?? null}
+          />
+        ) : activeTab === "events" ? (
           <>
             {/* Filter panel */}
             <FilterPanel
@@ -416,7 +446,7 @@ export default function VerifyPage() {
             />
           </>
         ) : (
-          <SimilarityTab
+          <ObservationsTab
             projectId={projectId!}
             classificationModelId={project?.classification_model_id ?? null}
           />

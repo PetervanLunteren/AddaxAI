@@ -1,9 +1,10 @@
 /**
- * SimilarityTab - orchestrates the embedding-driven similarity view.
+ * ObservationsTab - orchestrates the embedding-driven observation grid.
  *
- * Manages its own filter state (independent from Events tab) via sim_* URL
- * params. Provides sort/search mode via segmented control, selection model,
- * and coordinates toolbar, grid, bulk actions, settings, and detail sheet.
+ * Manages its own filter state (independent from Events / Files tabs) via
+ * obs_* URL params. Provides sort/search mode via segmented control,
+ * selection model, and coordinates toolbar, grid, bulk actions, settings,
+ * and detail sheet.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +12,7 @@ import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, CircleHelp, Keyboard, Loader2, Layers, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
-import { similarityApi } from "../../api/similarity";
+import { observationsApi } from "../../api/observations";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
@@ -27,10 +28,10 @@ import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
 import { FilterPanel } from "./FilterPanel";
 import { getDetectionDisplayName } from "../../lib/detection-utils";
-import { SimilaritySettings } from "./SimilaritySettings";
-import { SimilarityHelpSheet } from "./SimilarityHelpSheet";
+import { ObservationsSettings } from "./ObservationsSettings";
+import { ObservationsHelpSheet } from "./ObservationsHelpSheet";
 import { LabelPicker } from "./LabelPicker";
-import { SimilarityWelcomePopover } from "./SimilarityWelcomePopover";
+import { ObservationsWelcomePopover } from "./ObservationsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import type {
@@ -41,53 +42,52 @@ import type {
   EventFilterParams,
 } from "../../api/types";
 
-interface SimilarityTabProps {
+interface ObservationsTabProps {
   projectId: string;
   classificationModelId: string | null;
 }
 
-// ── Sim filter state (independent from Events filters) ──────────────────
+// ── Observations filter state (independent from Events / Files filters) ──
 
-interface SimilarityFilterState {
+interface ObservationsFilterState {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
   labels?: string[];
 }
 
-/** Parse sim_* params from URL. */
-function simFiltersFromSearchParams(sp: URLSearchParams): SimilarityFilterState {
-  const f: SimilarityFilterState = {};
-  const sites = sp.get("sim_sites");
+/** Parse obs_* params from URL. */
+function obsFiltersFromSearchParams(sp: URLSearchParams): ObservationsFilterState {
+  const f: ObservationsFilterState = {};
+  const sites = sp.get("obs_sites");
   if (sites) f.site_ids = sites.split(",");
-  const from = sp.get("sim_from");
+  const from = sp.get("obs_from");
   if (from) f.date_from = from;
-  const to = sp.get("sim_to");
+  const to = sp.get("obs_to");
   if (to) f.date_to = to;
-  const labels = sp.get("sim_labels");
+  const labels = sp.get("obs_labels");
   if (labels) f.labels = labels.split(",");
   return f;
 }
 
-/** Write sim_* params to URL, preserving non-sim params. */
-function simFiltersToSearchParams(
-  filters: SimilarityFilterState,
+/** Write obs_* params to URL, preserving non-obs params. */
+function obsFiltersToSearchParams(
+  filters: ObservationsFilterState,
   current: URLSearchParams,
 ): URLSearchParams {
   const sp = new URLSearchParams(current);
-  // Clear all sim_* keys first
   for (const key of [...sp.keys()]) {
-    if (key.startsWith("sim_")) sp.delete(key);
+    if (key.startsWith("obs_")) sp.delete(key);
   }
-  if (filters.site_ids?.length) sp.set("sim_sites", filters.site_ids.join(","));
-  if (filters.date_from) sp.set("sim_from", filters.date_from);
-  if (filters.date_to) sp.set("sim_to", filters.date_to);
-  if (filters.labels?.length) sp.set("sim_labels", filters.labels.join(","));
+  if (filters.site_ids?.length) sp.set("obs_sites", filters.site_ids.join(","));
+  if (filters.date_from) sp.set("obs_from", filters.date_from);
+  if (filters.date_to) sp.set("obs_to", filters.date_to);
+  if (filters.labels?.length) sp.set("obs_labels", filters.labels.join(","));
   return sp;
 }
 
-/** Convert SimilarityFilterState → SimilarityFilters for API calls. */
-function toSimilarityFilters(f: SimilarityFilterState): SimilarityFilters {
+/** Convert ObservationsFilterState → SimilarityFilters for API calls. */
+function toSimilarityFilters(f: ObservationsFilterState): SimilarityFilters {
   return {
     labels: f.labels,
     site_ids: f.site_ids,
@@ -96,8 +96,8 @@ function toSimilarityFilters(f: SimilarityFilterState): SimilarityFilters {
   };
 }
 
-/** Adapt SimilarityFilterState to EventFilterParams shape for FilterPanel. */
-function toFilterPanelFilters(f: SimilarityFilterState): EventFilterParams {
+/** Adapt ObservationsFilterState to EventFilterParams shape for FilterPanel. */
+function toFilterPanelFilters(f: ObservationsFilterState): EventFilterParams {
   return {
     site_ids: f.site_ids,
     date_from: f.date_from,
@@ -106,23 +106,23 @@ function toFilterPanelFilters(f: SimilarityFilterState): EventFilterParams {
   };
 }
 
-export function SimilarityTab({
+export function ObservationsTab({
   projectId,
   classificationModelId,
-}: SimilarityTabProps) {
+}: ObservationsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  // ── Own filter state from URL sim_* params ──────────────────────────
-  const simFilters = useMemo(
-    () => simFiltersFromSearchParams(searchParams),
+  // ── Own filter state from URL obs_* params ──────────────────────────
+  const obsFilters = useMemo(
+    () => obsFiltersFromSearchParams(searchParams),
     [searchParams],
   );
 
-  const setSimFilters = useCallback(
-    (next: SimilarityFilterState) => {
+  const setObsFilters = useCallback(
+    (next: ObservationsFilterState) => {
       setSearchParams(
-        (prev) => simFiltersToSearchParams(next, prev),
+        (prev) => obsFiltersToSearchParams(next, prev),
         { replace: true },
       );
     },
@@ -132,19 +132,19 @@ export function SimilarityTab({
   /** Handler for FilterPanel onChange (EventFilterParams shape). */
   const handleFilterPanelChange = useCallback(
     (fp: EventFilterParams) => {
-      setSimFilters({
-        ...simFilters,
+      setObsFilters({
+        ...obsFilters,
         site_ids: fp.site_ids,
         date_from: fp.date_from,
         date_to: fp.date_to,
         labels: fp.labels,
       });
     },
-    [simFilters, setSimFilters],
+    [obsFilters, setObsFilters],
   );
 
   // ── Local settings state (persisted to localStorage) ────────────────
-  const LS_KEY = "addaxai:similaritySettings";
+  const LS_KEY = "addaxai:observationsSettings";
   const savedSettings = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
     catch { return {}; }
@@ -177,11 +177,11 @@ export function SimilarityTab({
   const [helpOpen, setHelpOpen] = useState(false);
   const [relabelOpen, setRelabelOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
-    () => !localStorage.getItem("addaxai:similarityWelcomeDismissed")
+    () => !localStorage.getItem("addaxai:observationsWelcomeDismissed")
   );
   const handleDismissWelcome = useCallback(() => {
     setShowWelcome(false);
-    localStorage.setItem("addaxai:similarityWelcomeDismissed", "1");
+    localStorage.setItem("addaxai:observationsWelcomeDismissed", "1");
   }, []);
 
   // Explicit sorting flag — avoids isPending getting stuck in Strict Mode
@@ -251,8 +251,8 @@ export function SimilarityTab({
 
   // Stats query
   const { data: stats } = useQuery({
-    queryKey: ["similarity-stats", projectId],
-    queryFn: () => similarityApi.stats(projectId),
+    queryKey: ["observations-stats", projectId],
+    queryFn: () => observationsApi.stats(projectId),
     enabled: !!projectId,
   });
 
@@ -266,8 +266,8 @@ export function SimilarityTab({
   // Sort mutation — passes reverse flag
   const sortMutation = useMutation({
     mutationFn: () =>
-      similarityApi.sort(projectId, {
-        filters: toSimilarityFilters(simFilters),
+      observationsApi.sort(projectId, {
+        filters: toSimilarityFilters(obsFilters),
         reverse: reverseSort,
       }),
     onMutate: () => setIsSorting(true),
@@ -283,7 +283,7 @@ export function SimilarityTab({
   });
 
   // Stable key for filter + settings comparison
-  const filtersKey = JSON.stringify(toSimilarityFilters(simFilters));
+  const filtersKey = JSON.stringify(toSimilarityFilters(obsFilters));
   const sortKey = `${filtersKey}|${reverseSort}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
@@ -298,9 +298,9 @@ export function SimilarityTab({
   // Search mutation
   const searchMutation = useMutation({
     mutationFn: (anchor: string) =>
-      similarityApi.search(projectId, {
+      observationsApi.search(projectId, {
         anchor_detection_id: anchor,
-        filters: toSimilarityFilters(simFilters),
+        filters: toSimilarityFilters(obsFilters),
         limit: 100,
         threshold,
       }),
@@ -676,8 +676,8 @@ export function SimilarityTab({
             No embeddings yet
           </p>
           <p className="text-sm text-muted-foreground mt-1 max-w-md">
-            Run an analysis with an embedding model selected to use similarity
-            features. Embeddings are computed from detection crops using DINOv2.
+            Run an analysis with an embedding model selected to use this tab.
+            Embeddings are computed from detection crops using DINOv2.
           </p>
         </CardContent>
       </Card>
@@ -705,7 +705,7 @@ export function SimilarityTab({
       {/* Filter panel — sites, dates, labels only (verification filtering
           is handled by the toolbar segmented control) */}
       <FilterPanel
-        filters={toFilterPanelFilters(simFilters)}
+        filters={toFilterPanelFilters(obsFilters)}
         onChange={handleFilterPanelChange}
         projectId={projectId}
         isOpen={true}
@@ -785,7 +785,7 @@ export function SimilarityTab({
               <RefreshCw className={cn("h-4 w-4", isSorting && "animate-spin")} />
             </button>
 
-            <SimilaritySettings
+            <ObservationsSettings
               reverseSort={reverseSort}
               onReverseSortChange={setReverseSort}
               showLabelDividers={showLabelDividers}
@@ -1058,8 +1058,8 @@ export function SimilarityTab({
         }}
       />
 
-      <SimilarityWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
-      <SimilarityHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <ObservationsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
+      <ObservationsHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <DetectionDetailModal
         detection={detailDetection}

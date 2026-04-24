@@ -33,10 +33,11 @@ interface FilterPanelProps {
   classificationModelId?: string | null;
   children?: React.ReactNode;
   verificationSection?: React.ReactNode;
-  countBy?: string;
+  verificationOptions?: { value: VerificationFilter | "all"; label: string }[];
+  countBy?: "event" | "file" | "detection";
 }
 
-const VERIFICATION_OPTIONS: { value: VerificationFilter | "all"; label: string }[] = [
+const DEFAULT_VERIFICATION_OPTIONS: { value: VerificationFilter | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "none_verified", label: "None verified" },
   { value: "unverified_maxn", label: "No MaxN verified" },
@@ -54,8 +55,11 @@ export function FilterPanel({
   classificationModelId,
   children,
   verificationSection,
+  verificationOptions,
   countBy,
 }: FilterPanelProps) {
+  const activeVerificationOptions =
+    verificationOptions ?? DEFAULT_VERIFICATION_OPTIONS;
   // Fetch sites for multiselect
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -239,7 +243,7 @@ export function FilterPanel({
                 </span>
               </SelectTrigger>
               <SelectContent>
-                {VERIFICATION_OPTIONS.map((opt) => (
+                {activeVerificationOptions.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </SelectItem>

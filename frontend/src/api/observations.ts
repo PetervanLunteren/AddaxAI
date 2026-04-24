@@ -1,5 +1,9 @@
 /**
- * Similarity API client - sort and search endpoints.
+ * Observations API client - embedding-based sort and search for the
+ * Observations verify tab.
+ *
+ * Underlying technique is still "similarity" (cosine distance on DINOv2
+ * embeddings); the user-facing naming reflects the unit of work instead.
  */
 
 import { api } from "../lib/api-client";
@@ -11,33 +15,33 @@ import type {
   SimilarityStatsResponse,
 } from "./types";
 
-export const similarityApi = {
-  /** Sort detections by visual similarity (greedy nearest-neighbor chain). */
+export const observationsApi = {
+  /** Sort observations by visual similarity (greedy nearest-neighbor chain). */
   sort: async (
     projectId: string,
     body: SortRequest
   ): Promise<SortResponse> => {
     return api.post<SortResponse>(
-      `/api/projects/${projectId}/similarity/sort`,
+      `/api/projects/${projectId}/observations/sort`,
       body
     );
   },
 
-  /** Find detections similar to an anchor. */
+  /** Find observations similar to an anchor. */
   search: async (
     projectId: string,
     body: SearchRequest
   ): Promise<SearchResponse> => {
     return api.post<SearchResponse>(
-      `/api/projects/${projectId}/similarity/search`,
+      `/api/projects/${projectId}/observations/search`,
       body
     );
   },
 
-  /** Get embedding coverage stats. */
+  /** Get embedding coverage stats for a project. */
   stats: async (projectId: string): Promise<SimilarityStatsResponse> => {
     return api.get<SimilarityStatsResponse>(
-      `/api/projects/${projectId}/similarity/stats`
+      `/api/projects/${projectId}/observations/stats`
     );
   },
 };

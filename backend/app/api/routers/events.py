@@ -133,7 +133,9 @@ async def get_filter_options(
 @router.get("/label-tree")
 def get_label_tree(
     project_id: str = Query(..., description="Project ID"),
-    count_by: str = Query("event", description="Count unit: 'event' or 'detection'"),
+    count_by: str = Query(
+        "event", description="Count unit: 'event', 'file', or 'detection'"
+    ),
     db: Session = Depends(get_db),
 ) -> LabelTreeResponse | None:
     """
@@ -142,6 +144,11 @@ def get_label_tree(
     Returns a pre-built tree with only detected labels, annotated with counts.
     Returns null if no taxonomy data is available (frontend falls back to flat list).
     """
+    if count_by not in ("event", "file", "detection"):
+        raise HTTPException(
+            status_code=400,
+            detail="count_by must be one of: event, file, detection",
+        )
     result = label_tree_crud.build_label_filter_tree(project_id, db, count_by=count_by)
     if result is None:
         return None

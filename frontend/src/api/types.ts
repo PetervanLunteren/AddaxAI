@@ -503,9 +503,17 @@ export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
 }
 
-// Event filter types
+// Shared verify-tab filter types.
+//
+// `VerificationFilter` is the union over every tab's valid verification
+// filter values. Events recognise the MaxN and fully-verified variants;
+// Files only recognise "verified" / "unverified". Backend endpoints that
+// don't recognise a value ignore it, so FilterPanel can feed the same
+// type to Events and Files without branching.
 export type VerificationFilter =
   | "all"
+  | "verified"
+  | "unverified"
   | "fully_verified"
   | "not_fully_verified"
   | "unverified_maxn"
@@ -521,6 +529,53 @@ export interface EventFilterParams {
   verification?: VerificationFilter;
   min_confidence?: number;
   max_confidence?: number;
+}
+
+// File summary for the Files verify tab grid.
+export interface FileSummaryDetection {
+  id: string;
+  category: string;
+  confidence: number;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+  label: string | null;
+  label_taxonomy_id: string | null;
+}
+
+export interface FileSummary {
+  id: string;
+  deployment_id: string;
+  file_type: string;
+  file_format: string | null;
+  width_px: number | null;
+  height_px: number | null;
+  /** ISO 8601 with the project's local UTC offset. */
+  captured_at_local: string;
+  site_id: string | null;
+  site_name: string | null;
+  observation_type: string;
+  observation_types: string[];
+  labels: string[];
+  display_labels: Record<string, string>;
+  verified: boolean;
+  favorited: boolean;
+  source_video_id: string | null;
+  detections: FileSummaryDetection[];
+}
+
+export interface FileVerificationStats {
+  total_files: number;
+  verified_files: number;
+}
+
+export interface AdjacentFilesResponse {
+  previous_id: string | null;
+  next_id: string | null;
+  next_unverified_id: string | null;
+  current_index: number;
+  total_count: number;
 }
 
 export interface EventFilterOptions {

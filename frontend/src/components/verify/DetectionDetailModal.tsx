@@ -15,7 +15,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
-import { similarityApi } from "../../api/similarity";
+import { observationsApi } from "../../api/observations";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
@@ -85,7 +85,7 @@ export function DetectionDetailModal({
   const { data: neighborsData } = useQuery({
     queryKey: ["detection-neighbors", detection?.detection_id],
     queryFn: () =>
-      similarityApi.search(projectId!, {
+      observationsApi.search(projectId!, {
         anchor_detection_id: detection!.detection_id,
         limit: 11,
       }),

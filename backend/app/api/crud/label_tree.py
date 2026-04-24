@@ -27,6 +27,8 @@ def build_label_filter_tree(
 
     Args:
         count_by: "event" (default) counts distinct events per label;
+                  "file" counts distinct files per label (videos resolved
+                  via Detection.file_id's source_video_id on frame rows);
                   "detection" counts individual detections per label.
 
     Returns:
@@ -46,6 +48,23 @@ def build_label_filter_tree(
             db.query(
                 Detection.label_taxonomy_id,
                 func.count(Detection.id),
+            )
+            .join(File, File.id == Detection.file_id)
+            .join(Deployment, Deployment.id == File.deployment_id)
+            .filter(Deployment.project_id == project_id)
+            .filter(Detection.label_taxonomy_id.isnot(None))
+            .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            .group_by(Detection.label_taxonomy_id)
+            .all()
+        )
+    elif count_by == "file":
+        # Count distinct media items (image/video), resolving frame rows up
+        # to their parent video so a video isn't undercounted once per frame.
+        media_id = func.coalesce(File.source_video_id, File.id)
+        label_count_rows = (
+            db.query(
+                Detection.label_taxonomy_id,
+                func.count(func.distinct(media_id)),
             )
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)

@@ -81,3 +81,63 @@ class FileUpdate(BaseModel):
     verified: bool | None = None
     notes: str | None = None
     favorited: bool | None = None
+
+
+class FileSummaryDetection(BaseModel):
+    """Minimal detection payload for Files-tab grid overlays."""
+
+    id: str
+    category: str
+    confidence: float
+    bbox_x: float
+    bbox_y: float
+    bbox_width: float
+    bbox_height: float
+    label: str | None
+    label_taxonomy_id: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class FileSummary(BaseModel):
+    """File summary for the Files verify tab card grid."""
+
+    id: str
+    deployment_id: str
+    file_type: str
+    file_format: str | None
+    width_px: int | None
+    height_px: int | None
+    captured_at_local: datetime
+    site_id: str | None
+    site_name: str | None
+    observation_type: str
+    observation_types: list[str]
+    labels: list[str]
+    display_labels: dict[str, str]
+    verified: bool
+    favorited: bool
+    source_video_id: str | None
+    detections: list[FileSummaryDetection]
+
+    @field_serializer("captured_at_local")
+    def _serialize_captured_at_local(self, value: datetime) -> str:
+        return serialize_local_datetime(value)  # type: ignore[return-value]
+
+
+class FileVerificationStats(BaseModel):
+    """Aggregate file verification stats across the filtered set."""
+
+    total_files: int
+    verified_files: int
+
+
+class AdjacentFilesResponse(BaseModel):
+    """Adjacent file IDs for file-to-file navigation in the Files tab."""
+
+    previous_id: str | None
+    next_id: str | None
+    next_unverified_id: str | None
+    current_index: int
+    total_count: int

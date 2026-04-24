@@ -1,6 +1,6 @@
 /**
- * Help sheet with comprehensive guide for the similarity verification tab.
- * Slides in from the left, matching the pattern of HelpSheet.tsx.
+ * Help sheet for the Observations verify tab. Slides in from the left,
+ * matching the pattern of HelpSheet.tsx.
  */
 
 import { Check } from "lucide-react";
@@ -14,21 +14,21 @@ import {
 import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
 
-interface SimilarityHelpSheetProps {
+interface ObservationsHelpSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 const mod = navigator.platform.includes("Mac") ? "Cmd" : "Ctrl";
 
-export function SimilarityHelpSheet({ open, onOpenChange }: SimilarityHelpSheetProps) {
+export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Similarity verification guide</SheetTitle>
+          <SheetTitle>Observations verification guide</SheetTitle>
           <SheetDescription>
-            How to review and verify detections using visual similarity
+            How to review and verify observations using visual similarity
           </SheetDescription>
         </SheetHeader>
 

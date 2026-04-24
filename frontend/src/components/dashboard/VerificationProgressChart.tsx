@@ -82,8 +82,9 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                 <p><span className="font-semibold">Files</span> are individual images or video frames captured by the camera.</p>
                 <p><span className="font-semibold">MaxN frames</span> are the images where the peak count for each species was observed.</p>
                 <p><span className="font-semibold">Observations</span> are individual animal, person, or vehicle detections within files.</p>
-                <p>With <span className="font-semibold">similarity verification</span>, you can verify detections quickly by comparing similar crops. However, it can&apos;t catch false negatives (missed animals) because you only see what the model found.</p>
-                <p><span className="font-semibold">Event verification</span> shows the full file with all objects in context, which is the only way to spot missed detections. Use it to verify files and MaxN frames.</p>
+                <p>The <span className="font-semibold">Observations tab</span> verifies individual detection crops quickly by grouping visually similar ones together. It can&apos;t catch false negatives (missed animals) because you only see what the model found.</p>
+                <p>The <span className="font-semibold">Events tab</span> shows the full file with every object in context, which is the only way to spot missed detections. Use it to verify files and MaxN frames.</p>
+                <p>The <span className="font-semibold">Files tab</span> sits between the two: one tile per image or video, with the full frame and its detection overlay.</p>
               </TooltipContent>
             </UITooltip>
           </TooltipProvider>

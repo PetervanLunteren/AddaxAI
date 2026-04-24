@@ -2,7 +2,7 @@
  * Stats toolbar for the Events tab showing verification progress.
  *
  * Displays MaxN frame and file verification progress bars,
- * plus a help button. Visual style matches the Similarity toolbar.
+ * plus a help button. Visual style matches the Observations toolbar.
  */
 
 import { CircleHelp } from "lucide-react";

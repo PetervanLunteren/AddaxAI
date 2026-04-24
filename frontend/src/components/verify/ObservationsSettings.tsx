@@ -1,5 +1,6 @@
 /**
- * SimilaritySettings — popover with sort/display settings for the Similarity tab.
+ * ObservationsSettings — popover with sort/display settings for the
+ * Observations verify tab.
  *
  * Contains toggles for noise-first sorting, label dividers,
  * and tile size selection.
@@ -11,7 +12,7 @@ import { Switch } from "../ui/switch";
 import { cn } from "../../lib/utils";
 import type { TileSize } from "./CropGrid";
 
-interface SimilaritySettingsProps {
+interface ObservationsSettingsProps {
   reverseSort: boolean;
   onReverseSortChange: (v: boolean) => void;
   showLabelDividers: boolean;
@@ -22,14 +23,14 @@ interface SimilaritySettingsProps {
 
 const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 
-export function SimilaritySettings({
+export function ObservationsSettings({
   reverseSort,
   onReverseSortChange,
   showLabelDividers,
   onShowLabelDividersChange,
   tileSize,
   onTileSizeChange,
-}: SimilaritySettingsProps) {
+}: ObservationsSettingsProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>

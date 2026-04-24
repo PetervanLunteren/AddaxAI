@@ -30,7 +30,10 @@ export function invalidateProjectData(
     ["statistics"],
     ["label-tree"],
     ["project-label-stats"],
-    ["similarity-stats", projectId],
+    ["observations-stats", projectId],
+    ["files-for-verify", projectId],
+    ["files-count-for-verify", projectId],
+    ["files-verification-stats", projectId],
   ];
   for (const queryKey of keys) {
     void queryClient.invalidateQueries({ queryKey });

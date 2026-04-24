@@ -1,9 +1,11 @@
 """
-Similarity API router.
+Observations API router.
 
-Provides similarity-sort and nearest-neighbor search endpoints
-for detection embeddings. Delegates heavy computation to
-similarity_script.py via subprocess (no numpy/faiss needed here).
+Drives the Observations verify tab: embedding-based sort, nearest-neighbor
+search, and embedding coverage stats. Heavy computation is delegated to
+ml/inference/similarity_script.py via subprocess (no numpy/faiss needed here).
+The "similarity" name on internal modules reflects the underlying technique;
+user-facing surfaces are named after the unit of work, the observation.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,7 +29,7 @@ from app.services.similarity_service import (
 )
 from app.utils.datetime_serialization import set_active_project_timezone
 
-router = APIRouter(prefix="/api/projects", tags=["similarity"])
+router = APIRouter(prefix="/api/projects", tags=["observations"])
 
 
 def _set_project_tz(db: Session, project_id: str) -> None:
@@ -37,7 +39,7 @@ def _set_project_tz(db: Session, project_id: str) -> None:
         set_active_project_timezone(tz)
 
 
-@router.post("/{project_id}/similarity/sort", response_model=SortResponse)
+@router.post("/{project_id}/observations/sort", response_model=SortResponse)
 async def sort_detections(
     project_id: str,
     body: SortRequest,
@@ -55,7 +57,7 @@ async def sort_detections(
         raise HTTPException(status_code=500, detail=str(e)) from None
 
 
-@router.post("/{project_id}/similarity/search", response_model=SearchResponse)
+@router.post("/{project_id}/observations/search", response_model=SearchResponse)
 async def search_similar(
     project_id: str,
     body: SearchRequest,
@@ -74,10 +76,10 @@ async def search_similar(
 
 
 @router.get(
-    "/{project_id}/similarity/stats",
+    "/{project_id}/observations/stats",
     response_model=SimilarityStatsResponse,
 )
-def get_similarity_stats(
+def get_observation_stats(
     project_id: str,
     db: Session = Depends(get_db),
 ):

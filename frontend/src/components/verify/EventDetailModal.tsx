@@ -1180,19 +1180,19 @@ export function EventDetailModal({
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  // Navigate to Similarity tab with this detection as anchor
+                  // Navigate to Observations tab with this detection as anchor
                   const detId = selectedDetectionId || filteredDetections[0]?.id;
                   if (detId) {
                     onClose();
                     setSearchParams((prev) => {
-                      prev.set("tab", "similarity");
+                      prev.set("tab", "observations");
                       prev.set("mode", "search");
                       prev.set("anchor", detId);
                       return prev;
                     }, { replace: true });
                   }
                 }}
-                title="Find similar detections"
+                title="Find similar observations"
                 disabled={filteredDetections.length === 0}
               >
                 <Search className="h-4 w-4" />
