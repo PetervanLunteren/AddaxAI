@@ -7,17 +7,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { format, parseISO } from "date-fns";
-import { CalendarIcon, ListTodo } from "lucide-react";
+import { ListTodo } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import type { EventFilterParams, VerificationFilter } from "../../api/types";
 import { Button } from "../ui/button";
-import { Calendar } from "../ui/calendar";
+import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import {
   Select,
   SelectContent,
@@ -83,27 +81,6 @@ export function FilterPanel({
   const hasTaxonomy = !!labelTree?.tree?.length;
 
   const [labelModalOpen, setLabelModalOpen] = useState(false);
-  const [dateRangeOpen, setDateRangeOpen] = useState(false);
-
-  // Parse ISO date strings (YYYY-MM-DD) into Date objects for the calendar.
-  // Keep parsing local-timezone-naive so the user sees the same calendar
-  // day they typed, regardless of their browser timezone.
-  const dateRange = {
-    from: filters.date_from ? parseISO(filters.date_from) : undefined,
-    to: filters.date_to ? parseISO(filters.date_to) : undefined,
-  };
-  const minDate = filterOptions?.date_range
-    ? parseISO(filterOptions.date_range.min.slice(0, 10))
-    : undefined;
-  const maxDate = filterOptions?.date_range
-    ? parseISO(filterOptions.date_range.max.slice(0, 10))
-    : undefined;
-
-  const dateRangeLabel = dateRange.from
-    ? dateRange.to
-      ? `${format(dateRange.from, "d MMM yyyy")} – ${format(dateRange.to, "d MMM yyyy")}`
-      : format(dateRange.from, "d MMM yyyy")
-    : "All dates";
 
   const siteOptions: MultiSelectOption[] = buildSiteOptions(
     sites,
@@ -141,63 +118,19 @@ export function FilterPanel({
           />
         </div>
 
-        {/* Date range — two-month popover calendar. Replaces the old
-            separate From / To inputs. Serializes the picked range back
-            to YYYY-MM-DD strings for the URL. */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
             Date range
           </label>
-          <Popover open={dateRangeOpen} onOpenChange={setDateRangeOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full h-9 justify-start text-sm font-normal"
-              >
-                <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
-                <span className="truncate">{dateRangeLabel}</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="range"
-                selected={dateRange}
-                onSelect={(range) => {
-                  onChange({
-                    ...filters,
-                    date_from: range?.from
-                      ? format(range.from, "yyyy-MM-dd")
-                      : undefined,
-                    date_to: range?.to
-                      ? format(range.to, "yyyy-MM-dd")
-                      : undefined,
-                  });
-                }}
-                numberOfMonths={2}
-                defaultMonth={dateRange.from ?? maxDate}
-                startMonth={minDate}
-                endMonth={maxDate}
-              />
-              {(filters.date_from || filters.date_to) && (
-                <div className="flex justify-end p-2 border-t">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      onChange({
-                        ...filters,
-                        date_from: undefined,
-                        date_to: undefined,
-                      })
-                    }
-                  >
-                    Clear
-                  </Button>
-                </div>
-              )}
-            </PopoverContent>
-          </Popover>
+          <DateRangePicker
+            from={filters.date_from}
+            to={filters.date_to}
+            onChange={({ from, to }) =>
+              onChange({ ...filters, date_from: from, date_to: to })
+            }
+            minDate={filterOptions?.date_range?.min}
+            maxDate={filterOptions?.date_range?.max}
+          />
         </div>
 
         {/* Label filter — taxonomy tree modal or flat multiselect fallback */}

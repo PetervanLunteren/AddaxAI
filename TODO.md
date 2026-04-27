@@ -14,7 +14,8 @@
 
 
 
-- [ ] make the label for the verification status named "Verified" to make it consistent with the "Flagged" and "Favorited". 
+
+- [ ] Should we add a filter for empties? We should have a option for users to choose to see only empties, and no other images/events. How? 
 
 - [ ] How should we handle video's? Its basically just a bunch of frames. SHould we just show them as images? SO a video with 10 frames show up as 10 frames? Or should we merge them into one and then show the filmstrip like events has, since one video is still one file, but AddaxAI has splitted it into 10 frames. WHats the good mental model? Is probabaly not too much work to add the filmstip as with events, right? Since the code is already there. 
 
@@ -30,7 +31,7 @@
 
 
 
-- [ ] We should probabaly have a way of sorting through the files / events. Sugegstions are "Newest first", "Olderst first", any others? For observation tab this doesnt make sense since it is alreay sorted on similarity. 
+- [ ] We should probabaly have a way of sorting through the files / events. Sugegstions are "Newest first", "Olderst first", any others? do some suggestions what you think are good sorting / ordering types for users of this app. For observation tab this doesnt make sense since it is alreay sorted on similarity. Do some suggestions. 
 
 - [ ] Are all the files shortcuts tested? 
 
@@ -45,6 +46,7 @@
 - [ ] the "All labels" button should not have an icon (inconsistent with the other filters). remoce icon from that button in all three tabs of the verificaiton flow. 
 
 - [ ] if all is done and fixed, focus on the texts
+
 
 
 

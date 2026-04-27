@@ -355,8 +355,12 @@ export function DeploymentsPage() {
       placeholder: "All sites",
       summary: (n) => `${n} site${n > 1 ? "s" : ""}`,
     },
-    { kind: "date", key: "date_from", label: "From" },
-    { kind: "date", key: "date_to", label: "To" },
+    {
+      kind: "date_range",
+      key: "date_from",
+      toKey: "date_to",
+      label: "Date range",
+    },
     {
       kind: "multi-select",
       key: "tag_keys",

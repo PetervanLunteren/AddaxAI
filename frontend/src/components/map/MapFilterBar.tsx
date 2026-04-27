@@ -27,6 +27,7 @@ import {
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
 import { Button } from "../ui/button";
+import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import { SegmentedControl } from "../ui/segmented-control";
 import { LabelFilterModal } from "../verify/LabelFilterModal";
@@ -50,9 +51,6 @@ interface MapFilterBarProps {
   baseLayer: BaseLayer;
   onBaseLayerChange: (layer: BaseLayer) => void;
 }
-
-const DATE_INPUT_CLASSES =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 relative";
 
 export function MapFilterBar({
   projectId,
@@ -130,51 +128,18 @@ export function MapFilterBar({
           />
         </div>
 
-        {/* Date from */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            From
+            Date range
           </label>
-          <input
-            type="date"
-            className={DATE_INPUT_CLASSES}
-            value={filters.date_from ?? ""}
-            min={
-              filterOptions?.date_range
-                ? filterOptions.date_range.min.slice(0, 10)
-                : undefined
+          <DateRangePicker
+            from={filters.date_from}
+            to={filters.date_to}
+            onChange={({ from, to }) =>
+              onChange({ ...filters, date_from: from, date_to: to })
             }
-            max={filters.date_to ?? undefined}
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                date_from: e.target.value || undefined,
-              })
-            }
-          />
-        </div>
-
-        {/* Date to */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
-            To
-          </label>
-          <input
-            type="date"
-            className={DATE_INPUT_CLASSES}
-            value={filters.date_to ?? ""}
-            min={filters.date_from ?? undefined}
-            max={
-              filterOptions?.date_range
-                ? filterOptions.date_range.max.slice(0, 10)
-                : undefined
-            }
-            onChange={(e) =>
-              onChange({
-                ...filters,
-                date_to: e.target.value || undefined,
-              })
-            }
+            minDate={filterOptions?.date_range?.min}
+            maxDate={filterOptions?.date_range?.max}
           />
         </div>
 

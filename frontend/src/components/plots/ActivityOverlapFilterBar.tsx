@@ -21,6 +21,7 @@ import { Clock, Sun } from "lucide-react";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
+import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import { SegmentedControl } from "../ui/segmented-control";
 import { SpeciesPicker } from "./SpeciesPicker";
@@ -42,9 +43,6 @@ interface ActivityOverlapFilterBarProps {
   filters: ActivityOverlapPageFilters;
   onChange: (next: ActivityOverlapPageFilters) => void;
 }
-
-const DATE_INPUT_CLASSES =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 relative";
 
 export function ActivityOverlapFilterBar({
   projectId,
@@ -121,31 +119,16 @@ export function ActivityOverlapFilterBar({
           />
         </div>
 
-        {/* From */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            From
+            Date range
           </label>
-          <input
-            type="date"
-            className={DATE_INPUT_CLASSES}
-            value={filters.dateFrom ?? ""}
-            max={filters.dateTo ?? undefined}
-            onChange={(e) => update({ dateFrom: e.target.value || null })}
-          />
-        </div>
-
-        {/* To */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
-            To
-          </label>
-          <input
-            type="date"
-            className={DATE_INPUT_CLASSES}
-            value={filters.dateTo ?? ""}
-            min={filters.dateFrom ?? undefined}
-            onChange={(e) => update({ dateTo: e.target.value || null })}
+          <DateRangePicker
+            from={filters.dateFrom}
+            to={filters.dateTo}
+            onChange={({ from, to }) =>
+              update({ dateFrom: from ?? null, dateTo: to ?? null })
+            }
           />
         </div>
 

@@ -14,6 +14,7 @@
 
 import { Search, X } from "lucide-react";
 import { Badge } from "./badge";
+import { DateRangePicker } from "./date-range-picker";
 import { Input } from "./input";
 import { MultiSelect, type MultiSelectOption } from "./multi-select";
 import {
@@ -47,6 +48,14 @@ export type FilterFieldDef =
     })
   | (FieldBase & {
       kind: "date";
+      min?: string;
+      max?: string;
+    })
+  | (FieldBase & {
+      // Two-key date range. The single `key` on the base is the FROM key;
+      // toKey is the TO key. Both store ISO date strings (YYYY-MM-DD).
+      kind: "date_range";
+      toKey: string;
       min?: string;
       max?: string;
     })
@@ -99,9 +108,17 @@ function hasValue(value: FilterValues, key: string): boolean {
   return true;
 }
 
+/** Whether a field has any value set, accounting for date_range's two keys. */
+function fieldHasValue(value: FilterValues, field: FilterFieldDef): boolean {
+  if (field.kind === "date_range") {
+    return hasValue(value, field.key) || hasValue(value, field.toKey);
+  }
+  return hasValue(value, field.key);
+}
+
 /** Total number of active filter fields. */
 function activeFieldCount(value: FilterValues, fields: FilterFieldDef[]): number {
-  return fields.filter((f) => hasValue(value, f.key)).length;
+  return fields.filter((f) => fieldHasValue(value, f)).length;
 }
 
 export function FilterBar({
@@ -137,7 +154,7 @@ export function FilterBar({
   // Build the chips array for the bottom row
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
   for (const field of fields) {
-    if (!hasValue(value, field.key)) continue;
+    if (!fieldHasValue(value, field)) continue;
     const v = value[field.key];
 
     if (field.kind === "search") {
@@ -155,6 +172,23 @@ export function FilterBar({
         label: `${field.label}: ${v}`,
         onRemove: () => onChange(setField(value, field.key, undefined)),
       });
+      continue;
+    }
+
+    if (field.kind === "date_range") {
+      const from = value[field.key] as string | undefined;
+      const to = value[field.toKey] as string | undefined;
+      if (from || to) {
+        const summary = from && to ? `${from} – ${to}` : from || to;
+        chips.push({
+          key: `${field.key}`,
+          label: `${field.label}: ${summary}`,
+          onRemove: () => {
+            const next = setField(value, field.key, undefined);
+            onChange(setField(next, field.toKey, undefined));
+          },
+        });
+      }
       continue;
     }
 
@@ -231,6 +265,18 @@ export function FilterBar({
                 onChange={(e) =>
                   onChange(setField(value, field.key, e.target.value))
                 }
+              />
+            )}
+            {field.kind === "date_range" && (
+              <DateRangePicker
+                from={(value[field.key] as string | undefined) ?? null}
+                to={(value[field.toKey] as string | undefined) ?? null}
+                onChange={({ from, to }) => {
+                  const next = setField(value, field.key, from);
+                  onChange(setField(next, field.toKey, to));
+                }}
+                minDate={field.min}
+                maxDate={field.max}
               />
             )}
             {field.kind === "select" && (
