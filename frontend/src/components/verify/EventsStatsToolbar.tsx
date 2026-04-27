@@ -1,8 +1,10 @@
 /**
- * Stats toolbar for the Events tab showing verification progress.
+ * Stats toolbar for the Events tab.
  *
- * Displays MaxN frame and file verification progress bars,
- * plus a help button. Visual style matches the Observations toolbar.
+ * Single progress bar: "X% events verified", where an event counts as
+ * verified once all its MaxN frames are verified (blank events fall
+ * back to "any file verified"). Mirrors the single-bar treatment the
+ * Files and Observations tabs use.
  */
 
 import { CircleHelp } from "lucide-react";
@@ -16,13 +18,9 @@ interface EventsStatsToolbarProps {
 export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarProps) {
   if (!stats) return null;
 
-  const maxnPct =
-    stats.total_max_n_frames > 0
-      ? (stats.verified_max_n_frames / stats.total_max_n_frames) * 100
-      : 0;
-  const filePct =
-    stats.total_files > 0
-      ? (stats.verified_files / stats.total_files) * 100
+  const pct =
+    stats.events_total > 0
+      ? (stats.events_fully_verified / stats.events_total) * 100
       : 0;
 
   return (
@@ -40,20 +38,10 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
           <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full transition-all duration-500 ease-out rounded-full"
-              style={{ width: `${maxnPct}%`, backgroundColor: "#0f6064" }}
+              style={{ width: `${pct}%`, backgroundColor: "#0f6064" }}
             />
           </div>
-          {Math.round(maxnPct)}% MaxN verified
-        </div>
-        <div className="h-4 w-px bg-border" />
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full transition-all duration-500 ease-out rounded-full"
-              style={{ width: `${filePct}%`, backgroundColor: "#0f6064" }}
-            />
-          </div>
-          {Math.round(filePct)}% all files verified
+          {Math.round(pct)}% events verified
         </div>
       </div>
     </div>

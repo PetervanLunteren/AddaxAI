@@ -20,10 +20,7 @@ import { Card, CardContent } from "../ui/card";
 import {
   setSpeciesContext,
 } from "../../utils/species-colors";
-import type {
-  EventFilterParams,
-  VerificationFilter,
-} from "../../api/types";
+import type { EventFilterParams } from "../../api/types";
 import { FileCard } from "./FileCard";
 import { FileDetailModal } from "./FileDetailModal";
 import { FilterChips } from "./FilterChips";
@@ -42,15 +39,6 @@ function useDebouncedValue<T>(value: T, delay: number): T {
   }, [serialized, delay]);
   return debounced;
 }
-
-const FILE_VERIFICATION_OPTIONS: {
-  value: VerificationFilter | "all";
-  label: string;
-}[] = [
-  { value: "all", label: "All" },
-  { value: "unverified", label: "Unverified" },
-  { value: "verified", label: "Verified" },
-];
 
 interface FilesTabProps {
   projectId: string;
@@ -207,7 +195,6 @@ export function FilesTab({
         isOpen={true}
         onToggle={() => {}}
         classificationModelId={classificationModelId}
-        verificationOptions={FILE_VERIFICATION_OPTIONS}
         countBy="file"
       >
         {isFiltered && (

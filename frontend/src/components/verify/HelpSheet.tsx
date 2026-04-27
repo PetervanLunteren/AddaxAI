@@ -70,11 +70,18 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 verify them by confirming or correcting the detections.
               </p>
               <p>
-                This tab verifies at the file level. When you
-                press Enter, the current file and all its detections are marked
-                as verified. The progress bars in the toolbar track how many
-                MaxN frames and total files have been verified. This is
-                the primary workflow for reviewing events image by image.
+                This tab verifies at the event level. An event is considered
+                verified when all its MaxN frames are verified — the
+                representative frames, one per species. For blank events with
+                no MaxN frames, marking any file verified counts as verifying
+                the event. The progress bar in the toolbar shows the share of
+                events that have been verified under this rule.
+              </p>
+              <p>
+                Under the hood, verification still happens file by file: when
+                you press Enter on a file in the modal, that file and its
+                detections are marked verified, and the event's status updates
+                once all MaxN frames are covered.
               </p>
             </div>
           </section>
@@ -179,7 +186,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 Adjust contrast for washed-out images.
               </ToolRow>
               <ToolRow icon={<Heart className="h-4 w-4" />}>
-                Mark as favorite.
+                Like.
               </ToolRow>
               <ToolRow icon={<Download className="h-4 w-4" />}>
                 Download the current view with annotations.

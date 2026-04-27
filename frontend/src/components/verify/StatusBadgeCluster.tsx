@@ -44,7 +44,7 @@ export function StatusBadgeCluster({
         <div
           className="relative z-20 w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-background"
           style={{ backgroundColor: "#882000" }}
-          title="Favorited"
+          title="Liked"
         >
           <Heart
             className="h-3.5 w-3.5 text-white fill-current"

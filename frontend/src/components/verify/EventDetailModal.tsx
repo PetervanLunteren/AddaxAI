@@ -1188,7 +1188,7 @@ export function EventDetailModal({
                 className="h-8 w-8"
                 onClick={() => favoriteMutation.mutate()}
                 disabled={favoriteMutation.isPending}
-                title={currentFile.favorited ? "Remove from favorites" : "Add to favorites"}
+                title={currentFile.favorited ? "Unlike" : "Like"}
               >
                 <Heart
                   className={cn(

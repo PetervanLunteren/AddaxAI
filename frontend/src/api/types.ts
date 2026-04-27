@@ -505,23 +505,11 @@ export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
 }
 
-// Shared verify-tab filter types.
-//
-// `VerificationFilter` is the union over every tab's valid verification
-// filter values. Events recognise the MaxN and fully-verified variants;
-// Files only recognise "verified" / "unverified". Backend endpoints that
-// don't recognise a value ignore it, so FilterPanel can feed the same
-// type to Events and Files without branching.
-export type VerificationFilter =
-  | "all"
-  | "verified"
-  | "unverified"
-  | "fully_verified"
-  | "not_fully_verified"
-  | "unverified_maxn"
-  | "all_maxn_verified"
-  | "some_maxn_verified"
-  | "none_verified";
+// Shared verify-tab filter type. Simple binary (plus "all") across every
+// tab: an event is verified when all its MaxN frames are verified (blank
+// events fall back to "any file verified"); a file is verified when
+// File.verified is true.
+export type VerificationFilter = "all" | "verified" | "unverified";
 
 export type FlaggedFilter = "all" | "flagged" | "not_flagged";
 export type FavoritedFilter = "all" | "favorited" | "not_favorited";
@@ -623,6 +611,12 @@ export interface EventSummary {
   total_count: number;
   verified_maxn_count: number;
   total_maxn_count: number;
+  /**
+   * AddaxAI rule: an event is verified when all its MaxN frames are
+   * verified. Blank events (no MaxN) are verified when any file is
+   * verified. Drives the corner verified badge on event cards.
+   */
+  is_verified: boolean;
   any_file_flagged: boolean;
   any_file_favorited: boolean;
 }
@@ -641,6 +635,9 @@ export interface EventWithFiles {
 }
 
 export interface EventVerificationStats {
+  /** Events whose MaxN frames are all verified (blank-event fallback: any file verified). */
+  events_fully_verified: number;
+  events_total: number;
   total_files: number;
   verified_files: number;
   total_max_n_frames: number;

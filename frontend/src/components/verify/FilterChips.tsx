@@ -27,12 +27,6 @@ function formatLabel(raw: string, displayLabels?: Record<string, string>): strin
 const VERIFICATION_LABELS: Record<string, string> = {
   verified: "Verified",
   unverified: "Unverified",
-  none_verified: "None verified",
-  unverified_maxn: "No MaxN verified",
-  some_maxn_verified: "Some MaxN verified",
-  all_maxn_verified: "All MaxN verified",
-  not_fully_verified: "Partially verified",
-  fully_verified: "Fully verified",
 };
 
 const FLAGGED_LABELS: Record<string, string> = {
@@ -41,8 +35,8 @@ const FLAGGED_LABELS: Record<string, string> = {
 };
 
 const FAVORITED_LABELS: Record<string, string> = {
-  favorited: "Favorited",
-  not_favorited: "Not favorited",
+  favorited: "Liked",
+  not_favorited: "Not liked",
 };
 
 

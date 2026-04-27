@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* react-day-picker v9 brand overrides. The library's default
+   stylesheet is imported via the Calendar component in TypeScript
+   (where Vite's bundler resolves the node-modules path directly).
+   Two CSS variables tint the selection to our teal brand. */
+.rdp-root {
+  --rdp-accent-color: #0f6064;
+  --rdp-accent-background-color: #e4ecee;
+  --rdp-day-height: 2rem;
+  --rdp-day-width: 2rem;
+  --rdp-day_button-height: 1.75rem;
+  --rdp-day_button-width: 1.75rem;
+  --rdp-nav-height: 2rem;
+  --rdp-nav_button-height: 1.5rem;
+  --rdp-nav_button-width: 1.5rem;
+  --rdp-months-gap: 1rem;
+  --rdp-weekday-padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+/* Default style.css makes selected days bold + font-size: large.
+   Tone that down to match the surrounding day numbers. */
+.rdp-root .rdp-selected {
+  font-weight: inherit;
+  font-size: inherit;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

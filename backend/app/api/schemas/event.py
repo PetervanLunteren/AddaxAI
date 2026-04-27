@@ -41,8 +41,13 @@ class EventSummary(BaseModel):
     total_count: int
     verified_maxn_count: int
     total_maxn_count: int
-    # True if any file in the event has the flag set. Aggregated here so
-    # the card corner cluster can light up without a second round trip.
+    # `is_verified` encodes the AddaxAI rule: an event is verified when
+    # all of its MaxN frames are verified. For blank events (no MaxN
+    # frames), the fallback is "any file in the event is verified" so
+    # the user still makes an explicit confirmation for each blank
+    # cluster.
+    is_verified: bool
+    # Aggregated file-level state for the card corner cluster.
     any_file_flagged: bool
     any_file_favorited: bool
 
@@ -105,8 +110,15 @@ class DateRange(BaseModel):
 
 
 class EventVerificationStats(BaseModel):
-    """Aggregate verification stats across filtered events."""
+    """Aggregate verification stats across filtered events.
 
+    The Events tab progress bar reads `events_fully_verified` /
+    `events_total`. The other fields remain for any downstream
+    consumer that needs file-level granularity.
+    """
+
+    events_fully_verified: int
+    events_total: int
     total_files: int
     verified_files: int
     total_max_n_frames: int

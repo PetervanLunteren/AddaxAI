@@ -795,9 +795,7 @@ export function FileDetailModal({
                 className="h-8 w-8"
                 onClick={() => favoriteMutation.mutate()}
                 disabled={favoriteMutation.isPending}
-                title={
-                  file.favorited ? "Remove from favorites" : "Add to favorites"
-                }
+                title={file.favorited ? "Unlike" : "Like"}
               >
                 <Heart
                   className={cn(

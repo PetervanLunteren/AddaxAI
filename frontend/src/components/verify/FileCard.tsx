@@ -7,7 +7,7 @@
  * card's top-right corner. Clicking opens FileDetailModal.
  */
 
-import { Check, Circle, Layers, Video as VideoIcon } from "lucide-react";
+import { Video as VideoIcon } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getDetectionColor, getObservationBadge } from "../../lib/detection-utils";
@@ -112,8 +112,16 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
           );
         })()}
 
-        {/* Label chips */}
-        <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
+      </div>
+
+      <CardContent className="p-3 space-y-1.5">
+        {/* Label chips — moved out of the thumbnail so the image is
+            unobstructed. Observation-type chips first (human/vehicle),
+            then the top two species labels. "+N" when more. "Empty"
+            when there are no labels on this file. [&>*]:rounded-sm
+            overrides the Badge default rounded-full so the chips read
+            as rectangles, not pills. */}
+        <div className="flex flex-wrap gap-1 [&>*]:rounded-sm">
           {file.observation_types
             .filter((t) => t === "human" || t === "vehicle")
             .map((t) => {
@@ -122,7 +130,7 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
                 <Badge
                   key={t}
                   variant="outline"
-                  className={`text-[10px] px-1.5 py-0.5 shadow-sm ${badge.className}`}
+                  className={`text-[10px] px-1.5 py-0.5 ${badge.className}`}
                   style={badge.style}
                 >
                   {badge.label}
@@ -135,7 +143,7 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
                 <Badge
                   key={sp}
                   variant="default"
-                  className="text-[10px] px-1.5 py-0.5 shadow-sm max-w-[100px]"
+                  className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
                   style={{
                     backgroundColor: getSpeciesColor(sp),
                     color: getSpeciesTextColor(sp),
@@ -147,55 +155,26 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
                 </Badge>
               ))}
               {file.labels.length > 2 && (
-                <Badge
-                  variant="default"
-                  className="text-[10px] px-1.5 py-0.5 shadow-sm"
-                >
+                <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
                   +{file.labels.length - 2}
                 </Badge>
               )}
             </>
           ) : (
             <Badge
-              variant="secondary"
-              className="text-[10px] px-1.5 py-0.5 shadow-sm"
+              variant="outline"
+              className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
             >
               Empty
             </Badge>
           )}
         </div>
-      </div>
 
-      <CardContent className="p-3 space-y-1">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium flex items-center gap-1">
-            {file.verified ? (
-              <>
-                <div className="bg-primary rounded-full p-0.5">
-                  <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                </div>
-                Verified
-              </>
-            ) : (
-              <>
-                <Circle className="h-3 w-3 text-muted-foreground" />
-                Unverified
-              </>
-            )}
-          </span>
-          {file.site_name && (
-            <span className="text-xs text-muted-foreground truncate ml-2 max-w-[120px]">
-              {file.site_name}
-            </span>
-          )}
-        </div>
-        <div className="text-xs text-muted-foreground flex items-center gap-1">
-          <span>
-            {dateStr} · {timeStr}
-          </span>
-          {file.labels.length === 0 && file.observation_types.includes("blank") && (
-            <Layers className="h-3 w-3 text-muted-foreground/50 ml-auto" />
-          )}
+        {file.site_name && (
+          <div className="text-sm font-medium truncate">{file.site_name}</div>
+        )}
+        <div className="text-xs text-muted-foreground">
+          {dateStr} · {timeStr}
         </div>
       </CardContent>
     </Card>

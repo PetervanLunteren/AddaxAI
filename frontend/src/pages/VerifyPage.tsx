@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Layers, Check, Circle } from "lucide-react";
+import { Layers, Loader2 } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
@@ -505,16 +505,13 @@ function EventCard({
   });
 
 
-  const allVerified =
-    event.verified_count === event.total_count && event.total_count > 0;
-
   return (
     <Card
       className="relative hover:shadow-lg transition-shadow cursor-pointer"
       onClick={onClick}
     >
       <StatusBadgeCluster
-        verified={allVerified}
+        verified={event.is_verified}
         favorited={event.any_file_favorited}
         flagged={event.any_file_flagged}
       />
@@ -590,10 +587,13 @@ function EventCard({
             </svg>
           );
         })()}
-        {/* Label chips. right-2 + flex-wrap so badges wrap upward when they
-            don't fit, instead of overflowing past the card's right edge and
-            getting clipped by the parent's overflow-hidden. */}
-        <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
+      </div>
+
+      <CardContent className="p-3 space-y-1.5">
+        {/* Label chips — moved out of the thumbnail so the image is
+            unobstructed. Same order as FileCard. [&>*]:rounded-sm
+            overrides the Badge default rounded-full. */}
+        <div className="flex flex-wrap gap-1 [&>*]:rounded-sm">
           {event.observation_types
             .filter((t) => t === "human" || t === "vehicle")
             .map((t) => {
@@ -602,7 +602,7 @@ function EventCard({
                 <Badge
                   key={t}
                   variant="outline"
-                  className={`text-[10px] px-1.5 py-0.5 shadow-sm ${badge.className}`}
+                  className={`text-[10px] px-1.5 py-0.5 ${badge.className}`}
                   style={badge.style}
                 >
                   {badge.label}
@@ -615,33 +615,28 @@ function EventCard({
                 <Badge
                   key={sp}
                   variant="default"
-                  className="text-[10px] px-1.5 py-0.5 shadow-sm max-w-[100px]"
+                  className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
                   style={{ backgroundColor: getSpeciesColor(sp), color: getSpeciesTextColor(sp) }}
                 >
                   <span className="truncate">{event.display_labels?.[sp] || sp.charAt(0).toUpperCase() + sp.slice(1)}</span>
                 </Badge>
               ))}
               {event.labels.length > 2 && (
-                <Badge
-                  variant="default"
-                  className="text-[10px] px-1.5 py-0.5 shadow-sm"
-                >
+                <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
                   +{event.labels.length - 2}
                 </Badge>
               )}
             </>
           ) : (
             <Badge
-              variant="secondary"
-              className="text-[10px] px-1.5 py-0.5 shadow-sm"
+              variant="outline"
+              className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
             >
               Empty
             </Badge>
           )}
         </div>
-      </div>
 
-      <CardContent className="p-3 space-y-2">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">
             {[
@@ -654,21 +649,6 @@ function EventCard({
           )}
         </div>
         <div className="text-xs text-muted-foreground">{dateTimeStr}</div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="flex items-center gap-1">
-            MaxN {event.verified_maxn_count}/{event.total_maxn_count}
-            {event.verified_maxn_count === event.total_maxn_count && event.total_maxn_count > 0 ? (
-              <div className="bg-primary rounded-full p-0.5">
-                <Check className="h-2.5 w-2.5 text-primary-foreground" />
-              </div>
-            ) : (
-              <Circle className="h-3 w-3" />
-            )}
-          </span>
-          <span className="text-muted-foreground">
-            All {event.verified_count}/{event.total_count}
-          </span>
-        </div>
       </CardContent>
     </Card>
   );

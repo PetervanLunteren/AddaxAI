@@ -88,102 +88,45 @@ def _apply_event_filters(
             conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
         query = query.filter(exists(conf_subq))
 
-    if verification and verification != "all":
-        if verification == "fully_verified":
-            # All files in event are verified: NOT EXISTS any unverified file
-            unverified_subq = (
-                select(event_files.c.event_id)
-                .join(File, File.id == event_files.c.file_id)
-                .where(event_files.c.event_id == Event.id)
-                .where(File.verified == False)  # noqa: E712
+    if verification in ("verified", "unverified"):
+        # AddaxAI rule: an event is verified when all its MaxN frames are
+        # verified; for blank events (no MaxN) the fallback is "any file
+        # verified". Matches the is_verified summary field and the stats
+        # bar, so the three surfaces always agree.
+        UnverifiedMaxNFile = aliased(File)
+        unverified_maxn_exists = exists(
+            select(EventObservation.id)
+            .join(
+                UnverifiedMaxNFile,
+                UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
             )
-            query = query.filter(~exists(unverified_subq))
-        elif verification == "not_fully_verified":
-            # At least one file is unverified
-            unverified_subq = (
-                select(event_files.c.event_id)
-                .join(File, File.id == event_files.c.file_id)
-                .where(event_files.c.event_id == Event.id)
-                .where(File.verified == False)  # noqa: E712
-            )
-            query = query.filter(exists(unverified_subq))
-        elif verification == "unverified_maxn":
-            # No MaxN frames verified: all MaxN frames are unverified
-            MaxNFile = aliased(File)
-            has_verified_maxn = exists(
-                select(EventObservation.id)
-                .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
-                .where(
-                    and_(
-                        EventObservation.event_id == Event.id,
-                        MaxNFile.verified == True,  # noqa: E712
-                    )
+            .where(EventObservation.event_id == Event.id)
+            .where(EventObservation.max_n_file_id.isnot(None))
+            .where(UnverifiedMaxNFile.verified == False)  # noqa: E712
+        )
+        any_maxn_exists = exists(
+            select(EventObservation.id).where(
+                and_(
+                    EventObservation.event_id == Event.id,
+                    EventObservation.max_n_file_id.isnot(None),
                 )
             )
-            query = query.filter(~has_verified_maxn)
-        elif verification == "all_maxn_verified":
-            # Every MaxN frame is verified: NOT EXISTS any unverified MaxN
-            MaxNFile = aliased(File)
-            has_unverified_maxn = exists(
-                select(EventObservation.id)
-                .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
-                .where(
-                    and_(
-                        EventObservation.event_id == Event.id,
-                        MaxNFile.verified == False,  # noqa: E712
-                    )
-                )
-            )
-            # Must have at least one MaxN frame
-            has_any_maxn = exists(
-                select(EventObservation.id).where(
-                    and_(
-                        EventObservation.event_id == Event.id,
-                        EventObservation.max_n_file_id.isnot(None),
-                    )
-                )
-            )
-            query = query.filter(has_any_maxn, ~has_unverified_maxn)
-        elif verification == "some_maxn_verified":
-            # At least one MaxN verified AND at least one not verified
-            VerifiedMaxNFile = aliased(File)
-            UnverifiedMaxNFile = aliased(File)
-            has_verified = exists(
-                select(EventObservation.id)
-                .join(
-                    VerifiedMaxNFile,
-                    VerifiedMaxNFile.id == EventObservation.max_n_file_id,
-                )
-                .where(
-                    and_(
-                        EventObservation.event_id == Event.id,
-                        VerifiedMaxNFile.verified == True,  # noqa: E712
-                    )
-                )
-            )
-            has_unverified = exists(
-                select(EventObservation.id)
-                .join(
-                    UnverifiedMaxNFile,
-                    UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
-                )
-                .where(
-                    and_(
-                        EventObservation.event_id == Event.id,
-                        UnverifiedMaxNFile.verified == False,  # noqa: E712
-                    )
-                )
-            )
-            query = query.filter(has_verified, has_unverified)
-        elif verification == "none_verified":
-            # Zero files verified: NOT EXISTS any verified file
-            verified_subq = (
-                select(event_files.c.event_id)
-                .join(File, File.id == event_files.c.file_id)
-                .where(event_files.c.event_id == Event.id)
-                .where(File.verified == True)  # noqa: E712
-            )
-            query = query.filter(~exists(verified_subq))
+        )
+        AnyVerifiedFile = aliased(File)
+        any_verified_file_exists = exists(
+            select(event_files.c.event_id)
+            .join(AnyVerifiedFile, AnyVerifiedFile.id == event_files.c.file_id)
+            .where(event_files.c.event_id == Event.id)
+            .where(AnyVerifiedFile.verified == True)  # noqa: E712
+        )
+        verified_clause = or_(
+            and_(any_maxn_exists, ~unverified_maxn_exists),
+            and_(~any_maxn_exists, any_verified_file_exists),
+        )
+        if verification == "verified":
+            query = query.filter(verified_clause)
+        else:
+            query = query.filter(~verified_clause)
 
     if flagged in ("flagged", "not_flagged"):
         flagged_subq = (
@@ -426,6 +369,14 @@ def get_events_by_project(
             if file_verified_map.get(mf["file_id"], False)
         )
 
+        # Event verification (AddaxAI rule): all MaxN frames verified.
+        # Blank events (no MaxN) fall back to "any file verified" so they
+        # require an explicit user confirmation rather than auto-completing.
+        if total_maxn_count > 0:
+            is_verified = verified_maxn_count == total_maxn_count
+        else:
+            is_verified = any(f.verified for f in sorted_files)
+
         # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
         thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
             sorted_files[0].id if sorted_files else None
@@ -456,6 +407,7 @@ def get_events_by_project(
                 "total_count": len(sorted_files),
                 "verified_maxn_count": verified_maxn_count,
                 "total_maxn_count": total_maxn_count,
+                "is_verified": is_verified,
                 "any_file_flagged": any_file_flagged,
                 "any_file_favorited": any_file_favorited,
             }
@@ -728,7 +680,55 @@ def get_event_verification_stats(
         )
     verified_detections = int(det_verified_q.scalar() or 0)
 
+    # Event-level verification: total and fully-verified counts.
+    # AddaxAI rule: an event is verified when all its MaxN frames are
+    # verified, or (for blank events with no MaxN) when any file in it
+    # is verified.
+    events_total_q = db.query(func.count(Event.id)).filter(
+        Event.id.in_(select(event_ids_subq.c.id))
+    )
+    events_total = events_total_q.scalar() or 0
+
+    UnverifiedMaxNFile = aliased(File)
+    unverified_maxn_exists = exists(
+        select(EventObservation.id)
+        .join(
+            UnverifiedMaxNFile,
+            UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
+        )
+        .where(EventObservation.event_id == Event.id)
+        .where(EventObservation.max_n_file_id.isnot(None))
+        .where(UnverifiedMaxNFile.verified == False)  # noqa: E712
+    )
+    any_maxn_exists = exists(
+        select(EventObservation.id).where(
+            and_(
+                EventObservation.event_id == Event.id,
+                EventObservation.max_n_file_id.isnot(None),
+            )
+        )
+    )
+    AnyVerifiedFile = aliased(File)
+    any_verified_file_exists = exists(
+        select(event_files.c.event_id)
+        .join(AnyVerifiedFile, AnyVerifiedFile.id == event_files.c.file_id)
+        .where(event_files.c.event_id == Event.id)
+        .where(AnyVerifiedFile.verified == True)  # noqa: E712
+    )
+    events_fully_verified_clause = or_(
+        and_(any_maxn_exists, ~unverified_maxn_exists),
+        and_(~any_maxn_exists, any_verified_file_exists),
+    )
+    events_fully_verified_q = (
+        db.query(func.count(Event.id))
+        .filter(Event.id.in_(select(event_ids_subq.c.id)))
+        .filter(events_fully_verified_clause)
+    )
+    events_fully_verified = events_fully_verified_q.scalar() or 0
+
     return {
+        "events_fully_verified": events_fully_verified,
+        "events_total": events_total,
         "total_files": file_stats[0] or 0,
         "verified_files": int(file_stats[1] or 0),
         "total_max_n_frames": maxn_stats[0] or 0,

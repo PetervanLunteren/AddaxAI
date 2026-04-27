@@ -11,9 +11,10 @@
 
 
 
-- [ ] Check AddaxAI-connect (/Users/peter/Documents/Repos/AddaxAI-Connect/) how they do the flag / heart / verify. Lets do the same, and also how it is shown in the grid cards (in the corner with slight overlap). That means we need to add an option for flagging, and filter to show them. Use the same colors. 
 
-- [ ] what would be a clear and simple UX UI flow? right now its: bservations verify observations (single pbar), files verify files (single pbar), all good and simple until now, and then events verify MaxN and files??? (two pbars). How can we make this simpler? Can we just say that the user is verifying events (and write somewhere that in AddaxAI the definition of verifying an event is not having all the files verified, but just the one that counts (MaxN))? Or is that too simple? Its also not one MaxN per event, sometimes its multiple MaxNs... Lets think about it! Be honest, no sugar coating. I want it to be simple, but correct.
+
+
+- [ ] make the label for the verification status named "Verified" to make it consistent with the "Flagged" and "Favorited". 
 
 - [ ] How should we handle video's? Its basically just a bunch of frames. SHould we just show them as images? SO a video with 10 frames show up as 10 frames? Or should we merge them into one and then show the filmstrip like events has, since one video is still one file, but AddaxAI has splitted it into 10 frames. WHats the good mental model? Is probabaly not too much work to add the filmstip as with events, right? Since the code is already there. 
 
@@ -43,6 +44,7 @@
 
 - [ ] the "All labels" button should not have an icon (inconsistent with the other filters). remoce icon from that button in all three tabs of the verificaiton flow. 
 
+- [ ] if all is done and fixed, focus on the texts
 
 
 
