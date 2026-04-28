@@ -505,19 +505,38 @@ export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
 }
 
-// Shared verify-tab filter type. Simple binary (plus "all") across every
-// tab: an event is verified when all its MaxN frames are verified (blank
-// events fall back to "any file verified"); a file is verified when
-// File.verified is true.
-export type VerificationFilter = "all" | "verified" | "unverified";
+// Shared verify-tab filter type. Most tabs use a simple binary (plus
+// "all"): an event is verified when all its MaxN frames are verified
+// (blank events fall back to "any file verified"); a file is verified
+// when File.verified is true. The Observations tab adds "suspicious"
+// — unverified detections whose nearest-neighbour label disagrees with
+// the assigned label (post-filtered client-side from neighbor_agreement).
+// Other tabs ignore "suspicious"; their dropdown never offers it.
+export type VerificationFilter =
+  | "all"
+  | "verified"
+  | "unverified"
+  | "suspicious";
 
 export type FlaggedFilter = "all" | "flagged" | "not_flagged";
 export type FavoritedFilter = "all" | "favorited" | "not_favorited";
 /** "show_only" = empties only, "hide" = no empties, "all" = both. */
 export type EmptyFilter = "all" | "show_only" | "hide";
 
-/** Sort modes for the Events and Files verify tabs. */
-export type VerifySort = "newest" | "oldest" | "random" | "cls_low";
+/** Sort modes shared across the verify tabs.
+ *
+ * Events and Files use the first four. Observations uses similarity by
+ * default and supports `similarity_reverse`; the metadata-only modes
+ * (`newest`, `oldest`, `cls_low`) are also available. `random` only
+ * applies to Events / Files (it relies on a stable seed for paginated
+ * grids and is not meaningful for the Observations grid). */
+export type VerifySort =
+  | "newest"
+  | "oldest"
+  | "random"
+  | "cls_low"
+  | "similarity"
+  | "similarity_reverse";
 
 export interface EventFilterParams {
   site_ids?: string[];
@@ -775,9 +794,17 @@ export interface ObservationFilters {
   verified?: boolean;
 }
 
+/** Subset of VerifySort that is valid for Observations. */
+export type ObservationSort =
+  | "similarity"
+  | "similarity_reverse"
+  | "newest"
+  | "oldest"
+  | "cls_low";
+
 export interface SortRequest {
   filters?: ObservationFilters;
-  reverse?: boolean;
+  sort?: ObservationSort;
 }
 
 export interface SearchRequest {

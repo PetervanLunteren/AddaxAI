@@ -256,14 +256,33 @@ def _build_summary(
 # ── Similarity sort ──────────────────────────────────────────────────────
 
 def do_sort(db_path: str, project_id: str, params: dict) -> dict:
-    """Greedy nearest-neighbor chain: walk to closest unvisited neighbor.
+    """Sort detections for the Observations grid.
 
-    Uses FAISS IndexFlatIP (inner product on L2-normalised vectors = cosine).
-    Result: a flat list where adjacent detections look visually similar.
+    Always loads embeddings and computes neighbor agreement / top label
+    via FAISS, since the suspicious filter depends on those fields
+    regardless of the visible order. The final ordering is then chosen
+    by `_sort_index` according to `params["sort"]`:
+
+    - `similarity` (default): greedy nearest-neighbor walk so adjacent
+      tiles look alike.
+    - `similarity_reverse`: same chain, reversed.
+    - `newest` / `oldest`: by `captured_at_local`, NULL last.
+    - `cls_low`: by `label_confidence` ascending, NULL last (verify
+      hardest cases first).
     """
     import faiss
 
+    # `observation_sort` is a sibling file. Python prepends the running
+    # script's dir to sys.path[0], so this resolves without the full
+    # `app.ml.inference.*` package import (which would require pydantic
+    # and other main-backend deps the conda ML env does not have).
+    from observation_sort import VALID_SORTS, order_indices
+
     filters = params.get("filters", {})
+    sort_mode = params.get("sort", "similarity")
+    if sort_mode not in VALID_SORTS:
+        raise ValueError(f"Unknown sort mode: {sort_mode}")
+
     vectors, det_ids, metas = _load_embeddings(db_path, project_id, filters)
 
     n = len(det_ids)
@@ -342,17 +361,16 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
         if neighbor_labels:
             top_labels[i] = Counter(neighbor_labels).most_common(1)[0][0]
 
+    final_order = order_indices(sort_mode, order.tolist(), metas)
+
     detections = [
         _build_summary(
             det_ids[i], metas[i],
             neighbor_agreement=float(agreement_scores[i]),
             neighbor_top_label=top_labels[i],
         )
-        for i in order
+        for i in final_order
     ]
-
-    if params.get("reverse", False):
-        detections.reverse()
 
     return {"detections": detections, "total_detections": n}
 

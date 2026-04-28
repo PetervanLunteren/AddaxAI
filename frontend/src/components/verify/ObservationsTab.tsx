@@ -10,27 +10,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, CircleHelp, Keyboard, Loader2, Layers, RefreshCw, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CircleHelp,
+  Layers,
+  Loader2,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { observationsApi } from "../../api/observations";
 import { detectionsApi } from "../../api/detections";
+import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
+import { sitesApi } from "../../api/sites";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Slider } from "../ui/slider";
 import { API_BASE_URL } from "../../lib/api-client";
-import { cn } from "../../lib/utils";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { CropGrid } from "./CropGrid";
 import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
-import { FilterPanel } from "./FilterPanel";
+import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
+import { VerifyFilterBar, type VerificationOption } from "./VerifyFilterBar";
+import { SortSelector } from "./SortSelector";
+import {
+  VerifyProgressPill,
+  VerifyToolbar,
+  VerifyToolbarIcon,
+} from "./VerifyToolbar";
 import { getDetectionDisplayName } from "../../lib/detection-utils";
 import { ObservationsSettings } from "./ObservationsSettings";
+import { ObservationsKeyboardPopover } from "./ObservationsKeyboardPopover";
 import { ObservationsHelpSheet } from "./ObservationsHelpSheet";
-import { LabelPicker } from "./LabelPicker";
 import { ObservationsWelcomePopover } from "./ObservationsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
@@ -39,8 +54,18 @@ import type {
   SearchResponse,
   DetectionSummary,
   ObservationFilters,
+  ObservationSort,
   EventFilterParams,
+  VerifySort,
 } from "../../api/types";
+
+const OBSERVATIONS_SORT_MODES: readonly VerifySort[] = [
+  "similarity",
+  "similarity_reverse",
+  "newest",
+  "oldest",
+  "cls_low",
+];
 
 interface ObservationsTabProps {
   projectId: string;
@@ -48,6 +73,8 @@ interface ObservationsTabProps {
 }
 
 // ── Observations filter state (independent from Events / Files filters) ──
+
+type ObservationsVerification = "all" | "unverified" | "suspicious";
 
 interface ObservationsFilterState {
   site_ids?: string[];
@@ -58,6 +85,9 @@ interface ObservationsFilterState {
   max_confidence?: number;
   min_label_confidence?: number;
   max_label_confidence?: number;
+  /** Default "unverified" when omitted — verified detections are usually
+   *  not what the user is looking at on this tab. */
+  verification?: ObservationsVerification;
 }
 
 /** Parse obs_* params from URL. */
@@ -79,6 +109,10 @@ function obsFiltersFromSearchParams(sp: URLSearchParams): ObservationsFilterStat
   if (minLC !== null) f.min_label_confidence = parseFloat(minLC);
   const maxLC = sp.get("obs_max_label_confidence");
   if (maxLC !== null) f.max_label_confidence = parseFloat(maxLC);
+  const ver = sp.get("obs_verification");
+  if (ver === "all" || ver === "unverified" || ver === "suspicious") {
+    f.verification = ver;
+  }
   return f;
 }
 
@@ -103,6 +137,10 @@ function obsFiltersToSearchParams(
     sp.set("obs_min_label_confidence", String(filters.min_label_confidence));
   if (filters.max_label_confidence !== undefined)
     sp.set("obs_max_label_confidence", String(filters.max_label_confidence));
+  // "unverified" is the implicit default — no URL param when set to that.
+  if (filters.verification && filters.verification !== "unverified") {
+    sp.set("obs_verification", filters.verification);
+  }
   return sp;
 }
 
@@ -120,8 +158,10 @@ function toObservationFilters(f: ObservationsFilterState): ObservationFilters {
   };
 }
 
-/** Adapt ObservationsFilterState to EventFilterParams shape for FilterPanel. */
-function toFilterPanelFilters(f: ObservationsFilterState): EventFilterParams {
+/** Adapt ObservationsFilterState to the EventFilterParams shape that
+ *  VerifyFilterBar reads. The verified select lives on the bar and
+ *  emits its value into `filters.verification`. */
+function toFilterBarFilters(f: ObservationsFilterState): EventFilterParams {
   return {
     site_ids: f.site_ids,
     date_from: f.date_from,
@@ -131,6 +171,7 @@ function toFilterPanelFilters(f: ObservationsFilterState): EventFilterParams {
     max_confidence: f.max_confidence,
     min_label_confidence: f.min_label_confidence,
     max_label_confidence: f.max_label_confidence,
+    verification: f.verification ?? "unverified",
   };
 }
 
@@ -157,9 +198,18 @@ export function ObservationsTab({
     [setSearchParams],
   );
 
-  /** Handler for FilterPanel onChange (EventFilterParams shape). */
-  const handleFilterPanelChange = useCallback(
+  /** Handler for VerifyFilterBar onChange (EventFilterParams shape).
+   *
+   *  The bar collapses "all" → undefined upstream because Events / Files
+   *  treat undefined as "no filter". On Observations the implicit default
+   *  is "unverified", so we have to record "all" explicitly when the user
+   *  picks it; otherwise the state falls back to the unverified default
+   *  and the dropdown silently reverts. */
+  const handleFilterBarChange = useCallback(
     (fp: EventFilterParams) => {
+      const v = fp.verification;
+      const verification: ObservationsVerification =
+        v === "unverified" || v === "suspicious" ? v : "all";
       setObsFilters({
         ...obsFilters,
         site_ids: fp.site_ids,
@@ -170,6 +220,7 @@ export function ObservationsTab({
         max_confidence: fp.max_confidence,
         min_label_confidence: fp.min_label_confidence,
         max_label_confidence: fp.max_label_confidence,
+        verification,
       });
     },
     [obsFilters, setObsFilters],
@@ -189,23 +240,40 @@ export function ObservationsTab({
     } catch { /* ignore */ }
   }, []);
 
-  const [reverseSort, _setReverseSort] = useState(savedSettings.reverseSort ?? false);
-  const setReverseSort = useCallback((v: boolean) => { _setReverseSort(v); persistSetting("reverseSort", v); }, [persistSetting]);
+  const isObservationSort = (v: unknown): v is ObservationSort =>
+    v === "similarity" ||
+    v === "similarity_reverse" ||
+    v === "newest" ||
+    v === "oldest" ||
+    v === "cls_low";
+
+  const initialSort: ObservationSort = isObservationSort(savedSettings.sort)
+    ? savedSettings.sort
+    : savedSettings.reverseSort // migrate the dropped reverseSort flag
+      ? "similarity_reverse"
+      : "similarity";
+  const [obsSort, _setObsSort] = useState<ObservationSort>(initialSort);
+  const setObsSort = useCallback(
+    (v: ObservationSort) => {
+      _setObsSort(v);
+      persistSetting("sort", v);
+    },
+    [persistSetting],
+  );
+
   const [tileSize, _setTileSize] = useState<TileSize>(savedSettings.tileSize ?? "M");
   const setTileSize = useCallback((v: TileSize) => { _setTileSize(v); persistSetting("tileSize", v); }, [persistSetting]);
 
-  type VerificationFilter = "all" | "unverified" | "suspicious";
-  const [verificationFilter, _setVerificationFilter] = useState<VerificationFilter>(
-    savedSettings.verificationFilter ?? "unverified"
-  );
-  const setVerificationFilter = useCallback((v: VerificationFilter) => {
-    _setVerificationFilter(v);
-    persistSetting("verificationFilter", v);
-  }, [persistSetting]);
+  // Verification filter is the bar's "Verified" select; default unverified.
+  const verificationFilter: ObservationsVerification =
+    obsFilters.verification ?? "unverified";
+
   const [showLabelDividers, _setShowLabelDividers] = useState(savedSettings.showLabelDividers ?? false);
   const setShowLabelDividers = useCallback((v: boolean) => { _setShowLabelDividers(v); persistSetting("showLabelDividers", v); }, [persistSetting]);
 
-  // Help sheet + welcome popover
+  // Toolbar sheet/popover state (welcome popover only; keyboard and
+  // settings are self-contained popovers anchored to their toolbar
+  // icons, so they own their own open state).
   const [helpOpen, setHelpOpen] = useState(false);
   const [relabelOpen, setRelabelOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
@@ -257,8 +325,27 @@ export function ObservationsTab({
     queryFn: () => projectsApi.get(projectId),
   });
 
+  // Site + filter-options queries: needed so the chip row below can
+  // resolve site IDs and label IDs into human-readable names. Same
+  // query keys VerifyFilterBar uses so react-query dedupes the work.
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId),
+    enabled: !!projectId && (obsFilters.site_ids?.length ?? 0) > 0,
+  });
+  const siteNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of sites ?? []) map[s.id] = s.name;
+    return map;
+  }, [sites]);
+
+  const { data: filterOptions } = useQuery({
+    queryKey: ["event-filter-options", projectId],
+    queryFn: () => eventsApi.getFilterOptions(projectId),
+    enabled: !!projectId,
+  });
+
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
-  const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
     if (project?.shortcut_labels) {
@@ -295,12 +382,12 @@ export function ObservationsTab({
     }
   }, [urlAnchor]);
 
-  // Sort mutation — passes reverse flag
+  // Sort mutation — passes the chosen sort enum.
   const sortMutation = useMutation({
     mutationFn: () =>
       observationsApi.sort(projectId, {
         filters: toObservationFilters(obsFilters),
-        reverse: reverseSort,
+        sort: obsSort,
       }),
     onMutate: () => setIsSorting(true),
     onSuccess: (data) => {
@@ -314,12 +401,12 @@ export function ObservationsTab({
     },
   });
 
-  // Stable key for filter + settings comparison
+  // Stable key for filter + sort comparison; drives auto re-sort.
   const filtersKey = JSON.stringify(toObservationFilters(obsFilters));
-  const sortKey = `${filtersKey}|${reverseSort}`;
+  const sortKey = `${filtersKey}|${obsSort}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
-  // Auto-sort on mount and when filters / reverseSort change
+  // Auto-sort on mount and when filters or sort mode change.
   useEffect(() => {
     if (viewMode === "sort" && stats?.embedded_detections && sortKey !== lastSortKeyRef.current) {
       lastSortKeyRef.current = sortKey;
@@ -698,6 +785,23 @@ export function ObservationsTab({
     return () => document.removeEventListener("click", handleClick);
   }, [selectedIds.size > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Verified select options. "Suspicious" is only meaningful when at
+  // least one detection in the current sort result has neighbor
+  // agreement data (i.e. the result was produced by the similarity
+  // pipeline). Hooks need to run before any early return below.
+  const hasAgreementData = useMemo(() => {
+    const dets = sortResult?.detections ?? [];
+    return dets.some((d) => d.neighbor_agreement != null);
+  }, [sortResult]);
+
+  // Verified-detections progress for the toolbar pill.
+  const verifiedPct = useMemo(() => {
+    const dets = sortResult?.detections ?? [];
+    if (dets.length === 0) return 0;
+    const verified = dets.filter((d) => d.verified).length;
+    return (verified / dets.length) * 100;
+  }, [sortResult]);
+
   // No embeddings state
   if (stats && stats.embedded_detections === 0) {
     return (
@@ -732,29 +836,54 @@ export function ObservationsTab({
     }
   };
 
+  // "Suspicious" only makes sense when the result has neighbour
+  // agreement data (i.e. came from the similarity pipeline). Hide it
+  // otherwise so users don't pick a filter that selects nothing.
+  const verificationOptions: VerificationOption[] = [
+    { value: "all", label: "All" },
+    { value: "unverified", label: "Unverified" },
+    ...(hasAgreementData
+      ? [{ value: "suspicious" as const, label: "Suspicious" }]
+      : []),
+  ];
+
   return (
     <div className="space-y-4">
-      {/* Filter panel — sites, dates, labels only (verification filtering
-          is handled by the toolbar segmented control) */}
-      <FilterPanel
-        filters={toFilterPanelFilters(obsFilters)}
-        onChange={handleFilterPanelChange}
+      <VerifyFilterBar
+        filters={toFilterBarFilters(obsFilters)}
+        onChange={handleFilterBarChange}
         projectId={projectId}
-        isOpen={true}
-        onToggle={() => {}}
         classificationModelId={classificationModelId}
         detectionFloor={project?.detection_threshold ?? 0}
-        verificationSection={null}
         countBy="detection"
+        verificationOptions={verificationOptions}
+        showLikedFlaggedEmpty={false}
       />
+
+      {hasAnyActiveFilter(toFilterBarFilters(obsFilters)) && (
+        <FilterChips
+          filters={toFilterBarFilters(obsFilters)}
+          onChange={handleFilterBarChange}
+          filteredCount={allDetections.length}
+          totalCount={totalCount}
+          siteNames={siteNames}
+          displayLabels={filterOptions?.display_labels}
+          detectionFloor={project?.detection_threshold ?? 0}
+        />
+      )}
 
       {/* Warning when embeddings are incomplete */}
       {stats && stats.missing_embeddings > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <div className="flex-1">
-            <p className="text-sm font-medium">{stats.missing_embeddings} detection{stats.missing_embeddings !== 1 ? "s are" : " is"} missing embeddings</p>
-            <p className="text-xs text-amber-800 dark:text-amber-300">This can happen when embedding was switched off in settings, when an error occurred during analysis, or when detections were added manually via event verification.</p>
+            <p className="text-sm font-medium">
+              {stats.missing_embeddings} detection
+              {stats.missing_embeddings !== 1 ? "s are" : " is"} not shown
+            </p>
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              This grid only shows detections that have an embedding, no matter which sort mode you pick. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Click 'Embed now' to fix this.
+            </p>
           </div>
           <Button variant="outline" size="sm" className="shrink-0" onClick={handleEmbedNow}>
             Embed now
@@ -770,236 +899,88 @@ export function ObservationsTab({
         onError={() => invalidateProjectData(queryClient, projectId)}
       />
 
-      {/* Unified toolbar with segmented control */}
-      <div className="flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm">
-        {/* Segmented control */}
-        <div className="flex rounded-lg bg-muted p-0.5">
+      <VerifyToolbar>
+        <VerifyToolbarIcon
+          icon={CircleHelp}
+          title="Help"
+          onClick={() => setHelpOpen(true)}
+        />
+        <ObservationsKeyboardPopover
+          shortcutLabels={shortcutLabels}
+          onShortcutLabelsChange={updateShortcutLabels}
+          labelOptions={labelOptions}
+          labelOptionsLoading={labelOptionsLoading}
+          projectId={projectId}
+        />
+        <ObservationsSettings
+          showLabelDividers={showLabelDividers}
+          onShowLabelDividersChange={setShowLabelDividers}
+          tileSize={tileSize}
+          onTileSizeChange={setTileSize}
+          similaritySort={obsSort === "similarity" || obsSort === "similarity_reverse"}
+        />
+        <VerifyToolbarIcon
+          icon={RefreshCw}
+          title="Refresh"
+          onClick={() => sortMutation.mutate()}
+          spinning={isSorting}
+          disabled={!stats?.embedded_detections || isSorting}
+        />
+        <SortSelector
+          sort={obsSort}
+          seed={null}
+          availableSorts={OBSERVATIONS_SORT_MODES}
+          onChange={(next) => {
+            if (isObservationSort(next)) setObsSort(next);
+          }}
+        />
+        {sortResult && (
+          <VerifyProgressPill pct={verifiedPct} label="detections verified" />
+        )}
+      </VerifyToolbar>
+
+      {viewMode === "search" && anchorId && searchResult && (
+        <div className="flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm">
+          <span className="text-xs font-medium text-muted-foreground">Searching</span>
+          <div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-0.5">
+            <img
+              src={`${API_BASE_URL}${searchResult.anchor.crop_url}`}
+              alt="anchor"
+              className="h-5 w-5 rounded object-cover"
+            />
+            <span className="text-xs capitalize">
+              {getDetectionDisplayName(searchResult.anchor)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Threshold</span>
+            <Slider
+              value={[threshold]}
+              onValueChange={([v]) => setThreshold(v)}
+              min={0}
+              max={1}
+              step={0.05}
+              className="w-[120px]"
+            />
+            <span className="text-xs font-mono w-[36px]">
+              {threshold.toFixed(2)}
+            </span>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {searchResult.total_results} result
+            {searchResult.total_results !== 1 ? "s" : ""}
+          </span>
           <button
-            className={cn(
-              "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-              viewMode === "sort"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-            onClick={() => {
-              setViewMode("sort");
-              clearSelection();
-            }}
+            type="button"
+            onClick={handleCloseSearch}
+            className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+            title="Exit search"
+            aria-label="Exit search"
           >
-            Sort
-          </button>
-          <button
-            className={cn(
-              "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-              viewMode === "search"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-            onClick={() => {
-              setViewMode("search");
-              clearSelection();
-            }}
-          >
-            Search
+            <X className="h-4 w-4" />
           </button>
         </div>
-
-        <div className="h-4 w-px bg-border" />
-
-        {/* Sort controls */}
-        {viewMode === "sort" && (
-          <>
-            <button
-              onClick={() => sortMutation.mutate()}
-              disabled={isSorting || !stats?.embedded_detections}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
-              title="Re-sort"
-            >
-              <RefreshCw className={cn("h-4 w-4", isSorting && "animate-spin")} />
-            </button>
-
-            <ObservationsSettings
-              reverseSort={reverseSort}
-              onReverseSortChange={setReverseSort}
-              showLabelDividers={showLabelDividers}
-              onShowLabelDividersChange={setShowLabelDividers}
-              tileSize={tileSize}
-              onTileSizeChange={setTileSize}
-            />
-
-            <Popover open={showShortcuts} onOpenChange={setShowShortcuts}>
-              <PopoverTrigger asChild>
-                <button
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  title="Keyboard shortcuts"
-                >
-                  <Keyboard className="h-4 w-4" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-auto px-4 py-3">
-                <div className="flex gap-8">
-                  {/* Left column: grid shortcuts */}
-                  <div>
-                    {[
-                      ["Click", "Select"],
-                      [navigator.platform.includes("Mac") ? "Cmd + Click" : "Ctrl + Click", "Toggle select"],
-                      ["Shift + Click", "Extend range"],
-                      ["Double-click", "Open detail"],
-                      ["Click outside", "Deselect all"],
-                      ["Enter", "Verify selected"],
-                      ["X", "Mark false detection"],
-                      ["R", "Relabel selected"],
-                      ["F", "Find similar"],
-                      ["A", "Accept suggestions"],
-                      [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all"],
-                      ["Esc", "Deselect / close"],
-                    ].map(([key, action]) => (
-                      <div key={key} className="flex items-center text-xs gap-3 h-7">
-                        <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{(key as string).split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
-                        <span>{action}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Right column: label shortcuts 1-5 */}
-                  <div>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <div key={n} className="flex items-center text-xs gap-3 h-7">
-                        <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
-                        <span>Change selected to</span>
-                        <LabelPicker
-                          value={shortcutLabels[n]?.value ?? null}
-                          onSelect={(option) =>
-                            updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
-                          }
-                          options={labelOptions}
-                          isLoading={labelOptionsLoading}
-                          projectId={projectId}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            <button
-              onClick={() => setHelpOpen(true)}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title="Help"
-            >
-              <CircleHelp className="h-4 w-4" />
-            </button>
-
-            {sortResult && (() => {
-              const dets = sortResult.detections;
-              const total = dets.length;
-              const unverified = dets.filter((d) => !d.verified).length;
-              const suspicious = dets.filter(
-                (d) => !d.verified && d.neighbor_agreement != null && d.neighbor_agreement < 0.7
-              ).length;
-              const hasAgreement = dets.some((d) => d.neighbor_agreement != null);
-              const verified = total - unverified;
-              const verifiedPct = total > 0 ? (verified / total) * 100 : 0;
-
-              return (
-                <div className="flex items-center gap-3 ml-auto">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full transition-all duration-500 ease-out rounded-full"
-                        style={{ width: `${verifiedPct}%`, backgroundColor: "#0f6064" }}
-                      />
-                    </div>
-                    {Math.round(verifiedPct)}% all detections verified
-                  </div>
-                  <div className="h-4 w-px bg-border" />
-                  <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
-                    <button
-                      className={cn(
-                        "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
-                        verificationFilter === "all"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                      onClick={() => { setVerificationFilter("all"); clearSelection(); }}
-                    >
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#0f6064" }} />
-                      All ({total})
-                    </button>
-                    <button
-                      className={cn(
-                        "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
-                        verificationFilter === "unverified"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                      onClick={() => { setVerificationFilter("unverified"); clearSelection(); }}
-                    >
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#71b7ba" }} />
-                      Unverified ({unverified})
-                    </button>
-                    {hasAgreement && (
-                      <button
-                        className={cn(
-                          "px-2.5 py-1 rounded-md transition-colors font-medium flex items-center gap-1.5",
-                          verificationFilter === "suspicious"
-                            ? "bg-background text-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        )}
-                        onClick={() => { setVerificationFilter("suspicious"); clearSelection(); }}
-                      >
-                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#882000" }} />
-                        Suspicious ({suspicious})
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-          </>
-        )}
-
-        {/* Search controls */}
-        {viewMode === "search" && anchorId && searchResult && (
-          <>
-            {/* Anchor chip */}
-            <div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-0.5">
-              <img
-                src={`${API_BASE_URL}${searchResult.anchor.crop_url}`}
-                alt="anchor"
-                className="h-5 w-5 rounded object-cover"
-              />
-              <span className="text-xs capitalize">
-                {getDetectionDisplayName(searchResult.anchor)}
-              </span>
-            </div>
-
-            <div className="h-4 w-px bg-border" />
-
-            {/* Threshold slider */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Threshold:</span>
-              <Slider
-                value={[threshold]}
-                onValueChange={([v]) => setThreshold(v)}
-                min={0}
-                max={1}
-                step={0.05}
-                className="w-[120px]"
-              />
-              <span className="text-xs font-mono w-[36px]">
-                {threshold.toFixed(2)}
-              </span>
-            </div>
-
-            {/* Result count */}
-            <span className="text-xs text-muted-foreground ml-auto">
-              {searchResult.total_results} result{searchResult.total_results !== 1 ? "s" : ""}
-            </span>
-          </>
-        )}
-      </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
@@ -1154,4 +1135,5 @@ export function ObservationsTab({
     </div>
   );
 }
+
 

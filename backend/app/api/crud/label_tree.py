@@ -203,10 +203,20 @@ def build_label_filter_tree(
                 row.display_name
                 or row.name.replace("_", " ").capitalize()
             )
+            # Annotation: show the underlying model label when it differs
+            # from the rank-derived display, otherwise the literal
+            # "unspecified". This matches the species annotation rule
+            # (model label in italics) and lets users tell apart sibling
+            # rollup leaves that share a display name (e.g. "micromammal"
+            # vs "mammalia" both rendering as "Mammalia").
+            if display and row.name.lower() != display.lower():
+                annotation = row.name.replace("_", " ")
+            else:
+                annotation = "unspecified"
             leaf_node = {
                 "id": leaf_id,
                 "name": display,
-                "annotation": "unspecified",
+                "annotation": annotation,
                 "count": count,
                 "children": {},
                 "is_leaf": True,

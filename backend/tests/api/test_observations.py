@@ -28,9 +28,35 @@ def test_sort_observations_success(client, db):
     ):
         resp = client.post(
             f"/api/projects/{p.id}/observations/sort",
-            json={"filters": {}, "reverse": False},
+            json={"filters": {}, "sort": "similarity"},
         )
     assert resp.status_code == 200
+
+
+def test_sort_observations_default_sort(client, db):
+    """Body without `sort` defaults to similarity (matches schema)."""
+    p = make_project(db)
+    mock_result = SortResponse(detections=[], total_detections=0)
+    with patch(
+        "app.api.routers.observations.sort_detections_service",
+        return_value=mock_result,
+    ) as mock_sort:
+        resp = client.post(
+            f"/api/projects/{p.id}/observations/sort",
+            json={"filters": {}},
+        )
+    assert resp.status_code == 200
+    body = mock_sort.call_args.args[1]
+    assert body.sort == "similarity"
+
+
+def test_sort_observations_rejects_unknown_mode(client, db):
+    p = make_project(db)
+    resp = client.post(
+        f"/api/projects/{p.id}/observations/sort",
+        json={"filters": {}, "sort": "bogus"},
+    )
+    assert resp.status_code == 422
 
 
 def test_sort_observations_error(client, db):
@@ -41,7 +67,7 @@ def test_sort_observations_error(client, db):
     ):
         resp = client.post(
             f"/api/projects/{p.id}/observations/sort",
-            json={"filters": {}, "reverse": False},
+            json={"filters": {}, "sort": "similarity"},
         )
     assert resp.status_code == 503
 

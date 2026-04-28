@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Loader2 } from "lucide-react";
+import { CircleHelp, Layers, Loader2 } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { filesApi } from "../api/files";
@@ -30,13 +30,23 @@ import type {
 } from "../api/types";
 
 import { EventDetailModal } from "../components/verify/EventDetailModal";
-import { FilterPanel } from "../components/verify/FilterPanel";
-import { FilterChips } from "../components/verify/FilterChips";
+import { VerifyFilterBar } from "../components/verify/VerifyFilterBar";
+import {
+  FilterChips,
+  hasAnyActiveFilter,
+} from "../components/verify/FilterChips";
 import { HelpSheet } from "../components/verify/HelpSheet";
 import { FilesTab } from "../components/verify/FilesTab";
 import { ObservationsTab } from "../components/verify/ObservationsTab";
-import { EventsStatsToolbar } from "../components/verify/EventsStatsToolbar";
+import { SortSelector } from "../components/verify/SortSelector";
+import {
+  VerifyProgressPill,
+  VerifyToolbar,
+  VerifyToolbarIcon,
+} from "../components/verify/VerifyToolbar";
 import { StatusBadgeCluster } from "../components/verify/StatusBadgeCluster";
+
+const EVENTS_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
 
 type VerifyTab = "events" | "files" | "observations";
 
@@ -118,23 +128,6 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
   return sp;
 }
 
-/** Check if any filter is active. */
-function hasActiveFilters(filters: EventFilterParams): boolean {
-  return (
-    (filters.site_ids?.length ?? 0) > 0 ||
-    !!filters.date_from ||
-    !!filters.date_to ||
-    (filters.labels?.length ?? 0) > 0 ||
-    (!!filters.verification && filters.verification !== "all") ||
-    (!!filters.flagged && filters.flagged !== "all") ||
-    (!!filters.favorited && filters.favorited !== "all") ||
-    (!!filters.empty && filters.empty !== "all") ||
-    filters.min_confidence !== undefined ||
-    filters.max_confidence !== undefined ||
-    filters.min_label_confidence !== undefined ||
-    filters.max_label_confidence !== undefined
-  );
-}
 
 export default function VerifyPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -251,8 +244,8 @@ export default function VerifyPage() {
   });
 
   // Get filtered event count
-  const isFiltered = hasActiveFilters(filters);
-  const isDebouncedFiltered = hasActiveFilters(debouncedFilters);
+  const isFiltered = hasAnyActiveFilter(filters);
+  const isDebouncedFiltered = hasAnyActiveFilter(debouncedFilters);
   const { data: filteredCountData } = useQuery({
     queryKey: ["event-count-filtered", projectId, debouncedFilters],
     queryFn: () => eventsApi.count(projectId!, debouncedFilters),
@@ -309,7 +302,7 @@ export default function VerifyPage() {
     }
   }, [events]);
 
-  // Fetch filter options for display_labels mapping (shared cache with FilterPanel)
+  // Fetch filter options for display_labels mapping (shared cache with VerifyFilterBar)
   const { data: filterOptions } = useQuery({
     queryKey: ["event-filter-options", projectId],
     queryFn: () => eventsApi.getFilterOptions(projectId!),
@@ -339,7 +332,7 @@ export default function VerifyPage() {
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Verify</h1>
               <p className="text-sm text-muted-foreground">
@@ -386,44 +379,56 @@ export default function VerifyPage() {
           />
         ) : activeTab === "events" ? (
           <>
-            {/* Filter panel */}
-            <FilterPanel
+            <VerifyFilterBar
               filters={filters}
               onChange={setFilters}
               projectId={projectId!}
-              isOpen={true}
-              onToggle={() => {}}
               classificationModelId={project?.classification_model_id}
               detectionFloor={detectionThreshold}
-            >
-              {isFiltered && (
-                <FilterChips
-                  filters={filters}
-                  onChange={setFilters}
-                  filteredCount={filteredEvents}
-                  totalCount={totalEvents}
-                  siteNames={siteNames}
-                  displayLabels={filterOptions?.display_labels}
-                  detectionFloor={detectionThreshold}
-                />
-              )}
-            </FilterPanel>
-            {totalEvents > 0 && (
-              <EventsStatsToolbar
-                stats={verificationStats}
-                onHelpClick={() => setHelpOpen(true)}
-                sort={filters.sort ?? "newest"}
-                seed={filters.seed ?? null}
-                onSortChange={(sort, seed) => {
-                  const next: EventFilterParams = { ...filters };
-                  if (sort === "newest") delete next.sort;
-                  else next.sort = sort;
-                  if (seed === null) delete next.seed;
-                  else next.seed = seed;
-                  setFilters(next);
-                }}
-                showClsLow={!!project?.classification_model_id}
+              countBy="event"
+            />
+            {isFiltered && (
+              <FilterChips
+                filters={filters}
+                onChange={setFilters}
+                filteredCount={filteredEvents}
+                totalCount={totalEvents}
+                siteNames={siteNames}
+                displayLabels={filterOptions?.display_labels}
+                detectionFloor={detectionThreshold}
               />
+            )}
+            {totalEvents > 0 && verificationStats && (
+              <VerifyToolbar>
+                <VerifyToolbarIcon
+                  icon={CircleHelp}
+                  title="Help"
+                  onClick={() => setHelpOpen(true)}
+                />
+                <SortSelector
+                  sort={filters.sort ?? "newest"}
+                  seed={filters.seed ?? null}
+                  availableSorts={EVENTS_SORT_MODES}
+                  onChange={(next, seed) => {
+                    const updated: EventFilterParams = { ...filters };
+                    if (next === "newest") delete updated.sort;
+                    else updated.sort = next;
+                    if (seed === null) delete updated.seed;
+                    else updated.seed = seed;
+                    setFilters(updated);
+                  }}
+                />
+                <VerifyProgressPill
+                  pct={
+                    verificationStats.events_total > 0
+                      ? (verificationStats.events_fully_verified /
+                          verificationStats.events_total) *
+                        100
+                      : 0
+                  }
+                  label="events verified"
+                />
+              </VerifyToolbar>
             )}
             {/* Event cards */}
             {isLoading ? (

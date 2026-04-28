@@ -9,10 +9,19 @@ not the algorithm.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
 from app.utils.datetime_serialization import serialize_local_datetime
+
+ObservationSort = Literal[
+    "similarity",
+    "similarity_reverse",
+    "newest",
+    "oldest",
+    "cls_low",
+]
 
 
 class ObservationFilters(BaseModel):
@@ -41,7 +50,7 @@ class SortRequest(BaseModel):
     """Request body for the Observations sort endpoint."""
 
     filters: ObservationFilters = Field(default_factory=ObservationFilters)
-    reverse: bool = False
+    sort: ObservationSort = "similarity"
 
 
 class SearchRequest(BaseModel):

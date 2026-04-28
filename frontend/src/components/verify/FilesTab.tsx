@@ -23,10 +23,17 @@ import {
 import type { EventFilterParams } from "../../api/types";
 import { FileCard } from "./FileCard";
 import { FileDetailModal } from "./FileDetailModal";
-import { FilterChips } from "./FilterChips";
-import { FilterPanel } from "./FilterPanel";
+import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
+import { VerifyFilterBar } from "./VerifyFilterBar";
 import { HelpSheet } from "./HelpSheet";
 import { SortSelector } from "./SortSelector";
+import {
+  VerifyProgressPill,
+  VerifyToolbar,
+  VerifyToolbarIcon,
+} from "./VerifyToolbar";
+
+const FILES_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
 
 const PAGE_SIZE = 48;
 const FILTER_DEBOUNCE_MS = 300;
@@ -170,12 +177,7 @@ export function FilesTab({
 
   const totalFiles = totalCountData?.count ?? 0;
   const filteredFiles = filteredCountData?.count ?? totalFiles;
-  const isFiltered =
-    (filters.site_ids?.length ?? 0) > 0 ||
-    !!filters.date_from ||
-    !!filters.date_to ||
-    (filters.labels?.length ?? 0) > 0 ||
-    (!!filters.verification && filters.verification !== "all");
+  const isFiltered = hasAnyActiveFilter(filters);
   const hasMore = files && files.length === PAGE_SIZE;
 
   const pct =
@@ -189,63 +191,48 @@ export function FilesTab({
 
   return (
     <>
-      <FilterPanel
+      <VerifyFilterBar
         filters={filters}
         onChange={onFiltersChange}
         projectId={projectId}
-        isOpen={true}
-        onToggle={() => {}}
         classificationModelId={classificationModelId}
         detectionFloor={detectionThreshold}
         countBy="file"
-      >
-        {isFiltered && (
-          <FilterChips
-            filters={filters}
-            onChange={onFiltersChange}
-            filteredCount={filteredFiles}
-            totalCount={totalFiles}
-            siteNames={siteNames}
-            displayLabels={filterOptions?.display_labels}
-            detectionFloor={detectionThreshold}
-          />
-        )}
-      </FilterPanel>
+      />
+      {isFiltered && (
+        <FilterChips
+          filters={filters}
+          onChange={onFiltersChange}
+          filteredCount={filteredFiles}
+          totalCount={totalFiles}
+          siteNames={siteNames}
+          displayLabels={filterOptions?.display_labels}
+          detectionFloor={detectionThreshold}
+        />
+      )}
 
       {totalFiles > 0 && (
-        <div className="flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm">
-          <button
-            onClick={() => setHelpOpen(true)}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+        <VerifyToolbar>
+          <VerifyToolbarIcon
+            icon={CircleHelp}
             title="Help"
-          >
-            <CircleHelp className="h-4 w-4" />
-          </button>
+            onClick={() => setHelpOpen(true)}
+          />
           <SortSelector
             sort={filters.sort ?? "newest"}
             seed={filters.seed ?? null}
-            onChange={(sort, seed) => {
-              const next = { ...filters };
-              if (sort === "newest") delete next.sort;
-              else next.sort = sort;
-              if (seed === null) delete next.seed;
-              else next.seed = seed;
-              onFiltersChange(next);
+            availableSorts={FILES_SORT_MODES}
+            onChange={(next, seed) => {
+              const updated = { ...filters };
+              if (next === "newest") delete updated.sort;
+              else updated.sort = next;
+              if (seed === null) delete updated.seed;
+              else updated.seed = seed;
+              onFiltersChange(updated);
             }}
-            showClsLow={!!classificationModelId}
           />
-          <div className="flex items-center gap-3 ml-auto">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full transition-all duration-500 ease-out rounded-full"
-                  style={{ width: `${pct}%`, backgroundColor: "#0f6064" }}
-                />
-              </div>
-              {Math.round(pct)}% files verified
-            </div>
-          </div>
-        </div>
+          <VerifyProgressPill pct={pct} label="files verified" />
+        </VerifyToolbar>
       )}
 
       {isLoading ? (

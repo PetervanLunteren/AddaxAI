@@ -161,11 +161,11 @@ def _apply_project_threshold(
 def sort_detections(
     project_id: str, body: SortRequest, db: Session
 ) -> SortResponse:
-    """Sort detections by visual similarity via subprocess."""
+    """Sort detections via subprocess, using the requested sort mode."""
     filters = _apply_project_threshold(body.filters, project_id, db)
     params = {
         "filters": _filters_to_dict(filters),
-        "reverse": body.reverse,
+        "sort": body.sort,
     }
     result = _run_observations_subprocess("sort", project_id, params)
     return SortResponse(**result)

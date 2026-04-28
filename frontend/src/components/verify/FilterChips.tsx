@@ -8,6 +8,26 @@ import { X } from "lucide-react";
 import type { EventFilterParams } from "../../api/types";
 import { Badge } from "../ui/badge";
 
+/** True when any user filter is set on these params. Shared by every
+ *  verify tab so the chip row and "no results" copy stay in sync with
+ *  the chips this component actually renders. */
+export function hasAnyActiveFilter(filters: EventFilterParams): boolean {
+  return (
+    (filters.site_ids?.length ?? 0) > 0 ||
+    !!filters.date_from ||
+    !!filters.date_to ||
+    (filters.labels?.length ?? 0) > 0 ||
+    (!!filters.verification && filters.verification !== "all") ||
+    (!!filters.flagged && filters.flagged !== "all") ||
+    (!!filters.favorited && filters.favorited !== "all") ||
+    (!!filters.empty && filters.empty !== "all") ||
+    filters.min_confidence !== undefined ||
+    filters.max_confidence !== undefined ||
+    filters.min_label_confidence !== undefined ||
+    filters.max_label_confidence !== undefined
+  );
+}
+
 interface FilterChipsProps {
   filters: EventFilterParams;
   onChange: (filters: EventFilterParams) => void;

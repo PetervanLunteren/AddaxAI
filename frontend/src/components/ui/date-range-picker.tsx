@@ -2,8 +2,8 @@
  * DateRangePicker — single trigger button + popover with a two-month
  * react-day-picker calendar in range mode.
  *
- * Wraps the bespoke logic that used to live inside FilterPanel so every
- * filter bar in the app gets the same UX. Dates are exchanged with the
+ * Shared by every filter bar in the app so the date-range UX stays
+ * consistent across pages. Dates are exchanged with the
  * caller as ISO date strings (YYYY-MM-DD); rendering uses date-fns to
  * format the trigger label.
  */

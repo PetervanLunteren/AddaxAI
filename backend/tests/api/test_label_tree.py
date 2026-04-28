@@ -324,3 +324,82 @@ def test_leaf_has_structured_fields(db):
     assert mammalia is not None
     assert mammalia.get("child_count") is not None
     assert mammalia.get("count") is not None
+
+
+def test_rollup_leaf_annotation_falls_back_to_unspecified(db):
+    """Rollup leaf whose model label matches its rank-derived display
+    keeps the literal "unspecified" annotation. The classic case
+    (e.g. name=felidae, display=Felidae) reads naturally."""
+    p = _setup_project_with_detections(db, ["felidae"])
+    felidae_tax = _add_taxonomy(
+        db, "felidae", "family",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="felidae",
+    )
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
+
+    result = build_label_filter_tree(p.id, db)
+    assert result is not None
+
+    def find_node(nodes, target_id):
+        for n in nodes:
+            if n["id"] == target_id:
+                return n
+            found = find_node(n.get("children", []), target_id)
+            if found:
+                return found
+        return None
+
+    leaf = find_node(result["tree"], felidae_tax.id)
+    assert leaf is not None
+    assert leaf["name"] == "Felidae"
+    assert leaf["annotation"] == "unspecified"
+
+
+def test_rollup_leaf_annotation_disambiguates_collisions(db):
+    """When a model label differs from its rank-derived display name
+    (e.g. "micromammal" mapped to class Mammalia), the annotation shows
+    the underlying label so sibling leaves under the same parent can be
+    told apart visually."""
+    p = _setup_project_with_detections(db, ["micromammal", "mammalia"])
+
+    # Both rows are class-level under Mammalia but represent distinct
+    # classifier outputs. Their display_names collide ("Mammalia").
+    micromammal_tax = _add_taxonomy(
+        db, "micromammal", "class",
+        taxon_class="mammalia",
+        display_name="Mammalia",
+    )
+    mammalia_tax = _add_taxonomy(
+        db, "mammalia", "class",
+        taxon_class="mammalia",
+        display_name="Mammalia",
+    )
+    link_detections_to_taxonomy(p.id, db)
+    db.expire_all()
+
+    result = build_label_filter_tree(p.id, db)
+    assert result is not None
+
+    def find_node(nodes, target_id):
+        for n in nodes:
+            if n["id"] == target_id:
+                return n
+            found = find_node(n.get("children", []), target_id)
+            if found:
+                return found
+        return None
+
+    micromammal_leaf = find_node(result["tree"], micromammal_tax.id)
+    assert micromammal_leaf is not None
+    assert micromammal_leaf["name"] == "Mammalia"
+    # name "micromammal" doesn't match display "Mammalia" → underlying
+    # label surfaces in the italic annotation.
+    assert micromammal_leaf["annotation"] == "micromammal"
+
+    mammalia_leaf = find_node(result["tree"], mammalia_tax.id)
+    assert mammalia_leaf is not None
+    assert mammalia_leaf["name"] == "Mammalia"
+    # name "mammalia" matches display "Mammalia" → literal "unspecified".
+    assert mammalia_leaf["annotation"] == "unspecified"

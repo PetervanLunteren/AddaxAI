@@ -1,7 +1,7 @@
 /**
  * Generic schema-driven filter bar.
  *
- * Mirrors the visual style of the Verify page FilterPanel + FilterChips:
+ * Mirrors the visual style of the Verify page filter bar + chip row:
  * - White rounded card with border
  * - Search field on the left (label-less, fixed width)
  * - Other filters in a responsive grid to the right

@@ -137,6 +137,69 @@ def test_add_rollup_entry(db, taxonomy_lookup):
     assert row.is_custom is False
 
 
+def test_add_rollup_class_level_only_sets_class(db, taxonomy_lookup):
+    """A class-level rollup must NOT inherit lower ranks from the matched
+    source row. The lookup pairs class=mammalia with concrete order/family/
+    genus/species; copying those would falsely claim the rolled-up taxon
+    belongs to a specific descendant chain."""
+    result = add_rollup_taxonomy_entry(
+        MODEL_ID, "mammalia", "class", taxonomy_lookup, db
+    )
+    assert result is True
+
+    row = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID,
+        LabelTaxonomy.name == "mammalia",
+    ).first()
+    assert row is not None
+    assert row.level == "class"
+    assert row.taxon_class == "mammalia"
+    assert row.taxon_order is None
+    assert row.taxon_family is None
+    assert row.taxon_genus is None
+    assert row.taxon_species is None
+
+
+def test_add_rollup_order_level_only_sets_class_and_order(db, taxonomy_lookup):
+    """An order-level rollup must inherit class and order, but not lower."""
+    result = add_rollup_taxonomy_entry(
+        MODEL_ID, "carnivora", "order", taxonomy_lookup, db
+    )
+    assert result is True
+
+    row = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID,
+        LabelTaxonomy.name == "carnivora",
+    ).first()
+    assert row is not None
+    assert row.level == "order"
+    assert row.taxon_class == "mammalia"
+    assert row.taxon_order == "carnivora"
+    assert row.taxon_family is None
+    assert row.taxon_genus is None
+    assert row.taxon_species is None
+
+
+def test_add_rollup_genus_level_inherits_through_genus(db, taxonomy_lookup):
+    """A genus-level rollup keeps class/order/family/genus, not species."""
+    result = add_rollup_taxonomy_entry(
+        MODEL_ID, "panthera", "genus", taxonomy_lookup, db
+    )
+    assert result is True
+
+    row = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.classification_model_id == MODEL_ID,
+        LabelTaxonomy.name == "panthera",
+    ).first()
+    assert row is not None
+    assert row.level == "genus"
+    assert row.taxon_class == "mammalia"
+    assert row.taxon_order == "carnivora"
+    assert row.taxon_family == "felidae"
+    assert row.taxon_genus == "panthera"
+    assert row.taxon_species is None
+
+
 def test_add_rollup_idempotent(db, taxonomy_lookup):
     """Skip if entry already exists."""
     r1 = add_rollup_taxonomy_entry(MODEL_ID, "felidae", "family", taxonomy_lookup, db)

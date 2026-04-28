@@ -2,17 +2,10 @@
 - [ ] 
 
 ## Priority 2
-- [ ] Add flag button to and files. See addaxai. 
 - [ ] remove the "today" legend item of the timeline plot, no need for that. 
 
 ## Priority 3 
-- [ ] FILE VERIFICATION - add a section for image verification. Or at least thinik about it. You have something for events and detections (called similarity now). Should we make a thrid tab, files? exactly the same as events, but then on the file level. if you search fot wolf, you get all the images or frames with a wolf. Now in events you still have to search trhough the event to find it. events verify MaxN (and files if you want), files verify files (and if lucky its a maxN too), decections (or did we choose to call it observations? I think so), verify on the instance level. Here we do the embedding too. SO basically, just leave events and similarity as they are (perhaps rename similarity), and add a new one for files (which is almost the same as events, just not grouping for events). And while we're at it, should we make these their separate pages? Then we have all levels: sites, deployments, events, files, observations. Or would you advise against that and keep it all three in verify page as tabs? What is you recommendation in terms of UX UI? Be honest, dont sugar coat. 
 - [ ] 
-
-
-
-
-- [ ] Its getting pretty crowded in the filters bar.... should we move everything into a filters popover? Or just show a few and then move the more advanced filters into an "advanced" popover? What do you think in terms of UX UI? Be honest, no sugar coating. 
 
 - [ ] How should we handle video's? Its basically just a bunch of frames. SHould we just show them as images? SO a video with 10 frames show up as 10 frames? Or should we merge them into one and then show the filmstrip like events has, since one video is still one file, but AddaxAI has splitted it into 10 frames. WHats the good mental model? Is probabaly not too much work to add the filmstip as with events, right? Since the code is already there. 
 

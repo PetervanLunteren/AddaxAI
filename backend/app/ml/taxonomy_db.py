@@ -144,10 +144,24 @@ def add_rollup_taxonomy_entry(
             ancestors = entry
             break
 
+    # Only ranks at or above the rollup level apply. The matched source
+    # entry carries the full chain down to species (e.g. for a class
+    # rollup the source could be "marmot,mammalia,rodentia,sciuridae,
+    # marmota,marmota"); copying the lower ranks would falsely claim the
+    # rolled-up taxon belongs to that specific descendant chain. A class
+    # rollup is just the class — order/family/genus/species stay NULL.
+    rank_order = ["class", "order", "family", "genus", "species"]
+    rollup_idx = rank_order.index(level) if level in rank_order else -1
+
+    def ancestor_at(rank: str) -> str | None:
+        if rollup_idx < 0:
+            return None
+        if rank_order.index(rank) > rollup_idx:
+            return None
+        return ancestors.get(rank)
+
     species_val = lookup_value if level == "species" else None
-    genus_val = (
-        ancestors.get("genus") if level in ("genus", "species") else None
-    )
+    genus_val = ancestor_at("genus")
 
     if level == "kingdom":
         # Kingdom rollup lands on the literal string "animal", but the
@@ -160,9 +174,9 @@ def add_rollup_taxonomy_entry(
             name,
             genus_val,
             species_val,
-            ancestors.get("family"),
-            ancestors.get("order"),
-            ancestors.get("class"),
+            ancestor_at("family"),
+            ancestor_at("order"),
+            ancestor_at("class"),
         )
     else:
         display_name = name.capitalize()
@@ -170,9 +184,9 @@ def add_rollup_taxonomy_entry(
     taxonomy_entry = LabelTaxonomy(
         classification_model_id=model_id,
         name=name,
-        taxon_class=ancestors.get("class"),
-        taxon_order=ancestors.get("order"),
-        taxon_family=ancestors.get("family"),
+        taxon_class=ancestor_at("class"),
+        taxon_order=ancestor_at("order"),
+        taxon_family=ancestor_at("family"),
         taxon_genus=genus_val,
         taxon_species=species_val,
         level=level,
