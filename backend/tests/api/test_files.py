@@ -109,8 +109,9 @@ def _setup_verify_fixture(db):
     """Create a project, a deployment, and a mix of images/videos/frames.
 
     Returns (project, deployment, image, video, frame).
-    Image is unverified; video has a best frame with one detection at 0.95.
-    The frame row (file_type="frame") must not appear in the grid.
+    Image is unverified with its own detection. Frame is unverified with
+    its own detection. The video row holds mp4 metadata only and is not
+    listed in the Images grid.
     """
     p = make_project(db, detection_threshold=0.5)
     s = make_site(db, project_id=p.id)
@@ -145,18 +146,18 @@ def _setup_verify_fixture(db):
     return p, d, image, video, frame
 
 
-def test_list_for_verify_excludes_frame_rows(client, db):
+def test_list_for_verify_excludes_video_rows(client, db):
     p, _, image, video, frame = _setup_verify_fixture(db)
     resp = client.get(f"/api/files/list-for-verify?project_id={p.id}")
     assert resp.status_code == 200
     ids = [row["id"] for row in resp.json()]
     assert image.id in ids
-    assert video.id in ids
-    assert frame.id not in ids
+    assert frame.id in ids
+    assert video.id not in ids
 
 
 def test_list_for_verify_verification_filter(client, db):
-    p, _, image, video, _ = _setup_verify_fixture(db)
+    p, _, image, _, frame = _setup_verify_fixture(db)
     # Verify the image
     client.patch(f"/api/files/{image.id}", json={"verified": True})
 
@@ -166,23 +167,23 @@ def test_list_for_verify_verification_filter(client, db):
     assert resp.status_code == 200
     ids = [row["id"] for row in resp.json()]
     assert image.id not in ids
-    assert video.id in ids
+    assert frame.id in ids
 
     resp = client.get(
         f"/api/files/list-for-verify?project_id={p.id}&verification=verified"
     )
     ids = [row["id"] for row in resp.json()]
     assert image.id in ids
-    assert video.id not in ids
+    assert frame.id not in ids
 
 
-def test_list_for_verify_video_inherits_frame_detections(client, db):
-    p, _, _, video, _ = _setup_verify_fixture(db)
+def test_list_for_verify_includes_frame_rows(client, db):
+    p, _, _, _, frame = _setup_verify_fixture(db)
     resp = client.get(f"/api/files/list-for-verify?project_id={p.id}")
     rows = {row["id"]: row for row in resp.json()}
-    video_row = rows[video.id]
-    assert len(video_row["detections"]) == 1
-    assert video_row["detections"][0]["confidence"] == 0.95
+    frame_row = rows[frame.id]
+    assert len(frame_row["detections"]) == 1
+    assert frame_row["detections"][0]["confidence"] == 0.95
 
 
 def test_count_for_verify_matches_list(client, db):
@@ -199,17 +200,17 @@ def test_verification_stats(client, db):
     resp = client.get(f"/api/files/verification-stats?project_id={p.id}")
     assert resp.status_code == 200
     data = resp.json()
-    # Two media items (image + video); one verified.
+    # Two stills in the grid (image + frame); one verified.
     assert data["total_files"] == 2
     assert data["verified_files"] == 1
 
 
 def test_adjacent_next_unverified(client, db):
-    p, _, image, video, _ = _setup_verify_fixture(db)
-    # Order is captured_at DESC: video (Jun 2) then image (Jun 1).
-    # From the video, the next (older) unverified file should be the image.
+    p, _, image, _, frame = _setup_verify_fixture(db)
+    # Order is captured_at DESC: frame (Jun 2) then image (Jun 1).
+    # From the frame, the next (older) unverified file should be the image.
     resp = client.get(
-        f"/api/files/{video.id}/adjacent?project_id={p.id}"
+        f"/api/files/{frame.id}/adjacent?project_id={p.id}"
     )
     assert resp.status_code == 200
     data = resp.json()

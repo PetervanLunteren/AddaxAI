@@ -307,18 +307,10 @@ export function FileDetailModal({
   // Filtered detections for Up/Down cycling (respects threshold)
   const filteredDetections = useMemo(() => {
     if (!file) return [];
-    let dets = file.detections.filter(
+    return file.detections.filter(
       (d) => d.confidence >= detectionThreshold,
     );
-    if (
-      file.file_type === "video" &&
-      file.best_frame_number != null &&
-      viewMode === "frame"
-    ) {
-      dets = dets.filter((d) => d.frame_number === file.best_frame_number);
-    }
-    return dets;
-  }, [file, detectionThreshold, viewMode]);
+  }, [file, detectionThreshold]);
 
   const deleteDetectionMutation = useMutation({
     mutationFn: (id: string) => {
@@ -612,8 +604,7 @@ export function FileDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
-              {(file.file_type === "video" ||
-                (file.file_type === "frame" && file.source_video_id)) && (
+              {file.source_video_id != null && (
                 <Button
                   variant={viewMode === "video" ? "default" : "ghost"}
                   size="icon"
@@ -932,12 +923,18 @@ export function FileDetailModal({
               <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h3 className="text-sm font-semibold">
-                    {file.file_type === "video" ? "Video" : "Image"}
+                    {file.source_video_id != null ? "Video frame" : "Image"}
                   </h3>
                 </div>
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
-                    {file.file_path.split("/").pop()}
+                    {file.source_video_id != null
+                      ? file.file_path.split("/").slice(-2, -1)[0]
+                      : file.file_path.split("/").pop()}
+                    {file.source_video_id != null &&
+                      file.source_frame_number != null && (
+                        <span> · frame {file.source_frame_number}</span>
+                      )}
                   </div>
                   <div>
                     {formatCameraDate(
@@ -947,7 +944,11 @@ export function FileDetailModal({
                     )}{" "}
                     {formatCameraTime(
                       file.captured_at_local,
-                      { hour: "2-digit", minute: "2-digit" },
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      },
                       "en-GB",
                     )}
                   </div>

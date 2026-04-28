@@ -7,8 +7,6 @@
 ## Priority 3 
 - [ ] 
 
-- [ ] How should we handle video's? Its basically just a bunch of frames. SHould we just show them as images? SO a video with 10 frames show up as 10 frames? Or should we merge them into one and then show the filmstrip like events has, since one video is still one file, but AddaxAI has splitted it into 10 frames. WHats the good mental model? Is probabaly not too much work to add the filmstip as with events, right? Since the code is already there. 
-
 - [ ] In the files Modal, when drawing, it shows the to-be-drawn dashed box, but on release it is not visible. After heart-ing, it becomes visible. Some kind of refresh bug? 
 
 - [ ] The (?) icon in the files Modal and files page, it reidrects to the event verification slideout. Make one specifically for the files. Propose a few options so I can select one.
@@ -27,7 +25,7 @@
 
 - [ ] what should 'A' add box do in the files modal? It currently doesnt do anything...
 
-- [ ] I'm a bit confused as how the navigation works. we have left and right for just normal navigation (regardless of verification status), and we have >> for next unverified. Is that correct? Should we add a << for previous unverifed? should we do the arrows for the simple navigation (just prev next regardless of verification status)? 
+- [ ] I'm a bit confused as how the navigation works. we have left and right for just normal navigation (regardless of verification status), and we have >> for next unverified. Is that correct? Should we add a << for previous unverifed? should we do the arrows for the simple navigation (just prev next regardless of verification status)? Should we do default navigation per maxN in the events tab , and something like SHIFT+navigation for frame navigation...? 
 
 - [ ] the "All labels" button should not have an icon (inconsistent with the other filters). remoce icon from that button in all three tabs of the verificaiton flow. 
 

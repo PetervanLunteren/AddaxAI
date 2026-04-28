@@ -17,24 +17,12 @@ from app.models import Deployment, Detection, File, Project
 
 def _file_min_cls_subquery():
     """Correlated scalar subquery: MIN(label_confidence) over a file's own
-    detections plus any detections on its frame rows (videos store detections
-    on the frame children, not the video row itself). Mirrors the OR pattern
-    already used by `_apply_file_verify_filters` for label/confidence gates.
+    detections. The Images grid lists images and frame rows directly, so
+    detections always live on the file row itself.
     """
-    FrameFile = File.__table__.alias("frame_file_sort")
     return (
         select(func.min(Detection.label_confidence))
-        .select_from(Detection)
-        .where(
-            or_(
-                Detection.file_id == File.id,
-                Detection.file_id.in_(
-                    select(FrameFile.c.id).where(
-                        FrameFile.c.source_video_id == File.id
-                    )
-                ),
-            )
-        )
+        .where(Detection.file_id == File.id)
         .correlate(File)
         .scalar_subquery()
     )
@@ -262,8 +250,9 @@ def _apply_file_verify_filters(
 ):
     """Apply shared filters to a File query. Expects File already joined to Deployment.
 
-    Files are filtered to file_type IN ("image", "video"); raw frame rows
-    (file_type="frame") stay out of the Files verify tab grid.
+    Files are filtered to file_type IN ("image", "frame"): every tile in
+    the Images grid is a single still. Video rows hold mp4 metadata and
+    stay out of the grid.
 
     `min_label_confidence` / `max_label_confidence` filter on
     `Detection.label_confidence` (the classifier score). NULL values are
@@ -295,7 +284,7 @@ def _apply_file_verify_filters(
         max_label_confidence = None
         project_floor = None
 
-    query = query.filter(File.file_type.in_(("image", "video")))
+    query = query.filter(File.file_type.in_(("image", "frame")))
 
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
@@ -313,22 +302,9 @@ def _apply_file_verify_filters(
         query = query.filter(File.captured_at_local <= end_of_day)
 
     if labels:
-        # For videos, detections actually live on the frame rows. Match either
-        # the file itself (image) or any child frame (video).
-        FrameFile = File.__table__.alias("frame_file")
         label_subq = (
             select(Detection.id)
-            .select_from(Detection)
-            .where(
-                or_(
-                    Detection.file_id == File.id,
-                    Detection.file_id.in_(
-                        select(FrameFile.c.id).where(
-                            FrameFile.c.source_video_id == File.id
-                        )
-                    ),
-                )
-            )
+            .where(Detection.file_id == File.id)
             .where(Detection.label_taxonomy_id.in_(labels))
         )
         if project_floor is not None:
@@ -358,20 +334,9 @@ def _apply_file_verify_filters(
         or min_label_confidence is not None
         or max_label_confidence is not None
     ):
-        FrameFile = File.__table__.alias("frame_file")
         conf_subq = (
             select(Detection.id)
-            .select_from(Detection)
-            .where(
-                or_(
-                    Detection.file_id == File.id,
-                    Detection.file_id.in_(
-                        select(FrameFile.c.id).where(
-                            FrameFile.c.source_video_id == File.id
-                        )
-                    ),
-                )
-            )
+            .where(Detection.file_id == File.id)
         )
         if project_floor is not None:
             conf_subq = conf_subq.where(
@@ -438,11 +403,11 @@ def get_files_for_verify(
     sort: str = "newest",
     seed: int | None = None,
 ) -> list[dict]:
-    """List file summaries for the Files verify tab.
+    """List file summaries for the Images verify tab.
 
-    Returns a list of dicts shaped like FileSummary. One row per media item:
-    file_type IN ("image", "video"). Video rows use best_frame_path for
-    thumbnails; frame files are hidden from the grid.
+    Returns a list of dicts shaped like FileSummary. One row per still:
+    file_type IN ("image", "frame"). Video rows hold mp4 metadata and
+    are not listed here.
     """
     query = (
         db.query(File)
@@ -480,29 +445,9 @@ def get_files_for_verify(
         .all()
     )
 
-    # Collect video ids so we can pull detections from their best_frame rows
-    # in one batched query instead of per-file.
-    video_ids = [f.id for f in files if f.file_type == "video"]
-    best_frame_detections: dict[str, list[Detection]] = {}
-    if video_ids:
-        video_meta = {f.id: f.best_frame_number for f in files if f.file_type == "video"}
-        frame_rows = (
-            db.query(File)
-            .options(joinedload(File.detections))
-            .filter(File.source_video_id.in_(video_ids))
-            .all()
-        )
-        for frame in frame_rows:
-            target = video_meta.get(frame.source_video_id)
-            if target is not None and frame.source_frame_number == target:
-                best_frame_detections[frame.source_video_id] = list(frame.detections)
-
     summaries: list[dict] = []
     for f in files:
-        if f.file_type == "video":
-            dets = best_frame_detections.get(f.id, [])
-        else:
-            dets = list(f.detections)
+        dets = list(f.detections)
 
         # Collect unique labels for this file's visible detections.
         label_set: set[str] = set()
