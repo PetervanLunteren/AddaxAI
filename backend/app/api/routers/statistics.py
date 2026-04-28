@@ -19,6 +19,7 @@ from app.api.schemas.statistics import (
     ObservationRateMapResponse,
     SpeciesCount,
     VerificationProgress,
+    VerificationProgressByLabel,
 )
 from app.api.schemas.timeline import TimelineResponse
 from app.db.base import get_db
@@ -162,6 +163,22 @@ def verification_progress(
     db: Session = Depends(get_db),
 ) -> VerificationProgress:
     return stats_crud.get_verification_progress(
+        db, project_id, _parse_site_ids(site_ids), date_from, date_to
+    )
+
+
+@router.get(
+    "/verification-progress-by-label",
+    response_model=VerificationProgressByLabel,
+)
+def verification_progress_by_label(
+    project_id: str = Query(...),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> VerificationProgressByLabel:
+    return stats_crud.get_verification_progress_by_label(
         db, project_id, _parse_site_ids(site_ids), date_from, date_to
     )
 

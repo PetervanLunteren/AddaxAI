@@ -49,7 +49,7 @@ import { StatusBadgeCluster } from "../components/verify/StatusBadgeCluster";
 
 const EVENTS_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
 
-type VerifyTab = "events" | "images" | "observations";
+type VerifyTab = "events" | "captures" | "observations";
 
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
@@ -148,7 +148,7 @@ export default function VerifyPage() {
   // Tab state from URL
   const rawTab = searchParams.get("tab");
   const activeTab: VerifyTab =
-    rawTab === "images" || rawTab === "observations" ? rawTab : "events";
+    rawTab === "captures" || rawTab === "observations" ? rawTab : "events";
   const setActiveTab = useCallback(
     (tab: VerifyTab) => {
       // Cancel in-flight queries for the tab we are leaving so the browser
@@ -157,7 +157,7 @@ export default function VerifyPage() {
         queryClient.cancelQueries({ queryKey: ["events"] });
         queryClient.cancelQueries({ queryKey: ["event-count-filtered"] });
       }
-      if (tab !== "images") {
+      if (tab !== "captures") {
         queryClient.cancelQueries({ queryKey: ["files-for-verify"] });
         queryClient.cancelQueries({ queryKey: ["files-count-for-verify"] });
         queryClient.cancelQueries({ queryKey: ["files-verification-stats"] });
@@ -345,7 +345,7 @@ export default function VerifyPage() {
               <h1 className="text-2xl font-bold tracking-tight">Verify</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
-                  ? "Review and verify AI results. Events groups files by time, Images is one tile per still image or extracted video frame, Observations is one per detection."
+                  ? "Confirm or correct AI detections. Pick the unit that fits your task."
                   : "Run a deployment analysis to get started"}
               </p>
             </div>
@@ -359,7 +359,7 @@ export default function VerifyPage() {
           {(
             [
               ["events", "Events"],
-              ["images", "Images"],
+              ["captures", "Captures"],
               ["observations", "Observations"],
             ] as const
           ).map(([tab, label]) => (
@@ -378,7 +378,7 @@ export default function VerifyPage() {
         </div>
 
         {/* Tab content */}
-        {activeTab === "images" ? (
+        {activeTab === "captures" ? (
           <FilesTab
             projectId={projectId!}
             filters={filters}

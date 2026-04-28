@@ -10,7 +10,6 @@
 
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
-import { CalendarIcon } from "lucide-react";
 
 import { Button } from "./button";
 import { Calendar } from "./calendar";
@@ -68,7 +67,6 @@ export function DateRangePicker({
             "w-full h-9 justify-start text-sm font-normal"
           }
         >
-          <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
           <span className="truncate">{label}</span>
         </Button>
       </PopoverTrigger>

@@ -886,7 +886,16 @@ def get_event_verification_stats(
     )
     total_observations = obs_q.scalar() or 0
 
-    # Verified detection count (still useful for verification progress)
+    # Per-detection counts for the Observations verification progress.
+    # Denominator and numerator share the same filter so the ratio is
+    # meaningful (sharing it with `total_observations`, which is a MaxN
+    # sum, would give nonsense like 23 / 12).
+    det_total_q = (
+        db.query(func.count(Detection.id))
+        .join(File, File.id == Detection.file_id)
+        .join(event_files, event_files.c.file_id == File.id)
+        .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
+    )
     det_verified_q = (
         db.query(
             func.sum(func.cast(Detection.verified, Integer)),
@@ -896,11 +905,16 @@ def get_event_verification_stats(
         .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
     )
     if project_floor is not None:
-        det_verified_q = det_verified_q.filter(
-            or_(Detection.confidence >= project_floor, Detection.verified == True)  # noqa: E712
+        floor_clause = or_(
+            Detection.confidence >= project_floor,
+            Detection.verified == True,  # noqa: E712
         )
+        det_total_q = det_total_q.filter(floor_clause)
+        det_verified_q = det_verified_q.filter(floor_clause)
     if min_confidence is not None:
+        det_total_q = det_total_q.filter(Detection.confidence >= min_confidence)
         det_verified_q = det_verified_q.filter(Detection.confidence >= min_confidence)
+    total_detections = int(det_total_q.scalar() or 0)
     verified_detections = int(det_verified_q.scalar() or 0)
 
     # Event-level verification: total and fully-verified counts.
@@ -957,6 +971,7 @@ def get_event_verification_stats(
         "total_max_n_frames": maxn_stats[0] or 0,
         "verified_max_n_frames": int(maxn_stats[1] or 0),
         "total_observations": total_observations,
+        "total_detections": total_detections,
         "verified_detections": verified_detections,
     }
 

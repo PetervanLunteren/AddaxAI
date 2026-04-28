@@ -76,7 +76,7 @@ export function VerifyMoreFilters({
           className="w-full h-9 justify-start text-sm font-normal"
         >
           <Filter className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
-          <span>More</span>
+          <span>More filters</span>
           {activeCount > 0 && (
             <span className="ml-auto px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded-full">
               {activeCount}

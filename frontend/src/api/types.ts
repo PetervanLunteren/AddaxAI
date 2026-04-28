@@ -678,6 +678,7 @@ export interface EventVerificationStats {
   total_max_n_frames: number;
   verified_max_n_frames: number;
   total_observations: number;
+  total_detections: number;
   verified_detections: number;
 }
 

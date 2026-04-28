@@ -70,6 +70,17 @@ export interface VerificationProgress {
   verified_files: number;
 }
 
+export interface LabelProgressRow {
+  label_taxonomy_id: string | null;
+  display_name: string;
+  verified: number;
+  total: number;
+}
+
+export interface VerificationProgressByLabel {
+  rows: LabelProgressRow[];
+}
+
 export interface SpeciesObservationCount {
   label: string;
   label_taxonomy_id: string | null;
@@ -253,6 +264,19 @@ export const statisticsApi = {
   getVerificationProgress: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
     return api.get<VerificationProgress>(`/api/statistics/verification-progress?${query}`);
+  },
+
+  /**
+   * Per-class verification progress. Each row is one label; counts are
+   * verified / total detections that pass the project floor (with the
+   * verified-override). Sorted by total descending. Excludes the
+   * "false detection" label.
+   */
+  getVerificationProgressByLabel: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
+    const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
+    return api.get<VerificationProgressByLabel>(
+      `/api/statistics/verification-progress-by-label?${query}`,
+    );
   },
 
   /**

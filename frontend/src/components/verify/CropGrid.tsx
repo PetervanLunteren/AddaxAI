@@ -68,13 +68,13 @@ interface CropGridProps {
 const COLUMN_PRESETS: Record<TileSize, [number, number, number, number]> = {
   S: [6, 8, 12, 14],
   M: [3, 5, 7, 9],
-  L: [2, 3, 4, 6],
+  L: [2, 3, 3, 4],
 };
 
 const ESTIMATE_SIZE: Record<TileSize, number> = {
   S: 140,
   M: 180,
-  L: 350,
+  L: 380,
 };
 
 const DIVIDER_HEIGHT = 32;

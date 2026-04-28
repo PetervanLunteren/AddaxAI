@@ -1,7 +1,7 @@
 /**
- * FilesTab - per-image verification workflow ("Images" tab).
+ * FilesTab - per-capture verification workflow ("Captures" tab).
  *
- * Shows one tile per still image and per extracted video frame for a
+ * Shows one tile per still photo and per extracted video frame for a
  * project, with the same filter surface as the Events tab (sites, dates,
  * labels, verification state), paginated at 48/page. Clicking a tile
  * opens FileDetailModal. Filter state is owned by the parent (VerifyPage)
@@ -26,8 +26,8 @@ import { FileCard } from "./FileCard";
 import { FileDetailModal } from "./FileDetailModal";
 import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
 import { VerifyFilterBar } from "./VerifyFilterBar";
-import { HelpSheet } from "./HelpSheet";
-import { ImagesWelcomePopover } from "./ImagesWelcomePopover";
+import { CapturesHelpSheet } from "./CapturesHelpSheet";
+import { CapturesWelcomePopover } from "./CapturesWelcomePopover";
 import { SortSelector } from "./SortSelector";
 import {
   VerifyProgressPill,
@@ -67,11 +67,11 @@ export function FilesTab({
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
-    () => !localStorage.getItem("addaxai:imagesWelcomeDismissed")
+    () => !localStorage.getItem("addaxai:capturesWelcomeDismissed")
   );
   const handleDismissWelcome = useCallback(() => {
     setShowWelcome(false);
-    localStorage.setItem("addaxai:imagesWelcomeDismissed", "1");
+    localStorage.setItem("addaxai:capturesWelcomeDismissed", "1");
   }, []);
 
   const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
@@ -240,7 +240,7 @@ export function FilesTab({
               onFiltersChange(updated);
             }}
           />
-          <VerifyProgressPill pct={pct} label="files verified" />
+          <VerifyProgressPill pct={pct} label="captures verified" />
         </VerifyToolbar>
       )}
 
@@ -325,9 +325,9 @@ export function FilesTab({
         filters={debouncedFilters}
       />
 
-      <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <CapturesHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
-      <ImagesWelcomePopover
+      <CapturesWelcomePopover
         open={showWelcome}
         onDismiss={handleDismissWelcome}
       />

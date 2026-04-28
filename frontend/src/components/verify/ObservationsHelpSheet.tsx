@@ -39,55 +39,51 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <div>
-                The AI embeds each detection crop into a vector based on visual
-                similarity, then sorts detections so similar-looking ones appear
-                next to each other. This makes it easy to spot mislabels and
-                verify in bulk. Each card shows the label (e.g.{" "}
+                The AI turns each detection crop into a vector and groups
+                similar-looking crops next to each other. This makes
+                mislabels easy to spot and easy to fix in bulk. Each card
+                shows its label (e.g.{" "}
                 <Badge variant="default" className="text-[9px] px-1 py-0 leading-tight capitalize">
                   zebra
                 </Badge>
                 ) below the crop.
               </div>
               <p>
-                This tab verifies at the detection level. Each
-                individual detection crop can be verified independently, which
-                is useful for bulk-verifying labels across your entire
-                dataset rather than going file by file. It cannot verify at the
-                file level because it only shows individual crops, not the full
-                image, so you cannot know whether the file is missing detections
-                that should be there.
+                This tab verifies at the detection level. Each crop is its
+                own unit. This is the fastest way to sweep mislabels across
+                the whole project. It does not verify whole files: you only
+                see the crop, so you cannot tell if the original image is
+                missing other detections.
+              </p>
+              <p>
+                Want to work by event or by capture instead? Use the Events
+                or Captures tab.
               </p>
             </div>
           </section>
 
-          {/* Sort mode */}
+          {/* Sort */}
           <section>
-            <h3 className="text-sm font-semibold mb-2">Sort mode</h3>
+            <h3 className="text-sm font-semibold mb-2">Sort</h3>
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Switch between{" "}
-                <span className="inline-flex rounded-md bg-muted p-0.5 align-middle">
-                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium rounded bg-background text-foreground shadow-sm">Sort</span>
-                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium text-muted-foreground">Search</span>
-                </span>
-                {" "}modes using the toggle in the toolbar. The default view is
-                Sort, where detections are arranged using a nearest-neighbor
-                walk so visually similar crops sit side by side. Sorting updates
-                automatically when filters change.
+                The grid sorts by visual similarity by default. Use the
+                sort selector in the toolbar to choose another order:
+              </p>
+              <ul className="list-disc list-inside space-y-1 ml-1">
+                <li>Similarity (typical first): greedy nearest-neighbor walk; similar crops sit side by side.</li>
+                <li>Similarity (outliers first): same walk in reverse; unusual crops show up at the top.</li>
+                <li>Newest / Oldest: by capture date.</li>
+                <li>Lowest classifier confidence: hardest cases first.</li>
+              </ul>
+              <p>
+                Sorting refreshes automatically when filters change.
               </p>
               <p>
-                "Noise first" reverses the order so outliers (unusual
-                detections that don't look like their neighbors) appear at the top.
-              </p>
-              <p>
-                Use the filter in the toolbar to switch between{" "}
-                <span className="inline-flex rounded-md bg-muted p-0.5 align-middle">
-                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium text-muted-foreground">All</span>
-                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium rounded bg-background text-foreground shadow-sm">Unverified</span>
-                  <span className="px-1.5 py-0 text-[9px] leading-tight font-medium text-muted-foreground">Suspicious</span>
-                </span>
-                {" "}detections. The counts update as you verify.
+                The Verified filter in the filter bar lets you scope to
+                "All", "Unverified" (default), or "Suspicious". Counts
+                update as you verify.
               </p>
             </div>
           </section>
@@ -98,11 +94,12 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Right-click a detection and select "Find similar", or use the
-                button in the detail window, to search for
-                visually similar detections across the dataset. Results are
-                ranked by similarity score. Use the threshold slider to filter
-                results.
+                Select a detection and press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code>,
+                or click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Find similar</code> in
+                the selection bar or in the detail window. The grid switches
+                to search mode against that anchor crop. Results are ranked
+                by similarity score; the threshold slider above the grid
+                filters them.
               </p>
             </div>
           </section>
@@ -140,13 +137,9 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
                 </span>
               </div>
               <p>
-                Use the{" "}
-                <span className="inline-flex items-center gap-0.5 align-middle px-1 py-0 rounded-md bg-muted text-[9px] leading-tight font-medium text-foreground">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "#882000" }} />
-                  Suspicious
-                </span>
-                {" "}filter to focus on these. Once you verify a detection, it is
-                no longer flagged as suspicious, even if its neighbors disagree.
+                Pick "Suspicious" in the Verified filter to focus on these.
+                Once you verify a detection, it is no longer flagged as
+                suspicious, even if its neighbours disagree.
               </p>
             </div>
           </section>
@@ -184,14 +177,14 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Click a card to select it.{" "}
-                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift+Click</code> to
-                select a range from the last clicked card.{" "}
-                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+Click</code> to
-                toggle individual cards without clearing the selection.
-                A floating bar appears with: Verify, Relabel,
-                Find similar, Deselect, and Accept suggestions
-                (when suggestions are available).
+                Click a card to select it.
+                Use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + Click</code> to
+                select a range from the last clicked card.
+                Use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod} + Click</code> to
+                toggle a card on or off without clearing the rest. With
+                one or more cards selected, a floating bar appears with:
+                Verify, Mark false, Relabel, Find similar, Deselect, and
+                Accept suggestions (when suggestions exist).
               </p>
               <p>
                 Double-click any card to open the detail window.
@@ -207,13 +200,14 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
                 Keyboard shortcuts:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-1">
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> verify selected</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">X</code> mark as false detection</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">R</code> relabel selected</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code> find similar</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code> accept suggestions for selected</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod}+A</code> select all</li>
-                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Escape</code> deselect</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> verify the selection</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">X</code> mark the selection as false detection</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">R</code> relabel the selection</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code> find similar to the selection</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code> accept neighbour suggestions for the selection</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code> apply your shortcut labels to the selection</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{mod} + A</code> select all visible</li>
+                <li><code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Esc</code> deselect</li>
               </ul>
             </div>
           </section>
@@ -224,11 +218,12 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                The gear icon opens settings:{" "}
-                <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Noise first</code> (reverse sort
-                order), <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Label dividers</code> (group headers between labels), and tile
-                size (<code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">S</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">M</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">L</code>).
+                The gear icon opens settings:
               </p>
+              <ul className="list-disc list-inside space-y-1 ml-1">
+                <li>Label dividers: show a header between groups of the same label. Only available when sorting by similarity.</li>
+                <li>Tile size: <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">S</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">M</code> / <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">L</code>.</li>
+              </ul>
             </div>
           </section>
         </div>

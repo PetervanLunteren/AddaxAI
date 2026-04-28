@@ -1,6 +1,8 @@
 /**
- * Help sheet with comprehensive guide for the event detail modal.
- * Slides in from the left, covering the toolbar area.
+ * Help sheet with comprehensive guide for the Captures tab and modal.
+ * Slides in from the left, covering the toolbar area. Mirrors the
+ * structure of HelpSheet.tsx (the Events guide) so users can transfer
+ * what they learn between tabs.
  */
 
 import {
@@ -28,7 +30,7 @@ import {
 } from "../ui/sheet";
 import { Separator } from "../ui/separator";
 
-interface HelpSheetProps {
+interface CapturesHelpSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -48,14 +50,14 @@ function ToolRow({
   );
 }
 
-export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
+export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Event verification guide</SheetTitle>
+          <SheetTitle>Capture verification guide</SheetTitle>
           <SheetDescription>
-            How to review and verify detections event by event
+            How to review and verify detections capture by capture
           </SheetDescription>
         </SheetHeader>
 
@@ -66,28 +68,25 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                The AI detects and labels animals, people, and vehicles
-                automatically. Browse your events here and verify them by
-                confirming or correcting the detections.
+                Each tile in this tab is one capture: a still photo or a
+                single frame extracted from a video. The AI detects and
+                labels animals, people, and vehicles automatically. Browse
+                here and verify by confirming or correcting the
+                detections.
               </p>
               <p>
-                This tab verifies at the event level. An event counts as
-                verified when all its MaxN frames are verified: the
-                representative frames, one per species. Blank events have no
-                MaxN frames, so marking any file verified counts as verifying
-                the event. The progress bar in the toolbar shows how many
-                events are verified.
+                This tab verifies at the capture level. A capture counts
+                as verified when you
+                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> on
+                it in the modal: the capture and all its detections are
+                marked verified. The progress bar in the toolbar shows
+                how many captures are verified.
               </p>
               <p>
-                Verification still works file by file. When you press Enter
-                on a file in the modal, that file and its detections are
-                marked verified. The event status updates once all MaxN
-                frames are covered.
-              </p>
-              <p>
-                Want to work capture by capture instead of by event? Use the
-                Captures tab. Want one detection at a time across the whole
-                project? Use the Observations tab.
+                Want to work by event (a group of files captured close
+                together in time)? Use the Events tab. Want one detection
+                at a time across the whole project? Use the Observations
+                tab.
               </p>
             </div>
           </section>
@@ -98,34 +97,23 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Each event groups images and videos captured close together
-                in time. The event opens to its first unverified MaxN frame:
-                the image where the peak count for each species was observed.
-                MaxN frames carry
-                a <code className="bg-primary text-white px-1 py-0.5 rounded-sm text-xs">MaxN</code> badge
-                in the filmstrip, tinted with the species colour. You do not
-                need to verify every file. Verifying the MaxN frames is
-                usually enough for accurate statistics.
-                Use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + ← / →</code> to
-                walk every frame in the event when you want to.
-              </p>
-              <p>
-                For video files, verification works at the frame level set by
-                the project's "Video frame rate" setting. The MaxN frame is
-                shown first; you can still view and verify the other
-                analysed frames.
-                Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">P</code> to
-                toggle between frame view and video playback.
+                Click a tile to open it. The label pill on each box shows
+                what the AI thinks. If the labels look right,
+                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
+                verify and jump to the next unverified capture. You only
+                need to correct what the AI got wrong.
               </p>
               <p>
                 Add missing detections
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code>,
                 or draw one yourself
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">D</code>.
-                If all labels look right,
-                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
-                verify and move on. You only need to correct what the AI got
-                wrong.
+                Remove false positives
+                with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Del</code>.
+                Mark a capture as empty
+                with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">E</code>:
+                this wipes the detections, marks the capture verified, and
+                jumps to the next.
               </p>
               <p>
                 Quick workflow: review the labels.
@@ -135,21 +123,22 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 remove false positives.
                 Hit <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
                 verify and move on.
-                Use <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + ← / →</code> to
-                walk every frame in the event. To verify multiple files at
-                once, <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Shift + Click</code> thumbnails
-                in the filmstrip to select a range,
-                or <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">{navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"} + A</code> to
-                select all. Then
-                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
-                verify them all.
+              </p>
+              <p>
+                Captures that came from a video have
+                a <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Video</code> badge
+                on the tile. In the modal,
+                press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">P</code> to
+                play the source clip. The box overlays follow playback.
+                Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">P</code> again
+                to return to the still frame.
               </p>
               <p>
                 Click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Show keyboard shortcuts</code> at
                 the bottom of the sidebar to see every shortcut. You can
                 assign labels to
                 keys <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code> to
-                relabel every detection in a file with one key.
+                relabel every detection in a capture with one key.
               </p>
             </div>
           </section>
@@ -163,15 +152,16 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 Draw a new detection box manually.
               </ToolRow>
               <ToolRow icon={<ChevronsUpDown className="h-4 w-4" />}>
-                Choose the label for drawn boxes. Appears in the toolbar when
-                draw mode is active.
+                Choose the label for drawn boxes. Appears in the toolbar
+                when draw mode is active.
               </ToolRow>
               <ToolRow icon={<SquarePlus className="h-4 w-4" />}>
-                Promote the highest-confidence below-threshold AI box into a
-                confirmed detection.
+                Promote the highest-confidence below-threshold AI box into
+                a confirmed detection.
               </ToolRow>
               <ToolRow icon={<Play className="h-4 w-4" />}>
-                Toggle between frame view and video playback (for video files).
+                Toggle between the still frame and video playback (only
+                for captures that came from a video).
               </ToolRow>
               <ToolRow icon={<ZoomIn className="h-4 w-4" />}>
                 Zoom in.
@@ -183,8 +173,8 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 Reset zoom to fit.
               </ToolRow>
               <ToolRow icon={<Scale className="h-4 w-4" />}>
-                Adjust the view threshold for this event. Local override; it
-                does not change the project setting. Lowering it shows
+                Adjust the view threshold for this capture. Local override;
+                it does not change the project setting. Lowering it shows
                 lower-confidence detections in the modal.
               </ToolRow>
               <ToolRow icon={<Sun className="h-4 w-4" />}>
@@ -207,8 +197,6 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               </ToolRow>
             </div>
           </section>
-
-
         </div>
       </SheetContent>
     </Sheet>

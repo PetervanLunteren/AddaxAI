@@ -16,10 +16,10 @@ import {
   Legend,
   type ChartOptions,
 } from "chart.js";
-import { Eye, FileImage, Info, Layers, FolderOpen, MapPin, CalendarDays } from "lucide-react";
+import { Eye, FileImage, Layers, FolderOpen, MapPin, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { DashboardAboutPopover } from "../components/dashboard/DashboardAboutPopover";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
@@ -201,18 +201,30 @@ export default function DashboardPage() {
               <div>
                 <div className="flex items-center gap-1.5">
                   <CardTitle className="text-lg">Taxa detected</CardTitle>
-                  <TooltipProvider delayDuration={200}>
-                    <UITooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-sm p-3 space-y-2">
-                        <p><span className="font-semibold">Frequency</span> counts how many independent events a species appeared in, regardless of how many individuals were in each event. A single cow in one event counts the same as 20 cows in another. It answers &ldquo;how often does this species show up?&rdquo;</p>
-                        <p><span className="font-semibold">Abundance</span> sums the MaxN values, so it reflects how many individuals were observed. 20 cows in one event contributes 20 to the total. It answers &ldquo;how many individuals were observed?&rdquo;</p>
-                        <p>Both are standard metrics in camera trap ecology. Frequency (event count) is what RAI is based on.</p>
-                      </TooltipContent>
-                    </UITooltip>
-                  </TooltipProvider>
+                  <DashboardAboutPopover
+                    what={
+                      <>
+                        <p>
+                          Top 10 taxa in the filtered project view, ranked by
+                          either how often they appear (Frequency) or how
+                          many individuals were observed (Abundance). Switch
+                          with the dropdown.
+                        </p>
+                      </>
+                    }
+                    how={
+                      <>
+                        <p>
+                          Frequency counts the number of independent events
+                          containing the taxon. Abundance sums MaxN across
+                          those events. Events come from files captured
+                          close together in time, grouped by the project's
+                          independence interval. Frequency is the basis for
+                          RAI in camera-trap ecology.
+                        </p>
+                      </>
+                    }
+                  />
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {speciesCountMode === "events"
@@ -272,7 +284,6 @@ export default function DashboardPage() {
           siteIds={siteIdsParam}
           dateFrom={dateRange.startDate ?? undefined}
           dateTo={dateRange.endDate ?? undefined}
-          trapNights={trapNights}
         />
         <VerificationProgressChart
           projectId={projectId!}

@@ -10,7 +10,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import {
   Select,
@@ -19,12 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import {
-  Tooltip as UITooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { statisticsApi, type SunBands } from "../../api/statistics";
 import { normalizeLabel } from "../../utils/labels";
 import type { DateRange } from "./index";
@@ -328,20 +322,27 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <CardTitle className="text-lg">Activity pattern</CardTitle>
-              <TooltipProvider delayDuration={200}>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-sm p-3">
-                    <p>
-                      Shows observation counts by hour of day based on when
-                      each event was recorded. Use the species filter to
-                      compare activity patterns between species.
-                    </p>
-                  </TooltipContent>
-                </UITooltip>
-              </TooltipProvider>
+              <DashboardAboutPopover
+                what={
+                  <p>
+                    Observation counts by hour of day for the filtered
+                    project view. The coloured bands behind the bars
+                    show night, twilight, and day at the project's
+                    averaged camera location. Use the species filter to
+                    compare patterns between taxa.
+                  </p>
+                }
+                how={
+                  <p>
+                    For each hour 0 to 23, sums MaxN across every event
+                    whose start time falls in that hour. The bands come
+                    from python-astral applied to the project's averaged
+                    site coordinates and IANA timezone for a date drawn
+                    from the filter range midpoint. When the project has
+                    no sites with coordinates, the bands are hidden.
+                  </p>
+                }
+              />
             </div>
             <p className="text-sm text-muted-foreground">
               Observations by hour of day

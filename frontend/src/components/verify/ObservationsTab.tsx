@@ -17,6 +17,7 @@ import {
   Layers,
   Loader2,
   RefreshCw,
+  Search,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -995,8 +996,10 @@ export function ObservationsTab({
                 No search active
               </p>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Right-click on a detection and select &quot;Find similar&quot; to search
-                for visually similar observations.
+                Select a detection and press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code>,
+                or click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Find similar</code> in
+                the selection bar or the detail window, to search for
+                visually similar observations.
               </p>
             </CardContent>
           </Card>

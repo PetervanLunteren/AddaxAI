@@ -28,7 +28,6 @@ const CONCURRENT_FILL = "rgba(15, 96, 100, 0.18)";
 const CONCURRENT_STROKE = "#0f6064";
 const GRID_STROKE = "rgba(0, 0, 0, 0.06)";
 const CONNECTOR_STROKE = "rgba(100, 116, 139, 0.55)";
-const TODAY_STROKE = "#882000";
 
 type Density = "normal" | "compact";
 
@@ -298,11 +297,6 @@ export function DeploymentTimelineChart({
 
     const monthTicks = generateMonthTicks(xMin, xMax);
     const labelledIdx = thinLabels(monthTicks, plotWidth);
-    const todayMs = Date.UTC(
-      new Date().getUTCFullYear(),
-      new Date().getUTCMonth(),
-      new Date().getUTCDate(),
-    );
 
     return {
       xMin,
@@ -320,7 +314,6 @@ export function DeploymentTimelineChart({
       yMsToX,
       monthTicks,
       labelledIdx,
-      todayMs,
     };
   }, [data, width, density, densityConfig]);
 
@@ -394,9 +387,6 @@ export function DeploymentTimelineChart({
     navigate(`/projects/${projectId}/deployments?info=${dep.deployment_id}`);
   };
 
-  const todayInRange =
-    geometry.todayMs >= geometry.xMin && geometry.todayMs <= geometry.xMax;
-
   return (
     <div ref={containerRef} className="w-full">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pb-3 text-xs text-muted-foreground">
@@ -407,14 +397,6 @@ export function DeploymentTimelineChart({
             style={{ backgroundColor: BAR_FILL }}
           />
           Trap nights
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            aria-hidden
-            className="inline-block h-3 w-0.5"
-            style={{ backgroundColor: TODAY_STROKE }}
-          />
-          Today
         </span>
       </div>
       <svg
@@ -777,28 +759,6 @@ export function DeploymentTimelineChart({
           </text>
         )}
 
-        {/* Today line on top of everything */}
-        {todayInRange && (
-          <g>
-            <line
-              x1={geometry.dateToX(geometry.todayMs)}
-              x2={geometry.dateToX(geometry.todayMs)}
-              y1={geometry.axisY}
-              y2={geometry.concurrentBottom}
-              stroke={TODAY_STROKE}
-              strokeWidth={1}
-              strokeDasharray="3 3"
-            />
-            <text
-              x={geometry.dateToX(geometry.todayMs) + 4}
-              y={geometry.axisY + 12}
-              fontSize={10}
-              fill={TODAY_STROKE}
-            >
-              today — {formatDateLabel(formatYMD(geometry.todayMs))}
-            </text>
-          </g>
-        )}
       </svg>
     </div>
   );

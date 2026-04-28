@@ -19,7 +19,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ListTodo } from "lucide-react";
 
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
@@ -153,7 +152,6 @@ export function VerifyFilterBar({
                 className="w-full h-9 justify-start text-sm font-normal"
                 onClick={() => setLabelModalOpen(true)}
               >
-                <ListTodo className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
                 <span className="truncate">
                   {filters.labels?.length
                     ? `${filters.labels.length} labels`

@@ -124,6 +124,7 @@ class EventVerificationStats(BaseModel):
     total_max_n_frames: int
     verified_max_n_frames: int
     total_observations: int
+    total_detections: int
     verified_detections: int
 
 

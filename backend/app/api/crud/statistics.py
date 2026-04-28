@@ -15,12 +15,14 @@ from app.api.schemas.statistics import (
     DetectionCategories,
     DetectionTrendPoint,
     HourlyCount,
+    LabelProgressRow,
     ObservationRateMapFeature,
     ObservationRateMapResponse,
     SpeciesCount,
     SpeciesObservationCount,
     SunBands,
     VerificationProgress,
+    VerificationProgressByLabel,
 )
 from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 from app.ml.taxonomic_rank import RANK_COLUMNS as _RANK_COLUMNS
@@ -1071,56 +1073,38 @@ def get_detection_categories(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> DetectionCategories:
-    """Count observations (MaxN sum) by category plus blank-file count."""
-    # Category counts from EventObservation (MaxN-based)
-    from app.api.crud.deployment import site_ids_filter
+    """Count captures (still images and extracted video frames) per category.
 
-    category_query = (
+    Each capture is attributed to a single category by its
+    `observation_type` column, which encodes the priority rule
+    animal > human > vehicle > blank (see
+    `recalculate_observation_type` in `crud/file.py`). The four counts
+    therefore partition the captures: a photo with both an animal and
+    a person lands in Animals only, never both. The sum can be at most
+    the total capture count, never above it.
+    """
+    capture_types = ("image", "frame")
+
+    query = (
         select(
-            func.coalesce(
-                func.sum(case(
-                    (EventObservation.category == "animal", EventObservation.max_n),
-                    else_=0,
-                )), 0
-            ).label("animal_count"),
-            func.coalesce(
-                func.sum(case(
-                    (EventObservation.category == "person", EventObservation.max_n),
-                    else_=0,
-                )), 0
-            ).label("person_count"),
-            func.coalesce(
-                func.sum(case(
-                    (EventObservation.category == "vehicle", EventObservation.max_n),
-                    else_=0,
-                )), 0
-            ).label("vehicle_count"),
+            File.observation_type.label("obs_type"),
+            func.count(File.id).label("n"),
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
-    )
-    site_clause = site_ids_filter(site_ids)
-    if site_clause is not None:
-        category_query = category_query.where(site_clause)
-    cat_row = db.execute(category_query).one()
-
-    # Empty (blank) file count
-    empty_query = (
-        select(func.count(File.id))
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .where(File.observation_type == "blank")
+        .where(File.file_type.in_(capture_types))
+        .group_by(File.observation_type)
     )
-    empty_query = _apply_filters(empty_query, project_id, site_ids, date_from, date_to)
-    empty_count = db.execute(empty_query).scalar() or 0
+    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
+    counts: dict[str, int] = {
+        row.obs_type: int(row.n or 0) for row in db.execute(query).all()
+    }
 
     return DetectionCategories(
-        animal_count=cat_row.animal_count or 0,
-        person_count=cat_row.person_count or 0,
-        vehicle_count=cat_row.vehicle_count or 0,
-        empty_count=empty_count,
+        animal_count=counts.get("animal", 0),
+        person_count=counts.get("human", 0),
+        vehicle_count=counts.get("vehicle", 0),
+        empty_count=counts.get("blank", 0),
     )
 
 
@@ -1152,6 +1136,67 @@ def get_verification_progress(
         total_files=row.total_files or 0,
         verified_files=row.verified_files or 0,
     )
+
+
+def get_verification_progress_by_label(
+    db: Session,
+    project_id: str,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> VerificationProgressByLabel:
+    """Per-class verified vs total detection counts.
+
+    One row per (label_taxonomy_id, category). Each detection has
+    exactly one label so rows partition cleanly. Counts respect the
+    project's detection threshold (floor with the verified override).
+    `false detection` rows are excluded since they are not a real class.
+    Sorted by total descending so the highest-support classes come first.
+    """
+    threshold = _get_detection_threshold(db, project_id)
+
+    query = (
+        select(
+            Detection.label_taxonomy_id.label("label_taxonomy_id"),
+            Detection.category.label("category"),
+            LabelTaxonomy.display_name.label("display_name"),
+            func.count(Detection.id).label("total"),
+            func.sum(
+                case((Detection.verified == True, 1), else_=0)  # noqa: E712
+            ).label("verified"),
+        )
+        .select_from(Detection)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .outerjoin(
+            LabelTaxonomy,
+            LabelTaxonomy.id == Detection.label_taxonomy_id,
+        )
+        .where(
+            (Detection.label.is_(None)) | (Detection.label != "false detection"),
+        )
+        .group_by(
+            Detection.label_taxonomy_id,
+            Detection.category,
+            LabelTaxonomy.display_name,
+        )
+        .order_by(func.count(Detection.id).desc())
+    )
+    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
+    query = _apply_threshold(query, threshold)
+
+    rows: list[LabelProgressRow] = []
+    for row in db.execute(query).all():
+        display = row.display_name or (row.category or "unknown").capitalize()
+        rows.append(
+            LabelProgressRow(
+                label_taxonomy_id=row.label_taxonomy_id,
+                display_name=display,
+                verified=int(row.verified or 0),
+                total=int(row.total or 0),
+            )
+        )
+    return VerificationProgressByLabel(rows=rows)
 
 
 # ---------------------------------------------------------------------------

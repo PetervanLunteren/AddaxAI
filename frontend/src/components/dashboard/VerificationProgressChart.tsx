@@ -1,13 +1,15 @@
 /**
- * Three stacked progress bars showing verification progress
- * for MaxN frames, files, and detections.
+ * Three stacked progress bars showing verification progress for the
+ * three verify-tab units: events, captures, and observations.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
-import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { Separator } from "../ui/separator";
+import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { eventsApi } from "../../api/events";
+import { filesApi } from "../../api/files";
+import { statisticsApi } from "../../api/statistics";
 
 interface VerificationProgressChartProps {
   projectId: string;
@@ -22,19 +24,19 @@ interface BarRow {
   total: number;
 }
 
-function ProgressBar({ label, verified, total }: BarRow) {
+function SlimProgressRow({ label, verified, total }: BarRow) {
   const pct = total > 0 ? (verified / total) * 100 : 0;
 
   return (
-    <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-      <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="text-muted-foreground">
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-baseline text-sm">
+        <span className="truncate pr-2">{label}</span>
+        <span className="text-muted-foreground tabular-nums shrink-0">
           {verified.toLocaleString()} of {total.toLocaleString()}
           {total > 0 && ` (${Math.round(pct)}%)`}
         </span>
       </div>
-      <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-300"
           style={{ width: `${pct}%`, backgroundColor: "#0f6064" }}
@@ -50,44 +52,76 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   dateFrom,
   dateTo,
 }) => {
-  const { data, isLoading } = useQuery({
-    queryKey: ["statistics", "verification-progress", projectId, siteIds, dateFrom, dateTo],
+  // Events + Observations rows come from the events stats endpoint, which
+  // scopes to events with at least one above-threshold detection (the same
+  // scope the Events tab uses). The Captures row reads the per-capture
+  // verification stats so its total matches the Captures tab even when an
+  // event is otherwise blank — captures are still verifiable items.
+  const filterArgs = {
+    site_ids: siteIds ? siteIds.split(",") : undefined,
+    date_from: dateFrom,
+    date_to: dateTo,
+  };
+
+  const { data: eventStats, isLoading: eventsLoading } = useQuery({
+    queryKey: ["statistics", "verification-progress", "events", projectId, siteIds, dateFrom, dateTo],
+    queryFn: () => eventsApi.verificationStats(projectId, filterArgs),
+  });
+  const { data: captureStats, isLoading: capturesLoading } = useQuery({
+    queryKey: ["statistics", "verification-progress", "captures", projectId, siteIds, dateFrom, dateTo],
+    queryFn: () => filesApi.verificationStats(projectId, filterArgs),
+  });
+  const { data: labelStats } = useQuery({
+    queryKey: ["statistics", "verification-progress", "by-label", projectId, siteIds, dateFrom, dateTo],
     queryFn: () =>
-      eventsApi.verificationStats(projectId, {
-        site_ids: siteIds ? siteIds.split(",") : undefined,
-        date_from: dateFrom,
-        date_to: dateTo,
-      }),
+      statisticsApi.getVerificationProgressByLabel(projectId, siteIds, dateFrom, dateTo),
   });
 
-  const rows: BarRow[] = data
-    ? [
-        { label: "MaxN frames", verified: data.verified_max_n_frames, total: data.total_max_n_frames },
-        { label: "Files", verified: data.verified_files, total: data.total_files },
-        { label: "Observations", verified: data.verified_detections, total: data.total_observations },
-      ]
-    : [];
+  const isLoading = eventsLoading || capturesLoading;
+  const rows: BarRow[] =
+    eventStats && captureStats
+      ? [
+          { label: "Events", verified: eventStats.events_fully_verified, total: eventStats.events_total },
+          { label: "Captures", verified: captureStats.verified_files, total: captureStats.total_files },
+          { label: "Observations", verified: eventStats.verified_detections, total: eventStats.total_detections },
+        ]
+      : [];
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-lg">Verification</CardTitle>
-          <TooltipProvider delayDuration={200}>
-            <UITooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-sm p-3 space-y-2">
-                <p><span className="font-semibold">Files</span> are individual images or video frames captured by the camera.</p>
-                <p><span className="font-semibold">MaxN frames</span> are the images where the peak count for each species was observed.</p>
-                <p><span className="font-semibold">Observations</span> are individual animal, person, or vehicle detections within files.</p>
-                <p>The <span className="font-semibold">Observations tab</span> verifies individual detection crops quickly by grouping visually similar ones together. It can&apos;t catch false negatives (missed animals) because you only see what the model found.</p>
-                <p>The <span className="font-semibold">Events tab</span> shows the full file with every object in context, which is the only way to spot missed detections. Use it to verify files and MaxN frames.</p>
-                <p>The <span className="font-semibold">Files tab</span> sits between the two: one tile per image or video, with the full frame and its detection overlay.</p>
-              </TooltipContent>
-            </UITooltip>
-          </TooltipProvider>
+          <DashboardAboutPopover
+            what={
+              <>
+                <p>Verification progress per unit:</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  <li>Events: files grouped by time.</li>
+                  <li>Captures: stills and video frames.</li>
+                  <li>Observations: AI detections.</li>
+                </ul>
+                <p>
+                  The list below shows verified vs total detections per
+                  label, sorted by support.
+                </p>
+              </>
+            }
+            how={
+              <>
+                <p>
+                  An event is verified when all its MaxN frames are. A
+                  capture is verified when you mark it. A detection is
+                  verified when you confirm or correct its label. The
+                  three rows are independent.
+                </p>
+                <p>
+                  Per-class rows count detections that pass the project
+                  threshold or are verified, and skip false detections.
+                </p>
+              </>
+            }
+          />
         </div>
       </CardHeader>
       <CardContent>
@@ -98,8 +132,23 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
         ) : rows.length > 0 ? (
           <div className="flex flex-col gap-3">
             {rows.map((row) => (
-              <ProgressBar key={row.label} {...row} />
+              <SlimProgressRow key={row.label} {...row} />
             ))}
+            {labelStats && labelStats.rows.length > 0 && (
+              <>
+                <Separator className="my-2" />
+                <div className="flex flex-col gap-3 max-h-48 overflow-y-auto pr-1">
+                  {labelStats.rows.map((row) => (
+                    <SlimProgressRow
+                      key={row.label_taxonomy_id ?? row.display_name}
+                      label={row.display_name}
+                      verified={row.verified}
+                      total={row.total}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-center h-40">

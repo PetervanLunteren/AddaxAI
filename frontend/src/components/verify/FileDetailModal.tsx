@@ -45,7 +45,7 @@ import type { EventFilterParams } from "../../api/types";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
-import { HelpSheet } from "./HelpSheet";
+import { CapturesHelpSheet } from "./CapturesHelpSheet";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 
@@ -1092,7 +1092,7 @@ export function FileDetailModal({
           </div>
         </div>
       </DialogContent>
-      <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <CapturesHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
     </Dialog>
   );
 }

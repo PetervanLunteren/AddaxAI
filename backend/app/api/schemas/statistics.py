@@ -69,6 +69,26 @@ class VerificationProgress(BaseModel):
     verified_files: int
 
 
+class LabelProgressRow(BaseModel):
+    """Per-class verification progress for the dashboard's scrollable list.
+
+    Counts are at the detection level: each detection has exactly one
+    label, so rows partition cleanly. `display_name` is read from
+    `label_taxonomy.display_name` when present, otherwise it falls back
+    to the capitalised category for built-in (Person / Vehicle) and
+    unclassified (Animal) detections.
+    """
+
+    label_taxonomy_id: str | None
+    display_name: str
+    verified: int
+    total: int
+
+
+class VerificationProgressByLabel(BaseModel):
+    rows: list[LabelProgressRow]
+
+
 class SpeciesObservationCount(BaseModel):
     """One species (or category) and its MaxN sum within a single deployment."""
 

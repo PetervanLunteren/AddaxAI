@@ -30,7 +30,7 @@ export type TimelineSort =
   | "recent";
 
 export const TIMELINE_SORT_OPTIONS: { value: TimelineSort; label: string }[] = [
-  { value: "alpha", label: "Site name (A → Z)" },
+  { value: "alpha", label: "Site name (alphabetically)" },
   { value: "chrono", label: "First deployment (earliest)" },
   { value: "trap-nights", label: "Trap-nights (most first)" },
   { value: "deployments", label: "Deployments (most first)" },
@@ -112,7 +112,7 @@ export function DeploymentTimelineFilterBar({
             value={filters.sort}
             onValueChange={(v) => update({ sort: v as TimelineSort })}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9 min-h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
