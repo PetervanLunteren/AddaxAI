@@ -270,9 +270,12 @@ def rollup_single_detection(
         threshold = top_conf
         walk_levels = ["family", "order", "class"]
     else:
-        # Path B: confidence rollup
+        # Path B: confidence rollup. Species sits at the front so models
+        # with multiple classes per species (e.g. age or sex variants of
+        # one species) can roll up sibling probabilities to the shared
+        # species before falling back to genus.
         threshold = ROLLUP_THRESHOLD
-        walk_levels = ["genus", "family", "order", "class"]
+        walk_levels = ["species", "genus", "family", "order", "class"]
 
     # Walk from most specific to broadest. At each level, find the
     # max-scoring taxon that crosses the threshold and is allowed

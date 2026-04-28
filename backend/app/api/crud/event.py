@@ -17,6 +17,120 @@ from app.models.event_observation import EventObservation
 
 logger = get_logger(__name__)
 
+VERIFY_SORT_VALUES = {"newest", "oldest", "random", "cls_low"}
+
+
+def _event_min_cls_subquery():
+    """Correlated scalar subquery: MIN(label_confidence) across all detections
+    on any file in the event. Used for the cls_low sort.
+    """
+    return (
+        select(func.min(Detection.label_confidence))
+        .select_from(event_files)
+        .join(File, File.id == event_files.c.file_id)
+        .join(Detection, Detection.file_id == File.id)
+        .where(event_files.c.event_id == Event.id)
+        .correlate(Event)
+        .scalar_subquery()
+    )
+
+
+def _event_sort_spec(sort: str, seed: int | None):
+    """Map (sort, seed) to (sort_key_expression, descending, nulls_last).
+
+    The sort_key is a single SQLAlchemy expression that defines display order
+    for the Events tab. The list query orders by it; the adjacent endpoint
+    derives next/prev predicates from the same key.
+    """
+    if sort == "newest":
+        return Event.event_start_local, True, False
+    if sort == "oldest":
+        return Event.event_start_local, False, False
+    if sort == "random":
+        if seed is None:
+            raise ValueError("random sort requires a seed")
+        return func.seeded_hash(Event.id, seed), False, False
+    if sort == "cls_low":
+        return _event_min_cls_subquery(), False, True
+    raise ValueError(f"unknown sort: {sort}")
+
+
+def _sort_order_by_clauses(sort_key, id_col, *, descending: bool, nulls_last: bool):
+    """ORDER BY clauses for a sort spec. NULLs go last when nulls_last is set."""
+    clauses = []
+    if nulls_last:
+        # False (non-NULL) sorts before True (NULL) when ascending.
+        clauses.append(sort_key.is_(None).asc())
+    if descending:
+        clauses.extend([sort_key.desc(), id_col.desc()])
+    else:
+        clauses.extend([sort_key.asc(), id_col.asc()])
+    return clauses
+
+
+def _sort_adjacency_predicates(
+    sort_key,
+    id_col,
+    current_value,
+    current_id: str,
+    *,
+    descending: bool,
+    nulls_last: bool,
+):
+    """Build (next_pred, prev_pred, next_order, prev_order) for adjacency.
+
+    `next` = the row immediately AFTER current in the displayed order.
+    `prev` = the row immediately BEFORE current.
+
+    For ASC + nulls_last (cls_low), NULL rows display at the end. The
+    predicates handle current-is-NULL and current-is-non-NULL separately.
+    """
+    if not nulls_last:
+        if descending:
+            next_pred = (sort_key < current_value) | (
+                (sort_key == current_value) & (id_col < current_id)
+            )
+            prev_pred = (sort_key > current_value) | (
+                (sort_key == current_value) & (id_col > current_id)
+            )
+            next_order = [sort_key.desc(), id_col.desc()]
+            prev_order = [sort_key.asc(), id_col.asc()]
+        else:
+            next_pred = (sort_key > current_value) | (
+                (sort_key == current_value) & (id_col > current_id)
+            )
+            prev_pred = (sort_key < current_value) | (
+                (sort_key == current_value) & (id_col < current_id)
+            )
+            next_order = [sort_key.asc(), id_col.asc()]
+            prev_order = [sort_key.desc(), id_col.desc()]
+        return next_pred, prev_pred, next_order, prev_order
+
+    # ASC + nulls_last: non-NULL rows ASC, then NULL rows by id ASC.
+    if current_value is None:
+        # Current is in the NULL bucket. After = NULL rows with larger id.
+        # Before = any non-NULL row, or NULL rows with smaller id.
+        next_pred = sort_key.is_(None) & (id_col > current_id)
+        prev_pred = sort_key.isnot(None) | (
+            sort_key.is_(None) & (id_col < current_id)
+        )
+    else:
+        # Current is non-NULL. After = non-NULL rows with larger key, or any
+        # NULL row. Before = non-NULL rows with smaller key.
+        next_pred = (
+            (sort_key.isnot(None) & (sort_key > current_value))
+            | (sort_key.isnot(None) & (sort_key == current_value) & (id_col > current_id))
+            | sort_key.is_(None)
+        )
+        prev_pred = sort_key.isnot(None) & (
+            (sort_key < current_value)
+            | ((sort_key == current_value) & (id_col < current_id))
+        )
+
+    next_order = [sort_key.is_(None).asc(), sort_key.asc(), id_col.asc()]
+    prev_order = [sort_key.is_(None).desc(), sort_key.desc(), id_col.desc()]
+    return next_pred, prev_pred, next_order, prev_order
+
 
 def _apply_event_filters(
     query,
@@ -324,6 +438,8 @@ def get_events_by_project(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
+    sort: str = "newest",
+    seed: int | None = None,
 ) -> list[dict]:
     """
     Get event summaries for a project.
@@ -353,9 +469,13 @@ def get_events_by_project(
         max_label_confidence=max_label_confidence,
         project_floor=project_floor,
     )
+    sort_key, descending, nulls_last = _event_sort_spec(sort, seed)
+    order_clauses = _sort_order_by_clauses(
+        sort_key, Event.id, descending=descending, nulls_last=nulls_last,
+    )
     events = (
         query.options(joinedload(Event.files).joinedload(File.detections))
-        .order_by(Event.event_start_local.desc())
+        .order_by(*order_clauses)
         .offset(skip)
         .limit(limit)
         .all()
@@ -573,15 +693,16 @@ def get_adjacent_events(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
+    sort: str = "newest",
+    seed: int | None = None,
 ) -> dict:
     """
     Get adjacent event IDs for navigation.
 
     Returns previous_id, next_id, next_unverified_id, current_index, total_count.
-    Events ordered by event_start_local DESC (newest first).
-
-    Uses targeted SQL queries instead of loading all events into memory.
-    When filters are provided, navigation is scoped to the filtered set.
+    Order matches `get_events_by_project` for the same `(sort, seed)`. The
+    next/prev predicates are derived from the active sort key so modal
+    Next/Prev tracks the displayed grid order.
     """
     filter_kwargs = dict(
         site_ids=site_ids,
@@ -599,8 +720,13 @@ def get_adjacent_events(
         project_floor=project_floor,
     )
 
-    # 1. Get current event's local start time
-    current = db.query(Event.id, Event.event_start_local).filter(Event.id == event_id).first()
+    sort_key, descending, nulls_last = _event_sort_spec(sort, seed)
+
+    # 1. Get current event's sort key value.
+    current_value = (
+        db.query(sort_key).filter(Event.id == event_id).scalar()
+    )
+    current = db.query(Event.id).filter(Event.id == event_id).first()
     if not current:
         return {
             "previous_id": None,
@@ -610,8 +736,12 @@ def get_adjacent_events(
             "total_count": 0,
         }
 
-    ct = current.event_start_local
     cid = current.id
+
+    next_pred, prev_pred, next_order, prev_order = _sort_adjacency_predicates(
+        sort_key, Event.id, current_value, cid,
+        descending=descending, nulls_last=nulls_last,
+    )
 
     def base():
         q = (
@@ -621,31 +751,14 @@ def get_adjacent_events(
         )
         return _apply_event_filters(q, db, **filter_kwargs)
 
-    newer_than_current = (Event.event_start_local > ct) | (
-        (Event.event_start_local == ct) & (Event.id > cid)
-    )
-    older_than_current = (Event.event_start_local < ct) | (
-        (Event.event_start_local == ct) & (Event.id < cid)
-    )
+    # 2. Previous (one row above current in display order).
+    prev = base().filter(prev_pred).order_by(*prev_order).first()
 
-    # 2. Previous (newer in DESC order): event_start_local > current, or same time + higher id
-    prev = (
-        base()
-        .filter(newer_than_current)
-        .order_by(Event.event_start_local.asc(), Event.id.asc())
-        .first()
-    )
+    # 3. Next (one row below current in display order).
+    nxt = base().filter(next_pred).order_by(*next_order).first()
 
-    # 3. Next (older in DESC order): event_start_local < current, or same time + lower id
-    nxt = (
-        base()
-        .filter(older_than_current)
-        .order_by(Event.event_start_local.desc(), Event.id.desc())
-        .first()
-    )
-
-    # 4. Next unverified (older, with at least one unverified file).
-    # Uses base() so all active filters (labels, sites, dates) are respected.
+    # 4. Next unverified (next row in display order with at least one
+    # unverified file). Uses base() so all active filters apply.
     unv_file = aliased(File)
     unv_subq = (
         select(event_files.c.event_id)
@@ -656,9 +769,9 @@ def get_adjacent_events(
     )
     nxt_unv = (
         base()
-        .filter(older_than_current)
+        .filter(next_pred)
         .filter(exists(unv_subq))
-        .order_by(Event.event_start_local.desc(), Event.id.desc())
+        .order_by(*next_order)
         .first()
     )
 
@@ -671,12 +784,14 @@ def get_adjacent_events(
     total_q = _apply_event_filters(total_q, db, **filter_kwargs)
     total = total_q.scalar() or 0
 
-    # 5b. Current index (number of events newer than current = position in DESC list)
+    # 5b. Current index = number of rows that come BEFORE current in display
+    # order. This is the prev_pred set, plus current itself if you want
+    # 1-based; we use 0-based to match the existing UI.
     idx_q = (
         db.query(func.count(Event.id))
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
-        .filter(newer_than_current)
+        .filter(prev_pred)
     )
     idx_q = _apply_event_filters(idx_q, db, **filter_kwargs)
     idx = idx_q.scalar() or 0

@@ -231,3 +231,87 @@ def test_event_summary_aggregates_any_file_flagged_and_favorited(client, db):
     summary = next(row for row in resp.json() if row["id"] == ev.id)
     assert summary["any_file_flagged"] is True
     assert summary["any_file_favorited"] is True
+
+
+def _setup_three_events(db):
+    """Three events with distinct start times for sort tests."""
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    older = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    middle = _event_with_detection(db, d.id, datetime(2024, 2, 1, 12, 0))
+    newer = _event_with_detection(db, d.id, datetime(2024, 3, 1, 12, 0))
+    return p, older, middle, newer
+
+
+def test_events_sort_oldest(client, db):
+    p, older, middle, newer = _setup_three_events(db)
+
+    resp = client.get(f"/api/events?project_id={p.id}&sort=oldest")
+    ids = [row["id"] for row in resp.json()]
+    assert ids == [older.id, middle.id, newer.id]
+
+
+def test_events_sort_random_stable_with_seed(client, db):
+    p, *_ = _setup_three_events(db)
+
+    a = client.get(f"/api/events?project_id={p.id}&sort=random&seed=42").json()
+    b = client.get(f"/api/events?project_id={p.id}&sort=random&seed=42").json()
+    c = client.get(f"/api/events?project_id={p.id}&sort=random&seed=99").json()
+    assert [r["id"] for r in a] == [r["id"] for r in b]
+    assert [r["id"] for r in a] != [r["id"] for r in c]
+
+
+def test_events_sort_cls_low_pushes_nulls_last(client, db):
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    low = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0),
+    )
+    high = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 2, 1, 12, 0),
+    )
+    null = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 3, 1, 12, 0),
+    )
+    make_detection(
+        db, file_id=low.files[0].id, confidence=0.9, label_confidence=0.2,
+    )
+    make_detection(
+        db, file_id=high.files[0].id, confidence=0.9, label_confidence=0.7,
+    )
+    make_detection(
+        db, file_id=null.files[0].id, confidence=0.9, label_confidence=None,
+    )
+    db.commit()
+
+    resp = client.get(f"/api/events?project_id={p.id}&sort=cls_low")
+    ids = [row["id"] for row in resp.json()]
+    assert ids == [low.id, high.id, null.id]
+
+
+def test_events_adjacent_respects_sort(client, db):
+    p, older, middle, newer = _setup_three_events(db)
+
+    # Oldest-first: opening "older" → next is "middle".
+    resp = client.get(
+        f"/api/events/{older.id}/adjacent?project_id={p.id}&sort=oldest"
+    ).json()
+    assert resp["next_id"] == middle.id
+    assert resp["previous_id"] is None
+
+    # Newest-first (default): opening "older" → next is None.
+    resp = client.get(
+        f"/api/events/{older.id}/adjacent?project_id={p.id}"
+    ).json()
+    assert resp["next_id"] is None
+    assert resp["previous_id"] == middle.id
+
+
+def test_events_sort_invalid_value_returns_400(client, db):
+    p = make_project(db)
+    db.commit()
+
+    resp = client.get(f"/api/events?project_id={p.id}&sort=bogus")
+    assert resp.status_code == 400

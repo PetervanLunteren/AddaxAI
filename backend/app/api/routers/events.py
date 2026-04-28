@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import event as event_crud
 from app.api.crud import label_tree as label_tree_crud
+from app.api.crud.event import VERIFY_SORT_VALUES
 from app.api.schemas.event import (
     AdjacentEventsResponse,
     EventFilterOptions,
@@ -67,9 +68,17 @@ def _parse_filter_params(
     empty: str | None = None,
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
+    sort: str = "newest",
+    seed: int | None = None,
 ) -> dict:
     """Parse common filter query params into kwargs for CRUD functions."""
     parsed_labels = labels.split(",") if labels else None
+
+    if sort not in VERIFY_SORT_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"sort must be one of: {sorted(VERIFY_SORT_VALUES)}",
+        )
 
     return dict(
         site_ids=site_ids.split(",") if site_ids else None,
@@ -84,6 +93,8 @@ def _parse_filter_params(
         empty=empty,
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
+        sort=sort,
+        seed=seed,
     )
 
 
@@ -184,6 +195,8 @@ async def list_events(
     max_confidence: float | None = Query(None, ge=0, le=1),
     min_label_confidence: float | None = Query(None, ge=0, le=1),
     max_label_confidence: float | None = Query(None, ge=0, le=1),
+    sort: str = Query("newest"),
+    seed: int | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -199,6 +212,7 @@ async def list_events(
         flagged=flagged, favorited=favorited, empty=empty,
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
+        sort=sort, seed=seed,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_events_by_project(
@@ -232,6 +246,9 @@ def get_event_count(
         max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
+    # Count is sort-invariant; the count CRUD doesn't accept sort/seed.
+    filters.pop("sort", None)
+    filters.pop("seed", None)
     count = event_crud.get_event_count_by_project(
         db, project_id, **filters,
     )
@@ -271,6 +288,9 @@ def get_verification_stats(
         max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
+    # Verification stats are sort-invariant.
+    filters.pop("sort", None)
+    filters.pop("seed", None)
     return event_crud.get_event_verification_stats(
         db, project_id, **filters,
     )
@@ -331,6 +351,8 @@ def get_adjacent_events(
     max_confidence: float | None = Query(None, ge=0, le=1),
     min_label_confidence: float | None = Query(None, ge=0, le=1),
     max_label_confidence: float | None = Query(None, ge=0, le=1),
+    sort: str = Query("newest"),
+    seed: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Get adjacent event IDs for navigation, scoped to filtered set."""
@@ -340,6 +362,7 @@ def get_adjacent_events(
         flagged=flagged, favorited=favorited, empty=empty,
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
+        sort=sort, seed=seed,
     )
     _apply_project_threshold(filters, project_id, db)
     result = event_crud.get_adjacent_events(

@@ -131,21 +131,42 @@ def add_rollup_taxonomy_entry(
     if exists:
         return False
 
+    # For species-level rollup the formatted name is "{genus} {species}",
+    # but taxonomy_lookup is keyed by the species token alone.
+    lookup_value = (
+        name.split()[-1] if level == "species" and " " in name else name
+    )
+
     # Find ancestor columns from any taxonomy entry that has this taxon value
     ancestors: dict[str, str] = {}
     for entry in taxonomy_lookup.values():
-        if entry.get(level) == name:
+        if entry.get(level) == lookup_value:
             ancestors = entry
             break
 
+    species_val = lookup_value if level == "species" else None
     genus_val = (
         ancestors.get("genus") if level in ("genus", "species") else None
     )
-    # Kingdom rollup lands on the literal string "animal", but the
-    # scientifically correct kingdom name is "Animalia". Matches the
-    # Latin naming we use for other rollup rows (Bovidae, Felidae, ...)
-    # and makes the matrix cell stand apart from the detector category.
-    display_name = "Animalia" if level == "kingdom" else name.capitalize()
+
+    if level == "kingdom":
+        # Kingdom rollup lands on the literal string "animal", but the
+        # scientifically correct kingdom name is "Animalia". Matches the
+        # Latin naming we use for other rollup rows (Bovidae, Felidae, ...)
+        # and makes the matrix cell stand apart from the detector category.
+        display_name = "Animalia"
+    elif level == "species":
+        display_name = format_display_name_from_taxonomy_row(
+            name,
+            genus_val,
+            species_val,
+            ancestors.get("family"),
+            ancestors.get("order"),
+            ancestors.get("class"),
+        )
+    else:
+        display_name = name.capitalize()
+
     taxonomy_entry = LabelTaxonomy(
         classification_model_id=model_id,
         name=name,
@@ -153,7 +174,7 @@ def add_rollup_taxonomy_entry(
         taxon_order=ancestors.get("order"),
         taxon_family=ancestors.get("family"),
         taxon_genus=genus_val,
-        taxon_species=None,  # Rolled-up entries never have species
+        taxon_species=species_val,
         level=level,
         display_name=display_name,
         is_custom=False,

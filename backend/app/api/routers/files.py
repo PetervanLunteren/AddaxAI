@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
+from app.api.crud.event import VERIFY_SORT_VALUES
 from app.api.schemas.file import (
     AdjacentFilesResponse,
     FileResponse,
@@ -60,8 +61,16 @@ def _parse_verify_filter_params(
     empty: str | None = None,
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
+    sort: str = "newest",
+    seed: int | None = None,
 ) -> dict:
     """Parse shared filter query params for the Files verify endpoints."""
+    if sort not in VERIFY_SORT_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"sort must be one of: {sorted(VERIFY_SORT_VALUES)}",
+        )
+
     return dict(
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=datetime.fromisoformat(date_from) if date_from else None,
@@ -75,6 +84,8 @@ def _parse_verify_filter_params(
         empty=empty,
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
+        sort=sort,
+        seed=seed,
     )
 
 
@@ -117,6 +128,8 @@ async def list_files_for_verify(
     max_confidence: float | None = Query(None, ge=0, le=1),
     min_label_confidence: float | None = Query(None, ge=0, le=1),
     max_label_confidence: float | None = Query(None, ge=0, le=1),
+    sort: str = Query("newest"),
+    seed: int | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(48, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -137,6 +150,7 @@ async def list_files_for_verify(
         flagged=flagged, favorited=favorited, empty=empty,
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
+        sort=sort, seed=seed,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_files_for_verify(
@@ -170,6 +184,9 @@ def count_files_for_verify(
         max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
+    # Count is sort-invariant; the count CRUD doesn't accept sort/seed.
+    filters.pop("sort", None)
+    filters.pop("seed", None)
     count = file_crud.count_files_for_verify(db, project_id, **filters)
     return {"count": count}
 
@@ -200,6 +217,9 @@ def get_file_verification_stats_endpoint(
         max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
+    # Verification stats are sort-invariant.
+    filters.pop("sort", None)
+    filters.pop("seed", None)
     return file_crud.get_file_verification_stats(db, project_id, **filters)
 
 
@@ -412,6 +432,8 @@ def get_adjacent_files(
     max_confidence: float | None = Query(None, ge=0, le=1),
     min_label_confidence: float | None = Query(None, ge=0, le=1),
     max_label_confidence: float | None = Query(None, ge=0, le=1),
+    sort: str = Query("newest"),
+    seed: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Adjacent file IDs for file-to-file navigation in the Files verify tab."""
@@ -421,6 +443,7 @@ def get_adjacent_files(
         flagged=flagged, favorited=favorited, empty=empty,
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
+        sort=sort, seed=seed,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_adjacent_files_for_verify(

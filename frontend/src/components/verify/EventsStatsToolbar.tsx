@@ -5,17 +5,32 @@
  * verified once all its MaxN frames are verified (blank events fall
  * back to "any file verified"). Mirrors the single-bar treatment the
  * Files and Observations tabs use.
+ *
+ * Hosts the sort selector to the right of the help icon: filters narrow
+ * what is shown, sort orders it, kept visually distinct.
  */
 
 import { CircleHelp } from "lucide-react";
-import type { EventVerificationStats } from "../../api/types";
+import type { EventVerificationStats, VerifySort } from "../../api/types";
+import { SortSelector } from "./SortSelector";
 
 interface EventsStatsToolbarProps {
   stats: EventVerificationStats | undefined;
   onHelpClick: () => void;
+  sort: VerifySort;
+  seed: number | null;
+  onSortChange: (sort: VerifySort, seed: number | null) => void;
+  showClsLow: boolean;
 }
 
-export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarProps) {
+export function EventsStatsToolbar({
+  stats,
+  onHelpClick,
+  sort,
+  seed,
+  onSortChange,
+  showClsLow,
+}: EventsStatsToolbarProps) {
   if (!stats) return null;
 
   const pct =
@@ -32,6 +47,13 @@ export function EventsStatsToolbar({ stats, onHelpClick }: EventsStatsToolbarPro
       >
         <CircleHelp className="h-4 w-4" />
       </button>
+
+      <SortSelector
+        sort={sort}
+        seed={seed}
+        onChange={onSortChange}
+        showClsLow={showClsLow}
+      />
 
       <div className="flex items-center gap-3 ml-auto">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -7,6 +7,7 @@ Following DEVELOPERS.md principles:
 - Crash early if database cannot be initialized
 """
 
+import hashlib
 from collections.abc import Generator
 from typing import Any
 
@@ -26,16 +27,30 @@ class Base(DeclarativeBase):
     pass
 
 
+def _seeded_hash(text_value: str | None, seed: int | None) -> int:
+    """Deterministic hash of (text, seed) used for seeded random ordering.
+
+    Python's built-in `hash()` is salted per process (PYTHONHASHSEED) so it
+    cannot be used. md5 gives a stable, process-independent integer. Signed
+    to fit SQLite's 64-bit signed INTEGER (unsigned would overflow).
+    """
+    if text_value is None or seed is None:
+        return 0
+    digest = hashlib.md5(f"{text_value}:{seed}".encode()).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
 # Enable Write-Ahead Logging for SQLite (allows concurrent reads during writes)
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     """
-    Set SQLite performance and concurrency settings.
+    Set SQLite performance and concurrency settings + register UDFs.
 
     foreign_keys: Enable foreign key constraints (SQLite doesn't enforce by default!)
     WAL mode: Allows concurrent reads during writes
     NORMAL synchronous: Safe with WAL, faster than FULL
     64MB cache: Better performance for large queries
+    seeded_hash UDF: deterministic shuffle for the verify-tab Random sort.
     """
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")  # CRITICAL: Enable FK constraints
@@ -44,6 +59,7 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
     cursor.execute("PRAGMA optimize")  # Auto-ANALYZE when planner stats are stale
     cursor.close()
+    dbapi_conn.create_function("seeded_hash", 2, _seeded_hash, deterministic=True)
 
 
 def get_engine() -> Engine:

@@ -26,6 +26,7 @@ import { FileDetailModal } from "./FileDetailModal";
 import { FilterChips } from "./FilterChips";
 import { FilterPanel } from "./FilterPanel";
 import { HelpSheet } from "./HelpSheet";
+import { SortSelector } from "./SortSelector";
 
 const PAGE_SIZE = 48;
 const FILTER_DEBOUNCE_MS = 300;
@@ -220,6 +221,19 @@ export function FilesTab({
           >
             <CircleHelp className="h-4 w-4" />
           </button>
+          <SortSelector
+            sort={filters.sort ?? "newest"}
+            seed={filters.seed ?? null}
+            onChange={(sort, seed) => {
+              const next = { ...filters };
+              if (sort === "newest") delete next.sort;
+              else next.sort = sort;
+              if (seed === null) delete next.seed;
+              else next.seed = seed;
+              onFiltersChange(next);
+            }}
+            showClsLow={!!classificationModelId}
+          />
           <div className="flex items-center gap-3 ml-auto">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">

@@ -12,13 +12,6 @@
 
 
 
-
-
-
-- [ ] I understand that the default for the show empty is "all", since you want to see all images at first instance. But once a user selects only wolves, it would be weird to also show all the emties, right? What do you think of this, and how to circumvent this issue? Gove me a few options with the pros and cons. Be short and concise. Talk in key words. 
-
-- [ ] We should probabaly have a way of sorting through the files / events. Sugegstions are "Newest first", "Olderst first", any others? Perhaps "Random"? (Helpful to do a random verification round to see mopdel performance). do some suggestions what you think are good sorting / ordering types for users of this app. For observation tab this doesnt make sense since it is alreay sorted on similarity. Do some suggestions. 
-
 - [ ] Its getting pretty crowded in the filters bar.... should we move everything into a filters popover? Or just show a few and then move the more advanced filters into an "advanced" popover? What do you think in terms of UX UI? Be honest, no sugar coating. 
 
 - [ ] How should we handle video's? Its basically just a bunch of frames. SHould we just show them as images? SO a video with 10 frames show up as 10 frames? Or should we merge them into one and then show the filmstrip like events has, since one video is still one file, but AddaxAI has splitted it into 10 frames. WHats the good mental model? Is probabaly not too much work to add the filmstip as with events, right? Since the code is already there. 
@@ -55,7 +48,7 @@
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
 - [ ] PROCESS BATCH RESULTS - https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
-- [ ] 
+- [ ] DOCUMENTATION
 
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 

@@ -454,3 +454,115 @@ def test_list_for_verify_user_min_does_not_or_verify(client, db):
     ids = [row["id"] for row in resp.json()]
     assert high.id in ids
     assert verified_low.id not in ids
+
+
+def _setup_three_files(db):
+    """Three files with distinct timestamps for sort tests."""
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    older = make_file(
+        db, deployment_id=d.id, file_type="image",
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 0),
+    )
+    middle = make_file(
+        db, deployment_id=d.id, file_type="image",
+        captured_at_local=datetime(2024, 2, 1, 12, 0, 0),
+    )
+    newer = make_file(
+        db, deployment_id=d.id, file_type="image",
+        captured_at_local=datetime(2024, 3, 1, 12, 0, 0),
+    )
+    make_detection(db, file_id=older.id, confidence=0.9)
+    make_detection(db, file_id=middle.id, confidence=0.9)
+    make_detection(db, file_id=newer.id, confidence=0.9)
+    db.commit()
+    return p, older, middle, newer
+
+
+def test_files_sort_oldest(client, db):
+    p, older, middle, newer = _setup_three_files(db)
+
+    resp = client.get(f"/api/files/list-for-verify?project_id={p.id}&sort=oldest")
+    ids = [row["id"] for row in resp.json()]
+    assert ids == [older.id, middle.id, newer.id]
+
+
+def test_files_sort_random_stable_with_seed(client, db):
+    p, *_ = _setup_three_files(db)
+
+    a = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=42"
+    ).json()
+    b = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=42"
+    ).json()
+    c = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=99"
+    ).json()
+    assert [r["id"] for r in a] == [r["id"] for r in b]
+    # Different seed should give a different order most of the time. Three
+    # rows have 6 permutations; collision odds are 1/6 per seed pair. Pick
+    # seeds known to differ by checking explicitly.
+    assert [r["id"] for r in a] != [r["id"] for r in c]
+
+
+def test_files_sort_random_paginates_consistently(client, db):
+    p, *_ = _setup_three_files(db)
+
+    page0 = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=7&limit=2&skip=0"
+    ).json()
+    page1 = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=7&limit=2&skip=2"
+    ).json()
+    full = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=7"
+    ).json()
+    paginated = [r["id"] for r in page0] + [r["id"] for r in page1]
+    assert paginated == [r["id"] for r in full]
+
+
+def test_files_sort_cls_low_pushes_nulls_last(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    low = make_file(db, deployment_id=d.id, file_type="image")
+    high = make_file(db, deployment_id=d.id, file_type="image")
+    null = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(db, file_id=low.id, confidence=0.9, label_confidence=0.2)
+    make_detection(db, file_id=high.id, confidence=0.9, label_confidence=0.7)
+    make_detection(db, file_id=null.id, confidence=0.9, label_confidence=None)
+    db.commit()
+
+    resp = client.get(f"/api/files/list-for-verify?project_id={p.id}&sort=cls_low")
+    ids = [row["id"] for row in resp.json()]
+    assert ids == [low.id, high.id, null.id]
+
+
+def test_files_adjacent_respects_sort(client, db):
+    p, older, middle, newer = _setup_three_files(db)
+
+    # In oldest-first display, opening "older" should show "middle" as next.
+    resp = client.get(
+        f"/api/files/{older.id}/adjacent?project_id={p.id}&sort=oldest"
+    ).json()
+    assert resp["next_id"] == middle.id
+    assert resp["previous_id"] is None
+
+    # In newest-first display (default), opening "older" should show no next.
+    resp = client.get(
+        f"/api/files/{older.id}/adjacent?project_id={p.id}"
+    ).json()
+    assert resp["next_id"] is None
+    assert resp["previous_id"] == middle.id
+
+
+def test_files_sort_invalid_value_returns_400(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    db.commit()
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&sort=bogus"
+    )
+    assert resp.status_code == 400

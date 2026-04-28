@@ -47,6 +47,10 @@ function appendFilterParams(
       "max_label_confidence",
       filters.max_label_confidence.toString(),
     );
+  if (filters.sort && filters.sort !== "newest")
+    searchParams.set("sort", filters.sort);
+  if (filters.seed !== undefined)
+    searchParams.set("seed", filters.seed.toString());
 }
 
 export const eventsApi = {

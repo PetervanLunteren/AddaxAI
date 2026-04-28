@@ -22,7 +22,12 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { getDetectionColor, getObservationBadge } from "../lib/detection-utils";
 import { setSpeciesContext, getSpeciesColor, getSpeciesTextColor } from "../utils/species-colors";
-import type { EventSummary, EventFilterParams, VerificationFilter } from "../api/types";
+import type {
+  EventSummary,
+  EventFilterParams,
+  VerificationFilter,
+  VerifySort,
+} from "../api/types";
 
 import { EventDetailModal } from "../components/verify/EventDetailModal";
 import { FilterPanel } from "../components/verify/FilterPanel";
@@ -78,6 +83,10 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (minLC !== null) filters.min_label_confidence = parseFloat(minLC);
   const maxLC = sp.get("max_label_confidence");
   if (maxLC !== null) filters.max_label_confidence = parseFloat(maxLC);
+  const sort = sp.get("sort") as VerifySort | null;
+  if (sort && sort !== "newest") filters.sort = sort;
+  const seed = sp.get("seed");
+  if (seed !== null) filters.seed = parseInt(seed, 10);
   return filters;
 }
 
@@ -104,6 +113,8 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
     sp.set("min_label_confidence", String(filters.min_label_confidence));
   if (filters.max_label_confidence !== undefined)
     sp.set("max_label_confidence", String(filters.max_label_confidence));
+  if (filters.sort && filters.sort !== "newest") sp.set("sort", filters.sort);
+  if (filters.seed !== undefined) sp.set("seed", String(filters.seed));
   return sp;
 }
 
@@ -401,6 +412,17 @@ export default function VerifyPage() {
               <EventsStatsToolbar
                 stats={verificationStats}
                 onHelpClick={() => setHelpOpen(true)}
+                sort={filters.sort ?? "newest"}
+                seed={filters.seed ?? null}
+                onSortChange={(sort, seed) => {
+                  const next: EventFilterParams = { ...filters };
+                  if (sort === "newest") delete next.sort;
+                  else next.sort = sort;
+                  if (seed === null) delete next.seed;
+                  else next.seed = seed;
+                  setFilters(next);
+                }}
+                showClsLow={!!project?.classification_model_id}
               />
             )}
             {/* Event cards */}

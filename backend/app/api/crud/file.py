@@ -7,8 +7,52 @@ from datetime import UTC, datetime, time
 from sqlalchemy import Integer, exists, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.api.crud.event import (
+    _sort_adjacency_predicates,
+    _sort_order_by_clauses,
+)
 from app.api.schemas.file import FileUpdate
 from app.models import Deployment, Detection, File, Project
+
+
+def _file_min_cls_subquery():
+    """Correlated scalar subquery: MIN(label_confidence) over a file's own
+    detections plus any detections on its frame rows (videos store detections
+    on the frame children, not the video row itself). Mirrors the OR pattern
+    already used by `_apply_file_verify_filters` for label/confidence gates.
+    """
+    FrameFile = File.__table__.alias("frame_file_sort")
+    return (
+        select(func.min(Detection.label_confidence))
+        .select_from(Detection)
+        .where(
+            or_(
+                Detection.file_id == File.id,
+                Detection.file_id.in_(
+                    select(FrameFile.c.id).where(
+                        FrameFile.c.source_video_id == File.id
+                    )
+                ),
+            )
+        )
+        .correlate(File)
+        .scalar_subquery()
+    )
+
+
+def _file_sort_spec(sort: str, seed: int | None):
+    """Map (sort, seed) to (sort_key_expression, descending, nulls_last)."""
+    if sort == "newest":
+        return File.captured_at_local, True, False
+    if sort == "oldest":
+        return File.captured_at_local, False, False
+    if sort == "random":
+        if seed is None:
+            raise ValueError("random sort requires a seed")
+        return func.seeded_hash(File.id, seed), False, False
+    if sort == "cls_low":
+        return _file_min_cls_subquery(), False, True
+    raise ValueError(f"unknown sort: {sort}")
 
 
 def _get_detection_threshold(db: Session, file: File) -> float:
@@ -391,6 +435,8 @@ def get_files_for_verify(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
+    sort: str = "newest",
+    seed: int | None = None,
 ) -> list[dict]:
     """List file summaries for the Files verify tab.
 
@@ -419,12 +465,16 @@ def get_files_for_verify(
         max_label_confidence=max_label_confidence,
         project_floor=project_floor,
     )
+    sort_key, descending, nulls_last = _file_sort_spec(sort, seed)
+    order_clauses = _sort_order_by_clauses(
+        sort_key, File.id, descending=descending, nulls_last=nulls_last,
+    )
     files = (
         query.options(
             joinedload(File.deployment).joinedload(Deployment.site),
             joinedload(File.detections),
         )
-        .order_by(File.captured_at_local.desc(), File.id.desc())
+        .order_by(*order_clauses)
         .offset(skip)
         .limit(limit)
         .all()
@@ -625,11 +675,14 @@ def get_adjacent_files_for_verify(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
+    sort: str = "newest",
+    seed: int | None = None,
 ) -> dict:
     """Adjacent file IDs in the Files verify tab's filtered list.
 
-    Order matches get_files_for_verify: captured_at_local DESC, id DESC.
-    `previous` = newer file, `next` = older file.
+    Order matches `get_files_for_verify` for the same `(sort, seed)`. The
+    next/prev predicates are derived from the active sort key so modal
+    Next/Prev tracks the displayed grid order.
     """
     filter_kwargs = dict(
         site_ids=site_ids,
@@ -647,11 +700,10 @@ def get_adjacent_files_for_verify(
         project_floor=project_floor,
     )
 
-    current = (
-        db.query(File.id, File.captured_at_local)
-        .filter(File.id == file_id)
-        .first()
-    )
+    sort_key, descending, nulls_last = _file_sort_spec(sort, seed)
+
+    current_value = db.query(sort_key).filter(File.id == file_id).scalar()
+    current = db.query(File.id).filter(File.id == file_id).first()
     if not current:
         return {
             "previous_id": None,
@@ -661,8 +713,12 @@ def get_adjacent_files_for_verify(
             "total_count": 0,
         }
 
-    ct = current.captured_at_local
     cid = current.id
+
+    next_pred, prev_pred, next_order, prev_order = _sort_adjacency_predicates(
+        sort_key, File.id, current_value, cid,
+        descending=descending, nulls_last=nulls_last,
+    )
 
     def base():
         q = (
@@ -672,30 +728,13 @@ def get_adjacent_files_for_verify(
         )
         return _apply_file_verify_filters(q, **filter_kwargs)
 
-    newer_than_current = (File.captured_at_local > ct) | (
-        (File.captured_at_local == ct) & (File.id > cid)
-    )
-    older_than_current = (File.captured_at_local < ct) | (
-        (File.captured_at_local == ct) & (File.id < cid)
-    )
-
-    prev = (
-        base()
-        .filter(newer_than_current)
-        .order_by(File.captured_at_local.asc(), File.id.asc())
-        .first()
-    )
-    nxt = (
-        base()
-        .filter(older_than_current)
-        .order_by(File.captured_at_local.desc(), File.id.desc())
-        .first()
-    )
+    prev = base().filter(prev_pred).order_by(*prev_order).first()
+    nxt = base().filter(next_pred).order_by(*next_order).first()
     nxt_unv = (
         base()
-        .filter(older_than_current)
+        .filter(next_pred)
         .filter(File.verified == False)  # noqa: E712
-        .order_by(File.captured_at_local.desc(), File.id.desc())
+        .order_by(*next_order)
         .first()
     )
 
@@ -711,7 +750,7 @@ def get_adjacent_files_for_verify(
         db.query(func.count(File.id))
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
-        .filter(newer_than_current)
+        .filter(prev_pred)
     )
     idx_q = _apply_file_verify_filters(idx_q, **filter_kwargs)
     idx = idx_q.scalar() or 0

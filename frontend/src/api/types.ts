@@ -516,6 +516,9 @@ export type FavoritedFilter = "all" | "favorited" | "not_favorited";
 /** "show_only" = empties only, "hide" = no empties, "all" = both. */
 export type EmptyFilter = "all" | "show_only" | "hide";
 
+/** Sort modes for the Events and Files verify tabs. */
+export type VerifySort = "newest" | "oldest" | "random" | "cls_low";
+
 export interface EventFilterParams {
   site_ids?: string[];
   date_from?: string;
@@ -533,6 +536,10 @@ export interface EventFilterParams {
    *  classifications are excluded once either bound is set. */
   min_label_confidence?: number;
   max_label_confidence?: number;
+  /** Sort mode. Default "newest". `random` requires `seed` for stable
+   *  ordering across pagination and modal navigation. */
+  sort?: VerifySort;
+  seed?: number;
 }
 
 // File summary for the Files verify tab grid.
