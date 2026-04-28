@@ -87,6 +87,7 @@ class DetectionSummary(BaseModel):
     similarity: float | None = None
     neighbor_agreement: float | None = None
     neighbor_top_label: str | None = None
+    neighbor_top_display_name: str | None = None
     site_name: str | None = None
     deployment_id: str | None = None
     captured_at_local: datetime | None = None

@@ -17,15 +17,20 @@ export function WelcomePopover({ open, onDismiss }: WelcomePopoverProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-lg shadow-xl max-w-md mx-4 p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Welcome to Verification</h2>
+        <h2 className="text-lg font-semibold">Welcome to event verification</h2>
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>
-            Each event opens to its MaxN frame, the image where the peak count
-            for each species was observed. Confirm or correct the labels, then
-            press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to verify and advance.
+            An event groups files captured close together in time, treated as
+            one observation. Each card opens to the MaxN frame: the moment
+            when the most animals were visible, so you can confirm the
+            species and count in one shot.
           </p>
           <p>
-            Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in the toolbar for a full guide, or <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Show keyboard shortcuts</code> at the bottom of the sidebar.
+            The strip below the image is the rest of the event. Click any
+            frame to inspect it.
+          </p>
+          <p>
+            Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to verify and jump to the next unverified event. Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in the toolbar once dismissed for the full guide and keyboard shortcuts.
           </p>
         </div>
         <div className="flex justify-end">

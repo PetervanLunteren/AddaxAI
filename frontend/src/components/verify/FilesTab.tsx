@@ -1,11 +1,12 @@
 /**
- * FilesTab - file-level verification workflow.
+ * FilesTab - per-image verification workflow ("Images" tab).
  *
- * Shows one tile per media item (images + videos) for a project, with the
- * same filter surface as the Events tab (sites, dates, labels, verification
- * state), paginated at 48/page. Clicking a tile opens FileDetailModal.
- * Filter state is owned by the parent (VerifyPage) and shared with Events;
- * FilesTab owns only pagination and modal selection.
+ * Shows one tile per still image and per extracted video frame for a
+ * project, with the same filter surface as the Events tab (sites, dates,
+ * labels, verification state), paginated at 48/page. Clicking a tile
+ * opens FileDetailModal. Filter state is owned by the parent (VerifyPage)
+ * and shared with Events; FilesTab owns only pagination and modal
+ * selection.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +27,7 @@ import { FileDetailModal } from "./FileDetailModal";
 import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import { HelpSheet } from "./HelpSheet";
+import { ImagesWelcomePopover } from "./ImagesWelcomePopover";
 import { SortSelector } from "./SortSelector";
 import {
   VerifyProgressPill,
@@ -64,6 +66,13 @@ export function FilesTab({
   const [page, setPage] = useState(0);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(
+    () => !localStorage.getItem("addaxai:imagesWelcomeDismissed")
+  );
+  const handleDismissWelcome = useCallback(() => {
+    setShowWelcome(false);
+    localStorage.setItem("addaxai:imagesWelcomeDismissed", "1");
+  }, []);
 
   const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
 
@@ -317,6 +326,11 @@ export function FilesTab({
       />
 
       <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+
+      <ImagesWelcomePopover
+        open={showWelcome}
+        onDismiss={handleDismissWelcome}
+      />
     </>
   );
 }

@@ -31,6 +31,7 @@ import {
   Play,
   Image as ImageIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
@@ -295,6 +296,18 @@ export function FileDetailModal({
     onSuccess: invalidateAfterMutation,
   });
 
+  const handlePromoteHiddenBox = useCallback(() => {
+    if (addBoxMutation.isPending) return;
+    if (hiddenDetections.length === 0) {
+      toast.info("Nothing to promote", {
+        description:
+          "This shortcut promotes the highest-confidence below-threshold AI box (≥ 20%) into a confirmed detection. None of the AI's boxes on this image fall in that range, so there is nothing to promote.",
+      });
+      return;
+    }
+    addBoxMutation.mutate();
+  }, [addBoxMutation, hiddenDetections.length]);
+
   const markBlankMutation = useMutation({
     mutationFn: async () => {
       if (!file) return;
@@ -451,7 +464,7 @@ export function FileDetailModal({
         case "A":
           if (e.metaKey || e.ctrlKey) break;
           e.preventDefault();
-          if (hiddenDetections.length > 0) addBoxMutation.mutate();
+          handlePromoteHiddenBox();
           break;
         case "Delete":
         case "Backspace":
@@ -485,8 +498,7 @@ export function FileDetailModal({
     verifyMutation,
     flagMutation,
     markBlankMutation,
-    addBoxMutation,
-    hiddenDetections,
+    handlePromoteHiddenBox,
     deleteDetectionMutation,
     shortcutLabels,
     invalidateAfterMutation,
@@ -592,14 +604,12 @@ export function FileDetailModal({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => addBoxMutation.mutate()}
-                disabled={
-                  hiddenDetections.length === 0 || addBoxMutation.isPending
-                }
+                onClick={handlePromoteHiddenBox}
+                disabled={addBoxMutation.isPending}
                 title={
                   hiddenDetections.length > 0
-                    ? `Add next AI detection (${hiddenDetections.length} below threshold)`
-                    : "No hidden detections"
+                    ? `Promote highest below-threshold AI box (${hiddenDetections.length} candidate${hiddenDetections.length === 1 ? "" : "s"})`
+                    : "No hidden detections to promote"
                 }
               >
                 <SquarePlus className="h-4 w-4" />
@@ -849,11 +859,11 @@ export function FileDetailModal({
                   <AnnotationCanvas
                     file={file}
                     detectionThreshold={detectionThreshold}
-                    eventId={file.id}
                     selectedDetectionId={selectedDetectionId}
                     onSelectDetection={setSelectedDetectionId}
                     drawMode={drawMode}
                     onDrawModeChange={setDrawMode}
+                    onMutated={invalidateAfterMutation}
                     imageFilter={imageFilter}
                     defaultCategory={effectiveDrawLabel.category}
                     defaultLabel={effectiveDrawLabel.label}
@@ -1020,7 +1030,7 @@ export function FileDetailModal({
                           ["Enter", "Verify + next unverified"],
                           ["E", "Empty + next unverified"],
                           ["Tab", "Change label"],
-                          ["A", "Add box"],
+                          ["A", "Promote highest below-threshold box"],
                           ["D", "Toggle draw mode"],
                           ["Del", "Delete detection"],
                         ].map(([key, action]) => (

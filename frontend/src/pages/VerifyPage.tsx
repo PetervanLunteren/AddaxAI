@@ -36,6 +36,7 @@ import {
   hasAnyActiveFilter,
 } from "../components/verify/FilterChips";
 import { HelpSheet } from "../components/verify/HelpSheet";
+import { WelcomePopover } from "../components/verify/WelcomePopover";
 import { FilesTab } from "../components/verify/FilesTab";
 import { ObservationsTab } from "../components/verify/ObservationsTab";
 import { SortSelector } from "../components/verify/SortSelector";
@@ -136,6 +137,13 @@ export default function VerifyPage() {
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [showEventsWelcome, setShowEventsWelcome] = useState(
+    () => !localStorage.getItem("addaxai:verifyWelcomeDismissed")
+  );
+  const handleDismissEventsWelcome = useCallback(() => {
+    setShowEventsWelcome(false);
+    localStorage.setItem("addaxai:verifyWelcomeDismissed", "1");
+  }, []);
 
   // Tab state from URL
   const rawTab = searchParams.get("tab");
@@ -518,6 +526,11 @@ export default function VerifyPage() {
         )}
 
         <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+
+        <WelcomePopover
+          open={activeTab === "events" && showEventsWelcome && totalEvents > 0}
+          onDismiss={handleDismissEventsWelcome}
+        />
       </main>
     </div>
   );

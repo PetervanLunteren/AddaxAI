@@ -1084,10 +1084,19 @@ export function ObservationsTab({
         onFindSimilar={handleFindSimilar}
         onActionComplete={handleActionComplete}
         projectId={projectId}
+        labelOptions={labelOptions}
+        labelOptionsLoading={labelOptionsLoading}
         onRelabel={(detectionId, label, category) => {
           patchLocalDetections((d) =>
             d.detection_id === detectionId
               ? { ...d, label, category, verified: true }
+              : d
+          );
+        }}
+        onMarkFalse={(detectionId) => {
+          patchLocalDetections((d) =>
+            d.detection_id === detectionId
+              ? { ...d, label: "false detection", verified: true }
               : d
           );
         }}

@@ -229,6 +229,7 @@ def _build_summary(
     similarity: float | None = None,
     neighbor_agreement: float | None = None,
     neighbor_top_label: str | None = None,
+    neighbor_top_display_name: str | None = None,
 ) -> dict:
     """Build detection summary dict (matches DetectionSummary schema)."""
     return {
@@ -245,6 +246,7 @@ def _build_summary(
         "similarity": similarity,
         "neighbor_agreement": neighbor_agreement,
         "neighbor_top_label": neighbor_top_label,
+        "neighbor_top_display_name": neighbor_top_display_name,
         "site_name": meta.get("site_name"),
         "deployment_id": meta.get("deployment_id"),
         "captured_at_local": meta.get("captured_at_local"),
@@ -363,11 +365,25 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
 
     final_order = order_indices(sort_mode, order.tolist(), metas)
 
+    # Map raw label string → display_name from the same project's
+    # taxonomy. Used to render the suggested neighbor label as the same
+    # Latin display name shown elsewhere in the UI, instead of the raw
+    # model class name (e.g. "M. meles" instead of "badger").
+    label_to_display: dict[str, str] = {}
+    for m in metas:
+        label = m.get("label")
+        display = m.get("display_name")
+        if label and display and label not in label_to_display:
+            label_to_display[label] = display
+
     detections = [
         _build_summary(
             det_ids[i], metas[i],
             neighbor_agreement=float(agreement_scores[i]),
             neighbor_top_label=top_labels[i],
+            neighbor_top_display_name=(
+                label_to_display.get(top_labels[i]) if top_labels[i] else None
+            ),
         )
         for i in final_order
     ]

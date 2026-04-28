@@ -8,11 +8,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Search, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
+import { Ban, Check, Search, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { observationsApi } from "../../api/observations";
@@ -29,6 +28,8 @@ import {
   DIM_FILL, PILL_BG,
 } from "../../lib/detection-overlay";
 import type { DetectionSummary } from "../../api/types";
+import type { LabelOption } from "../../hooks/useLabelOptions";
+import { LabelPicker } from "./LabelPicker";
 
 interface DetectionDetailModalProps {
   detection: DetectionSummary | null;
@@ -37,6 +38,8 @@ interface DetectionDetailModalProps {
   onFindSimilar: (detectionId: string) => void;
   onActionComplete: () => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
+  /** Optimistic mark-false callback so parent can patch local state before navigating. */
+  onMarkFalse?: (detectionId: string) => void;
   /** Optimistic verify callback so parent can patch local state before navigating. */
   onVerify?: (detectionId: string, verified?: boolean) => void;
   /** Navigate to adjacent detection. Return false if at boundary. */
@@ -45,6 +48,9 @@ interface DetectionDetailModalProps {
   position?: string;
   /** Project ID for fetching nearest neighbors. */
   projectId?: string;
+  /** Available label options for the relabel picker. */
+  labelOptions?: LabelOption[];
+  labelOptionsLoading?: boolean;
 }
 
 export function DetectionDetailModal({
@@ -54,16 +60,20 @@ export function DetectionDetailModal({
   onFindSimilar,
   onActionComplete,
   onRelabel,
+  onMarkFalse,
   onVerify,
   onNavigate,
   position,
   projectId,
+  labelOptions = [],
+  labelOptionsLoading = false,
 }: DetectionDetailModalProps) {
   const queryClient = useQueryClient();
   const [viewport, setViewport] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
+  const [forceOpenPicker, setForceOpenPicker] = useState(false);
 
   // Track viewport size for responsive modal sizing
   useEffect(() => {
@@ -103,10 +113,21 @@ export function DetectionDetailModal({
   });
 
   const relabelMutation = useMutation({
-    mutationFn: ({ label, category }: { label: string; category: string }) =>
+    mutationFn: ({ label, category }: { label: string | null; category: string }) =>
       detectionsApi.bulkRelabel([detection!.detection_id], label, category),
     onSuccess: (_, { label, category }) => {
-      onRelabel?.(detection!.detection_id, label, category);
+      onRelabel?.(detection!.detection_id, label ?? category, category);
+      onActionComplete();
+      onNavigate?.("nextUnverified");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const markFalseMutation = useMutation({
+    mutationFn: () =>
+      detectionsApi.bulkRelabel([detection!.detection_id], "false detection", undefined),
+    onSuccess: () => {
+      onMarkFalse?.(detection!.detection_id);
       onActionComplete();
       onNavigate?.("nextUnverified");
     },
@@ -136,6 +157,9 @@ export function DetectionDetailModal({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const key = e.key.toLowerCase();
 
       if (e.key === "ArrowLeft") {
         e.preventDefault();
@@ -146,12 +170,45 @@ export function DetectionDetailModal({
       } else if (e.key === "Enter") {
         e.preventDefault();
         handleVerifyAndAdvance();
+      } else if (key === "x") {
+        e.preventDefault();
+        if (!markFalseMutation.isPending) markFalseMutation.mutate();
+      } else if (key === "r") {
+        e.preventDefault();
+        setForceOpenPicker(true);
+      } else if (key === "f") {
+        e.preventDefault();
+        if (detection) {
+          onFindSimilar(detection.detection_id);
+          onOpenChange(false);
+        }
+      } else if (key === "a") {
+        e.preventDefault();
+        if (
+          detection?.neighbor_top_label &&
+          detection.neighbor_top_label !== detection.label &&
+          !relabelMutation.isPending
+        ) {
+          relabelMutation.mutate({
+            label: detection.neighbor_top_label,
+            category: detection.category,
+          });
+        }
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onNavigate, handleVerifyAndAdvance]);
+  }, [
+    open,
+    onNavigate,
+    handleVerifyAndAdvance,
+    markFalseMutation,
+    relabelMutation,
+    detection,
+    onFindSimilar,
+    onOpenChange,
+  ]);
 
   // Calculate modal dimensions to tightly fit the image + sidebar panel.
   // Keep previous size while loading to avoid a resize flash between images.
@@ -361,80 +418,7 @@ export function DetectionDetailModal({
             {/* Scrollable area for all cards */}
             <div className="flex-1 min-h-0 overflow-y-auto">
 
-            {/* Card 1: Crop + label info */}
-            <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
-              <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Detection</h3>
-              <div className="px-3 pb-3 space-y-2">
-                <img
-                  src={`${API_BASE_URL}${detection.crop_url}`}
-                  alt="Crop"
-                  className="w-full aspect-square max-h-[150px] max-w-[150px] mx-auto object-cover rounded-lg border"
-                />
-                <div className="flex items-center justify-center gap-2">
-                  {fullDetection && (() => {
-                    const p = computePillLayout(fullDetection);
-                    const ps = 1.2;
-                    return (
-                      <svg width={p.pillWidth * ps} height={p.pillHeight * ps} viewBox={`0 0 ${p.pillWidth} ${p.pillHeight}`}>
-                        <rect
-                          x={0} y={0}
-                          width={p.pillWidth} height={p.pillHeight}
-                          rx={BBOX_CORNER_RADIUS}
-                          fill={PILL_BG}
-                        />
-                        <circle
-                          cx={PILL_PAD_X + DOT_R}
-                          cy={p.pillHeight / 2}
-                          r={DOT_R}
-                          fill={p.color}
-                        />
-                        {p.hasLabel ? (
-                          <>
-                            <text
-                              x={TEXT_START_X} y={PILL_PAD_Y}
-                              fill="rgba(255,255,255,0.7)"
-                              fontSize={FONT_SM}
-                              fontFamily="Arial, sans-serif"
-                              dominantBaseline="hanging"
-                            >
-                              {p.categoryText}
-                            </text>
-                            <text
-                              x={TEXT_START_X} y={PILL_PAD_Y + FONT_SM + LINE_GAP}
-                              fill="white"
-                              fontSize={FONT_LG}
-                              fontWeight="bold"
-                              fontFamily="Arial, sans-serif"
-                              dominantBaseline="hanging"
-                            >
-                              {p.labelText}
-                            </text>
-                          </>
-                        ) : (
-                          <text
-                            x={TEXT_START_X} y={PILL_PAD_Y}
-                            fill="white"
-                            fontSize={FONT_LG}
-                            fontWeight="bold"
-                            fontFamily="Arial, sans-serif"
-                            dominantBaseline="hanging"
-                          >
-                            {p.categoryText}
-                          </text>
-                        )}
-                      </svg>
-                    );
-                  })()}
-                  {detection.verified && (
-                    <Badge variant="default" className="text-[10px]">
-                      Verified
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Image metadata */}
+            {/* Card: Image metadata */}
               {fileData && (
                 <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
                   <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
@@ -487,25 +471,10 @@ export function DetectionDetailModal({
                         <p className="text-sm text-amber-600 dark:text-amber-400">
                           Neighbors suggest:{" "}
                           <span className="font-semibold capitalize">
-                            {detection.neighbor_top_label}
+                            {detection.neighbor_top_display_name ||
+                              detection.neighbor_top_label}
                           </span>
                         </p>
-                      )}
-                      {hasSuggestion && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={relabelMutation.isPending}
-                          onClick={() =>
-                            relabelMutation.mutate({
-                              label: detection.neighbor_top_label!,
-                              category: detection.category,
-                            })
-                          }
-                        >
-                          <Tag className="h-4 w-4 mr-2" />
-                          Accept &ldquo;{detection.neighbor_top_label}&rdquo;
-                        </Button>
                       )}
                       {/* Neighbor thumbnails */}
                       {neighborsData?.results && neighborsData.results.length > 0 && (
@@ -539,38 +508,129 @@ export function DetectionDetailModal({
               })()}
             </div> {/* end scrollable area */}
 
-            {/* Bottom pinned: action buttons */}
+            {/* Bottom pinned: action buttons.
+                Mirrors the floating BulkActionBar's vocabulary, icons,
+                and shortcuts so the muscle memory carries over from the
+                grid into the modal. Each action operates on this single
+                detection. */}
             <div className="px-3 py-3 space-y-2 shrink-0">
-              <Button
-                className="w-full"
-                size="sm"
-                onClick={detection.verified ? () => verifyMutation.mutate() : handleVerifyAndAdvance}
-                disabled={verifyMutation.isPending}
-                variant={detection.verified ? "outline" : "default"}
-              >
-                <Check className="h-4 w-4 mr-2" />
-                {detection.verified ? "Unverify" : "Mark verified"}
-              </Button>
+              {detection.neighbor_top_label &&
+                detection.neighbor_top_label !== detection.label && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center"
+                    disabled={relabelMutation.isPending}
+                    onClick={() =>
+                      relabelMutation.mutate({
+                        label: detection.neighbor_top_label!,
+                        category: detection.category,
+                      })
+                    }
+                  >
+                    <Tag className="h-4 w-4 mr-1" />
+                    Accept &ldquo;
+                    {detection.neighbor_top_display_name ||
+                      detection.neighbor_top_label}
+                    &rdquo;
+                    <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                      A
+                    </kbd>
+                  </Button>
+                )}
+
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full"
+                className="w-full justify-center"
+                onClick={() => setForceOpenPicker(true)}
+              >
+                <Tag className="h-4 w-4 mr-1" />
+                Relabel
+                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                  R
+                </kbd>
+              </Button>
+              {/* Hidden LabelPicker. The Relabel button above is the
+                  visible trigger; this picker's own trigger is taken
+                  out of the flow with absolute+zero-size so it doesn't
+                  steal a `space-y-2` slot. The popup dialog is portaled
+                  by Radix, so the wrapper position doesn't constrain it. */}
+              <div
+                aria-hidden="true"
+                className="absolute h-0 w-0 overflow-hidden pointer-events-none"
+              >
+                <LabelPicker
+                  value={detection.label}
+                  displayName={detection.display_name}
+                  onSelect={(option) => {
+                    relabelMutation.mutate({
+                      label: option.label,
+                      category: option.category,
+                    });
+                  }}
+                  options={labelOptions}
+                  isLoading={labelOptionsLoading}
+                  forceOpen={forceOpenPicker}
+                  onOpenChange={(open) => {
+                    if (!open) setForceOpenPicker(false);
+                  }}
+                  projectId={projectId}
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => markFalseMutation.mutate()}
+                disabled={markFalseMutation.isPending}
+              >
+                <Ban className="h-4 w-4 mr-1" />
+                Mark false
+                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                  X
+                </kbd>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
                 onClick={() => {
                   onFindSimilar(detection.detection_id);
                   onOpenChange(false);
                 }}
               >
-                <Search className="h-4 w-4 mr-2" />
+                <Search className="h-4 w-4 mr-1" />
                 Find similar
+                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                  F
+                </kbd>
+              </Button>
+
+              <Button
+                className="w-full justify-center"
+                size="sm"
+                onClick={
+                  detection.verified
+                    ? () => verifyMutation.mutate()
+                    : handleVerifyAndAdvance
+                }
+                disabled={verifyMutation.isPending}
+                variant={detection.verified ? "outline" : "default"}
+              >
+                <Check className="h-4 w-4 mr-1" />
+                {detection.verified ? "Unverify" : "Verify"} &ldquo;
+                {getDetectionDisplayName(detection)}
+                &rdquo;
+                {!detection.verified && (
+                  <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">
+                    ⏎
+                  </kbd>
+                )}
               </Button>
             </div>
-            {onNavigate && (
-              <div className="shrink-0 px-3 pb-2">
-                <p className="text-[11px] text-center text-muted-foreground">
-                  ← → navigate &middot; Enter verify &amp; next
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </DialogContent>

@@ -32,6 +32,7 @@ import {
   Video,
   Search,
 } from "lucide-react";
+import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
@@ -54,7 +55,6 @@ import { EventFilmstrip } from "./EventFilmstrip";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
-import { WelcomePopover } from "./WelcomePopover";
 import { HelpSheet } from "./HelpSheet";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
@@ -93,9 +93,6 @@ export function EventDetailModal({
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
   const [openLabelPickerFor, setOpenLabelPickerFor] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(() => {
-    return !localStorage.getItem("addaxai:verifyWelcomeDismissed");
-  });
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
@@ -144,11 +141,6 @@ export function EventDetailModal({
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const handleDismissWelcome = useCallback(() => {
-    localStorage.setItem("addaxai:verifyWelcomeDismissed", "1");
-    setShowWelcome(false);
   }, []);
 
   // Load shortcut label mappings from project data
@@ -428,6 +420,18 @@ export function EventDetailModal({
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
     },
   });
+
+  const handlePromoteHiddenBox = useCallback(() => {
+    if (addBoxMutation.isPending) return;
+    if (hiddenDetections.length === 0) {
+      toast.info("Nothing to promote", {
+        description:
+          "This shortcut promotes the highest-confidence below-threshold AI box (≥ 20%) into a confirmed detection. None of the AI's boxes on this frame fall in that range, so there is nothing to promote.",
+      });
+      return;
+    }
+    addBoxMutation.mutate();
+  }, [addBoxMutation, hiddenDetections.length]);
 
   // Favorite mutation
   const favoriteMutation = useMutation({
@@ -784,8 +788,8 @@ export function EventDetailModal({
               for (let i = 0; i < files.length; i++) all.add(i);
               setBulkSelection(all);
             }
-          } else if (hiddenDetections.length > 0) {
-            addBoxMutation.mutate();
+          } else {
+            handlePromoteHiddenBox();
           }
           break;
         case "Delete":
@@ -828,8 +832,7 @@ export function EventDetailModal({
     verifyMutation,
     flagMutation,
     markBlankMutation,
-    addBoxMutation,
-    hiddenDetections,
+    handlePromoteHiddenBox,
     deleteDetectionMutation,
     shortcutLabels,
     eventId,
@@ -886,7 +889,6 @@ export function EventDetailModal({
         aria-describedby={undefined}
       >
         <DialogTitle className="sr-only">Event detail viewer</DialogTitle>
-        <WelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
 
         {/* Main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -935,12 +937,12 @@ export function EventDetailModal({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => addBoxMutation.mutate()}
-                disabled={hiddenDetections.length === 0 || addBoxMutation.isPending}
+                onClick={handlePromoteHiddenBox}
+                disabled={addBoxMutation.isPending}
                 title={
                   hiddenDetections.length > 0
-                    ? `Add next AI detection (${hiddenDetections.length} below threshold)`
-                    : "No hidden detections"
+                    ? `Promote highest below-threshold AI box (${hiddenDetections.length} candidate${hiddenDetections.length === 1 ? "" : "s"})`
+                    : "No hidden detections to promote"
                 }
               >
                 <SquarePlus className="h-4 w-4" />
@@ -1272,11 +1274,16 @@ export function EventDetailModal({
                   <AnnotationCanvas
                     file={currentFile}
                     detectionThreshold={detectionThreshold}
-                    eventId={eventId!}
                     selectedDetectionId={selectedDetectionId}
                     onSelectDetection={setSelectedDetectionId}
                     drawMode={drawMode}
                     onDrawModeChange={setDrawMode}
+                    onMutated={() => {
+                      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+                      queryClient.invalidateQueries({ queryKey: ["events"] });
+                      queryClient.invalidateQueries({ queryKey: ["file"] });
+                      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+                    }}
                     imageFilter={imageFilter}
                     defaultCategory={effectiveDrawLabel.category}
                     defaultLabel={effectiveDrawLabel.label}
@@ -1455,7 +1462,7 @@ export function EventDetailModal({
                         ["Enter", "Verify + next unverified"],
                         ["E", "Empty + next unverified"],
                         ["Tab", "Change label"],
-                        ["A", "Add box"],
+                        ["A", "Promote highest below-threshold box"],
                         ["D", "Toggle draw mode"],
                         ["Del", "Delete detection"],
                       ].map(([key, action]) => (

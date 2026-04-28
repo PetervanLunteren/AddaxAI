@@ -835,6 +835,7 @@ export interface DetectionSummary {
   similarity: number | null;
   neighbor_agreement: number | null;
   neighbor_top_label: string | null;
+  neighbor_top_display_name: string | null;
   site_name: string | null;
   deployment_id: string | null;
   /** ISO 8601 with the project's local UTC offset. */

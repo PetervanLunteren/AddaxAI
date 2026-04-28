@@ -45,7 +45,9 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
     detection.neighbor_top_label !== detection.label;
 
   const isSmall = tileSize === "S";
-  const pillSize = isSmall ? "text-[8px] px-1 py-0" : "text-[10px] px-1.5 py-0.5";
+  const pillSize = isSmall
+    ? "text-[7px] px-0.5 py-0 rounded-sm"
+    : "text-[10px] px-1.5 py-0.5 rounded-sm";
   const arrowSize = isSmall ? "text-[8px]" : "text-[10px]";
 
   return (
@@ -111,7 +113,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
       )}
 
       {/* Info bar — pill labels */}
-      <div className="px-1.5 py-1">
+      <div className="px-2 py-1.5">
         <div className="flex items-center justify-center gap-0.5 min-w-0">
           <Badge
             variant={isFalseDetection ? "secondary" : isSuspicious ? "outline" : "default"}
@@ -136,7 +138,10 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
                 variant="secondary"
                 className={cn(pillSize, "capitalize max-w-[50%]")}
               >
-                <span className="truncate">{detection.neighbor_top_label}</span>
+                <span className="truncate">
+                  {detection.neighbor_top_display_name ||
+                    detection.neighbor_top_label}
+                </span>
               </Badge>
             </>
           )}

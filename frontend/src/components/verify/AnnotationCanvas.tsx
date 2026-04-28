@@ -7,7 +7,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circle, Group } from "react-konva";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
 import { getDetectionColor } from "../../lib/detection-utils";
 import {
@@ -30,11 +30,16 @@ import type { FileWithDetections, DetectionResponse } from "../../api/types";
 interface AnnotationCanvasProps {
   file: FileWithDetections;
   detectionThreshold: number;
-  eventId: string;
   selectedDetectionId: string | null;
   onSelectDetection: (id: string | null) => void;
   drawMode: boolean;
   onDrawModeChange: (active: boolean) => void;
+  /**
+   * Called after a successful create / update / delete mutation. The parent
+   * is responsible for invalidating its own query keys (events vs files vs
+   * grid lists). The canvas itself does not know which keys to touch.
+   */
+  onMutated?: () => void;
   imageFilter?: string;
   defaultCategory?: string;
   defaultLabel?: string;
@@ -58,11 +63,11 @@ interface DrawingBox {
 export function AnnotationCanvas({
   file,
   detectionThreshold,
-  eventId,
   selectedDetectionId,
   onSelectDetection,
   drawMode,
   onDrawModeChange,
+  onMutated,
   imageFilter,
   defaultCategory,
   defaultLabel,
@@ -70,7 +75,6 @@ export function AnnotationCanvas({
   exportFnRef,
   zoomFnRef,
 }: AnnotationCanvasProps) {
-  const queryClient = useQueryClient();
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -301,9 +305,7 @@ export function AnnotationCanvas({
         label: defaultLabel,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-    },
+    onSuccess: () => onMutated?.(),
   });
 
   // Update detection mutation (for move/resize)
@@ -328,16 +330,14 @@ export function AnnotationCanvas({
         bbox_height: Math.max(0, Math.min(1, pixelToNorm(height, imgHeight))),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-    },
+    onSuccess: () => onMutated?.(),
   });
 
   // Delete detection mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) => detectionsApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      onMutated?.();
       onSelectDetection(null);
     },
   });
