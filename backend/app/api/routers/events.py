@@ -64,6 +64,9 @@ def _parse_filter_params(
     max_confidence: float | None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
 ) -> dict:
     """Parse common filter query params into kwargs for CRUD functions."""
     parsed_labels = labels.split(",") if labels else None
@@ -78,20 +81,27 @@ def _parse_filter_params(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
 
 
 def _apply_project_threshold(
     filters: dict, project_id: str, db: Session,
 ) -> dict:
-    """Raise min_confidence to the project's detection threshold."""
+    """Inject the project's detection threshold as `project_floor`.
+
+    `project_floor` applies the global "threshold + verified override"
+    rule: a detection is visible when `confidence >= floor OR verified`.
+    `min_confidence` (the user's slider) stays untouched and is applied
+    LITERALLY by CRUD — a verified low-confidence detection passes the
+    floor but cannot satisfy a narrower user filter.
+    """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         return filters
-    threshold = project.detection_threshold
-    current_min = filters.get("min_confidence")
-    if current_min is None or current_min < threshold:
-        filters["min_confidence"] = threshold
+    filters["project_floor"] = project.detection_threshold
     return filters
 
 
@@ -169,8 +179,11 @@ async def list_events(
     verification: str | None = Query(None, description="Verification filter"),
     flagged: str | None = Query(None, description="Flagged filter"),
     favorited: str | None = Query(None, description="Favorited filter"),
+    empty: str | None = Query(None, description="Empty filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -183,7 +196,9 @@ async def list_events(
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_events_by_project(
@@ -201,15 +216,20 @@ def get_event_count(
     verification: str | None = Query(None, description="Verification filter"),
     flagged: str | None = Query(None, description="Flagged filter"),
     favorited: str | None = Query(None, description="Favorited filter"),
+    empty: str | None = Query(None, description="Empty filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
     """Get total event count for a project with optional filters."""
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     count = event_crud.get_event_count_by_project(
@@ -228,8 +248,11 @@ def get_verification_stats(
     verification: str | None = Query(None, description="Verification filter"),
     flagged: str | None = Query(None, description="Flagged filter"),
     favorited: str | None = Query(None, description="Favorited filter"),
+    empty: str | None = Query(None, description="Empty filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
     """Get aggregate file verification stats across filtered events."""
@@ -243,6 +266,9 @@ def get_verification_stats(
         max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     return event_crud.get_event_verification_stats(
@@ -300,15 +326,20 @@ def get_adjacent_events(
     verification: str | None = Query(None, description="Verification filter"),
     flagged: str | None = Query(None, description="Flagged filter"),
     favorited: str | None = Query(None, description="Favorited filter"),
+    empty: str | None = Query(None, description="Empty filter"),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
     """Get adjacent event IDs for navigation, scoped to filtered set."""
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     result = event_crud.get_adjacent_events(

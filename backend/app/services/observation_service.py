@@ -74,6 +74,14 @@ def _filters_to_dict(filters: ObservationFilters) -> dict[str, Any]:
         d["date_to"] = filters.date_to.isoformat()
     if filters.min_confidence is not None:
         d["min_confidence"] = filters.min_confidence
+    if filters.max_confidence is not None:
+        d["max_confidence"] = filters.max_confidence
+    if filters.min_label_confidence is not None:
+        d["min_label_confidence"] = filters.min_label_confidence
+    if filters.max_label_confidence is not None:
+        d["max_label_confidence"] = filters.max_label_confidence
+    if filters.project_floor is not None:
+        d["project_floor"] = filters.project_floor
     if filters.category:
         d["category"] = filters.category
     if filters.verified is not None:
@@ -135,11 +143,17 @@ def _run_observations_subprocess(
 def _apply_project_threshold(
     filters: ObservationFilters, project_id: str, db: Session
 ) -> ObservationFilters:
-    """Apply the project's detection_threshold as min_confidence."""
+    """Inject the project's detection threshold as `project_floor`.
+
+    The floor applies the `(confidence >= floor OR verified)` override
+    rule shared with events / files. The user's `min_confidence` slider
+    stays untouched and is applied LITERALLY by the subprocess so a
+    verified low-confidence detection cannot bypass a narrow user range.
+    """
     project = db.query(Project).filter(Project.id == project_id).first()
-    if project and project.detection_threshold:
+    if project:
         filters = filters.model_copy(
-            update={"min_confidence": project.detection_threshold}
+            update={"project_floor": project.detection_threshold}
         )
     return filters
 

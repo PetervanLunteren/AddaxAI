@@ -195,6 +195,7 @@ export function FilesTab({
         isOpen={true}
         onToggle={() => {}}
         classificationModelId={classificationModelId}
+        detectionFloor={detectionThreshold}
         countBy="file"
       >
         {isFiltered && (
@@ -205,6 +206,7 @@ export function FilesTab({
             totalCount={totalFiles}
             siteNames={siteNames}
             displayLabels={filterOptions?.display_labels}
+            detectionFloor={detectionThreshold}
           />
         )}
       </FilterPanel>

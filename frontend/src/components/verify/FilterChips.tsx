@@ -15,6 +15,8 @@ interface FilterChipsProps {
   totalCount: number;
   siteNames: Record<string, string>;
   displayLabels?: Record<string, string>;
+  /** Project detection_threshold — used to detect when det range is "default". */
+  detectionFloor?: number;
 }
 
 /** Format a raw label ID for display (e.g. "artiodactyla:unspecified" -> "Artiodactyla"). */
@@ -39,6 +41,11 @@ const FAVORITED_LABELS: Record<string, string> = {
   not_favorited: "Not liked",
 };
 
+const EMPTY_LABELS: Record<string, string> = {
+  show_only: "Empty only",
+  hide: "No empty",
+};
+
 
 export function FilterChips({
   filters,
@@ -47,6 +54,7 @@ export function FilterChips({
   totalCount,
   siteNames,
   displayLabels,
+  detectionFloor = 0,
 }: FilterChipsProps) {
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
 
@@ -134,6 +142,51 @@ export function FilterChips({
       key: "flagged",
       label: FLAGGED_LABELS[filters.flagged] ?? filters.flagged,
       onRemove: () => onChange({ ...filters, flagged: undefined }),
+    });
+  }
+
+  // Empty chip
+  if (filters.empty && filters.empty !== "all") {
+    chips.push({
+      key: "empty",
+      label: EMPTY_LABELS[filters.empty] ?? filters.empty,
+      onRemove: () => onChange({ ...filters, empty: undefined }),
+    });
+  }
+
+  // Detection-confidence range chip
+  const detMin = filters.min_confidence;
+  const detMax = filters.max_confidence;
+  if (detMin !== undefined || detMax !== undefined) {
+    const lo = Math.round((detMin ?? detectionFloor) * 100);
+    const hi = Math.round((detMax ?? 1) * 100);
+    chips.push({
+      key: "det-confidence",
+      label: `Det: ${lo} – ${hi}%`,
+      onRemove: () =>
+        onChange({
+          ...filters,
+          min_confidence: undefined,
+          max_confidence: undefined,
+        }),
+    });
+  }
+
+  // Classification-confidence range chip
+  const clsMin = filters.min_label_confidence;
+  const clsMax = filters.max_label_confidence;
+  if (clsMin !== undefined || clsMax !== undefined) {
+    const lo = Math.round((clsMin ?? 0) * 100);
+    const hi = Math.round((clsMax ?? 1) * 100);
+    chips.push({
+      key: "cls-confidence",
+      label: `Cls: ${lo} – ${hi}%`,
+      onRemove: () =>
+        onChange({
+          ...filters,
+          min_label_confidence: undefined,
+          max_label_confidence: undefined,
+        }),
     });
   }
 

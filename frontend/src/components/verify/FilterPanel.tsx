@@ -14,6 +14,7 @@ import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import type { EventFilterParams, VerificationFilter } from "../../api/types";
 import { Button } from "../ui/button";
+import { ConfidenceRangeFilter } from "./ConfidenceRangeFilter";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import {
@@ -32,6 +33,10 @@ interface FilterPanelProps {
   isOpen: boolean;
   onToggle: () => void;
   classificationModelId?: string | null;
+  /** Project's detection_threshold; clamps the floor of the det slider in
+   *  the Advanced disclosure. Pass via the parent that already has
+   *  `project` data; defaults to 0 (no floor) when omitted. */
+  detectionFloor?: number;
   children?: React.ReactNode;
   verificationSection?: React.ReactNode;
   verificationOptions?: { value: VerificationFilter | "all"; label: string }[];
@@ -50,6 +55,7 @@ export function FilterPanel({
   projectId,
   isOpen,
   classificationModelId,
+  detectionFloor = 0,
   children,
   verificationSection,
   verificationOptions,
@@ -282,10 +288,46 @@ export function FilterPanel({
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Empty
+              </label>
+              <Select
+                value={filters.empty ?? "all"}
+                onValueChange={(v) =>
+                  onChange({
+                    ...filters,
+                    empty:
+                      v === "all"
+                        ? undefined
+                        : (v as "show_only" | "hide"),
+                  })
+                }
+              >
+                <SelectTrigger className="h-9 min-h-0 text-sm">
+                  <span className="truncate">
+                    <SelectValue />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="show_only">Show only empty</SelectItem>
+                  <SelectItem value="hide">Hide empty</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </>
         )}
 
       </div>
+
+      <ConfidenceRangeFilter
+        filters={filters}
+        onChange={onChange}
+        detectionFloor={detectionFloor}
+        showClassification={!!classificationModelId}
+      />
 
       {children}
     </div>

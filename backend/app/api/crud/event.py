@@ -30,6 +30,10 @@ def _apply_event_filters(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ):
     """Apply shared filters to an event query. Expects Event already joined to Deployment.
 
@@ -37,8 +41,34 @@ def _apply_event_filters(
     event with File.flagged / File.favorited set). Per the decided mental
     model, flag and heart live on files; an event is flagged only in the
     sense that it contains at least one flagged file.
+
+    `min_label_confidence` / `max_label_confidence` filter on the
+    classifier score (Detection.label_confidence). NULL classifications
+    are excluded automatically when the bounds are set (correct
+    behaviour: a NULL cannot satisfy a range).
+
+    `project_floor` is the project's `detection_threshold`, applied as
+    `(Detection.confidence >= floor OR Detection.verified == True)`. This
+    is the global override rule. `min_confidence` (the user's slider) is
+    applied LITERALLY without OR-verified — a verified low-confidence
+    detection passes the floor but cannot satisfy a narrower user filter.
+
+    `empty`:
+      - "show_only": every file in the event has observation_type == "blank"
+        (i.e. NOT EXISTS a non-blank file). Skips the labels and confidence
+        gates because empty events have no detections by definition.
+      - "hide": at least one file is non-blank
+      - any other value (or None): no filter
     """
     from app.api.crud.deployment import site_ids_filter
+
+    if empty == "show_only":
+        labels = None
+        min_confidence = None
+        max_confidence = None
+        min_label_confidence = None
+        max_label_confidence = None
+        project_floor = None
 
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
@@ -65,14 +95,30 @@ def _apply_event_filters(
             .where(event_files.c.event_id == Event.id)
             .where(Detection.label_taxonomy_id.in_(labels))
         )
-        if min_confidence is not None:
+        if project_floor is not None:
             label_subq = label_subq.where(
-                or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
+                or_(Detection.confidence >= project_floor, Detection.verified == True)  # noqa: E712
             )
+        if min_confidence is not None:
+            label_subq = label_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
             label_subq = label_subq.where(Detection.confidence <= max_confidence)
+        if min_label_confidence is not None:
+            label_subq = label_subq.where(
+                Detection.label_confidence >= min_label_confidence
+            )
+        if max_label_confidence is not None:
+            label_subq = label_subq.where(
+                Detection.label_confidence <= max_label_confidence
+            )
         query = query.filter(exists(label_subq))
-    elif min_confidence is not None or max_confidence is not None:
+    elif (
+        min_confidence is not None
+        or max_confidence is not None
+        or min_label_confidence is not None
+        or max_label_confidence is not None
+        or project_floor is not None
+    ):
         # Standalone confidence filter: event has at least one detection in range
         conf_subq = (
             select(event_files.c.event_id)
@@ -80,12 +126,22 @@ def _apply_event_filters(
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
         )
-        if min_confidence is not None:
+        if project_floor is not None:
             conf_subq = conf_subq.where(
-                or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
+                or_(Detection.confidence >= project_floor, Detection.verified == True)  # noqa: E712
             )
+        if min_confidence is not None:
+            conf_subq = conf_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
             conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
+        if min_label_confidence is not None:
+            conf_subq = conf_subq.where(
+                Detection.label_confidence >= min_label_confidence
+            )
+        if max_label_confidence is not None:
+            conf_subq = conf_subq.where(
+                Detection.label_confidence <= max_label_confidence
+            )
         query = query.filter(exists(conf_subq))
 
     if verification in ("verified", "unverified"):
@@ -151,6 +207,20 @@ def _apply_event_filters(
             query = query.filter(exists(favorited_subq))
         else:
             query = query.filter(~exists(favorited_subq))
+
+    if empty in ("show_only", "hide"):
+        non_blank_file_subq = (
+            select(event_files.c.event_id)
+            .join(File, File.id == event_files.c.file_id)
+            .where(event_files.c.event_id == Event.id)
+            .where(File.observation_type != "blank")
+        )
+        if empty == "show_only":
+            # All files blank → no non-blank file exists
+            query = query.filter(~exists(non_blank_file_subq))
+        else:
+            # At least one non-blank file
+            query = query.filter(exists(non_blank_file_subq))
 
     return query
 
@@ -250,6 +320,10 @@ def get_events_by_project(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> list[dict]:
     """
     Get event summaries for a project.
@@ -274,6 +348,10 @@ def get_events_by_project(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
     events = (
         query.options(joinedload(Event.files).joinedload(File.detections))
@@ -312,14 +390,18 @@ def get_events_by_project(
         label_to_display: dict[str, str] = {}
         for f in sorted_files:
             for d in f.detections:
-                meets_confidence = (
-                    min_confidence is None
-                    or d.confidence >= min_confidence
+                meets_floor = (
+                    project_floor is None
+                    or d.confidence >= project_floor
                     or d.verified
                 )
-                if meets_confidence and (
+                meets_min = (
+                    min_confidence is None or d.confidence >= min_confidence
+                )
+                meets_max = (
                     max_confidence is None or d.confidence <= max_confidence
-                ):
+                )
+                if meets_floor and meets_min and meets_max:
                     tid = d.label_taxonomy_id
                     if tid:
                         label_set.add(tid)
@@ -442,6 +524,10 @@ def get_event_count_by_project(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> int:
     """Get total event count for a project."""
     query = (
@@ -461,6 +547,10 @@ def get_event_count_by_project(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
     count = query.scalar()
     return count or 0
@@ -479,6 +569,10 @@ def get_adjacent_events(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> dict:
     """
     Get adjacent event IDs for navigation.
@@ -499,6 +593,10 @@ def get_adjacent_events(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
 
     # 1. Get current event's local start time
@@ -604,6 +702,10 @@ def get_event_verification_stats(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> dict[str, int]:
     """Get aggregate file verification stats across filtered events."""
     filter_kwargs = dict(
@@ -616,6 +718,10 @@ def get_event_verification_stats(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
 
     # Base: filtered event IDs
@@ -674,10 +780,12 @@ def get_event_verification_stats(
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
     )
-    if min_confidence is not None:
+    if project_floor is not None:
         det_verified_q = det_verified_q.filter(
-            or_(Detection.confidence >= min_confidence, Detection.verified == True)  # noqa: E712
+            or_(Detection.confidence >= project_floor, Detection.verified == True)  # noqa: E712
         )
+    if min_confidence is not None:
+        det_verified_q = det_verified_q.filter(Detection.confidence >= min_confidence)
     verified_detections = int(det_verified_q.scalar() or 0)
 
     # Event-level verification: total and fully-verified counts.

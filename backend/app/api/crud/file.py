@@ -211,13 +211,45 @@ def _apply_file_verify_filters(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ):
     """Apply shared filters to a File query. Expects File already joined to Deployment.
 
     Files are filtered to file_type IN ("image", "video"); raw frame rows
     (file_type="frame") stay out of the Files verify tab grid.
+
+    `min_label_confidence` / `max_label_confidence` filter on
+    `Detection.label_confidence` (the classifier score). NULL values are
+    excluded automatically by SQL `WHERE` semantics — a NULL classification
+    cannot satisfy any range, which is the correct behaviour: at default
+    [0, 1] no params are sent, the WHERE clause never runs, and unclassified
+    detections pass.
+
+    `project_floor` is the project's `detection_threshold`. It is applied
+    as `(Detection.confidence >= floor OR Detection.verified == True)` —
+    the global "threshold + verified override" rule documented in
+    DEVELOPERS.md. Distinct from `min_confidence` (the user's slider value)
+    which is applied LITERALLY: a verified low-confidence detection
+    satisfies the floor's OR clause, but cannot satisfy a user's narrow
+    `min_confidence` window.
+
+    When `empty == "show_only"`, the labels and confidence-floor gates
+    are skipped: empty files have no detections by definition, so the
+    "must have at least one visible detection" precondition would always
+    exclude them. The user explicitly asked for empties; trust the ask.
     """
     from app.api.crud.deployment import site_ids_filter
+
+    if empty == "show_only":
+        labels = None
+        min_confidence = None
+        max_confidence = None
+        min_label_confidence = None
+        max_label_confidence = None
+        project_floor = None
 
     query = query.filter(File.file_type.in_(("image", "video")))
 
@@ -255,17 +287,33 @@ def _apply_file_verify_filters(
             )
             .where(Detection.label_taxonomy_id.in_(labels))
         )
-        if min_confidence is not None:
+        if project_floor is not None:
             label_subq = label_subq.where(
                 or_(
-                    Detection.confidence >= min_confidence,
+                    Detection.confidence >= project_floor,
                     Detection.verified == True,  # noqa: E712
                 )
             )
+        if min_confidence is not None:
+            label_subq = label_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
             label_subq = label_subq.where(Detection.confidence <= max_confidence)
+        if min_label_confidence is not None:
+            label_subq = label_subq.where(
+                Detection.label_confidence >= min_label_confidence
+            )
+        if max_label_confidence is not None:
+            label_subq = label_subq.where(
+                Detection.label_confidence <= max_label_confidence
+            )
         query = query.filter(exists(label_subq))
-    elif min_confidence is not None or max_confidence is not None:
+    elif (
+        project_floor is not None
+        or min_confidence is not None
+        or max_confidence is not None
+        or min_label_confidence is not None
+        or max_label_confidence is not None
+    ):
         FrameFile = File.__table__.alias("frame_file")
         conf_subq = (
             select(Detection.id)
@@ -281,15 +329,25 @@ def _apply_file_verify_filters(
                 )
             )
         )
-        if min_confidence is not None:
+        if project_floor is not None:
             conf_subq = conf_subq.where(
                 or_(
-                    Detection.confidence >= min_confidence,
+                    Detection.confidence >= project_floor,
                     Detection.verified == True,  # noqa: E712
                 )
             )
+        if min_confidence is not None:
+            conf_subq = conf_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
             conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
+        if min_label_confidence is not None:
+            conf_subq = conf_subq.where(
+                Detection.label_confidence >= min_label_confidence
+            )
+        if max_label_confidence is not None:
+            conf_subq = conf_subq.where(
+                Detection.label_confidence <= max_label_confidence
+            )
         query = query.filter(exists(conf_subq))
 
     if verification == "verified":
@@ -306,6 +364,11 @@ def _apply_file_verify_filters(
         query = query.filter(File.favorited == True)  # noqa: E712
     elif favorited == "not_favorited":
         query = query.filter(File.favorited == False)  # noqa: E712
+
+    if empty == "show_only":
+        query = query.filter(File.observation_type == "blank")
+    elif empty == "hide":
+        query = query.filter(File.observation_type != "blank")
 
     return query
 
@@ -324,6 +387,10 @@ def get_files_for_verify(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> list[dict]:
     """List file summaries for the Files verify tab.
 
@@ -347,6 +414,10 @@ def get_files_for_verify(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
     files = (
         query.options(
@@ -387,13 +458,16 @@ def get_files_for_verify(
         label_set: set[str] = set()
         label_to_display: dict[str, str] = {}
         for d in dets:
-            meets_min = (
-                min_confidence is None
-                or d.confidence >= min_confidence
+            meets_floor = (
+                project_floor is None
+                or d.confidence >= project_floor
                 or d.verified
             )
+            meets_min = (
+                min_confidence is None or d.confidence >= min_confidence
+            )
             meets_max = max_confidence is None or d.confidence <= max_confidence
-            if not (meets_min and meets_max):
+            if not (meets_floor and meets_min and meets_max):
                 continue
             tid = d.label_taxonomy_id
             if tid:
@@ -455,6 +529,10 @@ def count_files_for_verify(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> int:
     """Total file count for the Files verify tab with the given filters."""
     query = (
@@ -473,6 +551,10 @@ def count_files_for_verify(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
     return query.scalar() or 0
 
@@ -489,6 +571,10 @@ def get_file_verification_stats(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> dict[str, int]:
     """Aggregate verified/total file counts for the Files verify tab."""
     query = (
@@ -510,6 +596,10 @@ def get_file_verification_stats(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
     total, verified = query.one()
     return {
@@ -531,6 +621,10 @@ def get_adjacent_files_for_verify(
     max_confidence: float | None = None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+    project_floor: float | None = None,
 ) -> dict:
     """Adjacent file IDs in the Files verify tab's filtered list.
 
@@ -547,6 +641,10 @@ def get_adjacent_files_for_verify(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
     )
 
     current = (

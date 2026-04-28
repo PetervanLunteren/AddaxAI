@@ -82,9 +82,32 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
         clauses.append("f.captured_at_local <= ?")
         params.append(filters["date_to"])
 
-    if filters.get("min_confidence") is not None:
+    # `project_floor` is the project's detection_threshold and applies the
+    # global "threshold + verified override" rule. `min_confidence` is the
+    # user's slider and is applied LITERALLY — a verified low-confidence
+    # detection passes the floor's OR clause but cannot satisfy a narrow
+    # user-set min.
+    if filters.get("project_floor") is not None:
         clauses.append("(d.confidence >= ? OR d.verified = 1)")
+        params.append(filters["project_floor"])
+
+    if filters.get("min_confidence") is not None:
+        clauses.append("d.confidence >= ?")
         params.append(filters["min_confidence"])
+
+    if filters.get("max_confidence") is not None:
+        clauses.append("d.confidence <= ?")
+        params.append(filters["max_confidence"])
+
+    # NULL label_confidence is excluded automatically by the comparison —
+    # SQLite treats `NULL >= 0.0` as NULL, which a `WHERE` rejects.
+    if filters.get("min_label_confidence") is not None:
+        clauses.append("d.label_confidence >= ?")
+        params.append(filters["min_label_confidence"])
+
+    if filters.get("max_label_confidence") is not None:
+        clauses.append("d.label_confidence <= ?")
+        params.append(filters["max_label_confidence"])
 
     if filters.get("category"):
         clauses.append("d.category = ?")

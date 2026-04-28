@@ -513,6 +513,8 @@ export type VerificationFilter = "all" | "verified" | "unverified";
 
 export type FlaggedFilter = "all" | "flagged" | "not_flagged";
 export type FavoritedFilter = "all" | "favorited" | "not_favorited";
+/** "show_only" = empties only, "hide" = no empties, "all" = both. */
+export type EmptyFilter = "all" | "show_only" | "hide";
 
 export interface EventFilterParams {
   site_ids?: string[];
@@ -522,8 +524,15 @@ export interface EventFilterParams {
   verification?: VerificationFilter;
   flagged?: FlaggedFilter;
   favorited?: FavoritedFilter;
+  empty?: EmptyFilter;
+  /** Detector confidence (Detection.confidence) range. Min handle is
+   *  clamped client-side at the project's detection_threshold. */
   min_confidence?: number;
   max_confidence?: number;
+  /** Classifier confidence (Detection.label_confidence) range. NULL
+   *  classifications are excluded once either bound is set. */
+  min_label_confidence?: number;
+  max_label_confidence?: number;
 }
 
 // File summary for the Files verify tab grid.
@@ -752,6 +761,9 @@ export interface ObservationFilters {
   date_from?: string;
   date_to?: string;
   min_confidence?: number;
+  max_confidence?: number;
+  min_label_confidence?: number;
+  max_label_confidence?: number;
   category?: string;
   verified?: boolean;
 }

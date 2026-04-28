@@ -15,7 +15,11 @@
 
 
 
-- [ ] Should we add a filter for empties? We should have a option for users to choose to see only empties, and no other images/events. How? 
+- [ ] I understand that the default for the show empty is "all", since you want to see all images at first instance. But once a user selects only wolves, it would be weird to also show all the emties, right? What do you think of this, and how to circumvent this issue? Gove me a few options with the pros and cons. Be short and concise. Talk in key words. 
+
+- [ ] We should probabaly have a way of sorting through the files / events. Sugegstions are "Newest first", "Olderst first", any others? Perhaps "Random"? (Helpful to do a random verification round to see mopdel performance). do some suggestions what you think are good sorting / ordering types for users of this app. For observation tab this doesnt make sense since it is alreay sorted on similarity. Do some suggestions. 
+
+- [ ] Its getting pretty crowded in the filters bar.... should we move everything into a filters popover? Or just show a few and then move the more advanced filters into an "advanced" popover? What do you think in terms of UX UI? Be honest, no sugar coating. 
 
 - [ ] How should we handle video's? Its basically just a bunch of frames. SHould we just show them as images? SO a video with 10 frames show up as 10 frames? Or should we merge them into one and then show the filmstrip like events has, since one video is still one file, but AddaxAI has splitted it into 10 frames. WHats the good mental model? Is probabaly not too much work to add the filmstip as with events, right? Since the code is already there. 
 
@@ -28,10 +32,6 @@
 - [ ] should we have the pill inside the image in the observation grid too, to match the pattern of the event and files images? Or would you advise against that? 
 
 - [ ] Should we improve the caption of the verify page now that we have three options? Do a few suggestions. 
-
-
-
-- [ ] We should probabaly have a way of sorting through the files / events. Sugegstions are "Newest first", "Olderst first", any others? do some suggestions what you think are good sorting / ordering types for users of this app. For observation tab this doesnt make sense since it is alreay sorted on similarity. Do some suggestions. 
 
 - [ ] Are all the files shortcuts tested? 
 

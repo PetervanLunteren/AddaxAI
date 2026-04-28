@@ -16,13 +16,23 @@ from app.utils.datetime_serialization import serialize_local_datetime
 
 
 class ObservationFilters(BaseModel):
-    """Filters for selecting detections to sort or search."""
+    """Filters for selecting detections to sort or search.
+
+    `project_floor` is server-injected (not user-facing) and applied as
+    `(confidence >= floor OR verified)` — the global threshold + verified
+    override rule. `min_confidence` / `max_confidence` are user knobs and
+    apply LITERALLY without the OR-verified clause.
+    """
 
     labels: list[str] | None = None
     site_ids: list[str] | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
     min_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    max_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    min_label_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    max_label_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    project_floor: float | None = Field(None, ge=0.0, le=1.0)
     category: str | None = None
     verified: bool | None = None
 

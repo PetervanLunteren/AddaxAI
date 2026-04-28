@@ -75,7 +75,7 @@ export function DeploymentTimelineFilterBar({
 
   return (
     <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
             Sites

@@ -30,10 +30,22 @@ function appendFileFilterParams(
     searchParams.set("flagged", filters.flagged);
   if (filters.favorited && filters.favorited !== "all")
     searchParams.set("favorited", filters.favorited);
+  if (filters.empty && filters.empty !== "all")
+    searchParams.set("empty", filters.empty);
   if (filters.min_confidence !== undefined)
     searchParams.set("min_confidence", filters.min_confidence.toString());
   if (filters.max_confidence !== undefined)
     searchParams.set("max_confidence", filters.max_confidence.toString());
+  if (filters.min_label_confidence !== undefined)
+    searchParams.set(
+      "min_label_confidence",
+      filters.min_label_confidence.toString(),
+    );
+  if (filters.max_label_confidence !== undefined)
+    searchParams.set(
+      "max_label_confidence",
+      filters.max_label_confidence.toString(),
+    );
 }
 
 export const filesApi = {

@@ -324,6 +324,87 @@ def test_list_for_verify_favorited_filter(client, db):
     assert not_fav.id not in ids
 
 
+def test_list_for_verify_label_confidence_range(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    high = make_file(db, deployment_id=d.id, file_type="image")
+    low = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(
+        db, file_id=high.id, confidence=0.9, label_confidence=0.9,
+    )
+    make_detection(
+        db, file_id=low.id, confidence=0.9, label_confidence=0.3,
+    )
+    db.commit()
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&min_label_confidence=0.5"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert high.id in ids
+    assert low.id not in ids
+
+
+def test_list_for_verify_label_confidence_excludes_null(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    classified = make_file(db, deployment_id=d.id, file_type="image")
+    unclassified = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(
+        db, file_id=classified.id, confidence=0.9, label_confidence=0.3,
+    )
+    # Unclassified detection: confidence high but no label_confidence.
+    make_detection(
+        db, file_id=unclassified.id, confidence=0.9, label_confidence=None,
+    )
+    db.commit()
+
+    # Active filter (any of the cls bounds set) excludes NULL detections,
+    # even when the bound itself permits low values.
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&min_label_confidence=0.0"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert classified.id in ids
+    assert unclassified.id not in ids
+
+
+def test_list_for_verify_empty_filter(client, db):
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    animal = make_file(
+        db, deployment_id=d.id, file_type="image",
+        observation_type="animal",
+    )
+    blank = make_file(
+        db, deployment_id=d.id, file_type="image",
+        observation_type="blank",
+    )
+    # Both files need a visible detection to pass the threshold filter
+    # used by list-for-verify (we are testing the empty filter, not the
+    # threshold filter).
+    make_detection(db, file_id=animal.id, confidence=0.9)
+    make_detection(db, file_id=blank.id, confidence=0.9)
+    db.commit()
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&empty=show_only"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert blank.id in ids
+    assert animal.id not in ids
+
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}&empty=hide"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert animal.id in ids
+    assert blank.id not in ids
+
+
 def test_file_summary_includes_flagged(client, db):
     p = make_project(db, detection_threshold=0.5)
     s = make_site(db, project_id=p.id)
@@ -336,3 +417,40 @@ def test_file_summary_includes_flagged(client, db):
     resp = client.get(f"/api/files/list-for-verify?project_id={p.id}")
     rows = {row["id"]: row for row in resp.json()}
     assert rows[f.id]["flagged"] is True
+
+
+def test_list_for_verify_user_min_does_not_or_verify(client, db):
+    """User-set min_confidence is applied LITERALLY.
+
+    The project floor uses `(confidence >= floor OR verified)` to keep
+    verified low-confidence detections visible. The user's slider must
+    NOT inherit that OR-verified clause — otherwise narrowing the slider
+    to 0.95-1.0 would still surface a verified detection at 0.87.
+    """
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    verified_low = make_file(db, deployment_id=d.id, file_type="image")
+    high = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(
+        db, file_id=verified_low.id, confidence=0.87, verified=True,
+    )
+    make_detection(db, file_id=high.id, confidence=0.97)
+    db.commit()
+
+    # Floor alone (default request): both files visible. Verified-low
+    # passes via the OR clause; high passes literally.
+    resp = client.get(f"/api/files/list-for-verify?project_id={p.id}")
+    ids = [row["id"] for row in resp.json()]
+    assert verified_low.id in ids
+    assert high.id in ids
+
+    # User narrows: 0.95-1.0. The literal min excludes 0.87 even though
+    # the detection is verified.
+    resp = client.get(
+        f"/api/files/list-for-verify?project_id={p.id}"
+        "&min_confidence=0.95&max_confidence=1.0"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert high.id in ids
+    assert verified_low.id not in ids

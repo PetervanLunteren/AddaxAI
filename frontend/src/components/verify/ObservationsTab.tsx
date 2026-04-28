@@ -54,6 +54,10 @@ interface ObservationsFilterState {
   date_from?: string;
   date_to?: string;
   labels?: string[];
+  min_confidence?: number;
+  max_confidence?: number;
+  min_label_confidence?: number;
+  max_label_confidence?: number;
 }
 
 /** Parse obs_* params from URL. */
@@ -67,6 +71,14 @@ function obsFiltersFromSearchParams(sp: URLSearchParams): ObservationsFilterStat
   if (to) f.date_to = to;
   const labels = sp.get("obs_labels");
   if (labels) f.labels = labels.split(",");
+  const minC = sp.get("obs_min_confidence");
+  if (minC !== null) f.min_confidence = parseFloat(minC);
+  const maxC = sp.get("obs_max_confidence");
+  if (maxC !== null) f.max_confidence = parseFloat(maxC);
+  const minLC = sp.get("obs_min_label_confidence");
+  if (minLC !== null) f.min_label_confidence = parseFloat(minLC);
+  const maxLC = sp.get("obs_max_label_confidence");
+  if (maxLC !== null) f.max_label_confidence = parseFloat(maxLC);
   return f;
 }
 
@@ -83,6 +95,14 @@ function obsFiltersToSearchParams(
   if (filters.date_from) sp.set("obs_from", filters.date_from);
   if (filters.date_to) sp.set("obs_to", filters.date_to);
   if (filters.labels?.length) sp.set("obs_labels", filters.labels.join(","));
+  if (filters.min_confidence !== undefined)
+    sp.set("obs_min_confidence", String(filters.min_confidence));
+  if (filters.max_confidence !== undefined)
+    sp.set("obs_max_confidence", String(filters.max_confidence));
+  if (filters.min_label_confidence !== undefined)
+    sp.set("obs_min_label_confidence", String(filters.min_label_confidence));
+  if (filters.max_label_confidence !== undefined)
+    sp.set("obs_max_label_confidence", String(filters.max_label_confidence));
   return sp;
 }
 
@@ -93,6 +113,10 @@ function toObservationFilters(f: ObservationsFilterState): ObservationFilters {
     site_ids: f.site_ids,
     date_from: f.date_from,
     date_to: f.date_to,
+    min_confidence: f.min_confidence,
+    max_confidence: f.max_confidence,
+    min_label_confidence: f.min_label_confidence,
+    max_label_confidence: f.max_label_confidence,
   };
 }
 
@@ -103,6 +127,10 @@ function toFilterPanelFilters(f: ObservationsFilterState): EventFilterParams {
     date_from: f.date_from,
     date_to: f.date_to,
     labels: f.labels,
+    min_confidence: f.min_confidence,
+    max_confidence: f.max_confidence,
+    min_label_confidence: f.min_label_confidence,
+    max_label_confidence: f.max_label_confidence,
   };
 }
 
@@ -138,6 +166,10 @@ export function ObservationsTab({
         date_from: fp.date_from,
         date_to: fp.date_to,
         labels: fp.labels,
+        min_confidence: fp.min_confidence,
+        max_confidence: fp.max_confidence,
+        min_label_confidence: fp.min_label_confidence,
+        max_label_confidence: fp.max_label_confidence,
       });
     },
     [obsFilters, setObsFilters],
@@ -711,6 +743,7 @@ export function ObservationsTab({
         isOpen={true}
         onToggle={() => {}}
         classificationModelId={classificationModelId}
+        detectionFloor={project?.detection_threshold ?? 0}
         verificationSection={null}
         countBy="detection"
       />

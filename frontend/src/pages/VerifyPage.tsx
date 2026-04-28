@@ -68,6 +68,16 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (flagged && flagged !== "all") filters.flagged = flagged;
   const favorited = sp.get("favorited") as EventFilterParams["favorited"] | null;
   if (favorited && favorited !== "all") filters.favorited = favorited;
+  const empty = sp.get("empty") as EventFilterParams["empty"] | null;
+  if (empty && empty !== "all") filters.empty = empty;
+  const minC = sp.get("min_confidence");
+  if (minC !== null) filters.min_confidence = parseFloat(minC);
+  const maxC = sp.get("max_confidence");
+  if (maxC !== null) filters.max_confidence = parseFloat(maxC);
+  const minLC = sp.get("min_label_confidence");
+  if (minLC !== null) filters.min_label_confidence = parseFloat(minLC);
+  const maxLC = sp.get("max_label_confidence");
+  if (maxLC !== null) filters.max_label_confidence = parseFloat(maxLC);
   return filters;
 }
 
@@ -84,6 +94,16 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
     sp.set("flagged", filters.flagged);
   if (filters.favorited && filters.favorited !== "all")
     sp.set("favorited", filters.favorited);
+  if (filters.empty && filters.empty !== "all")
+    sp.set("empty", filters.empty);
+  if (filters.min_confidence !== undefined)
+    sp.set("min_confidence", String(filters.min_confidence));
+  if (filters.max_confidence !== undefined)
+    sp.set("max_confidence", String(filters.max_confidence));
+  if (filters.min_label_confidence !== undefined)
+    sp.set("min_label_confidence", String(filters.min_label_confidence));
+  if (filters.max_label_confidence !== undefined)
+    sp.set("max_label_confidence", String(filters.max_label_confidence));
   return sp;
 }
 
@@ -96,7 +116,12 @@ function hasActiveFilters(filters: EventFilterParams): boolean {
     (filters.labels?.length ?? 0) > 0 ||
     (!!filters.verification && filters.verification !== "all") ||
     (!!filters.flagged && filters.flagged !== "all") ||
-    (!!filters.favorited && filters.favorited !== "all")
+    (!!filters.favorited && filters.favorited !== "all") ||
+    (!!filters.empty && filters.empty !== "all") ||
+    filters.min_confidence !== undefined ||
+    filters.max_confidence !== undefined ||
+    filters.min_label_confidence !== undefined ||
+    filters.max_label_confidence !== undefined
   );
 }
 
@@ -358,6 +383,7 @@ export default function VerifyPage() {
               isOpen={true}
               onToggle={() => {}}
               classificationModelId={project?.classification_model_id}
+              detectionFloor={detectionThreshold}
             >
               {isFiltered && (
                 <FilterChips
@@ -367,6 +393,7 @@ export default function VerifyPage() {
                   totalCount={totalEvents}
                   siteNames={siteNames}
                   displayLabels={filterOptions?.display_labels}
+                  detectionFloor={detectionThreshold}
                 />
               )}
             </FilterPanel>

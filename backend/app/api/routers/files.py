@@ -57,6 +57,9 @@ def _parse_verify_filter_params(
     max_confidence: float | None,
     flagged: str | None = None,
     favorited: str | None = None,
+    empty: str | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
 ) -> dict:
     """Parse shared filter query params for the Files verify endpoints."""
     return dict(
@@ -69,22 +72,25 @@ def _parse_verify_filter_params(
         max_confidence=max_confidence,
         flagged=flagged,
         favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
 
 
 def _apply_project_threshold(filters: dict, project_id: str, db: Session) -> dict:
-    """Raise min_confidence to the project's detection threshold.
+    """Inject the project's detection threshold as `project_floor`.
 
-    Same rule used by the events endpoints: anything above threshold OR
-    verified is visible, so the floor must be applied consistently.
+    Same rule used by the events endpoints: a detection is visible when
+    `confidence >= floor OR verified`. The floor and the user's
+    `min_confidence` are kept as separate filter knobs so a verified
+    low-confidence detection passes the floor's OR clause but cannot
+    sneak past a narrow user-set min.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         return filters
-    threshold = project.detection_threshold
-    current_min = filters.get("min_confidence")
-    if current_min is None or current_min < threshold:
-        filters["min_confidence"] = threshold
+    filters["project_floor"] = project.detection_threshold
     return filters
 
 
@@ -104,8 +110,13 @@ async def list_files_for_verify(
     favorited: str | None = Query(
         None, description="Filter: 'favorited', 'not_favorited', or 'all'"
     ),
+    empty: str | None = Query(
+        None, description="Filter: 'show_only', 'hide', or 'all'"
+    ),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     skip: int = Query(0, ge=0),
     limit: int = Query(48, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -123,7 +134,9 @@ async def list_files_for_verify(
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_files_for_verify(
@@ -141,15 +154,20 @@ def count_files_for_verify(
     verification: str | None = Query(None),
     flagged: str | None = Query(None),
     favorited: str | None = Query(None),
+    empty: str | None = Query(None),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
     """Total file count for the Files verify tab with the given filters."""
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     count = file_crud.count_files_for_verify(db, project_id, **filters)
@@ -166,15 +184,20 @@ def get_file_verification_stats_endpoint(
     verification: str | None = Query(None),
     flagged: str | None = Query(None),
     favorited: str | None = Query(None),
+    empty: str | None = Query(None),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
     """Aggregate verified/total file counts for the Files verify tab."""
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_file_verification_stats(db, project_id, **filters)
@@ -384,15 +407,20 @@ def get_adjacent_files(
     verification: str | None = Query(None),
     flagged: str | None = Query(None),
     favorited: str | None = Query(None),
+    empty: str | None = Query(None),
     min_confidence: float | None = Query(None, ge=0, le=1),
     max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
     """Adjacent file IDs for file-to-file navigation in the Files verify tab."""
     filters = _parse_verify_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
-        flagged=flagged, favorited=favorited,
+        flagged=flagged, favorited=favorited, empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     _apply_project_threshold(filters, project_id, db)
     return file_crud.get_adjacent_files_for_verify(
