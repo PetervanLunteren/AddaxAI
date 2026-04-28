@@ -7,7 +7,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
@@ -30,7 +29,6 @@ import {
   Play,
   Image as ImageIcon,
   Video,
-  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
@@ -76,7 +74,6 @@ export function EventDetailModal({
   filters,
 }: EventDetailModalProps) {
   const queryClient = useQueryClient();
-  const [, setSearchParams] = useSearchParams();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [navScope, setNavScope] = useState<"maxn" | "file">("maxn");
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
@@ -392,11 +389,14 @@ export function EventDetailModal({
     },
   });
 
-  // Hidden detections for "add box" (below threshold, min 0.2 confidence)
+  // Hidden detections for "add box" — anything below the project
+  // threshold but still in the DB. The detection worker already filters
+  // at ingest (≥ 0.1 per detection_worker.py), so a floor of 0.05 here
+  // is effectively "everything the model kept".
   const hiddenDetections = useMemo(() => {
     if (!currentFile) return [];
     return currentFile.detections
-      .filter((d) => d.confidence < detectionThreshold && d.confidence >= 0.2)
+      .filter((d) => d.confidence < detectionThreshold && d.confidence >= 0.05)
       .sort((a, b) => b.confidence - a.confidence);
   }, [currentFile, detectionThreshold]);
 
@@ -426,7 +426,7 @@ export function EventDetailModal({
     if (hiddenDetections.length === 0) {
       toast.info("Nothing to promote", {
         description:
-          "This shortcut promotes the highest-confidence below-threshold AI box (≥ 20%) into a confirmed detection. None of the AI's boxes on this frame fall in that range, so there is nothing to promote.",
+          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed detection. The AI has no box below the project threshold for this frame, so there is nothing to promote.",
       });
       return;
     }
@@ -814,8 +814,13 @@ export function EventDetailModal({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Register in capture phase so our preventDefault on Enter fires
+    // before any focused button's implicit Enter-activates-click. Without
+    // capture, clicking the > nav button grabs focus, and the next Enter
+    // would re-fire that button's onClick (handleNext) instead of going
+    // through the case "Enter" branch (verify + handleNextUnverified).
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     isOpen,
     helpOpen,
@@ -1060,14 +1065,15 @@ export function EventDetailModal({
                 <RotateCcw className="h-4 w-4" />
               </Button>
               <div className="w-6 border-t my-0.5" />
-              {/* Detection threshold popover */}
+              {/* View threshold popover (local override; does not change
+                  the project's detection_threshold). */}
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    title={`Detection threshold: ${(detectionThreshold * 100).toFixed(0)}%`}
+                    title={`View threshold: ${(detectionThreshold * 100).toFixed(0)}%`}
                   >
                     <Scale className="h-4 w-4" />
                   </Button>
@@ -1075,7 +1081,7 @@ export function EventDetailModal({
                 <PopoverContent side="right" className="w-48 p-3">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">Detection threshold</span>
+                      <span className="text-xs font-medium">View threshold</span>
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-muted-foreground tabular-nums">
                           {(detectionThreshold * 100).toFixed(0)}%
@@ -1213,28 +1219,6 @@ export function EventDetailModal({
                     currentFile.flagged && "fill-[#71b7ba] text-[#71b7ba]"
                   )}
                 />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => {
-                  // Navigate to Observations tab with this detection as anchor
-                  const detId = selectedDetectionId || filteredDetections[0]?.id;
-                  if (detId) {
-                    onClose();
-                    setSearchParams((prev) => {
-                      prev.set("tab", "observations");
-                      prev.set("mode", "search");
-                      prev.set("anchor", detId);
-                      return prev;
-                    }, { replace: true });
-                  }
-                }}
-                title="Find similar observations"
-                disabled={filteredDetections.length === 0}
-              >
-                <Search className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -1409,7 +1393,6 @@ export function EventDetailModal({
                 key={currentFile.id}
                 file={currentFile}
                 projectId={projectId}
-                eventId={eventId!}
                 detectionThreshold={detectionThreshold}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
@@ -1424,8 +1407,14 @@ export function EventDetailModal({
                   option: v,
                 }))}
                 onDraw={() => setDrawMode(true)}
-                onAddBox={() => addBoxMutation.mutate()}
-                canAddBox={hiddenDetections.length > 0 && !addBoxMutation.isPending}
+                onAddBox={handlePromoteHiddenBox}
+                canAddBox={!addBoxMutation.isPending}
+                onMutated={() => {
+                  queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+                  queryClient.invalidateQueries({ queryKey: ["events"] });
+                  queryClient.invalidateQueries({ queryKey: ["file"] });
+                  queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+                }}
               />
             )}
 

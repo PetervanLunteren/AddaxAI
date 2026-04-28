@@ -7,13 +7,9 @@
 ## Priority 3 
 - [ ] 
 
-- [ ] Are all the files shortcuts tested? 
+- [ ] I'm a bit confused as how the navigation works in the events and images details modals. We have left and right for just normal navigation (regardless of verification status), and we have >> for next unverified. Is that correct? Should we add a << for previous unverifed? Should we do the arrows for the simple navigation (just prev next regardless oof verificatin status)? Should we do default navigation per maxN in the events tab, and something like SHIFT+navigation for frame navigation...? There is also a "Navigate by maxN / file" dropdown in the events modal. Perhaps redundant now that we have the images tab? Anyways, list all the options and think about the UX UI. What are the options, possibilites, user needs, and how can we make this simple. Its confusing now. 
 
-- [ ] If I click a label, the label selection bar opens, I type "bird", get "Aves", enter, and it still shows the old label. If I then ENTER (verify the file), and go back, it shows Aves. SO the result works, but the intermidiate update of the label doesnt. 
-
-- [ ] in the files modal, the "edit" button on already verfied files doesnt work. 
-
-- [ ] I'm a bit confused as how the navigation works. we have left and right for just normal navigation (regardless of verification status), and we have >> for next unverified. Is that correct? Should we add a << for previous unverifed? should we do the arrows for the simple navigation (just prev next regardless of verification status)? Should we do default navigation per maxN in the events tab , and something like SHIFT+navigation for frame navigation...? 
+- [ ] we renamed the Files tab to Images. Do we need to change the underlaying parameters in the code too to keep clean? 
 
 - [ ] the "All labels" button should not have an icon (inconsistent with the other filters). remoce icon from that button in all three tabs of the verificaiton flow. 
 

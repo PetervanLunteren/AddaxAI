@@ -268,12 +268,16 @@ export function FileDetailModal({
     onSuccess: invalidateAfterMutation,
   });
 
-  // Hidden detections for "add box" — below threshold, minimum 0.2
+  // Hidden detections for "add box" — anything below the project
+  // threshold but still in the DB. The detection worker already filters
+  // at ingest (≥ 0.1 per detection_worker.py), so a floor of 0.05 here
+  // is effectively "everything the model kept": surfacing every real
+  // candidate without re-filtering arbitrary low-conf hits a second time.
   const hiddenDetections = useMemo(() => {
     if (!file) return [];
     return file.detections
       .filter(
-        (d) => d.confidence < detectionThreshold && d.confidence >= 0.2,
+        (d) => d.confidence < detectionThreshold && d.confidence >= 0.05,
       )
       .sort((a, b) => b.confidence - a.confidence);
   }, [file, detectionThreshold]);
@@ -301,7 +305,7 @@ export function FileDetailModal({
     if (hiddenDetections.length === 0) {
       toast.info("Nothing to promote", {
         description:
-          "This shortcut promotes the highest-confidence below-threshold AI box (≥ 20%) into a confirmed detection. None of the AI's boxes on this image fall in that range, so there is nothing to promote.",
+          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed detection. The AI has no box below the project threshold for this image, so there is nothing to promote.",
       });
       return;
     }
@@ -482,8 +486,13 @@ export function FileDetailModal({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Register in capture phase so our preventDefault on Enter fires
+    // before any focused button's implicit Enter-activates-click. Without
+    // capture, clicking the > nav button grabs focus, and the next Enter
+    // would re-fire that button's onClick (handleNext) instead of going
+    // through the case "Enter" branch below (verify + handleNextUnverified).
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     isOpen,
     helpOpen,
@@ -673,7 +682,7 @@ export function FileDetailModal({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    title={`Detection threshold: ${(detectionThreshold * 100).toFixed(0)}%`}
+                    title={`View threshold: ${(detectionThreshold * 100).toFixed(0)}%`}
                   >
                     <Scale className="h-4 w-4" />
                   </Button>
@@ -682,7 +691,7 @@ export function FileDetailModal({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium">
-                        Detection threshold
+                        View threshold
                       </span>
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-muted-foreground tabular-nums">
@@ -972,7 +981,6 @@ export function FileDetailModal({
                 key={file.id}
                 file={file}
                 projectId={projectId}
-                eventId={file.id}
                 detectionThreshold={detectionThreshold}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
@@ -987,10 +995,9 @@ export function FileDetailModal({
                   option: v,
                 }))}
                 onDraw={() => setDrawMode(true)}
-                onAddBox={() => addBoxMutation.mutate()}
-                canAddBox={
-                  hiddenDetections.length > 0 && !addBoxMutation.isPending
-                }
+                onAddBox={handlePromoteHiddenBox}
+                canAddBox={!addBoxMutation.isPending}
+                onMutated={invalidateAfterMutation}
               />
             )}
 

@@ -564,6 +564,18 @@ function EventCard({
     ? `${API_BASE_URL}/api/files/${event.thumbnail_file_id}/image`
     : undefined;
 
+  // Drop species chips whose display name duplicates an observation
+  // badge ("Vehicle" / "Person") that's already on this card.
+  const observationBadgeNames = new Set(
+    event.observation_types
+      .filter((t) => t === "human" || t === "vehicle")
+      .map((t) => (t === "human" ? "person" : t)),
+  );
+  const speciesLabels = event.labels.filter((sp) => {
+    const display = (event.display_labels?.[sp] || sp).toLowerCase();
+    return !observationBadgeNames.has(display);
+  });
+
   // Fetch thumbnail file detections for overlay
   const { data: thumbFile } = useQuery({
     queryKey: ["file", event.thumbnail_file_id],
@@ -676,9 +688,9 @@ function EventCard({
                 </Badge>
               );
             })}
-          {event.labels.length > 0 ? (
+          {speciesLabels.length > 0 ? (
             <>
-              {event.labels.slice(0, 2).map((sp) => (
+              {speciesLabels.slice(0, 2).map((sp) => (
                 <Badge
                   key={sp}
                   variant="default"
@@ -688,19 +700,21 @@ function EventCard({
                   <span className="truncate">{event.display_labels?.[sp] || sp.charAt(0).toUpperCase() + sp.slice(1)}</span>
                 </Badge>
               ))}
-              {event.labels.length > 2 && (
+              {speciesLabels.length > 2 && (
                 <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
-                  +{event.labels.length - 2}
+                  +{speciesLabels.length - 2}
                 </Badge>
               )}
             </>
           ) : (
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
-            >
-              Empty
-            </Badge>
+            observationBadgeNames.size === 0 && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
+              >
+                Empty
+              </Badge>
+            )
           )}
         </div>
 

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Check, Pencil, SquarePlus, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
@@ -27,7 +27,6 @@ import { LabelPicker } from "./LabelPicker";
 interface FileVerificationPanelProps {
   file: FileWithDetections;
   projectId: string;
-  eventId: string;
   detectionThreshold: number;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
@@ -39,12 +38,17 @@ interface FileVerificationPanelProps {
   onDraw?: () => void;
   onAddBox?: () => void;
   canAddBox?: boolean;
+  /**
+   * Called after a successful verify / notes / delete / relabel mutation.
+   * The parent owns its query keys (events vs files vs grid lists) and
+   * decides what to invalidate. Mirrors AnnotationCanvas's onMutated.
+   */
+  onMutated?: () => void;
 }
 
 export function FileVerificationPanel({
   file,
   projectId,
-  eventId,
   detectionThreshold,
   labelOptions,
   labelOptionsLoading,
@@ -56,8 +60,8 @@ export function FileVerificationPanel({
   onDraw,
   onAddBox,
   canAddBox,
+  onMutated,
 }: FileVerificationPanelProps) {
-  const queryClient = useQueryClient();
   const [notes, setNotes] = useState(file.notes ?? "");
   const [showNotes, setShowNotes] = useState(false);
 
@@ -65,25 +69,20 @@ export function FileVerificationPanel({
   const verifyMutation = useMutation({
     mutationFn: () =>
       filesApi.update(file.id, { verified: !file.verified }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-    },
+    onSuccess: () => onMutated?.(),
   });
 
   // Notes mutation
   const notesMutation = useMutation({
     mutationFn: () => filesApi.update(file.id, { notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-    },
+    onSuccess: () => onMutated?.(),
   });
 
   // Delete detection mutation
   const deleteMutation = useMutation({
     mutationFn: (detectionId: string) => detectionsApi.delete(detectionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      onMutated?.();
       onSelectDetection(null);
     },
   });
@@ -99,10 +98,7 @@ export function FileVerificationPanel({
       category: string;
       label: string | null;
     }) => detectionsApi.update(detectionId, { category, label }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-    },
+    onSuccess: () => onMutated?.(),
   });
 
   const isVideo = file.file_type === "video" || (file.file_type === "frame" && file.source_video_id != null);
@@ -276,7 +272,7 @@ export function FileVerificationPanel({
                       size="sm"
                       onClick={onAddBox}
                       disabled={!canAddBox}
-                      title={canAddBox ? "Promote a hidden AI detection" : "No hidden detections available"}
+                      title="Promote highest below-threshold AI box"
                     >
                       <SquarePlus className="h-3.5 w-3.5 mr-1.5" />
                       Add

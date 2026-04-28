@@ -357,7 +357,26 @@ def _apply_file_verify_filters(
             conf_subq = conf_subq.where(
                 Detection.label_confidence <= max_label_confidence
             )
-        query = query.filter(exists(conf_subq))
+        # Blank files have no detections and so always fail an `EXISTS`
+        # gate. When the only active gate is the implicit project floor
+        # (no user-set conf range, no labels) and the user has not asked
+        # to hide empties, let blanks pass — otherwise "Empty: All" would
+        # silently drop every blank tile because of an invisible filter.
+        # Explicit user filters (slider, label) keep their strict
+        # semantics: a confidence range or label name has no meaning for
+        # a file with zero detections.
+        has_user_conf_gate = (
+            min_confidence is not None
+            or max_confidence is not None
+            or min_label_confidence is not None
+            or max_label_confidence is not None
+        )
+        if not has_user_conf_gate and empty != "hide":
+            query = query.filter(
+                or_(exists(conf_subq), File.observation_type == "blank")
+            )
+        else:
+            query = query.filter(exists(conf_subq))
 
     if verification == "verified":
         query = query.filter(File.verified == True)  # noqa: E712

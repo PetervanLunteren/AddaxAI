@@ -33,6 +33,20 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
   const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
   const dets = file.detections.filter((d) => d.confidence >= detectionThreshold);
 
+  // Drop species chips whose display name duplicates an observation
+  // badge that's already on this tile (Person / Vehicle). Without this,
+  // a vehicle file shows two "Vehicle" chips: the observation badge and
+  // the redundant species chip.
+  const observationBadgeNames = new Set(
+    file.observation_types
+      .filter((t) => t === "human" || t === "vehicle")
+      .map((t) => (t === "human" ? "person" : t)),
+  );
+  const speciesLabels = file.labels.filter((sp) => {
+    const display = (file.display_labels?.[sp] || sp).toLowerCase();
+    return !observationBadgeNames.has(display);
+  });
+
   return (
     <Card
       className="relative hover:shadow-lg transition-shadow cursor-pointer"
@@ -137,9 +151,9 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
                 </Badge>
               );
             })}
-          {file.labels.length > 0 ? (
+          {speciesLabels.length > 0 ? (
             <>
-              {file.labels.slice(0, 2).map((sp) => (
+              {speciesLabels.slice(0, 2).map((sp) => (
                 <Badge
                   key={sp}
                   variant="default"
@@ -154,19 +168,21 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
                   </span>
                 </Badge>
               ))}
-              {file.labels.length > 2 && (
+              {speciesLabels.length > 2 && (
                 <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
-                  +{file.labels.length - 2}
+                  +{speciesLabels.length - 2}
                 </Badge>
               )}
             </>
           ) : (
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
-            >
-              Empty
-            </Badge>
+            observationBadgeNames.size === 0 && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
+              >
+                Empty
+              </Badge>
+            )
           )}
         </div>
 
