@@ -51,13 +51,13 @@ ruff check app tests --fix    # auto-fix import sorting (I001) and unused import
 
 | Rule | What it means | How to fix |
 |------|---------------|------------|
-| **E501** | Line exceeds 100 characters | Break the line — wrap args, use intermediate variables, etc. |
+| **E501** | Line exceeds 100 characters | Break the line: wrap args, use intermediate variables, etc. |
 | **I001** | Imports not sorted | Run `ruff check --fix` (auto-fixable) |
 | **F401** | Unused import | Remove it, or run `ruff check --fix` |
 | **F841** | Variable assigned but never used | Remove the assignment |
 | **B904** | `raise` inside `except` without `from` | Use `raise ... from err` or `raise ... from None` |
 
-The max line length is **100 characters** (configured in `pyproject.toml`). This is the #1 source of CI failures — keep lines short.
+The max line length is **100 characters** (configured in `pyproject.toml`). This is the #1 source of CI failures, so keep lines short.
 
 ## Testing
 
@@ -154,7 +154,7 @@ There are two kinds of datetimes in this codebase and they must never be mixed i
 
 **Frontend rendering.** The UI must always show the camera's wall-clock time, not the viewer's browser-local time. `new Date(iso).toLocaleString(...)` parses the ISO string to an absolute UTC moment and then converts to the *viewer's* timezone, which silently shows wrong hours for any user not in the project's tz. Use `formatCameraDate` / `formatCameraTime` / `formatCameraDateTime` from `frontend/src/lib/datetime.ts` instead. They strip the offset and render the local components verbatim (locale-aware via `Intl.DateTimeFormat` with `timeZone: "UTC"` after the strip).
 
-**EXIF-missing is a hard failure.** `backend/app/ml/json_pipeline.py:load_json_to_database` pre-flights every image's capture timestamp before touching the DB. If any file has no extractable `DateTimeOriginal` (images) or `QuickTime:CreateDate` (videos), it raises `MissingTimestampError` with the file list. The worker catches it, marks the job failed, and surfaces the list via the queue entry's `error` field. We never substitute `fromtimestamp(mtime)` or `datetime.now(UTC)` — both silently lie about when the animal was actually there. Fix the source data and retry.
+**EXIF-missing is a hard failure.** `backend/app/ml/json_pipeline.py:load_json_to_database` pre-flights every image's capture timestamp before touching the DB. If any file has no extractable `DateTimeOriginal` (images) or `QuickTime:CreateDate` (videos), it raises `MissingTimestampError` with the file list. The worker catches it, marks the job failed, and surfaces the list via the queue entry's `error` field. We never substitute `fromtimestamp(mtime)` or `datetime.now(UTC)`; both silently lie about when the animal was actually there. Fix the source data and retry.
 
 **Project timezone.** `Project.timezone` is a required IANA string (`"Europe/Amsterdam"`, `"UTC"`, `"Etc/GMT-3"`, etc.) describing what clock the cameras were configured to. The `TimezoneSelect` combobox in `frontend/src/components/ui/timezone-select.tsx` exposes both DST-aware regional zones and fixed-offset `Etc/GMT±N` zones for cameras set to "local winter time" (no DST). Used by the activity-pattern sun overlay (astral) and any future camtrap-dp export. Never used to convert stored datetimes.
 
@@ -164,22 +164,22 @@ The Insights section in the sidebar hosts page-wide, scientifically-grounded vis
 
 ### Map
 
-`/projects/:id/insights/map` — per-deployment observation rate per 100 trap nights plotted on a base map. Three spatial views: trap-night-normalised rate, absolute observation count, and a heat-style density layer.
+`/projects/:id/insights/map`: per-deployment observation rate per 100 trap nights plotted on a base map. Three spatial views: trap-night-normalised rate, absolute observation count, and a heat-style density layer.
 
 ### Activity overlap
 
-`/projects/:id/insights/activity-overlap` — 1- or 2-species temporal activity comparison modelled on the R `overlap` and `activity` packages. Two `SpeciesPicker` dropdowns drive the chart; with two species selected, the page also renders the Ridout & Linkie 2009 overlap coefficient Δ with a 1000-rep percentile bootstrap CI.
+`/projects/:id/insights/activity-overlap`: 1- or 2-species temporal activity comparison modelled on the R `overlap` and `activity` packages. Two `SpeciesPicker` dropdowns drive the chart; with two species selected, the page also renders the Ridout & Linkie 2009 overlap coefficient Δ with a 1000-rep percentile bootstrap CI.
 
 The math lives server-side in `backend/app/ml/activity_analysis.py` so it can be unit-tested in isolation:
-- `fit_circular_kde()` — von Mises kernel density on a 240-point grid over [0, 24) hours. Post-normalized numerically rather than computing the closed-form `1/(2π·I₀(κ))`, which avoids a scipy dependency.
-- `overlap_coefficient()` — Δ = ∫ min(f_a, f_b) dt over the grid.
-- `bootstrap_overlap_ci()` — 1000-rep percentile bootstrap, fixed seed for deterministic results.
-- `classify_diel()` — Bennie et al. 2014 ≥ 0.70 density-in-phase rule (diurnal / nocturnal / crepuscular / cathemeral). Falls back to a fixed 06:00-18:00 day window when sun bands are unavailable (polar latitudes, missing tz).
+- `fit_circular_kde()`: von Mises kernel density on a 240-point grid over [0, 24) hours. Post-normalized numerically rather than computing the closed-form `1/(2π·I₀(κ))`, which avoids a scipy dependency.
+- `overlap_coefficient()`: Δ = ∫ min(f_a, f_b) dt over the grid.
+- `bootstrap_overlap_ci()`: 1000-rep percentile bootstrap, fixed seed for deterministic results.
+- `classify_diel()`: Bennie et al. 2014 ≥ 0.70 density-in-phase rule (diurnal / nocturnal / crepuscular / cathemeral). Falls back to a fixed 06:00-18:00 day window when sun bands are unavailable (polar latitudes, missing tz).
 
 Sun-time mode (Vazquez et al. 2019 double-anchored transform) lives in `backend/app/ml/sun_time.py`:
-- `per_date_sun_phases()` — looks up `(dawn, sunrise, sunset, dusk)` per unique observation date via astral, using the project's IANA timezone. Works for DST zones (`Europe/Amsterdam`) and fixed-offset zones (`UTC`, `Etc/GMT-3`) alike. Returns `None` for polar dates that astral refuses.
-- `compute_anchors()` / `compute_anchor_bands()` — mean sunrise / sunset (and dawn / dusk) across every non-polar observation date. Both species share the same anchors so the two KDE curves sit in the same frame.
-- `transform_to_sun_time()` — piecewise-linear double-anchor mapping: per-day sunrise / sunset stretch or compress to the anchor sunrise / sunset, with daylight and nighttime portions handled separately. Observations on polar dates are dropped and counted separately so the UI can surface the loss.
+- `per_date_sun_phases()`: looks up `(dawn, sunrise, sunset, dusk)` per unique observation date via astral, using the project's IANA timezone. Works for DST zones (`Europe/Amsterdam`) and fixed-offset zones (`UTC`, `Etc/GMT-3`) alike. Returns `None` for polar dates that astral refuses.
+- `compute_anchors()` / `compute_anchor_bands()`: mean sunrise / sunset (and dawn / dusk) across every non-polar observation date. Both species share the same anchors so the two KDE curves sit in the same frame.
+- `transform_to_sun_time()`: piecewise-linear double-anchor mapping: per-day sunrise / sunset stretch or compress to the anchor sunrise / sunset, with daylight and nighttime portions handled separately. Observations on polar dates are dropped and counted separately so the UI can surface the loss.
 
 The CRUD function `get_activity_overlap()` in `backend/app/api/crud/statistics.py` reuses `_avg_site_location()` and `_compute_sun_bands()` from the existing activity-pattern endpoint, applies the project's `independence_interval` to event grouping (no per-plot override: the interval is shown as read-only metadata next to the chart), and returns one round-trip with both species' KDE densities, the rug-tick samples, the Δ block, the diel classifications, the clock-mode sun bands, the sun-mode anchor bands, and the effective `time_axis` (which silently downgrades to `clock` if the project has no site coordinates or every observation date is polar). Wire format and tz handling follow the conventions in the "Datetime conventions" section below.
 
@@ -195,7 +195,7 @@ After video detection (phase 1) and frame extraction, a single representative fr
 
 See `backend/app/ml/best_frame.py`.
 
-**Storage:** No separate frame JPEG is saved — `best_frame_path` points to the frame inside `video_frames/`: `{deployment_folder}/.addaxai/video_frames/{video_name}/frame{N:06d}.jpg`. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images.
+**Storage:** No separate frame JPEG is saved; `best_frame_path` points to the frame inside `video_frames/`: `{deployment_folder}/.addaxai/video_frames/{video_name}/frame{N:06d}.jpg`. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images.
 
 **Usage:** The best frame is the canonical image representation of a video. Use it anywhere you'd use a photo for an image file:
 - Thumbnails in the UI
@@ -260,12 +260,12 @@ See `backend/app/models/label_taxonomy.py`.
 | Column | Purpose |
 |--------|---------|
 | `classification_model_id` | Links to the classification model |
-| `name` | Display label — **must match `Detection.label`** (this is the join key) |
+| `name` | Display label, **must match `Detection.label`** (this is the join key) |
 | `taxon_class` .. `taxon_species` | Formal taxonomy ranks (nullable) |
 | `level` | Most specific non-empty rank: `"class"`, `"order"`, `"family"`, `"genus"`, or `"species"` |
 | `is_custom` | `True` for user-created entries, `False` for model-sourced entries |
 
-Unique constraint: `(classification_model_id, name)`. All taxonomy functions are idempotent — calling them twice inserts 0 the second time.
+Unique constraint: `(classification_model_id, name)`. All taxonomy functions are idempotent: calling them twice inserts 0 the second time.
 
 `Detection.label` is a plain text field, **not** a foreign key. The tree builder matches it against `label_taxonomy.name` by string equality. This means the `name` value must exactly match whatever string ends up in `Detection.label`.
 
@@ -322,7 +322,7 @@ Exposed via `GET /api/events/label-tree?project_id=<id>&count_by=<event|detectio
 
 ### The `is_custom` flag
 
-All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag exists for UI-driven taxonomy creation where users can add custom labels with taxonomy info. Custom entries work identically in the tree builder — it queries all `label_taxonomy` rows for the model regardless of `is_custom`.
+All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag exists for UI-driven taxonomy creation where users can add custom labels with taxonomy info. Custom entries work identically in the tree builder: it queries all `label_taxonomy` rows for the model regardless of `is_custom`.
 
 ### Key files
 

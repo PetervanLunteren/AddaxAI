@@ -166,7 +166,7 @@ export function StepDeployment({
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Site</DialogTitle>
+            <DialogTitle>Add new site</DialogTitle>
             <DialogDescription>
               Create a new camera trap site for your project
             </DialogDescription>

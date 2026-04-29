@@ -458,7 +458,7 @@ export function DetectionDetailModal({
                   detection.neighbor_top_label !== detection.label;
                 return (
                   <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
-                    <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Label Agreement</h3>
+                    <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Label agreement</h3>
                     <div className="px-3 pb-3 space-y-2">
                       <div className="relative h-3 w-full overflow-hidden rounded-full flex">
                         <div style={{ width: `${pct}%`, backgroundColor: "#0f6064" }} className="h-full transition-all duration-500 ease-out" />

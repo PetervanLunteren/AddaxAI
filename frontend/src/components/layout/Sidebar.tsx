@@ -130,7 +130,7 @@ export function Sidebar() {
 
       {/* Project Info at Bottom */}
       <div className="absolute bottom-0 left-0 right-0 border-t bg-muted/30 p-4">
-        <p className="text-xs font-medium text-muted-foreground">Current Project</p>
+        <p className="text-xs font-medium text-muted-foreground">Current project</p>
         <p className="truncate text-sm font-semibold">
           {project?.name || "Loading..."}
         </p>

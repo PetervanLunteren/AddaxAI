@@ -89,7 +89,7 @@ export function ProjectsPage() {
               }}
             >
               <Plus className="h-4 w-4" />
-              New Project
+              New project
             </Button>
           </div>
         </div>
@@ -209,7 +209,7 @@ export function ProjectsPage() {
               </p>
               <Button onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="h-4 w-4" />
-                Create Project
+                Create project
               </Button>
             </CardContent>
           </Card>

@@ -66,7 +66,7 @@ export function QueueSection({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xl font-bold text-gray-900">Analysis Queue</h3>
+          <h3 className="text-xl font-bold text-gray-900">Analysis queue</h3>
           <p className="text-sm text-gray-600 mt-1">
             {pendingEntries.length} pending • {processingEntries.length} processing • {completedEntries.length} completed
           </p>

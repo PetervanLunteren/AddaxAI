@@ -38,7 +38,7 @@ export function StepLabels({ labelsList, onLabelsChange }: StepLabelsProps) {
         >
           <div className="flex items-center gap-3">
             <Plus className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
-            <span className="font-medium">Select Expected Labels</span>
+            <span className="font-medium">Select expected labels</span>
           </div>
         </Button>
 

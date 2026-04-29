@@ -61,11 +61,11 @@ type SortDir = "asc" | "desc";
 /**
  * Leaf segment of a folder path. Used as a deployment's primary
  * identifier in the table ("deployment_001" out of
- * `/data/project/site/deployment_001`). Falls back to an em-dash when
- * folder_path is null (legacy / unlinked deployments).
+ * `/data/project/site/deployment_001`). Falls back to a single dash
+ * when folder_path is null (legacy / unlinked deployments).
  */
 function folderBasename(path: string | null): string {
-  if (!path) return "—";
+  if (!path) return "-";
   const trimmed = path.replace(/\/$/, "");
   const i = trimmed.lastIndexOf("/");
   return i >= 0 ? trimmed.slice(i + 1) : trimmed;

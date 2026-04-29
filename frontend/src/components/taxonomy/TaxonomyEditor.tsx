@@ -160,7 +160,7 @@ export function TaxonomyEditor({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Configure Taxonomy</DialogTitle>
+            <DialogTitle>Configure taxonomy</DialogTitle>
             <DialogDescription>
               Please select a classification model first.
             </DialogDescription>

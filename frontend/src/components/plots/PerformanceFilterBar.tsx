@@ -53,12 +53,12 @@ const MODE_OPTIONS = [
   },
   {
     value: "recall",
-    title: "Recall — row-normalised (diagonal = per-class recall)",
+    title: "Recall: row-normalised (diagonal = per-class recall)",
     icon: textIcon("recall"),
   },
   {
     value: "precision",
-    title: "Precision — column-normalised (diagonal = per-class precision)",
+    title: "Precision: column-normalised (diagonal = per-class precision)",
     icon: textIcon("precision"),
   },
 ];

@@ -231,7 +231,7 @@ export function AddDeploymentDialog({
                   Downloading...
                 </>
               ) : (
-                "Download Weights"
+                "Download weights"
               )}
             </Button>
           </AlertDescription>
@@ -259,7 +259,7 @@ export function AddDeploymentDialog({
                   Building...
                 </>
               ) : (
-                "Build Environment"
+                "Build environment"
               )}
             </Button>
           </AlertDescription>
@@ -289,7 +289,7 @@ export function AddDeploymentDialog({
                     Downloading...
                   </>
                 ) : (
-                  "Download Weights"
+                  "Download weights"
                 )}
               </Button>
               <Button
@@ -305,7 +305,7 @@ export function AddDeploymentDialog({
                     Building...
                   </>
                 ) : (
-                  "Build Environment"
+                  "Build environment"
                 )}
               </Button>
             </div>
@@ -321,7 +321,7 @@ export function AddDeploymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Add Deployment to Queue</DialogTitle>
+          <DialogTitle>Add deployment to queue</DialogTitle>
           <DialogDescription>
             Select a folder and configure ML models for camera trap analysis.
           </DialogDescription>
@@ -335,7 +335,7 @@ export function AddDeploymentDialog({
               name="folder_path"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Folder Path</FormLabel>
+                  <FormLabel>Folder path</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="/Users/you/camera-traps/site-a"
@@ -360,7 +360,7 @@ export function AddDeploymentDialog({
               name="detection_model"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Detection Model</FormLabel>
+                  <FormLabel>Detection model</FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
@@ -403,7 +403,7 @@ export function AddDeploymentDialog({
               name="classification_model"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Classification Model</FormLabel>
+                  <FormLabel>Classification model</FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}

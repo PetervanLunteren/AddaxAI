@@ -34,7 +34,7 @@ export function DeploymentPopup({ feature }: DeploymentPopupProps) {
     <div className="p-1 min-w-[220px]">
       <div className="font-semibold text-sm mb-1">{site_name}</div>
       <div className="text-xs text-gray-600 mb-2">
-        {start_date} {end_date ? `— ${end_date}` : "— active"}
+        {start_date} {end_date ? `to ${end_date}` : "(active)"}
       </div>
 
       <div className="space-y-1 text-xs">

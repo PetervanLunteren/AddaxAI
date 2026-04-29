@@ -133,12 +133,12 @@ export function DeploymentTimelineFilterBar({
             options={[
               {
                 value: "normal",
-                title: "Normal — site names visible",
+                title: "Normal: site names visible",
                 icon: <Rows2 className="h-4 w-4" />,
               },
               {
                 value: "compact",
-                title: "Compact — thin lines, no site labels",
+                title: "Compact: thin lines, no site labels",
                 icon: <Rows4 className="h-4 w-4" />,
               },
             ]}

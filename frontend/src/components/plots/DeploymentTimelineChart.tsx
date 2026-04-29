@@ -556,7 +556,7 @@ export function DeploymentTimelineChart({
                     onClick={() => handleSiteClick(site)}
                   >
                     <title>
-                      {site.site_name} — click to open Deployments filtered to
+                      {site.site_name}: click to open Deployments filtered to
                       this site
                     </title>
                     {site.site_name}
@@ -681,7 +681,7 @@ export function DeploymentTimelineChart({
                           onClick={() => handleDeploymentClick(dep)}
                         >
                           <title>
-                            {site.site_name} — {dep.deployment_label}
+                            {site.site_name}, {dep.deployment_label}
                             {cameraLine}
                             {"\n"}Period:{" "}
                             {formatDateLabel(iv.start)} →{" "}
@@ -778,7 +778,7 @@ export function DeploymentTimelineChart({
         />
         {hover && (() => {
           const y = concurrentY(hover.count);
-          const label = `${formatDateLabel(formatYMD(hover.dateMs))} — ${hover.count} camera${hover.count === 1 ? "" : "s"}`;
+          const label = `${formatDateLabel(formatYMD(hover.dateMs))}, ${hover.count} camera${hover.count === 1 ? "" : "s"}`;
           const labelW = Math.max(120, label.length * 6.5);
           const labelH = 20;
           const labelY = y - 8 - labelH < geometry.concurrentTop
