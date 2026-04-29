@@ -19,6 +19,43 @@ logger = get_logger(__name__)
 
 VERIFY_SORT_VALUES = {"newest", "oldest", "random", "cls_low"}
 
+COLLAGE_TILE_LIMIT = 4
+
+
+def _build_collage_file_ids(
+    max_n_frames: list[dict],
+    sorted_files: list[File],
+) -> list[str]:
+    """Pick up to four representative file IDs for an event card collage.
+
+    The first slots come from `max_n_frames` (one file per dominant
+    species, computed by `get_max_n_frames`). Remaining slots are
+    padded with files of the event ranked by their highest detection
+    confidence (descending), skipping files already chosen.
+    """
+    chosen: list[str] = []
+    seen: set[str] = set()
+    for mf in max_n_frames:
+        fid = mf["file_id"]
+        if fid not in seen:
+            chosen.append(fid)
+            seen.add(fid)
+        if len(chosen) >= COLLAGE_TILE_LIMIT:
+            return chosen
+
+    def file_top_confidence(f: File) -> float:
+        return max((d.confidence for d in f.detections), default=0.0)
+
+    padded = sorted(sorted_files, key=file_top_confidence, reverse=True)
+    for f in padded:
+        if f.id in seen:
+            continue
+        chosen.append(f.id)
+        seen.add(f.id)
+        if len(chosen) >= COLLAGE_TILE_LIMIT:
+            break
+    return chosen
+
 
 def _event_min_cls_subquery():
     """Correlated scalar subquery: MIN(label_confidence) across all detections
@@ -584,6 +621,8 @@ def get_events_by_project(
             sorted_files[0].id if sorted_files else None
         )
 
+        collage_file_ids = _build_collage_file_ids(max_n_frames, sorted_files)
+
         summaries.append(
             {
                 "id": event.id,
@@ -592,6 +631,7 @@ def get_events_by_project(
                 "event_end_local": event.event_end_local,
                 "file_count": event.file_count,
                 "thumbnail_file_id": thumbnail_file_id,
+                "collage_file_ids": collage_file_ids,
                 "max_n_frames": max_n_frames,
                 "site_name": event.deployment.site.name
                 if event.deployment and event.deployment.site

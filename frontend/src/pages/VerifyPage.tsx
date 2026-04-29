@@ -13,14 +13,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleHelp, Layers, Loader2 } from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
-import { filesApi } from "../api/files";
 import { projectsApi } from "../api/projects";
-import { API_BASE_URL } from "../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../lib/datetime";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { getDetectionColor, getObservationBadge } from "../lib/detection-utils";
+import { getObservationBadge } from "../lib/detection-utils";
 import { setSpeciesContext, getSpeciesColor, getSpeciesTextColor } from "../utils/species-colors";
 import type {
   EventSummary,
@@ -29,6 +27,7 @@ import type {
   VerifySort,
 } from "../api/types";
 
+import { EventCollage } from "../components/verify/EventCollage";
 import { EventDetailModal } from "../components/verify/EventDetailModal";
 import { VerifyFilterBar } from "../components/verify/VerifyFilterBar";
 import {
@@ -560,10 +559,6 @@ function EventCard({
       ? `${startDate} · ${startTime} – ${endTime}`
       : `${startDate} ${startTime} – ${endDate} ${endTime}`;
 
-  const thumbnailUrl = event.thumbnail_file_id
-    ? `${API_BASE_URL}/api/files/${event.thumbnail_file_id}/image`
-    : undefined;
-
   // Drop species chips whose display name duplicates an observation
   // badge ("Vehicle" / "Person") that's already on this card.
   const observationBadgeNames = new Set(
@@ -576,14 +571,6 @@ function EventCard({
     return !observationBadgeNames.has(display);
   });
 
-  // Fetch thumbnail file detections for overlay
-  const { data: thumbFile } = useQuery({
-    queryKey: ["file", event.thumbnail_file_id],
-    queryFn: ({ signal }) => filesApi.get(event.thumbnail_file_id!, { signal }),
-    enabled: !!event.thumbnail_file_id,
-  });
-
-
   return (
     <Card
       className="relative hover:shadow-lg transition-shadow cursor-pointer"
@@ -594,79 +581,10 @@ function EventCard({
         favorited={event.any_file_favorited}
         flagged={event.any_file_flagged}
       />
-      {/* Thumbnail */}
-      <div className="aspect-video bg-muted relative overflow-hidden rounded-t-lg">
-        {thumbnailUrl ? (
-          <img
-            src={thumbnailUrl}
-            alt="Event thumbnail"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <Layers className="h-8 w-8 text-muted-foreground/30" />
-          </div>
-        )}
-        {/* Detection overlay */}
-        {thumbFile && (() => {
-          const dets = thumbFile.detections.filter(
-            (d) => d.confidence >= detectionThreshold
-          );
-          if (dets.length === 0) return null;
-          const imgW = thumbFile.width_px || 1;
-          const imgH = thumbFile.height_px || 1;
-          // Use a fixed reference size for 16:9 viewBox
-          const VW = 320;
-          const VH = 180;
-          const scale = Math.max(VW / imgW, VH / imgH);
-          const dw = imgW * scale;
-          const dh = imgH * scale;
-          const ox = (VW - dw) / 2;
-          const oy = (VH - dh) / 2;
-          const maskId = `m-card-${event.thumbnail_file_id}`;
-          const boxes = dets.map((det) => {
-            const bx = ox + det.bbox_x * dw;
-            const by = oy + det.bbox_y * dh;
-            const bw = det.bbox_width * dw;
-            const bh = det.bbox_height * dh;
-            const color = getDetectionColor(det);
-            return { bx, by, bw, bh, color };
-          });
-          return (
-            <svg
-              className="absolute inset-0 w-full h-full pointer-events-none"
-              viewBox={`0 0 ${VW} ${VH}`}
-            >
-              <defs>
-                <mask id={maskId}>
-                  <rect width={VW} height={VH} fill="white" />
-                  {boxes.map((b, i) => (
-                    <rect key={i} x={b.bx} y={b.by} width={b.bw} height={b.bh} rx={4} fill="black" />
-                  ))}
-                </mask>
-              </defs>
-              <rect width={VW} height={VH} fill="rgba(0,0,0,0.55)" mask={`url(#${maskId})`} />
-              {boxes.map((b, i) => (
-                <rect
-                  key={i}
-                  x={b.bx}
-                  y={b.by}
-                  width={b.bw}
-                  height={b.bh}
-                  rx={4}
-                  fill="none"
-                  stroke={b.color}
-                  strokeWidth={2.5}
-                  opacity={1}
-                />
-              ))}
-            </svg>
-          );
-        })()}
-      </div>
+      <EventCollage
+        fileIds={event.collage_file_ids}
+        detectionThreshold={detectionThreshold}
+      />
 
       <CardContent className="p-3 space-y-1.5">
         {/* Label chips — moved out of the thumbnail so the image is

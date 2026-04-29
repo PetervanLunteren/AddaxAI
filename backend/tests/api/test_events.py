@@ -315,3 +315,86 @@ def test_events_sort_invalid_value_returns_400(client, db):
 
     resp = client.get(f"/api/events?project_id={p.id}&sort=bogus")
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Collage file IDs (event card collage layout)
+# ---------------------------------------------------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from app.api.crud.event import _build_collage_file_ids  # noqa: E402
+
+
+def _fake_file(file_id: str, confidences: list[float]) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=file_id,
+        detections=[SimpleNamespace(confidence=c) for c in confidences],
+    )
+
+
+def test_collage_uses_max_n_frames_first_in_order():
+    max_n = [{"file_id": "a"}, {"file_id": "b"}]
+    files = [_fake_file("a", [0.9]), _fake_file("b", [0.8]), _fake_file("c", [0.7])]
+    assert _build_collage_file_ids(max_n, files) == ["a", "b", "c"]
+
+
+def test_collage_caps_at_four_when_max_n_is_long():
+    max_n = [{"file_id": x} for x in ("a", "b", "c", "d", "e")]
+    assert _build_collage_file_ids(max_n, []) == ["a", "b", "c", "d"]
+
+
+def test_collage_pads_by_top_detection_confidence():
+    max_n = [{"file_id": "a"}]
+    files = [
+        _fake_file("a", [0.9]),
+        _fake_file("b", [0.5]),
+        _fake_file("c", [0.95]),
+        _fake_file("d", [0.7]),
+    ]
+    # MaxN file first, then remaining files sorted by max(confidence) desc.
+    assert _build_collage_file_ids(max_n, files) == ["a", "c", "d", "b"]
+
+
+def test_collage_skips_files_already_in_max_n():
+    max_n = [{"file_id": "a"}]
+    files = [_fake_file("a", [0.9]), _fake_file("b", [0.8])]
+    assert _build_collage_file_ids(max_n, files) == ["a", "b"]
+
+
+def test_collage_no_max_n_uses_top_confidence_files():
+    files = [
+        _fake_file("a", [0.5]),
+        _fake_file("b", [0.95]),
+        _fake_file("c", [0.7]),
+        _fake_file("d", [0.3]),
+        _fake_file("e", [0.85]),
+    ]
+    assert _build_collage_file_ids([], files) == ["b", "e", "c", "a"]
+
+
+def test_collage_empty_inputs_returns_empty_list():
+    assert _build_collage_file_ids([], []) == []
+
+
+def test_collage_handles_files_with_no_detections():
+    files = [_fake_file("a", []), _fake_file("b", [0.9])]
+    assert _build_collage_file_ids([], files) == ["b", "a"]
+
+
+def test_event_summary_includes_collage_file_ids(client, db):
+    """The events list endpoint exposes collage_file_ids on every summary."""
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+
+    resp = client.get(f"/api/events?project_id={p.id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    summary = body[0]
+    assert summary["id"] == ev.id
+    # No EventObservation rows in this fixture, so the only padding source
+    # is the file by max detection confidence: one file → one collage tile.
+    assert summary["collage_file_ids"] == [ev.files[0].id]

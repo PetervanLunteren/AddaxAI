@@ -633,6 +633,10 @@ export interface EventSummary {
   event_end_local: string;
   file_count: number;
   thumbnail_file_id: string | null;
+  /** Up to four file IDs picked by the backend for the event-card collage:
+   *  one frame per dominant species first, then padded by max detection
+   *  confidence. Empty when the event has no files. */
+  collage_file_ids: string[];
   max_n_frames: MaxNFrame[];
   site_name: string | null;
   labels: string[];

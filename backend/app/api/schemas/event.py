@@ -28,6 +28,11 @@ class EventSummary(BaseModel):
     event_end_local: datetime
     file_count: int
     thumbnail_file_id: str | None
+    # Up to four file IDs used for the event-card collage. First slots
+    # come from `max_n_frames` (one per dominant species), remaining
+    # slots are padded by max detection confidence. Empty for events
+    # with no files.
+    collage_file_ids: list[str] = []
     max_n_frames: list[MaxNFrame]
     site_name: str | None
     labels: list[str]

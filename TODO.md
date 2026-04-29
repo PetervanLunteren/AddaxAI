@@ -1,6 +1,7 @@
 ## Priority 1
-- [ ] the padding on the captures page is slightly different than the events and observations page. If you switch between them, they get moved a little bit. Fix this. 
-- [ ] Lets make the event grid visually different than the captures grid. I was thnking to make each event a grid itself, so a collage of 4 images max, otherwise 3 (2 top, 1 sliced bottom), 2 (two sliced), or 1 (normal). How difficult would this be? 
+- [ ] 
+- [ ] In the EventDetailsModal (and CapturesDetailsModal too?) there is a buitton that opens the file when in electron build (fodler icon) in the left sidebar. If I poress that on a videoframe, it opens the hidden frame. That is bad UX, it shjould open the original video file. Can you investiogate and fix this? 
+- [ ] 
 
 ## Priority 2
 - [ ] 
