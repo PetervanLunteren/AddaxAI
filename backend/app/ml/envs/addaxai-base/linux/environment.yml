@@ -6,25 +6,19 @@ dependencies:
   - python=3.11
   - pip
   - pip:
-    # Core Streamlit packages
-    - streamlit
-    - streamlit-extras
-    - streamlit-aggrid
-    
-    # Map and UI components
-    - folium
-    - streamlit-folium
-    - st-checkbox-tree
-    - streamlit-antd-components
-    - st-flexible-callout-elements
-    - streamlit-lottie
-    
+    # CUDA torch wheels installed first so megadetector's transitive
+    # torch requirement is satisfied by the GPU build instead of pip
+    # falling back to the CPU wheel from PyPI.
+    - --extra-index-url https://download.pytorch.org/whl/cu118
+    - torch==2.3.0
+    - torchvision==0.18.0
+
     # Image processing and metadata
     - exifread
     - piexif
     - gpsphoto
     - hachoir
-    
+
     # Utility packages
     - appdirs
     - requests
@@ -32,9 +26,8 @@ dependencies:
     - tqdm
     - huggingface_hub
     - anyio<4.0  # Pin to v3.x for Python 3.11 typing compatibility
-    - st-modal
     - openpyxl
-    
+
     # Similarity search
     - faiss-cpu>=1.7.4
 

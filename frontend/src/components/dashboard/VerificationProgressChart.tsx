@@ -90,38 +90,43 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-1.5">
-          <CardTitle className="text-lg">Verification</CardTitle>
-          <DashboardAboutPopover
-            what={
-              <>
-                <p>Verification progress per unit:</p>
-                <ul className="list-disc pl-5 space-y-0.5">
-                  <li>Events: files grouped by time.</li>
-                  <li>Captures: stills and video frames.</li>
-                  <li>Observations: AI detections.</li>
-                </ul>
-                <p>
-                  The list below shows verified vs total detections per
-                  label, sorted by support.
-                </p>
-              </>
-            }
-            how={
-              <>
-                <p>
-                  An event is verified when all its MaxN frames are. A
-                  capture is verified when you mark it. A detection is
-                  verified when you confirm or correct its label. The
-                  three rows are independent.
-                </p>
-                <p>
-                  Per-class rows count detections that pass the project
-                  threshold or are verified, and skip false detections.
-                </p>
-              </>
-            }
-          />
+        <div>
+          <div className="flex items-center gap-1.5">
+            <CardTitle className="text-lg">Verification</CardTitle>
+            <DashboardAboutPopover
+              what={
+                <>
+                  <p>Verification progress per unit:</p>
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    <li>Events: files grouped by time.</li>
+                    <li>Captures: stills and video frames.</li>
+                    <li>Observations: AI detections.</li>
+                  </ul>
+                  <p>
+                    The list below shows verified vs total detections per
+                    label, sorted by support.
+                  </p>
+                </>
+              }
+              how={
+                <>
+                  <p>
+                    An event is verified when all its MaxN frames are. A
+                    capture is verified when you mark it. A detection is
+                    verified when you confirm or correct its label. The
+                    three rows are independent.
+                  </p>
+                  <p>
+                    Per-class rows count detections that pass the project
+                    threshold or are verified, and skip false detections.
+                  </p>
+                </>
+              }
+            />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Progress by unit and label
+          </p>
         </div>
       </CardHeader>
       <CardContent>
@@ -130,14 +135,14 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
             <p className="text-muted-foreground">Loading...</p>
           </div>
         ) : rows.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {rows.map((row) => (
-              <SlimProgressRow key={row.label} {...row} />
-            ))}
-            {labelStats && labelStats.rows.length > 0 && (
-              <>
-                <Separator className="my-2" />
-                <div className="flex flex-col gap-3 max-h-48 overflow-y-auto pr-1">
+          <div className="rounded-lg bg-muted/50 p-3 max-h-80 overflow-y-auto">
+            <div className="flex flex-col gap-3">
+              {rows.map((row) => (
+                <SlimProgressRow key={row.label} {...row} />
+              ))}
+              {labelStats && labelStats.rows.length > 0 && (
+                <>
+                  <Separator className="my-1" />
                   {labelStats.rows.map((row) => (
                     <SlimProgressRow
                       key={row.label_taxonomy_id ?? row.display_name}
@@ -146,9 +151,9 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                       total={row.total}
                     />
                   ))}
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-40">

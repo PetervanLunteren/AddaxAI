@@ -6,6 +6,13 @@ dependencies:
   - python=3.11
   - pip
   - pip:
+    # CUDA torch wheels installed first so megadetector's transitive
+    # torch requirement is satisfied by the GPU build instead of pip
+    # falling back to the CPU wheel from PyPI.
+    - --extra-index-url https://download.pytorch.org/whl/cu118
+    - torch==2.3.0
+    - torchvision==0.18.0
+
     # Image processing and metadata
     - exifread
     - piexif
@@ -28,3 +35,8 @@ dependencies:
     - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
     - megadetector==10.0.18
     - ultralytics==8.3.177
+
+    # Helps Windows pip use the system certificate store (matches the
+    # legacy AddaxAI Windows build workflow). Last so it doesn't hold
+    # up the rest of the install if its index trips.
+    - pip-system-certs

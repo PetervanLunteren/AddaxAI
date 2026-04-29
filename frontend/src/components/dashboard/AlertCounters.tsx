@@ -46,32 +46,34 @@ export const AlertCounters: React.FC<AlertCountersProps> = ({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-1.5">
-          <CardTitle className="text-lg">Observation categories</CardTitle>
-          <DashboardAboutPopover
-            what={
-              <p>
-                Captures grouped by what is in them. Each capture (still
-                photo or extracted video frame) lands in exactly one
-                tile: Animals, People, Vehicles, or Empties. The four
-                counts add up to the total captures in the filtered
-                view.
-              </p>
-            }
-            how={
-              <p>
-                Counts use the file's observation type, which encodes
-                the priority rule animal &gt; human &gt; vehicle &gt;
-                blank. A photo with both an animal and a person is
-                counted under Animals only. Numbers are abbreviated
-                with k for thousands and M for millions.
-              </p>
-            }
-          />
+        <div>
+          <div className="flex items-center gap-1.5">
+            <CardTitle className="text-lg">Observation categories</CardTitle>
+            <DashboardAboutPopover
+              what={
+                <p>
+                  Captures grouped by what is in them. Each capture (still
+                  photo or extracted video frame) lands in exactly one
+                  tile: Animals, People, Vehicles, or Empties. The four
+                  counts add up to the total captures in the filtered
+                  view.
+                </p>
+              }
+              how={
+                <p>
+                  Counts use the file's observation type, which encodes
+                  the priority rule animal &gt; human &gt; vehicle &gt;
+                  blank. A photo with both an animal and a person is
+                  counted under Animals only. Numbers are abbreviated
+                  with k for thousands and M for millions.
+                </p>
+              }
+            />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Captures grouped by what is in them
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Captures grouped by what is in them
-        </p>
       </CardHeader>
       <CardContent>
         {isLoading ? (

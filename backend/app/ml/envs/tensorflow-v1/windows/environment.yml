@@ -1,10 +1,10 @@
-# Linux env-tensorflow-v1.
+# Windows env-tensorflow-v1.
 #
-# Verbatim copy of the legacy AddaxAI source yml at
-# classification_utils/envs/tensorflow-linux-windows.yml. The Linux
-# installer feeds this same yml to `conda env create` for env-tensorflow.
-# Package versions are intentionally pinned for compatibility with TF
-# 2.10's only-supported CUDA combo (cudatoolkit 11.2 + cudnn 8.1).
+# Same as linux/tensorflow-v1, which is a verbatim copy of the legacy
+# AddaxAI source yml at classification_utils/envs/tensorflow-linux-windows.yml.
+# The Windows installer feeds this exact yml to `conda env create` for
+# env-tensorflow. pip-system-certs is added at the end to match the
+# legacy AddaxAI Windows build workflow's corporate-SSL handling.
 name: env-tensorflow-v1
 channels:
   - conda-forge
@@ -31,3 +31,4 @@ dependencies:
     - tensorflow==2.10.0
     - tensorflow_addons
     - tqdm
+    - pip-system-certs

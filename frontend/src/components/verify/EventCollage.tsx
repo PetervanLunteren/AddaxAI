@@ -166,7 +166,10 @@ function EventCollageTile({
           (e.target as HTMLImageElement).style.display = "none";
         }}
       />
-      {boxes.length > 0 && (
+      {/* Spotlight + bbox outlines. Always rendered once `file` has
+          loaded so the dim layer keeps every tile in the collage at
+          the same brightness baseline, even when a tile is empty. */}
+      {file && (
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox={`0 0 ${VW} ${VH}`}

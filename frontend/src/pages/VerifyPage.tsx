@@ -147,7 +147,7 @@ export default function VerifyPage() {
   // Tab state from URL
   const rawTab = searchParams.get("tab");
   const activeTab: VerifyTab =
-    rawTab === "captures" || rawTab === "observations" ? rawTab : "events";
+    rawTab === "captures" || rawTab === "events" ? rawTab : "observations";
   const setActiveTab = useCallback(
     (tab: VerifyTab) => {
       // Cancel in-flight queries for the tab we are leaving so the browser
@@ -163,7 +163,8 @@ export default function VerifyPage() {
       }
       setSearchParams(
         (prev) => {
-          if (tab === "events") {
+          // Observations is the default tab, so it has no ?tab= param.
+          if (tab === "observations") {
             prev.delete("tab");
           } else {
             prev.set("tab", tab);
@@ -206,8 +207,10 @@ export default function VerifyPage() {
   const setFilters = useCallback(
     (next: EventFilterParams) => {
       const sp = filtersToSearchParams(next);
-      // Preserve tab-related params
-      if (activeTab !== "events") sp.set("tab", activeTab);
+      // Preserve tab-related params. Observations is the implicit
+      // default and has no tab= param; Events and Captures keep
+      // theirs so a filter edit doesn't warp the user back home.
+      if (activeTab !== "observations") sp.set("tab", activeTab);
       const mode = searchParams.get("mode");
       if (mode) sp.set("mode", mode);
       const anchor = searchParams.get("anchor");
@@ -357,9 +360,9 @@ export default function VerifyPage() {
         <div className="flex items-center gap-1 border-b">
           {(
             [
-              ["events", "Events"],
-              ["captures", "Captures"],
               ["observations", "Observations"],
+              ["captures", "Captures"],
+              ["events", "Events"],
             ] as const
           ).map(([tab, label]) => (
             <button

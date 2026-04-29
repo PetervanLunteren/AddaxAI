@@ -75,8 +75,11 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
           </div>
         )}
 
-        {/* Detection overlay */}
-        {dets.length > 0 && (() => {
+        {/* Spotlight + detection overlay. Rendered for every tile,
+            including empties: the dim layer keeps brightness uniform
+            across the grid. When there are no detections the mask has
+            no holes, so the layer covers the full image. */}
+        {(() => {
           const imgW = file.width_px || 1;
           const imgH = file.height_px || 1;
           const VW = 320;

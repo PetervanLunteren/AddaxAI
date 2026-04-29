@@ -97,7 +97,11 @@ export function EventFilmstrip({
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
-              {/* Detection overlay */}
+              {/* Spotlight + detection overlay. Rendered for every
+                  filmstrip thumbnail, including empties: the dim
+                  layer keeps brightness uniform across the strip.
+                  When there are no detections the mask has no holes,
+                  so the layer covers the full image. */}
               {(() => {
                 let dets = file.detections.filter(
                   (d) => d.confidence >= detectionThreshold
@@ -106,7 +110,6 @@ export function EventFilmstrip({
                 if (file.file_type === "video" && file.best_frame_number != null) {
                   dets = dets.filter((d) => d.frame_number === file.best_frame_number);
                 }
-                if (dets.length === 0) return null;
                 const imgW = file.width_px || 1;
                 const imgH = file.height_px || 1;
                 // Compute object-cover transform
