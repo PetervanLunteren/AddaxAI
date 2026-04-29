@@ -6,9 +6,15 @@
  * - Type hints everywhere
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
 import { X } from "lucide-react";
 import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -23,11 +29,13 @@ import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
 import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
+import SetupPage from "./pages/SetupPage";
 import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
+import { setupApi } from "./api/setup";
 
 interface ModelUpdate {
   model_id: string;
@@ -96,33 +104,70 @@ function ModelUpdateToast() {
   );
 }
 
+/**
+ * Full-app gate. While the first-run setup wizard hasn't completed, every
+ * route except /setup redirects to /setup. Once setup is ready, /setup
+ * itself redirects out. Status is polled cheaply (every 5s here; the
+ * SetupPage itself polls more aggressively at 1.5s while the wizard is
+ * open).
+ */
+function SetupGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const onSetupRoute = location.pathname.startsWith("/setup");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["setup-status"],
+    queryFn: setupApi.getStatus,
+    refetchInterval: 5000,
+  });
+
+  // Don't render anything until we know the setup state. Avoids a flash
+  // of the projects page before redirecting to /setup.
+  if (isLoading || !data) {
+    return null;
+  }
+
+  if (!data.ready && !onSetupRoute) {
+    return <Navigate to="/setup" replace />;
+  }
+
+  if (data.ready && onSetupRoute) {
+    return <Navigate to="/projects" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Navigate to="/projects" replace />} />
-          <Route path="/projects" element={<ProjectsPage />} />
+        <SetupGate>
+          <Routes>
+            <Route path="/setup" element={<SetupPage />} />
+            <Route path="/" element={<Navigate to="/projects" replace />} />
+            <Route path="/projects" element={<ProjectsPage />} />
 
-          {/* Project routes with sidebar */}
-          <Route path="/projects/:projectId" element={<AppLayout />}>
-            <Route index element={<Navigate to="analyses" replace />} />
-            <Route path="analyses" element={<AnalysesPage />} />
-            <Route path="verify" element={<VerifyPage />} />
-            <Route path="review" element={<Navigate to="../verify" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="insights" element={<Navigate to="map" replace />} />
-            <Route path="insights/map" element={<MapPage />} />
-            <Route path="insights/timeline" element={<DeploymentTimelinePage />} />
-            <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
-            <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />
-            <Route path="insights/per-class-performance" element={<PerClassPerformancePage />} />
-            <Route path="sites" element={<SitesPage />} />
-            <Route path="deployments" element={<DeploymentsPage />} />
-            <Route path="export" element={<ExportPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
+            {/* Project routes with sidebar */}
+            <Route path="/projects/:projectId" element={<AppLayout />}>
+              <Route index element={<Navigate to="analyses" replace />} />
+              <Route path="analyses" element={<AnalysesPage />} />
+              <Route path="verify" element={<VerifyPage />} />
+              <Route path="review" element={<Navigate to="../verify" replace />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="insights" element={<Navigate to="map" replace />} />
+              <Route path="insights/map" element={<MapPage />} />
+              <Route path="insights/timeline" element={<DeploymentTimelinePage />} />
+              <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
+              <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />
+              <Route path="insights/per-class-performance" element={<PerClassPerformancePage />} />
+              <Route path="sites" element={<SitesPage />} />
+              <Route path="deployments" element={<DeploymentsPage />} />
+              <Route path="export" element={<ExportPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </SetupGate>
 
         {/* Global toast notifications */}
         <ModelUpdateToast />

@@ -29,6 +29,7 @@ from app.api.routers import (
     ml_models_router,
     observations_router,
     projects_router,
+    setup_router,
     sites_router,
     statistics_router,
     websocket_router,
@@ -41,6 +42,32 @@ from app.ml.catalog_updater import ModelCatalogUpdater
 # Initialize logging first, before anything else
 setup_logging()
 logger = get_logger(__name__)
+
+
+async def install_bundled_models_task() -> None:
+    """
+    Copy default model weights (MDv5A, DINOv2-B) from the PyInstaller
+    bundle into the user data dir on first launch. No-op in dev or when
+    weights are already present. Runs in a thread because shutil.copytree
+    is sync and the model files are big.
+    """
+    try:
+        settings = get_settings()
+        models_dir = settings.user_data_dir / "models"
+
+        from app.services.bundled_models import install_bundled_models
+
+        def _run() -> dict[str, int]:
+            return install_bundled_models(models_dir)
+
+        result = await asyncio.to_thread(_run)
+        if result["copied"]:
+            logger.info(
+                f"Installed {result['copied']} bundled model(s); "
+                f"{result['skipped']} already present"
+            )
+    except Exception as e:
+        logger.error(f"Bundled-model install failed: {e}", exc_info=True)
 
 
 async def auto_generate_thumbnails() -> None:
@@ -154,11 +181,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     sync_task = asyncio.create_task(update_model_catalog(app))
     thumbnail_task = asyncio.create_task(auto_generate_thumbnails())
     folder_check_task = asyncio.create_task(_check_deployment_folders_on_startup())
+    bundled_models_task = asyncio.create_task(install_bundled_models_task())
 
     yield
 
     # Shutdown: cancel background tasks if still running
-    for task in (sync_task, thumbnail_task, folder_check_task):
+    for task in (sync_task, thumbnail_task, folder_check_task, bundled_models_task):
         if not task.done():
             task.cancel()
             try:
@@ -210,6 +238,7 @@ def create_app() -> FastAPI:
 
     # Register API routers (already have /api prefix in their definitions)
     app.include_router(projects_router)
+    app.include_router(setup_router)
     app.include_router(sites_router)
     app.include_router(deployments_router)
     app.include_router(deployment_queue_router)

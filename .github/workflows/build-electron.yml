@@ -140,6 +140,39 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      # Bundle the two default models (MDv5A detection + DINOv2-B
+      # embedding) into the DMG so first-run users have working models
+      # offline. backend.spec picks these up automatically if the dir
+      # exists; absence is harmless. ~600 MB of weights from HuggingFace.
+      - name: Download default model weights
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from huggingface_hub import snapshot_download
+
+          targets = [
+              ("det", "MD5A-0-0"),
+              ("emb", "DINOV2-VITB14"),
+          ]
+          out_root = Path("_bundled_models")
+          out_root.mkdir(exist_ok=True)
+          for category, model_id in targets:
+              dst = out_root / category / model_id
+              dst.mkdir(parents=True, exist_ok=True)
+              repo = f"Addax-Data-Science/{model_id}"
+              print(f"Downloading {repo} -> {dst}")
+              snapshot_download(
+                  repo_id=repo,
+                  local_dir=str(dst),
+                  local_dir_use_symlinks=False,
+              )
+          print("Done. Bundled models tree:")
+          for p in sorted(out_root.rglob("*")):
+              if p.is_file():
+                  print(f"  {p.relative_to(out_root)} ({p.stat().st_size:,} bytes)")
+          PY
+
       - name: Build PyInstaller backend
         working-directory: backend
         run: python -m PyInstaller backend.spec --clean
