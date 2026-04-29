@@ -1871,9 +1871,14 @@ export default function SettingsPage() {
 
 
 /**
- * Diagnostics card. Single button that builds and downloads a ZIP
- * bundle (logs + system info + env state + db state + recent jobs)
- * the user emails to support. No upload, no telemetry.
+ * Diagnostics card. Builds and downloads a ZIP bundle (logs, system
+ * info, env state, db state, recent jobs) the user emails to support.
+ * No upload, no telemetry.
+ *
+ * Layout matches the rest of the Settings page: a `<Card>` with
+ * `<CardHeader>` and a 2-column row inside `<CardContent>` (description
+ * left, control right). One row per concern; second row left blank for
+ * future diagnostics tools (e.g. "Open logs folder").
  */
 function DiagnosticsSection() {
   const download = useMutation({
@@ -1887,34 +1892,46 @@ function DiagnosticsSection() {
   });
 
   return (
-    <div className="rounded-lg border bg-white p-6 shadow-sm">
-      <h3 className="text-lg font-semibold tracking-tight">Diagnostics</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Build a ZIP with application logs, system information, installed
-        models, and recent job history. Email it to{" "}
-        <a
-          className="text-primary hover:underline"
-          href="mailto:peter@addaxdatascience.com?subject=AddaxAI%20diagnostic%20report"
-        >
-          peter@addaxdatascience.com
-        </a>{" "}
-        when reporting a bug. Nothing is uploaded automatically.
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        The bundle may include absolute filesystem paths from your
-        camera-trap folders. Inspect the ZIP before sharing if you work
-        on sensitive data.
-      </p>
-      <div className="mt-4">
-        <Button
-          variant="outline"
-          onClick={() => download.mutate()}
-          disabled={download.isPending}
-        >
-          <Download className="h-4 w-4 mr-2" />
-          {download.isPending ? "Building..." : "Export diagnostic report"}
-        </Button>
-      </div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Diagnostics</CardTitle>
+        <CardDescription>
+          Tools for reporting bugs. Nothing is uploaded automatically.
+          Share manually if you want to.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-0 divide-y border-t">
+        <div className="grid grid-cols-2 items-center gap-8 py-6">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              Export diagnostic report
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Builds a ZIP with application logs, system information,
+              installed models, and recent job history. Email to{" "}
+              <a
+                className="text-primary hover:underline"
+                href="mailto:peter@addaxdatascience.com?subject=AddaxAI%20diagnostic%20report"
+              >
+                peter@addaxdatascience.com
+              </a>
+              {" "}when reporting a bug. The bundle may include absolute
+              paths from your camera-trap folders, so inspect it before
+              sharing if your data is sensitive.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              onClick={() => download.mutate()}
+              disabled={download.isPending}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              {download.isPending ? "Building..." : "Export report"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

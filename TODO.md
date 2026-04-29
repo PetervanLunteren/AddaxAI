@@ -17,7 +17,7 @@
 - [x] Do a full audit to check all the title cases and em dashes. 2. **No Title Case** - Use natural English capitalisation. That means only capitalising the first word of sentences and proper nouns (like "Peter van Lunteren", "Utrecht", "MegaDetector", "SpeciesNet", "Today, I was walking in the park.",  "Things I love about Amsterdam.", "Cities visited"). Do capitalize the first letter of headers (e.g., "Detections per 100 trap-days", "Species selection", "Observations"). 3. **No em dashes** - Never use em dashes (—) or double hyphens (--) in text. Use commas, colons, semicolons, or separate sentences instead.
 - [x] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [x] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
-- [ ] ERROR REPORTING
+- [x] ERROR REPORTING
 - [ ] ADD ALL MODELS IN THE ZOO
 - [ ] If I want to update the release tag: (1) should I bumb to which version number? What would you recommend? Its now ready for beta testing. Furthermore, what should I write in the release text? Give me about 10 bullet points of what the changes are with previous tag. ONly keywords, no lengthy texts. 
 
