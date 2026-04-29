@@ -18,8 +18,15 @@
 - [x] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
 - [x] make sure on app istall it installs the default models and their environments (MDv5A and DINOv2-B). 
 - [x] ERROR REPORTING
+- [x] If I want to update the release tag: (1) should I bumb to which version number? What would you recommend? Its now ready for beta testing. Furthermore, what should I write in the release text? Give me about 10 bullet points of what the changes are with previous tag. ONly keywords, no lengthy texts. 
+
+
+- [ ] With regards to the logo, the shortcut on windows now has a white border. Probably the margin I added. Are you sure you dont just want a squircle without any margin and transaprent background? 
+
+
+
+- [ ] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
 - [ ] ADD ALL MODELS IN THE ZOO
-- [ ] If I want to update the release tag: (1) should I bumb to which version number? What would you recommend? Its now ready for beta testing. Furthermore, what should I write in the release text? Give me about 10 bullet points of what the changes are with previous tag. ONly keywords, no lengthy texts. 
 
 ## Priority 2
 - [ ] 

@@ -276,6 +276,24 @@ async function createWindow(): Promise<void> {
     show: false, // Don't show until ready
   });
 
+  // Attach all listeners that depend on a window event BEFORE loading
+  // the URL. ready-to-show fires once when the renderer has rendered for
+  // the first time; on Windows it consistently fires *before*
+  // loadURL(...) resolves, so attaching the listener after the load
+  // (as we used to) misses the event entirely and the window stays
+  // invisible while the renderer happily polls the backend in the
+  // background. Attach early; show() is then a one-liner.
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
+
+  // The HTML <title> would otherwise override our window title with
+  // "AddaxAI" (no version) once the page loads. Block that so the
+  // version stays visible in the title bar at all times.
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+
   // Clear the renderer's HTTP cache before each load. The frontend is a
   // hashed-asset Vite SPA served from the bundled backend at a stable URL
   // (http://localhost:8000). On app upgrade the bundle ships new asset
@@ -286,20 +304,18 @@ async function createWindow(): Promise<void> {
   // re-download from localhost on each launch, which is negligible.
   await session.defaultSession.clearCache();
 
-  // The HTML <title> would otherwise override our window title with
-  // "AddaxAI" (no version) once the page loads. Block that so the
-  // version stays visible in the title bar at all times.
-  mainWindow.on('page-title-updated', (event) => {
-    event.preventDefault();
-  });
-
   // Load the frontend from backend
   await mainWindow.loadURL(BACKEND_URL);
 
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
+  // Belt-and-suspenders: if ready-to-show somehow didn't fire (Electron
+  // bug, OS quirk, race we didn't anticipate), force the window visible
+  // after loadURL resolves. show() is idempotent so calling it twice
+  // is harmless. focus() ensures the window comes to the foreground on
+  // Windows where the OS may otherwise leave it behind another app.
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
 
   // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
