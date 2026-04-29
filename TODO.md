@@ -1,5 +1,6 @@
 ## Priority 1
-- [ ] 
+- [ ] the padding on the captures page is slightly different than the events and observations page. If you switch between them, they get moved a little bit. Fix this. 
+- [ ] Lets make the event grid visually different than the captures grid. I was thnking to make each event a grid itself, so a collage of 4 images max, otherwise 3 (2 top, 1 sliced bottom), 2 (two sliced), or 1 (normal). How difficult would this be? 
 
 ## Priority 2
 - [ ] 
@@ -12,10 +13,11 @@
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
-- [ ] PROCESS BATCH RESULTS - https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
+- [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR
 - [ ] DOCUMENTATION
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
+- [ ] ERROR REPORTING
 
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 

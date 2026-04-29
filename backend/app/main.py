@@ -273,13 +273,22 @@ def create_app() -> FastAPI:
 
             This enables client-side routing for the SPA.
             """
-            # If path looks like a file request, try to serve it
+            # If path looks like a file request, try to serve it.
+            # Hashed Vite assets (under /assets/, mounted above) get default
+            # caching. Other static files at the root are also cacheable.
             file_path = frontend_dir / full_path
             if file_path.is_file():
                 return FileResponse(str(file_path))
 
-            # Otherwise, serve index.html for SPA routing
-            return FileResponse(str(frontend_dir / "index.html"))
+            # SPA entry point. Must never be cached: its URL is stable but it
+            # references content-hashed assets that change every build. A
+            # cached index.html on the user's machine after an upgrade points
+            # at hashes that no longer exist, producing a white screen until
+            # the user does a hard refresh.
+            return FileResponse(
+                str(frontend_dir / "index.html"),
+                headers={"Cache-Control": "no-store"},
+            )
     else:
         logger.warning(f"Frontend directory not found: {frontend_dir}")
         logger.warning("API will be available but frontend UI will not be served")
