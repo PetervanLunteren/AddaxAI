@@ -62,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Fail BEFORE any expensive build if Apple credentials are missing
       # on a release event. Avoids a 30-minute build that ends in a silent
@@ -89,14 +89,14 @@ jobs:
           echo "All required Apple credentials are set."
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: 'backend/requirements.txt'
 
       - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -285,7 +285,7 @@ jobs:
         run: ls -lh electron/dist-build/ || true
 
       - name: Upload artifacts (workflow run, 14 days)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact-name }}
           path: ${{ matrix.artifact-glob }}
@@ -297,7 +297,7 @@ jobs:
       # create or modify the release notes here.
       - name: Attach to GitHub Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: ${{ matrix.artifact-glob }}
