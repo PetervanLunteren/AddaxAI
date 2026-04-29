@@ -32,6 +32,8 @@ datas = [
 datas += collect_data_files('huggingface_hub')
 datas += collect_data_files('pydantic')
 datas += collect_data_files('fastapi')
+datas += collect_data_files('astral')   # astral ships timezone resources
+datas += collect_data_files('openpyxl') # openpyxl ships schema XSDs
 
 # Comprehensive hidden imports - collect ALL submodules
 hiddenimports = []
@@ -50,6 +52,11 @@ hiddenimports += collect_submodules('websockets')
 hiddenimports += collect_submodules('httpx')
 hiddenimports += collect_submodules('redis')
 hiddenimports += collect_submodules('requests')  # Required by huggingface_hub
+hiddenimports += collect_submodules('cv2')       # opencv-python-headless
+hiddenimports += collect_submodules('astral')    # sunrise/sunset for activity overlap
+hiddenimports += collect_submodules('openpyxl')  # XLSX export
+hiddenimports += ['exiftool']                    # PyExifTool: video metadata
+hiddenimports += ['shapefile']                   # pyshp: shapefile export
 hiddenimports += ['yaml', 'yaml.loader', 'yaml.dumper']
 
 a = Analysis(
