@@ -6,7 +6,6 @@ import { useState } from "react";
 import { NavLink, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Camera,
   CardSim,
   CheckCircle,
   ChevronRight,
@@ -112,14 +111,12 @@ export function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 border-r bg-white">
       {/* Logo/Brand */}
-      <div className="flex h-16 items-center gap-3 border-b px-6">
-        <div className="rounded-lg bg-primary p-2">
-          <Camera className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <div>
-          <h1 className="text-lg font-bold">AddaxAI</h1>
-          <p className="text-xs text-muted-foreground">Camera Trap Analysis</p>
-        </div>
+      <div className="flex h-16 items-center border-b px-4">
+        <img
+          src="/branding/logo-wordmark.png"
+          alt="AddaxAI"
+          className="h-10 w-auto"
+        />
       </div>
 
       {/* Navigation */}

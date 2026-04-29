@@ -171,11 +171,19 @@ function stopBackend(): void {
 async function createWindow(): Promise<void> {
   console.log('[Electron] Creating main window...');
 
+  const appTitle = `AddaxAI v${app.getVersion()}`;
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 768,
+    title: appTitle,
+    // Hide the native menu bar on Windows/Linux until the user presses
+    // Alt. Without this it sits flush against the white app header and
+    // there's no visual break between OS chrome and app chrome.
+    // No-op on macOS (menu lives on the system menu bar).
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -194,6 +202,13 @@ async function createWindow(): Promise<void> {
   // makes that failure mode structurally impossible. The cost is a small
   // re-download from localhost on each launch, which is negligible.
   await session.defaultSession.clearCache();
+
+  // The HTML <title> would otherwise override our window title with
+  // "AddaxAI" (no version) once the page loads. Block that so the
+  // version stays visible in the title bar at all times.
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
 
   // Load the frontend from backend
   await mainWindow.loadURL(BACKEND_URL);

@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
+import { sitesApi } from "../api/sites";
 import { timelineApi, type TimelineResponse, type TimelineSite } from "../api/timeline";
 import { DeploymentTimelineChart } from "../components/plots/DeploymentTimelineChart";
 import {
@@ -21,6 +22,12 @@ import {
 } from "../components/plots/DeploymentTimelineFilterBar";
 import { DeploymentTimelineMetrics } from "../components/plots/DeploymentTimelineMetrics";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
+import {
+  InsightsFilterChips,
+  buildSiteNameMap,
+  dateChips,
+  siteChips,
+} from "../components/plots/InsightsFilterChips";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import {
@@ -176,6 +183,31 @@ export function DeploymentTimelinePage() {
 
   const { data: noSite } = useNoSiteDeployments(projectId);
 
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId!),
+    enabled: !!projectId,
+  });
+
+  const chips = useMemo(() => {
+    const siteNames = buildSiteNameMap(sites);
+    return [
+      ...siteChips(filters.siteIds, siteNames, (next) =>
+        handleFiltersChange({ ...filters, siteIds: next }),
+      ),
+      ...dateChips(
+        filters.dateFrom,
+        filters.dateTo,
+        () => handleFiltersChange({ ...filters, dateFrom: null }),
+        () => handleFiltersChange({ ...filters, dateTo: null }),
+      ),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, sites]);
+
+  const clearAllDataFilters = () =>
+    handleFiltersChange({ ...filters, siteIds: [], dateFrom: null, dateTo: null });
+
   if (!projectId) return null;
 
   return (
@@ -200,6 +232,7 @@ export function DeploymentTimelinePage() {
           filters={filters}
           onChange={handleFiltersChange}
         />
+        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
 
         <DeploymentTimelineMetrics
           metrics={sortedData?.metrics}

@@ -13,7 +13,13 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { performanceApi } from "../api/performance";
+import { sitesApi } from "../api/sites";
 import { ConfusionMatrix } from "../components/plots/ConfusionMatrix";
+import {
+  InsightsFilterChips,
+  buildSiteNameMap,
+  siteChips,
+} from "../components/plots/InsightsFilterChips";
 import {
   PerformanceFilterBar,
   type MatrixMode,
@@ -75,6 +81,21 @@ export function ConfusionMatrixPage() {
     );
   };
 
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId!),
+    enabled: !!projectId,
+  });
+  const chips = useMemo(() => {
+    const siteNames = buildSiteNameMap(sites);
+    return siteChips(filters.siteIds, siteNames, (next) =>
+      handleFiltersChange({ ...filters, siteIds: next }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, sites]);
+  const clearAllDataFilters = () =>
+    handleFiltersChange({ ...filters, siteIds: [] });
+
   const siteKey = filters.siteIds.slice().sort().join(",");
   const enabled = !!projectId;
 
@@ -115,6 +136,7 @@ export function ConfusionMatrixPage() {
           onChange={handleFiltersChange}
           showModeToggle
         />
+        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
 
         <ConfusionMatrix
           data={data}

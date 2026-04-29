@@ -12,7 +12,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 
+import { eventsApi } from "../api/events";
+import { sitesApi } from "../api/sites";
 import type { ObservationRateMapFilters } from "../api/statistics";
 import {
   MapFilterBar,
@@ -23,6 +26,13 @@ import {
 import { ObservationRateMap } from "../components/map/ObservationRateMap";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
+import {
+  InsightsFilterChips,
+  buildSiteNameMap,
+  dateChips,
+  labelChips,
+  siteChips,
+} from "../components/plots/InsightsFilterChips";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import {
   filtersFromSearchParams,
@@ -107,6 +117,51 @@ export function MapPage() {
 
   const { data: noSite } = useNoSiteDeployments(projectId);
 
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId!),
+    enabled: !!projectId,
+  });
+  const { data: filterOptions } = useQuery({
+    queryKey: ["event-filter-options", projectId],
+    queryFn: () => eventsApi.getFilterOptions(projectId!),
+    enabled: !!projectId,
+  });
+
+  const chips = useMemo(() => {
+    const siteNames = buildSiteNameMap(sites);
+    return [
+      ...siteChips(filters.site_ids, siteNames, (next) =>
+        handleFiltersChange({
+          ...filters,
+          site_ids: next.length ? next : undefined,
+        }),
+      ),
+      ...dateChips(
+        filters.date_from,
+        filters.date_to,
+        () => handleFiltersChange({ ...filters, date_from: undefined }),
+        () => handleFiltersChange({ ...filters, date_to: undefined }),
+      ),
+      ...labelChips(filters.labels, filterOptions?.display_labels, (next) =>
+        handleFiltersChange({
+          ...filters,
+          labels: next.length ? next : undefined,
+        }),
+      ),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, sites, filterOptions]);
+
+  const clearAllDataFilters = () => {
+    handleFiltersChange({
+      site_ids: undefined,
+      date_from: undefined,
+      date_to: undefined,
+      labels: undefined,
+    });
+  };
+
   if (!projectId) {
     return <div>Project ID missing</div>;
   }
@@ -142,6 +197,7 @@ export function MapPage() {
           baseLayer={baseLayer}
           onBaseLayerChange={setBaseLayer}
         />
+        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
         <ObservationRateMap
           projectId={projectId}
           filters={apiFilters}

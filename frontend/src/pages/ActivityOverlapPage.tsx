@@ -16,6 +16,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Info, Loader2 } from "lucide-react";
 
+import { sitesApi } from "../api/sites";
 import { statisticsApi } from "../api/statistics";
 import type {
   ActivityOverlapResponse,
@@ -37,6 +38,12 @@ import {
   PlotExplainer,
   type PlotReference,
 } from "../components/plots/PlotExplainer";
+import {
+  InsightsFilterChips,
+  buildSiteNameMap,
+  dateChips,
+  siteChips,
+} from "../components/plots/InsightsFilterChips";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { Badge } from "../components/ui/badge";
 import {
@@ -404,10 +411,15 @@ export function ActivityOverlapPage() {
           filters={filters}
           onChange={handleFiltersChange}
         />
+        <ActivityOverlapChips
+          projectId={projectId}
+          filters={filters}
+          onChange={handleFiltersChange}
+        />
 
         {!enabled && (
           <div className="rounded-lg border border-dashed bg-muted/20 p-12 text-center text-sm text-muted-foreground">
-            Pick a species in the dropdowns above to start.
+            Pick a label in the dropdowns above to start.
           </div>
         )}
 
@@ -509,3 +521,49 @@ export function ActivityOverlapPage() {
 }
 
 export default ActivityOverlapPage;
+
+/**
+ * Active-filter chip row scoped to the data filters. Species pickers
+ * and the time-axis toggle are excluded — they're required selections
+ * or display modes rather than removable filters. "Clear all" resets
+ * sites and date range while keeping the species and time axis.
+ */
+function ActivityOverlapChips({
+  projectId,
+  filters,
+  onChange,
+}: {
+  projectId: string;
+  filters: ActivityOverlapPageFilters;
+  onChange: (next: ActivityOverlapPageFilters) => void;
+}) {
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId),
+    enabled: !!projectId,
+  });
+
+  const chips = useMemo(() => {
+    const siteNames = buildSiteNameMap(sites);
+    return [
+      ...siteChips(filters.siteIds, siteNames, (next) =>
+        onChange({ ...filters, siteIds: next }),
+      ),
+      ...dateChips(
+        filters.dateFrom,
+        filters.dateTo,
+        () => onChange({ ...filters, dateFrom: null }),
+        () => onChange({ ...filters, dateTo: null }),
+      ),
+    ];
+  }, [filters, sites, onChange]);
+
+  return (
+    <InsightsFilterChips
+      chips={chips}
+      onClearAll={() =>
+        onChange({ ...filters, siteIds: [], dateFrom: null, dateTo: null })
+      }
+    />
+  );
+}

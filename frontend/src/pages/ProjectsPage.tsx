@@ -68,12 +68,19 @@ export function ProjectsPage() {
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage your camera trap monitoring projects
-              </p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <img
+                src="/branding/logo-mark.png"
+                alt=""
+                className="h-16 w-16 shrink-0"
+              />
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+                <p className="text-sm text-muted-foreground">
+                  Manage your camera trap monitoring projects
+                </p>
+              </div>
             </div>
             <Button
               onClick={() => {

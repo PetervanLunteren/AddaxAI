@@ -57,7 +57,7 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
     }
   }, [open, isComplete, hasError, onOpenChange]);
 
-  const { message, phase, deploymentContext, metrics, computeDevice } = useTaskProgress({
+  const { message, phase, metrics, computeDevice } = useTaskProgress({
     taskId: jobId,
     onComplete: () => {
       setIsComplete(true);
@@ -166,74 +166,54 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
                 </div>
               )}
 
-              {/* Progress - show when we have deployment context */}
-              {!isWaitingForJob && deploymentContext && (
-                <div className="border rounded-lg p-4 space-y-4">
-                  {/* Deployment count badge */}
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <span className="text-xs font-medium text-gray-600">Deployment</span>
-                    <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
-                      {deploymentContext.deploymentIndex} of {deploymentContext.totalDeployments}
-                    </span>
+              {/* Embedding progress card. Re-embedding is logically a
+                  single operation regardless of how many deployments
+                  the worker iterates internally, so we show only the
+                  crop-level progress, not the deployment counter. */}
+              {isProcessing && (
+                <div className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-gray-700">Embedding</p>
+                    <span className="text-xs text-gray-500 font-mono">{embeddingProgress.toFixed(0)}%</span>
                   </div>
+                  <Progress value={embeddingProgress} className="h-2" />
 
-                  {/* Embedding progress bar */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-gray-700">Embedding</p>
-                      <span className="text-xs text-gray-500 font-mono">{embeddingProgress.toFixed(0)}%</span>
+                  {showInfoCard ? (
+                    <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                      <div className="flex justify-between">
+                        <span>Processing {metrics.unit || 'crops'}:</span>
+                        <span>{metrics.current} of {metrics.total}</span>
+                      </div>
+                      {metrics.elapsed && (
+                        <div className="flex justify-between">
+                          <span>Elapsed time:</span>
+                          <span>{metrics.elapsed}</span>
+                        </div>
+                      )}
+                      {metrics.remaining && (
+                        <div className="flex justify-between">
+                          <span>Remaining time:</span>
+                          <span>{metrics.remaining}</span>
+                        </div>
+                      )}
+                      {metrics.rate && metrics.unit && (
+                        <div className="flex justify-between">
+                          <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
+                          <span>{metrics.rate.toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span>Running on:</span>
+                        <span className={computeDevice ? "" : "text-gray-400"}>
+                          {computeDevice ?? "detecting..."}
+                        </span>
+                      </div>
                     </div>
-                    <Progress value={embeddingProgress} className="h-2" />
-
-                    {/* Tqdm info card - only when active and not at 100% */}
-                    {showInfoCard && (
-                      <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
-                        <div className="flex justify-between">
-                          <span>Processing {metrics.unit || 'crops'}:</span>
-                          <span>{metrics.current} of {metrics.total}</span>
-                        </div>
-                        {metrics.elapsed && (
-                          <div className="flex justify-between">
-                            <span>Elapsed time:</span>
-                            <span>{metrics.elapsed}</span>
-                          </div>
-                        )}
-                        {metrics.remaining && (
-                          <div className="flex justify-between">
-                            <span>Remaining time:</span>
-                            <span>{metrics.remaining}</span>
-                          </div>
-                        )}
-                        {metrics.rate && metrics.unit && (
-                          <div className="flex justify-between">
-                            <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
-                            <span>{metrics.rate.toFixed(2)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span>Running on:</span>
-                          <span className={computeDevice ? "" : "text-gray-400"}>
-                            {computeDevice ?? "detecting..."}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Status for non-active or complete states */}
-                    {!showInfoCard && (
-                      <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
-                        {renderStatusWithIcon(embeddingStatus)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Connection status */}
-              {isProcessing && !deploymentContext && hasJob && (
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />
-                  <span className="text-sm font-medium">{message || "Starting re-embedding..."}</span>
+                  ) : (
+                    <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                      {renderStatusWithIcon(embeddingStatus)}
+                    </div>
+                  )}
                 </div>
               )}
             </>

@@ -10,13 +10,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Filter } from "lucide-react";
+import { cn } from "../../lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "../ui/select";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { statisticsApi, type SunBands } from "../../api/statistics";
@@ -318,7 +319,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div>
             <div className="flex items-center gap-1.5">
               <CardTitle className="text-lg">Activity pattern</CardTitle>
@@ -345,14 +346,22 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
               />
             </div>
             <p className="text-sm text-muted-foreground">
-              Observations by hour of day
+              {selectedSpecies === "all"
+                ? "Observations by hour of day"
+                : `Observations by hour of day · ${normalizeLabel(selectedSpecies)}`}
             </p>
           </div>
           <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-            <SelectTrigger className="w-44 h-9 text-sm">
-              <SelectValue />
+            <SelectTrigger
+              aria-label="Filter by species"
+              className={cn(
+                "w-auto shrink-0 px-2 gap-1 hover:bg-accent",
+                selectedSpecies !== "all" && "bg-accent text-primary"
+              )}
+            >
+              <Filter className="h-4 w-4" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="end">
               <SelectItem value="all">All</SelectItem>
               {speciesList?.map((s) => (
                 <SelectItem key={s.species} value={s.species}>

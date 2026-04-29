@@ -259,11 +259,6 @@ def create_app() -> FastAPI:
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-        # Serve vite.svg favicon
-        @app.get("/vite.svg")
-        def serve_vite_svg():
-            return FileResponse(str(frontend_dir / "vite.svg"))
-
         # Catch-all route for SPA - serve index.html for all frontend routes
         # This must be last to not override API routes
         @app.get("/{full_path:path}")

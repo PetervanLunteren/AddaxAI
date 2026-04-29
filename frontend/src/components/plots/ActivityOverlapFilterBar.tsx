@@ -3,7 +3,7 @@
  *
  * Single-row layout mirroring MapFilterBar: six columns on xl screens,
  * collapsing responsively. Columns:
- *   Species A | Species B | Sites | From | To | Display
+ *   Label A | Label B | Sites | From | To | Display
  *
  * The Display column stacks a clock/sun segmented control on top of
  * the twilight-bands switch so the visible row has a constant height
@@ -67,16 +67,16 @@ export function ActivityOverlapFilterBar({
   return (
     <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {/* Species A */}
+        {/* Label A */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Species A
+            Label A
           </label>
           <SpeciesPicker
             projectId={projectId}
             value={filters.speciesA}
             onChange={(value) => update({ speciesA: value })}
-            placeholder="Pick a species"
+            placeholder="Pick a label"
             siteIds={filters.siteIds}
             dateFrom={filters.dateFrom ?? undefined}
             dateTo={filters.dateTo ?? undefined}
@@ -85,16 +85,16 @@ export function ActivityOverlapFilterBar({
           />
         </div>
 
-        {/* Species B */}
+        {/* Label B */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Species B
+            Label B
           </label>
           <SpeciesPicker
             projectId={projectId}
             value={filters.speciesB}
             onChange={(value) => update({ speciesB: value })}
-            placeholder="Pick a second species"
+            placeholder="Pick a second label"
             siteIds={filters.siteIds}
             dateFrom={filters.dateFrom ?? undefined}
             dateTo={filters.dateTo ?? undefined}

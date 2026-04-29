@@ -59,7 +59,7 @@ export function SpeciesPicker({
   projectId,
   value,
   onChange,
-  placeholder = "Pick a species",
+  placeholder = "Pick a label",
   hint,
   disabled,
   siteIds,
@@ -154,13 +154,13 @@ export function SpeciesPicker({
         <PopoverContent className="w-[320px] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search species..."
+              placeholder="Search labels..."
               value={search}
               onValueChange={setSearch}
             />
             <CommandList>
               <CommandEmpty>
-                {isLoading ? "Loading species..." : "No species found."}
+                {isLoading ? "Loading labels..." : "No labels found."}
               </CommandEmpty>
               <CommandGroup>
                 {filtered.map((opt) => {
@@ -195,7 +195,7 @@ export function SpeciesPicker({
       {value && !disabled && (
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="icon"
           aria-label="Clear selection"
           className="h-9 w-9 shrink-0"
