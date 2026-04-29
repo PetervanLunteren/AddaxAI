@@ -8,10 +8,13 @@ dependencies:
   - pip:
     # CUDA torch wheels installed first so megadetector's transitive
     # torch requirement is satisfied by the GPU build instead of pip
-    # falling back to the CPU wheel from PyPI.
+    # falling back to the CPU wheel from PyPI. The +cu118 local-version
+    # suffix forces pip to fetch from the cu118 index (PyPI doesn't
+    # carry +cu118 wheels), removing the resolver ambiguity that bare
+    # `torch==2.3.0` would create against an --extra-index-url fallback.
     - --extra-index-url https://download.pytorch.org/whl/cu118
-    - torch==2.3.0
-    - torchvision==0.18.0
+    - torch==2.3.0+cu118
+    - torchvision==0.18.0+cu118
 
     # Image processing and metadata
     - exifread

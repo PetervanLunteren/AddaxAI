@@ -1,0 +1,22 @@
+name: env-tensorflow-v1
+dependencies:
+  - python=3.8.15
+  - pip
+  - pip:
+    - humanfriendly
+    - imgaug
+    - jsonpickle
+    - keras_efficientnet_v2
+    - matplotlib
+    - numpy
+    - pandas
+    - piexif
+    - pillow
+    - pyyaml
+    - requests
+    - scikit-learn
+    - statistics
+    - tensorflow
+    - tensorflow-metal
+    - tensorflow_addons
+    - tqdm

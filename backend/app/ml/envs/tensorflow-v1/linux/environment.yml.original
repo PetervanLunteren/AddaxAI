@@ -27,6 +27,7 @@ dependencies:
     - pyyaml
     - requests
     - scikit-learn
+    - statistics
     - tensorflow==2.10.0
     - tensorflow_addons
     - tqdm
