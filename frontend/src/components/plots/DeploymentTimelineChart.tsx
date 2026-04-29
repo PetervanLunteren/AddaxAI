@@ -199,13 +199,24 @@ interface DeploymentTimelineChartProps {
   loading: boolean;
   projectId: string;
   density?: Density;
+  /** Called with YYYY-MM-DD strings when the user finishes a
+   *  drag-to-zoom on the date axis. Parent page is expected to
+   *  write these into the dateFrom / dateTo filter so the timeline
+   *  refetches at the narrower range. */
+  onZoom?: (from: string, to: string) => void;
 }
+
+/** Minimum drag distance in pixels before we treat a click on the
+ *  axis as a zoom intent. Below this we ignore the gesture so a
+ *  stray click doesn't accidentally clobber the filters. */
+const ZOOM_DRAG_THRESHOLD_PX = 4;
 
 export function DeploymentTimelineChart({
   data,
   loading,
   projectId,
   density = "normal",
+  onZoom,
 }: DeploymentTimelineChartProps) {
   const densityConfig = DENSITY[density];
   const navigate = useNavigate();
@@ -216,6 +227,9 @@ export function DeploymentTimelineChart({
     dateMs: number;
     count: number;
   } | null>(null);
+  const [drag, setDrag] = useState<{ startX: number; currentX: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -449,6 +463,73 @@ export function DeploymentTimelineChart({
           stroke={GRID_STROKE}
           shapeRendering="crispEdges"
         />
+
+        {/* Drag-to-zoom overlay on the axis strip. Sits above the
+            month labels and below the bars, so dragging across the
+            top picks a new date range without blocking clicks on
+            site / deployment bars below. */}
+        {onZoom && (
+          <rect
+            x={geometry.plotLeft}
+            y={TOP_PADDING}
+            width={geometry.plotRight - geometry.plotLeft}
+            height={AXIS_HEIGHT}
+            fill="transparent"
+            style={{ cursor: "col-resize" }}
+            onMouseDown={(e) => {
+              const bbox = (
+                e.currentTarget as SVGRectElement
+              ).getBoundingClientRect();
+              const svgX = geometry.plotLeft + (e.clientX - bbox.left);
+              setDrag({ startX: svgX, currentX: svgX });
+            }}
+            onMouseMove={(e) => {
+              if (!drag) return;
+              const bbox = (
+                e.currentTarget as SVGRectElement
+              ).getBoundingClientRect();
+              const svgX = geometry.plotLeft + (e.clientX - bbox.left);
+              const clamped = Math.max(
+                geometry.plotLeft,
+                Math.min(geometry.plotRight, svgX),
+              );
+              setDrag({ ...drag, currentX: clamped });
+            }}
+            onMouseUp={() => {
+              if (!drag) return;
+              const { startX, currentX } = drag;
+              setDrag(null);
+              if (Math.abs(currentX - startX) < ZOOM_DRAG_THRESHOLD_PX) return;
+              const xToMs = (x: number): number => {
+                const frac =
+                  (x - geometry.plotLeft) / geometry.plotWidth;
+                return geometry.xMin + frac * (geometry.xMax - geometry.xMin);
+              };
+              const a = xToMs(Math.min(startX, currentX));
+              const b = xToMs(Math.max(startX, currentX));
+              onZoom(formatYMD(a), formatYMD(b));
+            }}
+            onMouseLeave={() => {
+              // Cancel a drag that left the strip; the user can
+              // re-grab from inside if they want to retry.
+              if (drag) setDrag(null);
+            }}
+          />
+        )}
+
+        {/* Drag selection band. Spans the full plot height so the
+            user sees exactly which deployments fall in the range. */}
+        {drag && drag.currentX !== drag.startX && (
+          <rect
+            x={Math.min(drag.startX, drag.currentX)}
+            y={geometry.axisY}
+            width={Math.abs(drag.currentX - drag.startX)}
+            height={geometry.concurrentBottom - geometry.axisY}
+            fill={BAR_FILL}
+            opacity={0.12}
+            pointerEvents="none"
+          />
+        )}
 
         {/* Gantt rows */}
         {data.sites.map((site, rowIdx) => {

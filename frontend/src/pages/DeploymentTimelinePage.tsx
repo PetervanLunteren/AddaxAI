@@ -245,6 +245,9 @@ export function DeploymentTimelinePage() {
             loading={isLoading || isFetching}
             projectId={projectId}
             density={filters.density}
+            onZoom={(from, to) =>
+              handleFiltersChange({ ...filters, dateFrom: from, dateTo: to })
+            }
           />
         </div>
 
@@ -257,7 +260,8 @@ export function DeploymentTimelinePage() {
               subfolder. Whitespace between bars on the same row is time
               the site was not monitored. The area chart beneath shows how
               many cameras were active on each day across the whole
-              survey.
+              survey. Drag horizontally across the date axis at the top to
+              zoom into a specific range.
             </p>
           }
           how={
