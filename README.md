@@ -5,10 +5,25 @@ A temporary repository to build a new AddaxAI version with backend / frontend / 
 
 The application includes a comprehensive logging system for debugging and diagnostics:
 - **Backend logs**: Python `logging` with rotating file handlers (`~/AddaxAI/logs/backend.log`)
-- **Frontend logs**: Batched logging forwarded to backend (`~/AddaxAI/logs/frontend.log`)
-- **Electron logs**: Winston logger for main process events (`~/AddaxAI/logs/electron.log`)
-- **Log retention**: 7 days, max 100MB total (33MB per log file, 3 backups each)
-- **Export**: One-click ZIP export with all logs + system info via Settings page 
+- **Frontend logs**: Batched logging forwarded to backend; window errors and unhandled promise rejections are also captured
+- **Electron logs**: Stdio captured to backend log; native renderer crashes go to `~/AddaxAI/crash-dumps/`
+- **Log retention**: ~7 days, max 100MB total (33MB per log file, 3 backups)
+- **Crash detection**: a sentinel file (`~/AddaxAI/.last-shutdown-clean`) is written on graceful exit; missing on next launch triggers a banner
+
+### When things go wrong
+
+**If AddaxAI runs**: Settings page → **Diagnostics** → click **Export diagnostic report**. This builds a ZIP containing logs, system info, installed models, env state, and recent jobs. Save it to Downloads, then email to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com).
+
+**If AddaxAI won't open**: zip the logs folder manually and email it.
+
+| OS | Logs folder |
+|----|-------------|
+| macOS / Linux | `~/AddaxAI/logs/` |
+| Windows | `%USERPROFILE%\AddaxAI\logs\` |
+
+On macOS: open Finder → press `Cmd+Shift+G` → paste `~/AddaxAI/logs/` → right-click the folder → **Compress**. On Windows: open File Explorer → paste `%USERPROFILE%\AddaxAI\logs\` → right-click → **Send to → Compressed folder**. Native renderer crashes (segfault, OOM) leave minidumps under `~/AddaxAI/crash-dumps/` — include those too if present.
+
+Nothing is uploaded automatically. Sharing logs is always an explicit user action.
 
 ### Start app
 

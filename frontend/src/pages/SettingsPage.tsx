@@ -13,10 +13,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X, Download } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
+import { diagnosticsApi } from "../api/diagnostics";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
@@ -1656,6 +1657,13 @@ export default function SettingsPage() {
 
         </TooltipProvider>
 
+        {/* Diagnostics — app-wide, not project-scoped. Sits at the
+            bottom of the project Settings page because it's where users
+            already navigate to find "settings stuff." Builds and
+            downloads a ZIP the user emails to support manually; nothing
+            is uploaded automatically. */}
+        <DiagnosticsSection />
+
         {/* Model Info Sheet */}
         <ModelInfoSheet
           modelId={selectedModelId}
@@ -1857,6 +1865,56 @@ export default function SettingsPage() {
           }}
         />
       </main>
+    </div>
+  );
+}
+
+
+/**
+ * Diagnostics card. Single button that builds and downloads a ZIP
+ * bundle (logs + system info + env state + db state + recent jobs)
+ * the user emails to support. No upload, no telemetry.
+ */
+function DiagnosticsSection() {
+  const download = useMutation({
+    mutationFn: () => diagnosticsApi.downloadDiagnosticZip(),
+    onSuccess: () => {
+      toast.success("Diagnostic report saved to Downloads");
+    },
+    onError: (err: Error) => {
+      toast.error(`Could not build diagnostic report: ${err.message}`);
+    },
+  });
+
+  return (
+    <div className="rounded-lg border bg-white p-6 shadow-sm">
+      <h3 className="text-lg font-semibold tracking-tight">Diagnostics</h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Build a ZIP with application logs, system information, installed
+        models, and recent job history. Email it to{" "}
+        <a
+          className="text-primary hover:underline"
+          href="mailto:peter@addaxdatascience.com?subject=AddaxAI%20diagnostic%20report"
+        >
+          peter@addaxdatascience.com
+        </a>{" "}
+        when reporting a bug. Nothing is uploaded automatically.
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        The bundle may include absolute filesystem paths from your
+        camera-trap folders. Inspect the ZIP before sharing if you work
+        on sensitive data.
+      </p>
+      <div className="mt-4">
+        <Button
+          variant="outline"
+          onClick={() => download.mutate()}
+          disabled={download.isPending}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          {download.isPending ? "Building..." : "Export diagnostic report"}
+        </Button>
+      </div>
     </div>
   );
 }

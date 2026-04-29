@@ -33,6 +33,7 @@ import SetupPage from "./pages/SetupPage";
 import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { Button } from "./components/ui/button";
+import { CrashBanner } from "./components/layout/CrashBanner";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
@@ -135,7 +136,14 @@ function SetupGate({ children }: { children: ReactNode }) {
     return <Navigate to="/projects" replace />;
   }
 
-  return <>{children}</>;
+  // Crash banner only renders once setup is ready: while the wizard is
+  // open, the user has more pressing things to look at.
+  return (
+    <>
+      {data.ready && <CrashBanner />}
+      {children}
+    </>
+  );
 }
 
 function App() {

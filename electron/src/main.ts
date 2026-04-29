@@ -8,8 +8,9 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, session, shell, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -17,6 +18,88 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+
+// Native Chromium / V8 crashes (renderer segfault, OOM, GPU process
+// crash) bypass uncaughtException entirely. crashReporter writes a
+// minidump to disk at the cross-platform location below; the user can
+// attach it to a support bundle. submitURL is required by the API but
+// uploadToServer:false guarantees we never send it anywhere.
+const CRASH_DUMP_DIR = path.join(os.homedir(), 'AddaxAI', 'crash-dumps');
+try {
+  fs.mkdirSync(CRASH_DUMP_DIR, { recursive: true });
+  app.setPath('crashDumps', CRASH_DUMP_DIR);
+  crashReporter.start({
+    productName: 'AddaxAI',
+    companyName: 'AddaxAI',
+    submitURL: 'https://invalid.invalid/never-uploaded',
+    uploadToServer: false,
+    ignoreSystemCrashHandler: false,
+  });
+} catch (e) {
+  console.error('[Electron] Failed to start crashReporter:', e);
+}
+
+// Crash sentinel pair:
+//   .last-shutdown-clean  — written by Electron on graceful exit; absence
+//                            on next launch implies the previous run
+//                            crashed (OOM / SIGKILL / panic / power loss).
+//   .last-launch-status.json — snapshot we write at startup capturing
+//                            "was the previous shutdown clean?". The
+//                            backend (and frontend banner via the
+//                            backend) read this file. Snapshotting at
+//                            launch is necessary because we delete the
+//                            sentinel here so the next crash also gets
+//                            detected; without the snapshot, backend
+//                            calls during the same session would always
+//                            see "no sentinel" and report a false crash.
+const SHUTDOWN_SENTINEL = path.join(os.homedir(), 'AddaxAI', '.last-shutdown-clean');
+const LAUNCH_STATUS = path.join(os.homedir(), 'AddaxAI', '.last-launch-status.json');
+
+function snapshotPreviousShutdown(): void {
+  try {
+    fs.mkdirSync(path.dirname(LAUNCH_STATUS), { recursive: true });
+    const wasClean = fs.existsSync(SHUTDOWN_SENTINEL);
+    fs.writeFileSync(
+      LAUNCH_STATUS,
+      JSON.stringify(
+        {
+          previous_shutdown_clean: wasClean,
+          current_launch_at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+    if (wasClean) {
+      // Consume the sentinel: a future crash this session must produce a
+      // *new* "missing sentinel" signal next time, not be masked by the
+      // old one.
+      try {
+        fs.unlinkSync(SHUTDOWN_SENTINEL);
+      } catch {
+        /* ignore */
+      }
+    } else {
+      console.warn(
+        '[Electron] Previous shutdown was not clean; the app may have crashed.',
+      );
+    }
+  } catch (e) {
+    console.error('[Electron] Failed to snapshot shutdown state:', e);
+  }
+}
+
+function writeShutdownSentinel(): void {
+  try {
+    fs.mkdirSync(path.dirname(SHUTDOWN_SENTINEL), { recursive: true });
+    fs.writeFileSync(SHUTDOWN_SENTINEL, new Date().toISOString(), 'utf8');
+  } catch (e) {
+    console.error('[Electron] Failed to write shutdown sentinel:', e);
+  }
+}
+
+snapshotPreviousShutdown();
 
 /**
  * Start the FastAPI backend server
@@ -296,6 +379,10 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   stopBackend();
+  // Mark this shutdown as clean. If the process is killed before this
+  // runs (SIGKILL, panic, OOM, power loss), the sentinel stays absent
+  // and the next launch detects the crash.
+  writeShutdownSentinel();
 });
 
 app.on('will-quit', () => {
