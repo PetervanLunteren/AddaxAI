@@ -97,58 +97,63 @@ exports.default = async function notarizing(context) {
     teamId: process.env.APPLE_TEAM_ID,
   };
 
+  // Some notarytool errors are persistent: retrying just wastes the budget.
+  // Detect them and short-circuit. Match on the error MESSAGE (notarytool
+  // surfaces these strings inside a wrapped Error from the @electron/notarize
+  // promise rejection).
+  const isNonRetryable = (err) => {
+    const msg = (err && err.message) || '';
+    return (
+      /HTTP status code:\s*4\d\d/i.test(msg) ||                  // any 4xx from notarytool
+      /required agreement is missing or has expired/i.test(msg) || // agreements not accepted
+      /Invalid credentials/i.test(msg) ||                        // bad APPLE_ID / app-specific password
+      /Could not find team/i.test(msg) ||                        // bad team ID
+      /Authentication failed/i.test(msg)
+    );
+  };
+
+  const attempts = [
+    { minutes: 5, num: 1 },
+    { minutes: 10, num: 2 },
+    { minutes: 30, num: 3 },
+  ];
+
+  let lastError;
   try {
-    // First attempt: 5 minutes
-    try {
-      await attemptNotarization(appPath, credentials, 5, 1);
-      return; // Success!
-    } catch (firstError) {
-      console.log(`\n⚠️  First attempt timed out after 5 minutes`);
-      console.log('Checking if notarization ticket exists...');
+    for (let i = 0; i < attempts.length; i++) {
+      const { minutes, num } = attempts[i];
+      try {
+        await attemptNotarization(appPath, credentials, minutes, num);
+        return; // Success!
+      } catch (err) {
+        lastError = err;
+        console.log(`\n⚠️  Attempt ${num} ended after ~${minutes} min: ${err.message}`);
 
-      // Check if the app was actually notarized despite the timeout
-      if (checkNotarizationTicket(appPath)) {
-        console.log('✅ Notarization ticket found! The app was notarized successfully.');
-        return;
+        if (isNonRetryable(err)) {
+          console.log('❌ Non-retryable error detected (4xx / agreement / auth). Skipping further attempts.');
+          break;
+        }
+
+        // Apple is slow but the upload may still have landed: check for ticket.
+        if (checkNotarizationTicket(appPath)) {
+          console.log('✅ Notarization ticket found! The app was notarized successfully.');
+          return;
+        }
+
+        if (i < attempts.length - 1) {
+          console.log(`❌ No ticket found. Retrying with ${attempts[i + 1].minutes}-minute timeout...`);
+        }
       }
-
-      console.log('❌ No ticket found. Retrying with 10-minute timeout...');
     }
 
-    // Second attempt: 10 minutes
-    try {
-      await attemptNotarization(appPath, credentials, 10, 2);
-      return; // Success!
-    } catch (secondError) {
-      console.log(`\n⚠️  Second attempt timed out after 10 minutes`);
-      console.log('Checking if notarization ticket exists...');
-
-      // Check if the app was actually notarized despite the timeout
-      if (checkNotarizationTicket(appPath)) {
-        console.log('✅ Notarization ticket found! The app was notarized successfully.');
-        return;
-      }
-
-      console.log('❌ No ticket found. Final attempt with 30-minute timeout...');
+    // Final ticket check (in case the very last attempt timed out but
+    // notarization actually completed).
+    if (checkNotarizationTicket(appPath)) {
+      console.log('✅ Notarization ticket found on final check.');
+      return;
     }
 
-    // Third attempt: 30 minutes
-    try {
-      await attemptNotarization(appPath, credentials, 30, 3);
-      return; // Success!
-    } catch (thirdError) {
-      console.log(`\n⚠️  Third attempt timed out after 30 minutes`);
-      console.log('Checking if notarization ticket exists...');
-
-      // Final check
-      if (checkNotarizationTicket(appPath)) {
-        console.log('✅ Notarization ticket found! The app was notarized successfully.');
-        return;
-      }
-
-      // All attempts failed
-      throw new Error(`Notarization failed after 3 attempts (5min + 10min + 30min). Apple's servers may be experiencing issues. Error: ${thirdError.message}`);
-    }
+    throw new Error(`Notarization failed. Last error: ${lastError && lastError.message}`);
   } catch (error) {
     console.error('\n❌ Notarization failed!');
     console.error('Error type:', error.constructor.name);
