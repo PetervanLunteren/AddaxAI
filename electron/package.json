@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "description": "AddaxAI - Camera trap wildlife analysis platform",
   "main": "dist/main.js",
-  "author": "AddaxAI Team",
+  "homepage": "https://github.com/PetervanLunteren/AddaxAI-WebUI",
+  "author": {
+    "name": "AddaxAI Team",
+    "email": "peter@addaxdatascience.com"
+  },
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -74,7 +78,8 @@
     },
     "linux": {
       "target": ["AppImage", "deb"],
-      "category": "Science"
+      "category": "Science",
+      "maintainer": "AddaxAI Team <peter@addaxdatascience.com>"
     }
   }
 }
