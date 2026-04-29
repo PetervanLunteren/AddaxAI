@@ -1,123 +1,131 @@
 # GitHub Actions CI/CD
 
-This directory contains automated workflows for building and releasing AddaxAI.
+## `build-electron.yml`
 
-## Workflows
+Builds the AddaxAI desktop app for macOS, Linux, and Windows. macOS is the
+canonical target and is signed and notarized; Linux and Windows are
+unsigned and currently non-blocking.
 
-### `build-electron.yml` - Build Electron App
+### Triggers
 
-Automatically builds macOS installers for the AddaxAI desktop application.
+| Event | What happens |
+|-------|--------------|
+| `release.published` | A release was created in the GitHub UI (with notes) and clicked "Publish". The workflow builds binaries and attaches them to that release. |
+| `workflow_dispatch` | Manual run from the Actions tab. Produces unsigned debug builds (workflow artifacts only, kept 14 days). |
 
-**Triggers:**
-- **Manual**: Go to [Actions tab](../../actions) → "Build Electron App" → "Run workflow"
-- **Automatic**: Push a version tag (e.g., `v0.1.0`)
+There is no `push: tags: v*` trigger. Releases are deliberately a two-step
+process: write release notes in the UI first, then publish. Failed builds
+do not leave orphaned releases behind, and the tag can be retyped without
+re-pushing.
 
-**Platforms:**
-- macOS (Intel x64 + Apple Silicon arm64)
+### Build matrix
 
-**Build outputs:**
-- `AddaxAI-{version}-arm64.dmg` - macOS disk image installer
-- `AddaxAI-{version}-arm64-mac.zip` - macOS ZIP archive
+| OS | Runner | Arch | Outputs | Blocking |
+|----|--------|------|---------|----------|
+| macOS | `macos-14` | arm64 | `.dmg`, `-mac.zip` | Yes |
+| Linux | `ubuntu-22.04` | x64 | `.AppImage`, `.deb` | No (`continue-on-error`) |
+| Windows | `windows-2022` | x64 | `.exe` (NSIS), `-win.zip` | No (`continue-on-error`) |
 
-**Build time:** ~10 minutes
+macOS runs on Apple Silicon only. There is no Intel x64 build. Anyone on a
+2019 or older Intel Mac will not get a working binary; this is a deliberate
+trade-off (Apple stopped selling Intel Macs in 2023, and PyInstaller
+universal builds are awkward).
 
-**GitHub Actions minutes used:** ~100 minutes per build (macOS has 10x multiplier)
+Linux and Windows are non-blocking: the workflow is marked successful even
+if either of them fails. Once each is verified end-to-end, flip
+`continue-on-error: false` for that matrix entry.
 
-## Usage
+### Versioning
 
-### Manual Build (Testing)
+The installer version is taken from the release tag at build time.
+Pushing tag `v0.2.0` and publishing the release produces
+`AddaxAI-0.2.0-arm64.dmg`. The hardcoded version in
+`electron/package.json` is overwritten by `npm version` inside the
+workflow. The git tag is the single source of truth.
 
-1. Go to the [Actions tab](../../actions)
-2. Click "Build Electron App" workflow
-3. Click "Run workflow" button
-4. Select branch (usually `main`)
-5. Click green "Run workflow" button
+`workflow_dispatch` runs do not change the version: they use whatever is
+in `electron/package.json`.
 
-The installers will be available as downloadable artifacts for 90 days.
+### Code signing and notarization (macOS)
 
-### Release Build (Production)
+Required secrets (set in repo Settings → Secrets and variables → Actions):
 
-Create and push a version tag:
+| Secret | Purpose |
+|--------|---------|
+| `MACOS_CERTIFICATE` | Base64-encoded `.p12` of the Developer ID Application certificate |
+| `MACOS_CERTIFICATE_PWD` | Password for the `.p12` file |
+| `APPLE_ID` | Apple ID email |
+| `APPLE_ID_PASSWORD` | App-specific password (created at appleid.apple.com) |
+| `APPLE_TEAM_ID` | Apple Developer team ID |
+
+On `release` events, the workflow fails fast if any of these are missing,
+**before** any build runs. On `workflow_dispatch`, missing secrets are
+allowed: the build proceeds and produces an unsigned `.app` for local
+testing.
+
+`electron/build/notarize.js` does a 3-attempt retry (5 → 10 → 30 min) and
+checks for a stapled ticket between attempts. When `REQUIRE_NOTARIZATION=1`
+is set (it is on release events), missing credentials raise instead of
+silently skipping.
+
+### Verification (macOS)
+
+After packaging, the workflow checks:
+
+1. `lipo -archs` on the main electron binary and the bundled PyInstaller
+   backend. Both must report `arm64` exactly.
+2. `codesign --verify --deep --strict --verbose=2` on the `.app` bundle.
+3. `xcrun stapler validate` on the `.app` bundle (release events only).
+
+If any check fails, the build fails. This catches the silent-skip failure
+mode where electron-builder produces an unsigned-but-named-correctly
+`.dmg`.
+
+### Linux and Windows
+
+No signing yet. Linux uses `electron-builder --linux` (AppImage + deb).
+Windows uses `electron-builder --win` (NSIS + zip). End users see
+SmartScreen / Gatekeeper warnings on these platforms; that's expected
+until signing is wired up.
+
+### Releasing
 
 ```bash
-# Make sure you're on main and everything is committed
-git checkout main
-git pull
+# 1. Tag a commit on main (locally)
+git tag v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
 
-# Create a version tag
-git tag v0.1.0 -m "Release v0.1.0"
+# 2. On GitHub: Releases → Draft a new release
+#    Choose the tag, write notes, click "Publish release"
 
-# Push the tag
-git push origin v0.1.0
+# 3. The workflow runs automatically and attaches binaries
 ```
 
-This will:
-1. Trigger the build workflow
-2. Build macOS installers
-3. Create a GitHub Release
-4. Upload installers to the release
-5. Generate release notes from commits
+You can also create the tag from the GitHub UI ("Releases → Draft a new
+release → Choose a tag → Create new tag on publish"). Either path works.
 
-### Viewing Build Results
+### Manual debug build
 
-**Manual builds:**
-- Go to Actions tab → Click the workflow run
-- Download artifacts at the bottom of the page
+`Actions tab → Build Electron App → Run workflow`. Produces unsigned
+binaries as workflow artifacts (14-day retention). Only the macOS arm64
+artifacts are guaranteed to load on a host machine; Linux/Windows artifacts
+are best-effort while those matrix entries are non-blocking.
 
-**Release builds:**
-- Go to [Releases page](../../releases)
-- Download installers from the release
+### Cost
 
-## Code Signing (Future)
+GitHub Free tier: 2000 minutes/month. macOS uses a 10x multiplier, Linux
+1x, Windows 2x. A full release run is ~10 min on macOS (= 100 min charged)
+plus ~6 min Linux plus ~10 min Windows (= 20 min charged). Roughly 125
+charged minutes per release, i.e. ~16 releases/month within the free tier.
 
-Currently, builds are **unsigned**. Users will see security warnings when opening the app.
+### Troubleshooting
 
-To enable code signing:
-
-### macOS
-1. Get an Apple Developer account ($99/year)
-2. Create a Developer ID Application certificate
-3. Export certificate as .p12 file
-4. Add GitHub secrets:
-   - `MACOS_CERTIFICATE`: Base64-encoded .p12 file
-   - `MACOS_CERTIFICATE_PWD`: Certificate password
-   - `APPLE_ID`: Your Apple ID email
-   - `APPLE_ID_PASSWORD`: App-specific password
-   - `APPLE_TEAM_ID`: Your team ID
-
-5. Update workflow to enable signing (set `CSC_IDENTITY_AUTO_DISCOVERY: true`)
-
-## Troubleshooting
-
-### Build fails during PyInstaller step
-- Check that `backend/requirements.txt` is complete
-- Verify `backend/backend.spec` is correct
-- Check build logs for missing dependencies
-
-### Build fails during Electron packaging
-- Verify `electron/package.json` is correct
-- Check that frontend built successfully
-- Ensure backend executable exists in `backend/dist/`
-
-### Release not created
-- Verify you pushed a tag starting with `v` (e.g., `v0.1.0`)
-- Check that the workflow has `GITHUB_TOKEN` permissions
-- Look for errors in the "Create GitHub Release" step
-
-### Out of GitHub Actions minutes
-- Free tier: 2000 minutes/month
-- macOS builds use 10x multiplier (~100 min per build)
-- Can upgrade to GitHub Pro for more minutes
-- Or only trigger builds on releases, not every commit
-
-## Cost Estimate
-
-**GitHub Free Tier:**
-- 2000 minutes/month included
-- macOS builds: 10x multiplier
-- Per build: ~10 min actual = 100 min charged
-- **~20 builds per month on free tier**
-
-**If you need more:**
-- GitHub Pro: $4/month + 3000 minutes
-- Pay-as-you-go: $0.08 per minute (macOS)
+| Symptom | Likely cause |
+|---------|--------------|
+| `Missing required secret: ...` at the top of the macOS job | Secrets not configured in repo settings |
+| `lipo` reports `x86_64` instead of `arm64` | Runner image was bumped or PyInstaller was run on a different host arch. Check `matrix.runs-on` is `macos-14` |
+| `codesign --verify` fails | `remove_python_signature.py` did not strip a stale signature. Inspect `_internal/` for foreign Team IDs |
+| `xcrun stapler validate` fails | Notarization completed but ticket was not stapled. Re-run; usually transient |
+| Notarization stuck > 30 min | Apple servers are slow. The hook does 3 retries totalling 45 min; if all 3 time out the workflow fails. Re-run when Apple recovers |
+| `npm ci` fails on Windows | Lockfile drift (someone ran `npm install` without committing the lockfile) |
+| Linux/Windows job marked yellow | They are non-blocking; the workflow still succeeded. Look at the failed step to fix |

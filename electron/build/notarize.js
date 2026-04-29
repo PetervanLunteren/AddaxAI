@@ -71,6 +71,12 @@ exports.default = async function notarizing(context) {
   console.log('APPLE_TEAM_ID:', process.env.APPLE_TEAM_ID ? '✓ Set' : '✗ Missing');
 
   if (!process.env.APPLE_ID || !process.env.APPLE_APP_SPECIFIC_PASSWORD || !process.env.APPLE_TEAM_ID) {
+    if (process.env.REQUIRE_NOTARIZATION === '1') {
+      throw new Error(
+        'Notarization required (REQUIRE_NOTARIZATION=1) but credentials are missing. ' +
+        'Set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID.'
+      );
+    }
     console.log('⏭️  Skipping notarization: missing credentials');
     console.log('Set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID environment variables to enable notarization');
     return;

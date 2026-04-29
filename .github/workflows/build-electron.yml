@@ -1,156 +1,92 @@
 name: Build Electron App
 
+# Triggers:
+# - release.published: Created a Release in the GitHub UI (with notes) and
+#   clicked "Publish". Builds binaries and attaches them to that release.
+# - workflow_dispatch: Manual run from the Actions tab. Produces unsigned
+#   debug builds (uploaded as workflow artifacts only, kept 14 days).
 on:
-  # Manual trigger
+  release:
+    types: [published]
   workflow_dispatch:
-  # Trigger on version tags
-  push:
-    tags:
-      - 'v*'
 
 permissions:
-  contents: write  # Required for creating releases and uploading assets
+  contents: write  # Required to attach assets to a release
 
 jobs:
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.runs-on }}
+    continue-on-error: ${{ matrix.continue-on-error }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS is the canonical target. Hard fails on any error.
+          - label: macOS arm64
+            os: macos
+            runs-on: macos-14
+            continue-on-error: false
+            artifact-name: macos-installers
+            artifact-glob: |
+              electron/dist-build/*.dmg
+              electron/dist-build/*-mac.zip
+            electron-builder-args: --mac --arm64
+          # Linux is non-blocking until verified end-to-end.
+          - label: Linux x64
+            os: linux
+            runs-on: ubuntu-22.04
+            continue-on-error: true
+            artifact-name: linux-installers
+            artifact-glob: |
+              electron/dist-build/*.AppImage
+              electron/dist-build/*.deb
+            electron-builder-args: --linux
+          # Windows is non-blocking until signing is wired up.
+          - label: Windows x64
+            os: windows
+            runs-on: windows-2022
+            continue-on-error: true
+            artifact-name: windows-installers
+            artifact-glob: |
+              electron/dist-build/*.exe
+              electron/dist-build/*-win.zip
+            electron-builder-args: --win
+
+    defaults:
+      run:
+        # bash is available on all 3 runners (Git Bash on Windows). Keeps
+        # the YAML uniform; no PowerShell branches.
+        shell: bash
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: 'backend/requirements.txt'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            electron/package-lock.json
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install Electron dependencies
-        working-directory: electron
-        run: npm ci
-
-      - name: Import Code Signing Certificate
+      # Fail BEFORE any expensive build if Apple credentials are missing
+      # on a release event. Avoids a 30-minute build that ends in a silent
+      # unsigned DMG. (Q3 hard-fail behaviour.)
+      - name: Verify Apple credentials
+        if: matrix.os == 'macos' && github.event_name == 'release'
         env:
-          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
-          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-        run: |
-          # Create variables
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-          # Import certificate from secrets
-          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-
-          # Create temporary keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Import certificate to keychain
-          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # Allow codesign to access the certificate
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Verify certificate is available
-          security find-identity -v -p codesigning
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Build PyInstaller backend
-        run: |
-          cd backend
-          pwd
-          ls -la
-          python -m PyInstaller backend.spec --clean
-
-      - name: Remove conflicting signatures from PyInstaller bundle
-        run: |
-          cd backend
-          python3 remove_python_signature.py
-          echo "✓ Removed signatures from Python libraries to prevent Team ID mismatch"
-
-      - name: Verify backend build
-        run: ls -lh backend/dist/backend/
-
-      - name: Build Electron app
-        working-directory: electron
-        run: |
-          npm run build
-          npm run package
-        env:
-          # Enable code signing if certificate is available
-          CSC_IDENTITY_AUTO_DISCOVERY: true
-          # Apple notarization credentials
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: List build artifacts
         run: |
-          echo "Build artifacts:"
-          ls -lh electron/dist-build/
-
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security delete-keychain $KEYCHAIN_PATH || true
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-installers
-          path: |
-            electron/dist-build/*.dmg
-            electron/dist-build/*.zip
-          retention-days: 90
-
-      - name: Upload to release (macOS)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
-        with:
-          draft: false
-          prerelease: false
-          files: |
-            electron/dist-build/*.dmg
-            electron/dist-build/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+          missing=0
+          for v in MACOS_CERTIFICATE MACOS_CERTIFICATE_PWD APPLE_ID APPLE_ID_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" != "0" ]; then
+            exit 1
+          fi
+          echo "All required Apple credentials are set."
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -159,29 +95,46 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'backend/requirements.txt'
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: |
             frontend/package-lock.json
             electron/package-lock.json
 
-      - name: Install backend dependencies
+      - name: Install backend deps
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install frontend dependencies
+      - name: Install frontend deps
         working-directory: frontend
         run: npm ci
 
-      - name: Install Electron dependencies
+      - name: Install electron deps
         working-directory: electron
         run: npm ci
+
+      # Source of truth for installer version is the release tag (Q8).
+      # On workflow_dispatch we leave package.json's hardcoded version
+      # alone so debug builds keep producing predictable filenames.
+      - name: Sync version from release tag
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Empty version derived from tag '$TAG'"
+            exit 1
+          fi
+          echo "Setting electron version to $VERSION (from tag $TAG)"
+          cd electron
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Build frontend
         working-directory: frontend
@@ -191,55 +144,128 @@ jobs:
         working-directory: backend
         run: python -m PyInstaller backend.spec --clean
 
+      # Stale signatures on bundled Python dylibs trip the Team-ID check
+      # when electron-builder re-signs the .app with our Developer ID.
+      # macOS-only by design (the script paths assume macOS dylibs).
+      - name: Strip stale signatures from Python libs
+        if: matrix.os == 'macos'
+        working-directory: backend
+        run: python3 remove_python_signature.py
+
       - name: Verify backend build
         working-directory: backend
-        run: dir dist\backend
+        run: ls -lh dist/backend/
 
-      - name: Build Electron app
+      - name: Import macOS signing certificate
+        if: matrix.os == 'macos'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning
+
+      - name: Package electron app
         working-directory: electron
+        env:
+          # macOS: discover the signing identity from the temporary
+          # keychain. Off on Linux/Windows (no signing yet).
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos' && 'true' || 'false' }}
+          # Apple notarytool credentials. notarize.js reads these.
+          # Renamed: secret APPLE_ID_PASSWORD -> env APPLE_APP_SPECIFIC_PASSWORD.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # When set to 1, notarize.js raises instead of silently
+          # skipping if credentials are missing. We require it on
+          # release events to enforce signed/notarized output.
+          REQUIRE_NOTARIZATION: ${{ matrix.os == 'macos' && github.event_name == 'release' && '1' || '0' }}
         run: |
           npm run build
-          npm run package
-        env:
-          # Disable code signing on Windows for now
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          npx electron-builder ${{ matrix.electron-builder-args }}
 
-      - name: List build artifacts
-        run: dir electron\dist-build
+      # Defence-in-depth verification (Q10). If electron-builder produced
+      # an unsigned, non-notarized, or wrong-arch bundle, fail loudly here
+      # rather than shipping it to users.
+      - name: Verify macOS bundle (arch, signature, stapled ticket)
+        if: matrix.os == 'macos'
+        run: |
+          APP="electron/dist-build/mac-arm64/AddaxAI.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::App bundle not found at $APP"
+            ls -la electron/dist-build/ || true
+            exit 1
+          fi
 
-      - name: Upload build artifacts
+          echo "==> lipo -archs (main binary)"
+          lipo -archs "$APP/Contents/MacOS/AddaxAI"
+
+          echo "==> lipo -archs (backend exe)"
+          lipo -archs "$APP/Contents/Resources/backend/backend"
+
+          # arm64-only enforcement
+          for bin in \
+            "$APP/Contents/MacOS/AddaxAI" \
+            "$APP/Contents/Resources/backend/backend"; do
+            archs=$(lipo -archs "$bin")
+            if [ "$archs" != "arm64" ]; then
+              echo "::error::$bin has wrong arch: '$archs' (expected 'arm64')"
+              exit 1
+            fi
+          done
+
+          echo "==> codesign --verify --deep --strict"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "==> xcrun stapler validate"
+            xcrun stapler validate "$APP"
+          else
+            echo "==> Skipping stapler validate on workflow_dispatch"
+          fi
+
+      - name: Cleanup keychain
+        if: always() && matrix.os == 'macos'
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: List build outputs
+        if: always()
+        run: ls -lh electron/dist-build/ || true
+
+      - name: Upload artifacts (workflow run, 14 days)
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installers
-          path: |
-            electron/dist-build/*.exe
-            electron/dist-build/*.zip
-          retention-days: 90
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-glob }}
+          retention-days: 14
+          if-no-files-found: error
 
-      - name: Upload to release (Windows)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
+      # Attach binaries to the existing release. The release was already
+      # created in the UI (that's what fired this workflow); we never
+      # create or modify the release notes here.
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
         with:
-          draft: false
-          prerelease: false
-          files: |
-            electron/dist-build/*.exe
-            electron/dist-build/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  create-release:
-    name: Create Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-macos, build-windows]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.event.release.tag_name }}
+          files: ${{ matrix.artifact-glob }}
+          fail_on_unmatched_files: true
