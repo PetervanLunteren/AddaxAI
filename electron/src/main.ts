@@ -8,7 +8,7 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, session, shell, ipcMain, dialog } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -184,6 +184,16 @@ async function createWindow(): Promise<void> {
     },
     show: false, // Don't show until ready
   });
+
+  // Clear the renderer's HTTP cache before each load. The frontend is a
+  // hashed-asset Vite SPA served from the bundled backend at a stable URL
+  // (http://localhost:8000). On app upgrade the bundle ships new asset
+  // hashes, but the renderer may still have an index.html cached from the
+  // previous install referring to hashes that no longer exist, producing a
+  // white / unstyled page on first launch. Wiping the cache at startup
+  // makes that failure mode structurally impossible. The cost is a small
+  // re-download from localhost on each launch, which is negligible.
+  await session.defaultSession.clearCache();
 
   // Load the frontend from backend
   await mainWindow.loadURL(BACKEND_URL);

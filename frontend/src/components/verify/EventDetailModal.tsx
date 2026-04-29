@@ -37,6 +37,7 @@ import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
+import { useRevealInFolder } from "../../lib/file-reveal";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -67,6 +68,7 @@ export function EventDetailModal({
   filters,
 }: EventDetailModalProps) {
   const queryClient = useQueryClient();
+  const revealInFolder = useRevealInFolder();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
     null
@@ -1194,7 +1196,7 @@ export function EventDetailModal({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => window.electronAPI?.showItemInFolder(currentFile.file_path)}
+                onClick={() => revealInFolder(currentFile)}
                 title="Open in file explorer"
               >
                 <FolderOpen className="h-4 w-4" />
