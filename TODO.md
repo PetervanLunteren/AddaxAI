@@ -8,12 +8,14 @@
 - [ ] 
 
 
-## New features
+## Future stuff
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
 - [ ] PROCESS BATCH RESULTS - https://github.com/agentmorris/MegaDetector/blob/main/megadetector/postprocessing/postprocess_batch_results.py
 - [ ] DOCUMENTATION
+- [ ] REPEAT DETECTION ELIMINATION
+- [ ] WLIDBOOKS INTEGRATION
 
 ## Installer
 - [ ] merge all alembic/versions/ into one. We do not have any users yet, so we can make it just the start DB. 
