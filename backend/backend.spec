@@ -74,7 +74,6 @@ a = Analysis(
         'ruff',
         'tkinter',
         'matplotlib',
-        'numpy',  # Not used, reduces size
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

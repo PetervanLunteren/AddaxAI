@@ -21,6 +21,11 @@ astral>=3.2
 # Image Processing
 Pillow==11.0.0
 
+# Numerical computing - used by best_frame, scoring, activity_analysis,
+# embedding_utils, and statistics. Imported in the bundled backend, not
+# only inside isolated inference envs.
+numpy==2.4.1
+
 # Video Processing
 opencv-python-headless==4.10.0.84  # For video frame extraction
 
