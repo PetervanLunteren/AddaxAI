@@ -2,9 +2,8 @@
  * Floating top-right hamburger menu hosting all app-wide actions.
  *
  * Project Settings stays project-scoped; this menu is for things that
- * apply to the whole app: About, Documentation, Re-run setup wizard,
- * Open user data folder, Check for updates, Export diagnostic report,
- * Reset application, Quit.
+ * apply to the whole app: About, Documentation, Open user data folder,
+ * Check for updates, Export diagnostic report, Reset application, Quit.
  *
  * Dropdown shape mirrors AddaxAI-Connect's UserMenu so the two apps
  * stay visually consistent for users moving between them.
@@ -23,19 +22,17 @@ import {
   Menu,
   RefreshCw,
   RotateCcw,
-  Trash2,
 } from "lucide-react";
 import { setupApi } from "../../api/setup";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { cn } from "../../lib/utils";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
-import { ReinstallEnvDialog } from "../diagnostics/ReinstallEnvDialog";
 import { CheckForUpdatesDialog } from "../diagnostics/CheckForUpdatesDialog";
 
 const DOCS_URL = "https://github.com/PetervanLunteren/AddaxAI-WebUI";
 const FALLBACK_VERSION = "(dev)";
 
-type DialogId = "reset" | "reinstall" | "updates" | null;
+type DialogId = "reset" | "updates" | null;
 
 export function AppHamburger() {
   const navigate = useNavigate();
@@ -212,14 +209,6 @@ export function AppHamburger() {
 
             <Section>
               <Item
-                icon={RotateCcw}
-                label="Re-run setup wizard"
-                onClick={() => {
-                  close();
-                  setDialog("reinstall");
-                }}
-              />
-              <Item
                 icon={FolderOpen}
                 label="Open user data folder"
                 onClick={openUserDataFolder}
@@ -243,13 +232,12 @@ export function AppHamburger() {
                 onClick={exportDiagnostic}
               />
               <Item
-                icon={Trash2}
+                icon={RotateCcw}
                 label="Reset application"
                 onClick={() => {
                   close();
                   setDialog("reset");
                 }}
-                destructive
               />
             </Section>
 
@@ -265,10 +253,6 @@ export function AppHamburger() {
       <ResetAppDialog
         open={dialog === "reset"}
         onOpenChange={(o) => setDialog(o ? "reset" : null)}
-      />
-      <ReinstallEnvDialog
-        open={dialog === "reinstall"}
-        onOpenChange={(o) => setDialog(o ? "reinstall" : null)}
       />
       <CheckForUpdatesDialog
         open={dialog === "updates"}
@@ -291,18 +275,14 @@ interface ItemProps {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
-  destructive?: boolean;
 }
 
-function Item({ icon: Icon, label, onClick, destructive }: ItemProps) {
+function Item({ icon: Icon, label, onClick }: ItemProps) {
   return (
     <button
       role="menuitem"
       onClick={onClick}
-      className={cn(
-        "w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors hover:bg-accent",
-        destructive && "text-destructive hover:text-destructive",
-      )}
+      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors hover:bg-accent"
     >
       <Icon className="h-4 w-4" />
       {label}

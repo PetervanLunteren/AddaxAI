@@ -34,6 +34,8 @@
 
 - [ ] How does it work for uninstalling? Should that be something that can be triggered from within the app? Or another executable? What is customary? How do other well known apps do it? 
 
+- [ ] are there any errors in the test suite?
+
 - [ ] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
 - [ ] ADD ALL MODELS IN THE ZOO
 

@@ -194,43 +194,6 @@ async def install_env() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Reinstall environment
-#
-# "Re-run setup wizard" in the app menu deletes env-addaxai-base so the
-# wizard's polled status flips back to env_installed=false. The user is
-# then redirected to /setup and clicks Start to drive a fresh install.
-# We don't auto-trigger the install here: the user might just want to
-# inspect the wizard, and a 30-min reinstall is too costly to start on
-# accident.
-# ---------------------------------------------------------------------------
-
-
-@router.post("/reinstall-env")
-def reinstall_env() -> dict[str, object]:
-    """
-    Delete env-addaxai-base on disk so the wizard re-runs from scratch.
-    No-op if no env directory is present.
-    """
-    em = _get_env_manager()
-    env_path = em.envs_dir / f"env-{_REQUIRED_ENV}"
-    if not env_path.exists():
-        return {"status": "no_env_present", "removed": False}
-
-    try:
-        shutil.rmtree(env_path)
-        logger.warning(f"Removed env at {env_path} for wizard re-run")
-        return {"status": "removed", "removed": True}
-    except Exception as e:
-        logger.error(
-            f"Failed to remove env at {env_path}: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not remove environment: {e}",
-        ) from e
-
-
-# ---------------------------------------------------------------------------
 # Reset application
 #
 # Wipes user data so the next launch starts from scratch (setup wizard runs
