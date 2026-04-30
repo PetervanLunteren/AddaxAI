@@ -123,6 +123,9 @@ def get_classification(PIL_crop):
 # 10% padding around the MD bbox, matching speciesnet/detector.py:_crop_with_padding
 # used during training (pad_frac=0.10).
 def get_crop(img, bbox_norm):
+    # match training: crops were loaded with Image.open(...).convert("RGB")
+    if img.mode != "RGB":
+        img = img.convert("RGB")
     pad_frac = 0.10
     W, H = img.size
     x, y, w, h = bbox_norm
