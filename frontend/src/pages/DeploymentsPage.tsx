@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, Scissors } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { sitesApi } from "../api/sites";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -383,10 +384,13 @@ export function DeploymentsPage() {
                 Camera deployment periods across all sites
               </p>
             </div>
-            <Button onClick={() => navigate(`/projects/${projectId}/analyses`)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New deployment
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => navigate(`/projects/${projectId}/analyses`)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New deployment
+              </Button>
+              <BugReportButton />
+            </div>
           </div>
         </div>
       </header>

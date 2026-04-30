@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { sitesApi } from "../api/sites";
 import { timelineApi, type TimelineResponse, type TimelineSite } from "../api/timeline";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { DeploymentTimelineChart } from "../components/plots/DeploymentTimelineChart";
 import {
   DeploymentTimelineFilterBar,
@@ -214,10 +215,15 @@ export function DeploymentTimelinePage() {
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold tracking-tight">Deployment timeline</h1>
-          <p className="text-sm text-muted-foreground">
-            Survey effort over time, grouped by site
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Deployment timeline</h1>
+              <p className="text-sm text-muted-foreground">
+                Survey effort over time, grouped by site
+              </p>
+            </div>
+            <BugReportButton />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">

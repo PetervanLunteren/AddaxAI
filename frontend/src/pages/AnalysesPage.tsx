@@ -11,6 +11,7 @@
 import { useParams } from "react-router-dom";
 import { AddDeploymentCard } from "../components/analyses/AddDeploymentCard";
 import { QueueCard } from "../components/analyses/QueueCard";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 
 export function AnalysesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -35,6 +36,7 @@ export function AnalysesPage() {
                 Queue deployments for analysis
               </p>
             </div>
+            <BugReportButton />
           </div>
         </div>
       </header>

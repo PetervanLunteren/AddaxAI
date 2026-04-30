@@ -24,6 +24,7 @@ import {
   type FilterFieldDef,
   type FilterValues,
 } from "../components/ui/filter-bar";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { DashboardAboutPopover } from "../components/dashboard/DashboardAboutPopover";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
@@ -272,11 +273,14 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-sm text-muted-foreground">
-              Project overview with statistics and trends
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+              <p className="text-sm text-muted-foreground">
+                Project overview with statistics and trends
+              </p>
+            </div>
+            <BugReportButton />
           </div>
         </div>
       </header>

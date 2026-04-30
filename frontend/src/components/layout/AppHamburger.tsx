@@ -16,7 +16,6 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BookOpen,
-  Bug,
   Download,
   FolderOpen,
   Info,
@@ -26,12 +25,6 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
 import { setupApi } from "../../api/setup";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { cn } from "../../lib/utils";
@@ -52,13 +45,12 @@ export function AppHamburger() {
   const [version, setVersion] = useState<string>(FALLBACK_VERSION);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Project pages (/projects/:id/*) get a stripped-down version: a
-  // single bug-report button. The full app menu would clutter the
-  // project workspace where the user is focused on their data, and
-  // the actions in the menu (About, Reset, Open user data folder...)
-  // are app-wide and reachable from the projects index. Bug reporting
-  // is the one menu item that genuinely matters mid-project, so we
-  // keep that as a single shortcut.
+  // Project pages (/projects/:id/*) hide the hamburger entirely.
+  // Each project page renders its own inline <BugReportButton> in
+  // the page header, so there's nothing for AppHamburger to add
+  // there. The full app menu (About, Reset, Documentation, etc.)
+  // is reachable from the projects index, the only place outside
+  // a project where AppHamburger renders.
   const isProjectPage = /^\/projects\/[^/]+/.test(location.pathname);
 
   // The About page is itself reached *from* the hamburger. Showing
@@ -150,32 +142,8 @@ export function AppHamburger() {
     }
   };
 
-  // Project pages: render only the bug-report button. Project pages
-  // use the canonical 52px row, so action buttons sit at top=22px;
-  // we match that exactly. Same right-offset calc as the full menu so
-  // the bug button hugs the page chrome's right edge.
   if (isProjectPage) {
-    return (
-      <div
-        className="fixed top-[22px] z-40"
-        style={{ right: "max(0.75rem, calc(50vw - 41.25rem))" }}
-      >
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={exportDiagnostic}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border bg-white shadow-sm transition-colors hover:bg-accent"
-                aria-label="Export bug report"
-              >
-                <Bug className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Export bug report</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-    );
+    return null;
   }
 
   return (

@@ -28,6 +28,7 @@ import {
 } from "../api/export";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
 import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
 import { downloadBlob } from "../lib/download";
@@ -241,10 +242,15 @@ export default function ExportPage() {
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold tracking-tight">Export</h1>
-          <p className="text-sm text-muted-foreground">
-            Export project data in standardised formats
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Export</h1>
+              <p className="text-sm text-muted-foreground">
+                Export project data in standardised formats
+              </p>
+            </div>
+            <BugReportButton />
+          </div>
         </div>
       </header>
 

@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { performanceApi } from "../api/performance";
 import { sitesApi } from "../api/sites";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { PerClassPerformanceTable } from "../components/plots/PerClassPerformanceTable";
 import {
   InsightsFilterChips,
@@ -114,12 +115,17 @@ export function PerClassPerformancePage() {
     <>
       <header className="border-b bg-white/80 backdrop-blur-sm px-4 py-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <h1 className="text-2xl font-bold tracking-tight">
-            Per-class performance
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Precision, recall, and F1 score per class
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">
+                Per-class performance
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Precision, recall, and F1 score per class
+              </p>
+            </div>
+            <BugReportButton />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">

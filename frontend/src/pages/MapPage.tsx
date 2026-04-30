@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import type { ObservationRateMapFilters } from "../api/statistics";
 import {
   MapFilterBar,
@@ -178,6 +179,7 @@ export function MapPage() {
                 Observation rate per 100 trap nights
               </p>
             </div>
+            <BugReportButton />
           </div>
         </div>
       </header>

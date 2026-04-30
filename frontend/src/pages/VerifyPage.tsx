@@ -17,6 +17,7 @@ import { projectsApi } from "../api/projects";
 import { formatCameraDate, formatCameraTime } from "../lib/datetime";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { Card, CardContent } from "../components/ui/card";
 import { getObservationBadge } from "../lib/detection-utils";
 import { setSpeciesContext, getSpeciesColor, getSpeciesTextColor } from "../utils/species-colors";
@@ -351,6 +352,7 @@ export default function VerifyPage() {
                   : "Run a deployment analysis to get started"}
               </p>
             </div>
+            <BugReportButton />
           </div>
         </div>
       </header>

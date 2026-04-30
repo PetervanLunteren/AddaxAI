@@ -17,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Info, Loader2 } from "lucide-react";
 
 import { sitesApi } from "../api/sites";
+import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { statisticsApi } from "../api/statistics";
 import type {
   ActivityOverlapResponse,
@@ -392,10 +393,15 @@ export function ActivityOverlapPage() {
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold tracking-tight">Activity overlap</h1>
-          <p className="text-sm text-muted-foreground">
-            Compare daily activity patterns between species
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Activity overlap</h1>
+              <p className="text-sm text-muted-foreground">
+                Compare daily activity patterns between species
+              </p>
+            </div>
+            <BugReportButton />
+          </div>
         </div>
       </header>
 
