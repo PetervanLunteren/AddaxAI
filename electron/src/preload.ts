@@ -34,6 +34,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Quit the app cleanly. Used by the Reset flow after the backend
+   * wipes user data so the next launch starts fresh.
+   */
+  quitApp: async (): Promise<void> => {
+    return await ipcRenderer.invoke('app:quit');
+  },
+
+  /**
+   * Return the runtime app version (e.g. "0.2.0-beta.1"). Comes from
+   * electron/package.json, which the release workflow rewrites from
+   * the git tag at build time.
+   */
+  getVersion: async (): Promise<string> => {
+    return await ipcRenderer.invoke('app:getVersion');
+  },
+
+  /**
    * Check if running in Electron (vs browser)
    */
   isElectron: (): boolean => {

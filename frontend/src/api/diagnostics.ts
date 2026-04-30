@@ -16,9 +16,21 @@ export interface LastLaunchStatus {
   current_launch_at?: string;
 }
 
+export interface ResetResponse {
+  removed_dirs: string[];
+  removed_files: string[];
+  db_wipe_scheduled: boolean;
+}
+
 export const diagnosticsApi = {
   getLastLaunchStatus: () =>
     api.get<LastLaunchStatus>("/api/logs/last-launch-status"),
+
+  resetApplication: (wipeDatabase: boolean) =>
+    api.post<ResetResponse>("/api/setup/reset", {
+      confirmation: "RESET",
+      wipe_database: wipeDatabase,
+    }),
 
   /**
    * Download the diagnostic ZIP. Streams the response into a Blob and

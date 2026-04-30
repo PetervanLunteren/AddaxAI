@@ -365,6 +365,21 @@ ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
   return await shell.openPath(targetPath);
 });
 
+// Quit the app cleanly. Used by the Reset flow in Settings: after the
+// backend wipes user data, the renderer asks the main process to close
+// so the next launch starts from a fresh state.
+ipcMain.handle('app:quit', () => {
+  app.quit();
+});
+
+// Return the runtime app version (e.g. "0.2.0-beta.1"). The version is
+// written into electron/package.json by the release workflow's
+// "Sync version from release tag" step, so this is always the actual
+// shipping version. Used by the About page and the update-check.
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion();
+});
+
 /**
  * Application lifecycle handlers
  */

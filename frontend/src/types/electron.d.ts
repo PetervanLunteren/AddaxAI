@@ -11,6 +11,16 @@ export interface ElectronAPI {
    * string on failure, empty string on success.
    */
   openPath: (targetPath: string) => Promise<string>;
+  /**
+   * Quit the app cleanly. Used by the Reset flow after wipe completes
+   * so the next launch starts from a fresh state.
+   */
+  quitApp: () => Promise<void>;
+  /**
+   * Runtime app version, e.g. "0.2.0-beta.1". Stamped into the bundle
+   * by the release workflow.
+   */
+  getVersion: () => Promise<string>;
   isElectron: () => boolean;
 }
 

@@ -13,11 +13,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X, Download } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
-import { diagnosticsApi } from "../api/diagnostics";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
@@ -1657,13 +1656,6 @@ export default function SettingsPage() {
 
         </TooltipProvider>
 
-        {/* Diagnostics — app-wide, not project-scoped. Sits at the
-            bottom of the project Settings page because it's where users
-            already navigate to find "settings stuff." Builds and
-            downloads a ZIP the user emails to support manually; nothing
-            is uploaded automatically. */}
-        <DiagnosticsSection />
-
         {/* Model Info Sheet */}
         <ModelInfoSheet
           modelId={selectedModelId}
@@ -1870,68 +1862,3 @@ export default function SettingsPage() {
 }
 
 
-/**
- * Diagnostics card. Builds and downloads a ZIP bundle (logs, system
- * info, env state, db state, recent jobs) the user emails to support.
- * No upload, no telemetry.
- *
- * Layout matches the rest of the Settings page: a `<Card>` with
- * `<CardHeader>` and a 2-column row inside `<CardContent>` (description
- * left, control right). One row per concern; second row left blank for
- * future diagnostics tools (e.g. "Open logs folder").
- */
-function DiagnosticsSection() {
-  const download = useMutation({
-    mutationFn: () => diagnosticsApi.downloadDiagnosticZip(),
-    onSuccess: () => {
-      toast.success("Diagnostic report saved to Downloads");
-    },
-    onError: (err: Error) => {
-      toast.error(`Could not build diagnostic report: ${err.message}`);
-    },
-  });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Diagnostics</CardTitle>
-        <CardDescription>
-          Tools for reporting bugs. Nothing is uploaded automatically.
-          Share manually if you want to.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-0 divide-y border-t">
-        <div className="grid grid-cols-2 items-center gap-8 py-6">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">
-              Export diagnostic report
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Builds a ZIP with application logs, system information,
-              installed models, and recent job history. Email to{" "}
-              <a
-                className="text-primary hover:underline"
-                href="mailto:peter@addaxdatascience.com?subject=AddaxAI%20diagnostic%20report"
-              >
-                peter@addaxdatascience.com
-              </a>
-              {" "}when reporting a bug. The bundle may include absolute
-              paths from your camera-trap folders, so inspect it before
-              sharing if your data is sensitive.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              onClick={() => download.mutate()}
-              disabled={download.isPending}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              {download.isPending ? "Building..." : "Export report"}
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}

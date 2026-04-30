@@ -34,9 +34,11 @@ import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
+import { AppHamburger } from "./components/layout/AppHamburger";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
+import AboutPage from "./pages/AboutPage";
 
 interface ModelUpdate {
   model_id: string;
@@ -136,12 +138,15 @@ function SetupGate({ children }: { children: ReactNode }) {
     return <Navigate to="/projects" replace />;
   }
 
-  // Crash banner only renders once setup is ready: while the wizard is
-  // open, the user has more pressing things to look at.
+  // Crash banner and hamburger menu only render once setup is ready:
+  // while the wizard is open, the user has more pressing things to
+  // look at and the menu's actions (reset, reinstall, etc.) would be
+  // confusing to expose mid-setup.
   return (
     <>
       {data.ready && <CrashBanner />}
       {children}
+      {data.ready && <AppHamburger />}
     </>
   );
 }
@@ -153,6 +158,7 @@ function App() {
         <SetupGate>
           <Routes>
             <Route path="/setup" element={<SetupPage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
 

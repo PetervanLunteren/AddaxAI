@@ -18,6 +18,7 @@ and resumes safely.
 """
 
 import asyncio
+import shutil
 import threading
 from pathlib import Path
 
@@ -114,6 +115,7 @@ class SetupStatus(BaseModel):
     progress_pct: float
     message: str
     error: str | None
+    user_data_dir: str
 
 
 @router.get("/status", response_model=SetupStatus)
@@ -132,6 +134,7 @@ def get_setup_status() -> SetupStatus:
         progress_pct=_install_state.progress_pct,
         message=_install_state.message,
         error=_install_state.error,
+        user_data_dir=str(settings.user_data_dir),
     )
 
 
@@ -188,3 +191,143 @@ async def install_env() -> dict[str, str]:
     # Run blocking install in a thread so the event loop stays responsive.
     asyncio.create_task(asyncio.to_thread(_install_env_blocking))
     return {"status": "started"}
+
+
+# ---------------------------------------------------------------------------
+# Reinstall environment
+#
+# "Re-run setup wizard" in the app menu deletes env-addaxai-base so the
+# wizard's polled status flips back to env_installed=false. The user is
+# then redirected to /setup and clicks Start to drive a fresh install.
+# We don't auto-trigger the install here: the user might just want to
+# inspect the wizard, and a 30-min reinstall is too costly to start on
+# accident.
+# ---------------------------------------------------------------------------
+
+
+@router.post("/reinstall-env")
+def reinstall_env() -> dict[str, object]:
+    """
+    Delete env-addaxai-base on disk so the wizard re-runs from scratch.
+    No-op if no env directory is present.
+    """
+    em = _get_env_manager()
+    env_path = em.envs_dir / f"env-{_REQUIRED_ENV}"
+    if not env_path.exists():
+        return {"status": "no_env_present", "removed": False}
+
+    try:
+        shutil.rmtree(env_path)
+        logger.warning(f"Removed env at {env_path} for wizard re-run")
+        return {"status": "removed", "removed": True}
+    except Exception as e:
+        logger.error(
+            f"Failed to remove env at {env_path}: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not remove environment: {e}",
+        ) from e
+
+
+# ---------------------------------------------------------------------------
+# Reset application
+#
+# Wipes user data so the next launch starts from scratch (setup wizard runs
+# again, models redeploy from bundle, env reinstalls). DB is preserved by
+# default. The DB option uses a marker file consumed by the lifespan on the
+# next launch so we don't have to fight SQLAlchemy's open connections here.
+# ---------------------------------------------------------------------------
+
+# Items wiped inline on POST /reset. None of these conflict with the
+# running backend process: even if a worker is mid-write into a log or
+# env, we're about to shut down anyway.
+_WIPE_DIRS = ("logs", "envs", "models", "bin", "thumbnails", "crash-dumps")
+_WIPE_FILES = (".last-shutdown-clean", ".last-launch-status.json")
+
+# Read by lifespan() before init_db() on the next launch.
+DB_WIPE_MARKER = ".wipe-db-on-next-launch"
+
+
+class ResetRequest(BaseModel):
+    """Body for POST /api/setup/reset."""
+
+    confirmation: str
+    wipe_database: bool = False
+
+
+class ResetResponse(BaseModel):
+    """Summary of what got wiped, for the caller to log/display."""
+
+    removed_dirs: list[str]
+    removed_files: list[str]
+    db_wipe_scheduled: bool
+
+
+def _safe_rmtree(path: Path) -> bool:
+    """Remove path if it exists. Returns True if anything was removed."""
+    if not path.exists():
+        return False
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to remove {path}: {e}", exc_info=True)
+        return False
+
+
+@router.post("/reset", response_model=ResetResponse)
+def reset_application(req: ResetRequest) -> ResetResponse:
+    """
+    Wipe user data. Required confirmation string is the literal word
+    "RESET" (case-sensitive) to avoid the dialog accidentally firing.
+
+    Caller is expected to close the Electron app immediately afterwards
+    so the next launch starts from a clean state.
+    """
+    if req.confirmation != "RESET":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation phrase did not match.",
+        )
+
+    settings = get_settings()
+    user_data_dir = settings.user_data_dir
+
+    removed_dirs: list[str] = []
+    for name in _WIPE_DIRS:
+        if _safe_rmtree(user_data_dir / name):
+            removed_dirs.append(name)
+
+    removed_files: list[str] = []
+    for name in _WIPE_FILES:
+        if _safe_rmtree(user_data_dir / name):
+            removed_files.append(name)
+
+    db_wipe_scheduled = False
+    if req.wipe_database:
+        # Drop a marker file. The lifespan reads this before init_db()
+        # on the next launch and removes the SQLite files there, where
+        # no SQLAlchemy connection is open yet.
+        marker = user_data_dir / DB_WIPE_MARKER
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("scheduled")
+        db_wipe_scheduled = True
+        logger.warning(
+            "DB wipe scheduled via marker file. The next launch will "
+            "delete addaxai.db before initializing the database."
+        )
+
+    logger.warning(
+        f"Application reset: removed dirs={removed_dirs} files={removed_files} "
+        f"db_wipe_scheduled={db_wipe_scheduled}"
+    )
+
+    return ResetResponse(
+        removed_dirs=removed_dirs,
+        removed_files=removed_files,
+        db_wipe_scheduled=db_wipe_scheduled,
+    )

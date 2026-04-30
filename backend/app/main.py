@@ -169,6 +169,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Database: {settings.database_url}")
     logger.info(f"User data directory: {settings.user_data_dir}")
 
+    # Honour a pending "wipe DB on next launch" request from the reset
+    # flow. We do this BEFORE init_db so no SQLAlchemy connection is
+    # holding the file open. Marker is consumed (deleted) regardless of
+    # whether DB files existed, to avoid an infinite loop on subsequent
+    # launches.
+    db_wipe_marker = settings.user_data_dir / ".wipe-db-on-next-launch"
+    if db_wipe_marker.exists():
+        logger.warning("DB wipe marker present — deleting addaxai.db files")
+        for sibling in (
+            "addaxai.db",
+            "addaxai.db-wal",
+            "addaxai.db-shm",
+        ):
+            target = settings.user_data_dir / sibling
+            if target.exists():
+                try:
+                    target.unlink()
+                    logger.warning(f"Removed {target}")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to remove {target}: {e}", exc_info=True
+                    )
+        try:
+            db_wipe_marker.unlink()
+        except Exception as e:
+            logger.error(
+                f"Failed to remove DB wipe marker: {e}", exc_info=True
+            )
+
     # Initialize database - will crash if it fails
     try:
         init_db()
