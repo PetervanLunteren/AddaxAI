@@ -4,12 +4,30 @@
  * App-level page (not project-scoped). Reachable from the global
  * hamburger menu. Reads the version via the Electron IPC; in dev /
  * browser the version falls back to "(dev)".
+ *
+ * The contributors row pulls from GitHub's public contributors API at
+ * page-open time. If GitHub is unreachable or rate-limited, the
+ * component degrades silently — the surrounding copy still makes sense
+ * without avatars.
  */
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Info, Tag } from "lucide-react";
 import { Button } from "../components/ui/button";
+
+const REPO = "PetervanLunteren/AddaxAI";
+const LICENSE_URL = `https://github.com/${REPO}?tab=MIT-1-ov-file#readme`;
+
+interface GithubContributor {
+  login: string;
+  id: number;
+  avatar_url: string;
+  html_url: string;
+  contributions: number;
+  type: string;
+}
 
 export default function AboutPage() {
   const [version, setVersion] = useState<string>("(dev)");
@@ -22,23 +40,42 @@ export default function AboutPage() {
     }
   }, []);
 
+  const { data: contributors } = useQuery({
+    queryKey: ["contributors", REPO],
+    queryFn: async (): Promise<GithubContributor[]> => {
+      const res = await fetch(
+        `https://api.github.com/repos/${REPO}/contributors?per_page=30`,
+      );
+      if (!res.ok) {
+        throw new Error(`GitHub returned ${res.status}`);
+      }
+      const all: GithubContributor[] = await res.json();
+      // Drop obvious bots (dependabot, github-actions[bot], etc.).
+      return all.filter(
+        (c) => c.type !== "Bot" && !c.login.toLowerCase().includes("[bot]"),
+      );
+    },
+    staleTime: 60 * 60 * 1000, // 1 hour
+    retry: false,
+  });
+
   return (
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">About</h1>
-              <p className="text-sm text-muted-foreground">
-                AddaxAI v{version}
-              </p>
-            </div>
-            <Link to="/projects">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to projects
+          <div className="flex items-center gap-3">
+            <Link to="/projects" aria-label="Back to projects">
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">About</h1>
+              <span className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs font-mono">
+                <Tag className="h-3.5 w-3.5" />
+                v{version}
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -47,56 +84,116 @@ export default function AboutPage() {
         <section className="rounded-lg border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">What is AddaxAI</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            AddaxAI is a desktop application for analysing camera trap
-            images and videos with AI models. It runs fully offline once
-            installed: detection, classification, verification, and
-            export all happen on your machine. No cloud, no upload, no
-            account.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The goal is to make modern camera-trap AI accessible to
-            ecologists, conservation NGOs, and reserve managers without
-            assuming reliable internet, a cloud subscription, or a
-            programming background.
+            AddaxAI is an open-source project that makes camera trap
+            image analysis accessible to all conservationists, with no
+            paywalls. The app is released under the MIT license, giving
+            you full freedom to use, modify, and share it. Your data
+            stays on your machine. Your verification work remains
+            private. You stay in complete control of what gets analysed
+            and where the results go. AddaxAI also functions as a model
+            hub, where developers can share and host classification
+            models for others to use, at no cost. The aim is simple:
+            help ecologists spend more time on meaningful work, and
+            less time on repetitive tasks.
           </p>
         </section>
 
         <section className="rounded-lg border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">Created by</h2>
-          <div className="mt-2 text-sm text-muted-foreground space-y-1">
-            <div>
-              Peter van Lunteren ·{" "}
-              <a
-                href="https://addaxdatascience.com"
-                className="text-primary hover:underline"
-              >
-                Addax Data Science
-              </a>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Built and maintained by Peter van Lunteren (
+            <a
+              href="https://addaxdatascience.com"
+              className="text-primary hover:underline"
+            >
+              Addax Data Science
+            </a>
+            ,{" "}
+            <a
+              href="mailto:peter@addaxdatascience.com"
+              className="text-primary hover:underline"
+            >
+              peter@addaxdatascience.com
+            </a>
+            ). None of it would look the way it does without Dan
+            Morris, who has been a key collaborator and a generous
+            adviser on all the difficult stuff.
+          </p>
+
+          {contributors && contributors.length > 0 && (
+            <div className="mt-4 rounded-lg border bg-zinc-50 p-4">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                Code contributors
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {contributors.map((c) => (
+                  <a
+                    key={c.id}
+                    href={c.html_url}
+                    title={`${c.login} · ${c.contributions} commit${c.contributions === 1 ? "" : "s"}`}
+                    className="block rounded-full ring-2 ring-transparent hover:ring-primary transition-colors"
+                  >
+                    <img
+                      src={c.avatar_url}
+                      alt={c.login}
+                      className="h-9 w-9 rounded-full"
+                      loading="lazy"
+                      // Hide the avatar (and its anchor) instead of
+                      // showing a broken-image icon if the GitHub
+                      // CDN is unreachable.
+                      onError={(e) => {
+                        const a = e.currentTarget.closest("a");
+                        if (a) a.style.display = "none";
+                      }}
+                    />
+                  </a>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Pulled live from GitHub. Order is by commit count, not
+                contribution size.
+              </p>
             </div>
-            <div>
-              <a
-                href="mailto:peter@addaxdatascience.com"
-                className="text-primary hover:underline"
-              >
-                peter@addaxdatascience.com
-              </a>
-            </div>
-          </div>
+          )}
         </section>
 
         <section className="rounded-lg border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">Source and license</h2>
-          <div className="mt-2 text-sm text-muted-foreground space-y-1">
+          <div className="mt-2 text-sm text-muted-foreground space-y-2">
             <div>
-              Source code:{" "}
+              AddaxAI source code:{" "}
               <a
-                href="https://github.com/PetervanLunteren/AddaxAI-WebUI"
+                href={`https://github.com/${REPO}`}
                 className="text-primary hover:underline"
               >
-                github.com/PetervanLunteren/AddaxAI-WebUI
+                github.com/{REPO}
               </a>
             </div>
-            <div>License: MIT</div>
+            <div>
+              AddaxAI license:{" "}
+              <a
+                href={LICENSE_URL}
+                className="text-primary hover:underline"
+              >
+                MIT
+              </a>
+            </div>
+            <p>
+              AddaxAI also ships with detection, classification, and
+              embedding models from various developers. These models
+              are not all created or owned by AddaxAI: each one has its
+              own developer, license, citation, and intended use. You
+              are responsible for using each model in line with its
+              license. Click the{" "}
+              <span
+                aria-label="info button"
+                className="inline-flex items-center justify-center h-5 w-5 rounded border bg-white align-text-bottom"
+              >
+                <Info className="h-3 w-3" />
+              </span>{" "}
+              button next to a model in the project settings for full
+              details.
+            </p>
           </div>
         </section>
 
@@ -105,47 +202,34 @@ export default function AboutPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             If AddaxAI was useful in a publication, please cite it as:
           </p>
-          <pre className="mt-2 rounded bg-muted p-3 text-xs font-mono whitespace-pre-wrap">
-            van Lunteren, P. ({new Date().getFullYear()}). AddaxAI: a
-            desktop platform for AI-assisted camera trap analysis.
-            https://github.com/PetervanLunteren/AddaxAI-WebUI
-          </pre>
+          {/* Hanging indent for bibliography-style citation: the
+              first line sits flush, wrapped lines indent under the
+              citation body. */}
+          <p className="mt-3 pl-[1.75em] -indent-[1.75em] text-sm text-muted-foreground">
+            van Lunteren, P., (2023). AddaxAI: A no-code platform to
+            train and deploy custom YOLOv5 object detection models.{" "}
+            <em>Journal of Open Source Software</em>, 8(88), 5581,{" "}
+            <a
+              href="https://doi.org/10.21105/joss.05581"
+              className="text-primary hover:underline"
+            >
+              https://doi.org/10.21105/joss.05581
+            </a>
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Citations for the individual models you used (MegaDetector,
+            DINOv2, classification models, etc.) are available by
+            clicking the{" "}
+            <span
+              aria-label="info button"
+              className="inline-flex items-center justify-center h-5 w-5 rounded border bg-white align-text-bottom"
+            >
+              <Info className="h-3 w-3" />
+            </span>{" "}
+            button next to each model in the project settings.
+          </p>
         </section>
 
-        <section className="rounded-lg border bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Acknowledgements
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            AddaxAI builds on the work of many people and projects:
-          </p>
-          <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside space-y-1">
-            <li>
-              <strong>MegaDetector</strong> by Dan Morris (object
-              detection backbone for animals, people, vehicles).
-            </li>
-            <li>
-              <strong>DINOv2</strong> by Meta AI / FAIR (self-supervised
-              visual features for similarity and clustering).
-            </li>
-            <li>
-              <strong>DeepFaune</strong> by CNRS and partners (European
-              species classification).
-            </li>
-            <li>
-              <strong>SpeciesNet</strong> by the SpeciesNet team (global
-              species classification).
-            </li>
-            <li>
-              Regional model partners: SDZWA, ADS, NEP, BB, JAP, HEX,
-              and others listed under each model in the catalogue.
-            </li>
-            <li>
-              Open-source frameworks: Electron, FastAPI, React, Vite,
-              SQLAlchemy, HuggingFace Hub, micromamba.
-            </li>
-          </ul>
-        </section>
       </main>
     </div>
   );
