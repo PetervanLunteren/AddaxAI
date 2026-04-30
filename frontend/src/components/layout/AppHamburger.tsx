@@ -1,16 +1,22 @@
 /**
- * Floating top-right hamburger menu hosting all app-wide actions.
+ * Inline hamburger menu hosting all app-wide actions.
  *
  * Project Settings stays project-scoped; this menu is for things that
  * apply to the whole app: About, Documentation, Open user data folder,
  * Check for updates, Export diagnostic report, Reset application, Quit.
+ *
+ * Rendered inline next to the page's primary action (e.g. "New project")
+ * so it anchors to that button rather than floating off the viewport.
+ * Pages that don't want it just don't render it. Currently only the
+ * projects index renders it; project pages render their own
+ * <BugReportButton> inline instead.
  *
  * Dropdown shape mirrors AddaxAI-Connect's UserMenu so the two apps
  * stay visually consistent for users moving between them.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -36,29 +42,10 @@ type DialogId = "reset" | "updates" | null;
 
 export function AppHamburger() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogId>(null);
   const [version, setVersion] = useState<string>(FALLBACK_VERSION);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Project pages (/projects/:id/*) hide the hamburger entirely.
-  // Each project page renders its own inline <BugReportButton> in
-  // the page header, so there's nothing for AppHamburger to add
-  // there. The full app menu (About, Reset, Documentation, etc.)
-  // is reachable from the projects index, the only place outside
-  // a project where AppHamburger renders.
-  const isProjectPage = /^\/projects\/[^/]+/.test(location.pathname);
-
-  // The About page is itself reached *from* the hamburger. Showing
-  // the menu again on top of it is redundant — the page has its own
-  // "Back to projects" button for navigation, and any other app-level
-  // action (Reset, Documentation, Quit) is one click away by going
-  // back home.
-  const isAboutPage = location.pathname.startsWith("/about");
-  if (isAboutPage) {
-    return null;
-  }
 
   // Cache the user data dir once; the menu's "Open user data folder"
   // entry needs an absolute path that varies per OS.
@@ -139,39 +126,9 @@ export function AppHamburger() {
     }
   };
 
-  if (isProjectPage) {
-    return null;
-  }
-
   return (
     <>
-      {/* Floats fixed at the right edge of the page-chrome column,
-          12px past the action button's right edge.
-
-          The page header is mx-auto max-w-7xl with lg:px-8 padding,
-          so the action button's right edge sits at:
-            (viewport + 1280) / 2 - 32       on wide screens
-            viewport - 32                    on narrow screens (<1280)
-
-          Setting CSS `right` (distance from viewport right edge) to
-          `50vw - 41rem` puts the hamburger's left edge ~12px past
-          the action button's right edge on wide screens; floored at
-          12px so the hamburger never disappears off-screen on narrow
-          windows.
-
-          Vertical: the Projects page (the most-trafficked landing
-          page) has a 64px row height because of its h-16 logo. Action
-          button (h-10, 40px) is centred in that row, so top sits at
-          16 (py-4) + (64-40)/2 = 28px. Other pages with the canonical
-          52px row will see the hamburger 6px below their action
-          button — acceptable mild offset; matching everywhere
-          would require either a per-page hook or shrinking the
-          Projects logo to h-12. */}
-      <div
-        ref={menuRef}
-        className="fixed top-[28px] z-40"
-        style={{ right: "max(0.75rem, calc(50vw - 41.25rem))" }}
-      >
+      <div ref={menuRef} className="relative">
         <button
           onClick={() => setIsOpen((v) => !v)}
           className={cn(
@@ -187,7 +144,7 @@ export function AppHamburger() {
         {isOpen && (
           <div
             role="menu"
-            className="absolute right-0 mt-2 w-64 rounded-md border bg-white shadow-lg"
+            className="absolute right-0 z-50 mt-2 w-64 rounded-md border bg-white shadow-lg"
           >
             <Section>
               <Item

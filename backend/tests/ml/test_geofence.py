@@ -30,8 +30,16 @@ from app.ml.geofence import (
 MODEL_DIR = Path.home() / "AddaxAI/models/cls/SPECIESNET-v4-0-2-A"
 ENV_PYTHON = Path.home() / "AddaxAI/envs/env-addaxai-base/bin/python"
 
+# Skip when the model dir is just a catalog stub (manifest.json + taxonomy.csv
+# only). The geofence tests need the real geofence_release.*.json file, which
+# only ships with the actual weight download. Checking dir existence alone
+# would let the tests slip through and crash with FileNotFoundError instead
+# of being cleanly skipped.
+_GEOFENCE_DATA_PRESENT = (
+    MODEL_DIR.exists() and any(MODEL_DIR.glob("geofence_release.*.json"))
+)
 requires_model = pytest.mark.skipif(
-    not MODEL_DIR.exists(), reason="SpeciesNet model not installed"
+    not _GEOFENCE_DATA_PRESENT, reason="SpeciesNet geofence data not installed"
 )
 requires_env = pytest.mark.skipif(
     not ENV_PYTHON.exists(), reason="env-addaxai-base not installed"

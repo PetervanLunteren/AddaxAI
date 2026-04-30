@@ -42,15 +42,25 @@ class EnvironmentManager:
         """
         user_data_dir = Path.home() / "AddaxAI"
         self.envs_dir = envs_dir or (user_data_dir / "envs")
-        self.envs_dir.mkdir(parents=True, exist_ok=True)
 
         bin_dir = user_data_dir / "bin"
-        bin_dir.mkdir(parents=True, exist_ok=True)
         # Windows uses .exe extension
         micromamba_name = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
         self.micromamba_path = micromamba_path or (bin_dir / micromamba_name)
 
-        # Ensure micromamba is installed
+        self._ensure_runtime_dirs()
+
+    def _ensure_runtime_dirs(self) -> None:
+        """
+        Make sure the on-disk state this manager depends on actually exists.
+        Called at construction time and again before any micromamba invocation
+        so the manager self-heals if `~/AddaxAI/bin` or `~/AddaxAI/envs` got
+        wiped underneath us (Reset application, antivirus quarantine, manual
+        rm). Without this we hit ENOENT inside subprocess.Popen and there is
+        no recovery without a server restart.
+        """
+        self.envs_dir.mkdir(parents=True, exist_ok=True)
+        self.micromamba_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.micromamba_path.exists():
             logger.info("Micromamba not found, downloading...")
             self._download_micromamba()
@@ -257,6 +267,11 @@ class EnvironmentManager:
             RuntimeError: If environment creation fails
         """
         try:
+            # Heal any missing on-disk state (bin/, envs/, micromamba binary)
+            # before invoking subprocess. Reset application + a stale cached
+            # manager would otherwise crash with ENOENT inside Popen.
+            self._ensure_runtime_dirs()
+
             # Parse YAML to count packages and allocate progress ranges
             conda_count, pip_count = self._parse_env_yaml(yaml_path)
             logger.info(

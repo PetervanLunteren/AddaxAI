@@ -22,22 +22,11 @@
 - [x] Add a reset option in the settings. 
 
 
-- [ ] Should the reset / uninstall / export diagnostics ZIP live in a new page instead of inside a project? That goes beyond a project itself, these are more about the entire app itself. Perhaps we should add a hamburger menu to the main page, with pages lik "About" (show information about the app, the creator, the vision, etc), options like Uninstall / reset / export diagnostics, etc. What else? 
-
-- [ ] With regards to the logo, the shortcut on windows now has a white border. Probably the margin I added. Are you sure you dont just want a squircle without any margin and transaprent background? 
-
-- [ ] at initial setup, remove the line "You can use AddaxAI fully offline once setup is complete." because that is not true if the users selectsa cls model. 
-
-- [ ] at inital setup, I pressed the button and saw a pbar, but now it says "Default models (MegaDetector v5A, DINOv2-B) - missing, Analysis environment- ready". No pbar anymore. Is it still busy? 
-
-- [ ] at initial setup, make the caption "An internet connection is required for this one-time setup." center aligned
-
-- [ ] How does it work for uninstalling? Should that be something that can be triggered from within the app? Or another executable? What is customary? How do other well known apps do it? 
 
 - [ ] are there any errors in the test suite?
 
 - [ ] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
-- [ ] ADD ALL MODELS IN THE ZOO
+- [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE ADDAX_SN ones. 
 
 ## Priority 2
 - [ ] 

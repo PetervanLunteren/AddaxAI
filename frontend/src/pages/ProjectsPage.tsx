@@ -33,6 +33,7 @@ import { CreateProjectDialog } from "../components/projects/CreateProjectDialog"
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
+import { AppHamburger } from "../components/layout/AppHamburger";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -82,15 +83,18 @@ export function ProjectsPage() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={() => {
-                logger.info("User clicked New Project button");
-                setCreateDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              New project
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => {
+                  logger.info("User clicked New Project button");
+                  setCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                New project
+              </Button>
+              <AppHamburger />
+            </div>
           </div>
         </div>
       </header>

@@ -1,25 +1,26 @@
 """
 First-run setup endpoints.
 
-The desktop app is gated by a one-time setup wizard on first launch:
-default model weights ship with the DMG (copied to ~/AddaxAI/models/ by
-the lifespan hook), but env-addaxai-base must be downloaded once. The
-wizard polls /api/setup/status, calls POST /api/setup/install-env to
-start the install, and watches the progress fields update.
+The desktop app is gated by a one-time setup wizard on first launch.
+Setup has two parts: install env-addaxai-base via micromamba, and
+download the default model weights (MDv5A + DINOv2-B) from HuggingFace.
+Both run in a background thread driven by POST /api/setup/install-env;
+the wizard polls /api/setup/status at ~1.5s and watches progress.
 
 Polling rather than WebSocket: this is a one-shot UI staring at a
-single progress bar for 5-15 minutes, polling at 1.5s costs nothing
+single progress bar for 10-30 minutes, polling at 1.5s costs nothing
 and keeps the implementation small.
 
 Module-level state intentionally resets when the server restarts: a
 restart while installing is treated as "no install in progress", and
-the user clicks Install again. The env_manager itself is idempotent
-and resumes safely.
+the user clicks Install again. Both the env manager and the HF
+downloader are idempotent and resume safely.
 """
 
 import asyncio
 import shutil
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -28,16 +29,35 @@ from pydantic import BaseModel
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
+from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/setup", tags=["Setup"])
 
-# Default models we expect to be installed for the basic MD+DINOv2-B
-# workflow. Mirrors _DEFAULT_MODELS in services/bundled_models.py.
-_REQUIRED_MODELS: tuple[tuple[str, str, str], ...] = (
-    ("det", "MD5A-0-0", "md_v5a.0.0.pt"),
-    ("emb", "DINOV2-VITB14", "dinov2_vitb14_pretrain.pth"),
+# Default models the wizard installs from HuggingFace. Held inline rather
+# than read from the catalog so first-run setup works even if the catalog
+# updater is still running or unreachable. The HF repos sit under the
+# Addax-Data-Science org (same convention ModelStorage falls back to).
+_DEFAULT_MODELS: tuple[dict, ...] = (
+    {
+        "type_dir": "det",
+        "category": "detection",
+        "model_id": "MD5A-0-0",
+        "friendly_name": "MegaDetector v5A",
+        "emoji": "🦌",
+        "model_fname": "md_v5a.0.0.pt",
+        "hf_repo": "Addax-Data-Science/MD5A-0-0",
+    },
+    {
+        "type_dir": "emb",
+        "category": "embedding",
+        "model_id": "DINOV2-VITB14",
+        "friendly_name": "DINOv2 ViT-B/14",
+        "emoji": "🧠",
+        "model_fname": "dinov2_vitb14_pretrain.pth",
+        "hf_repo": "Addax-Data-Science/DINOV2-VITB14",
+    },
 )
 
 _REQUIRED_ENV = "addaxai-base"
@@ -89,8 +109,9 @@ def _get_env_manager() -> EnvironmentManager:
 
 
 def _models_present(models_dir: Path) -> bool:
-    for category, model_id, fname in _REQUIRED_MODELS:
-        if not (models_dir / category / model_id / fname).is_file():
+    for spec in _DEFAULT_MODELS:
+        weight = models_dir / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
+        if not weight.is_file():
             return False
     return True
 
@@ -138,7 +159,7 @@ def get_setup_status() -> SetupStatus:
     )
 
 
-def _build_stub_manifest() -> ModelManifest:
+def _build_env_manifest() -> ModelManifest:
     """
     Build the minimal ModelManifest the env_manager needs to resolve the
     env yaml. Only `.env` is actually read by the install path; everything
@@ -157,29 +178,106 @@ def _build_stub_manifest() -> ModelManifest:
     )
 
 
+def _build_default_model_manifest(spec: dict) -> ModelManifest:
+    """
+    Build a synthetic ModelManifest pointing at the HF repo for one of
+    the default models. ModelStorage uses model_category for the
+    on-disk path layout and hf_repo for the source.
+    """
+    m = ModelManifest(
+        model_id=spec["model_id"],
+        friendly_name=spec["friendly_name"],
+        emoji=spec["emoji"],
+        env=_REQUIRED_ENV,
+        model_fname=spec["model_fname"],
+        hf_repo=spec["hf_repo"],
+        description=f"Default {spec['category']} model installed by the setup wizard.",
+        developer="AddaxAI",
+        info_url="https://github.com/PetervanLunteren/AddaxAI-WebUI",
+        min_app_version="0.1.0",
+    )
+    m.model_category = spec["category"]
+    return m
+
+
 def _install_env_blocking() -> None:
-    """Sync worker that drives env_manager. Runs in a thread."""
+    """
+    Sync worker driving setup: env install plus HF downloads of the
+    default model weights. Runs in a thread. All steps are idempotent so
+    retrying after a partial failure picks up where it left off.
+    """
     try:
-        em = _get_env_manager()
-        manifest = _build_stub_manifest()
+        settings = get_settings()
+        models_dir = settings.user_data_dir / "models"
+        storage = ModelStorage(models_dir)
 
-        def progress_cb(message: str, progress: float) -> None:
-            _install_state.update(message, progress)
+        # Each step: (label_for_logs, fn(progress_cb)). Skipped if already
+        # complete so retries go straight to whatever's missing.
+        steps: list[tuple[str, Callable[[Callable[[str, float], None]], None]]] = []
 
-        em.get_or_create_env(manifest, progress_cb)
+        if not _env_present():
+            def _env_step(cb: Callable[[str, float], None]) -> None:
+                _get_env_manager().get_or_create_env(_build_env_manifest(), cb)
+            steps.append(("Analysis environment", _env_step))
+
+        for spec in _DEFAULT_MODELS:
+            weight = (
+                models_dir / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
+            )
+            if weight.is_file():
+                continue
+            manifest = _build_default_model_manifest(spec)
+
+            def _model_step(
+                cb: Callable[[str, float], None], _m: ModelManifest = manifest
+            ) -> None:
+                storage.download_weights(_m, cb)
+
+            steps.append((spec["friendly_name"], _model_step))
+
+        if not steps:
+            _install_state.finish(error=None)
+            return
+
+        # Equal-slot progress allocation. Env install dominates real time
+        # but the bar stays alive either way; weighting it would just
+        # surprise users when the downloads "sprint" through 80-100%.
+        # Prefix messages with Step N/M when there is more than one step
+        # so the user knows which phase is running. Mirrors the format
+        # used by the in-app model install (routers/ml_models.py).
+        n = len(steps)
+        for i, (label, run) in enumerate(steps):
+            slot_start = i / n
+            slot_span = 1.0 / n
+            prefix = f"Step {i + 1}/{n} - " if n > 1 else ""
+            logger.info(f"Setup step {i + 1}/{n}: {label}")
+
+            def cb(
+                msg: str,
+                prog: float,
+                _s: float = slot_start,
+                _sp: float = slot_span,
+                _p: str = prefix,
+            ) -> None:
+                _install_state.update(f"{_p}{msg}", _s + prog * _sp)
+
+            run(cb)
+
         _install_state.finish(error=None)
     except Exception as e:
-        logger.error(f"Setup env install failed: {e}", exc_info=True)
+        logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e))
 
 
 @router.post("/install-env", status_code=status.HTTP_202_ACCEPTED)
 async def install_env() -> dict[str, str]:
     """
-    Start env-addaxai-base creation in a background thread. Returns 202
-    immediately; progress is polled via /status. 409 if already running.
+    Start setup (env + default-model downloads) in a background thread.
+    Returns 202 immediately; progress is polled via /status. 409 if
+    already running. Idempotent: each step no-ops when complete.
     """
-    if _env_present():
+    settings = get_settings()
+    if _env_present() and _models_present(settings.user_data_dir / "models"):
         return {"status": "already_installed"}
 
     if not _install_state.start():
@@ -269,6 +367,15 @@ def reset_application(req: ResetRequest) -> ResetResponse:
     for name in _WIPE_FILES:
         if _safe_rmtree(user_data_dir / name):
             removed_files.append(name)
+
+    # Drop the cached EnvironmentManager so the next setup attempt rebuilds
+    # one against the wiped filesystem. Without this, the cached manager
+    # still points at the now-deleted ~/AddaxAI/bin/micromamba and the next
+    # install crashes with ENOENT inside subprocess. Production normally
+    # quits + relaunches after reset, but dev mode (uvicorn in a browser
+    # tab) keeps the process alive, so the cache must be invalidated here.
+    global _env_manager
+    _env_manager = None
 
     db_wipe_scheduled = False
     if req.wipe_database:

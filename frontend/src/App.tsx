@@ -34,7 +34,6 @@ import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
-import { AppHamburger } from "./components/layout/AppHamburger";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
@@ -138,15 +137,13 @@ function SetupGate({ children }: { children: ReactNode }) {
     return <Navigate to="/projects" replace />;
   }
 
-  // Crash banner and hamburger menu only render once setup is ready:
-  // while the wizard is open, the user has more pressing things to
-  // look at and the menu's actions (reset, reinstall, etc.) would be
-  // confusing to expose mid-setup.
+  // Crash banner only renders once setup is ready: while the wizard
+  // is open, the user has more pressing things to look at. The
+  // hamburger menu is rendered inline by the projects page header.
   return (
     <>
       {data.ready && <CrashBanner />}
       {children}
-      {data.ready && <AppHamburger />}
     </>
   );
 }

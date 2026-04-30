@@ -51,25 +51,31 @@ export default function SetupPage() {
 
   const inProgress = status.install_in_progress;
   const hasError = !!status.error && !inProgress;
-  const showStartButton = !inProgress && !status.env_installed && !hasError;
+  // The button must surface whenever something is still missing, not just
+  // when env is missing. Otherwise a half-complete state (env installed but
+  // bundled models missing, common in dev mode) leaves the user with no
+  // affordance and the page looks frozen.
+  const showStartButton = !inProgress && !status.ready && !hasError;
+  const isRetry = status.env_installed && !status.models_installed;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
+      <img
+        src="/branding/logo-wordmark.png"
+        alt="AddaxAI"
+        className="mb-6 h-28 w-auto"
+      />
       <div className="w-full max-w-xl rounded-lg border bg-card-background p-8 shadow-sm">
         <h1 className="text-2xl font-bold tracking-tight">Initial setup</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           AddaxAI needs to install the analysis environment before you can
           process images. This is a one-time download of about 1.9 GB and
           can take 10 to 30 minutes depending on your internet connection.
-          You can use AddaxAI fully offline once setup is complete.
         </p>
 
         <div className="mt-6 space-y-2 text-sm">
-          <Row
-            label="Default models (MegaDetector v5A, DINOv2-B)"
-            ok={status.models_installed}
-          />
           <Row label="Analysis environment" ok={status.env_installed} />
+          <Row label="Default models" ok={status.models_installed} />
         </div>
 
         {showStartButton && (
@@ -79,10 +85,17 @@ export default function SetupPage() {
               disabled={install.isPending}
               className="w-full"
             >
-              {install.isPending ? "Starting..." : "Start setup"}
+              {install.isPending
+                ? "Starting..."
+                : isRetry
+                  ? "Try again"
+                  : "Start setup"}
             </Button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              An internet connection is required for this one-time setup.
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              {isRetry
+                ? "Default models are still missing. Click try again to "
+                  + "download them from HuggingFace."
+                : "An internet connection is required for this one-time setup."}
             </p>
           </div>
         )}
@@ -90,10 +103,13 @@ export default function SetupPage() {
         {inProgress && (
           <div className="mt-6 space-y-3">
             <Progress value={status.progress_pct} />
-            <p className="text-sm text-muted-foreground">
+            <p
+              className="truncate text-sm text-muted-foreground"
+              title={status.message || "Installing..."}
+            >
               {status.message || "Installing..."}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-center text-xs text-muted-foreground">
               {Math.round(status.progress_pct)}% complete. Do not close
               the app.
             </p>
@@ -134,7 +150,7 @@ function Row({ label, ok }: RowProps) {
     <div className="flex items-center justify-between">
       <span>{label}</span>
       <span className={ok ? "text-[#0f6064]" : "text-muted-foreground"}>
-        {ok ? "ready" : "missing"}
+        {ok ? "Ready" : "Missing"}
       </span>
     </div>
   );

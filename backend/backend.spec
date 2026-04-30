@@ -41,21 +41,6 @@ datas += collect_data_files('fastapi')
 datas += collect_data_files('astral')   # astral ships timezone resources
 datas += collect_data_files('openpyxl') # openpyxl ships schema XSDs
 
-# Default models bundled into the DMG so a fresh install can run the basic
-# MD+DINOv2-B workflow without re-downloading weights. The CI workflow
-# populates backend/_bundled_models/ before pyinstaller runs; locally the
-# directory is absent and we just skip (dev users have models in
-# ~/AddaxAI/models/ from a prior install or via the in-app catalog).
-bundled_models_dir = backend_dir / '_bundled_models'
-print(f"[backend.spec] bundled_models_dir={bundled_models_dir} "
-      f"exists={bundled_models_dir.exists()}")
-if bundled_models_dir.exists():
-    file_count = sum(1 for _ in bundled_models_dir.rglob("*") if _.is_file())
-    print(f"[backend.spec] bundling {file_count} files from {bundled_models_dir}")
-    datas.append((str(bundled_models_dir), 'bundled_models'))
-else:
-    print(f"[backend.spec] SKIPPING bundled_models (path not found)")
-
 # Comprehensive hidden imports - collect ALL submodules
 hiddenimports = []
 hiddenimports += collect_submodules('fastapi')

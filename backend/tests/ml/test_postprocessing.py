@@ -184,18 +184,24 @@ def test_smoothing_strength_passed_to_subprocess(db):
 
     captured_opts = {}
 
-    def fake_subprocess_run(args, **kwargs):
-        # Read the options JSON that was passed to the subprocess
-        opts_path = args[3]  # [python, script, input, opts, output]
+    def fake_popen_group(args, **kwargs):
+        # Read the options JSON that was passed to the subprocess.
+        # args layout: [python, script, input, opts, output]
+        opts_path = args[3]
         with open(opts_path) as f:
             captured_opts.update(json.load(f))
-        # Write empty output so the function doesn't crash
+        # Write empty output so the caller doesn't crash on json.load.
         with open(args[4], "w") as f:
             json.dump(results, f)
-        return MagicMock(returncode=0, stderr="", stdout="")
+        # Mock a Popen-like process: the production code calls
+        # process.communicate() and reads .returncode.
+        process = MagicMock()
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
+        return process
 
     with (
-        patch("app.ml.postprocessing.subprocess.run", side_effect=fake_subprocess_run),
+        patch("app.ml.postprocessing.popen_group", side_effect=fake_popen_group),
         patch("app.ml.postprocessing._get_ml_python_path", return_value="/fake/python"),
     ):
         run_postprocessing_for_deployment(
