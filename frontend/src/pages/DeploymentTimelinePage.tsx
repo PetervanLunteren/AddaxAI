@@ -216,8 +216,7 @@ export function DeploymentTimelinePage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold tracking-tight">Deployment timeline</h1>
           <p className="text-sm text-muted-foreground">
-            Survey effort over time, grouped by site, with concurrent-cameras
-            coverage.
+            Survey effort over time, grouped by site
           </p>
         </div>
       </header>

@@ -32,7 +32,7 @@ export function AnalysesPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Process</h1>
               <p className="text-sm text-muted-foreground">
-                Add deployments to the queue and process them with your configured models
+                Queue deployments for analysis
               </p>
             </div>
           </div>

@@ -78,7 +78,7 @@ export function ProjectsPage() {
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
                 <p className="text-sm text-muted-foreground">
-                  Manage your camera trap monitoring projects
+                  Manage your camera trap projects
                 </p>
               </div>
             </div>

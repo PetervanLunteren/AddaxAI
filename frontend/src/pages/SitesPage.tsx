@@ -233,7 +233,7 @@ export function SitesPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Sites</h1>
               <p className="text-sm text-muted-foreground">
-                Manage monitoring locations for this project
+                Manage monitoring locations
               </p>
             </div>
             <Button onClick={() => setCreateSiteOpen(true)}>

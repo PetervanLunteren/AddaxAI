@@ -73,7 +73,10 @@ export default function AboutPage() {
               <h1 className="text-2xl font-bold tracking-tight">About</h1>
               <span className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs font-mono">
                 <Tag className="h-3.5 w-3.5" />
-                v{version}
+                {/* Real semver versions get a "v" prefix; dev/unknown
+                    fallbacks (which already include their own
+                    parentheses) render as-is to avoid "v(dev)". */}
+                {version.startsWith("(") ? version : `v${version}`}
               </span>
             </div>
           </div>

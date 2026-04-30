@@ -19,6 +19,11 @@ import {
 import { Eye, FileImage, Layers, FolderOpen, MapPin, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import {
+  FilterBar,
+  type FilterFieldDef,
+  type FilterValues,
+} from "../components/ui/filter-bar";
 import { DashboardAboutPopover } from "../components/dashboard/DashboardAboutPopover";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
@@ -26,9 +31,9 @@ import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../lib/site-filter-options";
 import { normalizeLabel } from "../utils/labels";
 import { getSpeciesColor, getSpeciesColorWithAlpha, setSpeciesContext } from "../utils/species-colors";
+import { RANK_OPTIONS } from "../lib/taxonomic-rank";
 import {
   type DateRange,
-  DashboardFilters,
   ActivityPatternChart,
   DetectionTrendChart,
   AlertCounters,
@@ -45,11 +50,9 @@ export default function DashboardPage() {
     endDate: null,
   });
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
+  const [selectedTagPairs, setSelectedTagPairs] = useState<string[]>([]);
   const [taxonomicRank, setTaxonomicRank] = useState("all");
   const [speciesCountMode, setSpeciesCountMode] = useState<"events" | "max_n">("events");
-
-  // Derive comma-separated site IDs for API calls
-  const siteIdsParam = selectedSiteIds.length > 0 ? selectedSiteIds.join(",") : undefined;
 
   // Fetch sites for filter options
   const { data: sites } = useQuery({
@@ -63,6 +66,64 @@ export default function DashboardPage() {
     () => buildSiteOptions(sites, noSite?.count ?? 0),
     [sites, noSite],
   );
+
+  // All unique tag key:value combos across the project's sites. Each
+  // entry is "key:value"; the label shows them with a space for
+  // readability ("habitat: forest"). Sorted alphabetically.
+  const tagPairOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of sites ?? []) {
+      for (const [k, v] of Object.entries(s.tags ?? {})) {
+        const key = k.trim();
+        const value = String(v ?? "").trim();
+        if (key && value) set.add(`${key}:${value}`);
+      }
+    }
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b))
+      .map((pair) => {
+        const idx = pair.indexOf(":");
+        const key = pair.slice(0, idx);
+        const val = pair.slice(idx + 1);
+        return { value: pair, label: `${key}: ${val}` };
+      });
+  }, [sites]);
+
+  // Resolve the active tag-pair filter into a set of matching site
+  // IDs. A site matches if it has at least one of the picked pairs.
+  // When the tag filter is empty, returns null (meaning "no tag
+  // constraint, all sites pass").
+  const tagFilteredSiteIds = useMemo<Set<string> | null>(() => {
+    if (selectedTagPairs.length === 0) return null;
+    const picks = new Set(selectedTagPairs);
+    const matched = new Set<string>();
+    for (const s of sites ?? []) {
+      for (const [k, v] of Object.entries(s.tags ?? {})) {
+        const pair = `${k}:${String(v)}`;
+        if (picks.has(pair)) {
+          matched.add(s.id);
+          break;
+        }
+      }
+    }
+    return matched;
+  }, [sites, selectedTagPairs]);
+
+  // Effective site IDs sent to the statistics API. If tag filter is
+  // active and the user also picked specific sites, intersect the two.
+  // Tag-only filter resolves to all matching sites; no filter
+  // resolves to undefined (server-side default = all sites).
+  const effectiveSiteIds = useMemo<string[] | undefined>(() => {
+    if (tagFilteredSiteIds === null) {
+      return selectedSiteIds.length > 0 ? selectedSiteIds : undefined;
+    }
+    if (selectedSiteIds.length === 0) {
+      return Array.from(tagFilteredSiteIds);
+    }
+    return selectedSiteIds.filter((id) => tagFilteredSiteIds.has(id));
+  }, [selectedSiteIds, tagFilteredSiteIds]);
+
+  const siteIdsParam = effectiveSiteIds?.join(",") || undefined;
 
   // Fetch overview
   const { data: overview, isLoading: overviewLoading } = useQuery({
@@ -144,34 +205,89 @@ export default function DashboardPage() {
     },
   };
 
+  // FilterBar uses a single FilterValues object; we keep the three
+  // useStates as the source of truth (children components consume them
+  // individually) and translate in both directions. "all" rank is the
+  // default so it never appears in the FilterValues — selecting any
+  // explicit rank surfaces a chip the user can dismiss.
+  const filterValues: FilterValues = {
+    sites: selectedSiteIds.length > 0 ? selectedSiteIds : undefined,
+    tag_pairs: selectedTagPairs.length > 0 ? selectedTagPairs : undefined,
+    date_from: dateRange.startDate ?? undefined,
+    date_to: dateRange.endDate ?? undefined,
+    // rank is always set so the Select renders the value (not the
+    // greyed-out placeholder). FilterBar's `defaultValue: "all"`
+    // means the chip stays hidden when sitting at the default.
+    rank: taxonomicRank,
+  };
+
+  const handleFilterChange = (next: FilterValues) => {
+    const sitesNext = next.sites;
+    setSelectedSiteIds(Array.isArray(sitesNext) ? sitesNext : []);
+    const tagNext = next.tag_pairs;
+    setSelectedTagPairs(Array.isArray(tagNext) ? tagNext : []);
+    setDateRange({
+      startDate: typeof next.date_from === "string" ? next.date_from : null,
+      endDate: typeof next.date_to === "string" ? next.date_to : null,
+    });
+    setTaxonomicRank(typeof next.rank === "string" ? next.rank : "all");
+  };
+
+  const filterFields: FilterFieldDef[] = [
+    {
+      kind: "multi-select",
+      key: "sites",
+      label: "Sites",
+      options: siteOptions,
+      placeholder: "All sites",
+      summary: (n) => `${n} site${n > 1 ? "s" : ""}`,
+    },
+    {
+      kind: "multi-select",
+      key: "tag_pairs",
+      label: "Site tags",
+      options: tagPairOptions,
+      placeholder: "Any tags",
+      summary: (n) => `${n} tag${n > 1 ? "s" : ""}`,
+    },
+    {
+      kind: "date_range",
+      key: "date_from",
+      toKey: "date_to",
+      label: "Date range",
+      min: overview?.first_file_date ?? undefined,
+      max: overview?.last_file_date ?? undefined,
+    },
+    {
+      kind: "select",
+      key: "rank",
+      label: "Taxonomic rank",
+      options: RANK_OPTIONS,
+      defaultValue: "all",
+    },
+  ];
+
   return (
     <div className="min-h-screen">
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-              <p className="text-sm text-muted-foreground">
-                Project overview with statistics and trends. Observation counts are based on MaxN per event, the peak number of individuals per species visible in a single image within an event, summed across all events.
-              </p>
-            </div>
-            <DashboardFilters
-              siteOptions={siteOptions}
-              selectedSiteIds={selectedSiteIds}
-              onSiteIdsChange={setSelectedSiteIds}
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
-              minDate={overview?.first_file_date}
-              maxDate={overview?.last_file_date}
-              taxonomicRank={taxonomicRank}
-              onTaxonomicRankChange={setTaxonomicRank}
-            />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">
+              Project overview with statistics and trends
+            </p>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        {/* Filter bar (canonical, same style as Sites / Deployments / etc.) */}
+        <FilterBar
+          value={filterValues}
+          onChange={handleFilterChange}
+          fields={filterFields}
+        />
         {/* Summary Cards */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (

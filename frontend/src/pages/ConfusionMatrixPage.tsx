@@ -125,7 +125,7 @@ export function ConfusionMatrixPage() {
         <div className="mx-auto max-w-7xl">
           <h1 className="text-2xl font-bold tracking-tight">Confusion matrix</h1>
           <p className="text-sm text-muted-foreground">
-            Where the AI and the human labels agree, and where they don't.
+            Agreement between AI and human labels
           </p>
         </div>
       </header>

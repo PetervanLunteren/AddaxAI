@@ -175,7 +175,7 @@ export function MapPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Map</h1>
               <p className="text-sm text-muted-foreground">
-                Observation rate per 100 trap nights, mapped by deployment.
+                Observation rate per 100 trap nights
               </p>
             </div>
           </div>

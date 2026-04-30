@@ -347,7 +347,7 @@ export default function VerifyPage() {
               <h1 className="text-2xl font-bold tracking-tight">Verify</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
-                  ? "Confirm or correct AI detections. Pick the unit that fits your task."
+                  ? "Confirm or correct AI detections"
                   : "Run a deployment analysis to get started"}
               </p>
             </div>

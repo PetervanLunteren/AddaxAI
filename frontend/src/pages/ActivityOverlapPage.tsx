@@ -394,7 +394,7 @@ export function ActivityOverlapPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold tracking-tight">Activity overlap</h1>
           <p className="text-sm text-muted-foreground">
-            Compare daily activity patterns between species.
+            Compare daily activity patterns between species
           </p>
         </div>
       </header>

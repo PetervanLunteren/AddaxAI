@@ -118,7 +118,7 @@ export function PerClassPerformancePage() {
             Per-class performance
           </h1>
           <p className="text-sm text-muted-foreground">
-            Precision, recall, and F1 score for each class.
+            Precision, recall, and F1 score per class
           </p>
         </div>
       </header>

@@ -63,6 +63,16 @@ export type FilterFieldDef =
       kind: "select";
       options: { value: string; label: string }[];
       placeholder?: string;
+      /**
+       * When set, a value equal to `defaultValue` is treated as "not
+       * filtering" — the select shows that option as selected
+       * (not a grey placeholder), but no chip appears in the chip
+       * row and clearing all filters resets to this value rather
+       * than to undefined. Useful for fields where the "default"
+       * state is itself a meaningful, non-empty value (e.g. a
+       * taxonomic rank's "Most specific" mode).
+       */
+      defaultValue?: string;
     });
 
 interface FilterBarProps {
@@ -112,6 +122,11 @@ function hasValue(value: FilterValues, key: string): boolean {
 function fieldHasValue(value: FilterValues, field: FilterFieldDef): boolean {
   if (field.kind === "date_range") {
     return hasValue(value, field.key) || hasValue(value, field.toKey);
+  }
+  // Select fields can declare a non-empty defaultValue; sitting at the
+  // default isn't a "filter" and shouldn't surface as a chip.
+  if (field.kind === "select" && field.defaultValue !== undefined) {
+    return hasValue(value, field.key) && value[field.key] !== field.defaultValue;
   }
   return hasValue(value, field.key);
 }
@@ -323,7 +338,19 @@ export function FilterBar({
           ))}
           {hasAnyActive && (
             <button
-              onClick={() => onChange({})}
+              onClick={() => {
+                // Reset every field. Select fields with a defaultValue
+                // get reset to that default rather than undefined, so
+                // the dropdown still shows the right "implicit"
+                // selection after Clear all.
+                const reset: FilterValues = {};
+                for (const f of fields) {
+                  if (f.kind === "select" && f.defaultValue !== undefined) {
+                    reset[f.key] = f.defaultValue;
+                  }
+                }
+                onChange(reset);
+              }}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               type="button"
             >

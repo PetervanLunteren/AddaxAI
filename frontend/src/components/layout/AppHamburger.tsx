@@ -11,11 +11,12 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BookOpen,
+  Bug,
   Download,
   FolderOpen,
   Info,
@@ -25,6 +26,12 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 import { setupApi } from "../../api/setup";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { cn } from "../../lib/utils";
@@ -39,10 +46,30 @@ type DialogId = "reset" | "reinstall" | "updates" | null;
 
 export function AppHamburger() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogId>(null);
   const [version, setVersion] = useState<string>(FALLBACK_VERSION);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Project pages (/projects/:id/*) get a stripped-down version: a
+  // single bug-report button. The full app menu would clutter the
+  // project workspace where the user is focused on their data, and
+  // the actions in the menu (About, Reset, Open user data folder...)
+  // are app-wide and reachable from the projects index. Bug reporting
+  // is the one menu item that genuinely matters mid-project, so we
+  // keep that as a single shortcut.
+  const isProjectPage = /^\/projects\/[^/]+/.test(location.pathname);
+
+  // The About page is itself reached *from* the hamburger. Showing
+  // the menu again on top of it is redundant — the page has its own
+  // "Back to projects" button for navigation, and any other app-level
+  // action (Reset, Documentation, Quit) is one click away by going
+  // back home.
+  const isAboutPage = location.pathname.startsWith("/about");
+  if (isAboutPage) {
+    return null;
+  }
 
   // Cache the user data dir once; the menu's "Open user data folder"
   // entry needs an absolute path that varies per OS.
@@ -123,16 +150,67 @@ export function AppHamburger() {
     }
   };
 
+  // Project pages: render only the bug-report button. Project pages
+  // use the canonical 52px row, so action buttons sit at top=22px;
+  // we match that exactly. Same right-offset calc as the full menu so
+  // the bug button hugs the page chrome's right edge.
+  if (isProjectPage) {
+    return (
+      <div
+        className="fixed top-[22px] z-40"
+        style={{ right: "max(0.75rem, calc(50vw - 41.25rem))" }}
+      >
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={exportDiagnostic}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border bg-white shadow-sm transition-colors hover:bg-accent"
+                aria-label="Export bug report"
+              >
+                <Bug className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Export bug report</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    );
+  }
+
   return (
     <>
+      {/* Floats fixed at the right edge of the page-chrome column,
+          12px past the action button's right edge.
+
+          The page header is mx-auto max-w-7xl with lg:px-8 padding,
+          so the action button's right edge sits at:
+            (viewport + 1280) / 2 - 32       on wide screens
+            viewport - 32                    on narrow screens (<1280)
+
+          Setting CSS `right` (distance from viewport right edge) to
+          `50vw - 41rem` puts the hamburger's left edge ~12px past
+          the action button's right edge on wide screens; floored at
+          12px so the hamburger never disappears off-screen on narrow
+          windows.
+
+          Vertical: the Projects page (the most-trafficked landing
+          page) has a 64px row height because of its h-16 logo. Action
+          button (h-10, 40px) is centred in that row, so top sits at
+          16 (py-4) + (64-40)/2 = 28px. Other pages with the canonical
+          52px row will see the hamburger 6px below their action
+          button — acceptable mild offset; matching everywhere
+          would require either a per-page hook or shrinking the
+          Projects logo to h-12. */}
       <div
         ref={menuRef}
-        className="fixed top-3 right-3 z-40"
+        className="fixed top-[28px] z-40"
+        style={{ right: "max(0.75rem, calc(50vw - 41.25rem))" }}
       >
         <button
           onClick={() => setIsOpen((v) => !v)}
           className={cn(
-            "rounded-md border bg-white p-2 shadow-sm transition-colors",
+            "inline-flex h-10 w-10 items-center justify-center rounded-md border bg-white shadow-sm transition-colors",
             isOpen ? "bg-accent" : "hover:bg-accent",
           )}
           aria-label="App menu"

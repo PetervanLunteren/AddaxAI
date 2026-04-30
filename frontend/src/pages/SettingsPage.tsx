@@ -901,7 +901,7 @@ export default function SettingsPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Project settings</h1>
               <p className="text-sm text-muted-foreground">
-                Configure AI models, label selection, and analysis parameters
+                Configure AI models, labels, and analysis parameters
               </p>
             </div>
           </div>
