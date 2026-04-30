@@ -12,8 +12,14 @@ import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-# Get the backend directory
-backend_dir = Path.cwd()
+# Get the backend directory.
+# Using Path.cwd() here is fragile: PyInstaller's behaviour around the
+# spec-file's working directory varies between versions and invocation
+# styles, and conditional `(backend_dir / "x").exists()` checks below
+# depend on this resolving correctly. SPECPATH is a magic variable
+# PyInstaller injects when exec'ing the spec; it always points at the
+# directory containing this file.
+backend_dir = Path(SPECPATH).resolve()
 
 block_cipher = None
 
@@ -41,8 +47,14 @@ datas += collect_data_files('openpyxl') # openpyxl ships schema XSDs
 # directory is absent and we just skip (dev users have models in
 # ~/AddaxAI/models/ from a prior install or via the in-app catalog).
 bundled_models_dir = backend_dir / '_bundled_models'
+print(f"[backend.spec] bundled_models_dir={bundled_models_dir} "
+      f"exists={bundled_models_dir.exists()}")
 if bundled_models_dir.exists():
+    file_count = sum(1 for _ in bundled_models_dir.rglob("*") if _.is_file())
+    print(f"[backend.spec] bundling {file_count} files from {bundled_models_dir}")
     datas.append((str(bundled_models_dir), 'bundled_models'))
+else:
+    print(f"[backend.spec] SKIPPING bundled_models (path not found)")
 
 # Comprehensive hidden imports - collect ALL submodules
 hiddenimports = []

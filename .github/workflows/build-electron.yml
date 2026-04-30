@@ -189,6 +189,35 @@ jobs:
         working-directory: backend
         run: ls -lh dist/backend/
 
+      # Specifically verify the bundled default-model weights made it
+      # into the PyInstaller output. Earlier builds silently shipped a
+      # DMG without these weights because the spec's conditional
+      # _bundled_models check evaluated to False at exec time, and the
+      # missed bundle wasn't detected until users tried to run the
+      # setup wizard. Failing here is far cheaper.
+      - name: Verify bundled default models
+        working-directory: backend
+        run: |
+          expected=(
+            "dist/backend/_internal/bundled_models/det/MD5A-0-0/md_v5a.0.0.pt"
+            "dist/backend/_internal/bundled_models/emb/DINOV2-VITB14/dinov2_vitb14_pretrain.pth"
+          )
+          missing=0
+          for f in "${expected[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Bundled weight missing from PyInstaller output: $f"
+              missing=1
+            else
+              size=$(du -h "$f" | cut -f1)
+              echo "OK: $f ($size)"
+            fi
+          done
+          if [ "$missing" != "0" ]; then
+            echo "Contents of dist/backend/_internal/ (top level):"
+            ls dist/backend/_internal/ || true
+            exit 1
+          fi
+
       - name: Import macOS signing certificate
         if: matrix.os == 'macos'
         env:
