@@ -52,7 +52,7 @@ async def process_camtrap_export_job(job_id: str) -> None:
             media_rows,
             obs_rows,
             datapackage,
-            _skipped_deployment_ids,
+            skipped_deployment_ids,
         ) = export_crud.build_camtrap_dp_tables(db, project, scoped)
         deps_h, media_h, obs_h = export_crud.camtrap_dp_headers()
 
@@ -144,6 +144,7 @@ async def process_camtrap_export_job(job_id: str) -> None:
                 **(refreshed.payload or {}),
                 "zip_path": str(tmp_path),
                 "total_files": len(media_rows),
+                "skipped_deployment_ids": list(skipped_deployment_ids),
             }
             db.commit()
 

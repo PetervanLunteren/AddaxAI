@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -10,6 +11,7 @@ import tempfile
 import uuid
 import zipfile
 from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -22,6 +24,55 @@ from tests.conftest import (
     make_project,
     make_site,
 )
+
+
+def _run_camtrap_dp_export(client, db, project_id: str):
+    """Helper: drive the full prepare → worker → download cycle.
+
+    The prepare endpoint registers the worker with ws_manager and waits
+    for a frontend "ready" signal before running it. In tests we have no
+    WebSocket, so we kick the worker directly (after patching its
+    `get_db` to use a session bound to the test engine) and then GET
+    the download endpoint.
+
+    The worker's `finally: db.close()` would otherwise detach the
+    fixture's `db` instance and break post-test assertions. We hand it
+    a separate session bound to the same StaticPool engine so closing
+    is harmless and the in-memory data stays visible.
+
+    Returns the download Response. Raises if prepare returns non-202;
+    in that case the caller should call /prepare directly and assert
+    the error code instead of using this helper.
+    """
+    prepare = client.post(f"/api/projects/{project_id}/export/camtrap-dp/prepare")
+    assert prepare.status_code == 202, prepare.text
+    job_id = prepare.json()["job_id"]
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.workers import camtrap_export_worker
+    from tests.conftest import _engine  # noqa: PLC2701 — shared in-memory engine
+
+    worker_session_factory = sessionmaker(bind=_engine)
+
+    def _fake_get_db():
+        s = worker_session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    # Make sure the worker reads any rows the fixture committed before
+    # we forked off this helper. Without it the fresh worker session
+    # could miss rows that are still buffered on the fixture session.
+    db.commit()
+
+    with patch.object(camtrap_export_worker, "get_db", _fake_get_db):
+        asyncio.run(camtrap_export_worker.process_camtrap_export_job(job_id))
+
+    return client.get(
+        f"/api/projects/{project_id}/export/camtrap-dp/download?job_id={job_id}"
+    )
 
 # ---------------------------------------------------------------------------
 # Factory sugar
@@ -280,7 +331,7 @@ def test_export_camtrap_dp_happy_path(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/camtrap-dp")
+    resp = _run_camtrap_dp_export(client, db, project.id)
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/zip")
 
@@ -308,19 +359,22 @@ def test_export_camtrap_dp_happy_path(client, db):
     assert deps_rows[0][0] == "deploymentID"
     assert media_rows[0] == [
         "mediaID", "deploymentID", "captureMethod", "timestamp",
-        "filePath", "filePublic", "fileMediatype",
+        "filePath", "filePublic", "fileName", "fileMediatype",
+        "exifData", "favorite", "mediaComments",
     ]
     assert obs_rows[0][0] == "observationID"
     # One detection → one animal observation row.
     assert len(obs_rows) == 2
     assert obs_rows[1][7] == "animal"
-    assert obs_rows[1][8] == "Vulpes vulpes"
+    assert obs_rows[1][9] == "Vulpes vulpes"
 
 
 def test_export_camtrap_dp_422_when_no_deployments(client, db):
     project = make_project(db, timezone="UTC")
     db.commit()
-    resp = client.get(f"/api/projects/{project.id}/export/camtrap-dp")
+    # 422 fires inside /prepare before the worker is dispatched, so we
+    # bypass the helper and inspect the prepare response directly.
+    resp = client.post(f"/api/projects/{project.id}/export/camtrap-dp/prepare")
     assert resp.status_code == 422
 
 
@@ -334,7 +388,7 @@ def test_export_camtrap_dp_blank_row_for_file_without_detections(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/camtrap-dp")
+    resp = _run_camtrap_dp_export(client, db, project.id)
     assert resp.status_code == 200
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         obs_rows = list(csv.reader(io.StringIO(zf.read("observations.csv").decode())))

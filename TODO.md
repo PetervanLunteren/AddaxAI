@@ -22,11 +22,8 @@
 - [x] Add a reset option in the settings. 
 
 
-
-- [ ] are there any errors in the test suite?
-
 - [ ] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
-- [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE ADDAX_SN ones. 
+- [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE addax-sppnet ones. 
 
 ## Priority 2
 - [ ] 

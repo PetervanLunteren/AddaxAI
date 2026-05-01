@@ -210,9 +210,16 @@ async def download_camtrap_dp(
         raise HTTPException(status_code=410, detail="Export ZIP expired")
 
     base = _filename_base(project, "camtrap-dp")
+    response_headers = _attachment_headers(f"{base}.zip")
+    skipped = payload.get("skipped_deployment_ids") or []
+    if skipped:
+        response_headers["X-Skipped-Deployment-Ids"] = ",".join(skipped)
+        response_headers["Access-Control-Expose-Headers"] = (
+            "X-Skipped-Deployment-Ids"
+        )
     return FileResponse(
         zip_path,
         media_type="application/zip",
         filename=f"{base}.zip",
-        headers=_attachment_headers(f"{base}.zip"),
+        headers=response_headers,
     )

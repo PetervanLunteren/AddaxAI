@@ -14,6 +14,7 @@ from app.api.crud.statistics import (
     get_activity_pattern,
     get_observation_rate_map,
 )
+from tests.api.test_export import _run_camtrap_dp_export
 from tests.conftest import (
     make_deployment,
     make_event_with_files,
@@ -98,7 +99,7 @@ def test_export_observations_csv_writes_blanks_for_null_site(client, db):
 def test_export_camtrap_dp_skips_null_site_and_reports_header(client, db):
     project, _site, _d1, _d2, dep_null = _seed_project_with_mixed_sites(db)
 
-    resp = client.get(f"/api/projects/{project.id}/export/camtrap-dp")
+    resp = _run_camtrap_dp_export(client, db, project.id)
     assert resp.status_code == 200
     skipped_header = resp.headers.get("X-Skipped-Deployment-Ids", "")
     assert dep_null.id in skipped_header
@@ -109,5 +110,7 @@ def test_export_camtrap_dp_422_when_only_null_sites(client, db):
     make_deployment(db, project_id=project.id, site_id=None)
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/camtrap-dp")
+    # 422 fires inside /prepare; bypass the helper to inspect the
+    # prepare response directly without trying to run the worker.
+    resp = client.post(f"/api/projects/{project.id}/export/camtrap-dp/prepare")
     assert resp.status_code == 422

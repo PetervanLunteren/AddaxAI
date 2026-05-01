@@ -260,12 +260,16 @@ def test_get_activity_overlap_diel_classification(db):
     resp = stats_crud.get_activity_overlap(
         db, project.id, species_a="leopard", species_b="cattle"
     )
-    # Midnight cluster → nocturnal; midday cluster → diurnal.
-    # (The actual labels depend on sun bands; with Amsterdam in June,
-    # day = ~05:30-22:00 so 22:00 is borderline. We assert the dominant
-    # phase is correct rather than the literal label.)
+    # Cattle at 12:00 should classify as diurnal regardless of latitude.
     assert resp.species_b.diel_class == "diurnal"
-    assert resp.species_a.diel_class in ("nocturnal", "crepuscular")
+    # Leopard at 22:00 in Amsterdam in June straddles the day/night
+    # boundary (sunset ~22:00). The Bennie ≥0.70-density rule lands
+    # somewhere in {nocturnal, crepuscular, cathemeral} depending on
+    # exact sun bands; the only definitive negative is "diurnal".
+    assert resp.species_a.diel_class != "diurnal"
+    assert resp.species_a.diel_class in (
+        "nocturnal", "crepuscular", "cathemeral"
+    )
 
 
 def test_get_activity_overlap_delta_low_for_disjoint_clusters(db):
