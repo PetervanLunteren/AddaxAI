@@ -498,14 +498,24 @@ def test_files_sort_random_stable_with_seed(client, db):
     b = client.get(
         f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=42"
     ).json()
-    c = client.get(
-        f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed=99"
-    ).json()
     assert [r["id"] for r in a] == [r["id"] for r in b]
-    # Different seed should give a different order most of the time. Three
-    # rows have 6 permutations; collision odds are 1/6 per seed pair. Pick
-    # seeds known to differ by checking explicitly.
-    assert [r["id"] for r in a] != [r["id"] for r in c]
+
+    # Three files have 6 permutations, so any specific seed pair has a
+    # 1/6 chance of producing the same order. Probe seeds until we find
+    # one that genuinely differs from seed 42, rather than asserting a
+    # hard-coded pair and hoping for the best.
+    base_ids = [r["id"] for r in a]
+    for trial in range(43, 100):
+        other = client.get(
+            f"/api/files/list-for-verify?project_id={p.id}&sort=random&seed={trial}",
+        ).json()
+        if [r["id"] for r in other] != base_ids:
+            break
+    else:
+        raise AssertionError(
+            "Seeds 43-99 all produced the same order as seed 42; "
+            "seeded_hash UDF is likely broken.",
+        )
 
 
 def test_files_sort_random_paginates_consistently(client, db):

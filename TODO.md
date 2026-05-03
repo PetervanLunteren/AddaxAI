@@ -20,10 +20,10 @@
 - [x] ERROR REPORTING
 - [x] If I want to update the release tag: (1) should I bumb to which version number? What would you recommend? Its now ready for beta testing. Furthermore, what should I write in the release text? Give me about 10 bullet points of what the changes are with previous tag. ONly keywords, no lengthy texts. 
 - [x] Add a reset option in the settings. 
+- [x] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
 
-
-- [ ] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
 - [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE addax-sppnet ones. 
+❯ compare the already implemented models in this repo with these (https://github.com/PetervanLunteren/AddaxAI/blob/main/model_info/model_info_v5.json). which ones do we need to implement still?     
 
 ## Priority 2
 - [ ] 
@@ -41,6 +41,7 @@
 - [ ] DOCUMENTATION
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
+- [ ] ADD ALL MODELS 
 
 
 ## Nice to haves

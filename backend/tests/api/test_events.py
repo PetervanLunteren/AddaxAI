@@ -257,9 +257,24 @@ def test_events_sort_random_stable_with_seed(client, db):
 
     a = client.get(f"/api/events?project_id={p.id}&sort=random&seed=42").json()
     b = client.get(f"/api/events?project_id={p.id}&sort=random&seed=42").json()
-    c = client.get(f"/api/events?project_id={p.id}&sort=random&seed=99").json()
     assert [r["id"] for r in a] == [r["id"] for r in b]
-    assert [r["id"] for r in a] != [r["id"] for r in c]
+
+    # Three events have 6 permutations, so any specific seed pair has a
+    # 1/6 chance of producing the same order. Probe seeds until we find
+    # one that genuinely differs from seed 42, rather than asserting a
+    # hard-coded pair and hoping for the best.
+    base_ids = [r["id"] for r in a]
+    for trial in range(43, 100):
+        other = client.get(
+            f"/api/events?project_id={p.id}&sort=random&seed={trial}",
+        ).json()
+        if [r["id"] for r in other] != base_ids:
+            break
+    else:
+        raise AssertionError(
+            "Seeds 43-99 all produced the same order as seed 42; "
+            "seeded_hash UDF is likely broken.",
+        )
 
 
 def test_events_sort_cls_low_pushes_nulls_last(client, db):
