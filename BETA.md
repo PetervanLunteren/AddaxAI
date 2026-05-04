@@ -46,19 +46,14 @@ Please give me as much detail as you can so I can reproduce it. Most useful:
 
 #### Export diagnostic report
 
-**If the app opens**: click the bug icon in the page header (tooltip says "Export diagnostic report"), or open Settings, then Diagnostics, and click "Export diagnostic report". Both build the same zip in your Downloads folder with logs, system info, installed models, environment state, and recent jobs. Please attach it to the email.
-
-**If the app does not open**: zip the logs folder by hand and attach that.
+Click the bug icon in the page header (tooltip says "Export diagnostic report"). This builds a zip file with logs, system info, states, jobs, etc. Please attach it to the email. If the app does not open the button is not available. In that case, please zip the logs folder by hand and attach that (right-click the folder > compress).
 
 | OS | Logs folder |
 |---|---|
-| macOS | `~/AddaxAI/logs/` |
-| Windows | `%USERPROFILE%\AddaxAI\logs\` |
+| macOS | `/Users/<username>/AddaxAI/logs/` |
+| Windows | `C:\Users\<username>\AddaxAI\logs\` |
 
-To zip on macOS: open Finder, press `Cmd+Shift+G`, paste the path, right-click the folder, Compress.
-To zip on Windows: open File Explorer, paste the path, right-click the folder, Send to, Compressed folder.
-
-Native crash dumps live at `~/AddaxAI/crash-dumps/` (macOS) or `%USERPROFILE%\AddaxAI\crash-dumps\` (Windows). Include those if present.
+Please also zip and share the `\crash-dumps` folder if present.
 
 ## What is not built yet
 
@@ -74,19 +69,13 @@ These are on the roadmap but not in this beta:
 - Wildbook integration
 - the full model zoo (only a subset is shipped for now)
 
-<details>
-<summary><strong>Reset (open if something is stuck)</strong></summary>
+## Uninstall
 
-Inside the app: open Settings, find Reset, follow the prompts. The app quits, next launch starts from scratch.
+#### macOS
+Drag AddaxAI from Applications to the Trash. To also remove logs, models, and the database, delete the folder at `/Users/<username>/AddaxAI`.
 
-If the app does not open at all and you cannot reach Settings, delete the user data folder by hand:
-
-- macOS: `rm -rf ~/AddaxAI`
-- Windows: delete `%USERPROFILE%\AddaxAI` in File Explorer (or `rmdir /s /q %USERPROFILE%\AddaxAI` in cmd)
-
-Then reopen the app. The setup wizard runs again.
-
-</details>
+#### Windows
+Open Settings, then Apps, find AddaxAI, click Uninstall. To also remove logs, models, and the database, delete the folder at `C:\Users\<username>\AddaxAI`.
 
 ## Contact
 
