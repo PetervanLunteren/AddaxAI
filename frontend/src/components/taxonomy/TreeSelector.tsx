@@ -21,6 +21,9 @@ import { collectLeafIds } from "../../lib/taxonomy-utils";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
 
+const INDENT_PX = 32;
+const ROW_INSET_PX = 12;
+
 interface TreeSelectorProps {
   /** The tree to render (full or pruned). */
   tree: TaxonomyNode[];
@@ -397,7 +400,7 @@ export function TreeSelector({
               const isLeaf = !hasChildren;
               const expanded = expandedNodes.has(node.id);
               const { checked, indeterminate } = getCheckState(node, selectedIds, excludedMode);
-              const indent = depth * 20;
+              const indent = depth * INDENT_PX;
 
               return (
                 <div
@@ -413,7 +416,7 @@ export function TreeSelector({
                 >
                   <div
                     className="flex items-center h-full px-3 hover:bg-accent rounded cursor-pointer relative"
-                    style={{ paddingLeft: `${indent + 12}px` }}
+                    style={{ paddingLeft: `${indent + ROW_INSET_PX}px` }}
                     onClick={() => handleToggle(node.id, !checked)}
                   >
                     {/* Tree connector lines */}
@@ -425,7 +428,7 @@ export function TreeSelector({
                               key={`a-${idx}`}
                               className="absolute border-l border-gray-300"
                               style={{
-                                left: `${idx * 20 + 22}px`,
+                                left: `${idx * INDENT_PX + INDENT_PX / 2 + ROW_INSET_PX}px`,
                                 top: 0,
                                 bottom: 0,
                               }}
@@ -435,7 +438,7 @@ export function TreeSelector({
                         <div
                           className="absolute border-l border-gray-300"
                           style={{
-                            left: `${(depth - 1) * 20 + 22}px`,
+                            left: `${(depth - 1) * INDENT_PX + INDENT_PX / 2 + ROW_INSET_PX}px`,
                             top: 0,
                             bottom: isLastChild ? "50%" : 0,
                           }}
@@ -443,9 +446,9 @@ export function TreeSelector({
                         <div
                           className="absolute border-b border-gray-300"
                           style={{
-                            left: `${(depth - 1) * 20 + 22}px`,
+                            left: `${(depth - 1) * INDENT_PX + INDENT_PX / 2 + ROW_INSET_PX}px`,
                             top: "50%",
-                            width: "10px",
+                            width: `${INDENT_PX / 2}px`,
                           }}
                         />
                       </>

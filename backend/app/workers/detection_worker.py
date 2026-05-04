@@ -856,6 +856,24 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         logger.error(f"Batch job {job_id} failed: {e}", exc_info=True)
         job_crud.update_job_status(db, job_id, "failed")
 
+        # Roll back the in-flight placeholder deployment, mirroring the
+        # JobCancelledError and MissingTimestampError handlers. Without
+        # this, a model crash or any other phase-1-7 exception leaks an
+        # orphan Deployment row (today's date, the failed folder path,
+        # 0 files) into the Deployments page. `deployment` is reset to
+        # None at the top of each iteration, so a non-None value here is
+        # unambiguously the placeholder for the entry that just failed.
+        if deployment is not None:
+            try:
+                db.delete(deployment)
+                db.commit()
+                logger.info(
+                    f"Rolled back placeholder deployment {deployment.id} after failure"
+                )
+            except Exception as rb:
+                logger.warning(f"Placeholder rollback failed after batch failure: {rb}")
+                db.rollback()
+
         # Mark remaining entries as failed
         for entry_id in queue_entry_ids:
             entry = queue_crud.get_queue_entry(db, entry_id)

@@ -12,6 +12,8 @@
 import { Checkbox } from "../ui/checkbox";
 import type { TaxonomyNode as TaxonomyNodeType } from "../../api/types";
 
+const INDENT_PX = 32;
+
 interface TreeNodeProps {
   node: TaxonomyNodeType;
   level: number;
@@ -120,7 +122,7 @@ export function TreeNode({
     onExpand(node.id, !expanded);
   };
 
-  const indentationWidth = level * 20; // 20px per level
+  const indentationWidth = level * INDENT_PX;
 
   return (
     <div className="relative">
@@ -139,7 +141,7 @@ export function TreeNode({
                   key={`ancestor-${idx}`}
                   className="absolute border-l border-gray-300"
                   style={{
-                    left: `${idx * 20 + 10}px`,
+                    left: `${idx * INDENT_PX + INDENT_PX / 2}px`,
                     top: 0,
                     bottom: 0,
                   }}
@@ -151,7 +153,7 @@ export function TreeNode({
             <div
               className="absolute border-l border-gray-300"
               style={{
-                left: `${(level - 1) * 20 + 10}px`,
+                left: `${(level - 1) * INDENT_PX + INDENT_PX / 2}px`,
                 top: 0,
                 bottom: isLastChild ? "50%" : 0,
               }}
@@ -160,9 +162,9 @@ export function TreeNode({
             <div
               className="absolute border-b border-gray-300"
               style={{
-                left: `${(level - 1) * 20 + 10}px`,
+                left: `${(level - 1) * INDENT_PX + INDENT_PX / 2}px`,
                 top: "50%",
-                width: "10px",
+                width: `${INDENT_PX / 2}px`,
               }}
             />
           </>

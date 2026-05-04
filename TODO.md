@@ -25,14 +25,14 @@
 - [x] Make sure to code sign the windows installer too. See how its done at AddaxAI /Users/peter/Documents/Repos/AddaxAI/.github/workflows/build-windows-release.yml. The same secrets are in both repos with the same names and the same values.
 
 ## Priority 2
-- [ ] What is the reason a failed deployment still ends up in the deployments page? Its a deployment with 0 captures. 
-- [ ] In the DpeloymentsProcessPbarModal the cancel button has an icon. Please reomve the icon to be consiostent with the rest of the app. 
-- [ ] In the taxonomic tree Modal, can we indent the different layers a bit more? We have plenty of horizontal space. 
+- [ ]  
 
 ## Priority 3 
+- [ ] Add a readme file with instructions for Meta Testers. How to download, how to install, what to do with a bug, what to report back to me, etc. 
+
+## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
 - [ ] Any other non used imports or requirements in the environments YMLS? 
-
 
 ## Future stuff
 - [ ] TIMELAPSE STANDALONE APP
