@@ -46,7 +46,7 @@
     ],
     "mac": {
       "category": "public.app-category.education",
-      "target": ["dmg", "zip"],
+      "target": ["dmg"],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -69,7 +69,7 @@
       ]
     },
     "win": {
-      "target": ["nsis", "zip"],
+      "target": ["nsis"],
       "signtoolOptions": {
         "signingHashAlgorithms": ["sha256"],
         "rfc3161TimeStampServer": "http://timestamp.digicert.com"

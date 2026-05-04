@@ -31,7 +31,6 @@ jobs:
             artifact-name: macos-installers
             artifact-glob: |
               electron/dist-build/*.dmg
-              electron/dist-build/*-mac.zip
             electron-builder-args: --mac --arm64
           # Linux is non-blocking until verified end-to-end.
           - label: Linux x64
@@ -52,7 +51,6 @@ jobs:
             artifact-name: windows-installers
             artifact-glob: |
               electron/dist-build/*.exe
-              electron/dist-build/*-win.zip
             electron-builder-args: --win
 
     defaults:

@@ -29,6 +29,7 @@
 
 ## Priority 3 
 - [ ] Add a readme file with instructions for Meta Testers. How to download, how to install, what to do with a bug, what to report back to me, whats still todo, how to reset, etc. etc. 
+- [ ] The map and activity pattern insight pages have a non consistent format of shoing there is no data (when there is no data). The other pages (matrix, deployment timeline, performace) all have the same format (card + center aligned bold title + greyish text center aligned). Make consistent. 
 - [ ] Add drift detection. When you're ready to pick it up, the existing ModelCatalogUpdater.sync() in backend/app/ml/catalog_updater.py and ModelUpdateToast in frontend/src/App.tsx already do most of the plumbing for the model-revision flow, so the drift check can hang off the same machinery. 
 >  - For models: store the HF revision SHA in manifest.json at download time, compare against HfApi().model_info(repo_id).sha on app startup, surface a "Update available" toast (the same path ModelUpdateToast already uses for new models).                                                                                                                                                                                                   
 >  - For envs: hash the bundled YAML at install time, store next to the env directory, rebuild on mismatch.
@@ -39,6 +40,7 @@
 - [ ] The NSIS installer on windows shows a pbar, but it goes up and down a few times... 
 - [ ] Bump addaxai-base from cu118 to cu128 so RTX 50-series (sm_120, Blackwell) gets native kernels instead of the 4-5 min PTX JIT fallback. Suggested pins: torch==2.8.0+cu128, torchvision==0.23.0+cu128, --extra-index-url https://download.pytorch.org/whl/cu128. Both windows and linux YAMLs. Adds ~700 MB to the install but fixes the GPU warning reported at https://forum.addaxai.com/t/model-warning-on-running-with-gpu/202. Requires NVIDIA driver >= 555.x, mention in the beta-tester readme. 
 - [ ] Bump the pytorch env from Python 3.8 to 3.11 (3.8 is EOL since Oct 2024 and recent torch wheels are starting to drop py38 builds). Also bump torch alongside the python jump. SpeciesNet-fine-tuned classifiers (.pt files with pickled onnx2torch operator classes) need a smoke test after the bump: load NAM-ADS-v1 or similar and confirm torch.load() succeeds across the major version jump. 
+
 
 ## Future stuff
 - [ ] TIMELAPSE STANDALONE APP
