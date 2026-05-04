@@ -257,6 +257,57 @@ async def prepare_model_weights(model_id: str) -> ModelPrepareResponse:
         ) from None
 
 
+@router.post("/models/{model_id}/redownload", status_code=status.HTTP_202_ACCEPTED)
+async def redownload_model(model_id: str) -> dict[str, str]:
+    """
+    Force-redownload a model's files when the upstream HF revision has
+    moved past the locally recorded SHA. Wipes everything in the model
+    directory except `manifest.json` (so the catalog stub survives) and
+    spawns the download as a fire-and-forget asyncio task. Returns 202
+    immediately; the next `ModelCatalogUpdater.sync()` (i.e. the next
+    app launch) will record the new SHA and clear the drift entry.
+
+    No live progress is surfaced. The drift toast that triggered this
+    is intentionally minimal; users who want to monitor a download
+    closely should use the regular setup wizard / project flow that
+    already wires WebSocket progress.
+    """
+    try:
+        _get_managers()
+        manifest = manifest_manager.get_model(model_id)
+
+        # Run the wipe + download in a worker thread so the request
+        # returns immediately. download_weights handles its own
+        # cleanup on failure; failures here just mean drift stays
+        # flagged on the next startup, which the user can retry.
+        async def _run() -> None:
+            try:
+                await asyncio.to_thread(
+                    model_storage.download_weights, manifest, None, True
+                )
+                logger.info(f"Force re-download of {model_id} complete")
+            except Exception as e:
+                logger.error(
+                    f"Force re-download of {model_id} failed: {e}",
+                    exc_info=True,
+                )
+
+        asyncio.create_task(_run())
+        return {"status": "started", "model_id": model_id}
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from None
+    except Exception as e:
+        logger.error(f"Failed to start re-download for {model_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start re-download: {e}",
+        ) from None
+
+
 @router.post("/models/{model_id}/prepare-env", response_model=ModelPrepareResponse)
 async def prepare_model_environment(model_id: str) -> ModelPrepareResponse:
     """
@@ -469,7 +520,9 @@ async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
             )
 
         # Download weights (blocking call in thread pool)
-        await asyncio.to_thread(model_storage.download_weights, manifest, weights_progress)
+        await asyncio.to_thread(
+            model_storage.download_weights, manifest, weights_progress
+        )
 
         await ws_manager.send_complete(
             task_id,

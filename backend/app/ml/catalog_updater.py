@@ -17,6 +17,16 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Names of envs whose drift we surface in the toast. Kept here rather
+# than in EnvironmentManager because env_manager treats env_name as an
+# opaque parameter; this list tracks which ones the app actually ships.
+_DRIFT_CHECKED_ENVS: tuple[str, ...] = (
+    "addaxai-base",
+    "pytorch",
+    "tensorflow-v1",
+    "tensorflow-v2",
+)
+
 
 class ModelCatalogUpdater:
     """
@@ -211,6 +221,68 @@ class ModelCatalogUpdater:
             )
             return "unchanged"
 
+    def check_model_drift(
+        self, model_type: str, manifest_data: dict[str, Any]
+    ) -> bool | None:
+        """
+        Compare the local manifest's recorded `hf_revision_sha` to the
+        live HuggingFace commit SHA for the same repo.
+
+        Returns:
+            True  if the sentinel SHA disagrees with the upstream
+                  (drift; user should re-download).
+            False if they agree (in sync).
+            None  if drift can't be evaluated: legacy install with no
+                  recorded SHA, no `hf_repo` declared, network failure,
+                  or any other transient issue. Treat as "unknown but
+                  valid" and skip.
+
+        Never raises: HF auth / network / 404 errors collapse to None
+        so a drift pass can't take down startup.
+        """
+        from huggingface_hub import HfApi
+        from huggingface_hub.utils import HfHubHTTPError
+
+        model_id = manifest_data["model_id"]
+        model_dir = self.models_dir / model_type / model_id
+        manifest_path = model_dir / "manifest.json"
+        if not manifest_path.exists():
+            return None
+
+        try:
+            with open(manifest_path) as f:
+                local = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(
+                f"Could not read local manifest at {manifest_path}: {e}"
+            )
+            return None
+
+        recorded = local.get("hf_revision_sha")
+        if not recorded:
+            # Legacy install. Skip per "unknown but valid" rule.
+            return None
+
+        hf_repo = local.get("hf_repo") or f"Addax-Data-Science/{model_id}"
+        try:
+            info = HfApi().model_info(hf_repo)
+            remote = getattr(info, "sha", None)
+        except HfHubHTTPError as e:
+            logger.warning(
+                f"HF model_info({hf_repo}) HTTP error during drift check: {e}"
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                f"HF model_info({hf_repo}) failed during drift check: {e}"
+            )
+            return None
+
+        if not remote:
+            return None
+
+        return recorded != remote
+
     async def sync(self) -> dict[str, Any]:
         """
         Fetch the central catalog, then for every entry write the local
@@ -222,6 +294,8 @@ class ModelCatalogUpdater:
             {
                 "new_models":       [{"model_id", "friendly_name", "emoji"}, ...],
                 "refreshed_models": [{"model_id", "friendly_name"}, ...],
+                "drifted_models":   [{"model_id", "friendly_name", "emoji"}, ...],
+                "drifted_envs":     [{"env_name"}, ...],
                 "checked_at":       "<UTC ISO timestamp>",
                 "error":            "<message>" (only if fetch failed),
             }
@@ -231,6 +305,8 @@ class ModelCatalogUpdater:
         result: dict[str, Any] = {
             "new_models": [],
             "refreshed_models": [],
+            "drifted_models": [],
+            "drifted_envs": [],
             "checked_at": datetime.now(UTC).isoformat(),
         }
 
@@ -271,6 +347,43 @@ class ModelCatalogUpdater:
                             }
                         )
 
+                    # Drift check: compare the local manifest's recorded
+                    # HF revision SHA to the upstream. Only models that
+                    # have actually been downloaded carry a recorded
+                    # SHA, so this naturally skips catalog-only stubs.
+                    # Skip on fresh installs too: there's nothing on
+                    # disk that could be drifted.
+                    if not is_fresh_install:
+                        drifted = self.check_model_drift(model_type, manifest_data)
+                        if drifted:
+                            result["drifted_models"].append(
+                                {
+                                    "model_id": manifest_data["model_id"],
+                                    "friendly_name": manifest_data.get(
+                                        "friendly_name", manifest_data["model_id"]
+                                    ),
+                                    "emoji": manifest_data.get("emoji", "🤖"),
+                                }
+                            )
+
+            # Env drift: hash each shipped env's bundled YAML and
+            # compare to the sentinel written when the env was built.
+            # Done outside the catalog loop because envs are shipped
+            # by the app, not by the central models.json.
+            if not is_fresh_install:
+                from app.ml.environment_manager import EnvironmentManager
+                env_manager = EnvironmentManager()
+                for env_name in _DRIFT_CHECKED_ENVS:
+                    try:
+                        drifted = env_manager.check_yaml_drift(env_name)
+                    except Exception as e:
+                        logger.warning(
+                            f"Env drift check for {env_name} raised: {e}"
+                        )
+                        drifted = None
+                    if drifted:
+                        result["drifted_envs"].append({"env_name": env_name})
+
             if is_fresh_install:
                 # On first launch every entry is "created"; no point
                 # listing them; the setup wizard handles weight downloads.
@@ -286,7 +399,9 @@ class ModelCatalogUpdater:
                 logger.info(
                     f"Model catalog sync complete: "
                     f"{len(result['new_models'])} new, "
-                    f"{len(result['refreshed_models'])} refreshed"
+                    f"{len(result['refreshed_models'])} refreshed, "
+                    f"{len(result['drifted_models'])} model(s) drifted, "
+                    f"{len(result['drifted_envs'])} env(s) drifted"
                 )
 
             return result

@@ -159,17 +159,21 @@ def get_setup_status() -> SetupStatus:
     )
 
 
-def _build_env_manifest() -> ModelManifest:
+def _build_env_manifest(env_name: str = _REQUIRED_ENV) -> ModelManifest:
     """
     Build the minimal ModelManifest the env_manager needs to resolve the
     env yaml. Only `.env` is actually read by the install path; everything
     else is required by the schema but ignored at this site.
+
+    Parameterised on env_name so the rebuild flow can drive a fresh
+    install of any shipped env (`pytorch`, `tensorflow-v1`, etc.), not
+    just the default one the wizard installs at first launch.
     """
     return ModelManifest(
-        model_id="setup-stub",
-        friendly_name="Default environment",
+        model_id=f"setup-stub-{env_name}",
+        friendly_name=f"{env_name} environment",
         emoji="⚙️",
-        env=_REQUIRED_ENV,
+        env=env_name,
         model_fname="setup-stub",
         description="Synthetic manifest used by the first-run setup wizard.",
         developer="AddaxAI",
@@ -200,16 +204,39 @@ def _build_default_model_manifest(spec: dict) -> ModelManifest:
     return m
 
 
-def _install_env_blocking() -> None:
+def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
     """
     Sync worker driving setup: env install plus HF downloads of the
     default model weights. Runs in a thread. All steps are idempotent so
     retrying after a partial failure picks up where it left off.
+
+    `force_envs` lets the drift-rebuild flow request that specific
+    envs be wiped and rebuilt regardless of whether they already exist
+    on disk. Caller passes env names like "addaxai-base" or "pytorch".
     """
     try:
         settings = get_settings()
         models_dir = settings.user_data_dir / "models"
         storage = ModelStorage(models_dir)
+        em = _get_env_manager()
+
+        # Wipe envs explicitly requested for rebuild before the
+        # presence check below decides whether to add an install step.
+        # Out-of-loop so the wipes are visible regardless of step
+        # ordering.
+        for env_name in force_envs:
+            wipe_path = em.envs_dir / f"env-{env_name}"
+            if wipe_path.exists():
+                logger.info(
+                    f"Force-rebuild: wiping existing env at {wipe_path}"
+                )
+                try:
+                    em._safe_rmtree(wipe_path)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to wipe env {env_name} for rebuild: {e}",
+                        exc_info=True,
+                    )
 
         # Each step: (label_for_logs, fn(progress_cb)). Skipped if already
         # complete so retries go straight to whatever's missing.
@@ -219,6 +246,22 @@ def _install_env_blocking() -> None:
             def _env_step(cb: Callable[[str, float], None]) -> None:
                 _get_env_manager().get_or_create_env(_build_env_manifest(), cb)
             steps.append(("Analysis environment", _env_step))
+
+        # Add explicit rebuild steps for any forced env that isn't the
+        # default one (the default is already covered above via
+        # _env_present()). Order doesn't matter for correctness; users
+        # see them sequentially in the progress modal.
+        for env_name in force_envs:
+            if env_name == _REQUIRED_ENV:
+                continue
+            def _force_env_step(
+                cb: Callable[[str, float], None],
+                _name: str = env_name,
+            ) -> None:
+                _get_env_manager().get_or_create_env(
+                    _build_env_manifest(_name), cb
+                )
+            steps.append((f"Environment ({env_name})", _force_env_step))
 
         for spec in _DEFAULT_MODELS:
             weight = (
@@ -269,15 +312,41 @@ def _install_env_blocking() -> None:
         _install_state.finish(error=str(e))
 
 
+class InstallEnvRequest(BaseModel):
+    """
+    Request body for POST /install-env.
+
+    First-run setup posts an empty body. The drift-rebuild flow posts
+    `force_envs` to wipe and recreate specific envs; useful when a
+    bundled YAML moved on but the env on disk wasn't picked up.
+    """
+
+    force_envs: list[str] | None = None
+
+
 @router.post("/install-env", status_code=status.HTTP_202_ACCEPTED)
-async def install_env() -> dict[str, str]:
+async def install_env(
+    request: InstallEnvRequest | None = None,
+) -> dict[str, str]:
     """
     Start setup (env + default-model downloads) in a background thread.
     Returns 202 immediately; progress is polled via /status. 409 if
     already running. Idempotent: each step no-ops when complete.
+
+    With `force_envs` set, the listed envs are wiped and rebuilt before
+    the regular install loop runs, regardless of whether they already
+    exist. Used by the drift-rebuild button.
     """
     settings = get_settings()
-    if _env_present() and _models_present(settings.user_data_dir / "models"):
+    force_envs = tuple(request.force_envs or ()) if request else ()
+
+    # Skip-fast applies only when nothing is being forced. A force
+    # request always triggers the install loop.
+    if (
+        not force_envs
+        and _env_present()
+        and _models_present(settings.user_data_dir / "models")
+    ):
         return {"status": "already_installed"}
 
     # Disk-space pre-flight. The wizard text says "about 1.9 GB" but the
@@ -294,7 +363,9 @@ async def install_env() -> dict[str, str]:
         )
 
     # Run blocking install in a thread so the event loop stays responsive.
-    asyncio.create_task(asyncio.to_thread(_install_env_blocking))
+    asyncio.create_task(
+        asyncio.to_thread(_install_env_blocking, force_envs)
+    )
     return {"status": "started"}
 
 

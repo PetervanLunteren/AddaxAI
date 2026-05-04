@@ -86,7 +86,14 @@ async def update_model_catalog(app: FastAPI) -> None:
     # Skip if disabled
     if settings.disable_model_updates:
         logger.info("Model catalog updates disabled")
-        app.state.model_updates = {"new_models": [], "checked_at": None, "disabled": True}
+        app.state.model_updates = {
+            "new_models": [],
+            "refreshed_models": [],
+            "drifted_models": [],
+            "drifted_envs": [],
+            "checked_at": None,
+            "disabled": True,
+        }
         return
 
     try:
@@ -95,7 +102,13 @@ async def update_model_catalog(app: FastAPI) -> None:
         app.state.model_updates = result
     except Exception as e:
         logger.error(f"Model catalog sync failed: {e}", exc_info=True)
-        app.state.model_updates = {"new_models": [], "error": str(e)}
+        app.state.model_updates = {
+            "new_models": [],
+            "refreshed_models": [],
+            "drifted_models": [],
+            "drifted_envs": [],
+            "error": str(e),
+        }
 
 
 async def _warm_up_query_caches() -> None:

@@ -10,14 +10,45 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
+import json
 from collections.abc import Callable
 from pathlib import Path
+
+from huggingface_hub import HfApi
 
 from app.core.logging_config import get_logger
 from app.ml.hf_downloader import HuggingFaceRepoDownloader
 from app.ml.schemas.model_manifest import ModelManifest
 
 logger = get_logger(__name__)
+
+
+def _record_hf_revision_sha(manifest_path: Path, sha: str) -> None:
+    """
+    Persist the HF commit SHA into the local manifest.json so a later
+    drift check can compare on-disk vs upstream. Read-modify-write on a
+    file the catalog updater also touches; both call sites update the
+    file rarely so the lack of locking is fine for now.
+
+    Never raises; failure here just means drift detection won't fire
+    for this model until the next successful re-download. Logged at
+    warning so the diagnostic ZIP records the miss.
+    """
+    try:
+        with open(manifest_path) as f:
+            data = json.load(f)
+        if data.get("hf_revision_sha") == sha:
+            return
+        data["hf_revision_sha"] = sha
+        with open(manifest_path, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info(
+            f"Recorded hf_revision_sha={sha[:12]}... in {manifest_path}"
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to record hf_revision_sha into {manifest_path}: {e}"
+        )
 
 
 class ModelStorage:
@@ -63,6 +94,7 @@ class ModelStorage:
         self,
         manifest: ModelManifest,
         progress_callback: Callable[[str, float], None] | None = None,
+        force: bool = False,
     ) -> Path:
         """
         Download model weights from HuggingFace if not cached.
@@ -70,6 +102,9 @@ class ModelStorage:
         Args:
             manifest: Model manifest
             progress_callback: Optional callback(message, progress) for updates
+            force: If True, wipe the model directory (preserving manifest.json)
+                before downloading. Used by the drift-redownload flow when the
+                upstream HF revision moved past the locally recorded SHA.
 
         Returns:
             Path to model directory
@@ -84,8 +119,32 @@ class ModelStorage:
         ]
         model_path = self.models_dir / model_type / manifest.model_id
 
-        # Skip if already exists
-        if self.check_weights_ready(manifest):
+        if force and model_path.exists():
+            # Wipe everything except manifest.json so the catalog stub
+            # survives. Without manifest.json present, the next
+            # ManifestManager load would lose this model entirely until
+            # the catalog updater rebuilds it. Preserving it keeps the
+            # state recoverable mid-download too.
+            logger.info(
+                f"Force re-download: wiping cached files at {model_path} "
+                "(keeping manifest.json)"
+            )
+            for child in model_path.iterdir():
+                if child.name == "manifest.json":
+                    continue
+                try:
+                    if child.is_dir():
+                        import shutil
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                except OSError as e:
+                    logger.warning(
+                        f"Could not remove {child} during force re-download: {e}"
+                    )
+
+        # Skip if already exists (and not forcing).
+        if not force and self.check_weights_ready(manifest):
             logger.info(f"Model {manifest.model_id} already cached at {model_path}")
             if progress_callback:
                 progress_callback("Model already cached", 1.0)
@@ -125,6 +184,26 @@ class ModelStorage:
                 )
 
             logger.info(f"Downloaded {manifest.model_id} to {model_path}")
+
+            # Record the HF commit SHA we just downloaded so a later
+            # ModelCatalogUpdater.sync() can spot drift when the
+            # upstream repo moves. Best-effort: any HF API failure here
+            # is logged and ignored. Without this, drift detection
+            # silently no-ops for this model.
+            try:
+                info = HfApi().model_info(hf_repo)
+                sha = getattr(info, "sha", None)
+                if sha:
+                    _record_hf_revision_sha(model_path / "manifest.json", sha)
+                else:
+                    logger.warning(
+                        f"HfApi.model_info({hf_repo}) returned no sha attribute"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to fetch HF revision SHA for {hf_repo} "
+                    f"after download: {e}"
+                )
 
             if progress_callback:
                 progress_callback("Download complete", 1.0)

@@ -16,6 +16,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { X } from "lucide-react";
+import { toast } from "sonner";
 import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -45,34 +46,84 @@ interface ModelUpdate {
   emoji: string;
 }
 
+interface DriftedEnv {
+  env_name: string;
+}
+
 interface ModelUpdatesResponse {
   new_models: ModelUpdate[];
+  refreshed_models?: ModelUpdate[];
+  drifted_models?: ModelUpdate[];
+  drifted_envs?: DriftedEnv[];
   checked_at: string | null;
 }
 
 function ModelUpdateToast() {
-  const [showToast, setShowToast] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
-  // Fetch model updates once on app load
+  // Fetch model updates once on app load.
   const { data: updates } = useQuery({
     queryKey: ["model-updates"],
     queryFn: () => api.get<ModelUpdatesResponse>("/api/ml/updates"),
-    staleTime: Infinity, // Only check once per session
+    staleTime: Infinity,
   });
 
-  // Show toast if new models found
-  useEffect(() => {
-    if (updates?.new_models && updates.new_models.length > 0) {
-      setShowToast(true);
-      // Auto-dismiss after 10 seconds
-      const timer = setTimeout(() => setShowToast(false), 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [updates]);
+  const newModels = updates?.new_models ?? [];
+  const driftedModels = updates?.drifted_models ?? [];
+  const driftedEnvs = updates?.drifted_envs ?? [];
+  const hasDrift = driftedModels.length > 0 || driftedEnvs.length > 0;
+  const hasNew = newModels.length > 0;
+  const hasAnything = hasNew || hasDrift;
 
-  if (!showToast || !updates?.new_models || updates.new_models.length === 0) {
+  // Auto-dismiss after 10 s only when there's nothing actionable.
+  // Drift entries have buttons the user is supposed to interact with;
+  // those stay visible until the user dismisses them.
+  useEffect(() => {
+    if (!hasAnything || hasDrift) return;
+    const timer = setTimeout(() => setDismissed(true), 10000);
+    return () => clearTimeout(timer);
+  }, [hasAnything, hasDrift]);
+
+  if (dismissed || !hasAnything) {
     return null;
   }
+
+  const markBusy = (id: string) => {
+    setBusyIds((prev) => new Set(prev).add(id));
+  };
+
+  const handleRedownload = async (model: ModelUpdate) => {
+    if (busyIds.has(model.model_id)) return;
+    markBusy(model.model_id);
+    try {
+      await api.post(`/api/ml/models/${model.model_id}/redownload`, {});
+      toast.success(`Re-downloading ${model.friendly_name}`, {
+        description:
+          "Running in the background. Restart the app once it's done.",
+      });
+    } catch (err) {
+      toast.error(`Re-download failed for ${model.friendly_name}`, {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const handleRebuildEnv = async (env: DriftedEnv) => {
+    if (busyIds.has(env.env_name)) return;
+    markBusy(env.env_name);
+    try {
+      await api.post("/api/setup/install-env", { force_envs: [env.env_name] });
+      toast.success(`Rebuilding ${env.env_name}`, {
+        description:
+          "Running in the background. This can take 10-30 minutes.",
+      });
+    } catch (err) {
+      toast.error(`Rebuild failed for ${env.env_name}`, {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   return (
     <div
@@ -80,23 +131,87 @@ function ModelUpdateToast() {
       role="alert"
     >
       <div className="flex items-start gap-3">
-        <div className="flex-1">
-          <div className="font-semibold text-sm mb-2">
-            New {updates.new_models.length === 1 ? "model" : "models"} available
-          </div>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            {updates.new_models.slice(0, 3).map((model) => (
-              <li key={model.model_id}>{model.emoji} {model.friendly_name}</li>
-            ))}
-            {updates.new_models.length > 3 && (
-              <li className="italic">+ {updates.new_models.length - 3} more</li>
-            )}
-          </ul>
+        <div className="flex-1 space-y-3">
+          {hasNew && (
+            <div>
+              <div className="font-semibold text-sm mb-2">
+                New {newModels.length === 1 ? "model" : "models"} available
+              </div>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                {newModels.slice(0, 3).map((model) => (
+                  <li key={model.model_id}>
+                    {model.emoji} {model.friendly_name}
+                  </li>
+                ))}
+                {newModels.length > 3 && (
+                  <li className="italic">+ {newModels.length - 3} more</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {driftedModels.length > 0 && (
+            <div>
+              <div className="font-semibold text-sm mb-2">
+                Update{driftedModels.length === 1 ? "" : "s"} available
+              </div>
+              <ul className="text-sm text-muted-foreground space-y-1.5">
+                {driftedModels.map((model) => (
+                  <li
+                    key={model.model_id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      {model.emoji} {model.friendly_name}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      disabled={busyIds.has(model.model_id)}
+                      onClick={() => handleRedownload(model)}
+                    >
+                      {busyIds.has(model.model_id)
+                        ? "Started"
+                        : "Re-download"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {driftedEnvs.length > 0 && (
+            <div>
+              <div className="font-semibold text-sm mb-2">
+                Environment update{driftedEnvs.length === 1 ? "" : "s"}
+              </div>
+              <ul className="text-sm text-muted-foreground space-y-1.5">
+                {driftedEnvs.map((env) => (
+                  <li
+                    key={env.env_name}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">{env.env_name}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      disabled={busyIds.has(env.env_name)}
+                      onClick={() => handleRebuildEnv(env)}
+                    >
+                      {busyIds.has(env.env_name) ? "Started" : "Rebuild"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setShowToast(false)}
+          onClick={() => setDismissed(true)}
           className="h-6 w-6 p-0 shrink-0"
         >
           <X className="h-4 w-4" />

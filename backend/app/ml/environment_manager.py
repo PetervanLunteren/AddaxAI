@@ -10,6 +10,7 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
+import hashlib
 import os
 import platform
 import shutil
@@ -22,6 +23,21 @@ from app.ml.schemas.model_manifest import ModelManifest
 from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
 logger = get_logger(__name__)
+
+# Hidden filename used to record which bundled YAML hash an env was
+# built from. Lives inside the env directory so it gets removed
+# automatically when the env is deleted via _safe_rmtree. Drift
+# detection compares this to the current bundled YAML hash.
+ENV_YAML_SHA_FILENAME = ".addaxai-yaml-sha256"
+
+
+def hash_yaml_file(yaml_path: Path) -> str:
+    """
+    Full byte-level SHA-256 of an environment.yml. Comments and
+    formatting count: any meaningful edit changes the bytes and we'd
+    rather over-trigger a rebuild than miss one.
+    """
+    return hashlib.sha256(yaml_path.read_bytes()).hexdigest()
 
 
 class EnvironmentManager:
@@ -409,6 +425,22 @@ class EnvironmentManager:
 
             logger.info(f"Environment {env_name} created successfully at {env_path}")
 
+            # Record which bundled YAML this env was built from so a
+            # later drift check can spot when the YAML moves on. Best
+            # effort: a write failure here doesn't break the install,
+            # it just means drift detection won't fire for this env
+            # until the next successful create.
+            try:
+                sentinel = env_path / ENV_YAML_SHA_FILENAME
+                sentinel.write_text(hash_yaml_file(yaml_path))
+                logger.info(
+                    f"Wrote YAML hash sentinel to {sentinel}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to write YAML hash sentinel for {env_name}: {e}"
+                )
+
             if progress_callback:
                 progress_callback("Environment ready", 1.0)
 
@@ -442,6 +474,43 @@ class EnvironmentManager:
         """
         python_path = self._get_python_path(env_path)
         return python_path.exists()
+
+    def check_yaml_drift(self, env_name: str) -> bool | None:
+        """
+        Check whether an installed environment's YAML hash sentinel
+        still matches the current bundled YAML.
+
+        Returns:
+            True  if the sentinel is present and disagrees with the
+                  current bundled YAML hash (drift; rebuild needed).
+            False if the sentinel is present and agrees (in sync).
+            None  if the env or sentinel is absent (legacy install
+                  predating drift detection, or env not built yet).
+                  Caller should treat as "unknown but valid" and skip.
+
+        Never raises: filesystem errors, missing YAML files, and
+        unsupported platforms all collapse into None so a drift check
+        can't take down startup.
+        """
+        env_path = self.envs_dir / f"env-{env_name}"
+        if not env_path.exists():
+            return None
+
+        sentinel = env_path / ENV_YAML_SHA_FILENAME
+        if not sentinel.exists():
+            return None
+
+        try:
+            stored = sentinel.read_text().strip()
+            yaml_path = self.get_env_yaml_path(env_name)
+            current = hash_yaml_file(yaml_path)
+        except (OSError, FileNotFoundError, RuntimeError) as e:
+            logger.warning(
+                f"Could not check YAML drift for env {env_name}: {e}"
+            )
+            return None
+
+        return stored != current
 
     def _safe_rmtree(self, path: Path) -> None:
         """

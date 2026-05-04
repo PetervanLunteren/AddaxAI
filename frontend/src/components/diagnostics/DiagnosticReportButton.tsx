@@ -42,12 +42,12 @@ export function BugReportButton() {
             size="icon"
             onClick={() => download.mutate()}
             disabled={download.isPending}
-            aria-label="Export bug report"
+            aria-label="Export diagnostic report"
           >
             <Bug className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Export bug report</TooltipContent>
+        <TooltipContent>Export diagnostic report</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

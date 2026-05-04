@@ -1,29 +1,21 @@
 # AddaxAI beta
 
-This is the new AddaxAI, a full rewrite of the legacy desktop app. It is still in active development. Please help me test it.
+This is the new AddaxAI, a full rewrite from scratch. It has stronger metadata analysis and verification options, and works as an additive system: keep adding deployments to a project and the analyses, dashboards, and insights update with them.
 
 ## Download
 
-The latest installers are here: [github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest](https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest)
-
-| OS | File |
+| OS | Download |
 |---|---|
-| Windows | `AddaxAI Setup *.exe` |
-| macOS (Apple Silicon) | `AddaxAI-*-arm64.dmg` |
+| Windows | [AddaxAI-Setup.exe](https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest/download/AddaxAI-Setup.exe) |
+| macOS (Apple Silicon) | [AddaxAI-arm64.dmg](https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest/download/AddaxAI-arm64.dmg) |
 
-Linux is not packaged yet. Intel Macs are not packaged either, only Apple Silicon (M1, M2, M3, M4).
+Linux is still in development, so the beta will not run there yet. Intel Macs are not supported, only Apple Silicon (M1, M2, M3, M4, M5).
 
 ## Install
 
 **macOS**: open the dmg, drag AddaxAI into Applications. First launch may take a few seconds while Gatekeeper checks the Apple notarisation.
 
-**Windows**: run the setup `.exe`. Windows SmartScreen will probably say "Windows protected your PC". Click "More info", then "Run anyway".
-
-A short note on the SmartScreen warning: the installer is signed and the signature is valid. But Microsoft has a separate reputation system on top of the signature. A new code-signing certificate starts with zero reputation, so SmartScreen warns until many people have installed the app without problems. The warning will go away on its own over time. It is annoying, not a security issue.
-
-## First launch
-
-The app downloads around 1.9 GB on first launch (Python environment and default ML models). It needs about 7 GB of free disk space. This takes 10 to 30 minutes depending on your internet.
+**Windows**: run the setup `.exe` and follow the installer. If SmartScreen still warns, click "More info" then "Run anyway", the installer is signed.
 
 ## What I want from you
 
@@ -31,7 +23,7 @@ Anything that is wrong, off, or could be better:
 
 - bugs and crashes
 - buttons or controls in places that feel weird
-- text or labels that read strange (typos, off English, unclear wording)
+- text or labels that read strange (typos, weird English, unclear wording)
 - features, plots, or filters that are missing
 - workflow steps that are confusing or take too many clicks
 - anything else you notice
@@ -40,11 +32,18 @@ Even small notes help. If you are not sure whether it is a bug, send it anyway.
 
 ## How to send me a bug report
 
-Email everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com). I will reply when there is a fix and tell you which version to download next.
+Email everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com).
 
-**If the app opens**: go to Settings, then Diagnostics, click "Export diagnostic report". This builds a zip with logs, system info, installed models, environment state, and recent jobs. Save it to Downloads, attach it to the email.
+Please give me as much detail as you can so I can reproduce it. Most useful:
 
-**If the app does not open**: zip the logs folder by hand and attach that. Add a screenshot or a short description of what you saw.
+- what you were trying to do
+- what you expected to happen
+- what actually happened
+- a screenshot, or a short screen recording if the bug is dynamic
+
+**If the app opens**: click the bug icon in the page header (tooltip says "Export diagnostic report"), or open Settings, then Diagnostics, and click "Export diagnostic report". Both build the same zip in your Downloads folder with logs, system info, installed models, environment state, and recent jobs. Please attach it to the email.
+
+**If the app does not open**: zip the logs folder by hand and attach that.
 
 | OS | Logs folder |
 |---|---|
@@ -60,10 +59,10 @@ Native crash dumps live at `~/AddaxAI/crash-dumps/` (macOS) or `%USERPROFILE%\Ad
 
 These are on the roadmap but not in this beta:
 
-- timelapse standalone app
-- full-image classification models (AHDRIFT-v1 and similar)
+- timelapse integration (will be a standalone app)
+- full-image classification models support (AHDRIFT-v1 and similar)
 - multi-language support
-- depth estimation
+- depth estimation 
 - postprocess batch results from MegaDetector
 - proper documentation
 - repeat detection elimination
