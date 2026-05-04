@@ -137,7 +137,21 @@ function generateMonthTicks(xMinMs: number, xMaxMs: number): MonthTick[] {
       y += 1;
     }
   }
+
+  // Note: short ranges (< 1 month) produce zero month ticks, but
+  // that's fine. The chart always renders deployment-start and
+  // deployment-end labels separately; with no months in between the
+  // user just sees those two endpoints, which is what they want.
   return ticks;
+}
+
+function formatShortDate(ms: number): string {
+  return new Date(ms).toLocaleDateString("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 /**
@@ -436,23 +450,62 @@ export function DeploymentTimelineChart({
           );
         })}
 
-        {/* Axis labels */}
-        {geometry.monthTicks.map((tick, i) => {
-          if (!geometry.labelledIdx.has(i)) return null;
-          const x = geometry.dateToX(tick.ms);
-          return (
-            <text
-              key={`label-${i}`}
-              x={x}
-              y={TOP_PADDING + 14}
-              fontSize={11}
-              fill="var(--muted-foreground, #64748b)"
-              textAnchor="middle"
-            >
-              {tick.label}
-            </text>
-          );
-        })}
+        {/* Axis labels. Suppress month / year labels that land within
+            ENDPOINT_PADDING_PX of either endpoint label so they don't
+            overlap with the day-precision start / end labels rendered
+            below. Endpoint labels themselves render unconditionally so
+            the user always sees the exact deployment start and end. */}
+        {(() => {
+          const startX = geometry.dateToX(geometry.xMin);
+          const endX = geometry.dateToX(geometry.xMax);
+          const ENDPOINT_PADDING_PX = 60;
+          return geometry.monthTicks.map((tick, i) => {
+            if (!geometry.labelledIdx.has(i)) return null;
+            const x = geometry.dateToX(tick.ms);
+            if (Math.abs(x - startX) < ENDPOINT_PADDING_PX) return null;
+            if (Math.abs(x - endX) < ENDPOINT_PADDING_PX) return null;
+            return (
+              <text
+                key={`label-${i}`}
+                x={x}
+                y={TOP_PADDING + 14}
+                fontSize={11}
+                fill="#64748b"
+                textAnchor="middle"
+              >
+                {tick.label}
+              </text>
+            );
+          });
+        })()}
+
+        {/* Endpoint labels: deployment start / end, day precision.
+            Anchored start / end so the text flows inward and never
+            overflows the chart bounds. pointer-events="none" so the
+            drag-to-zoom rect overlay below still catches mousedowns
+            on top of the labels. */}
+        <text
+          x={geometry.dateToX(geometry.xMin)}
+          y={TOP_PADDING + 14}
+          fontSize={11}
+          fill="#64748b"
+          textAnchor="start"
+          fontWeight={500}
+          pointerEvents="none"
+        >
+          {formatShortDate(geometry.xMin)}
+        </text>
+        <text
+          x={geometry.dateToX(geometry.xMax)}
+          y={TOP_PADDING + 14}
+          fontSize={11}
+          fill="#64748b"
+          textAnchor="end"
+          fontWeight={500}
+          pointerEvents="none"
+        >
+          {formatShortDate(geometry.xMax)}
+        </text>
 
         {/* Axis baseline */}
         <line
@@ -550,7 +603,7 @@ export function DeploymentTimelineChart({
                     x={densityConfig.labelWidth - 12}
                     y={rowCenterY + 4}
                     fontSize={12}
-                    fill="var(--foreground, #0f172a)"
+                    fill="#0f172a"
                     textAnchor="end"
                     style={{ cursor: "pointer" }}
                     onClick={() => handleSiteClick(site)}
@@ -738,7 +791,7 @@ export function DeploymentTimelineChart({
               x={geometry.plotRight + 4}
               y={concurrentY(maxConc) + 4}
               fontSize={11}
-              fill="var(--muted-foreground, #64748b)"
+              fill="#64748b"
             >
               {maxConc}
             </text>
@@ -746,7 +799,7 @@ export function DeploymentTimelineChart({
               x={geometry.plotRight + 4}
               y={geometry.concurrentBottom + 4}
               fontSize={11}
-              fill="var(--muted-foreground, #64748b)"
+              fill="#64748b"
             >
               0
             </text>
@@ -819,7 +872,7 @@ export function DeploymentTimelineChart({
                 x={labelX + labelW / 2}
                 y={labelY + 14}
                 fontSize={11}
-                fill="var(--foreground, #0f172a)"
+                fill="#0f172a"
                 textAnchor="middle"
               >
                 {label}
@@ -833,7 +886,7 @@ export function DeploymentTimelineChart({
             x={densityConfig.labelWidth - 8}
             y={concurrentY(maxConc) + 4}
             fontSize={11}
-            fill="var(--muted-foreground, #64748b)"
+            fill="#64748b"
             textAnchor="end"
           >
             Concurrent cameras

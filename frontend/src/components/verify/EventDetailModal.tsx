@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { basename, splitPath } from "../../lib/path-utils";
 import {
   ChevronLeft,
   ChevronRight,
@@ -1322,8 +1323,8 @@ export function EventDetailModal({
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
                     {currentFile.file_type === "frame"
-                      ? currentFile.file_path.split("/").slice(-2, -1)[0]
-                      : currentFile.file_path.split("/").pop()}
+                      ? splitPath(currentFile.file_path).slice(-2, -1)[0]
+                      : basename(currentFile.file_path)}
                     {currentFile.file_type === "frame" && currentFile.source_frame_number != null && (
                       <span> · frame {currentFile.source_frame_number}</span>
                     )}

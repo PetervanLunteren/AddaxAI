@@ -10,6 +10,7 @@ import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circ
 import { useMutation } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
 import { getDetectionColor } from "../../lib/detection-utils";
+import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
   computePillLayout,
@@ -203,7 +204,7 @@ export function AnnotationCanvas({
 
       // Trigger download
       const fileName =
-        file.file_path.split("/").pop()?.replace(/\.[^.]+$/, "") || "image";
+        basename(file.file_path).replace(/\.[^.]+$/, "") || "image";
       const link = document.createElement("a");
       link.download = `${fileName}_annotated.png`;
       link.href = dataUrl;

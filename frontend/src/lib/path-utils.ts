@@ -1,12 +1,49 @@
 /**
- * Frontend path-math helpers used by the bulk-relink dialog and the
- * remember-last-prefix feature in the single-relink dialog.
+ * Frontend path-math helpers used by the bulk-relink dialog, the
+ * remember-last-prefix feature in the single-relink dialog, and the
+ * deployments / queue / file-detail breadcrumb displays.
  *
- * All paths are POSIX-style absolute strings (e.g.,
- * "/Volumes/Drive/project/site_001/dep001"). We don't bother with
- * Windows-style backslashes — the rest of the app already standardizes
- * on forward slashes.
+ * Paths arrive from the backend in their native form: forward slashes
+ * on macOS / Linux, backslashes on Windows. Every helper here treats
+ * both separators as equivalent for parsing. Helpers that produce a
+ * path back out (`replacePrefix`, `deriveSubstitution`) preserve the
+ * input's separator style so the result can round-trip to the
+ * backend without breaking filesystem operations on Windows.
  */
+
+const SEP_RE = /[/\\]/;
+const TRAIL_SEP_RE = /[/\\]+$/;
+
+/** Index of the last `/` or `\` in `path`, or -1 if neither is present. */
+function lastSepIndex(path: string): number {
+  return Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+}
+
+/**
+ * Heuristic: Windows path if it contains a backslash and no forward
+ * slash. Anything else (POSIX, mixed, empty) gets forward slash. Mixed
+ * cases shouldn't occur in practice; the backend never produces them.
+ */
+function pickSeparator(path: string): string {
+  return path.includes("\\") && !path.includes("/") ? "\\" : "/";
+}
+
+/**
+ * Leaf segment of a path, with trailing separators stripped. Returns
+ * the empty string when given an empty / null path. Handles both
+ * separator styles so it works on Windows paths too.
+ */
+export function basename(path: string | null | undefined): string {
+  if (!path) return "";
+  const trimmed = path.replace(TRAIL_SEP_RE, "");
+  const i = lastSepIndex(trimmed);
+  return i >= 0 ? trimmed.slice(i + 1) : trimmed;
+}
+
+/** Split a path into segments, treating `/` and `\` as equivalent. */
+export function splitPath(path: string): string[] {
+  return path.split(SEP_RE);
+}
 
 /**
  * Compute the longest common prefix of a list of paths, snapped to a
@@ -25,9 +62,9 @@ export function longestCommonPrefix(paths: string[]): string {
   if (paths.length === 0) return "";
   if (paths.length === 1) {
     // Parent directory of the single path
-    const lastSlash = paths[0].lastIndexOf("/");
-    if (lastSlash <= 0) return "";
-    return paths[0].slice(0, lastSlash + 1);
+    const i = lastSepIndex(paths[0]);
+    if (i <= 0) return "";
+    return paths[0].slice(0, i + 1);
   }
 
   let prefix = paths[0];
@@ -38,10 +75,10 @@ export function longestCommonPrefix(paths: string[]): string {
     if (!prefix) return "";
   }
 
-  // Snap to last slash so we don't break in the middle of a folder name
-  const lastSlash = prefix.lastIndexOf("/");
-  if (lastSlash <= 0) return "";
-  return prefix.slice(0, lastSlash + 1);
+  // Snap to the last separator so we don't break in the middle of a name.
+  const i = lastSepIndex(prefix);
+  if (i <= 0) return "";
+  return prefix.slice(0, i + 1);
 }
 
 /**
@@ -56,8 +93,12 @@ export function replacePrefix(
   oldPrefix: string,
   newPrefix: string
 ): string {
-  const oldNorm = oldPrefix.endsWith("/") ? oldPrefix : oldPrefix + "/";
-  const newNorm = newPrefix.endsWith("/") ? newPrefix : newPrefix + "/";
+  // Preserve each prefix's own separator style so a Windows path
+  // survives the substitution as a Windows path.
+  const oldSep = pickSeparator(oldPrefix);
+  const newSep = pickSeparator(newPrefix);
+  const oldNorm = oldPrefix.endsWith(oldSep) ? oldPrefix : oldPrefix + oldSep;
+  const newNorm = newPrefix.endsWith(newSep) ? newPrefix : newPrefix + newSep;
   if (!path.startsWith(oldNorm)) return path;
   return newNorm + path.slice(oldNorm.length);
 }
@@ -75,13 +116,11 @@ export interface PrefixGroup<T extends PathItem> {
 
 /**
  * Return the leaf (last non-empty path segment) of a path. Trailing
- * slashes are ignored. "/a/b/c/" → "c".
+ * separators are ignored. Alias of `basename` kept for callers that
+ * already use it.
  */
 export function leafName(path: string): string {
-  if (!path) return "";
-  const trimmed = path.replace(/\/+$/, "");
-  const lastSlash = trimmed.lastIndexOf("/");
-  return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed;
+  return basename(path);
 }
 
 /**
@@ -108,8 +147,8 @@ export function diffPaths(
   newMidParts: string[];
   suffixParts: string[];
 } {
-  const oldParts = oldPath.split("/");
-  const newParts = newPath.split("/");
+  const oldParts = splitPath(oldPath);
+  const newParts = splitPath(newPath);
 
   let p = 0;
   while (
@@ -144,8 +183,8 @@ export function diffPaths(
  */
 export function truncateMiddle(path: string, maxLen = 60): string {
   if (path.length <= maxLen) return path;
-  const lastSlash = path.lastIndexOf("/");
-  const leaf = lastSlash >= 0 ? path.slice(lastSlash) : "";
+  const i = lastSepIndex(path);
+  const leaf = i >= 0 ? path.slice(i) : "";
   const keepStart = Math.max(1, maxLen - leaf.length - 1);
   if (leaf.length + 4 > maxLen) {
     return path.slice(0, maxLen - 1) + "…";
@@ -180,7 +219,7 @@ export function groupByPrefix<T extends PathItem>(items: T[]): PrefixGroup<T>[] 
   const groups = new Map<string, T[]>();
   for (const item of items) {
     const remainder = item.folder_path.slice(globalPrefix.length);
-    const nextComponent = remainder.split("/")[0] ?? "";
+    const nextComponent = splitPath(remainder)[0] ?? "";
     if (!groups.has(nextComponent)) groups.set(nextComponent, []);
     groups.get(nextComponent)!.push(item);
   }
@@ -212,8 +251,10 @@ export function deriveSubstitution(
   oldPath: string,
   newPath: string
 ): { oldPrefix: string; newPrefix: string } | null {
-  const oldParts = oldPath.split("/");
-  const newParts = newPath.split("/");
+  const oldSep = pickSeparator(oldPath);
+  const newSep = pickSeparator(newPath);
+  const oldParts = splitPath(oldPath);
+  const newParts = splitPath(newPath);
 
   // Walk from the end while parts match
   let suffixLen = 0;
@@ -228,11 +269,15 @@ export function deriveSubstitution(
 
   if (suffixLen === 0) return null;
 
-  const oldPrefix = oldParts.slice(0, oldParts.length - suffixLen).join("/") + "/";
-  const newPrefix = newParts.slice(0, newParts.length - suffixLen).join("/") + "/";
+  // Re-emit prefixes using each input's native separator so the result
+  // round-trips to the backend in the right form.
+  const oldPrefix =
+    oldParts.slice(0, oldParts.length - suffixLen).join(oldSep) + oldSep;
+  const newPrefix =
+    newParts.slice(0, newParts.length - suffixLen).join(newSep) + newSep;
 
   // Refuse trivially-empty prefixes
-  if (oldPrefix === "/" || newPrefix === "/" || oldPrefix === newPrefix) {
+  if (oldPrefix === oldSep || newPrefix === newSep || oldPrefix === newPrefix) {
     return null;
   }
 

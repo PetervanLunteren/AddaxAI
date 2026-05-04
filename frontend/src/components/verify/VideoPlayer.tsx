@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../lib/api-client";
+import { splitPath } from "../../lib/path-utils";
 import {
   computePillLayout,
   roundedRectPath,
@@ -338,7 +339,7 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
       const url = URL.createObjectURL(blob);
       // For frame files, derive the video name from the parent directory
       // (frames are stored as .addaxai/video_frames/{video_name}/frame000000.jpg)
-      const parts = file.file_path.split("/");
+      const parts = splitPath(file.file_path);
       const fileName =
         sourceVideoId
           ? (parts[parts.length - 2]?.replace(/\.[^.]+$/, "") || "video")

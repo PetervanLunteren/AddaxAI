@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Country-flag emoji rendering on Windows.
+ *
+ * Windows' Segoe UI Emoji ships without country-flag glyphs, so 🇪🇺,
+ * 🇳🇱 etc. render as letter pairs ("EU", "NL"). The companion
+ * polyfill in main.tsx (`country-flag-emoji-polyfill`) registers a
+ * @font-face for "Twemoji Country Flags" with a unicode-range pinned
+ * to flag codepoints, but it's the caller's job to actually include
+ * that font in an element's font-family stack — without this CSS
+ * rule the @font-face is dead code and the polyfill silently no-ops.
+ *
+ * Putting the font first means the browser only consults it for
+ * codepoints inside its declared unicode-range (the flag glyphs);
+ * every other character falls through to the system font stack
+ * unchanged. No visual regression on non-flag text, no effect on
+ * macOS or Linux where the polyfill detects native flag support and
+ * never installs the @font-face in the first place.
+ */
+html, body {
+  font-family: "Twemoji Country Flags", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
 /* react-day-picker v9 brand overrides. The library's default
    stylesheet is imported via the Calendar component in TypeScript
    (where Vite's bundler resolves the node-modules path directly).

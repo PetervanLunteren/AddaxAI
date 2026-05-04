@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Folder, Trash2, Eye, EyeOff } from "lucide-react";
+import { basename } from "@/lib/path-utils";
 import { Button } from "@/components/ui/button";
 import { TagPills } from "@/components/ui/tag-pills";
 import { sitesApi } from "@/api/sites";
@@ -47,7 +48,7 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(entry.folder_path);
 
   // Derive deployment name from folder path
-  const deploymentName = entry.folder_path.split("/").pop() || "Unknown";
+  const deploymentName = basename(entry.folder_path) || "Unknown";
 
   const siteLabel = entry.site_id
     ? (site?.name ?? "Loading...")

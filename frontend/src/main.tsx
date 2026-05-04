@@ -9,12 +9,21 @@ import { logger } from './lib/logger'
 
 // Windows' Segoe UI Emoji ships without country flag glyphs by design,
 // so 🇪🇺 / 🇳🇱 / etc. render as the letter pair (e.g. "EU"). The
-// polyfill self-detects the missing-flag platforms, loads a tiny
-// flags-only Twemoji webfont, and prepends it to the body font-family
-// so flag codepoints are rendered from there. All non-flag emoji
-// keep using the system emoji font, so the cactus and globe look
-// the same as before.
-polyfillCountryFlagEmojis()
+// polyfill self-detects the missing-flag platforms and registers an
+// @font-face for a flags-only Twemoji webfont. Two non-default
+// arguments are critical:
+//
+// 1. The font name has to also appear in the body's font-family stack
+//    (handled in index.css). The polyfill registers the @font-face
+//    but doesn't apply it anywhere; without the CSS prefix the
+//    unicode-range never kicks in and the polyfill silently no-ops.
+//
+// 2. We pass a local /TwemojiCountryFlags.woff2 path so the font
+//    loads from the bundled frontend instead of cdn.jsdelivr.net.
+//    Camera-trap testers often run with no internet and the CDN
+//    fetch would fail silently, leaving flags broken even with the
+//    polyfill installed. The woff2 is ~77 kB and lives in public/.
+polyfillCountryFlagEmojis("Twemoji Country Flags", "/TwemojiCountryFlags.woff2")
 
 // Catch escaped errors at the global level so they end up in
 // backend.log instead of dying in DevTools where users never look.

@@ -11,6 +11,7 @@ import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTr
 import { deploymentsApi } from "../api/deployments";
 import { BugReportButton } from "../components/diagnostics/BugReportButton";
 import { sitesApi } from "../api/sites";
+import { basename } from "../lib/path-utils";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -62,14 +63,12 @@ type SortDir = "asc" | "desc";
 /**
  * Leaf segment of a folder path. Used as a deployment's primary
  * identifier in the table ("deployment_001" out of
- * `/data/project/site/deployment_001`). Falls back to a single dash
- * when folder_path is null (legacy / unlinked deployments).
+ * `/data/project/site/deployment_001`, also `C:\...\deployment_001`).
+ * Falls back to a single dash when folder_path is null (legacy /
+ * unlinked deployments).
  */
 function folderBasename(path: string | null): string {
-  if (!path) return "-";
-  const trimmed = path.replace(/\/$/, "");
-  const i = trimmed.lastIndexOf("/");
-  return i >= 0 ? trimmed.slice(i + 1) : trimmed;
+  return basename(path) || "-";
 }
 
 /**

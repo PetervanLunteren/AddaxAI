@@ -119,6 +119,15 @@ def update_deployment(
     Crashes if database constraint violated.
 
     When folder_path is updated (re-linking), also updates last_validated_at.
+
+    When datetime_offset_seconds changes, the delta is applied in-place
+    to every File.captured_at_local and every Event.event_start_local /
+    event_end_local in the deployment, and the deployment's
+    start_date_local / end_date_local are recomputed from the new file
+    range. Without this cascade, the slideout's first / last dates,
+    dashboard charts, and event listings would stay frozen at the
+    pre-edit offset because those views read off the baked
+    File.captured_at_local rather than recomputing on every render.
     """
     db_deployment = get_deployment(db, deployment_id)
     if db_deployment is None:
@@ -132,12 +141,85 @@ def update_deployment(
         db_deployment.folder_status = "valid"
         db_deployment.last_validated_at_utc = datetime.now(UTC)
 
+    # Capture the offset change (if any) before mutating the row.
+    # None and 0 are semantically equivalent ("no offset"); coerce to 0
+    # so the delta arithmetic doesn't trip on the nullable column.
+    offset_delta_seconds = 0
+    if "datetime_offset_seconds" in update_data:
+        old_offset = db_deployment.datetime_offset_seconds or 0
+        new_offset = update_data["datetime_offset_seconds"] or 0
+        offset_delta_seconds = new_offset - old_offset
+
     for field_name, value in update_data.items():
         setattr(db_deployment, field_name, value)
+
+    if offset_delta_seconds != 0:
+        _apply_offset_shift(db, db_deployment, offset_delta_seconds)
 
     db.commit()
     db.refresh(db_deployment)
     return db_deployment
+
+
+def _apply_offset_shift(
+    db: Session, deployment: Deployment, delta_seconds: int
+) -> None:
+    """
+    Shift every observational datetime in a deployment by
+    `delta_seconds`, then recompute the deployment's date range from
+    the shifted files.
+
+    Touches `File.captured_at_local`, `Event.event_start_local`,
+    `Event.event_end_local`, and `Deployment.start_date_local /
+    end_date_local`. Audit datetimes (`*_utc`) are left alone; they
+    record server actions, not camera observations.
+
+    Uses SQLite's `datetime(col, '+N seconds')` modifier so the shift
+    runs as a single bulk UPDATE per table without round-tripping rows
+    through Python. Per CONVENTIONS.md datetime rules, observational
+    timestamps stay naive in the camera's local clock; the offset is
+    just an integer second translation.
+    """
+    from sqlalchemy import func
+
+    from app.models import Event, File
+
+    # SQLite's datetime() takes signed numeric strings: '+30 seconds',
+    # '-3600 seconds'. Build the modifier that way.
+    sign = "+" if delta_seconds > 0 else ""
+    modifier = f"{sign}{delta_seconds} seconds"
+
+    db.query(File).filter(File.deployment_id == deployment.id).update(
+        {"captured_at_local": func.datetime(File.captured_at_local, modifier)},
+        synchronize_session=False,
+    )
+
+    db.query(Event).filter(Event.deployment_id == deployment.id).update(
+        {
+            "event_start_local": func.datetime(
+                Event.event_start_local, modifier
+            ),
+            "event_end_local": func.datetime(Event.event_end_local, modifier),
+        },
+        synchronize_session=False,
+    )
+
+    # Refresh the deployment's date window from the post-shift file
+    # range. start_date_local / end_date_local are calendar dates, not
+    # datetimes, so we extract just the date portion.
+    new_min, new_max = db.execute(
+        select(
+            func.min(File.captured_at_local), func.max(File.captured_at_local)
+        ).where(File.deployment_id == deployment.id)
+    ).one()
+
+    if new_min is not None:
+        deployment.start_date_local = (
+            new_min.date() if isinstance(new_min, datetime) else new_min
+        )
+        deployment.end_date_local = (
+            new_max.date() if isinstance(new_max, datetime) else new_max
+        )
 
 
 def delete_deployment(db: Session, deployment_id: str) -> bool:

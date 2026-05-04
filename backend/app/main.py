@@ -98,6 +98,90 @@ async def update_model_catalog(app: FastAPI) -> None:
         app.state.model_updates = {"new_models": [], "error": str(e)}
 
 
+async def _warm_up_query_caches() -> None:
+    """
+    Pre-load commonly-queried tables and indexes into SQLite's page
+    cache (and transitively the OS file cache) at startup. Without
+    this, every "first" user interaction in a session pays the cold
+    disk-read cost: opening the projects list, opening a project,
+    rendering the dashboard, opening the taxonomy filter modal, etc.
+    Each of those touches a different set of tables, so the slowness
+    follows the user around for the first minute or two.
+
+    By running representative queries here, the pages land in cache
+    during the splash screen instead of during the user's first click.
+    On a fresh OS boot or after a reboot the OS file cache is empty;
+    this task is what makes the difference between "first launch is
+    slow" and "first launch feels normal".
+
+    Non-blocking, non-fatal: a perf optimisation, not a correctness
+    step. Tables that don't exist yet (rare; alembic ran in init_db
+    immediately above) are tolerated.
+    """
+    from sqlalchemy import text
+
+    from app.db.base import get_session_factory
+
+    # Each query exercises a different hot path. The COUNT(*) calls
+    # force a primary-key index scan on each table; the JOIN counts
+    # also pull the foreign-key indexes into cache. Together these
+    # cover the dashboard, verification grid, taxonomy modal, project
+    # list, deployment list, and the events / observations pages.
+    warmup_sql = (
+        "SELECT COUNT(*) FROM projects",
+        "SELECT COUNT(*) FROM sites",
+        "SELECT COUNT(*) FROM deployments",
+        "SELECT COUNT(*) FROM files",
+        "SELECT COUNT(*) FROM detections",
+        "SELECT COUNT(*) FROM events",
+        "SELECT COUNT(*) FROM event_observations",
+        "SELECT COUNT(*) FROM label_taxonomy",
+        "SELECT COUNT(*) FROM jobs",
+        "SELECT COUNT(*) FROM deployment_queue",
+        # Cross-table joins that pull foreign-key indexes into cache.
+        "SELECT COUNT(*) FROM detections d JOIN files f ON d.file_id = f.id",
+        "SELECT COUNT(*) FROM event_observations o JOIN events e ON o.event_id = e.id",
+        "SELECT COUNT(*) FROM detections d LEFT JOIN label_taxonomy lt ON d.label = lt.name",
+        "SELECT COUNT(*) FROM files f JOIN deployments d ON f.deployment_id = d.id",
+        "SELECT COUNT(*) FROM events e JOIN deployments d ON e.deployment_id = d.id",
+        # Relabel detection picker: opens a search list of custom
+        # labels filtered by project. Hits the (project_id, is_custom)
+        # path on label_taxonomy.
+        "SELECT COUNT(*) FROM label_taxonomy WHERE is_custom = 1",
+        # Deployment / site info slideouts: top species panel joins
+        # event observations to events, then left-joins label_taxonomy
+        # for display_name. Same path the dashboard's species charts
+        # use too.
+        "SELECT COUNT(*) FROM event_observations o "
+        "JOIN events e ON o.event_id = e.id "
+        "LEFT JOIN label_taxonomy lt ON lt.name = o.label",
+        # Slideouts compute file totals + verified counts per
+        # deployment / site. Reads file_type, verified, size_bytes
+        # off the files row.
+        "SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM files",
+    )
+
+    def _run() -> None:
+        session_factory = get_session_factory()
+        db = session_factory()
+        try:
+            for sql in warmup_sql:
+                try:
+                    db.execute(text(sql)).scalar()
+                except Exception as e:
+                    # A missing table on a partially-migrated DB shouldn't
+                    # break the whole warm-up. Log and move on.
+                    logger.debug(f"Warm-up query skipped ({sql!r}): {e}")
+        finally:
+            db.close()
+
+    try:
+        await asyncio.to_thread(_run)
+        logger.info("Database warm-up complete")
+    except Exception as e:
+        logger.warning(f"Database warm-up failed: {e}")
+
+
 async def _check_deployment_folders_on_startup() -> None:
     """
     Re-stat every deployment's folder_path so the folder_status column
@@ -184,11 +268,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     sync_task = asyncio.create_task(update_model_catalog(app))
     thumbnail_task = asyncio.create_task(auto_generate_thumbnails())
     folder_check_task = asyncio.create_task(_check_deployment_folders_on_startup())
+    warmup_task = asyncio.create_task(_warm_up_query_caches())
 
     yield
 
     # Shutdown: cancel background tasks if still running
-    for task in (sync_task, thumbnail_task, folder_check_task):
+    for task in (sync_task, thumbnail_task, folder_check_task, warmup_task):
         if not task.done():
             task.cancel()
             try:

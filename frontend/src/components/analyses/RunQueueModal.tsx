@@ -10,6 +10,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle2, Download, Ban } from "lucide-react";
+import { basename } from "@/lib/path-utils";
 import {
   Dialog,
   DialogContent,
@@ -58,7 +59,7 @@ function labelForType(type: string): string {
 }
 
 function deploymentNameOf(path: string): string {
-  return path.split("/").pop() || path;
+  return basename(path) || path;
 }
 
 interface StoredWarning {

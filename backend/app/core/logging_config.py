@@ -40,9 +40,16 @@ def setup_logging() -> logging.Logger:
 
     log_file = logs_dir / "backend.log"
 
-    # Configure ROOT logger to capture EVERYTHING
+    # Configure ROOT logger to capture EVERYTHING.
+    #
+    # Level is DEBUG during the beta phase so bug reports carry the
+    # full picture: subprocess output, ML inference per-line traces,
+    # SQLAlchemy parameter binds, HTTP request bodies. Diagnostic ZIPs
+    # are the primary signal we have for testers' problems and we'd
+    # rather have too much than too little. Drop back to INFO once
+    # the app stabilises and beta winds down.
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG)
 
     # Remove existing handlers to avoid duplicates
     root_logger.handlers.clear()

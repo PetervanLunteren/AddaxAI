@@ -189,10 +189,13 @@ export function ObservationRateMap({
 
   if (features.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[600px] rounded-lg border bg-card text-center px-6">
-        <div className="text-muted-foreground">
+      <div className="rounded-lg border bg-card p-8 text-center space-y-2">
+        <div className="text-sm font-medium text-foreground">
+          No deployments to show
+        </div>
+        <div className="text-sm text-muted-foreground max-w-xl mx-auto">
           No deployments match these filters. Try clearing them, or run an
-          analysis to populate the map.
+          analysis on the Analyses page to populate the map.
         </div>
       </div>
     );

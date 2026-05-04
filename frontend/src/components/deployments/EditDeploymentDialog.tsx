@@ -87,6 +87,18 @@ export function EditDeploymentDialog({
       queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
       queryClient.invalidateQueries({ queryKey: ["deployment-stats", projectId] });
       queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
+      // Slideout uses ["deployments", deploymentId, "info"], not the
+      // project-scoped key above, so it needs its own invalidation.
+      queryClient.invalidateQueries({
+        queryKey: ["deployments", deployment.id, "info"],
+      });
+      // Offset changes shift every File.captured_at_local in the
+      // deployment, which feeds events, dashboard charts, the
+      // verification grid, and timeline insights. Invalidate broadly
+      // so views that read off file timestamps refresh too.
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["statistics"] });
       onOpenChange(false);
     },
   });

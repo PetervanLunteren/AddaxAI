@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FolderOpen, Trash2, ChevronDown, ChevronUp, Brain, MapPin } from "lucide-react";
+import { basename } from "@/lib/path-utils";
 
 interface QueueEntry {
   id: string;
@@ -25,7 +26,7 @@ interface QueueEntryCardProps {
 export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const folderName = entry.folder_path.split("/").pop() || entry.folder_path;
+  const folderName = basename(entry.folder_path) || entry.folder_path;
 
   const statusStyles: Record<string, string> = {
     pending: "bg-white border-gray-200",

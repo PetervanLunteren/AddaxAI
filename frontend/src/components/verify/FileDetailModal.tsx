@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { basename, splitPath } from "../../lib/path-utils";
 import {
   ChevronLeft,
   ChevronRight,
@@ -948,8 +949,8 @@ export function FileDetailModal({
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
                     {file.source_video_id != null
-                      ? file.file_path.split("/").slice(-2, -1)[0]
-                      : file.file_path.split("/").pop()}
+                      ? splitPath(file.file_path).slice(-2, -1)[0]
+                      : basename(file.file_path)}
                     {file.source_video_id != null &&
                       file.source_frame_number != null && (
                         <span> · frame {file.source_frame_number}</span>

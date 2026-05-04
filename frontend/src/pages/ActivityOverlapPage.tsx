@@ -424,8 +424,13 @@ export function ActivityOverlapPage() {
         />
 
         {!enabled && (
-          <div className="rounded-lg border border-dashed bg-muted/20 p-12 text-center text-sm text-muted-foreground">
-            Pick a label in the dropdowns above to start.
+          <div className="rounded-lg border bg-card p-8 text-center space-y-2">
+            <div className="text-sm font-medium text-foreground">
+              No activity to show
+            </div>
+            <div className="text-sm text-muted-foreground max-w-xl mx-auto">
+              Pick a label in the dropdowns above to start.
+            </div>
           </div>
         )}
 

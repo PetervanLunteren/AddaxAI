@@ -262,11 +262,14 @@ async function createWindow(): Promise<void> {
     minWidth: 1024,
     minHeight: 768,
     title: appTitle,
-    // Hide the native menu bar on Windows/Linux until the user presses
-    // Alt. Without this it sits flush against the white app header and
-    // there's no visual break between OS chrome and app chrome.
-    // No-op on macOS (menu lives on the system menu bar).
-    autoHideMenuBar: true,
+    // Show the native menu bar on Windows / Linux. Beta testers
+    // benefit from seeing File / Edit / View / Window affordances
+    // (especially View → Force Reload for clearing stale state). The
+    // menu is slightly ugly because it sits flush against the white
+    // app header with no visual separator, but discoverability wins
+    // over aesthetics. No-op on macOS where the menu lives on the
+    // system menu bar.
+    autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

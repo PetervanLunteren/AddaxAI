@@ -293,17 +293,21 @@ class MegaDetectorV1000(DetectionModel):
                             logger.info(f"MegaDetector: {line}")
 
                             # Parse device from PTDetector output (appears once during init)
-                            if "PTDetector using device" in line and progress_callback:
+                            if "PTDetector using device" in line:
                                 raw = line.split("PTDetector using device")[-1].strip()
                                 device_name = self._format_device_name(raw)
-                                try:
-                                    progress_callback(
-                                        "Initializing detector...",
-                                        0.0,
-                                        {"compute_device": device_name},
-                                    )
-                                except TypeError:
-                                    pass
+                                logger.info(
+                                    f"MegaDetector device: {device_name} (raw: {raw})"
+                                )
+                                if progress_callback:
+                                    try:
+                                        progress_callback(
+                                            "Initializing detector...",
+                                            0.0,
+                                            {"compute_device": device_name},
+                                        )
+                                    except TypeError:
+                                        pass
 
                             # Parse tqdm progress and metrics if callback provided
                             if progress_callback and ("Processing image" in line or "%" in line):

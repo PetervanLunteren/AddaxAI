@@ -144,15 +144,25 @@ class VideoDetectionModel:
                     logger.debug(f"[VideoDetector] {line}")
 
                     # Parse device from PTDetector output (appears once during init)
-                    if "PTDetector using device" in line and progress_callback:
+                    if "PTDetector using device" in line:
                         raw = line.split("PTDetector using device")[-1].strip()
                         device_name = self._format_device_name(raw)
-                        try:
-                            progress_callback(
-                                "Initializing detector...", 0.0, {"compute_device": device_name}
-                            )
-                        except TypeError:
-                            pass
+                        # Log at INFO so backend.log preserves the device for
+                        # post-mortem checks (e.g. "did the GPU actually run
+                        # this analysis?"). Without this the device only
+                        # surfaces on the live progress modal, which the
+                        # diagnostic ZIP can't reconstruct after the fact.
+                        logger.info(
+                            f"VideoDetector device: {device_name} (raw: {raw})"
+                        )
+                        if progress_callback:
+                            try:
+                                progress_callback(
+                                    "Initializing detector...", 0.0,
+                                    {"compute_device": device_name},
+                                )
+                            except TypeError:
+                                pass
 
                     # Parse progress from tqdm output
                     # Look for patterns like: "45/100" or "Processing video 5/10"
