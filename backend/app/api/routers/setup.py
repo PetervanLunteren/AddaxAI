@@ -280,6 +280,13 @@ async def install_env() -> dict[str, str]:
     if _env_present() and _models_present(settings.user_data_dir / "models"):
         return {"status": "already_installed"}
 
+    # Disk-space pre-flight. The wizard text says "about 1.9 GB" but the
+    # unpacked env (~3 GB) plus default model weights (~2 GB) plus pip
+    # working space pushes the real footprint past 7 GB. Failing fast
+    # with a clear message beats a cryptic OSError two minutes into a
+    # download.
+    _check_disk_space(settings.user_data_dir)
+
     if not _install_state.start():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -289,6 +296,49 @@ async def install_env() -> dict[str, str]:
     # Run blocking install in a thread so the event loop stays responsive.
     asyncio.create_task(asyncio.to_thread(_install_env_blocking))
     return {"status": "started"}
+
+
+# Required free space at the user-data drive before the install starts.
+# Headroom for env (~3 GB) + default models (~2 GB) + pip working space.
+_REQUIRED_FREE_BYTES = 7 * 1024**3
+
+
+def _check_disk_space(user_data_dir: Path) -> None:
+    """
+    Raise HTTPException 507 (Insufficient Storage) if the volume backing
+    the user data directory has less than _REQUIRED_FREE_BYTES free.
+
+    Falls back silently if disk_usage isn't supported on the path (e.g.
+    a network mount during edge-case Windows configurations); we'd
+    rather attempt the install than block on a stat call that lies.
+    """
+    try:
+        # If the dir doesn't exist yet, fall back to its first existing
+        # ancestor — disk_usage needs a real path.
+        target = user_data_dir
+        while not target.exists():
+            if target.parent == target:
+                return
+            target = target.parent
+        free = shutil.disk_usage(target).free
+    except OSError as e:
+        logger.warning(
+            f"Disk-space pre-flight could not stat {user_data_dir}: {e}; "
+            f"proceeding without check"
+        )
+        return
+
+    if free < _REQUIRED_FREE_BYTES:
+        free_gb = free / 1024**3
+        required_gb = _REQUIRED_FREE_BYTES / 1024**3
+        raise HTTPException(
+            status_code=507,
+            detail=(
+                f"Not enough free disk space at {user_data_dir}. "
+                f"Setup needs about {required_gb:.0f} GB free; "
+                f"only {free_gb:.1f} GB available."
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------

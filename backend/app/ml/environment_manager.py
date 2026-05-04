@@ -13,13 +13,13 @@ Following DEVELOPERS.md principles:
 import os
 import platform
 import shutil
-import subprocess
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
+from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
 logger = get_logger(__name__)
 
@@ -329,94 +329,70 @@ class EnvironmentManager:
                 "--no-rc",  # Don't use .condarc
             ]
 
-            # Stream output line by line to show progress
-            import time
-
-            # Set PIP_VERBOSE to get detailed pip output during package installation
+            # Subprocess env tuning. Verbose pip is needed for the line
+            # parser below to surface progress. The retry / timeout knobs
+            # mirror the legacy AddaxAI Windows workflow: a single dropped
+            # TCP packet during the 2.3 GB torch download otherwise nukes
+            # the whole install and the user has to start over.
             env = os.environ.copy()
             env["PIP_VERBOSE"] = "1"
+            env["PIP_DEFAULT_TIMEOUT"] = "120"
+            env["PIP_RETRIES"] = "5"
+            env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
+            env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
+            env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
 
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=env,
-            )
-
-            last_line = ""
             current_progress = 0.0
 
-            # Read output line by line
-            while True:
-                # Check if process is done
-                if process.poll() is not None:
-                    # Read any remaining output
-                    remaining = process.stdout.read()
-                    if remaining:
-                        for line in remaining.splitlines():
-                            if line.strip():
-                                last_line = line.strip()
-                                logger.debug(f"micromamba: {last_line}")
-                    break
+            def on_micromamba_line(line: str) -> None:
+                nonlocal current_progress
+                # Simple checkpoint-based progress estimation
+                if "using cache" in line.lower():
+                    current_progress = max(current_progress, conda_start * 0.5)
+                elif "transaction" in line.lower() and "starting" not in line.lower():
+                    current_progress = max(current_progress, conda_start)
+                elif line.startswith("Linking "):
+                    current_progress = max(
+                        current_progress,
+                        conda_start + (conda_end - conda_start) * 0.5,
+                    )
+                elif "transaction finished" in line.lower():
+                    current_progress = max(current_progress, conda_end)
+                elif "installing pip packages" in line.lower():
+                    current_progress = max(current_progress, pip_start)
+                elif line.startswith("Collecting "):
+                    pip_range = pip_end - pip_start
+                    current_progress = max(
+                        current_progress, pip_start + (pip_range * 0.3)
+                    )
+                elif "installing collected packages" in line.lower():
+                    pip_range = pip_end - pip_start
+                    current_progress = max(
+                        current_progress, pip_start + (pip_range * 0.7)
+                    )
+                elif line.startswith("Successfully installed"):
+                    current_progress = 0.95
 
-                # Try to read a line
-                line = process.stdout.readline()
-                if line:
-                    line = line.strip()
-                    if line:
-                        last_line = line
+                if progress_callback:
+                    progress_callback(line[:80], current_progress)
+                logger.debug(f"micromamba: {line}")
 
-                        # Simple checkpoint-based progress estimation
-                        # Initial setup phase
-                        if "using cache" in line.lower():
-                            current_progress = max(current_progress, conda_start * 0.5)
-                        elif "transaction" in line.lower() and "starting" not in line.lower():
-                            current_progress = max(current_progress, conda_start)
+            result = stream_with_tail(
+                cmd, env=env, on_line=on_micromamba_line
+            )
 
-                        # Conda linking phase
-                        elif line.startswith("Linking "):
-                            # Rough progress through conda range
-                            current_progress = max(
-                                current_progress, conda_start + (conda_end - conda_start) * 0.5
-                            )
-                        elif "transaction finished" in line.lower():
-                            current_progress = max(current_progress, conda_end)
-
-                        # Pip phase - just show we're making progress
-                        elif "installing pip packages" in line.lower():
-                            current_progress = max(current_progress, pip_start)
-                        elif line.startswith("Collecting "):
-                            # Collecting dependencies - rough estimate in first 60% of pip range
-                            pip_range = pip_end - pip_start
-                            current_progress = max(current_progress, pip_start + (pip_range * 0.3))
-                        elif "installing collected packages" in line.lower():
-                            # Installation phase - 70% through pip range
-                            pip_range = pip_end - pip_start
-                            current_progress = max(current_progress, pip_start + (pip_range * 0.7))
-                        elif line.startswith("Successfully installed"):
-                            current_progress = 0.95
-
-                        # Send progress updates - the verbose output itself shows activity
-                        if progress_callback:
-                            progress_callback(line[:80], current_progress)
-                        logger.debug(f"micromamba: {line}")
-
-                # Small sleep to avoid busy waiting
-                time.sleep(0.01)
-
-            process.wait()
-
-            if process.returncode != 0:
+            if result.returncode != 0:
                 # Clean up failed temp environment
                 if temp_env_path.exists():
                     logger.warning(f"Removing failed temporary environment at {temp_env_path}")
                     self._safe_rmtree(temp_env_path)
+                # Surface the captured tail at ERROR so backend.log holds
+                # the pip stack-trace, not just the libmamba summary line.
+                log_subprocess_failure("micromamba create", cmd, result)
                 raise RuntimeError(
                     f"micromamba create failed:\n"
                     f"Command: {' '.join(cmd)}\n"
-                    f"Last output: {last_line}"
+                    f"Last output: {result.last_line}"
                 )
 
             if progress_callback:

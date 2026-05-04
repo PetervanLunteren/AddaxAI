@@ -107,6 +107,36 @@ function ModelUpdateToast() {
 }
 
 /**
+ * Fallback screen rendered when the backend stops responding to the
+ * setup-status poll. Without this, the SetupGate would just return
+ * null forever, leaving the user staring at a blank window with no
+ * indication that anything went wrong (e.g. backend crashed during
+ * startup, alembic migration failed, port collision).
+ */
+function BackendDownScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="max-w-md text-center space-y-4">
+        <h1 className="text-2xl font-bold tracking-tight">
+          Backend not responding
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          AddaxAI's backend stopped responding. This usually means it
+          crashed during startup or hit a database migration error.
+          Check the log at{" "}
+          <code className="text-xs">~/AddaxAI/logs/backend.log</code> (or{" "}
+          <code className="text-xs">
+            %USERPROFILE%\AddaxAI\logs\backend.log
+          </code>{" "}
+          on Windows) and report the issue if it persists.
+        </p>
+        <Button onClick={onRetry}>Retry now</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Full-app gate. While the first-run setup wizard hasn't completed, every
  * route except /setup redirects to /setup. Once setup is ready, /setup
  * itself redirects out. Status is polled cheaply (every 5s here; the
@@ -117,11 +147,25 @@ function SetupGate({ children }: { children: ReactNode }) {
   const location = useLocation();
   const onSetupRoute = location.pathname.startsWith("/setup");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, errorUpdatedAt, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["setup-status"],
     queryFn: setupApi.getStatus,
     refetchInterval: 5000,
   });
+
+  // Detect a persistently-down backend. A single flaky fetch shouldn't
+  // fire this: we require either the very first fetch to fail (no
+  // dataUpdatedAt yet) or the error to have continued for >= 15s with
+  // no successful poll in between. The refetchInterval of 5s drives
+  // the re-renders that re-evaluate this on the wall clock.
+  const now = Date.now();
+  const hasRecentData = dataUpdatedAt > 0 && now - dataUpdatedAt < 15_000;
+  const persistentError =
+    isError && errorUpdatedAt > 0 && !hasRecentData;
+
+  if (persistentError) {
+    return <BackendDownScreen onRetry={() => refetch()} />;
+  }
 
   // Don't render anything until we know the setup state. Avoids a flash
   // of the projects page before redirecting to /setup.
