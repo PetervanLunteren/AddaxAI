@@ -1,6 +1,6 @@
 # AddaxAI beta
 
-This is the new AddaxAI, a full rewrite from scratch. It has stronger metadata analysis and verification options, and works as an additive system: keep adding deployments to a project and the analyses, dashboards, and insights update with them.
+Thanks for trying the new AddaxAI. It is a full rewrite from scratch, with stronger metadata analysis and verification options. It works as an additive system: keep adding deployments to a project and the analyses, dashboards, and insights update with them. Things are still rough in places, that is what this beta is for.
 
 ## Download
 
@@ -21,7 +21,7 @@ Run the setup `.exe` and follow the installer. If SmartScreen still warns, click
 
 ## What I would like to learn from you
 
-Anything that is wrong, off, or could be better:
+I want to hear about anything that feels wrong, weird, or could be better. You do not need a polished bug report. One sentence already helps.
 
 - bugs and crashes
 - buttons or controls in places that feel weird
@@ -30,11 +30,11 @@ Anything that is wrong, off, or could be better:
 - workflow steps that are confusing or take too many clicks
 - anything else you notice
 
-Even small notes help. If you are not sure whether it is a bug, send it anyway.
+Even one line is useful. If you are unsure whether it is a bug, send it anyway, I would rather see one too many than miss something.
 
 ## How to send me a bug report
 
-Email everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com).
+Email is old tech but it works. Send everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com). I read every message and reply when there is a fix, and I will tell you which version to download next.
 
 Please give me as much detail as you can so I can reproduce it. Most useful:
 
@@ -57,7 +57,7 @@ Please also zip and share the `\crash-dumps` folder if present.
 
 ## What is not built yet
 
-These are on the roadmap but not in this beta:
+Here is what is missing on purpose. None of these are forgotten, they are just not in this beta yet:
 
 - timelapse integration (will be a standalone app)
 - full-image classification models support (AHDRIFT-v1 and similar)

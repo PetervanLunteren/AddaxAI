@@ -5,13 +5,8 @@
 - [ ]  
 
 ## Priority 3 
-- [x] The map and activity pattern insight pages have a non consistent format of shoing there is no data (when there is no data). The other pages (matrix, deployment timeline, performace) all have the same format (card + center aligned bold title + greyish text center aligned). Make consistent. 
 - [x] /insights/timeline -> "Drag horizontally across the date axis at the top to zoom into a specific range." there are no date ticks anymore....
 - [x] In the deployments page on Windows the first col ('folder') shows the full path. Is that because of a different path seperator?
-- [x] The flag emoticons dont work on windows, why? They show up as "EU", letters instead of flags. Other emojis do render like the globe and the cactus.. why? Can we fix this? The flag emojis are still not showing on Windows. ANy idea why? This was looked at before (check git logs), but that didnt solve it... 
-- [x] Add drift detection. The existing ModelCatalogUpdater.sync() in backend/app/ml/catalog_updater.py and ModelUpdateToast in frontend/src/App.tsx already do most of the plumbing for the model-revision flow, so the drift check can hang off the same machinery. 
-    >  - For models: store the HF revision SHA in manifest.json at download time, compare against HfApi().model_info(repo_id).sha on app startup, surface a "Update available" toast (the same path ModelUpdateToast already uses for new models).
-    >  - For envs: hash the bundled YAML at install time, store next to the env directory, rebuild on mismatch.
 
 ## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
