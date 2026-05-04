@@ -186,7 +186,15 @@ def _collect_models_inventory(user_data_dir: Path) -> dict[str, object]:
 
 
 def _collect_db_info() -> dict[str, object]:
-    """Alembic head and per-table row counts. No row contents."""
+    """Alembic head and per-table row counts. No row contents.
+
+    Packaged builds bootstrap the schema via ``Base.metadata.create_all``
+    in ``init_db()`` and never run alembic, so ``alembic_version`` does
+    not exist there. Only dev installs that ran ``alembic upgrade head``
+    have it. Treat that as expected, not as an error: the alembic head
+    is best-effort and must not cause the table inventory to be
+    skipped.
+    """
     info: dict[str, object] = {}
     try:
         from app.db.base import get_session_factory
@@ -194,8 +202,20 @@ def _collect_db_info() -> dict[str, object]:
         session_factory = get_session_factory()
         db = session_factory()
         try:
-            head = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            info["alembic_version"] = head
+            try:
+                head = db.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar()
+                info["alembic_version"] = head
+            except SQLAlchemyError:
+                info["alembic_version"] = None
+                info["alembic_managed"] = False
+                # Roll back the failed transaction so the next query
+                # starts fresh; otherwise SQLAlchemy keeps the
+                # connection in an aborted state.
+                db.rollback()
+            else:
+                info["alembic_managed"] = True
 
             tables: dict[str, object] = {}
             table_names = db.execute(

@@ -1,5 +1,5 @@
 ## Priority 1
-- [ ] 
+- [ ] Beta tester saw `ValueError: Invalid confidence: nan` kill an entire deployment_analysis batch on PAM-SDZWA-v1 (27-image NewZealand example data, Windows, CPU). Framework crash is now fixed in two layers: `classification_worker.py` rejects non-finite confidences at the source and logs `image_path` + `bbox` to stderr; `custom_classification_model.py` keeps a defensive guard at the boundary. A bad crop now loads as unclassified instead of failing the job. Still open: chase *why* PAM-SDZWA-v1 emits NaN. Next reproduction will surface the offending image path in backend.log; ask the tester to retry on the same dataset and send a fresh diagnostic.
 
 ## Priority 2
 - [ ]  
@@ -13,7 +13,6 @@
 - [x] Add drift detection. The existing ModelCatalogUpdater.sync() in backend/app/ml/catalog_updater.py and ModelUpdateToast in frontend/src/App.tsx already do most of the plumbing for the model-revision flow, so the drift check can hang off the same machinery. 
     >  - For models: store the HF revision SHA in manifest.json at download time, compare against HfApi().model_info(repo_id).sha on app startup, surface a "Update available" toast (the same path ModelUpdateToast already uses for new models).
     >  - For envs: hash the bundled YAML at install time, store next to the env directory, rebuild on mismatch.
-- [ ] The NSIS installer on windows shows a pbar, but it goes up and down a few times... 
 
 ## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 

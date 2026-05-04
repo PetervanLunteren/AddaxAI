@@ -12,6 +12,7 @@ Updated on 2026-03-14 - Simplified from persistent worker to one-shot batch
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import subprocess
@@ -210,7 +211,7 @@ class CustomClassificationModel:
 
             # Convert to ClassificationResult objects
             results: list[ClassificationResult | None] = []
-            for raw in raw_results:
+            for i, raw in enumerate(raw_results):
                 if not raw.get("success"):
                     logger.warning(f"Classification skipped: {raw.get('error', 'unknown')}")
                     results.append(None)
@@ -224,6 +225,24 @@ class CustomClassificationModel:
                 # Build all_probabilities dict and extract top prediction
                 all_probs = {name: conf for name, conf in classifications}
                 top_label, top_confidence = classifications[0]
+
+                # NaN/inf confidences leak out of numerically-unstable model
+                # output (e.g. softmax of all-NaN logits on a degenerate
+                # crop). The strict ClassificationResult validator would
+                # crash the whole batch job, so skip this row and treat it
+                # as unclassified, same as the no-classifications branch
+                # above.
+                if not math.isfinite(top_confidence):
+                    item_path = (
+                        items[i].get("image_path", "<unknown>")
+                        if i < len(items) else "<unknown>"
+                    )
+                    logger.warning(
+                        f"Classification produced non-finite confidence "
+                        f"({top_confidence}) for {item_path}, skipping"
+                    )
+                    results.append(None)
+                    continue
 
                 results.append(ClassificationResult(
                     label=top_label,

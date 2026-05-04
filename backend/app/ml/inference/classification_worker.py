@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import platform
 import sys
 import traceback
@@ -30,6 +31,18 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+
+def _has_nonfinite_confidence(classifications: list) -> bool:
+    """True if any (label, conf) pair has a NaN or inf confidence."""
+    for entry in classifications:
+        try:
+            conf = entry[1]
+        except (IndexError, TypeError):
+            return True
+        if not isinstance(conf, (int, float)) or not math.isfinite(conf):  # noqa: UP038 (Python 3.8 compat)
+            return True
+    return False
 
 
 def load_inference_class(model_dir: Path, model_path: Path):
@@ -186,6 +199,24 @@ def _classify_batched(model_inference, items, batch_size, emit_fn):
         batch = np.stack(batch_tensors)
         batch_results = model_inference.classify_batch(batch)
         for idx, classifications in zip(batch_indices, batch_results):  # noqa: B905 (Python 3.8 compat)
+            if _has_nonfinite_confidence(classifications):
+                # Numerically-unstable model output (e.g. softmax of NaN
+                # logits on a degenerate crop). Log the offending item
+                # so it can be investigated, then mark this row failed
+                # so it loads as unclassified rather than crashing the
+                # batch.
+                src = items[idx]
+                print(
+                    f"[Worker] Non-finite confidence from classify_batch "
+                    f"for image={src.get('image_path')!r} "
+                    f"bbox={src.get('bbox')!r}",
+                    file=sys.stderr, flush=True,
+                )
+                results[idx] = {
+                    "success": False,
+                    "error": "Model produced non-finite confidence (NaN/inf)",
+                }
+                continue
             sorted_cls = sorted(classifications, key=lambda x: x[1], reverse=True)
             results[idx] = {"success": True, "classifications": sorted_cls}
         processed += len(batch_indices)
@@ -287,6 +318,20 @@ def _classify_per_crop(model_inference, items, emit_fn):
                     results[orig_idx] = {
                         "success": False,
                         "error": f"Empty result for bbox {item['bbox']}",
+                    }
+                    processed += 1
+                    continue
+
+                if _has_nonfinite_confidence(classifications):
+                    print(
+                        f"[Worker] Non-finite confidence from "
+                        f"get_classification for image={image_path!r} "
+                        f"bbox={item['bbox']!r}",
+                        file=sys.stderr, flush=True,
+                    )
+                    results[orig_idx] = {
+                        "success": False,
+                        "error": "Model produced non-finite confidence (NaN/inf)",
                     }
                     processed += 1
                     continue
