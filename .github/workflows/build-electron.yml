@@ -43,11 +43,12 @@ jobs:
               electron/dist-build/*.AppImage
               electron/dist-build/*.deb
             electron-builder-args: --linux
-          # Windows is non-blocking until signing is wired up.
+          # Windows hard-fails on release events: the installer must be
+          # code-signed (Authenticode) or SmartScreen scares users.
           - label: Windows x64
             os: windows
             runs-on: windows-2022
-            continue-on-error: true
+            continue-on-error: false
             artifact-name: windows-installers
             artifact-glob: |
               electron/dist-build/*.exe
@@ -87,6 +88,27 @@ jobs:
             exit 1
           fi
           echo "All required Apple credentials are set."
+
+      # Same idea on Windows: don't burn a 30-minute build to discover
+      # the signing secrets aren't there. Secret names match the
+      # AddaxAI repo's build-windows-release.yml exactly.
+      - name: Verify Windows code-signing credentials
+        if: matrix.os == 'windows' && github.event_name == 'release'
+        env:
+          ADDAX_3YEAR_2025_BASE64: ${{ secrets.ADDAX_3YEAR_2025_BASE64 }}
+          ADDAX_3YEAR_2025_PFX_PASSWORD: ${{ secrets.ADDAX_3YEAR_2025_PFX_PASSWORD }}
+        run: |
+          missing=0
+          for v in ADDAX_3YEAR_2025_BASE64 ADDAX_3YEAR_2025_PFX_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" != "0" ]; then
+            exit 1
+          fi
+          echo "All required Windows code-signing credentials are set."
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
@@ -182,11 +204,33 @@ jobs:
 
           security find-identity -v -p codesigning
 
+      # Decode the Authenticode PFX from a base64 secret to disk, then
+      # expose its path via CSC_LINK. electron-builder reads CSC_LINK +
+      # CSC_KEY_PASSWORD during the Package step and signs both the
+      # inner AddaxAI.exe and the outer NSIS installer with SHA-256 +
+      # RFC 3161 timestamping (configured in electron/package.json
+      # under win.signtoolOptions). Workflow_dispatch runs stay
+      # unsigned so debug builds don't depend on the secret being set.
+      - name: Import Windows signing certificate
+        if: matrix.os == 'windows' && github.event_name == 'release'
+        env:
+          CERT_BASE64: ${{ secrets.ADDAX_3YEAR_2025_BASE64 }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/addax_cert.pfx"
+          echo -n "$CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          if [ ! -s "$CERT_PATH" ]; then
+            echo "::error::Decoded PFX is empty; check ADDAX_3YEAR_2025_BASE64 secret"
+            exit 1
+          fi
+          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+          echo "WIN_CERT_PATH=$CERT_PATH" >> "$GITHUB_ENV"
+
       - name: Package electron app
         working-directory: electron
         env:
           # macOS: discover the signing identity from the temporary
-          # keychain. Off on Linux/Windows (no signing yet).
+          # keychain. Off on Linux/Windows (Windows uses CSC_LINK +
+          # CSC_KEY_PASSWORD instead, set below; Linux is unsigned).
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos' && 'true' || 'false' }}
           # Apple notarytool credentials. notarize.js reads these.
           # Renamed: secret APPLE_ID_PASSWORD -> env APPLE_APP_SPECIFIC_PASSWORD.
@@ -197,6 +241,12 @@ jobs:
           # skipping if credentials are missing. We require it on
           # release events to enforce signed/notarized output.
           REQUIRE_NOTARIZATION: ${{ matrix.os == 'macos' && github.event_name == 'release' && '1' || '0' }}
+          # Windows Authenticode signing. CSC_LINK is set by the
+          # "Import Windows signing certificate" step above; the
+          # password comes straight from the secret here. Empty string
+          # on every other matrix cell so electron-builder skips
+          # signing cleanly.
+          CSC_KEY_PASSWORD: ${{ matrix.os == 'windows' && github.event_name == 'release' && secrets.ADDAX_3YEAR_2025_PFX_PASSWORD || '' }}
         run: |
           npm run build
           npx electron-builder ${{ matrix.electron-builder-args }}
@@ -241,11 +291,45 @@ jobs:
             echo "==> Skipping stapler validate on workflow_dispatch"
           fi
 
+      # Defence-in-depth verification on Windows: if electron-builder
+      # silently produced an unsigned installer (e.g. credentials
+      # mishandled, signtool missing), fail loudly here.
+      - name: Verify Windows installer signature
+        if: matrix.os == 'windows' && github.event_name == 'release'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" `
+            | Where-Object { $_.FullName -match '\\x64\\signtool.exe$' } `
+            | Sort-Object FullName -Descending `
+            | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found under Windows 10 SDK"
+            exit 1
+          }
+          Write-Host "Using $signtool"
+          $installer = Get-ChildItem -Path "electron\dist-build" -Filter "*.exe" `
+            | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "No .exe installer found in electron/dist-build/"
+            exit 1
+          }
+          Write-Host "==> signtool verify /pa /v on $($installer.FullName)"
+          & $signtool verify /pa /v $installer.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Cleanup keychain
         if: always() && matrix.os == 'macos'
         run: |
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: Cleanup Windows certificate
+        if: always() && matrix.os == 'windows'
+        run: |
+          if [ -n "$WIN_CERT_PATH" ] && [ -f "$WIN_CERT_PATH" ]; then
+            rm -f "$WIN_CERT_PATH"
+            echo "Removed $WIN_CERT_PATH"
+          fi
 
       - name: List build outputs
         if: always()

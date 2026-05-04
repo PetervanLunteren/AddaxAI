@@ -21,13 +21,13 @@
 - [x] If I want to update the release tag: (1) should I bumb to which version number? What would you recommend? Its now ready for beta testing. Furthermore, what should I write in the release text? Give me about 10 bullet points of what the changes are with previous tag. ONly keywords, no lengthy texts. 
 - [x] Add a reset option in the settings. 
 - [x] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
-
-- [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE addax-sppnet ones.   
-- [ ] Make sure to code sign the windows installer too. See how its done at AddaxAI /Users/peter/Documents/Repos/AddaxAI/.github/workflows/build-windows-release.yml. The same secrets are in both repos with the same names and the same values.
+- [x] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE addax-sppnet ones.   
+- [x] Make sure to code sign the windows installer too. See how its done at AddaxAI /Users/peter/Documents/Repos/AddaxAI/.github/workflows/build-windows-release.yml. The same secrets are in both repos with the same names and the same values.
 
 ## Priority 2
 - [ ] What is the reason a failed deployment still ends up in the deployments page? Its a deployment with 0 captures. 
 - [ ] In the DpeloymentsProcessPbarModal the cancel button has an icon. Please reomve the icon to be consiostent with the rest of the app. 
+- [ ] In the taxonomic tree Modal, can we indent the different layers a bit more? We have plenty of horizontal space. 
 
 ## Priority 3 
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 

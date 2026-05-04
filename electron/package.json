@@ -70,7 +70,10 @@
     },
     "win": {
       "target": ["nsis", "zip"],
-      "publisherName": "AddaxAI"
+      "signtoolOptions": {
+        "signingHashAlgorithms": ["sha256"],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
     },
     "nsis": {
       "oneClick": false,
