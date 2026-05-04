@@ -9,7 +9,7 @@
  * so it anchors to that button rather than floating off the viewport.
  * Pages that don't want it just don't render it. Currently only the
  * projects index renders it; project pages render their own
- * <BugReportButton> inline instead.
+ * <DiagnosticReportButton> inline instead.
  *
  * Dropdown shape mirrors AddaxAI-Connect's UserMenu so the two apps
  * stay visually consistent for users moving between them.

@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { sitesApi } from "../api/sites";
 import { timelineApi, type TimelineResponse, type TimelineSite } from "../api/timeline";
-import { BugReportButton } from "../components/diagnostics/BugReportButton";
+import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { DeploymentTimelineChart } from "../components/plots/DeploymentTimelineChart";
 import {
   DeploymentTimelineFilterBar,
@@ -222,7 +222,7 @@ export function DeploymentTimelinePage() {
                 Survey effort over time, grouped by site
               </p>
             </div>
-            <BugReportButton />
+            <DiagnosticReportButton />
           </div>
         </div>
       </header>

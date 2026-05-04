@@ -24,7 +24,7 @@ import {
   type FilterFieldDef,
   type FilterValues,
 } from "../components/ui/filter-bar";
-import { BugReportButton } from "../components/diagnostics/BugReportButton";
+import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { DashboardAboutPopover } from "../components/dashboard/DashboardAboutPopover";
 import { statisticsApi } from "../api/statistics";
 import { sitesApi } from "../api/sites";
@@ -280,7 +280,7 @@ export default function DashboardPage() {
                 Project overview with statistics and trends
               </p>
             </div>
-            <BugReportButton />
+            <DiagnosticReportButton />
           </div>
         </div>
       </header>

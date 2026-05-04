@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { performanceApi } from "../api/performance";
 import { sitesApi } from "../api/sites";
-import { BugReportButton } from "../components/diagnostics/BugReportButton";
+import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { PerClassPerformanceTable } from "../components/plots/PerClassPerformanceTable";
 import {
   InsightsFilterChips,
@@ -124,7 +124,7 @@ export function PerClassPerformancePage() {
                 Precision, recall, and F1 score per class
               </p>
             </div>
-            <BugReportButton />
+            <DiagnosticReportButton />
           </div>
         </div>
       </header>

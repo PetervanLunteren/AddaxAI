@@ -17,7 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Info, Loader2 } from "lucide-react";
 
 import { sitesApi } from "../api/sites";
-import { BugReportButton } from "../components/diagnostics/BugReportButton";
+import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { statisticsApi } from "../api/statistics";
 import type {
   ActivityOverlapResponse,
@@ -400,7 +400,7 @@ export function ActivityOverlapPage() {
                 Compare daily activity patterns between species
               </p>
             </div>
-            <BugReportButton />
+            <DiagnosticReportButton />
           </div>
         </div>
       </header>

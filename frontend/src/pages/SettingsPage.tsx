@@ -17,7 +17,7 @@ import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, Refr
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
-import { BugReportButton } from "../components/diagnostics/BugReportButton";
+import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
@@ -906,7 +906,7 @@ export default function SettingsPage() {
                 Configure AI models, labels, and analysis parameters
               </p>
             </div>
-            <BugReportButton />
+            <DiagnosticReportButton />
           </div>
         </div>
       </header>

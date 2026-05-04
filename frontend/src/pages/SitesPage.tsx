@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, Plus, Info } from "lucide-react";
 import { sitesApi } from "../api/sites";
-import { BugReportButton } from "../components/diagnostics/BugReportButton";
+import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import type { SiteWithStats, SiteResponse } from "../api/types";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -242,7 +242,7 @@ export function SitesPage() {
                 <Plus className="mr-2 h-4 w-4" />
                 New site
               </Button>
-              <BugReportButton />
+              <DiagnosticReportButton />
             </div>
           </div>
         </div>
