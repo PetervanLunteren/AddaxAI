@@ -5,7 +5,6 @@
 - [ ]  
 
 ## Priority 3 
-- [x] Add a readme file with instructions for Meta Testers. How to download, how to install, what to do with a bug, what to report back to me, whats still todo, how to reset, etc. etc. 
 - [x] The map and activity pattern insight pages have a non consistent format of shoing there is no data (when there is no data). The other pages (matrix, deployment timeline, performace) all have the same format (card + center aligned bold title + greyish text center aligned). Make consistent. 
 - [x] /insights/timeline -> "Drag horizontally across the date axis at the top to zoom into a specific range." there are no date ticks anymore....
 - [x] In the deployments page on Windows the first col ('folder') shows the full path. Is that because of a different path seperator?
