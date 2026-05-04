@@ -105,7 +105,8 @@
         "citation": "https://doi.org/10.1049/cvi2.12318",
         "license": "https://github.com/google/cameratrapai/blob/main/LICENSE",
         "info_url": "https://github.com/google/cameratrapai/?tab=readme-ov-file#speciesnet",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "global"
       },
       {
         "model_id": "EUR-DF-v1-3",
@@ -119,7 +120,8 @@
         "citation": "https://doi.org/10.1007/s10344-023-01742-7",
         "license": "https://creativecommons.org/licenses/by-sa/4.0/",
         "info_url": "https://www.deepfaune.cnrs.fr/en/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "europe"
       },
       {
         "model_id": "SAH-DRY-ADS-v1",
@@ -133,7 +135,8 @@
         "citation": "https://joss.theoj.org/papers/10.21105/joss.05581",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://addaxdatascience.com/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "africa"
       },
       {
         "model_id": "TERRAI-NEP-v1",
@@ -146,7 +149,8 @@
         "developer": "Alexander Merdian-Tarko",
         "license": "https://opensource.org/license/mit",
         "info_url": "https://alexvmt.github.io/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "asia"
       },
       {
         "model_id": "TAS-BB-v1",
@@ -160,7 +164,8 @@
         "citation": "https://ecoevorxiv.org/repository/view/6405/",
         "license": "https://creativecommons.org/licenses/by/4.0/",
         "info_url": "https://github.com/zaandahl/mewc",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "oceania"
       },
       {
         "model_id": "NAM-ADS-v1",
@@ -174,7 +179,8 @@
         "citation": "https://joss.theoj.org/papers/10.21105/joss.05581",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://addaxdatascience.com/projects/2023-01-dlc/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "africa"
       },
       {
         "model_id": "NZI-ADS-v1",
@@ -188,7 +194,8 @@
         "owner": "New Zealand Department of Conservation",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://www.doc.govt.nz/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "oceania"
       },
       {
         "model_id": "PAM-SDZWA-v1",
@@ -201,7 +208,8 @@
         "developer": "San Diego Zoo Wildlife Alliance",
         "license": "https://opensource.org/license/mit",
         "info_url": "https://github.com/conservationtechlab",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "americas"
       },
       {
         "model_id": "TKM-ADS-v1",
@@ -215,7 +223,8 @@
         "citation": "https://joss.theoj.org/papers/10.21105/joss.05581",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://addaxdatascience.com/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "asia"
       },
       {
         "model_id": "KIR-HEX-v1",
@@ -229,7 +238,8 @@
         "owner": "OSI-Panthera",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://www.osi-panthera.org/",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "asia"
       },
       {
         "model_id": "SWUSA-SDZWA-v3",
@@ -242,7 +252,8 @@
         "developer": "San Diego Zoo Wildlife Alliance",
         "license": "https://opensource.org/license/mit",
         "info_url": "https://github.com/conservationtechlab",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "americas"
       },
       {
         "model_id": "GIF-JAP-v0-2",
@@ -257,7 +268,71 @@
         "citation": "https://jglobal.jst.go.jp/en/detail?JGLOBAL_ID=201902236803626745",
         "license": "https://github.com/gifu-wildlife/MDetToolsForJCameraTraps?tab=MIT-1-ov-file",
         "info_url": "https://github.com/gifu-wildlife/TrainingMdetClassifire",
-        "min_app_version": "0.1.0"
+        "min_app_version": "0.1.0",
+        "region": "asia"
+      },
+      {
+        "model_id": "HWI-ADS-v1",
+        "friendly_name": "Hawaiʻi",
+        "emoji": "🇺🇸",
+        "env": "pytorch",
+        "model_fname": "final-20260317.pt",
+        "description": "The AI Puaʻa Initiative develops artificial intelligence models to automatically classify wildlife species in camera trap imagery collected across Hawaiʻi, with a focus on introduced and managed species. The initiative is led through a collaboration between The Nature Conservancy (TNC), the USDA Forest Service Pacific Southwest Research Station, Institute of Pacific Islands Forestry (IPIF), the University of Hawaiʻi at Mānoa Wildlife Ecology and Management Lab, the Hawaiʻi Division of Forestry and Wildlife (DOFAW), and Addax Data Science, with contributions from conservation practitioners and community-based monitoring efforts. The AI Puaʻa models are trained on datasets collectively pooled and curated from camera trap deployments across the State of Hawaiʻi, representing the variation in species encountered in local monitoring efforts. These models improve classification accuracy for species that are often underrepresented or inconsistently identified in generalized wildlife models trained outside of Hawaiʻi. Models developed through this initiative are accessible through the Addax AI platform, providing a cost-effective and user-friendly solution for processing and analyzing camera trap data without requiring advanced technical expertise or reliance on expensive proprietary or subscription-based software.\n\nNew versions of the model will be released as additional data become available, improving classification performance and expanding species coverage over time.",
+        "description_short": "Hawaiʻi USA · 15 classes · Native + introduced fauna",
+        "developer": "Addax Data Science",
+        "owner": "USDA Forest Service – Pacific Southwest Research Station, Institute of Pacific Islands Forestry (IPIF) & The Nature Conservancy (TNC)",
+        "citation": "",
+        "license": "https://creativecommons.org/licenses/by-nc/4.0/deed.en",
+        "info_url": "https://huggingface.co/Addax-Data-Science/HWI-ADS-v1",
+        "min_app_version": "0.1.0",
+        "region": "americas"
+      },
+      {
+        "model_id": "VIC-ADS-v1",
+        "friendly_name": "Victoria, Australia",
+        "emoji": "🇦🇺",
+        "env": "pytorch",
+        "model_fname": "final-20251221.pt",
+        "description": "This model distinguishes between 212 species (both indigenous and introduced) found within the state of Victoria, Australia and was designed to expedite camera trap monitoring. The model was trained on a set of approximately 5 million camera trap images from various projects across Victoria. The training dataset was curated by Parks Victoria, with images submitted by more than 30 different research and conservation organisations. Efforts were made to ensure the training library was representative of species' home ranges across Victoria's 28 bioregions. Images were taken with a variety of trail camera brands and models and camera set-ups. Where insufficient Victorian images existed for a species (e.g. Spot-tailed Quoll), images were sourced from neighbouring Australian states. The model was trained using a fine-tuned SpeciesNet architecture on 5.0M samples, 49.4K locations, and 212 classes.",
+        "description_short": "Victoria · 212 classes · Trained on 5M images",
+        "developer": "Addax Data Science for Parks Victoria",
+        "owner": "Parks Victoria",
+        "citation": "",
+        "license": "https://huggingface.co/Addax-Data-Science/VIC-ADS-v1/blob/main/LICENSE.txt",
+        "info_url": "https://www.parks.vic.gov.au/get-into-nature/conservation-and-science/science-and-research",
+        "min_app_version": "0.1.0",
+        "region": "oceania"
+      },
+      {
+        "model_id": "SBUSA-ADS-v1",
+        "friendly_name": "US Southwest borderlands",
+        "emoji": "🇺🇸",
+        "env": "pytorch",
+        "model_fname": "final-20260109.pt",
+        "description": "This model distinguishes between 68 species native to the Southwestern United States and the U.S-Mexico Borderlands region. It was trained using a fine-tuned SpeciesNet architecture. Training data totaling 775K images were collected in Arizona, California, and Texas by nearly 20 collaborators (see Acknowledgements) and combined with 2.3M publicly available images from a total of 8K camera locations. We used a 70/20/10 train/validation/test split based on location. The model reached an overall accuracy of 94% on the test set. \n\nAcknowledgements: \nThis model was developed with support of a U.S Fish and Wildlife Service, Tribal Wildlife Grant (no. F22AP01262-00) to the Tohono O'odham Nation, Department of Natural Resources, Wildlife and Vegetation Management Program and collaborator Dr. Aaron D. Flesch of the University of Arizona, School of Natural Resources and the Environment. Kinley Ragan of the Arizona Center for Nature Conservation/Phoenix Zoo provided extensive help with data management and quality control in support of model development, and Peter van Lunteren of Addax Data Science developed the model. A list of organizations that contributed data to the model is below in alphabetical order:\n   - Arizona Center for Nature Conservation/Phoenix Zoo\n   - Arizona Game & Fish Department, Jeff Gagnon & Chad Loberger\n   - Arizona State University, College of Integrative Sciences and Arts, Jesse Lewis\n   - Barry M. Goldwater Range-East\n   - Cabeza Prieta National Wildlife Refuge\n   - California Carnivores Program , UC Davis\n   - Coalition for Sonoran Desert Protection\n   - Kofa National Wildlife Refuge\n   - San Diego Zoo Wildlife Alliance\n   - National Park Service, Sonoran Desert Inventory & Monitoring Network\n   - Caesar Kleberg Wildlife Research Institute, Texas A&M University-Kingsville\n   - Sky Island Alliance\n   - Tohono O'odham Nation - Department of Natural Resources, Wildlife and Vegetation management Program\n   - University of Arizona, School of Natural Resources and the Environment, Aaron Flesch, Ganesh Marin, Jesse Alston",
+        "description_short": "68 classes · 94% test accuracy · 3M training images",
+        "developer": "Addax Data Science",
+        "owner": "Tohono O'odham Nation Wildlife and Vegetation Management Program and University of Arizona School of Natural Resources and the Environment",
+        "citation": "",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "info_url": "https://www.tonation-nsn.gov/natural-resources/wildlife-and-vegetation/",
+        "min_app_version": "0.1.0",
+        "region": "americas"
+      },
+      {
+        "model_id": "AHDRIFT-v1",
+        "friendly_name": "AHDriFT herp + small mammals (Midwest US)",
+        "emoji": "🦎",
+        "env": "pytorch",
+        "model_fname": "final-20251223.pt",
+        "description": "This model was developed to classify wildlife captured by close-focus, downward-facing camera traps used in the Adapted Hunt Drift Fence Technique (AHDriFT; Martin et al. 2017; Amber et al. 2021). The model is based on a fine-tuned SpeciesNet architecture and was trained on data collected in Ohio, USA: 118,554 images from 1,169 camera trap locations, 46 classes; available at the LILA BC repository, https://lila.science/datasets/ohio-small-animals/. We used a 72/18/10 Train/Val/Test split by camera trap location to ensure spatial independence between splits. The model achieved an overall accuracy of 83.6% on the held-out test set. Taxonomic fallback is supported, allowing predictions to be assigned to higher taxonomic levels when species-level confidence is below a user-defined threshold. Regular updates of AHDriFT-ID are planned. Users are encouraged to contribute labeled AHDriFT image datasets via https://lila.science/ to support future model updates. Contact: Greg Lipps (lipps.37@osu.edu)",
+        "description_short": "46 classes · 84% test accuracy · Drift-fence camera traps",
+        "developer": "The Ohio State University – Columbus Zoo and Aquarium – Addax Data Science",
+        "citation": "",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "info_url": "https://u.osu.edu/lipps.37/ahdrift-id/",
+        "min_app_version": "0.1.0",
+        "region": "americas"
       }
     ],
     "emb": [

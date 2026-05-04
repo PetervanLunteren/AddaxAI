@@ -741,6 +741,17 @@ export interface ModelInfo {
   license?: string | null;
   min_app_version?: string | null;
   embedding_dim?: number | null;
+  /** Geographic region the cls model is trained for. Drives the
+   *  grouping in classification dropdowns. `null` for detection /
+   *  embedding models, and for any cls manifest not yet annotated. */
+  region?:
+    | "global"
+    | "africa"
+    | "americas"
+    | "asia"
+    | "europe"
+    | "oceania"
+    | null;
   // Per-pipeline default batch sizes the worker will use when the project's
   // batch_size override is null. Used to label the "Default" option in the
   // Performance card. Same numbers for every model in the same pipeline.

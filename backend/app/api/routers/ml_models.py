@@ -84,6 +84,12 @@ class ModelInfo(BaseModel):
     license: str | None = None
     min_app_version: str | None = None
     embedding_dim: int | None = None
+    # Geographic region the cls model is trained for. Drives the
+    # grouping in the classification dropdown. None for detection /
+    # embedding models, and for any legacy cls manifest without a
+    # region annotation (those fall into a synthetic "Other" group on
+    # the frontend).
+    region: str | None = None
     # Per-pipeline default batch sizes used when the project leaves the
     # batch_size override unset. Same value for every model in the same
     # pipeline today; comes from app.ml.batch_size constants.
@@ -602,7 +608,19 @@ def list_classification_models() -> list[ModelInfo]:
         )
     ]
 
-    # Add actual classification models, sorted alphabetically
+    # Add actual classification models. Sorted by (region_order,
+    # friendly_name) so the frontend can group by region while
+    # keeping each group alphabetical. Region order: global first,
+    # then continents alphabetical, then a synthetic "other" bucket
+    # for legacy manifests that haven't been annotated yet.
+    region_order = {
+        "global": 0,
+        "africa": 1,
+        "americas": 2,
+        "asia": 3,
+        "europe": 4,
+        "oceania": 5,
+    }
     model_list = [
         ModelInfo(
             model_id=manifest.model_id,
@@ -617,14 +635,18 @@ def list_classification_models() -> list[ModelInfo]:
             citation=getattr(manifest, "citation", None),
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
+            region=getattr(manifest, "region", None),
             default_batch_size_gpu=cls_gpu,
             default_batch_size_cpu=cls_cpu,
         )
         for manifest in models.values()
     ]
-
-    # Sort alphabetically by friendly_name
-    result.extend(sorted(model_list, key=lambda m: m.friendly_name))
+    result.extend(
+        sorted(
+            model_list,
+            key=lambda m: (region_order.get(m.region or "", 99), m.friendly_name),
+        )
+    )
 
     return result
 

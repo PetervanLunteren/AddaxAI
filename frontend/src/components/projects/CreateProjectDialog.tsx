@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { ClassificationModelGroupedItems } from "../models/ClassificationModelGroupedItems";
 import {
   Dialog,
   DialogContent,
@@ -367,19 +368,9 @@ export function CreateProjectDialog({
                           <br />
                           <span className="text-xs text-muted-foreground">Run detector only, identify species manually</span>
                         </SelectItem>
-                        {classificationModels
-                          .filter((model) => model.model_id !== "none")
-                          .map((model) => (
-                            <SelectItem key={model.model_id} value={model.model_id}>
-                              {model.emoji} {model.friendly_name}
-                              {model.description_short && (
-                                <>
-                                  <br />
-                                  <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                </>
-                              )}
-                            </SelectItem>
-                          ))}
+                        <ClassificationModelGroupedItems
+                          models={classificationModels.filter((m) => m.model_id !== "none")}
+                        />
                       </SelectContent>
                     </Select>
                     <Tooltip>

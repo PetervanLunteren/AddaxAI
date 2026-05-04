@@ -8,7 +8,16 @@ Following DEVELOPERS.md principles:
 Based on proven patterns from streamlit-AddaxAI.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel
+
+# Region the cls model is trained for. Drives how the classification
+# dropdown groups its options. None for detection / embedding models
+# (region-agnostic) and as a fallback for legacy cls manifests.
+ModelRegion = Literal[
+    "global", "africa", "americas", "asia", "europe", "oceania"
+]
 
 
 class ModelManifest(BaseModel):
@@ -47,6 +56,9 @@ class ModelManifest(BaseModel):
 
     # Classification-specific
     species_list: list[str] | None = None
+    # Region the model is trained for. Used to group cls models in the
+    # UI dropdown. None for detection / embedding (region-agnostic).
+    region: ModelRegion | None = None
 
     # Embedding-specific
     embedding_dim: int | None = None  # 384, 768, or 1024
