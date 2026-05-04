@@ -31,6 +31,7 @@ import VerifyPage from "./pages/VerifyPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import SetupPage from "./pages/SetupPage";
+import TimelapseModePage from "./pages/TimelapseModePage";
 import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { Button } from "./components/ui/button";
@@ -261,6 +262,11 @@ function BackendDownScreen({ onRetry }: { onRetry: () => void }) {
 function SetupGate({ children }: { children: ReactNode }) {
   const location = useLocation();
   const onSetupRoute = location.pathname.startsWith("/setup");
+  // Timelapse mode is reachable regardless of setup state because the
+  // page renders <SetupPage /> inline when needed. Without this exemption,
+  // the gate would bounce the second window back to /setup and the
+  // user would never see the Timelapse form even after setup completes.
+  const onTimelapseRoute = location.pathname.startsWith("/timelapse");
 
   const { data, isLoading, isError, errorUpdatedAt, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["setup-status"],
@@ -288,7 +294,7 @@ function SetupGate({ children }: { children: ReactNode }) {
     return null;
   }
 
-  if (!data.ready && !onSetupRoute) {
+  if (!data.ready && !onSetupRoute && !onTimelapseRoute) {
     return <Navigate to="/setup" replace />;
   }
 
@@ -315,6 +321,7 @@ function App() {
           <Routes>
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/about" element={<AboutPage />} />
+            <Route path="/timelapse" element={<TimelapseModePage />} />
             <Route path="/" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
 

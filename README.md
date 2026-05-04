@@ -141,6 +141,26 @@ Frontend will be available at http://localhost:5173
 tail -f ~/AddaxAI/logs/backend.log
 ```
 
+## Timelapse Analyser integration (Windows only)
+
+AddaxAI exposes a Timelapse mode that writes a `results.json` next to a
+chosen folder for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
+
+Launch options:
+
+- Inside AddaxAI: hamburger menu > Timelapse mode.
+- From a shell or Timelapse Analyser: `AddaxAI.exe --timelapse "C:\path\to\folder"`.
+
+The Windows installer drops a compatibility shim at
+`%ProgramFiles%\AddaxAI_files\AddaxAI\open.bat`. The legacy invocation
+(`open.bat timelapse <folder>`) is forwarded to the new exe transparently,
+so no changes are needed on the Timelapse side. After Saul updates
+Timelapse to call `AddaxAI.exe --timelapse "<folder>"` directly the shim
+becomes redundant; it stays in place as a long-term fallback.
+
+In Timelapse, after a run completes, open `Recognition > Import recognition
+data for this image set` and select the generated `results.json`.
+
 ## Key directories
 
 - `~/AddaxAI/` - User data directory (created automatically)

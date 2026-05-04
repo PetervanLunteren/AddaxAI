@@ -8,9 +8,8 @@ load_json_to_database() for video/frame File record creation.
 import json
 from unittest.mock import patch
 
-from app.ml.json_pipeline import load_json_to_database
+from app.ml.json_pipeline import load_json_to_database, merge_json_files
 from app.models import Detection, File
-from app.workers.detection_worker import merge_json_files
 
 from .conftest import (
     build_detection_json,

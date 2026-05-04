@@ -21,6 +21,12 @@ export interface ElectronAPI {
    * by the release workflow.
    */
   getVersion: () => Promise<string>;
+  /**
+   * Open the Timelapse Analyser integration window. When `prefilledPath`
+   * is supplied, the form starts with that folder selected (used by the
+   * `--timelapse <folder>` CLI invocation).
+   */
+  openTimelapseWindow: (prefilledPath?: string) => Promise<void>;
   isElectron: () => boolean;
 }
 

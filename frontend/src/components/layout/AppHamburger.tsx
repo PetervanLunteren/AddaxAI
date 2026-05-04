@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BookOpen,
+  Camera,
   Download,
   FolderOpen,
   Info,
@@ -126,6 +127,18 @@ export function AppHamburger() {
     }
   };
 
+  const openTimelapseMode = async () => {
+    close();
+    // Electron spawns a separate BrowserWindow so users do not confuse
+    // it with the main projects-based app. In the dev browser, fall back
+    // to a regular new tab.
+    if (window.electronAPI?.openTimelapseWindow) {
+      await window.electronAPI.openTimelapseWindow();
+    } else {
+      window.open("/timelapse", "_blank");
+    }
+  };
+
   return (
     <>
       <div ref={menuRef} className="relative">
@@ -165,6 +178,11 @@ export function AppHamburger() {
             <Separator />
 
             <Section>
+              <Item
+                icon={Camera}
+                label="Timelapse mode"
+                onClick={openTimelapseMode}
+              />
               <Item
                 icon={FolderOpen}
                 label="Open user data folder"

@@ -6,6 +6,10 @@ One source of truth for how AddaxAI groups files into events. Both
 `build_smoother_input` (which packages the same groupings for the
 MegaDetector smoothing subprocess) call `cluster_files_into_events` here.
 
+The Timelapse runner uses the JSON twin `cluster_entries_into_events`,
+which applies the same rule to (relative_path, captured_at_local) tuples
+read directly from a results.json plus EXIF — no DB rows needed.
+
 Rule: bucket files by folder, then within each folder start a new event
 whenever the time gap between consecutive files exceeds
 `independence_interval`. Folder bucketing keeps events from bridging
@@ -18,6 +22,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
 
 from app.models import File
@@ -85,6 +90,45 @@ def cluster_files_into_events(
                 current = [folder_files[i]]
             else:
                 current.append(folder_files[i])
+        clusters.append(current)
+
+    return clusters
+
+
+def cluster_entries_into_events(
+    entries: Iterable[tuple[str, datetime]],
+    independence_interval: int,
+) -> list[list[tuple[str, datetime]]]:
+    """
+    DB-less twin of `cluster_files_into_events`.
+
+    Takes `(relative_path, captured_at_local)` tuples and applies the
+    same folder-bucket + time-gap rule. Used by the Timelapse runner,
+    which reads timestamps directly from the JSON's EXIF block instead
+    of from a `File` row.
+
+    Entries with `captured_at_local is None` are skipped (defensive).
+    """
+    by_folder: dict[str, list[tuple[str, datetime]]] = defaultdict(list)
+    for relative_path, captured_at in entries:
+        if captured_at is None:
+            continue
+        folder = str(Path(relative_path).parent)
+        by_folder[folder].append((relative_path, captured_at))
+
+    clusters: list[list[tuple[str, datetime]]] = []
+    for key in sorted(by_folder):
+        folder_entries = sorted(by_folder[key], key=lambda e: e[1])
+        current: list[tuple[str, datetime]] = [folder_entries[0]]
+        for i in range(1, len(folder_entries)):
+            gap = (
+                folder_entries[i][1] - folder_entries[i - 1][1]
+            ).total_seconds()
+            if gap > independence_interval:
+                clusters.append(current)
+                current = [folder_entries[i]]
+            else:
+                current.append(folder_entries[i])
         clusters.append(current)
 
     return clusters

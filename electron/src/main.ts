@@ -19,6 +19,25 @@ let backendProcess: ChildProcess | null = null;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 
+/**
+ * Parse `--timelapse <folder>` out of process.argv.
+ *
+ * Used by Saul Greenberg's Timelapse Analyser to spawn AddaxAI in
+ * Timelapse-only mode (no main projects window). The shim installer
+ * drops an open.bat that translates the legacy `open.bat timelapse <dir>`
+ * command into `AddaxAI.exe --timelapse "<dir>"`, so this flag is the
+ * single integration point for both the new and legacy invocation paths.
+ *
+ * Returns null when the flag is absent. Returns "" (empty string) when
+ * the flag is present without an argument — still a valid signal to
+ * open Timelapse mode, just without a pre-filled folder.
+ */
+function parseTimelapseArg(argv: string[]): string | null {
+  const idx = argv.findIndex((a) => a === '--timelapse');
+  if (idx === -1) return null;
+  return argv[idx + 1] || '';
+}
+
 // Native Chromium / V8 crashes (renderer segfault, OOM, GPU process
 // crash) bypass uncaughtException entirely. crashReporter writes a
 // minidump to disk at the cross-platform location below; the user can
@@ -338,6 +357,54 @@ async function createWindow(): Promise<void> {
 }
 
 /**
+ * Create the Timelapse Analyser integration window.
+ *
+ * Smaller than the main window because the form is a single-pane
+ * focused workflow. The URL query carries the optional pre-filled
+ * folder path so the renderer can populate the folder picker on first
+ * paint when launched via `AddaxAI.exe --timelapse <folder>`.
+ */
+async function createTimelapseWindow(prefilledPath?: string): Promise<void> {
+  const win = new BrowserWindow({
+    width: 760,
+    height: 920,
+    minWidth: 600,
+    minHeight: 600,
+    title: 'AddaxAI - Timelapse mode',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+    show: false,
+  });
+
+  win.once('ready-to-show', () => win.show());
+  win.on('page-title-updated', (e) => e.preventDefault());
+
+  const query = prefilledPath
+    ? `?path=${encodeURIComponent(prefilledPath)}`
+    : '';
+  await win.loadURL(`${BACKEND_URL}/timelapse${query}`);
+
+  if (!win.isVisible()) {
+    win.show();
+    win.focus();
+  }
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  if (!app.isPackaged) {
+    win.webContents.openDevTools({ mode: 'detach' });
+  }
+}
+
+/**
  * IPC handlers
  */
 
@@ -375,6 +442,17 @@ ipcMain.handle('app:quit', () => {
   app.quit();
 });
 
+// Open the Timelapse Analyser integration in a separate BrowserWindow.
+// Called from the main app's hamburger menu and from the --timelapse
+// CLI launcher. The window is intentionally a sibling of the main one
+// (not modal) so users can keep the projects app open in the background.
+ipcMain.handle(
+  'window:openTimelapse',
+  async (_event, prefilledPath?: string) => {
+    await createTimelapseWindow(prefilledPath);
+  },
+);
+
 // Return the runtime app version (e.g. "0.2.0-beta.1"). The version is
 // written into electron/package.json by the release workflow's
 // "Sync version from release tag" step, so this is always the actual
@@ -390,7 +468,16 @@ ipcMain.handle('app:getVersion', () => {
 app.on('ready', async () => {
   try {
     await startBackend();
-    await createWindow();
+    // When launched via `AddaxAI.exe --timelapse <folder>` (Saul's
+    // Timelapse integration / shim), open ONLY the Timelapse window.
+    // The main projects window stays out of sight so the user is not
+    // confused about which app they are working in.
+    const timelapsePath = parseTimelapseArg(process.argv);
+    if (timelapsePath !== null) {
+      await createTimelapseWindow(timelapsePath || undefined);
+    } else {
+      await createWindow();
+    }
   } catch (error) {
     console.error('[Electron] Failed to start application:', error);
     app.quit();

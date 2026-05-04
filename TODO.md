@@ -1,5 +1,8 @@
 ## Priority 1
+- [x] TIMELAPSE INTEGRATION (in-app window + --timelapse CLI + open.bat shim)
 - [ ] TIMELAPSE STANDALONE APP
+- [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
+- [ ] ADD ALL MODELS 
 
 ## Priority 2
 - [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
@@ -16,15 +19,13 @@
 
 
 ## Future stuff
-- [ ] TIMELAPSE STANDALONE APP
-- [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
 - [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR
 - [ ] DOCUMENTATION
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
-- [ ] ADD ALL MODELS 
+
 
 
 ## Nice to haves

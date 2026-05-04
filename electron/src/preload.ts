@@ -51,6 +51,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Open the Timelapse Analyser integration in a separate BrowserWindow.
+   * `prefilledPath` is optional; when present the form starts with that
+   * folder selected (used by the `--timelapse <folder>` CLI launcher).
+   */
+  openTimelapseWindow: async (prefilledPath?: string): Promise<void> => {
+    return await ipcRenderer.invoke('window:openTimelapse', prefilledPath);
+  },
+
+  /**
    * Check if running in Electron (vs browser)
    */
   isElectron: (): boolean => {
