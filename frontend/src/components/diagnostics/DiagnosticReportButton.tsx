@@ -1,5 +1,5 @@
 /**
- * Inline bug-report button.
+ * Inline diagnostic-report button.
  *
  * Same icon-button shape as the floating one in AppHamburger, but
  * rendered in the normal flex flow next to a page's action button so
@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 
-export function BugReportButton() {
+export function DiagnosticReportButton() {
   const download = useMutation({
     mutationFn: () => diagnosticsApi.downloadDiagnosticZip(),
     onSuccess: () => {
