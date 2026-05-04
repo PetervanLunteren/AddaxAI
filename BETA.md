@@ -13,11 +13,13 @@ Linux is still in development, so the beta will not run there yet. Intel Macs ar
 
 ## Install
 
-**macOS**: open the dmg, drag AddaxAI into Applications. First launch may take a few seconds while Gatekeeper checks the Apple notarisation.
+#### macOS
+Open the dmg, drag AddaxAI into Applications. First launch may take a few seconds while Gatekeeper checks the Apple notarisation.
 
-**Windows**: run the setup `.exe` and follow the installer. If SmartScreen still warns, click "More info" then "Run anyway", the installer is signed.
+#### Windows
+Run the setup `.exe` and follow the installer. If SmartScreen still warns, click "More info" then "Run anyway", the installer is signed.
 
-## What I want from you
+## What I would like to learn from you
 
 Anything that is wrong, off, or could be better:
 
@@ -39,7 +41,10 @@ Please give me as much detail as you can so I can reproduce it. Most useful:
 - what you were trying to do
 - what you expected to happen
 - what actually happened
-- a screenshot, or a short screen recording if the bug is dynamic
+- a screenshot, or a short screen recording
+- a diagnostics report (see below)
+
+#### Export diagnostic report
 
 **If the app opens**: click the bug icon in the page header (tooltip says "Export diagnostic report"), or open Settings, then Diagnostics, and click "Export diagnostic report". Both build the same zip in your Downloads folder with logs, system info, installed models, environment state, and recent jobs. Please attach it to the email.
 
