@@ -1,12 +1,11 @@
 ## Priority 1
-- [ ] Beta tester saw `ValueError: Invalid confidence: nan` kill an entire deployment_analysis batch on PAM-SDZWA-v1 (27-image NewZealand example data, Windows, CPU). Framework crash is now fixed in two layers: `classification_worker.py` rejects non-finite confidences at the source and logs `image_path` + `bbox` to stderr; `custom_classification_model.py` keeps a defensive guard at the boundary. A bad crop now loads as unclassified instead of failing the job. Still open: chase *why* PAM-SDZWA-v1 emits NaN. Next reproduction will surface the offending image path in backend.log; ask the tester to retry on the same dataset and send a fresh diagnostic.
+- [ ] TIMELAPSE STANDALONE APP
 
 ## Priority 2
-- [ ]  
+- [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
 
 ## Priority 3 
-- [x] /insights/timeline -> "Drag horizontally across the date axis at the top to zoom into a specific range." there are no date ticks anymore....
-- [x] In the deployments page on Windows the first col ('folder') shows the full path. Is that because of a different path seperator?
+- [ ] 
 
 ## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
