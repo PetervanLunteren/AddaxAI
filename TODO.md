@@ -22,11 +22,12 @@
 - [x] Add a reset option in the settings. 
 - [x] Add the windows code signing keys from AddaxAI repo and make sure to name them exactly the same
 
-- [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE addax-sppnet ones. 
-❯ compare the already implemented models in this repo with these (https://github.com/PetervanLunteren/AddaxAI/blob/main/model_info/model_info_v5.json). which ones do we need to implement still?     
+- [ ] ADD ALL MODELS IN THE ZOO, OR AT LEAST THE addax-sppnet ones.   
+- [ ] Make sure to code sign the windows installer too. See how its done at AddaxAI /Users/peter/Documents/Repos/AddaxAI/.github/workflows/build-windows-release.yml. The same secrets are in both repos with the same names and the same values.
 
 ## Priority 2
-- [ ] 
+- [ ] What is the reason a failed deployment still ends up in the deployments page? Its a deployment with 0 captures. 
+- [ ] In the DpeloymentsProcessPbarModal the cancel button has an icon. Please reomve the icon to be consiostent with the rest of the app. 
 
 ## Priority 3 
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
@@ -35,7 +36,7 @@
 
 ## Future stuff
 - [ ] TIMELAPSE STANDALONE APP
-- [ ] ALLOW FULL IMAGE CLS MODELs TOO (ADRIFT)
+- [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
 - [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR

@@ -23,5 +23,11 @@ dependencies:
       - timm
       - dill
       - omegaconf
+      # Required for SpeciesNet-fine-tuned classifiers (addax-sppnet
+      # type, e.g. HWI-ADS-v1, VIC-ADS-v1, SBUSA-ADS-v1, AHDRIFT-v1).
+      # Their backbone is a torch.fx GraphModule that pickled
+      # onnx2torch operator classes; loading the .pt fails with
+      # ModuleNotFoundError without this package.
+      - onnx2torch
       - pytorch-lightning==2.0.6
       - albumentations==1.3.1

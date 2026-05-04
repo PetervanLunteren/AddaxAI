@@ -278,7 +278,7 @@
         "env": "pytorch",
         "model_fname": "final-20260317.pt",
         "description": "The AI Puaʻa Initiative develops artificial intelligence models to automatically classify wildlife species in camera trap imagery collected across Hawaiʻi, with a focus on introduced and managed species. The initiative is led through a collaboration between The Nature Conservancy (TNC), the USDA Forest Service Pacific Southwest Research Station, Institute of Pacific Islands Forestry (IPIF), the University of Hawaiʻi at Mānoa Wildlife Ecology and Management Lab, the Hawaiʻi Division of Forestry and Wildlife (DOFAW), and Addax Data Science, with contributions from conservation practitioners and community-based monitoring efforts. The AI Puaʻa models are trained on datasets collectively pooled and curated from camera trap deployments across the State of Hawaiʻi, representing the variation in species encountered in local monitoring efforts. These models improve classification accuracy for species that are often underrepresented or inconsistently identified in generalized wildlife models trained outside of Hawaiʻi. Models developed through this initiative are accessible through the Addax AI platform, providing a cost-effective and user-friendly solution for processing and analyzing camera trap data without requiring advanced technical expertise or reliance on expensive proprietary or subscription-based software.\n\nNew versions of the model will be released as additional data become available, improving classification performance and expanding species coverage over time.",
-        "description_short": "Hawaiʻi USA · 15 classes · Native + introduced fauna",
+        "description_short": "AI Puaʻa v1.0 · 15 classes · USDA Forest Service & TNC",
         "developer": "Addax Data Science",
         "owner": "USDA Forest Service – Pacific Southwest Research Station, Institute of Pacific Islands Forestry (IPIF) & The Nature Conservancy (TNC)",
         "citation": "",
@@ -316,21 +316,6 @@
         "citation": "",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "info_url": "https://www.tonation-nsn.gov/natural-resources/wildlife-and-vegetation/",
-        "min_app_version": "0.1.0",
-        "region": "americas"
-      },
-      {
-        "model_id": "AHDRIFT-v1",
-        "friendly_name": "AHDriFT herp + small mammals (Midwest US)",
-        "emoji": "🦎",
-        "env": "pytorch",
-        "model_fname": "final-20251223.pt",
-        "description": "This model was developed to classify wildlife captured by close-focus, downward-facing camera traps used in the Adapted Hunt Drift Fence Technique (AHDriFT; Martin et al. 2017; Amber et al. 2021). The model is based on a fine-tuned SpeciesNet architecture and was trained on data collected in Ohio, USA: 118,554 images from 1,169 camera trap locations, 46 classes; available at the LILA BC repository, https://lila.science/datasets/ohio-small-animals/. We used a 72/18/10 Train/Val/Test split by camera trap location to ensure spatial independence between splits. The model achieved an overall accuracy of 83.6% on the held-out test set. Taxonomic fallback is supported, allowing predictions to be assigned to higher taxonomic levels when species-level confidence is below a user-defined threshold. Regular updates of AHDriFT-ID are planned. Users are encouraged to contribute labeled AHDriFT image datasets via https://lila.science/ to support future model updates. Contact: Greg Lipps (lipps.37@osu.edu)",
-        "description_short": "46 classes · 84% test accuracy · Drift-fence camera traps",
-        "developer": "The Ohio State University – Columbus Zoo and Aquarium – Addax Data Science",
-        "citation": "",
-        "license": "https://www.apache.org/licenses/LICENSE-2.0",
-        "info_url": "https://u.osu.edu/lipps.37/ahdrift-id/",
         "min_app_version": "0.1.0",
         "region": "americas"
       }
