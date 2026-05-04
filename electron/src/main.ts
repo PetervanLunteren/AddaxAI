@@ -366,12 +366,12 @@ async function createWindow(): Promise<void> {
  */
 async function createTimelapseWindow(prefilledPath?: string): Promise<void> {
   const win = new BrowserWindow({
-    width: 760,
-    height: 920,
-    minWidth: 600,
-    minHeight: 600,
+    width: 1400,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 768,
     title: 'AddaxAI - Timelapse mode',
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

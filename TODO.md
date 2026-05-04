@@ -3,6 +3,7 @@
 - [ ] TIMELAPSE STANDALONE APP
 - [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] ADD ALL MODELS 
+- [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 
 ## Priority 2
 - [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 

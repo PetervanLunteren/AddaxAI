@@ -4,6 +4,10 @@
  * Single endpoint that kicks off a DB-less analysis run on a folder.
  * The response carries a job_id the caller subscribes to via the
  * existing /ws/jobs/{job_id} websocket (see useTaskProgress).
+ *
+ * Field shape mirrors `Project` settings (seconds for
+ * independence_interval, `detection_threshold`, etc.) so defaults and
+ * UI logic stay in lockstep with the main app.
  */
 
 import { api } from "../lib/api-client";
@@ -15,11 +19,11 @@ export interface TimelapseRunRequest {
   classification_model_id: string | null;
   detection_model_id: string;
   excluded_classes: string[];
-  detection_confidence_threshold: number;
+  detection_threshold: number;
   detection_batch_size: number;
   classification_batch_size: number;
   video_fps: number;
-  independence_interval_minutes: number;
+  independence_interval: number;
   smoothing_strength: SmoothingStrength;
   taxonomic_rollup: boolean;
 }

@@ -33,13 +33,14 @@ router = APIRouter(prefix="/api/timelapse", tags=["timelapse"])
 class TimelapseRunBody(BaseModel):
     folder_path: str
     classification_model_id: str | None = None
-    detection_model_id: str = "MegaDetector-5a"
+    detection_model_id: str = "MD5A-0-0"
     excluded_classes: list[str] = Field(default_factory=list)
-    detection_confidence_threshold: float = 0.2
+    detection_threshold: float = 0.5
     detection_batch_size: int = 1
     classification_batch_size: int = 16
     video_fps: float = 1.0
-    independence_interval_minutes: int = 120
+    # Seconds, matching the main app's Project.independence_interval.
+    independence_interval: int = 1800
     smoothing_strength: Literal["off", "mild", "normal", "aggressive"] = "normal"
     taxonomic_rollup: bool = True
 
@@ -87,11 +88,11 @@ async def start_timelapse_run(body: TimelapseRunBody) -> TimelapseRunResponse:
         classification_model_id=body.classification_model_id,
         detection_model_id=body.detection_model_id,
         excluded_classes=body.excluded_classes or None,
-        detection_confidence_threshold=body.detection_confidence_threshold,
+        detection_threshold=body.detection_threshold,
         detection_batch_size=body.detection_batch_size,
         classification_batch_size=body.classification_batch_size,
         video_fps=body.video_fps,
-        independence_interval_minutes=body.independence_interval_minutes,
+        independence_interval=body.independence_interval,
         smoothing_strength=body.smoothing_strength,
         taxonomic_rollup=body.taxonomic_rollup,
     )

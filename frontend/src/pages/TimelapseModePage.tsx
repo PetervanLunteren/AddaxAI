@@ -1,26 +1,54 @@
 /**
- * Timelapse Analyser integration window.
+ * Timelapse Analyser integration page.
  *
- * One-page form, no sidebar. Reuses the main app's folder picker, label
- * tree selector, model dropdowns, and websocket progress hook so the
- * UI stays in lockstep with whatever the regular Analyses page does.
+ * Layout matches the main app exactly:
+ * - canonical header / max-w-7xl main wrapper (FRONTEND_CONVENTIONS.md)
+ * - Card sections with 2-column rows: bold title + grey caption left,
+ *   widget right (same shape used in pages/SettingsPage.tsx and
+ *   components/projects/CreateProjectDialog.tsx)
  *
- * The output is a single results.json next to the user's image folder
- * that Timelapse imports through "Recognition > Import recognition data
- * for this image set".
- *
- * If AddaxAI has not been set up yet, the SetupPage component is
- * rendered inline (per user choice) so users invoking from Timelapse
- * never have to leave the window to install models.
+ * Reused from the main app, no parallel implementations:
+ * - FolderSelector (folder picker with file count preview)
+ * - ClassificationModelGroupedItems (region-grouped cls dropdown)
+ * - SpeciesSelectionModal (label tree + country/state geofilter)
+ * - ModelInfoSheet (info-button drawer)
+ * - ModelStatusBadge / ModelPreparationView / ModelPreparationErrorView
+ *   (model download + env build flow, identical to CreateProjectDialog)
+ * - useTaskProgress (websocket progress hook used by the main worker)
+ * - SetupPage as inline fallback when AddaxAI isn't set up yet
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FolderOpen, Loader2, Settings2 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as z from "zod";
+import {
+  CheckCircle2,
+  FolderOpen,
+  InfoIcon,
+  ListTodo,
+  Loader2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -28,59 +56,82 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { FolderSelector } from "@/components/analyses/FolderSelector";
-import { TreeSelector } from "@/components/taxonomy/TreeSelector";
+import { ClassificationModelGroupedItems } from "@/components/models/ClassificationModelGroupedItems";
+import { ModelInfoSheet } from "@/components/models/ModelInfoSheet";
+import { ModelPreparationErrorView } from "@/components/projects/ModelPreparationErrorView";
+import { ModelPreparationView } from "@/components/projects/ModelPreparationView";
+import { ModelStatusBadge } from "@/components/projects/ModelStatusBadge";
+import { SpeciesSelectionModal } from "@/components/taxonomy/SpeciesSelectionModal";
+
 import { useTaskProgress } from "@/hooks/useTaskProgress";
-import { collectLeafIds } from "@/lib/taxonomy-utils";
-import { isElectron } from "@/lib/platform";
 
 import { modelsApi } from "@/api/models";
 import { setupApi } from "@/api/setup";
 import { timelapseApi, type SmoothingStrength } from "@/api/timelapse";
-import type { ModelInfo, TaxonomyResponse } from "@/api/types";
 
 import SetupPage from "./SetupPage";
 
-const NO_CLASSIFIER_VALUE = "__none__";
+const NO_CLASSIFIER = "none";
 
-interface AdvancedSettings {
-  detectionModelId: string;
-  detectionConfidence: number;
-  detectionBatchSize: number;
-  classificationBatchSize: number;
-  videoFps: number;
-  independenceIntervalMinutes: number;
-  smoothing: SmoothingStrength;
-  taxonomicRollup: boolean;
-}
+const INDEPENDENCE_INTERVAL_OPTIONS = [
+  { value: "0", label: "Disabled" },
+  { value: "60", label: "1 minute" },
+  { value: "300", label: "5 minutes" },
+  { value: "900", label: "15 minutes" },
+  { value: "1800", label: "30 minutes" },
+  { value: "3600", label: "60 minutes" },
+];
 
-const DEFAULT_ADVANCED: AdvancedSettings = {
-  detectionModelId: "MegaDetector-5a",
-  detectionConfidence: 0.2,
-  detectionBatchSize: 1,
-  classificationBatchSize: 16,
-  videoFps: 1.0,
-  independenceIntervalMinutes: 120,
-  smoothing: "normal",
-  taxonomicRollup: true,
-};
+const VIDEO_FPS_OPTIONS = [
+  { value: "0.1", label: "1 frame every 10 seconds" },
+  { value: "0.25", label: "1 frame every 4 seconds" },
+  { value: "0.5", label: "1 frame every 2 seconds" },
+  { value: "1", label: "1 frame per second" },
+  { value: "2", label: "2 frames per second" },
+  { value: "4", label: "4 frames per second" },
+  { value: "10", label: "10 frames per second" },
+];
 
-function readQueryFolder(): string | null {
+const timelapseSchema = z.object({
+  folder_path: z.string().min(1, "Select a folder"),
+  detection_model_id: z.string().min(1),
+  classification_model_id: z.string().nullable(),
+  excluded_classes: z.array(z.string()),
+  country_code: z.string().nullable(),
+  state_code: z.string().nullable(),
+  detection_threshold: z.number().min(0).max(1),
+  detection_batch_size: z.number().int().min(1).max(256),
+  classification_batch_size: z.number().int().min(1).max(256),
+  video_fps: z.number().min(0.1).max(10),
+  independence_interval: z.number().min(0),
+  event_smoothing: z.boolean(),
+  smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
+  taxonomic_rollup: z.boolean(),
+});
+
+type TimelapseFormData = z.infer<typeof timelapseSchema>;
+
+function readQueryFolder(): string {
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get("path");
   if (fromQuery) return fromQuery;
-  // Fall back to hash params for `#/timelapse?path=...` shape used when
-  // launched through Electron's loadURL.
   const hash = window.location.hash;
   const qIndex = hash.indexOf("?");
   if (qIndex >= 0) {
     const hashParams = new URLSearchParams(hash.slice(qIndex + 1));
-    return hashParams.get("path");
+    return hashParams.get("path") ?? "";
   }
-  return null;
+  return "";
 }
 
 export default function TimelapseModePage() {
@@ -90,76 +141,117 @@ export default function TimelapseModePage() {
     refetchInterval: 5000,
   });
 
-  if (setupLoading || !setupStatus) {
-    return null;
-  }
-
+  if (setupLoading || !setupStatus) return null;
   if (!setupStatus.ready) {
     // Run setup inline so users launched via Timelapse never have to
     // hop windows to install models.
     return <SetupPage />;
   }
-
-  return <TimelapseForm />;
+  return <TimelapseFormPage />;
 }
 
-function TimelapseForm() {
-  const [folderPath, setFolderPath] = useState<string | null>(readQueryFolder);
-  const [classifierId, setClassifierId] = useState<string>(NO_CLASSIFIER_VALUE);
-  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
-  const [advanced, setAdvanced] = useState<AdvancedSettings>(DEFAULT_ADVANCED);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+type Stage = "form" | "preparing" | "error" | "running" | "done";
+
+function TimelapseFormPage() {
+  const queryClient = useQueryClient();
+  const [stage, setStage] = useState<Stage>("form");
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [showClsInfo, setShowClsInfo] = useState(false);
+  const [showDetInfo, setShowDetInfo] = useState(false);
+
+  // Model preparation state (mirrors CreateProjectDialog).
+  const [preparingModelId, setPreparingModelId] = useState<string | null>(null);
+  const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
+  const [preparationError, setPreparationError] = useState<string | null>(null);
+
+  // Run state.
   const [jobId, setJobId] = useState<string | null>(null);
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
 
-  const detectionModels = useQuery<ModelInfo[]>({
+  const form = useForm<TimelapseFormData>({
+    resolver: zodResolver(timelapseSchema),
+    defaultValues: {
+      folder_path: readQueryFolder(),
+      detection_model_id: "MD5A-0-0",
+      classification_model_id: NO_CLASSIFIER,
+      excluded_classes: [],
+      country_code: null,
+      state_code: null,
+      detection_threshold: 0.5,
+      detection_batch_size: 1,
+      classification_batch_size: 16,
+      video_fps: 1.0,
+      independence_interval: 1800,
+      event_smoothing: true,
+      smoothing_strength: "normal",
+      taxonomic_rollup: true,
+    },
+  });
+
+  const folderPath = form.watch("folder_path");
+  const detectionModelId = form.watch("detection_model_id");
+  const classificationModelId = form.watch("classification_model_id");
+  const hasClassifier =
+    !!classificationModelId && classificationModelId !== NO_CLASSIFIER;
+  const excludedClasses = form.watch("excluded_classes") ?? [];
+
+  const { data: detectionModels = [] } = useQuery({
     queryKey: ["models", "detection"],
     queryFn: modelsApi.listDetectionModels,
   });
 
-  const classificationModels = useQuery<ModelInfo[]>({
+  const { data: classificationModels = [] } = useQuery({
     queryKey: ["models", "classification"],
     queryFn: modelsApi.listClassificationModels,
   });
 
-  const taxonomyQuery = useQuery<TaxonomyResponse>({
-    queryKey: ["models", "taxonomy", classifierId],
-    queryFn: () => modelsApi.getTaxonomy(classifierId),
-    enabled: classifierId !== NO_CLASSIFIER_VALUE,
+  const detectionModel = detectionModels.find(
+    (m) => m.model_id === detectionModelId,
+  );
+  const classificationModel = classificationModels.find(
+    (m) => m.model_id === classificationModelId,
+  );
+
+  const { data: detectionStatus } = useQuery({
+    queryKey: ["model-status", detectionModelId],
+    queryFn: () => modelsApi.getModelStatus(detectionModelId),
+    enabled: !!detectionModelId,
   });
 
-  // When the classifier or its taxonomy changes, default to "all included"
-  // (no exclusions). The user opts species OUT to mark them absent.
-  useEffect(() => {
-    if (taxonomyQuery.data) {
-      setExcludedIds(new Set());
-    }
-  }, [taxonomyQuery.data]);
+  const { data: classificationStatus } = useQuery({
+    queryKey: ["model-status", classificationModelId],
+    queryFn: () => modelsApi.getModelStatus(classificationModelId!),
+    enabled: hasClassifier,
+  });
 
-  const allTaxonomyLeafIds = useMemo(() => {
-    if (!taxonomyQuery.data) return new Set<string>();
-    return collectLeafIds(taxonomyQuery.data.tree);
-  }, [taxonomyQuery.data]);
+  const { data: taxonomy } = useQuery({
+    queryKey: ["taxonomy", classificationModelId],
+    queryFn: () => modelsApi.getTaxonomy(classificationModelId!),
+    enabled: hasClassifier,
+  });
 
-  // TreeSelector emits "selected = NOT excluded" in inclusion mode. We
-  // store excluded IDs so the request mirrors the project setting shape.
-  const includedIds = useMemo(() => {
-    const result = new Set(allTaxonomyLeafIds);
-    for (const id of excludedIds) result.delete(id);
-    return result;
-  }, [allTaxonomyLeafIds, excludedIds]);
+  // WebSocket progress hook for model preparation. Same hook the main
+  // app uses; the only difference is which job_id we pass it.
+  const prepProgress = useTaskProgress({
+    taskId: preparingTaskId,
+    onComplete: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["model-status", preparingModelId],
+      });
+      setPreparingTaskId(null);
+      setPreparingModelId(null);
+      setStage("form");
+    },
+    onError: (msg) => {
+      setPreparationError(msg);
+      setStage("error");
+      setPreparingTaskId(null);
+    },
+  });
 
-  const handleSelectionChange = (newSelection: Set<string>) => {
-    const newExcluded = new Set<string>();
-    for (const id of allTaxonomyLeafIds) {
-      if (!newSelection.has(id)) newExcluded.add(id);
-    }
-    setExcludedIds(newExcluded);
-  };
-
-  const progress = useTaskProgress({
+  // WebSocket progress hook for the actual Timelapse run.
+  const runProgress = useTaskProgress({
     taskId: jobId,
     onComplete: (data) => {
       const path =
@@ -167,61 +259,690 @@ function TimelapseForm() {
           ? String((data as { output_path: unknown }).output_path)
           : null;
       setOutputPath(path);
+      setStage("done");
     },
-    onError: (msg) => setErrorMessage(msg),
+    onError: (msg) => {
+      setErrorMessage(msg);
+      setStage("form");
+    },
   });
 
-  const reset = () => {
-    setJobId(null);
-    setOutputPath(null);
-    setErrorMessage(null);
-  };
-
-  const handleRun = async () => {
-    if (!folderPath) return;
-    setErrorMessage(null);
-    setOutputPath(null);
-    setIsStarting(true);
+  const startPrepare = async (modelId: string) => {
     try {
-      const excludedNames = Array.from(excludedIds);
-      const response = await timelapseApi.run({
-        folder_path: folderPath,
-        classification_model_id:
-          classifierId === NO_CLASSIFIER_VALUE ? null : classifierId,
-        detection_model_id: advanced.detectionModelId,
-        excluded_classes: excludedNames,
-        detection_confidence_threshold: advanced.detectionConfidence,
-        detection_batch_size: advanced.detectionBatchSize,
-        classification_batch_size: advanced.classificationBatchSize,
-        video_fps: advanced.videoFps,
-        independence_interval_minutes: advanced.independenceIntervalMinutes,
-        smoothing_strength: advanced.smoothing,
-        taxonomic_rollup: advanced.taxonomicRollup,
-      });
-      setJobId(response.job_id);
+      setPreparingModelId(modelId);
+      setStage("preparing");
+      const response = (await modelsApi.prepareModel(modelId)) as {
+        task_id: string;
+      };
+      setPreparingTaskId(response.task_id);
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsStarting(false);
+      setPreparationError(
+        err instanceof Error ? err.message : String(err),
+      );
+      setStage("error");
     }
   };
 
-  const reveal = async () => {
-    if (!outputPath) return;
-    if (window.electronAPI) {
-      await window.electronAPI.showItemInFolder(outputPath);
+  const cancelPrepare = () => {
+    setPreparingTaskId(null);
+    setPreparingModelId(null);
+    setStage("form");
+  };
+
+  const retryPrepare = () => {
+    if (preparingModelId) {
+      setPreparationError(null);
+      startPrepare(preparingModelId);
     }
   };
 
-  const isRunning = jobId !== null && outputPath === null && !errorMessage;
-  const showSuccess = outputPath !== null;
+  const startRun = useMutation({
+    mutationFn: (data: TimelapseFormData) =>
+      timelapseApi.run({
+        folder_path: data.folder_path,
+        classification_model_id:
+          data.classification_model_id === NO_CLASSIFIER
+            ? null
+            : data.classification_model_id,
+        detection_model_id: data.detection_model_id,
+        excluded_classes: data.excluded_classes,
+        detection_threshold: data.detection_threshold,
+        detection_batch_size: data.detection_batch_size,
+        classification_batch_size: data.classification_batch_size,
+        video_fps: data.video_fps,
+        independence_interval: data.independence_interval,
+        smoothing_strength: data.event_smoothing
+          ? (data.smoothing_strength as SmoothingStrength)
+          : "off",
+        taxonomic_rollup: data.taxonomic_rollup,
+      }),
+    onMutate: () => {
+      setErrorMessage(null);
+      setOutputPath(null);
+      setStage("running");
+    },
+    onSuccess: (response) => setJobId(response.job_id),
+    onError: (err: Error) => {
+      setErrorMessage(err.message);
+      setStage("form");
+    },
+  });
 
+  const onSubmit = (data: TimelapseFormData) => startRun.mutate(data);
+
+  // Setup is required before submit when either selected model is not
+  // ready. The Run button is disabled in that state and the per-model
+  // ModelStatusBadge takes the user through preparation.
+  const detReady = detectionStatus?.status === "ready";
+  const clsReady = !hasClassifier || classificationStatus?.status === "ready";
+  const canRun = !!folderPath && detReady && clsReady;
+
+  // Stages other than "form" replace the form area entirely.
+  if (stage === "preparing" && preparingModelId) {
+    const model =
+      preparingModelId === detectionModelId
+        ? detectionModel
+        : classificationModel;
+    return (
+      <PageShell>
+        <Card>
+          <CardContent className="py-6">
+            <ModelPreparationView
+              modelName={model?.friendly_name ?? preparingModelId}
+              modelEmoji={model?.emoji ?? "📦"}
+              progress={prepProgress.progress}
+              message={prepProgress.message}
+              onCancel={cancelPrepare}
+            />
+          </CardContent>
+        </Card>
+      </PageShell>
+    );
+  }
+
+  if (stage === "error") {
+    return (
+      <PageShell>
+        <Card>
+          <CardContent className="py-6">
+            <ModelPreparationErrorView
+              errorMessage={preparationError ?? "Unknown error"}
+              onRetry={retryPrepare}
+              onCancel={() => {
+                setPreparationError(null);
+                setStage("form");
+              }}
+            />
+          </CardContent>
+        </Card>
+      </PageShell>
+    );
+  }
+
+  if (stage === "running") {
+    return (
+      <PageShell>
+        <RunningCard
+          phase={runProgress.phase}
+          phaseProgress={runProgress.phaseProgress}
+          message={runProgress.message}
+          metricsLine={runProgress.metrics?.raw_line ?? ""}
+        />
+      </PageShell>
+    );
+  }
+
+  if (stage === "done" && outputPath) {
+    return (
+      <PageShell>
+        <SuccessCard
+          outputPath={outputPath}
+          onRunAnother={() => {
+            setJobId(null);
+            setOutputPath(null);
+            setErrorMessage(null);
+            setStage("form");
+          }}
+        />
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <TooltipProvider>
+            {/* Card 1: source data + models. */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Analysis input</CardTitle>
+                <CardDescription>
+                  Pick a folder and the models to run on it.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-0 divide-y border-t">
+                {/* Folder */}
+                <FormField
+                  control={form.control}
+                  name="folder_path"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Folder</FormLabel>
+                        <FormDescription className="text-sm">
+                          Analyses all images and videos found recursively in
+                          this folder. Camera-trap timestamps are read from
+                          EXIF; files without a capture date will block the
+                          run.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <FormControl>
+                          <FolderSelector
+                            value={field.value || null}
+                            onChange={field.onChange}
+                            hideLabel
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Detection model */}
+                <FormField
+                  control={form.control}
+                  name="detection_model_id"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Detection model</FormLabel>
+                        <FormDescription className="text-sm">
+                          The model that finds animals, people, and vehicles.
+                          MegaDetector 5a is the default and works well in
+                          most regions.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-stretch">
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {detectionModels.map((m) => (
+                                <SelectItem
+                                  key={m.model_id}
+                                  value={m.model_id}
+                                >
+                                  {m.emoji} {m.friendly_name}
+                                  {m.description_short && (
+                                    <>
+                                      <br />
+                                      <span className="text-xs text-muted-foreground">
+                                        {m.description_short}
+                                      </span>
+                                    </>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="self-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="px-3"
+                                  onClick={() => setShowDetInfo(true)}
+                                  disabled={!field.value}
+                                >
+                                  <InfoIcon className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>View model information</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        {detectionStatus &&
+                          detectionStatus.status !== "ready" && (
+                            <ModelStatusBadge
+                              status={detectionStatus}
+                              onPrepare={() => startPrepare(detectionModelId)}
+                              isPreparing={false}
+                            />
+                          )}
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Classification model */}
+                <FormField
+                  control={form.control}
+                  name="classification_model_id"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Classification model</FormLabel>
+                        <FormDescription className="text-sm">
+                          Identifies the species behind each animal detection.
+                          Choose a model trained on species from your
+                          geographic region, or skip to keep raw detections.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-stretch">
+                          <Select
+                            onValueChange={(val) =>
+                              field.onChange(val === NO_CLASSIFIER ? NO_CLASSIFIER : val)
+                            }
+                            value={field.value ?? NO_CLASSIFIER}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value={NO_CLASSIFIER}>
+                                ∅ No classification model
+                                <br />
+                                <span className="text-xs text-muted-foreground">
+                                  Run detector only, identify species manually
+                                </span>
+                              </SelectItem>
+                              <ClassificationModelGroupedItems
+                                models={classificationModels.filter(
+                                  (m) => m.model_id !== "none",
+                                )}
+                              />
+                            </SelectContent>
+                          </Select>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="self-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="px-3"
+                                  onClick={() =>
+                                    hasClassifier && setShowClsInfo(true)
+                                  }
+                                  disabled={!hasClassifier}
+                                >
+                                  <InfoIcon className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {hasClassifier
+                                  ? "View model information"
+                                  : "Select a classification model to view details"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        {hasClassifier &&
+                          classificationStatus &&
+                          classificationStatus.status !== "ready" && (
+                            <ModelStatusBadge
+                              status={classificationStatus}
+                              onPrepare={() =>
+                                startPrepare(classificationModelId!)
+                              }
+                              isPreparing={false}
+                            />
+                          )}
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Label selection */}
+                {hasClassifier && taxonomy && (
+                  <div className="grid grid-cols-2 items-center gap-8 py-6">
+                    <div className="space-y-1">
+                      <FormLabel>Label selection</FormLabel>
+                      <FormDescription className="text-sm">
+                        Limit predictions to labels expected in your project
+                        area to reduce false positives.
+                      </FormDescription>
+                    </div>
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setLabelModalOpen(true)}
+                        className="w-full min-h-14 flex flex-col items-start justify-center gap-1 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ListTodo className="h-4 w-4" />
+                          <span>Select labels</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Currently included{" "}
+                          {(taxonomy.all_classes?.length || 0) -
+                            excludedClasses.length}{" "}
+                          of {taxonomy.all_classes?.length || 0}
+                        </span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card 2: Performance (batch sizes). */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance</CardTitle>
+                <CardDescription>
+                  How many crops each model processes in parallel. Higher
+                  values are faster but use more memory.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-0 divide-y border-t">
+                <FormField
+                  control={form.control}
+                  name="detection_batch_size"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Detection batch size"
+                      description="Crops processed per batch by the detection model."
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={256}
+                        value={field.value}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value, 10) || 1)
+                        }
+                      />
+                      <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="classification_batch_size"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Classification batch size"
+                      description="Crops processed per batch by the classification model."
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={256}
+                        value={field.value}
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value, 10) || 1)
+                        }
+                      />
+                      <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Card 3: Analysis and counting. */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Analysis and counting</CardTitle>
+                <CardDescription>
+                  Detection threshold, video frame rate, event grouping, and
+                  classification cleanup.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-0 divide-y border-t">
+                <FormField
+                  control={form.control}
+                  name="video_fps"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Video frame rate"
+                      description="How many frames per second to extract from videos for detection. Higher values find more but take longer."
+                    >
+                      <Select
+                        key={String(field.value)}
+                        value={String(field.value)}
+                        onValueChange={(v) => field.onChange(parseFloat(v))}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {VIDEO_FPS_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="detection_threshold"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Detection confidence threshold"
+                      description="Hide detections below this confidence score."
+                    >
+                      <div className="flex items-center justify-between">
+                        <Slider
+                          min={0.1}
+                          max={1.0}
+                          step={0.01}
+                          value={[field.value]}
+                          onValueChange={(vals) => field.onChange(vals[0])}
+                          className="flex-1 mr-4"
+                        />
+                        <span className="text-sm font-medium min-w-[3rem] text-right">
+                          {field.value.toFixed(2)}
+                        </span>
+                      </div>
+                      <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="independence_interval"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Independence interval"
+                      description="Consecutive detections within this window are merged into one independent event. The count for each event uses MaxN."
+                    >
+                      <Select
+                        key={String(field.value)}
+                        value={String(field.value)}
+                        onValueChange={(v) => field.onChange(parseInt(v, 10))}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {INDEPENDENCE_INTERVAL_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+
+                {hasClassifier && (
+                  <SettingRow
+                    label="Smoothing"
+                    description="Cleans up classification labels at the image and event level. Off / mild / normal / aggressive controls how much weight outliers get."
+                  >
+                    <Select
+                      value={
+                        form.watch("event_smoothing")
+                          ? form.watch("smoothing_strength")
+                          : "off"
+                      }
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        if (value === "off") {
+                          form.setValue("event_smoothing", false, {
+                            shouldDirty: true,
+                          });
+                        } else {
+                          form.setValue("event_smoothing", true, {
+                            shouldDirty: true,
+                          });
+                          form.setValue(
+                            "smoothing_strength",
+                            value as "mild" | "normal" | "aggressive",
+                            { shouldDirty: true },
+                          );
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="off">Off</SelectItem>
+                        <SelectItem value="mild">Mild</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="aggressive">Aggressive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </SettingRow>
+                )}
+
+                {hasClassifier && (
+                  <FormField
+                    control={form.control}
+                    name="taxonomic_rollup"
+                    render={({ field }) => (
+                      <SettingRow
+                        label="Taxonomic rollup"
+                        description="When the model is unsure at species level, sums probabilities up the taxonomy tree and picks the most specific level above the confidence threshold."
+                      >
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </SettingRow>
+                    )}
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            {errorMessage && (
+              <p className="text-sm font-medium text-destructive">
+                {errorMessage}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      type="submit"
+                      disabled={!canRun || startRun.isPending}
+                      className="gap-2"
+                    >
+                      {startRun.isPending && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      )}
+                      Run analysis
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!canRun && (
+                  <TooltipContent>
+                    <p>
+                      {!folderPath
+                        ? "Pick a folder first"
+                        : "Models need preparing first"}
+                    </p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        </form>
+      </Form>
+
+      {/* Slide-out info drawers (same component the main app uses). */}
+      <ModelInfoSheet
+        modelId={detectionModelId}
+        open={showDetInfo}
+        onOpenChange={setShowDetInfo}
+      />
+      <ModelInfoSheet
+        modelId={hasClassifier ? classificationModelId : null}
+        open={showClsInfo}
+        onOpenChange={setShowClsInfo}
+      />
+
+      {/* Label selection modal — same one used in CreateProjectDialog
+          and SettingsPage. Includes the country/state geofilter. */}
+      {hasClassifier && taxonomy && (
+        <SpeciesSelectionModal
+          modelId={classificationModelId!}
+          excludedClasses={excludedClasses}
+          onExclusionChange={(classes) =>
+            form.setValue("excluded_classes", classes, { shouldDirty: true })
+          }
+          open={labelModalOpen}
+          onOpenChange={setLabelModalOpen}
+          totalSpeciesCount={taxonomy.all_classes?.length || 0}
+          countryCode={form.watch("country_code")}
+          stateCode={form.watch("state_code")}
+          onLocationChange={(country, state) => {
+            form.setValue("country_code", country, { shouldDirty: true });
+            form.setValue("state_code", state, { shouldDirty: true });
+          }}
+        />
+      )}
+    </PageShell>
+  );
+}
+
+function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-3xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Timelapse mode</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Timelapse mode
+            </h1>
             <p className="text-sm text-muted-foreground">
               Run AddaxAI on a folder and write a results.json that Timelapse
               can import.
@@ -229,267 +950,29 @@ function TimelapseForm() {
           </div>
         </div>
       </header>
-
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        {showSuccess ? (
-          <SuccessCard
-            outputPath={outputPath!}
-            onReveal={reveal}
-            onRunAnother={reset}
-          />
-        ) : isRunning ? (
-          <RunningCard
-            phase={progress.phase}
-            phaseProgress={progress.phaseProgress}
-            message={progress.message}
-            metricsLine={progress.metrics?.raw_line ?? ""}
-          />
-        ) : (
-          <>
-            <section className="space-y-2">
-              <Label>Folder</Label>
-              <FolderSelector
-                value={folderPath}
-                onChange={setFolderPath}
-                hideLabel
-              />
-            </section>
-
-            <section className="space-y-2">
-              <Label>Classification model</Label>
-              <Select value={classifierId} onValueChange={setClassifierId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a classifier" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_CLASSIFIER_VALUE}>
-                    No classifier (detection only)
-                  </SelectItem>
-                  {(classificationModels.data ?? []).map((m) => (
-                    <SelectItem key={m.model_id} value={m.model_id}>
-                      {m.emoji} {m.friendly_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </section>
-
-            {classifierId !== NO_CLASSIFIER_VALUE && (
-              <section className="space-y-2">
-                <Label>Label selection</Label>
-                <p className="text-xs text-muted-foreground">
-                  Uncheck species that do not occur in your project area. Those
-                  predictions will be redirected up the taxonomy tree to the
-                  closest allowed ancestor.
-                </p>
-                {taxonomyQuery.isLoading ? (
-                  <div className="text-sm text-muted-foreground">
-                    Loading taxonomy...
-                  </div>
-                ) : taxonomyQuery.data ? (
-                  <TreeSelector
-                    tree={taxonomyQuery.data.tree}
-                    selectedIds={includedIds}
-                    mode="inclusion"
-                    onSelectionChange={handleSelectionChange}
-                    height="320px"
-                    emptyMessage="No taxonomy available for this classifier."
-                  />
-                ) : (
-                  <div className="text-sm text-muted-foreground">
-                    No taxonomy available.
-                  </div>
-                )}
-              </section>
-            )}
-
-            <section className="rounded-md border bg-card-background">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                <span className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4" />
-                  Advanced settings
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {showAdvanced ? "Hide" : "Show"}
-                </span>
-              </button>
-              {showAdvanced && (
-                <AdvancedFields
-                  value={advanced}
-                  onChange={setAdvanced}
-                  detectionModels={detectionModels.data ?? []}
-                />
-              )}
-            </section>
-
-            {errorMessage && (
-              <Alert className="border-destructive text-destructive">
-                <AlertDescription>{errorMessage}</AlertDescription>
-              </Alert>
-            )}
-
-            <div className="flex justify-end">
-              <Button
-                onClick={handleRun}
-                disabled={!folderPath || isStarting}
-              >
-                {isStarting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Starting...
-                  </>
-                ) : (
-                  "Run analysis"
-                )}
-              </Button>
-            </div>
-
-            {!isElectron() && (
-              <p className="text-xs text-muted-foreground">
-                Tip: this window is intended to run inside the AddaxAI desktop
-                app. The dev browser variant works for testing the form, but
-                folder pickers and reveal-in-explorer require Electron.
-              </p>
-            )}
-          </>
-        )}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {children}
       </main>
     </div>
   );
 }
 
-function AdvancedFields({
-  value,
-  onChange,
-  detectionModels,
+function SettingRow({
+  label,
+  description,
+  children,
 }: {
-  value: AdvancedSettings;
-  onChange: (v: AdvancedSettings) => void;
-  detectionModels: ModelInfo[];
+  label: string;
+  description: string;
+  children: React.ReactNode;
 }) {
-  const set = <K extends keyof AdvancedSettings>(
-    key: K,
-    val: AdvancedSettings[K],
-  ) => onChange({ ...value, [key]: val });
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-4 pb-4">
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label>Detection model</Label>
-        <Select
-          value={value.detectionModelId}
-          onValueChange={(v) => set("detectionModelId", v)}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {detectionModels.map((m) => (
-              <SelectItem key={m.model_id} value={m.model_id}>
-                {m.emoji} {m.friendly_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="grid grid-cols-2 items-center gap-8 py-6">
+      <div className="space-y-1">
+        <FormLabel>{label}</FormLabel>
+        <FormDescription className="text-sm">{description}</FormDescription>
       </div>
-
-      <div className="space-y-1.5">
-        <Label>Detection confidence threshold</Label>
-        <Input
-          type="number"
-          min={0}
-          max={1}
-          step={0.05}
-          value={value.detectionConfidence}
-          onChange={(e) =>
-            set("detectionConfidence", parseFloat(e.target.value))
-          }
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Detection batch size</Label>
-        <Input
-          type="number"
-          min={1}
-          step={1}
-          value={value.detectionBatchSize}
-          onChange={(e) =>
-            set("detectionBatchSize", parseInt(e.target.value, 10) || 1)
-          }
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Classification batch size</Label>
-        <Input
-          type="number"
-          min={1}
-          step={1}
-          value={value.classificationBatchSize}
-          onChange={(e) =>
-            set("classificationBatchSize", parseInt(e.target.value, 10) || 1)
-          }
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Video frame rate (fps)</Label>
-        <Input
-          type="number"
-          min={0.1}
-          max={30}
-          step={0.1}
-          value={value.videoFps}
-          onChange={(e) => set("videoFps", parseFloat(e.target.value))}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Independence interval (minutes)</Label>
-        <Input
-          type="number"
-          min={1}
-          step={1}
-          value={value.independenceIntervalMinutes}
-          onChange={(e) =>
-            set(
-              "independenceIntervalMinutes",
-              parseInt(e.target.value, 10) || 1,
-            )
-          }
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Smoothing</Label>
-        <Select
-          value={value.smoothing}
-          onValueChange={(v) => set("smoothing", v as SmoothingStrength)}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="off">Off</SelectItem>
-            <SelectItem value="mild">Mild</SelectItem>
-            <SelectItem value="normal">Normal</SelectItem>
-            <SelectItem value="aggressive">Aggressive</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <Label>Taxonomic rollup</Label>
-        <Switch
-          checked={value.taxonomicRollup}
-          onCheckedChange={(v) => set("taxonomicRollup", v)}
-        />
-      </div>
+      <div className="space-y-2">{children}</div>
     </div>
   );
 }
@@ -505,68 +988,71 @@ function RunningCard({
   message: string;
   metricsLine: string;
 }) {
+  const pct = Math.round((phaseProgress || 0) * 100);
   return (
-    <div className="rounded-md border bg-card-background p-6 space-y-3">
-      <div className="flex items-center gap-2">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="font-medium">Running analysis</span>
-      </div>
-      <div className="text-sm text-muted-foreground">
-        {phase ? phase.replace(/_/g, " ") : "Starting"}
-      </div>
-      <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
-        <div
-          className="h-full bg-primary transition-all"
-          style={{ width: `${Math.round((phaseProgress || 0) * 100)}%` }}
-        />
-      </div>
-      {(metricsLine || message) && (
-        <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
-          {metricsLine || message}
-        </pre>
-      )}
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Loader2 className="h-5 w-5 animate-spin" /> Running analysis
+        </CardTitle>
+        <CardDescription>
+          {phase
+            ? phase.replace(/_/g, " ")
+            : "Starting"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 pb-6">
+        <Progress value={pct} className="h-2" />
+        <div className="text-xs text-right text-muted-foreground">{pct}%</div>
+        {(metricsLine || message) && (
+          <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+            {metricsLine || message}
+          </pre>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function SuccessCard({
   outputPath,
-  onReveal,
   onRunAnother,
 }: {
   outputPath: string;
-  onReveal: () => void;
   onRunAnother: () => void;
 }) {
+  const reveal = async () => {
+    if (window.electronAPI?.showItemInFolder) {
+      await window.electronAPI.showItemInFolder(outputPath);
+    }
+  };
   return (
-    <div className="rounded-md border bg-card-background p-6 space-y-4">
-      <div className="flex items-center gap-2 text-primary">
-        <CheckCircle2 className="h-5 w-5" />
-        <span className="font-medium">Analysis complete</span>
-      </div>
-
-      <div className="text-sm">
-        Wrote results to:
-        <div className="mt-1 font-mono text-xs break-all rounded border bg-white px-2 py-1">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-primary">
+          <CheckCircle2 className="h-5 w-5" /> Analysis complete
+        </CardTitle>
+        <CardDescription>
+          In Timelapse, open <strong>Recognition</strong> &gt;{" "}
+          <strong>Import recognition data for this image set</strong> and pick
+          this file.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 pb-6">
+        <div className="font-mono text-xs break-all rounded border bg-card-background px-3 py-2">
           {outputPath}
         </div>
-      </div>
-
-      <div className="text-sm text-muted-foreground">
-        In Timelapse, open <strong>Recognition</strong> &gt;{" "}
-        <strong>Import recognition data for this image set</strong> and pick
-        this file.
-      </div>
-
-      <div className="flex gap-2">
-        {isElectron() && (
-          <Button variant="outline" onClick={onReveal}>
-            <FolderOpen className="h-4 w-4 mr-2" />
-            Reveal in Explorer
-          </Button>
-        )}
-        <Button onClick={onRunAnother}>Run another folder</Button>
-      </div>
-    </div>
+        <div className="flex gap-2">
+          {window.electronAPI && (
+            <Button variant="outline" onClick={reveal}>
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Reveal in Explorer
+            </Button>
+          )}
+          <Button onClick={onRunAnother}>Run another folder</Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
+

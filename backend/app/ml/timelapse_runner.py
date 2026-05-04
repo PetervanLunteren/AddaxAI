@@ -51,13 +51,13 @@ class TimelapseRunRequest:
 
     folder_path: Path
     classification_model_id: str | None
-    detection_model_id: str = "MegaDetector-5a"
+    detection_model_id: str = "MD5A-0-0"
     excluded_classes: list[str] | None = None
-    detection_confidence_threshold: float = 0.2
+    detection_threshold: float = 0.5
     detection_batch_size: int = 1
     classification_batch_size: int = 16
     video_fps: float = 1.0
-    independence_interval_minutes: int = 120
+    independence_interval: int = 1800  # seconds, matches main app
     smoothing_strength: str = "normal"  # off | mild | normal | aggressive
     taxonomic_rollup: bool = True
 
@@ -189,7 +189,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
                 video_folder=folder_path,
                 output_json=video_json_path,
                 fps=request.video_fps,
-                confidence_threshold=request.detection_confidence_threshold,
+                confidence_threshold=request.detection_threshold,
                 progress_callback=video_detection_progress,
                 job_id=job_id,
             ),
@@ -249,7 +249,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
             lambda: detection_model.detect_to_json(
                 image_paths=image_files,
                 deployment_folder=folder_path,
-                confidence_threshold=request.detection_confidence_threshold,
+                confidence_threshold=request.detection_threshold,
                 batch_size=request.detection_batch_size,
                 progress_callback=image_detection_progress,
                 output_path=image_json_path,
@@ -293,8 +293,6 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
     smoothing_strength = (
         request.smoothing_strength if event_smoothing else "normal"
     )
-    independence_seconds = request.independence_interval_minutes * 60
-
     await loop.run_in_executor(
         None,
         lambda: run_postprocessing_on_json(
@@ -304,8 +302,8 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
             taxonomic_rollup=request.taxonomic_rollup,
             event_smoothing=event_smoothing,
             smoothing_strength=smoothing_strength,
-            independence_interval=independence_seconds,
-            detection_threshold=request.detection_confidence_threshold,
+            independence_interval=request.independence_interval,
+            detection_threshold=request.detection_threshold,
             classification_model_dir=paths["cls_model_dir"],
             job_id=job_id,
         ),
