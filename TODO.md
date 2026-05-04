@@ -28,11 +28,15 @@
 - [ ]  
 
 ## Priority 3 
-- [ ] Add a readme file with instructions for Meta Testers. How to download, how to install, what to do with a bug, what to report back to me, etc. 
+- [ ] Add a readme file with instructions for Meta Testers. How to download, how to install, what to do with a bug, what to report back to me, whats still todo, how to reset, etc. etc. 
+- [ ] Add drift detection. When you're ready to pick it up, the existing ModelCatalogUpdater.sync() in backend/app/ml/catalog_updater.py and ModelUpdateToast in frontend/src/App.tsx already do most of the plumbing for the model-revision flow, so the drift check can hang off the same machinery. 
+>  - For models: store the HF revision SHA in manifest.json at download time, compare against HfApi().model_info(repo_id).sha on app startup, surface a "Update available" toast (the same path ModelUpdateToast already uses for new models).                                                                                                                                                                                                   
+>  - For envs: hash the bundled YAML at install time, store next to the env directory, rebuild on mismatch.
 
 ## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
 - [ ] Any other non used imports or requirements in the environments YMLS? 
+- [ ] The NSIS installer on windows shows a pbar, but it goes up and down a few times... 
 
 ## Future stuff
 - [ ] TIMELAPSE STANDALONE APP

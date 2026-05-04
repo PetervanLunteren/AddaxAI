@@ -91,9 +91,11 @@ jobs:
 
       # Same idea on Windows: don't burn a 30-minute build to discover
       # the signing secrets aren't there. Secret names match the
-      # AddaxAI repo's build-windows-release.yml exactly.
+      # AddaxAI repo's build-windows-release.yml exactly. Runs on every
+      # Windows build (including workflow_dispatch) so debug installers
+      # are signed too — Authenticode has no per-signature quota.
       - name: Verify Windows code-signing credentials
-        if: matrix.os == 'windows' && github.event_name == 'release'
+        if: matrix.os == 'windows'
         env:
           ADDAX_3YEAR_2025_BASE64: ${{ secrets.ADDAX_3YEAR_2025_BASE64 }}
           ADDAX_3YEAR_2025_PFX_PASSWORD: ${{ secrets.ADDAX_3YEAR_2025_PFX_PASSWORD }}
@@ -209,10 +211,10 @@ jobs:
       # CSC_KEY_PASSWORD during the Package step and signs both the
       # inner AddaxAI.exe and the outer NSIS installer with SHA-256 +
       # RFC 3161 timestamping (configured in electron/package.json
-      # under win.signtoolOptions). Workflow_dispatch runs stay
-      # unsigned so debug builds don't depend on the secret being set.
+      # under win.signtoolOptions). Runs on every Windows build so
+      # workflow_dispatch installers are signed too.
       - name: Import Windows signing certificate
-        if: matrix.os == 'windows' && github.event_name == 'release'
+        if: matrix.os == 'windows'
         env:
           CERT_BASE64: ${{ secrets.ADDAX_3YEAR_2025_BASE64 }}
         run: |
@@ -244,9 +246,9 @@ jobs:
           # Windows Authenticode signing. CSC_LINK is set by the
           # "Import Windows signing certificate" step above; the
           # password comes straight from the secret here. Empty string
-          # on every other matrix cell so electron-builder skips
+          # on non-Windows matrix cells so electron-builder skips
           # signing cleanly.
-          CSC_KEY_PASSWORD: ${{ matrix.os == 'windows' && github.event_name == 'release' && secrets.ADDAX_3YEAR_2025_PFX_PASSWORD || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.os == 'windows' && secrets.ADDAX_3YEAR_2025_PFX_PASSWORD || '' }}
         run: |
           npm run build
           npx electron-builder ${{ matrix.electron-builder-args }}
@@ -295,7 +297,7 @@ jobs:
       # silently produced an unsigned installer (e.g. credentials
       # mishandled, signtool missing), fail loudly here.
       - name: Verify Windows installer signature
-        if: matrix.os == 'windows' && github.event_name == 'release'
+        if: matrix.os == 'windows'
         shell: pwsh
         run: |
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" `

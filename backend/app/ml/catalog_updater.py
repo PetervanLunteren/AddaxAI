@@ -116,41 +116,6 @@ class ModelCatalogUpdater:
         )
         return local_models
 
-    def compare_models(
-        self, remote_catalog: dict[str, Any], local_models: dict[str, set[str]]
-    ) -> list[dict[str, Any]]:
-        """
-        Compare remote catalog with local models and return new models.
-
-        Args:
-            remote_catalog: Catalog fetched from remote URL
-            local_models: Local model IDs from get_local_models()
-
-        Returns:
-            List of new model info (dicts with model_id, friendly_name, model_type)
-        """
-        new_models: list[dict[str, Any]] = []
-
-        for model_type in ["det", "cls", "emb"]:
-            remote_model_list = remote_catalog["models"].get(model_type, [])
-
-            for manifest_data in remote_model_list:
-                model_id = manifest_data["model_id"]
-
-                if model_id not in local_models[model_type]:
-                    new_models.append(
-                        {
-                            "model_id": model_id,
-                            "friendly_name": manifest_data.get("friendly_name", model_id),
-                            "emoji": manifest_data.get("emoji", "🤖"),
-                            "model_type": model_type,
-                            "manifest": manifest_data,
-                        }
-                    )
-                    logger.info(f"New model found: {model_type}/{model_id}")
-
-        return new_models
-
     def download_taxonomy(self, model_id: str, model_dir: Path) -> None:
         """
         Download taxonomy.csv from HuggingFace repo.
@@ -186,114 +151,143 @@ class ModelCatalogUpdater:
         except Exception as e:
             logger.warning(f"Failed to download taxonomy.csv for {model_id}: {e}")
 
-    def create_model_stub(self, model_type: str, manifest_data: dict[str, Any]) -> None:
+    def write_manifest(
+        self, model_type: str, manifest_data: dict[str, Any]
+    ) -> str:
         """
-        Create model directory with manifest.json and taxonomy.csv.
+        Idempotently sync the local manifest.json for a model with the
+        central catalog. Creates the model directory and downloads
+        taxonomy.csv on first appearance, refreshes the manifest in place
+        when the catalog has newer content (citation, URL, license,
+        friendly_name etc.), no-ops when content is identical.
 
-        Args:
-            model_type: 'det' or 'cls'
-            manifest_data: Model manifest dict
-
-        Raises:
-            Never raises - logs errors
+        Returns one of "created" / "updated" / "unchanged" so the caller
+        can decide what to surface in the UI. Never raises; logs and
+        returns "unchanged" on unexpected I/O errors so a single bad
+        entry can't take the whole sync down.
         """
         model_id = manifest_data["model_id"]
         model_dir = self.models_dir / model_type / model_id
+        manifest_path = model_dir / "manifest.json"
+        is_new_dir = not model_dir.exists()
 
         try:
-            # Check if directory already exists (safety check)
-            if model_dir.exists():
-                logger.warning(f"Model directory already exists, skipping: {model_dir}")
-                return
+            # Compare existing content. Identical bytes-or-equivalent
+            # JSON means nothing to do; the catalog hasn't moved.
+            if manifest_path.exists():
+                try:
+                    with open(manifest_path) as f:
+                        existing = json.load(f)
+                    if existing == manifest_data:
+                        return "unchanged"
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.warning(
+                        f"Existing manifest at {manifest_path} unreadable, "
+                        f"will overwrite: {e}"
+                    )
 
-            # Create directory
             model_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created model directory: {model_dir}")
-
-            # Write manifest.json
-            manifest_path = model_dir / "manifest.json"
             with open(manifest_path, "w") as f:
                 json.dump(manifest_data, f, indent=2)
 
-            logger.info(f"Created manifest for {model_type}/{model_id}")
+            if is_new_dir:
+                logger.info(f"Created manifest stub for {model_type}/{model_id}")
+                # Taxonomy ships alongside the model on first appearance.
+                # No re-download on refresh: taxonomy lives in the HF
+                # repo, not the catalog, and catalog refresh shouldn't
+                # imply HF revision drift (that's the model-revision
+                # drift TODO).
+                if model_type == "cls":
+                    self.download_taxonomy(model_id, model_dir)
+                return "created"
 
-            # Download taxonomy.csv (only for classification models)
-            if model_type == "cls":
-                self.download_taxonomy(model_id, model_dir)
+            logger.info(f"Refreshed manifest for {model_type}/{model_id}")
+            return "updated"
 
         except Exception as e:
             logger.error(
-                f"Failed to create model stub for {model_type}/{model_id}: {e}", exc_info=True
+                f"Failed to sync manifest for {model_type}/{model_id}: {e}",
+                exc_info=True,
             )
+            return "unchanged"
 
     async def sync(self) -> dict[str, Any]:
         """
-        Main sync method: fetch catalog, compare, create stubs.
+        Fetch the central catalog, then for every entry write the local
+        manifest.json: create on first appearance, refresh in place when
+        the catalog moved (citation, URL, license, friendly_name, etc.),
+        no-op when identical. Idempotent: safe to run on every startup.
 
         Returns:
-            Dict with sync results:
             {
-                "new_models": [
-                    {"model_id": "...", "friendly_name": "..."},
-                    ...
-                ],
-                "checked_at": "2025-12-24T10:00:00Z",
-                "error": "error message" (if failed)
+                "new_models":       [{"model_id", "friendly_name", "emoji"}, ...],
+                "refreshed_models": [{"model_id", "friendly_name"}, ...],
+                "checked_at":       "<UTC ISO timestamp>",
+                "error":            "<message>" (only if fetch failed),
             }
 
-        Note: This is async to allow non-blocking execution in FastAPI lifespan
+        Note: async so the lifespan startup task doesn't block boot.
         """
         result: dict[str, Any] = {
             "new_models": [],
+            "refreshed_models": [],
             "checked_at": datetime.now(UTC).isoformat(),
         }
 
         try:
-            # Fetch remote catalog
             catalog = self.fetch_catalog()
             if catalog is None:
                 result["error"] = "Failed to fetch catalog"
                 return result
 
-            # Get local models
             local_models = self.get_local_models()
-
-            # Check if this is a fresh install (no models at all)
-            total_local = (
-                len(local_models["det"]) + len(local_models["cls"]) + len(local_models["emb"])
-            )
+            total_local = sum(len(s) for s in local_models.values())
             is_fresh_install = total_local == 0
 
-            # Compare and find new models
-            new_models = self.compare_models(catalog, local_models)
+            for model_type in ["det", "cls", "emb"]:
+                for manifest_data in catalog["models"].get(model_type, []):
+                    state = self.write_manifest(model_type, manifest_data)
 
-            # Create stubs for new models
-            for new_model in new_models:
-                self.create_model_stub(new_model["model_type"], new_model["manifest"])
+                    if state == "created" and not is_fresh_install:
+                        # Surface as "new model" toast on existing
+                        # installs only. Fresh installs just want the
+                        # catalog to populate silently.
+                        result["new_models"].append(
+                            {
+                                "model_id": manifest_data["model_id"],
+                                "friendly_name": manifest_data.get(
+                                    "friendly_name", manifest_data["model_id"]
+                                ),
+                                "emoji": manifest_data.get("emoji", "🤖"),
+                            }
+                        )
+                    elif state == "updated":
+                        result["refreshed_models"].append(
+                            {
+                                "model_id": manifest_data["model_id"],
+                                "friendly_name": manifest_data.get(
+                                    "friendly_name", manifest_data["model_id"]
+                                ),
+                            }
+                        )
 
-                # Only add to notification list if not a fresh install
-                if not is_fresh_install:
-                    result["new_models"].append(
-                        {
-                            "model_id": new_model["model_id"],
-                            "friendly_name": new_model["friendly_name"],
-                            "emoji": new_model["emoji"],
-                        }
-                    )
-
-            if new_models:
-                if is_fresh_install:
-                    logger.info(
-                        f"Model catalog sync complete: "
-                        f"{len(new_models)} models initialized "
-                        f"(fresh install)"
-                    )
-                else:
-                    logger.info(
-                        f"Model catalog sync complete: {len(result['new_models'])} new models added"
-                    )
+            if is_fresh_install:
+                # On first launch every entry is "created"; no point
+                # listing them; the setup wizard handles weight downloads.
+                total_entries = sum(
+                    len(catalog["models"].get(t, []))
+                    for t in ("det", "cls", "emb")
+                )
+                logger.info(
+                    f"Model catalog sync complete: catalog initialized "
+                    f"({total_entries} entries)"
+                )
             else:
-                logger.info("Model catalog sync complete: no new models")
+                logger.info(
+                    f"Model catalog sync complete: "
+                    f"{len(result['new_models'])} new, "
+                    f"{len(result['refreshed_models'])} refreshed"
+                )
 
             return result
 
