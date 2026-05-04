@@ -66,8 +66,12 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm">
+      {/* Header. relative + z-40 lifts the header's stacking context
+          above <main>, so the AppHamburger dropdown (z-50 absolute,
+          contained within this stacking context because backdrop-blur
+          makes <header> a stacking-context root) can paint over the
+          project cards instead of behind them. */}
+      <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
