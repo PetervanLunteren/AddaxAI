@@ -6,15 +6,20 @@ dependencies:
   - python=3.11
   - pip
   - pip:
-    # CUDA torch wheels installed first so megadetector's transitive
-    # torch requirement is satisfied by the GPU build instead of pip
-    # falling back to the CPU wheel from PyPI. The +cu118 local-version
-    # suffix forces pip to fetch from the cu118 index (PyPI doesn't
-    # carry +cu118 wheels), removing the resolver ambiguity that bare
-    # `torch==2.3.0` would create against an --extra-index-url fallback.
+    # CUDA torch wheels installed from the pytorch.org cu118 index so
+    # GPU acceleration is available out of the box. Pinned to 2.5.1
+    # because: (1) torch 2.3.x has a hard `mkl<=2021.4.0` pin on
+    # non-darwin that conflicts with megadetector 10.0.18's
+    # `mkl==2024.0` and produces ResolutionImpossible; torch >= 2.4
+    # dropped the mkl constraint. (2) ultralytics 8.3.177 excludes
+    # torch 2.4.0 on win32 (we keep linux on the same version for
+    # parity). (3) torch >= 2.6 dropped cu118 wheels entirely. 2.5.1
+    # is the highest cu118 build that satisfies all three constraints.
+    # Use --extra-index-url (not --index-url) so PyPI still serves
+    # the rest of the dependency tree.
     - --extra-index-url https://download.pytorch.org/whl/cu118
-    - torch==2.3.0+cu118
-    - torchvision==0.18.0+cu118
+    - torch==2.5.1+cu118
+    - torchvision==0.20.1+cu118
 
     # Image processing and metadata
     - exifread
