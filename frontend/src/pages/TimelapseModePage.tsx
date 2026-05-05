@@ -173,6 +173,13 @@ function TimelapseFormPage() {
 
   const form = useForm<TimelapseFormData>({
     resolver: zodResolver(timelapseSchema),
+    // Validate ONLY on submit, not on field change. The Run button is
+    // already disabled with a tooltip ("Pick a folder first") when a
+    // required field is missing, so an aggressive red label on the
+    // folder field whenever a user picks a classifier first is just
+    // noise — users do not always work top-to-bottom.
+    mode: "onSubmit",
+    reValidateMode: "onSubmit",
     defaultValues: {
       folder_path: readQueryFolder(),
       detection_model_id: "MD5A-0-0",
