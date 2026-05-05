@@ -10,6 +10,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 // Expose safe Electron APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
+   * Synchronous OS identifier ('win32', 'darwin', 'linux'). Used by the
+   * renderer to gate Windows-only features (e.g. Timelapse mode) without
+   * an IPC round-trip on every render. Set at preload time, never changes.
+   */
+  platform: process.platform,
+
+  /**
    * Open native folder picker dialog
    * @returns Selected folder path, or null if cancelled
    */

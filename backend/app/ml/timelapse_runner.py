@@ -20,12 +20,16 @@ works unchanged.
 from __future__ import annotations
 
 import asyncio
+import shutil
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
+from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
 from app.ml.inference.megadetector import MegaDetectorV1000
@@ -53,13 +57,28 @@ class TimelapseRunRequest:
     classification_model_id: str | None
     detection_model_id: str = "MD5A-0-0"
     excluded_classes: list[str] | None = None
-    detection_threshold: float = 0.5
-    detection_batch_size: int = 1
-    classification_batch_size: int = 16
+    # None means "use the subprocess's built-in default", matching how
+    # Project.detection_batch_size / classification_batch_size work.
+    # See app/ml/batch_size.py.
+    detection_batch_size: int | None = None
+    classification_batch_size: int | None = None
     video_fps: float = 1.0
-    independence_interval: int = 1800  # seconds, matches main app
     smoothing_strength: str = "normal"  # off | mild | normal | aggressive
     taxonomic_rollup: bool = True
+
+
+# Detection confidence floor: shared with the main app's worker via
+# DETECTION_CONFIDENCE_FLOOR in app/ml/detection.py. Edit it there to
+# move the floor for both pipelines at once.
+
+# Independence interval used by the sequence-level smoother. Not user-
+# configurable in Timelapse mode: the output JSON has no event concept,
+# Timelapse handles its own grouping at import time, and the only
+# user-visible effect of this value is how aggressively the sequence
+# smoother cleans up cross-image label outliers. Hardcoded to match the
+# main app's `Project.independence_interval` default in
+# `app/api/schemas/project.py`.
+TIMELAPSE_INDEPENDENCE_INTERVAL = 1800  # seconds (30 min)
 
 
 def _resolve_model_paths(request: TimelapseRunRequest) -> dict:
@@ -111,7 +130,33 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
     if not folder_path.exists() or not folder_path.is_dir():
         raise FileNotFoundError(f"Folder not found: {folder_path}")
 
-    artifacts_folder = folder_path / ".addaxai" / "timelapse"
+    # Intermediate artifacts (per-phase JSONs, extracted video frames,
+    # the merged-but-not-yet-postprocessed JSON) live under the user's
+    # AddaxAI data directory, NOT inside their image folder. Reasons:
+    #
+    # - On Windows the leading '.' does not hide a folder, so dropping
+    #   `.addaxai/timelapse/` inside the user's pristine image folder is
+    #   surprising.
+    # - For video-heavy folders the extracted frames can be many GB. We
+    #   should not silently bloat the source folder with files Timelapse
+    #   never needs to see.
+    # - On a network share, having intermediates on local disk is also
+    #   a small perf win.
+    #
+    # The user's image folder ends up with exactly one new file:
+    # `<folder>/results.json`. On a successful run we delete the
+    # artifacts directory below; on failure we keep it so the user can
+    # zip and email it for diagnosis.
+    #
+    # Folder name is `<ISO timestamp>__<job_id>` so a) failed runs sort
+    # chronologically in Finder/Explorer (the user can pick the most
+    # recent one), and b) the job_id stays embedded for cross-reference
+    # against websocket logs. The timestamp uses `-` instead of `:`
+    # because Windows file names cannot contain `:`.
+    settings = get_settings()
+    started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+    run_dir_name = f"{started_at}__{job_id}"
+    artifacts_folder = settings.user_data_dir / "timelapse-runs" / run_dir_name
     artifacts_folder.mkdir(parents=True, exist_ok=True)
 
     video_json_path = artifacts_folder / "detection_video.json"
@@ -189,7 +234,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
                 video_folder=folder_path,
                 output_json=video_json_path,
                 fps=request.video_fps,
-                confidence_threshold=request.detection_threshold,
+                confidence_threshold=DETECTION_CONFIDENCE_FLOOR,
                 progress_callback=video_detection_progress,
                 job_id=job_id,
             ),
@@ -249,7 +294,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
             lambda: detection_model.detect_to_json(
                 image_paths=image_files,
                 deployment_folder=folder_path,
-                confidence_threshold=request.detection_threshold,
+                confidence_threshold=DETECTION_CONFIDENCE_FLOOR,
                 batch_size=request.detection_batch_size,
                 progress_callback=image_detection_progress,
                 output_path=image_json_path,
@@ -302,16 +347,26 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
             taxonomic_rollup=request.taxonomic_rollup,
             event_smoothing=event_smoothing,
             smoothing_strength=smoothing_strength,
-            independence_interval=request.independence_interval,
-            detection_threshold=request.detection_threshold,
+            independence_interval=TIMELAPSE_INDEPENDENCE_INTERVAL,
+            detection_threshold=DETECTION_CONFIDENCE_FLOOR,
             classification_model_dir=paths["cls_model_dir"],
             job_id=job_id,
         ),
     )
 
-    # Final: copy postprocessed JSON to <folder>/results.json. Keep
-    # artifacts_folder around for diagnostics.
+    # Final: copy postprocessed JSON to <folder>/results.json (the only
+    # file the user sees inside their image folder).
     final_json_path.write_bytes(merged_json_path.read_bytes())
+
+    # Clean up the intermediate artifacts directory now that the run
+    # succeeded. On failure, the surrounding exception handler in the
+    # router leaves it intact so support can ask the user to zip it.
+    try:
+        shutil.rmtree(artifacts_folder)
+    except Exception as e:
+        # Cleanup failures are not user-visible. Log and move on; the
+        # next launch's startup sweep can mop up stragglers.
+        logger.warning(f"Could not remove {artifacts_folder}: {e}")
 
     await ws_manager.send_complete(
         job_id,

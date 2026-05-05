@@ -52,7 +52,6 @@ import {
   DialogContent,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Slider } from "../components/ui/slider";
 import { Switch } from "../components/ui/switch";
 import {
@@ -70,6 +69,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
+import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import {
   Command,
   CommandEmpty,
@@ -139,12 +139,6 @@ const VIDEO_FPS_OPTIONS = [
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
 
-/** Form field names that hold a per-pipeline batch size override. */
-type BatchSizeFieldName =
-  | "detection_batch_size"
-  | "classification_batch_size"
-  | "embedding_batch_size";
-
 /** Settings that trigger classification reprocessing when changed. */
 const SMOOTHING_SETTINGS = [
   "event_smoothing",
@@ -172,98 +166,8 @@ function hasSmoothingChanges(
   return false;
 }
 
-/**
- * One row of the Performance card. A Select with two options (Default / Custom)
- * plus a number input that appears below when "Custom" is picked.
- *
- * Mode is derived from the field value: null = Default, integer = Custom.
- * Switching to Custom prefills with the model's GPU default; switching back
- * to Default sets the field to null.
- */
-function BatchSizeRow({
-  control,
-  name,
-  label,
-  description,
-  defaultGpu,
-  defaultCpu,
-}: {
-  control: ReturnType<typeof useForm<SettingsFormData>>["control"];
-  name: BatchSizeFieldName;
-  label: string;
-  description: string;
-  defaultGpu: number;
-  defaultCpu: number;
-}) {
-  const defaultLabel = `Default (${defaultGpu} on GPU, ${defaultCpu} on CPU)`;
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => {
-        const isCustom = field.value !== null;
-        return (
-          <div className="grid grid-cols-2 items-center gap-8 py-6">
-            <div className="space-y-1">
-              <FormLabel>{label}</FormLabel>
-              <FormDescription className="text-sm">{description}</FormDescription>
-            </div>
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <Select
-                  value={isCustom ? "custom" : "default"}
-                  onValueChange={(value) => {
-                    if (value === "default") {
-                      field.onChange(null);
-                    } else if (field.value === null) {
-                      // Only prefill with the GPU default when switching FROM
-                      // Default (field is null). If the field already has a
-                      // saved value (e.g. 12 from the DB), keep it. This guard
-                      // also prevents Radix Select from overwriting the value
-                      // when it fires onValueChange on programmatic prop changes
-                      // (e.g. form.reset changing the Select from "default" to
-                      // "custom").
-                      field.onChange(defaultGpu);
-                    }
-                  }}
-                >
-                  <FormControl>
-                    <SelectTrigger className={isCustom ? "w-[130px] shrink-0" : ""}>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="default">{defaultLabel}</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-                {isCustom && (
-                  <Input
-                    type="number"
-                    min={1}
-                    max={256}
-                    className="flex-1"
-                    value={field.value ?? ""}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === "") {
-                        field.onChange(1);
-                        return;
-                      }
-                      const parsed = parseInt(raw, 10);
-                      field.onChange(Number.isNaN(parsed) ? 1 : parsed);
-                    }}
-                  />
-                )}
-              </div>
-              <FormMessage />
-            </div>
-          </div>
-        );
-      }}
-    />
-  );
-}
+// BatchSizeRow lives in components/analyses/BatchSizeRow.tsx and is
+// shared between this page and the Timelapse mode page. Imported above.
 
 /** Fetch observation and event snapshots for the current project settings. */
 async function fetchStats(
@@ -1096,7 +1000,7 @@ export default function SettingsPage() {
                                         <div className="flex flex-col items-start py-1">
                                           <div>∅ No classification model</div>
                                           <div className="text-xs text-muted-foreground">
-                                            Run detector only, identify species manually
+                                            Run animal detector only, identify species manually
                                           </div>
                                         </div>
                                       );
@@ -1125,7 +1029,7 @@ export default function SettingsPage() {
                               <SelectItem value="none">
                                 ∅ No classification model
                                 <br />
-                                <span className="text-xs text-muted-foreground">Run detector only, identify species manually</span>
+                                <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
                               </SelectItem>
                               <ClassificationModelGroupedItems
                                 models={classificationModels.filter((m) => m.model_id !== "none")}
@@ -1305,7 +1209,7 @@ export default function SettingsPage() {
                         control={form.control}
                         name="detection_batch_size"
                         label="Detection batch size"
-                        description="Crops processed per batch by the detection model."
+                        description="Images processed per batch by the detection model."
                         defaultGpu={detectionModel.default_batch_size_gpu}
                         defaultCpu={detectionModel.default_batch_size_cpu}
                       />

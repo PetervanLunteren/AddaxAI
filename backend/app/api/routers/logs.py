@@ -262,6 +262,58 @@ def _collect_recent_jobs(limit: int = 50) -> list[dict[str, object]]:
         return [{"error": str(e)}]
 
 
+def _collect_timelapse_runs(
+    user_data_dir: Path,
+) -> list[dict[str, object]]:
+    """
+    Inventory of Timelapse runs left under ~/AddaxAI/timelapse-runs/.
+
+    A successful run cleans its directory; surviving directories are
+    therefore failed or in-progress runs. Folder names are
+    `<ISO timestamp>__<job_id>`, so the directory listing is naturally
+    chronological. Returned as a list of {name, started_at, job_id,
+    size_bytes, json_files} dicts so support can pick the right one
+    without having to grep the logs.
+    """
+    runs_dir = user_data_dir / "timelapse-runs"
+    if not runs_dir.is_dir():
+        return []
+
+    out: list[dict[str, object]] = []
+    for run in sorted(runs_dir.iterdir()):
+        if not run.is_dir():
+            continue
+        # Parse `<timestamp>__<job_id>`. Tolerate older runs that don't
+        # follow the convention so a stray directory doesn't crash the
+        # collector.
+        if "__" in run.name:
+            ts_part, _, job_part = run.name.partition("__")
+        else:
+            ts_part, job_part = "", run.name
+
+        size_bytes = 0
+        json_files: list[str] = []
+        for sub in run.rglob("*"):
+            if sub.is_file():
+                try:
+                    size_bytes += sub.stat().st_size
+                except OSError:
+                    pass
+                if sub.suffix == ".json":
+                    json_files.append(str(sub.relative_to(run)))
+
+        out.append(
+            {
+                "name": run.name,
+                "started_at": ts_part,
+                "job_id": job_part,
+                "size_bytes": size_bytes,
+                "json_files": json_files,
+            }
+        )
+    return out
+
+
 def _build_diagnostic_zip() -> bytes:
     """
     Build the diagnostic bundle in-memory and return its bytes.
@@ -273,6 +325,8 @@ def _build_diagnostic_zip() -> bytes:
     """
     settings = get_settings()
     logs_dir = settings.user_data_dir / "logs"
+    runs_dir = settings.user_data_dir / "timelapse-runs"
+    crash_dumps_dir = settings.user_data_dir / "crash-dumps"
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -289,7 +343,16 @@ def _build_diagnostic_zip() -> bytes:
                 "  - models.json           installed model directories and manifests\n"
                 "  - db-info.json          alembic schema version and per-table row counts\n"
                 "  - recent-jobs.json      last 50 jobs with status + error fields\n"
-                "  - crash-sentinel.json   whether previous app shutdown was clean\n\n"
+                "  - crash-sentinel.json   whether previous app shutdown was clean\n"
+                "  - timelapse-runs/       JSONs from Timelapse-mode runs that\n"
+                "                          did not finish cleanly. Folder names are\n"
+                "                          <ISO timestamp>__<job_id> so the most recent\n"
+                "                          one comes last. Frame extractions are not\n"
+                "                          included (they would balloon the bundle).\n"
+                "  - timelapse-runs.json   summary of the runs above\n"
+                "  - crash-dumps/          Electron / Chromium minidumps from native\n"
+                "                          renderer crashes (OOM, GPU crash, segfault).\n"
+                "                          Empty if AddaxAI has never crashed natively.\n\n"
                 "PII note: log files may contain absolute paths from the user's\n"
                 "filesystem (e.g. paths to camera-trap folders). No detection data,\n"
                 "image bytes, or DB row contents are included.\n\n"
@@ -366,6 +429,70 @@ def _build_diagnostic_zip() -> bytes:
             zf.writestr(
                 "crash-sentinel.json",
                 json.dumps({"note": "no launch-status snapshot present"}),
+            )
+
+        # Timelapse runs that didn't finish cleanly. Successful runs
+        # delete their directory, so anything still on disk is a
+        # candidate for support. Include the per-phase JSONs (small,
+        # diagnosable) but skip extracted video frames (huge, useless
+        # for debugging without the source media).
+        try:
+            zf.writestr(
+                "timelapse-runs.json",
+                json.dumps(
+                    _collect_timelapse_runs(settings.user_data_dir),
+                    indent=2,
+                    default=str,
+                ),
+            )
+        except Exception as e:
+            zf.writestr(
+                "timelapse-runs.json.error.txt",
+                f"collector raised: {e}\n",
+            )
+
+        if runs_dir.is_dir():
+            for src in sorted(runs_dir.rglob("*")):
+                if not src.is_file():
+                    continue
+                # Skip extracted video frames. Filter on the directory
+                # name rather than the file extension so a future change
+                # to JPEG format / naming doesn't accidentally bundle GB
+                # of frames.
+                if "video_frames" in src.parts:
+                    continue
+                if src.suffix != ".json":
+                    continue
+                try:
+                    arcname = f"timelapse-runs/{src.relative_to(runs_dir)}"
+                    zf.write(src, arcname=arcname)
+                except Exception as e:
+                    zf.writestr(
+                        f"timelapse-runs/{src.name}.error.txt",
+                        f"failed to add {src}: {e}\n",
+                    )
+
+        # Electron / Chromium minidumps. Written by `crashReporter.start`
+        # in electron/src/main.ts whenever a native renderer / GPU /
+        # browser process crashes. Bundling them automates the manual
+        # step BETA.md still asks the user for as a fallback when the
+        # app fails to open at all.
+        if crash_dumps_dir.is_dir():
+            for src in sorted(crash_dumps_dir.rglob("*")):
+                if not src.is_file():
+                    continue
+                try:
+                    arcname = f"crash-dumps/{src.relative_to(crash_dumps_dir)}"
+                    zf.write(src, arcname=arcname)
+                except Exception as e:
+                    zf.writestr(
+                        f"crash-dumps/{src.name}.error.txt",
+                        f"failed to add {src}: {e}\n",
+                    )
+        else:
+            zf.writestr(
+                "crash-dumps/.empty.txt",
+                f"no crash-dumps directory at {crash_dumps_dir}\n",
             )
 
     return buf.getvalue()

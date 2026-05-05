@@ -29,6 +29,7 @@ from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
+from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
 from app.ml.inference.megadetector import MegaDetectorV1000
@@ -321,7 +322,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         video_folder=_fp,
                         output_json=_vjp,
                         fps=project.video_fps,
-                        confidence_threshold=0.1,
+                        confidence_threshold=DETECTION_CONFIDENCE_FLOOR,
                         progress_callback=sync_video_detection_progress,
                         job_id=_jid,
                     ),
@@ -441,7 +442,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     _jid=job_id: detection_model.detect_to_json(
                         image_paths=_if,
                         deployment_folder=_fp,
-                        confidence_threshold=0.1,
+                        confidence_threshold=DETECTION_CONFIDENCE_FLOOR,
                         batch_size=_bs,
                         progress_callback=sync_image_detection_progress,
                         output_path=_ijp,

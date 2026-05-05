@@ -472,8 +472,13 @@ app.on('ready', async () => {
     // Timelapse integration / shim), open ONLY the Timelapse window.
     // The main projects window stays out of sight so the user is not
     // confused about which app they are working in.
+    //
+    // Timelapse Analyser is Windows-only, so the flag is only meaningful
+    // on Windows. On macOS/Linux we ignore it and open the main window;
+    // this is a defensive guard since the legacy shim that produces the
+    // flag is itself Windows-only.
     const timelapsePath = parseTimelapseArg(process.argv);
-    if (timelapsePath !== null) {
+    if (timelapsePath !== null && process.platform === 'win32') {
       await createTimelapseWindow(timelapsePath || undefined);
     } else {
       await createWindow();

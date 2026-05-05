@@ -53,7 +53,10 @@ Click the bug icon in the page header (tooltip says "Export diagnostic report").
 | macOS | `/Users/<username>/AddaxAI/logs/` |
 | Windows | `C:\Users\<username>\AddaxAI\logs\` |
 
-Please also zip and share the `\crash-dumps` folder if present.
+Please also zip and share these folders if they exist (siblings of the logs folder above):
+
+- `crash-dumps/` — Electron / Chromium minidumps from native crashes (segfault, OOM, GPU process crash). Only present if AddaxAI has actually crashed natively at some point.
+- `timelapse-runs/` — only relevant for Timelapse mode bugs. Each subfolder is one analysis run that did not finish cleanly, named `<timestamp>__<job_id>` so the most recent one sorts last. If you know which run was the faulty one, you can attach just that one subfolder. Skip the `video_frames/` subfolder inside any run unless I specifically ask for it (it can be many GB).
 
 ## What is not built yet
 

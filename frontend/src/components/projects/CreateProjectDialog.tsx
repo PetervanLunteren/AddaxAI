@@ -337,7 +337,7 @@ export function CreateProjectDialog({
                                   <div className="flex flex-col items-start py-1">
                                     <div>∅ No classification model</div>
                                     <div className="text-xs text-muted-foreground">
-                                      Run detector only, identify species manually
+                                      Run animal detector only, identify species manually
                                     </div>
                                   </div>
                                 );
@@ -366,7 +366,7 @@ export function CreateProjectDialog({
                         <SelectItem value="none">
                           ∅ No classification model
                           <br />
-                          <span className="text-xs text-muted-foreground">Run detector only, identify species manually</span>
+                          <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
                         </SelectItem>
                         <ClassificationModelGroupedItems
                           models={classificationModels.filter((m) => m.model_id !== "none")}

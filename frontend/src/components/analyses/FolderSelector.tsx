@@ -84,6 +84,9 @@ interface FolderSelectorProps {
   hideLabel?: boolean;
   /** Hide the scan result panel (file counts, GPS, dates, adjust-dates link). */
   hideScanResult?: boolean;
+  /** Hide the GPS pin in the scan result. Used in Timelapse mode where
+   *  there is no Site / Map context that would consume it. */
+  hideGps?: boolean;
 }
 
 export function FolderSelector({
@@ -94,6 +97,7 @@ export function FolderSelector({
   onAdjustDates,
   hideLabel = false,
   hideScanResult = false,
+  hideGps = false,
 }: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
   const [showManualInput, setShowManualInput] = useState(!isElectron());
@@ -218,29 +222,33 @@ export function FolderSelector({
                   </div>
                 )}
 
-                {/* GPS — show "found" with coordinates in tooltip, or "not found" */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 text-sm text-[#0f6064] cursor-default">
-                      {scanResult.gps_location ? (
-                        <>
-                          <MapPin className="h-4 w-4" />
-                          <span>GPS found</span>
-                        </>
-                      ) : (
-                        <>
-                          <MapPinOff className="h-4 w-4" />
-                          <span>No GPS metadata</span>
-                        </>
-                      )}
-                    </div>
-                  </TooltipTrigger>
-                  {scanResult.gps_location && (
-                    <TooltipContent>
-                      {scanResult.gps_location.latitude.toFixed(6)}, {scanResult.gps_location.longitude.toFixed(6)}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
+                {/* GPS — show "found" with coordinates in tooltip, or "not found".
+                    Suppressed in Timelapse mode where the app has no Site
+                    or Map context that would consume the coordinates. */}
+                {!hideGps && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 text-sm text-[#0f6064] cursor-default">
+                        {scanResult.gps_location ? (
+                          <>
+                            <MapPin className="h-4 w-4" />
+                            <span>GPS found</span>
+                          </>
+                        ) : (
+                          <>
+                            <MapPinOff className="h-4 w-4" />
+                            <span>No GPS metadata</span>
+                          </>
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    {scanResult.gps_location && (
+                      <TooltipContent>
+                        {scanResult.gps_location.latitude.toFixed(6)}, {scanResult.gps_location.longitude.toFixed(6)}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                )}
 
                 {/* Date range — unambiguous format (e.g. "7 Feb 2016") */}
                 <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">

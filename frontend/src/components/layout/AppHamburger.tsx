@@ -33,6 +33,7 @@ import {
 import { setupApi } from "../../api/setup";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { cn } from "../../lib/utils";
+import { isWindowsOrDev } from "../../lib/platform";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
 import { CheckForUpdatesDialog } from "../diagnostics/CheckForUpdatesDialog";
 
@@ -178,11 +179,18 @@ export function AppHamburger() {
             <Separator />
 
             <Section>
-              <Item
-                icon={Camera}
-                label="Timelapse mode"
-                onClick={openTimelapseMode}
-              />
+              {/* Timelapse Analyser is Windows-only; the entry stays
+                  hidden on macOS / Linux production builds to avoid
+                  offering a feature that does not lead anywhere. The
+                  dev browser shows it so we can keep iterating on
+                  non-Windows machines. */}
+              {isWindowsOrDev() && (
+                <Item
+                  icon={Camera}
+                  label="Timelapse mode"
+                  onClick={openTimelapseMode}
+                />
+              )}
               <Item
                 icon={FolderOpen}
                 label="Open user data folder"

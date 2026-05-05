@@ -68,9 +68,9 @@ export default function SetupPage() {
       <div className="w-full max-w-xl rounded-lg border bg-card-background p-8 shadow-sm">
         <h1 className="text-2xl font-bold tracking-tight">Initial setup</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          AddaxAI needs to install the analysis environment before you can
-          process images. This is a one-time download of about 1.9 GB and
-          can take 10 to 30 minutes depending on your internet connection.
+          The AI models and their environment need to be installed before
+          AddaxAI can analyse images. This is a one-time download and can
+          take 10 to 30 minutes depending on your internet connection.
         </p>
 
         <div className="mt-6 space-y-2 text-sm">

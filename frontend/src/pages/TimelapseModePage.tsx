@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import {
   CheckCircle2,
+  ChevronDown,
   FolderOpen,
   InfoIcon,
   ListTodo,
@@ -40,6 +41,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
   Form,
   FormControl,
   FormDescription,
@@ -47,7 +54,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -56,7 +62,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -65,6 +70,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { BatchSizeRow } from "@/components/analyses/BatchSizeRow";
 import { FolderSelector } from "@/components/analyses/FolderSelector";
 import { ClassificationModelGroupedItems } from "@/components/models/ClassificationModelGroupedItems";
 import { ModelInfoSheet } from "@/components/models/ModelInfoSheet";
@@ -83,15 +89,6 @@ import SetupPage from "./SetupPage";
 
 const NO_CLASSIFIER = "none";
 
-const INDEPENDENCE_INTERVAL_OPTIONS = [
-  { value: "0", label: "Disabled" },
-  { value: "60", label: "1 minute" },
-  { value: "300", label: "5 minutes" },
-  { value: "900", label: "15 minutes" },
-  { value: "1800", label: "30 minutes" },
-  { value: "3600", label: "60 minutes" },
-];
-
 const VIDEO_FPS_OPTIONS = [
   { value: "0.1", label: "1 frame every 10 seconds" },
   { value: "0.25", label: "1 frame every 4 seconds" },
@@ -109,11 +106,13 @@ const timelapseSchema = z.object({
   excluded_classes: z.array(z.string()),
   country_code: z.string().nullable(),
   state_code: z.string().nullable(),
-  detection_threshold: z.number().min(0).max(1),
-  detection_batch_size: z.number().int().min(1).max(256),
-  classification_batch_size: z.number().int().min(1).max(256),
+  // Detection confidence is not user-controlled in Timelapse mode.
+  // The runner hardcodes 0.1, matching the main app's worker. Users
+  // do their own filtering inside Timelapse Analyser.
+  // null = let the subprocess pick its own default. See app/ml/batch_size.py.
+  detection_batch_size: z.number().int().min(1).max(256).nullable(),
+  classification_batch_size: z.number().int().min(1).max(256).nullable(),
   video_fps: z.number().min(0.1).max(10),
-  independence_interval: z.number().min(0),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
@@ -158,6 +157,9 @@ function TimelapseFormPage() {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [showClsInfo, setShowClsInfo] = useState(false);
   const [showDetInfo, setShowDetInfo] = useState(false);
+  // Advanced settings start collapsed: defaults work for the common
+  // case; power users open the disclosure when they need a knob.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Model preparation state (mirrors CreateProjectDialog).
   const [preparingModelId, setPreparingModelId] = useState<string | null>(null);
@@ -178,11 +180,12 @@ function TimelapseFormPage() {
       excluded_classes: [],
       country_code: null,
       state_code: null,
-      detection_threshold: 0.5,
-      detection_batch_size: 1,
-      classification_batch_size: 16,
+      // null = use the subprocess default. Same convention as the main
+      // app's project settings. The Performance card lets the user
+      // override.
+      detection_batch_size: null,
+      classification_batch_size: null,
       video_fps: 1.0,
-      independence_interval: 1800,
       event_smoothing: true,
       smoothing_strength: "normal",
       taxonomic_rollup: true,
@@ -306,11 +309,9 @@ function TimelapseFormPage() {
             : data.classification_model_id,
         detection_model_id: data.detection_model_id,
         excluded_classes: data.excluded_classes,
-        detection_threshold: data.detection_threshold,
         detection_batch_size: data.detection_batch_size,
         classification_batch_size: data.classification_batch_size,
         video_fps: data.video_fps,
-        independence_interval: data.independence_interval,
         smoothing_strength: data.event_smoothing
           ? (data.smoothing_strength as SmoothingStrength)
           : "off",
@@ -337,47 +338,14 @@ function TimelapseFormPage() {
   const clsReady = !hasClassifier || classificationStatus?.status === "ready";
   const canRun = !!folderPath && detReady && clsReady;
 
-  // Stages other than "form" replace the form area entirely.
-  if (stage === "preparing" && preparingModelId) {
-    const model =
-      preparingModelId === detectionModelId
-        ? detectionModel
-        : classificationModel;
-    return (
-      <PageShell>
-        <Card>
-          <CardContent className="py-6">
-            <ModelPreparationView
-              modelName={model?.friendly_name ?? preparingModelId}
-              modelEmoji={model?.emoji ?? "📦"}
-              progress={prepProgress.progress}
-              message={prepProgress.message}
-              onCancel={cancelPrepare}
-            />
-          </CardContent>
-        </Card>
-      </PageShell>
-    );
-  }
-
-  if (stage === "error") {
-    return (
-      <PageShell>
-        <Card>
-          <CardContent className="py-6">
-            <ModelPreparationErrorView
-              errorMessage={preparationError ?? "Unknown error"}
-              onRetry={retryPrepare}
-              onCancel={() => {
-                setPreparationError(null);
-                setStage("form");
-              }}
-            />
-          </CardContent>
-        </Card>
-      </PageShell>
-    );
-  }
+  // Model preparation runs in an overlay Dialog so the form stays
+  // mounted behind it (same pattern CreateProjectDialog uses). The
+  // "running" and "done" stages take over the page because the form
+  // is no longer relevant once analysis has started.
+  const prepModel =
+    preparingModelId === detectionModelId
+      ? detectionModel
+      : classificationModel;
 
   if (stage === "running") {
     return (
@@ -413,15 +381,12 @@ function TimelapseFormPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <TooltipProvider>
-            {/* Card 1: source data + models. */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Analysis input</CardTitle>
-                <CardDescription>
-                  Pick a folder and the models to run on it.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-0 divide-y border-t">
+            {/* Required inputs: folder, classifier, labels. Rendered as
+                plain widgets (no card chrome) so they get visual weight
+                proportional to their importance — they're what every
+                user fills in. The page header already frames the
+                section, so a redundant card title would just add noise. */}
+            <div className="space-y-0 divide-y border-y">
                 {/* Folder */}
                 <FormField
                   control={form.control}
@@ -431,10 +396,8 @@ function TimelapseFormPage() {
                       <div className="space-y-1">
                         <FormLabel>Folder</FormLabel>
                         <FormDescription className="text-sm">
-                          Analyses all images and videos found recursively in
-                          this folder. Camera-trap timestamps are read from
-                          EXIF; files without a capture date will block the
-                          run.
+                          Analyses all images and videos found recursively
+                          in this folder.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -443,85 +406,9 @@ function TimelapseFormPage() {
                             value={field.value || null}
                             onChange={field.onChange}
                             hideLabel
+                            hideGps
                           />
                         </FormControl>
-                        <FormMessage />
-                      </div>
-                    </div>
-                  )}
-                />
-
-                {/* Detection model */}
-                <FormField
-                  control={form.control}
-                  name="detection_model_id"
-                  render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Detection model</FormLabel>
-                        <FormDescription className="text-sm">
-                          The model that finds animals, people, and vehicles.
-                          MegaDetector 5a is the default and works well in
-                          most regions.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex gap-2 items-stretch">
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {detectionModels.map((m) => (
-                                <SelectItem
-                                  key={m.model_id}
-                                  value={m.model_id}
-                                >
-                                  {m.emoji} {m.friendly_name}
-                                  {m.description_short && (
-                                    <>
-                                      <br />
-                                      <span className="text-xs text-muted-foreground">
-                                        {m.description_short}
-                                      </span>
-                                    </>
-                                  )}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="self-center">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="px-3"
-                                  onClick={() => setShowDetInfo(true)}
-                                  disabled={!field.value}
-                                >
-                                  <InfoIcon className="h-4 w-4" />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>View model information</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        {detectionStatus &&
-                          detectionStatus.status !== "ready" && (
-                            <ModelStatusBadge
-                              status={detectionStatus}
-                              onPrepare={() => startPrepare(detectionModelId)}
-                              isPreparing={false}
-                            />
-                          )}
                         <FormMessage />
                       </div>
                     </div>
@@ -538,8 +425,6 @@ function TimelapseFormPage() {
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
                           Identifies the species behind each animal detection.
-                          Choose a model trained on species from your
-                          geographic region, or skip to keep raw detections.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -560,7 +445,7 @@ function TimelapseFormPage() {
                                 ∅ No classification model
                                 <br />
                                 <span className="text-xs text-muted-foreground">
-                                  Run detector only, identify species manually
+                                  Run animal detector only, identify species manually
                                 </span>
                               </SelectItem>
                               <ClassificationModelGroupedItems
@@ -643,74 +528,133 @@ function TimelapseFormPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </div>
 
-            {/* Card 2: Performance (batch sizes). */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance</CardTitle>
-                <CardDescription>
-                  How many crops each model processes in parallel. Higher
-                  values are faster but use more memory.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-0 divide-y border-t">
+            {/* Advanced settings: collapsed by default. Defaults are
+                tuned to match the main AddaxAI app, so most users never
+                open this. The disclosure pattern matches CreateProjectDialog's
+                one-shot form mental model better than a heavy second
+                card would.
+                Two settings are deliberately hardcoded and not exposed:
+                  - Detection confidence threshold (0.1, matching the main
+                    app worker) — Timelapse handles user-facing filtering.
+                  - Independence interval (1800s, main app default) — only
+                    affects the sequence-level smoother, has no other
+                    user-visible effect on the output JSON. */}
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between py-3 text-left text-sm font-semibold hover:text-primary transition-colors"
+                >
+                  <span>Advanced settings</span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      advancedOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-0 divide-y border-t">
+                {/* Detection model */}
                 <FormField
                   control={form.control}
-                  name="detection_batch_size"
+                  name="detection_model_id"
                   render={({ field }) => (
-                    <SettingRow
-                      label="Detection batch size"
-                      description="Crops processed per batch by the detection model."
-                    >
-                      <Input
-                        type="number"
-                        min={1}
-                        max={256}
-                        value={field.value}
-                        onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 1)
-                        }
-                      />
-                      <FormMessage />
-                    </SettingRow>
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Detection model</FormLabel>
+                        <FormDescription className="text-sm">
+                          The model that finds animals, people, and vehicles.
+                          MegaDetector 5a is the default and works well in
+                          most regions.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-stretch">
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {detectionModels.map((m) => (
+                                <SelectItem
+                                  key={m.model_id}
+                                  value={m.model_id}
+                                >
+                                  {m.emoji} {m.friendly_name}
+                                  {m.description_short && (
+                                    <>
+                                      <br />
+                                      <span className="text-xs text-muted-foreground">
+                                        {m.description_short}
+                                      </span>
+                                    </>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="self-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="px-3"
+                                  onClick={() => setShowDetInfo(true)}
+                                  disabled={!field.value}
+                                >
+                                  <InfoIcon className="h-4 w-4" />
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>View model information</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        {detectionStatus &&
+                          detectionStatus.status !== "ready" && (
+                            <ModelStatusBadge
+                              status={detectionStatus}
+                              onPrepare={() => startPrepare(detectionModelId)}
+                              isPreparing={false}
+                            />
+                          )}
+                        <FormMessage />
+                      </div>
+                    </div>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="classification_batch_size"
-                  render={({ field }) => (
-                    <SettingRow
-                      label="Classification batch size"
-                      description="Crops processed per batch by the classification model."
-                    >
-                      <Input
-                        type="number"
-                        min={1}
-                        max={256}
-                        value={field.value}
-                        onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 1)
-                        }
-                      />
-                      <FormMessage />
-                    </SettingRow>
-                  )}
-                />
-              </CardContent>
-            </Card>
 
-            {/* Card 3: Analysis and counting. */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Analysis and counting</CardTitle>
-                <CardDescription>
-                  Detection threshold, video frame rate, event grouping, and
-                  classification cleanup.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-0 divide-y border-t">
+                {detectionModel && (
+                  <BatchSizeRow
+                    control={form.control}
+                    name="detection_batch_size"
+                    label="Detection batch size"
+                    description="Images processed per batch by the detection model. Higher values are faster but use more memory."
+                    defaultGpu={detectionModel.default_batch_size_gpu}
+                    defaultCpu={detectionModel.default_batch_size_cpu}
+                  />
+                )}
+
+                {hasClassifier && classificationModel && (
+                  <BatchSizeRow
+                    control={form.control}
+                    name="classification_batch_size"
+                    label="Classification batch size"
+                    description="Crops processed per batch by the classification model. Higher values are faster but use more memory."
+                    defaultGpu={classificationModel.default_batch_size_gpu}
+                    defaultCpu={classificationModel.default_batch_size_cpu}
+                  />
+                )}
+
                 <FormField
                   control={form.control}
                   name="video_fps"
@@ -731,63 +675,6 @@ function TimelapseFormPage() {
                         </FormControl>
                         <SelectContent>
                           {VIDEO_FPS_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </SettingRow>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="detection_threshold"
-                  render={({ field }) => (
-                    <SettingRow
-                      label="Detection confidence threshold"
-                      description="Hide detections below this confidence score."
-                    >
-                      <div className="flex items-center justify-between">
-                        <Slider
-                          min={0.1}
-                          max={1.0}
-                          step={0.01}
-                          value={[field.value]}
-                          onValueChange={(vals) => field.onChange(vals[0])}
-                          className="flex-1 mr-4"
-                        />
-                        <span className="text-sm font-medium min-w-[3rem] text-right">
-                          {field.value.toFixed(2)}
-                        </span>
-                      </div>
-                      <FormMessage />
-                    </SettingRow>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="independence_interval"
-                  render={({ field }) => (
-                    <SettingRow
-                      label="Independence interval"
-                      description="Consecutive detections within this window are merged into one independent event. The count for each event uses MaxN."
-                    >
-                      <Select
-                        key={String(field.value)}
-                        value={String(field.value)}
-                        onValueChange={(v) => field.onChange(parseInt(v, 10))}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {INDEPENDENCE_INTERVAL_OPTIONS.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                               {opt.label}
                             </SelectItem>
@@ -858,8 +745,8 @@ function TimelapseFormPage() {
                     )}
                   />
                 )}
-              </CardContent>
-            </Card>
+              </CollapsibleContent>
+            </Collapsible>
 
             {errorMessage && (
               <p className="text-sm font-medium text-destructive">
@@ -930,6 +817,48 @@ function TimelapseFormPage() {
           }}
         />
       )}
+
+      {/* Model preparation overlay. ModelPreparationView and
+          ModelPreparationErrorView are built around DialogTitle /
+          DialogDescription primitives, so they need a parent <Dialog>
+          context. Match CreateProjectDialog's pattern: a non-dismissable
+          overlay that swaps content based on stage. */}
+      <Dialog
+        open={stage === "preparing" || stage === "error"}
+        onOpenChange={(open) => {
+          // Closing via the overlay click / Esc cancels prep, mirroring
+          // the explicit Cancel button.
+          if (!open) {
+            if (stage === "preparing") cancelPrepare();
+            if (stage === "error") {
+              setPreparationError(null);
+              setStage("form");
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          {stage === "preparing" && preparingModelId && (
+            <ModelPreparationView
+              modelName={prepModel?.friendly_name ?? preparingModelId}
+              modelEmoji={prepModel?.emoji ?? "📦"}
+              progress={prepProgress.progress}
+              message={prepProgress.message}
+              onCancel={cancelPrepare}
+            />
+          )}
+          {stage === "error" && (
+            <ModelPreparationErrorView
+              errorMessage={preparationError ?? "Unknown error"}
+              onRetry={retryPrepare}
+              onCancel={() => {
+                setPreparationError(null);
+                setStage("form");
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }
@@ -937,17 +866,22 @@ function TimelapseFormPage() {
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
+      {/* Tall AddaxAI + Timelapse lockup centered as a hero. The logo
+          already contains both wordmarks, so we drop the redundant
+          "Timelapse mode" h1 — the artwork carries the title role.
+          Subtitle keeps the verb-led action sentence so a first-time
+          user knows what the page does. */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Timelapse mode
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Run AddaxAI on a folder and write a results.json that Timelapse
-              can import.
-            </p>
-          </div>
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 text-center">
+          <img
+            src="/branding/addaxai-timelapse-logo-tall.png"
+            alt="AddaxAI + Timelapse"
+            className="h-48 w-auto mx-auto"
+          />
+          <p className="text-sm text-muted-foreground mt-4">
+            Analyse a folder and write a results.json that Timelapse can
+            import.
+          </p>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

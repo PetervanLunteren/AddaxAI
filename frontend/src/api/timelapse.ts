@@ -19,11 +19,10 @@ export interface TimelapseRunRequest {
   classification_model_id: string | null;
   detection_model_id: string;
   excluded_classes: string[];
-  detection_threshold: number;
-  detection_batch_size: number;
-  classification_batch_size: number;
+  /** null = let the ML subprocess pick its built-in default. */
+  detection_batch_size: number | null;
+  classification_batch_size: number | null;
   video_fps: number;
-  independence_interval: number;
   smoothing_strength: SmoothingStrength;
   taxonomic_rollup: boolean;
 }
