@@ -187,7 +187,7 @@ export function AppHamburger() {
               {isWindowsOrDev() && (
                 <Item
                   icon={Camera}
-                  label="Timelapse mode"
+                  label="Timelapse integration"
                   onClick={openTimelapseMode}
                 />
               )}

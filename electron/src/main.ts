@@ -30,7 +30,7 @@ const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
  *
  * Returns null when the flag is absent. Returns "" (empty string) when
  * the flag is present without an argument — still a valid signal to
- * open Timelapse mode, just without a pre-filled folder.
+ * open the Timelapse integration window, just without a pre-filled folder.
  */
 function parseTimelapseArg(argv: string[]): string | null {
   const idx = argv.findIndex((a) => a === '--timelapse');
@@ -375,7 +375,7 @@ async function createTimelapseWindow(prefilledPath?: string): Promise<void> {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'AddaxAI - Timelapse mode',
+    title: 'AddaxAI - Timelapse integration',
     autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,

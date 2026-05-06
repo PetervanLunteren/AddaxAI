@@ -108,7 +108,7 @@ const timelapseSchema = z.object({
   excluded_classes: z.array(z.string()),
   country_code: z.string().nullable(),
   state_code: z.string().nullable(),
-  // Detection confidence is not user-controlled in Timelapse mode.
+  // Detection confidence is not user-controlled in Timelapse integration.
   // The runner hardcodes 0.1, matching the main app's worker. Users
   // do their own filtering inside Timelapse Analyser.
   // null = let the subprocess pick its own default. See app/ml/batch_size.py.
@@ -930,7 +930,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       {/* Tall AddaxAI + Timelapse lockup centered as a hero. The logo
           already contains both wordmarks, so we drop the redundant
-          "Timelapse mode" h1 — the artwork carries the title role.
+          "Timelapse integration" h1 — the artwork carries the title role.
           Subtitle keeps the verb-led action sentence so a first-time
           user knows what the page does. */}
       <header className="border-b bg-white/80 backdrop-blur-sm">

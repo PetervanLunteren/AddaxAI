@@ -262,7 +262,7 @@ function BackendDownScreen({ onRetry }: { onRetry: () => void }) {
 function SetupGate({ children }: { children: ReactNode }) {
   const location = useLocation();
   const onSetupRoute = location.pathname.startsWith("/setup");
-  // Timelapse mode is reachable regardless of setup state because the
+  // Timelapse integration is reachable regardless of setup state because the
   // page renders <SetupPage /> inline when needed. Without this exemption,
   // the gate would bounce the second window back to /setup and the
   // user would never see the Timelapse form even after setup completes.

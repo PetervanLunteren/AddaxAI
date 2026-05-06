@@ -167,7 +167,7 @@ function hasSmoothingChanges(
 }
 
 // BatchSizeRow lives in components/analyses/BatchSizeRow.tsx and is
-// shared between this page and the Timelapse mode page. Imported above.
+// shared between this page and the Timelapse integration page. Imported above.
 
 /** Fetch observation and event snapshots for the current project settings. */
 async function fetchStats(

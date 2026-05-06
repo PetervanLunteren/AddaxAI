@@ -143,12 +143,12 @@ tail -f ~/AddaxAI/logs/backend.log
 
 ## Timelapse Analyser integration (Windows only)
 
-AddaxAI exposes a Timelapse mode that writes a `results.json` next to a
+AddaxAI exposes a Timelapse integration that writes a `results.json` next to a
 chosen folder for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
 
 Launch options:
 
-- Inside AddaxAI: hamburger menu > Timelapse mode.
+- Inside AddaxAI: hamburger menu > Timelapse integration.
 - From a shell or Timelapse Analyser: `AddaxAI.exe --timelapse "C:\path\to\folder"`.
 
 The Windows installer drops a compatibility shim at

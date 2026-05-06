@@ -184,7 +184,7 @@ interface AnalysisProgressProps {
   deploymentContext: DeploymentContext | null;
   /**
    * Hide the "Deployment X of N" badge. Set this for one-shot runs
-   * (Timelapse mode) where there is no concept of multiple deployments.
+   * (Timelapse integration) where there is no concept of multiple deployments.
    */
   hideDeploymentHeader?: boolean;
 }

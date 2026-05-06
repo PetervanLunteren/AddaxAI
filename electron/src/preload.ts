@@ -11,7 +11,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * Synchronous OS identifier ('win32', 'darwin', 'linux'). Used by the
-   * renderer to gate Windows-only features (e.g. Timelapse mode) without
+   * renderer to gate Windows-only features (e.g. Timelapse integration) without
    * an IPC round-trip on every render. Set at preload time, never changes.
    */
   platform: process.platform,

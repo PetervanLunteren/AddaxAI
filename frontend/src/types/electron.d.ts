@@ -6,7 +6,7 @@ export interface ElectronAPI {
   /**
    * Host OS as reported by Node's `process.platform`. Synchronous —
    * set at preload time. Renderer-side gates for Windows-only features
-   * (e.g. Timelapse mode) read this without an IPC round-trip.
+   * (e.g. Timelapse integration) read this without an IPC round-trip.
    */
   platform: NodeJS.Platform;
   selectFolder: () => Promise<string | null>;

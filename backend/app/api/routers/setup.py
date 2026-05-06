@@ -349,11 +349,10 @@ async def install_env(
     ):
         return {"status": "already_installed"}
 
-    # Disk-space pre-flight. The wizard text says "about 1.9 GB" but the
-    # unpacked env (~3 GB) plus default model weights (~2 GB) plus pip
-    # working space pushes the real footprint past 7 GB. Failing fast
-    # with a clear message beats a cryptic OSError two minutes into a
-    # download.
+    # Disk-space pre-flight. Unpacked env (~3 GB) plus default model
+    # weights (~2 GB) plus pip working space pushes the real footprint
+    # past 7 GB. Failing fast with a clear message beats a cryptic
+    # OSError two minutes into a download.
     _check_disk_space(settings.user_data_dir)
 
     if not _install_state.start():

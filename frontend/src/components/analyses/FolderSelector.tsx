@@ -84,11 +84,11 @@ interface FolderSelectorProps {
   hideLabel?: boolean;
   /** Hide the scan result panel (file counts, GPS, dates, adjust-dates link). */
   hideScanResult?: boolean;
-  /** Hide the GPS pin in the scan result. Used in Timelapse mode where
+  /** Hide the GPS pin in the scan result. Used in Timelapse integration where
    *  there is no Site / Map context that would consume it. */
   hideGps?: boolean;
   /** Hide the "DateTime metadata not found" red alert. Used in
-   *  Timelapse mode where the runner does not require EXIF
+   *  Timelapse integration where the runner does not require EXIF
    *  DateTimeOriginal — files without timestamps are simply absent
    *  from the sequence-level smoother, but detection and
    *  classification still run on them. The main app needs the warning
@@ -232,7 +232,7 @@ export function FolderSelector({
                 )}
 
                 {/* GPS — show "found" with coordinates in tooltip, or "not found".
-                    Suppressed in Timelapse mode where the app has no Site
+                    Suppressed in Timelapse integration where the app has no Site
                     or Map context that would consume the coordinates. */}
                 {!hideGps && (
                   <Tooltip>
@@ -307,7 +307,7 @@ export function FolderSelector({
                 )}
               </div>
 
-              {/* DateTime missing error. Suppressed in Timelapse mode
+              {/* DateTime missing error. Suppressed in Timelapse integration
                   where missing EXIF is not a hard failure (the runner
                   still detects and classifies; only sequence smoothing
                   skips those files). */}

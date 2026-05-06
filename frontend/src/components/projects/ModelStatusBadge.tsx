@@ -35,7 +35,7 @@ export function ModelStatusBadge({ status, onPrepare, isPreparing }: ModelStatus
 
         {/* Action button */}
         <div className="flex justify-end">
-          <Button onClick={onPrepare} disabled={isPreparing} size="sm" className="gap-2">
+          <Button type="button" onClick={onPrepare} disabled={isPreparing} size="sm" className="gap-2">
             <Download className="h-3.5 w-3.5" />
             {isPreparing ? "Preparing..." : "Start setup"}
           </Button>

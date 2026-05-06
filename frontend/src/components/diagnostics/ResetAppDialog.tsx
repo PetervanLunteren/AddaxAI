@@ -71,8 +71,8 @@ export function ResetAppDialog({ open, onOpenChange }: ResetAppDialogProps) {
             Reset application
           </DialogTitle>
           <DialogDescription>
-            Wipes installed envs, models, logs, and other AddaxAI files.
-            The app closes after the wipe; relaunch to start fresh.
+            Wipes installed environments, models, logs, and other AddaxAI
+            files. The app closes after the wipe; relaunch to start fresh.
           </DialogDescription>
         </DialogHeader>
 
@@ -82,8 +82,8 @@ export function ResetAppDialog({ open, onOpenChange }: ResetAppDialogProps) {
               Warning - This will permanently delete
             </p>
             <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
-              <li>Installed analysis environment (~2 GB, must redownload)</li>
-              <li>Installed model weights (default models redeploy from app)</li>
+              <li>Installed analysis environments (must redownload)</li>
+              <li>Installed model weights (default ones reinstall on next launch)</li>
               <li>All log files and crash dumps</li>
               <li>Cached thumbnails and the bundled micromamba binary</li>
             </ul>

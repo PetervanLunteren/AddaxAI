@@ -30,7 +30,7 @@ export function getPlatform(): 'electron' | 'browser' {
  * and also for the dev browser (where there's no Electron, so we treat
  * "anywhere a developer might be testing" as compatible).
  *
- * Used to gate Windows-only features such as Timelapse mode (which
+ * Used to gate Windows-only features such as Timelapse integration (which
  * integrates with Timelapse Analyser, a Windows-only desktop app).
  */
 export function isWindowsOrDev(): boolean {

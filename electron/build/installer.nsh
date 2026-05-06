@@ -11,40 +11,61 @@
 ;        "%ProgramFiles%\AddaxAI_files\AddaxAI\open.bat" timelapse <dir>
 ;      )
 ;
-;    The `||` fallback only fires if the first command fails, so the
-;    user-profile path is tried FIRST. If we only drop a shim at
-;    Program Files, a per-user legacy install at $PROFILE wins and our
-;    new app never gets called. That is why we drop the shim at BOTH
-;    `$PROFILE\AddaxAI_files\AddaxAI\open.bat` (Saul's first try) and
-;    `$PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat` (the fallback).
+;    The `||` operator short-circuits: as soon as the first command
+;    succeeds, the second is skipped.
+;
+;    AddaxAI's electron-builder NSIS install is per-user by default
+;    (no UAC), so writes to $PROFILE always succeed and writes to
+;    $PROGRAMFILES silently fail. We attempt BOTH anyway:
+;
+;    - $PROFILE\AddaxAI_files\AddaxAI\open.bat — the typical landing
+;      spot. Saul's command tries this first and finds it.
+;    - $PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat — only writable
+;      when the install is elevated (per-machine config, future
+;      change). Harmless no-op on per-user installs. Useful in case
+;      someone runs the installer with elevation, or if this codebase
+;      ever switches to perMachine: true.
+;
+;    Multi-user note: Timelapse's own install scope (per-user vs
+;    per-machine) does NOT affect this. Saul's command resolves
+;    %USERPROFILE% / %ProgramFiles% at runtime to the running user's
+;    paths regardless of where Timelapse itself lives. The integration
+;    works for whichever user has an AddaxAI shim under their profile.
+;    For multi-user machines where every user needs the integration,
+;    switch AddaxAI to a per-machine install (`perMachine: true` in
+;    electron/package.json) so the $PROGRAMFILES write succeeds and
+;    Saul's `||` fallback covers all users.
 ;
 ;    The shim translates the legacy invocation
 ;    (`open.bat timelapse <folder>`) into the new exe's CLI flag
 ;    (`AddaxAI.exe --timelapse "<folder>"`).
 ;
-;    If a legacy AddaxAI install is found at either location, prompt
-;    the user before overwriting their existing open.bat. Default
-;    answer is No so we never silently break a working legacy setup.
+;    No legacy-detect prompt: if a legacy AddaxAI install is sitting
+;    at one of these paths, we just overwrite its `open.bat`. The
+;    explanatory dialog this used to show was confusing jargon for
+;    most users, and the worst case (user reinstalls legacy later) is
+;    self-healing — they reinstall AddaxAI and the shim wins again.
 ;
 ; 2. Offer to clear the per-user data folder on uninstall (existing
 ;    behavior, see customUnInstall below).
 
-; Per-machine path (Saul's fallback target)
-!define TL_SHIM_DIR_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI"
-!define TL_SHIM_PATH_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat"
-!define TL_LEGACY_MARKER_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI\AddaxAI_GUI.py"
-
-; Per-user path (Saul's first-try target)
+; Per-user path (typical for the current per-user installer)
 !define TL_SHIM_DIR_PU "$PROFILE\AddaxAI_files\AddaxAI"
 !define TL_SHIM_PATH_PU "$PROFILE\AddaxAI_files\AddaxAI\open.bat"
-!define TL_LEGACY_MARKER_PU "$PROFILE\AddaxAI_files\AddaxAI\AddaxAI_GUI.py"
 
-; Body of the shim. Probes both per-user and per-machine new-AddaxAI
-; install locations so a single shim works regardless of which install
-; scope was used.
+; Per-machine path (only writable when the installer is elevated)
+!define TL_SHIM_DIR_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI"
+!define TL_SHIM_PATH_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat"
+
+; Body of the shim. Probes both possible new-AddaxAI install locations
+; at run time so it works regardless of which install scope was used.
 !macro WriteTimelapseShim DIR PATH
   CreateDirectory "${DIR}"
   FileOpen $0 "${PATH}" w
+  ; FileOpen on a forbidden directory returns an empty handle. Subsequent
+  ; FileWrite calls on an empty handle silently no-op. NSIS does not
+  ; raise. This is intentional: per-user installs cannot write to
+  ; $PROGRAMFILES, and we accept that as a no-op without aborting.
   FileWrite $0 "@echo off$\r$\n"
   FileWrite $0 "setlocal$\r$\n"
   FileWrite $0 "set $\"ADDAXAI_EXE=%LOCALAPPDATA%\Programs\AddaxAI\AddaxAI.exe$\"$\r$\n"
@@ -58,36 +79,17 @@
 !macroend
 
 !macro customInstall
-  ; Collect legacy install paths. $1 holds the bullet list shown in the
-  ; prompt; empty means no legacy installs anywhere.
-  StrCpy $1 ""
-  IfFileExists "${TL_LEGACY_MARKER_PU}" 0 +2
-    StrCpy $1 "$1$\r$\n  ${TL_SHIM_DIR_PU}"
-  IfFileExists "${TL_LEGACY_MARKER_PM}" 0 +2
-    StrCpy $1 "$1$\r$\n  ${TL_SHIM_DIR_PM}"
-
-  StrCmp $1 "" write_shims
-    IfSilent write_shims  ; CI / scripted installs: leave legacy alone.
-    MessageBox MB_YESNOCANCEL|MB_ICONQUESTION|MB_DEFBUTTON2 \
-      "A legacy AddaxAI install was found at:$1$\r$\n$\r$\nThe new AddaxAI can replace its Timelapse Analyser launcher (open.bat) so Timelapse calls the new app instead.$\r$\n$\r$\nYes  - replace the legacy launcher (recommended)$\r$\nNo   - keep legacy launcher; Timelapse will keep using legacy AddaxAI$\r$\nCancel - abort install" \
-      /SD IDNO IDYES write_shims IDNO skip_shims
-    Abort  ; Cancel pressed.
-
-  write_shims:
-    ; Drop at the per-user path FIRST since Saul's command tries that
-    ; one first. Order does not matter for the install, only for the
-    ; reading of this file by future maintainers.
-    !insertmacro WriteTimelapseShim "${TL_SHIM_DIR_PU}" "${TL_SHIM_PATH_PU}"
-    !insertmacro WriteTimelapseShim "${TL_SHIM_DIR_PM}" "${TL_SHIM_PATH_PM}"
-  skip_shims:
+  ; $PROFILE first (Saul's first-try path; this one always succeeds).
+  !insertmacro WriteTimelapseShim "${TL_SHIM_DIR_PU}" "${TL_SHIM_PATH_PU}"
+  ; $PROGRAMFILES second (Saul's fallback; silently no-ops on per-user
+  ; installs but populates correctly when the installer is elevated).
+  !insertmacro WriteTimelapseShim "${TL_SHIM_DIR_PM}" "${TL_SHIM_PATH_PM}"
 !macroend
 
 !macro customUnInstall
-  ; Remove the Timelapse shims if we own them. We do not unconditionally
-  ; nuke the directories because a legacy AddaxAI install may still live
-  ; there; only the open.bat files we wrote are ours to remove. The
-  ; RMDir calls are non-recursive and only succeed when the directory
-  ; is empty, which keeps legacy installs intact.
+  ; Remove our Timelapse shims if we own them. Non-recursive RMDir so
+  ; a legacy AddaxAI sitting next to ours stays intact: it only succeeds
+  ; when the directory is empty.
   IfFileExists "${TL_SHIM_PATH_PU}" 0 +2
     Delete "${TL_SHIM_PATH_PU}"
   RMDir "${TL_SHIM_DIR_PU}"
@@ -105,7 +107,7 @@
   IfFileExists "$PROFILE\AddaxAI\*.*" 0 skip_userdata_removal
 
   MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 \
-    "Also delete your AddaxAI user data?$\r$\n$\r$\n$PROFILE\AddaxAI$\r$\n$\r$\nThis includes your projects database, downloaded model weights, the analysis environment (about 2 GB), logs, and thumbnails. Removing it cannot be undone.$\r$\n$\r$\nChoose No to keep your data so a future reinstall picks up where you left off." \
+    "Also delete your AddaxAI user data?$\r$\n$\r$\n$PROFILE\AddaxAI$\r$\n$\r$\nThis includes your projects database, downloaded model weights, the analysis environments, logs, and thumbnails. Removing it cannot be undone.$\r$\n$\r$\nChoose No to keep your data so a future reinstall picks up where you left off." \
     /SD IDNO IDNO skip_userdata_removal
 
   RMDir /r "$PROFILE\AddaxAI"
