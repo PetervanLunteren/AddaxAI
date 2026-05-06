@@ -2,7 +2,9 @@
  * Timelapse Analyser integration page.
  *
  * Layout matches the main app exactly:
- * - canonical header / max-w-7xl main wrapper (FRONTEND_CONVENTIONS.md)
+ * - canonical header / main wrapper (FRONTEND_CONVENTIONS.md), but
+ *   narrower (max-w-3xl) than the main app pages because Timelapse is
+ *   a single-column focused form rather than a dashboard or grid.
  * - Card sections with 2-column rows: bold title + grey caption left,
  *   widget right (same shape used in pages/SettingsPage.tsx and
  *   components/projects/CreateProjectDialog.tsx)
@@ -54,7 +56,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -70,6 +71,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { AnalysisProgress } from "@/components/analyses/AnalysisProgress";
 import { BatchSizeRow } from "@/components/analyses/BatchSizeRow";
 import { FolderSelector } from "@/components/analyses/FolderSelector";
 import { ClassificationModelGroupedItems } from "@/components/models/ClassificationModelGroupedItems";
@@ -170,6 +172,10 @@ function TimelapseFormPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [outputPath, setOutputPath] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Tracks the in-flight cancel request between button click and the
+  // backend's `cancelled` websocket reply. Disables the Cancel button so
+  // a second click does not fire a second cancel.
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const form = useForm<TimelapseFormData>({
     resolver: zodResolver(timelapseSchema),
@@ -274,6 +280,16 @@ function TimelapseFormPage() {
     onError: (msg) => {
       setErrorMessage(msg);
       setStage("form");
+      setIsCancelling(false);
+    },
+    onCancelled: (msg) => {
+      // Cancellation snaps back to the form so the user can try again
+      // with different settings. The backend has already torn down the
+      // subprocess and emitted the cancelled message.
+      setErrorMessage(msg || "Analysis cancelled");
+      setStage("form");
+      setIsCancelling(false);
+      setJobId(null);
     },
   });
 
@@ -355,14 +371,43 @@ function TimelapseFormPage() {
       : classificationModel;
 
   if (stage === "running") {
+    // Re-uses the same per-phase progress UI the main app's
+    // RunQueueModal renders (extracted into AnalysisProgress.tsx so
+    // both call sites stay in sync). Timelapse runs are always single-
+    // deployment, so we hide the "Deployment 1 of 1" badge.
     return (
       <PageShell>
-        <RunningCard
-          phase={runProgress.phase}
-          phaseProgress={runProgress.phaseProgress}
-          message={runProgress.message}
-          metricsLine={runProgress.metrics?.raw_line ?? ""}
-        />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {isCancelling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              <span>{isCancelling ? "Cancelling..." : "Running analysis"}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isCancelling}
+              onClick={() => {
+                setIsCancelling(true);
+                runProgress.cancel();
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+          <AnalysisProgress
+            phase={runProgress.phase}
+            phaseProgress={runProgress.phaseProgress}
+            metrics={runProgress.metrics}
+            computeDevice={runProgress.computeDevice}
+            deploymentContext={runProgress.deploymentContext}
+            hideDeploymentHeader
+          />
+        </div>
       </PageShell>
     );
   }
@@ -373,9 +418,18 @@ function TimelapseFormPage() {
         <SuccessCard
           outputPath={outputPath}
           onRunAnother={() => {
+            // Form state is preserved across stage transitions because
+            // TimelapseFormPage itself does not unmount — useForm keeps
+            // the user's classifier, label exclusions, and advanced
+            // settings between runs. Only the folder is reset so the
+            // user is forced to pick a new one (re-running the same
+            // folder by accident would just overwrite the previous
+            // results.json with no warning).
             setJobId(null);
             setOutputPath(null);
             setErrorMessage(null);
+            form.setValue("folder_path", "");
+            form.clearErrors();
             setStage("form");
           }}
         />
@@ -414,6 +468,7 @@ function TimelapseFormPage() {
                             onChange={field.onChange}
                             hideLabel
                             hideGps
+                            hideDatetimeWarning
                           />
                         </FormControl>
                         <FormMessage />
@@ -552,7 +607,7 @@ function TimelapseFormPage() {
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between py-3 text-left text-sm font-semibold hover:text-primary transition-colors"
+                  className="flex items-center gap-2 py-3 text-left text-sm font-semibold hover:text-primary transition-colors"
                 >
                   <span>Advanced settings</span>
                   <ChevronDown
@@ -879,18 +934,18 @@ function PageShell({ children }: { children: React.ReactNode }) {
           Subtitle keeps the verb-led action sentence so a first-time
           user knows what the page does. */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 text-center">
+        <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8 text-center">
           <img
             src="/branding/addaxai-timelapse-logo-tall.png"
             alt="AddaxAI + Timelapse"
             className="h-48 w-auto mx-auto"
           />
-          <p className="text-sm text-muted-foreground mt-4">
-            Use AI to identify wildlife.
+          <p className="text-lg text-muted-foreground mt-4">
+            Use AddaxAI to identify wildlife in your Timelapse projects
           </p>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>
@@ -917,43 +972,6 @@ function SettingRow({
   );
 }
 
-function RunningCard({
-  phase,
-  phaseProgress,
-  message,
-  metricsLine,
-}: {
-  phase: string | null;
-  phaseProgress: number;
-  message: string;
-  metricsLine: string;
-}) {
-  const pct = Math.round((phaseProgress || 0) * 100);
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Loader2 className="h-5 w-5 animate-spin" /> Running analysis
-        </CardTitle>
-        <CardDescription>
-          {phase
-            ? phase.replace(/_/g, " ")
-            : "Starting"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3 pb-6">
-        <Progress value={pct} className="h-2" />
-        <div className="text-xs text-right text-muted-foreground">{pct}%</div>
-        {(metricsLine || message) && (
-          <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
-            {metricsLine || message}
-          </pre>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function SuccessCard({
   outputPath,
   onRunAnother,
@@ -973,9 +991,15 @@ function SuccessCard({
           <CheckCircle2 className="h-5 w-5" /> Analysis complete
         </CardTitle>
         <CardDescription>
-          In Timelapse, open <strong>Recognition</strong> &gt;{" "}
-          <strong>Import recognition data for this image set</strong> and pick
-          this file.
+          In Timelapse, go to{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+            Recognition
+          </code>{" "}
+          →{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+            Import recognition data for this image set
+          </code>
+          , then pick the file below.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 pb-6">

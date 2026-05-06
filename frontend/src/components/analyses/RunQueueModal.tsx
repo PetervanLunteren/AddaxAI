@@ -20,9 +20,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { useTaskProgress, type TqdmMetrics } from "@/hooks/useTaskProgress";
+import { useTaskProgress } from "@/hooks/useTaskProgress";
+import { AnalysisProgress } from "./AnalysisProgress";
 import {
   deploymentQueueApi,
   type DeploymentQueueEntry,
@@ -133,82 +132,8 @@ function timestampSuffix(): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-interface PhaseRowProps {
-  label: string;
-  phaseName: string;
-  progress: number;
-  currentPhase: string | null;
-  phaseProgress: number | undefined;
-  metrics: TqdmMetrics | null;
-  computeDevice: string | null;
-}
-
-function PhaseRow({ label, phaseName, progress, currentPhase, phaseProgress, metrics, computeDevice }: PhaseRowProps) {
-  const isActive = phaseName === currentPhase;
-  const isFinalizing = isActive && progress >= 100;
-  const hasValidMetrics = isActive && !isFinalizing && metrics?.current !== undefined && metrics?.total !== undefined && metrics.current < metrics.total;
-  const isStartingUp = isActive && !isFinalizing && !hasValidMetrics && (phaseProgress === undefined || phaseProgress < 1.0);
-
-  const unit = metrics?.unit || "items";
-  const capitalizedUnit = unit.charAt(0).toUpperCase() + unit.slice(1);
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-gray-700">{label}</p>
-        <span className="text-xs text-gray-500 font-mono">{progress.toFixed(0)}%</span>
-      </div>
-      <Progress value={progress} className="h-2" />
-
-      {hasValidMetrics && metrics && (
-        <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
-          <div className="flex justify-between">
-            <span>Processing {unit}:</span>
-            <span>{metrics.current} of {metrics.total}</span>
-          </div>
-          {metrics.elapsed && (
-            <div className="flex justify-between">
-              <span>Elapsed time:</span>
-              <span>{metrics.elapsed}</span>
-            </div>
-          )}
-          {metrics.remaining && (
-            <div className="flex justify-between">
-              <span>Remaining time:</span>
-              <span>{metrics.remaining}</span>
-            </div>
-          )}
-          {metrics.rate && (
-            <div className="flex justify-between">
-              <span>{capitalizedUnit} per second:</span>
-              <span>{metrics.rate.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="flex justify-between">
-            <span>Running on:</span>
-            <span className={computeDevice ? "" : "text-gray-400"}>
-              {computeDevice ?? "detecting..."}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {isStartingUp && (
-        <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
-          <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#156065' }} />
-          <span>Starting up...</span>
-        </div>
-      )}
-
-      {isFinalizing && (
-        <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
-          <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#156065' }} />
-          <span>Finalizing...</span>
-        </div>
-      )}
-    </div>
-  );
-}
+// PhaseRow + per-phase computation moved to ./AnalysisProgress.tsx and
+// shared with TimelapseModePage's running stage.
 
 interface LogTableProps {
   rows: LogRow[];
@@ -385,25 +310,7 @@ export function RunQueueModal({
   const isProcessing =
     !isComplete && !hasError && !hasCancelled && hasJob && !isCancelling;
 
-  const phaseOrder = ["init", "video_detection", "video_classification", "image_detection", "image_classification", "saving", "embedding", "finalize"];
-  const currentPhaseIndex = phase ? phaseOrder.indexOf(phase) : -1;
-
-  const getPhaseProgress = (targetPhase: string): number => {
-    const targetIndex = phaseOrder.indexOf(targetPhase);
-    if (currentPhaseIndex < targetIndex) return 0;
-    if (currentPhaseIndex > targetIndex) return 100;
-
-    if (phase === targetPhase) {
-      if (phaseProgress !== undefined && phaseProgress >= 1.0) {
-        return 100;
-      }
-      if (metrics?.current !== undefined && metrics?.total !== undefined && metrics.total > 0) {
-        return (metrics.current / metrics.total) * 100;
-      }
-      return 0;
-    }
-    return 0;
-  };
+  // Phase order + per-phase progress logic moved to AnalysisProgress.tsx.
 
   const showSpinner = isWaitingForJob;
 
@@ -593,31 +500,14 @@ export function RunQueueModal({
                 </div>
               )}
 
-              {!showSpinner && deploymentContext && (
-                <div className="border rounded-lg p-4 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600">Deployment</span>
-                    <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
-                      {deploymentContext.deploymentIndex} of {deploymentContext.totalDeployments}
-                    </span>
-                  </div>
-
-                  {[
-                    deploymentContext.videoCount > 0 && { label: "Video detection", phase: "video_detection" },
-                    deploymentContext.videoCount > 0 && deploymentContext.hasClassifier && { label: "Video classification", phase: "video_classification" },
-                    deploymentContext.imageCount > 0 && { label: "Image detection", phase: "image_detection" },
-                    deploymentContext.imageCount > 0 && deploymentContext.hasClassifier && { label: "Image classification", phase: "image_classification" },
-                    deploymentContext.hasEmbedding && { label: "Embedding", phase: "embedding" },
-                  ].filter(Boolean).map((entry) => {
-                    const { label: phaseLabel, phase: phaseName } = entry as { label: string; phase: string };
-                    return (
-                      <div key={phaseName}>
-                        <Separator className="mb-4" />
-                        <PhaseRow label={phaseLabel} phaseName={phaseName} progress={getPhaseProgress(phaseName)} currentPhase={phase} phaseProgress={phaseProgress} metrics={metrics} computeDevice={computeDevice} />
-                      </div>
-                    );
-                  })}
-                </div>
+              {!showSpinner && (
+                <AnalysisProgress
+                  phase={phase}
+                  phaseProgress={phaseProgress}
+                  metrics={metrics}
+                  computeDevice={computeDevice}
+                  deploymentContext={deploymentContext}
+                />
               )}
 
               {isProcessing && !isConnected && (

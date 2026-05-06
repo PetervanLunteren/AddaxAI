@@ -87,6 +87,14 @@ interface FolderSelectorProps {
   /** Hide the GPS pin in the scan result. Used in Timelapse mode where
    *  there is no Site / Map context that would consume it. */
   hideGps?: boolean;
+  /** Hide the "DateTime metadata not found" red alert. Used in
+   *  Timelapse mode where the runner does not require EXIF
+   *  DateTimeOriginal — files without timestamps are simply absent
+   *  from the sequence-level smoother, but detection and
+   *  classification still run on them. The main app needs the warning
+   *  because its DB load step (`json_pipeline.load_json_to_database`)
+   *  raises MissingTimestampError on missing timestamps. */
+  hideDatetimeWarning?: boolean;
 }
 
 export function FolderSelector({
@@ -98,6 +106,7 @@ export function FolderSelector({
   hideLabel = false,
   hideScanResult = false,
   hideGps = false,
+  hideDatetimeWarning = false,
 }: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
   const [showManualInput, setShowManualInput] = useState(!isElectron());
@@ -298,8 +307,11 @@ export function FolderSelector({
                 )}
               </div>
 
-              {/* DateTime missing error */}
-              {scanResult.missing_datetime && (
+              {/* DateTime missing error. Suppressed in Timelapse mode
+                  where missing EXIF is not a hard failure (the runner
+                  still detects and classifies; only sequence smoothing
+                  skips those files). */}
+              {scanResult.missing_datetime && !hideDatetimeWarning && (
                 <Alert variant="destructive" className="bg-red-50 border-red-300">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription className="text-sm">

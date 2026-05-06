@@ -365,11 +365,16 @@ async function createWindow(): Promise<void> {
  * paint when launched via `AddaxAI.exe --timelapse <folder>`.
  */
 async function createTimelapseWindow(prefilledPath?: string): Promise<void> {
+  // Narrower than the main app window: Timelapse is a single-column
+  // focused form (folder, classifier, label selection, advanced
+  // disclosure), not a dashboard or grid. The page content itself is
+  // capped at max-w-3xl, so a wider window just gives empty side
+  // margins. Users can still resize wider if they want.
   const win = new BrowserWindow({
-    width: 1400,
+    width: 1024,
     height: 900,
-    minWidth: 1024,
-    minHeight: 768,
+    minWidth: 720,
+    minHeight: 600,
     title: 'AddaxAI - Timelapse mode',
     autoHideMenuBar: false,
     webPreferences: {

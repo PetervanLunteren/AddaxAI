@@ -1,6 +1,10 @@
 ## Priority 1
 - [x] TIMELAPSE INTEGRATION (in-app window + --timelapse CLI + open.bat shim)
-
+- [x] "Run another folder" should go back to the form and leave all the settings as they were the previous run, except for the folder selection - that needs to be blank. The user should at least pick a new folder.... 
+- [x] In the main app there is a datetime validation for folders ("DateTime metadata not found.") In Timelpase mode that is not really needed. Can we skip that one in Timelapse mode? Its allowed to analyse images without any datetime information. 
+- [x] Perhpas we can make the entire timelapse window less wide. use less horizontal space, as ther arent a lot of widgets after all. 
+- [x] SHoudl we place the avron of advanced settings next to the words? Instead of on the other side of the window? 
+- [ ] 
 - [ ] Test with Timelapse itself
 - [ ] Test with a clean install without the setup done in the main AddaxAI app
 - [ ] 
