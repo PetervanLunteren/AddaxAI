@@ -1,6 +1,6 @@
 # AddaxAI beta
 
-Thanks for trying the new AddaxAI. It is a full rewrite from scratch, with stronger metadata analysis and verification options. It works as an additive system: keep adding deployments to a project and the analyses, dashboards, and insights update with them. Things are still rough in places, that is what this beta is for.
+Thanks for trying the new AddaxAI. It is a full rewrite from scratch, with stronger metadata analysis and verification options. It works as an additive system: keep adding deployments to a project and the analyses, dashboards, and insights update with them.
 
 ## Download
 
@@ -14,10 +14,19 @@ Linux is still in development, so the beta will not run there yet. Intel Macs ar
 ## Install
 
 #### macOS
-Open the dmg, drag AddaxAI into Applications. First launch may take a few seconds while Gatekeeper checks the Apple notarisation.
+Open the dmg, drag AddaxAI into Applications.
 
 #### Windows
-Run the setup `.exe` and follow the installer. If SmartScreen still warns, click "More info" then "Run anyway", the installer is signed.
+Run the setup `.exe` and follow the installer.
+
+## Timelapse integration
+
+Windows only. Install AddaxAI first, then open the Timelapse window:
+
+- From AddaxAI: hamburger menu > Timelapse integration.
+- From Timelapse Analyser: choose AddaxAI from the recognition menu (the folder is pre-filled).
+
+When the run finishes, AddaxAI writes `results.json` next to the chosen folder. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
 
 ## What I would like to learn from you
 
@@ -30,13 +39,11 @@ I want to hear about anything that feels wrong, weird, or could be better. You d
 - workflow steps that are confusing or take too many clicks
 - anything else you notice
 
-Even one line is useful. If you are unsure whether it is a bug, send it anyway, I would rather see one too many than miss something.
+If you are unsure whether it is a bug, send it anyway, I would rather see one too many than miss something.
 
 ## How to send me a bug report
 
-Email is old tech but it works. Send everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com). I read every message and reply when there is a fix, and I will tell you which version to download next.
-
-Please give me as much detail as you can so I can reproduce it. Most useful:
+Send everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com). Please give me as much detail as you can so I can reproduce it. Most useful:
 
 - what you were trying to do
 - what you expected to happen
@@ -46,23 +53,22 @@ Please give me as much detail as you can so I can reproduce it. Most useful:
 
 #### Export diagnostic report
 
-Click the bug icon in the page header (tooltip says "Export diagnostic report"). This builds a zip file with logs, system info, states, jobs, etc. Please attach it to the email. If the app does not open the button is not available. In that case, please zip the logs folder by hand and attach that (right-click the folder > compress).
+Click the bug icon in the top-right page header (tooltip says "Export diagnostic report"). It builds a zip of logs, attach that to the email. If the app won't open, zip the logs folder by hand:
 
 | OS | Logs folder |
 |---|---|
 | macOS | `/Users/<username>/AddaxAI/logs/` |
 | Windows | `C:\Users\<username>\AddaxAI\logs\` |
 
-Please also zip and share these folders if they exist (siblings of the logs folder above):
+Also share these if they exist next to `logs/`:
 
-- `crash-dumps/` — Electron / Chromium minidumps from native crashes (segfault, OOM, GPU process crash). Only present if AddaxAI has actually crashed natively at some point.
-- `timelapse-runs/` — only relevant for Timelapse integration bugs. Each subfolder is one analysis run that did not finish cleanly, named `<timestamp>__<job_id>` so the most recent one sorts last. If you know which run was the faulty one, you can attach just that one subfolder. Skip the `video_frames/` subfolder inside any run unless I specifically ask for it (it can be many GB).
+- `crash-dumps/` (zip the full folder)
+- `timelapse-runs/<timestamp>__<job_id>/` (Timelapse bugs only, share every `.json` file inside the run subfolder, skip the `video_frames/` subfolder, it can be many GB)
 
 ## What is not built yet
 
 Here is what is missing on purpose. None of these are forgotten, they are just not in this beta yet:
 
-- timelapse integration (will be a standalone app)
 - full-image classification models support (AHDRIFT-v1 and similar)
 - multi-language support
 - depth estimation 
@@ -78,7 +84,7 @@ Here is what is missing on purpose. None of these are forgotten, they are just n
 Drag AddaxAI from Applications to the Trash. To also remove logs, models, and the database, delete the folder at `/Users/<username>/AddaxAI`.
 
 #### Windows
-Open Settings, then Apps, find AddaxAI, click Uninstall. To also remove logs, models, and the database, delete the folder at `C:\Users\<username>\AddaxAI`.
+Open Windows Settings, then Apps, find AddaxAI, click Uninstall. The uninstaller asks whether to also remove your user data.
 
 ## Contact
 

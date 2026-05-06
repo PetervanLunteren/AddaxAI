@@ -368,6 +368,25 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
         # next launch's startup sweep can mop up stragglers.
         logger.warning(f"Could not remove {artifacts_folder}: {e}")
 
+    # If `timelapse-runs/` is now empty (no failed runs sitting around),
+    # remove it too so a healthy install never has this folder under
+    # `~/AddaxAI/`. First sweep any empty run subdirectories left over
+    # from prior beta versions (their bones would otherwise keep the
+    # parent alive forever even on healthy runs). `rmdir()` only
+    # succeeds on empty directories, so any failed run with JSONs
+    # inside stays untouched and visible to support.
+    runs_root = artifacts_folder.parent
+    try:
+        for child in runs_root.iterdir():
+            if child.is_dir():
+                try:
+                    child.rmdir()
+                except OSError:
+                    pass
+        runs_root.rmdir()
+    except OSError:
+        pass
+
     await ws_manager.send_complete(
         job_id,
         True,
