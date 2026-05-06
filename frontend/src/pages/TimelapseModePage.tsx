@@ -3,7 +3,7 @@
  *
  * Layout matches the main app exactly:
  * - canonical header / main wrapper (FRONTEND_CONVENTIONS.md), but
- *   narrower (max-w-3xl) than the main app pages because Timelapse is
+ *   narrower (max-w-5xl) than the main app pages because Timelapse is
  *   a single-column focused form rather than a dashboard or grid.
  * - Card sections with 2-column rows: bold title + grey caption left,
  *   widget right (same shape used in pages/SettingsPage.tsx and
@@ -934,7 +934,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
           Subtitle keeps the verb-led action sentence so a first-time
           user knows what the page does. */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8 text-center">
+        <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 text-center">
           <img
             src="/branding/addaxai-timelapse-logo-tall.png"
             alt="AddaxAI + Timelapse"
@@ -945,7 +945,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
           </p>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>
