@@ -82,8 +82,8 @@ export function ResetAppDialog({ open, onOpenChange }: ResetAppDialogProps) {
               Warning - This will permanently delete
             </p>
             <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
-              <li>Installed analysis environments (must redownload)</li>
-              <li>Installed model weights (default ones reinstall on next launch)</li>
+              <li>Installed analysis environments</li>
+              <li>Installed model weights</li>
               <li>All log files and crash dumps</li>
               <li>Cached thumbnails and the bundled micromamba binary</li>
             </ul>

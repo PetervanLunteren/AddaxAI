@@ -5,7 +5,7 @@
  * Following security best practices: no nodeIntegration, contextIsolation enabled.
  */
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // Expose safe Electron APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -71,5 +71,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   isElectron: (): boolean => {
     return true;
+  },
+
+  /**
+   * Resolve the absolute filesystem path of a `File` from a drag-and-drop
+   * event. Electron 32+ removed the legacy `File.path` property, so the
+   * renderer has to call `webUtils.getPathForFile()` for dropped folders
+   * and files. Synchronous and side-effect free.
+   */
+  getDroppedFolderPath: (file: File): string => {
+    return webUtils.getPathForFile(file);
   },
 });

@@ -7,8 +7,21 @@
  * - Electron native picker or manual input for dev
  */
 
-import { useState } from "react";
-import { Folder, CheckCircle2, AlertCircle, Loader2, ChevronDown, Image, Video, MapPin, MapPinOff, Calendar } from "lucide-react";
+import { Fragment, useState } from "react";
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderInput,
+  Image,
+  Loader2,
+  MapPin,
+  MapPinOff,
+  Video,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -110,6 +123,7 @@ export function FolderSelector({
 }: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
   const [showManualInput, setShowManualInput] = useState(!isElectron());
+  const [isDragOver, setIsDragOver] = useState(false);
   const inElectron = isElectron();
 
   // Handle Electron folder selection
@@ -120,6 +134,18 @@ export function FolderSelector({
     if (folderPath) {
       onChange(folderPath);
     }
+  };
+
+  // Resolve a dropped file's absolute path through the Electron preload.
+  // Single-folder drops only — additional items are ignored.
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!window.electronAPI?.getDroppedFolderPath) return;
+    const path = window.electronAPI.getDroppedFolderPath(file);
+    if (path) onChange(path);
   };
 
   // File count summary
@@ -133,26 +159,52 @@ export function FolderSelector({
           <label className="text-sm font-medium">Folder</label>
         )}
 
-        {/* Input or button */}
-        {inElectron ? (
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              value={value || ""}
-              readOnly
-              placeholder="No folder selected"
-              className={`flex-1 font-mono text-sm ${error ? "border-red-500" : ""}`}
+        {/* Folder affordance:
+            - Selected: breadcrumb pill of the last 3 path segments + Change
+              button (Change clears the value, returning to empty state).
+            - Empty (Electron): drag-and-drop card. Click also opens the
+              native picker so the affordance is discoverable for users who
+              don't think to drag.
+            - Empty (browser/dev): manual text input + test-deployment
+              dropdown. Drag-and-drop only resolves to an absolute path
+              inside Electron, so the dev fallback stays as it was. */}
+        {value ? (
+          <BreadcrumbsRow
+            path={value}
+            error={!!error}
+            onClear={() => onChange("")}
+          />
+        ) : inElectron ? (
+          <button
+            type="button"
+            onClick={handleElectronSelect}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
+            className={`w-full flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-10 transition-all ${
+              isDragOver
+                ? "border-primary bg-primary/5 text-primary"
+                : error
+                  ? "border-red-500 bg-background text-muted-foreground"
+                  : "border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            <FolderInput
+              className={`h-7 w-7 transition-transform ${isDragOver ? "scale-110" : ""}`}
             />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleElectronSelect}
-              className="shrink-0"
-            >
-              <Folder className="h-4 w-4 mr-2" />
-              Select
-            </Button>
-          </div>
+            <span className="text-sm">
+              {isDragOver
+                ? "Drop to select folder"
+                : "Drop folder here or click to browse"}
+            </span>
+          </button>
         ) : (
           <div className="flex gap-2">
             <Input
@@ -356,5 +408,69 @@ export function FolderSelector({
         ) : null}
       </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Breadcrumb pill for a selected folder. Shows the folder icon + last few
+ * path segments separated by chevrons; longer paths get a leading ellipsis.
+ * No bold weight: every segment reads at the same emphasis. The "Change"
+ * button clears the selection so the parent re-renders the empty state.
+ */
+function BreadcrumbsRow({
+  path,
+  error,
+  onClear,
+}: {
+  path: string;
+  error: boolean;
+  onClear: () => void;
+}) {
+  // Split on either / or \ so Windows paths render the same way.
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  const tail = parts.slice(-3);
+  const truncated = parts.length > tail.length;
+
+  return (
+    <div className="flex gap-2">
+      <div
+        className={`flex-1 flex items-center gap-1.5 rounded-md border bg-background px-3 py-2 text-sm overflow-hidden min-w-0 ${
+          error ? "border-red-500" : "border-input"
+        }`}
+        title={path}
+      >
+        <Folder className="h-4 w-4 text-muted-foreground shrink-0" />
+        {truncated && (
+          <>
+            <span className="text-muted-foreground shrink-0">…</span>
+            <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+          </>
+        )}
+        {tail.map((seg, i) => (
+          <Fragment key={i}>
+            {i > 0 && (
+              <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+            )}
+            <span
+              className={
+                i === tail.length - 1
+                  ? "truncate"
+                  : "text-muted-foreground truncate"
+              }
+            >
+              {seg}
+            </span>
+          </Fragment>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onClear}
+        className="shrink-0"
+      >
+        Change
+      </Button>
+    </div>
   );
 }

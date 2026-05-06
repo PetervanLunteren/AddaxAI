@@ -5,7 +5,7 @@
 - [x] Perhpas we can make the entire timelapse window less wide. use less horizontal space, as ther arent a lot of widgets after all. 
 - [x] SHoudl we place the avron of advanced settings next to the words? Instead of on the other side of the window? 
 - [ ] 
-- [ ] Test with Timelapse itself
+- [x] Test with Timelapse itself
 - [ ] Test with a clean install without the setup done in the main AddaxAI app
 - [ ] 
 - [ ] 

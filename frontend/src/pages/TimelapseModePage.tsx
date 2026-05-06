@@ -430,6 +430,7 @@ function TimelapseFormPage() {
             setErrorMessage(null);
             form.setValue("folder_path", "");
             form.clearErrors();
+            setAdvancedOpen(false);
             setStage("form");
           }}
         />

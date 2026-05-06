@@ -34,6 +34,11 @@ export interface ElectronAPI {
    */
   openTimelapseWindow: (prefilledPath?: string) => Promise<void>;
   isElectron: () => boolean;
+  /**
+   * Resolve the absolute filesystem path of a `File` produced by a
+   * drag-and-drop event. Wraps Electron's `webUtils.getPathForFile()`.
+   */
+  getDroppedFolderPath: (file: File) => string;
 }
 
 declare global {
