@@ -886,8 +886,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
             className="h-48 w-auto mx-auto"
           />
           <p className="text-sm text-muted-foreground mt-4">
-            Analyse a folder and write a results.json that Timelapse can
-            import.
+            Use AI to identify wildlife.
           </p>
         </div>
       </header>
