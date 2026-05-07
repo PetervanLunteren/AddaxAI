@@ -32,6 +32,9 @@ datas = [
     ('alembic.ini', '.'),
     # Include frontend static files
     ('../frontend/dist', 'frontend/dist'),
+    # Single source of truth for the app version. Read at runtime by
+    # backend/app/__init__.py via sys._MEIPASS / 'VERSION'.
+    ('../VERSION', '.'),
 ]
 
 # Collect data files from packages

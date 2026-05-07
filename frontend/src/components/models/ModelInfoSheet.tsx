@@ -8,6 +8,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, X } from "lucide-react";
 import { modelsApi } from "@/api/models";
+import { api } from "@/lib/api-client";
 import {
   Sheet,
   SheetContent,
@@ -53,6 +54,16 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
     queryFn: () => modelsApi.getTaxonomy(modelId!),
     enabled: open && !!modelId && modelId !== "none",
   });
+
+  // Running app version, served by /health. Backed by the repo-root
+  // VERSION file (see backend/app/__init__.py). Cached for the session
+  // since the value can't change without a backend restart.
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api.get<{ version: string }>("/health"),
+    staleTime: Infinity,
+  });
+  const currentVersion = health?.version ?? null;
 
   // Find the selected model
   const model = [...(classificationModels || []), ...(detectionModels || []), ...(embeddingModels || [])].find(
@@ -204,12 +215,11 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
           )}
 
           {/* Version Requirement */}
-          {model.min_app_version && (
+          {model.min_app_version && currentVersion && (
             <div>
               <h3 className="text-sm font-semibold mb-2">Version requirement</h3>
               <p className="text-sm text-gray-700">
                 {(() => {
-                  const currentVersion = "0.1.0"; // TODO: Get from API
                   const meetsRequirement = currentVersion >= model.min_app_version;
                   return (
                     <>

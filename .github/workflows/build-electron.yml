@@ -40,7 +40,6 @@ jobs:
             artifact-name: linux-installers
             artifact-glob: |
               electron/dist-build/*.AppImage
-              electron/dist-build/*.deb
             electron-builder-args: --linux
           # Windows hard-fails on release events: the installer must be
           # code-signed (Authenticode) or SmartScreen scares users.
@@ -62,6 +61,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # `git describe --tags --exact-match HEAD` (used in the
+          # version-sync step) needs the tag refs locally. Default
+          # checkout doesn't fetch them.
+          fetch-depth: 0
+          fetch-tags: true
 
       # Fail BEFORE any expensive build if Apple credentials are missing
       # on a release event. Avoids a 30-minute build that ends in a silent
@@ -141,20 +146,32 @@ jobs:
         working-directory: electron
         run: npm ci
 
-      # Source of truth for installer version is the release tag (Q8).
-      # On workflow_dispatch we leave package.json's hardcoded version
-      # alone so debug builds keep producing predictable filenames.
-      - name: Sync version from release tag
-        if: github.event_name == 'release'
-        env:
-          TAG: ${{ github.event.release.tag_name }}
+      # Source of truth for the installer version is the repo-root
+      # VERSION file (read at runtime by the backend) and
+      # electron/package.json (read by Electron's app.getVersion()).
+      # Both are rewritten in lockstep here.
+      #
+      # On a release event we trust the release tag.
+      # On workflow_dispatch we look for an exact-match tag at HEAD via
+      # git describe; if there's no tag (a debug build off main) we
+      # leave the working-copy versions alone, which keeps filenames
+      # predictable and makes it obvious in About that the binary is a
+      # dev build.
+      - name: Sync version from tag
+        shell: bash
         run: |
-          VERSION="${TAG#v}"
-          if [ -z "$VERSION" ]; then
-            echo "::error::Empty version derived from tag '$TAG'"
-            exit 1
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
           fi
-          echo "Setting electron version to $VERSION (from tag $TAG)"
+          if [ -z "$TAG" ]; then
+            echo "No tag at HEAD; leaving VERSION and electron/package.json untouched."
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+          echo "Setting version to $VERSION (from tag $TAG)"
+          printf '%s\n' "$VERSION" > VERSION
           cd electron
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 

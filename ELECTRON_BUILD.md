@@ -159,23 +159,17 @@ This creates `backend/dist/backend` (~26MB executable)
 ```bash
 cd ../electron
 npm run build    # Compile TypeScript
-npm run package  # Build AppImage and DEB
+npm run package  # Build AppImage
 ```
 
 **Output:**
-- `electron/dist-build/AddaxAI-0.1.0.AppImage` (~120MB)
-- `electron/dist-build/addaxai_0.1.0_amd64.deb` (~115MB)
+- `electron/dist-build/AddaxAI-x86_64.AppImage` (~120MB)
 
 ### 4. Test the Installer
 
 ```bash
-# Make AppImage executable and run
-chmod +x dist-build/AddaxAI-0.1.0.AppImage
-./dist-build/AddaxAI-0.1.0.AppImage
-
-# Or install the DEB package
-sudo dpkg -i dist-build/addaxai_0.1.0_amd64.deb
-addaxai
+chmod +x dist-build/AddaxAI-x86_64.AppImage
+./dist-build/AddaxAI-x86_64.AppImage
 ```
 
 ## Development Mode

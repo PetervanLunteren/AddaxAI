@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app import __version__
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 
@@ -97,7 +98,7 @@ def _collect_system_info() -> dict[str, object]:
     """OS / arch / Python / RAM / disk-free. No PII."""
     settings = get_settings()
     info: dict[str, object] = {
-        "app_version": "0.1.0",  # bumped at release; see backend/app/main.py
+        "app_version": __version__,
         "environment": settings.environment,
         "platform": {
             "system": platform.system(),

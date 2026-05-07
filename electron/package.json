@@ -1,11 +1,11 @@
 {
   "name": "addaxai-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.2",
   "description": "AddaxAI - Camera trap wildlife analysis platform",
   "main": "dist/main.js",
   "homepage": "https://github.com/PetervanLunteren/AddaxAI-WebUI",
   "author": {
-    "name": "AddaxAI Team",
+    "name": "Addax Data Science",
     "email": "peter@addaxdatascience.com"
   },
   "license": "MIT",
@@ -72,6 +72,7 @@
     "win": {
       "target": ["nsis"],
       "artifactName": "${productName}-Setup.${ext}",
+      "publisherName": "Addax Data Science",
       "signtoolOptions": {
         "signingHashAlgorithms": ["sha256"],
         "rfc3161TimeStampServer": "http://timestamp.digicert.com"
@@ -83,9 +84,10 @@
       "include": "build/installer.nsh"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": ["AppImage"],
+      "artifactName": "${productName}-${arch}.${ext}",
       "category": "Science",
-      "maintainer": "AddaxAI Team <peter@addaxdatascience.com>"
+      "maintainer": "Addax Data Science <peter@addaxdatascience.com>"
     }
   }
 }

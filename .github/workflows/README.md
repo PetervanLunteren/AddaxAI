@@ -23,7 +23,7 @@ re-pushing.
 | OS | Runner | Arch | Outputs | Blocking |
 |----|--------|------|---------|----------|
 | macOS | `macos-14` | arm64 | `.dmg`, `-mac.zip` | Yes |
-| Linux | `ubuntu-22.04` | x64 | `.AppImage`, `.deb` | No (`continue-on-error`) |
+| Linux | `ubuntu-22.04` | x64 | `.AppImage` | No (`continue-on-error`) |
 | Windows | `windows-2022` | x64 | `.exe` (NSIS), `-win.zip` | No (`continue-on-error`) |
 
 macOS runs on Apple Silicon only. There is no Intel x64 build. Anyone on a
@@ -83,10 +83,10 @@ mode where electron-builder produces an unsigned-but-named-correctly
 
 ### Linux and Windows
 
-No signing yet. Linux uses `electron-builder --linux` (AppImage + deb).
-Windows uses `electron-builder --win` (NSIS + zip). End users see
-SmartScreen / Gatekeeper warnings on these platforms; that's expected
-until signing is wired up.
+No signing yet. Linux uses `electron-builder --linux` (AppImage only;
+covers every modern glibc distro). Windows uses `electron-builder --win`
+(NSIS + zip). End users see SmartScreen / Gatekeeper warnings on these
+platforms; that's expected until signing is wired up.
 
 ### Releasing
 

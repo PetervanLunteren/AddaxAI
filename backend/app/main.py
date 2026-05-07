@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 
+from app import __version__
 from app.api.routers import (
     deployment_queue_router,
     deployments_router,
@@ -314,7 +315,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AddaxAI API",
         description="Camera trap wildlife analysis platform - Backend API",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
         debug=settings.debug,
     )
@@ -365,7 +366,7 @@ def create_app() -> FastAPI:
         """
         return {
             "status": "healthy",
-            "version": "0.1.0",
+            "version": __version__,
             "environment": settings.environment,
         }
 
@@ -429,7 +430,7 @@ def create_app() -> FastAPI:
             """
             return {
                 "message": "AddaxAI API",
-                "version": "0.1.0",
+                "version": __version__,
                 "docs": "/docs",
                 "health": "/health",
                 "note": "Frontend not available - build frontend and bundle with PyInstaller",
