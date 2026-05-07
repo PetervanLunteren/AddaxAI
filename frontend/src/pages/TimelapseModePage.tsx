@@ -73,6 +73,7 @@ import {
 
 import { AnalysisProgress } from "@/components/analyses/AnalysisProgress";
 import { BatchSizeRow } from "@/components/analyses/BatchSizeRow";
+import { DiagnosticReportButton } from "@/components/diagnostics/DiagnosticReportButton";
 import { FolderSelector } from "@/components/analyses/FolderSelector";
 import { ClassificationModelGroupedItems } from "@/components/models/ClassificationModelGroupedItems";
 import { ModelInfoSheet } from "@/components/models/ModelInfoSheet";
@@ -936,7 +937,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
           Subtitle keeps the verb-led action sentence so a first-time
           user knows what the page does. */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 text-center">
+        <div className="relative mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 text-center">
           <img
             src="/branding/addaxai-timelapse-logo-tall.png"
             alt="AddaxAI + Timelapse"
@@ -945,6 +946,16 @@ function PageShell({ children }: { children: React.ReactNode }) {
           <p className="text-lg text-muted-foreground mt-4">
             Use AddaxAI to identify wildlife in your Timelapse projects
           </p>
+          {/* BETA-ONLY: bug-report shortcut. Mirrors the main app's
+              in-header bug icon so testers don't have to hop windows to
+              email a diagnostic bundle. Pinned to the content column's
+              right edge (parent is max-w-5xl) so it sits next to the
+              form on wide monitors instead of drifting off into empty
+              space. Remove once the Timelapse integration ships out of
+              beta. */}
+          <div className="absolute top-4 right-4 sm:right-6 lg:right-8">
+            <DiagnosticReportButton />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
