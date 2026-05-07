@@ -21,12 +21,12 @@ Run the setup `.exe` and follow the installer.
 
 ## Timelapse integration
 
-Windows only. Install AddaxAI first, then open the Timelapse window:
+Windows only, because Timelapse itself is also Windows only. Install AddaxAI first using the steps above, then open the AddaxAI-Timelapse integration window:
 
-- From AddaxAI: hamburger menu > Timelapse integration.
-- From Timelapse Analyser: choose AddaxAI from the recognition menu (the folder is pre-filled).
+- From AddaxAI: hamburger menu in home page > `Timelapse integration`.
+- From Timelapse: choose AddaxAI from the menu `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder...`.
 
-When the run finishes, AddaxAI writes `results.json` next to the chosen folder. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
+When the run finishes, AddaxAI writes `timelapse_recognition_file.json` next to the chosen folder. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
 
 ## What I would like to learn from you
 

@@ -107,7 +107,7 @@
   IfFileExists "$PROFILE\AddaxAI\*.*" 0 skip_userdata_removal
 
   MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 \
-    "Also delete your AddaxAI user data?$\r$\n$\r$\n$PROFILE\AddaxAI$\r$\n$\r$\nThis includes your projects database, downloaded model weights, the analysis environments, logs, and thumbnails. Removing it cannot be undone.$\r$\n$\r$\nChoose No to keep your data so a future reinstall picks up where you left off." \
+    "Also delete your AddaxAI user data?$\r$\n$\r$\n$PROFILE\AddaxAI$\r$\n$\r$\nThis includes your projects database, models, environments, and logs. Removing it cannot be undone.$\r$\n$\r$\nYour original images and videos are never touched.$\r$\n$\r$\nChoose No to keep your data so a future reinstall picks up where you left off." \
     /SD IDNO IDNO skip_userdata_removal
 
   RMDir /r "$PROFILE\AddaxAI"

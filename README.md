@@ -143,8 +143,8 @@ tail -f ~/AddaxAI/logs/backend.log
 
 ## Timelapse Analyser integration (Windows only)
 
-AddaxAI exposes a Timelapse integration that writes a `results.json` next to a
-chosen folder for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
+AddaxAI exposes a Timelapse integration that writes a `timelapse_recognition_file.json`
+next to a chosen folder for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
 
 Launch options:
 
@@ -159,7 +159,7 @@ Timelapse to call `AddaxAI.exe --timelapse "<folder>"` directly the shim
 becomes redundant; it stays in place as a long-term fallback.
 
 In Timelapse, after a run completes, open `Recognition > Import recognition
-data for this image set` and select the generated `results.json`.
+data for this image set` and select the generated `timelapse_recognition_file.json`.
 
 ## Key directories
 

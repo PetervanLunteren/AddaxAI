@@ -1,30 +1,10 @@
 ## Priority 1
-- [x] TIMELAPSE INTEGRATION (in-app window + --timelapse CLI + open.bat shim)
-- [x] "Run another folder" should go back to the form and leave all the settings as they were the previous run, except for the folder selection - that needs to be blank. The user should at least pick a new folder.... 
-- [x] In the main app there is a datetime validation for folders ("DateTime metadata not found.") In Timelpase mode that is not really needed. Can we skip that one in Timelapse mode? Its allowed to analyse images without any datetime information. 
-- [x] Perhpas we can make the entire timelapse window less wide. use less horizontal space, as ther arent a lot of widgets after all. 
-- [x] SHoudl we place the avron of advanced settings next to the words? Instead of on the other side of the window? 
-- [ ] 
-- [x] Test with Timelapse itself
-- [ ] Test with a clean install without the setup done in the main AddaxAI app
-- [ ] 
-- [ ] 
-- [ ] 
-
-
-
-
-
-
-
-- [ ]
-- [ ] TIMELAPSE STANDALONE APP
-- [ ] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
+- [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
+- [ ] How does updating work? Do we just reinstall the same setup exe and dmg? Do we need to have some kind of backup for the database in case disaster strikes? Add an option to backup the DB form the menu? And automatic backup when doing an update? What is good practise here? And How do other well known and mature apps do it?
+- [ ] For the embeddings comparison in observations verification, there is a hardcoded max of 20.000 to avoid too long waits, right? A few questions: 1) would it be an option to make this configurable in the settings (and note this when it hits the limit to tell users about this option)? 2) can we have the spinner be a progressbar (in other words, is it possible to track progress in percentage or iterations per total)? If so, should we note at the pbar that one can save time loading if they reduce the number of embeddings (i.e., set filters). 
 - [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] ADD ALL MODELS 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
-- [ ] If I check Apps > Installed apps in Windows, I see its created by "AddaxAI Team". Should we make this "Peter van Lunteren"?
-- [ ] Show me the popup text for the Windows uninstall "Also delete your user data?". I want to fine tune it. First show it to me, then I'll give you tasks.  
 
 ## Priority 2
 - [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 

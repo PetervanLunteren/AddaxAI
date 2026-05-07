@@ -14,6 +14,7 @@ import hashlib
 import os
 import platform
 import shutil
+import subprocess
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -464,16 +465,45 @@ class EnvironmentManager:
 
     def _validate_env(self, env_path: Path) -> bool:
         """
-        Validate that environment exists and has Python.
+        Validate that an environment exists, has its Python binary on
+        disk, AND that interpreter actually boots. The boot probe
+        catches envs whose `python.exe` file survived but whose stdlib
+        was pruned — Windows Defender quarantining `Lib/encodings/`,
+        antivirus / Storage Sense cleanup, partial copy, interrupted
+        rename, etc. Without this probe, the env reports "valid" right
+        up until a worker subprocess crashes with
+        `ModuleNotFoundError: No module named 'encodings'` and the user
+        sees only "Classification worker exited with code 1".
 
-        Args:
-            env_path: Path to environment
-
-        Returns:
-            True if valid, False otherwise
+        Returns False on any failure (missing binary, non-zero exit,
+        timeout, OSError) so the caller treats the env as broken and
+        triggers a rebuild.
         """
         python_path = self._get_python_path(env_path)
-        return python_path.exists()
+        if not python_path.exists():
+            return False
+
+        try:
+            result = subprocess.run(
+                [str(python_path), "-c", "import sys; sys.exit(0)"],
+                capture_output=True,
+                timeout=10,
+            )
+        except (subprocess.TimeoutExpired, OSError) as e:
+            logger.warning(
+                f"Boot probe failed for env at {env_path}: {e}"
+            )
+            return False
+
+        if result.returncode != 0:
+            stderr_tail = (result.stderr or b"").decode(errors="replace")[-500:]
+            logger.warning(
+                f"Boot probe at {env_path} exited with "
+                f"{result.returncode}; stderr tail: {stderr_tail}"
+            )
+            return False
+
+        return True
 
     def check_yaml_drift(self, env_name: str) -> bool | None:
         """

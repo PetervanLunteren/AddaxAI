@@ -108,6 +108,11 @@ interface FolderSelectorProps {
    *  because its DB load step (`json_pipeline.load_json_to_database`)
    *  raises MissingTimestampError on missing timestamps. */
   hideDatetimeWarning?: boolean;
+  /** Render scan results as a single muted dot-separated line instead
+   *  of the tall teal card. Used in the Timelapse window where vertical
+   *  space is at a premium and GPS / adjust-dates / missing-datetime are
+   *  all hidden anyway. */
+  compactScanResult?: boolean;
 }
 
 export function FolderSelector({
@@ -120,6 +125,7 @@ export function FolderSelector({
   hideScanResult = false,
   hideGps = false,
   hideDatetimeWarning = false,
+  compactScanResult = false,
 }: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
   const [showManualInput, setShowManualInput] = useState(!isElectron());
@@ -262,11 +268,27 @@ export function FolderSelector({
           </Alert>
         ) : hideScanResult ? null : value ? (
           isScanning ? (
-            <Alert>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <AlertDescription>Scanning folder...</AlertDescription>
-            </Alert>
+            compactScanResult ? (
+              <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Scanning folder...</span>
+              </div>
+            ) : (
+              <Alert>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>Scanning folder...</AlertDescription>
+              </Alert>
+            )
           ) : hasFiles ? (
+            compactScanResult ? (
+              <CompactScanLine
+                imageCount={scanResult.image_count}
+                videoCount={scanResult.video_count}
+                startDate={scanResult.start_date}
+                endDate={scanResult.end_date}
+                offsetSeconds={datetimeOffsetSeconds}
+              />
+            ) : (
             <>
               <div className="border border-[#0f6064] bg-[#ebf0f2] rounded-lg p-4 space-y-2">
                 {/* File counts — only show types that exist */}
@@ -399,6 +421,7 @@ export function FolderSelector({
                 </Alert>
               )}
             </>
+            )
           ) : (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -408,6 +431,69 @@ export function FolderSelector({
         ) : null}
       </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Single-row teal scan summary for the Timelapse window: same palette as
+ * the full main-app panel, but compressed into one horizontal pill so it
+ * costs much less vertical space. Skips counts that are zero. Falls back
+ * to a "no datetime metadata" cell when EXIF timestamps are absent
+ * (Timelapse mode allows this).
+ */
+function CompactScanLine({
+  imageCount,
+  videoCount,
+  startDate,
+  endDate,
+  offsetSeconds,
+}: {
+  imageCount: number;
+  videoCount: number;
+  startDate: string | null;
+  endDate: string | null;
+  offsetSeconds: number;
+}) {
+  const fmt = (d: Date) =>
+    d.toLocaleString([], {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  let dateRange: string;
+  if (startDate && endDate) {
+    const offsetMs = offsetSeconds * 1000;
+    const s = new Date(new Date(startDate).getTime() + offsetMs);
+    const e = new Date(new Date(endDate).getTime() + offsetMs);
+    dateRange = `${fmt(s)} – ${fmt(e)}`;
+  } else {
+    dateRange = "No datetime metadata";
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-md border border-[#0f6064] bg-[#ebf0f2] px-3 py-2 text-sm text-[#0f6064]">
+      {imageCount > 0 && (
+        <div className="flex items-center gap-1.5">
+          <Image className="h-4 w-4" />
+          <span>
+            {imageCount} {imageCount === 1 ? "image" : "images"}
+          </span>
+        </div>
+      )}
+      {videoCount > 0 && (
+        <div className="flex items-center gap-1.5">
+          <Video className="h-4 w-4" />
+          <span>
+            {videoCount} {videoCount === 1 ? "video" : "videos"}
+          </span>
+        </div>
+      )}
+      <div className="flex items-center gap-1.5">
+        <Calendar className="h-4 w-4" />
+        <span>{dateRange}</span>
+      </div>
+    </div>
   );
 }
 
@@ -428,7 +514,7 @@ function BreadcrumbsRow({
 }) {
   // Split on either / or \ so Windows paths render the same way.
   const parts = path.split(/[\\/]/).filter(Boolean);
-  const tail = parts.slice(-3);
+  const tail = parts.slice(-2);
   const truncated = parts.length > tail.length;
 
   return (

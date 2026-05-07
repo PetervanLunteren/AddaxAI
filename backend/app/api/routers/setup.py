@@ -18,7 +18,9 @@ downloader are idempotent and resume safely.
 """
 
 import asyncio
+import os
 import shutil
+import stat
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -446,18 +448,59 @@ class ResetResponse(BaseModel):
 
 
 def _safe_rmtree(path: Path) -> bool:
-    """Remove path if it exists. Returns True if anything was removed."""
+    """
+    Best-effort recursive removal.
+
+    Tolerates per-file failures so a single locked or read-only file
+    does not abort the whole wipe and leave envs / models in a
+    half-deleted state. Real-world cases this protects against:
+
+    - Windows: the running backend's `logs/backend.log` is held open by
+      its own logging handler. Without the swallow, `shutil.rmtree`
+      raised on it and the surrounding for loop did continue to the
+      next dir, BUT any file *inside* the failed dir that was already
+      partway through deletion left the dir in a broken state. This is
+      what corrupted env-pytorch in a beta tester's diag bundle: Lib/
+      was deleted but python.exe survived, so `_validate_env` later
+      reported the env as healthy and the classification worker
+      crashed with `ModuleNotFoundError: encodings`.
+
+    - Read-only attribute on Windows files (set by some installers,
+      antivirus quarantine restores, copy-from-network-share). chmod +
+      retry handles those instead of letting them block the wipe.
+
+    Returns True only when the path is fully gone after the call.
+    Caller can therefore trust the returned `removed_dirs` list as
+    "actually removed", not "removal attempted".
+    """
     if not path.exists():
         return False
-    try:
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
+
+    def _onerror(func: Callable, p: str, _exc_info: tuple) -> None:
+        # Try clearing the read-only attribute and retrying. Most
+        # Windows EACCES failures are this. If it still fails, swallow
+        # so rmtree keeps walking the rest of the tree.
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+            return
+        except OSError as e:
+            logger.warning(f"Could not remove {p}: {e}")
+
+    if path.is_file() or path.is_symlink():
+        try:
+            try:
+                path.chmod(stat.S_IWRITE)
+            except OSError:
+                pass
             path.unlink()
+        except OSError as e:
+            logger.warning(f"Could not remove {path}: {e}")
+            return False
         return True
-    except Exception as e:
-        logger.error(f"Failed to remove {path}: {e}", exc_info=True)
-        return False
+
+    shutil.rmtree(path, onerror=_onerror)
+    return not path.exists()
 
 
 @router.post("/reset", response_model=ResetResponse)

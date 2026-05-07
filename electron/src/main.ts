@@ -58,6 +58,39 @@ try {
   console.error('[Electron] Failed to start crashReporter:', e);
 }
 
+// Single-instance lock. If another AddaxAI is already running, we
+// MUST bail out before `snapshotPreviousShutdown()` runs below, or
+// we'd poison `.last-launch-status.json` (the running instance has
+// already consumed the sentinel on its own startup, so the second
+// instance sees it missing and writes `previous_shutdown_clean: false`).
+// The running instance's backend then surfaces a false-positive crash
+// banner.
+//
+// The `second-instance` handler forwards a `--timelapse <folder>`
+// invocation (Saul's Timelapse Analyser shim, or the user double-
+// clicking AddaxAI.exe while it is already open) to the already-
+// running instance: it opens a Timelapse window in place. Without an
+// argument we just surface the existing main window.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
+
+app.on('second-instance', (_event, argv) => {
+  const tlPath = parseTimelapseArg(argv);
+  if (tlPath !== null && process.platform === 'win32') {
+    void createTimelapseWindow(tlPath || undefined);
+    return;
+  }
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    void createWindow();
+  }
+});
+
 // Crash sentinel pair:
 //   .last-shutdown-clean  — written by Electron on graceful exit; absence
 //                            on next launch implies the previous run

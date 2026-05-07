@@ -7,7 +7,7 @@ video classification, image detection, image classification, merge, then
 postprocessing) but reuses the JSON-level primitives directly so no
 Project / Deployment / File / Detection rows are ever created.
 
-The user-visible artifact is `<folder>/results.json` in the same shape the
+The user-visible artifact is `<folder>/timelapse_recognition_file.json` in the same shape the
 main app produces. Intermediate per-phase JSONs are kept in
 `<folder>/.addaxai/timelapse/` for diagnostics; that directory is hidden
 and recreated each run.
@@ -144,7 +144,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
     #   a small perf win.
     #
     # The user's image folder ends up with exactly one new file:
-    # `<folder>/results.json`. On a successful run we delete the
+    # `<folder>/timelapse_recognition_file.json`. On a successful run we delete the
     # artifacts directory below; on failure we keep it so the user can
     # zip and email it for diagnosis.
     #
@@ -161,8 +161,8 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
 
     video_json_path = artifacts_folder / "detection_video.json"
     image_json_path = artifacts_folder / "detection_image.json"
-    merged_json_path = artifacts_folder / "results.json"
-    final_json_path = folder_path / "results.json"
+    merged_json_path = artifacts_folder / "timelapse_recognition_file.json"
+    final_json_path = folder_path / "timelapse_recognition_file.json"
 
     await ws_manager.send_progress(job_id, "Initializing models...", 0.01)
 
@@ -354,7 +354,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
         ),
     )
 
-    # Final: copy postprocessed JSON to <folder>/results.json (the only
+    # Final: copy postprocessed JSON to <folder>/timelapse_recognition_file.json (the only
     # file the user sees inside their image folder).
     final_json_path.write_bytes(merged_json_path.read_bytes())
 

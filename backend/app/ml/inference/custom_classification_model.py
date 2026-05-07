@@ -159,12 +159,26 @@ class CustomClassificationModel:
             )
 
             compute_device = "CPU"
+            # Watch worker output for the signature of a corrupted env:
+            # the interpreter exits before any user code runs because
+            # `Lib/encodings/` is missing or unreadable. Most often
+            # caused by Windows Defender quarantining files under
+            # `~/AddaxAI/envs/` between sessions. Without this signal
+            # we'd surface a useless "exited with code 1" to the user.
+            env_corrupted = False
+            CORRUPTED_ENV_MARKERS = (
+                "init_fs_encoding",
+                "No module named 'encodings'",
+            )
             with track_subprocess(job_id, process):
                 # Read stderr line by line for progress
                 for line in process.stderr:
                     line = line.strip()
                     if not line:
                         continue
+
+                    if any(m in line for m in CORRUPTED_ENV_MARKERS):
+                        env_corrupted = True
 
                     # Try parsing as JSON status/progress
                     try:
@@ -193,6 +207,16 @@ class CustomClassificationModel:
                 raise JobCancelledError()
 
             if process.returncode != 0:
+                if env_corrupted:
+                    raise RuntimeError(
+                        f"The analysis environment 'env-{self.env_name}' is "
+                        f"corrupted (its Python stdlib is missing). This "
+                        f"usually means antivirus or system cleanup removed "
+                        f"files under your AddaxAI folder. Restart AddaxAI: "
+                        f"it will detect the broken environment and prompt "
+                        f"you to rebuild it. If that does not help, reinstall "
+                        f"AddaxAI."
+                    )
                 raise RuntimeError(
                     f"Classification worker exited with code {process.returncode} "
                     f"for model {self.model_dir.name}"

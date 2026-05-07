@@ -424,7 +424,7 @@ function TimelapseFormPage() {
             // settings between runs. Only the folder is reset so the
             // user is forced to pick a new one (re-running the same
             // folder by accident would just overwrite the previous
-            // results.json with no warning).
+            // timelapse_recognition_file.json with no warning).
             setJobId(null);
             setOutputPath(null);
             setErrorMessage(null);
@@ -470,6 +470,7 @@ function TimelapseFormPage() {
                             hideLabel
                             hideGps
                             hideDatetimeWarning
+                            compactScanResult
                           />
                         </FormControl>
                         <FormMessage />
