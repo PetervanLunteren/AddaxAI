@@ -163,6 +163,7 @@ data for this image set` and select the generated `timelapse_recognition_file.js
 
 - `~/AddaxAI/` - User data directory (created automatically)
   - `addaxai.db` - SQLite database
+  - `backups/` - Rolling DB snapshots (daily + pre-upgrade)
   - `logs/` - Application logs
   - `models/` - ML model weights and environments
   - `envs/` - Isolated Python environments for ML models

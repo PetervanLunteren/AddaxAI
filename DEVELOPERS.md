@@ -59,6 +59,36 @@ Review the generated file before committing. Autogenerate is helpful but imperfe
 
 **Helpers** (in `backend/app/db/migrations.py`): `get_current_revision(engine)`, `get_head_revision()`, `needs_upgrade(engine)`, `stamp_head()`, `upgrade_to_head()`. All alembic imports are local to the function bodies so the module is cheap to import.
 
+## Database backups
+
+The DB at `~/AddaxAI/addaxai.db` holds irreversible work (human verifications). It is the only piece of user state that cannot be rebuilt by re-running analysis, so it gets a backup story. Backups live under `~/AddaxAI/backups/` and use SQLite's online backup API (`sqlite3.Connection.backup`) so they are WAL-safe and produce a single consolidated `.db` file with no `-wal` / `-shm` siblings.
+
+Four kinds of snapshot:
+
+| Kind | When | Filename pattern | Retention |
+|---|---|---|---|
+| Daily rolling | App startup, throttled to one per UTC date | `addaxai-<utc-iso>.db` | Keep 5 newest |
+| Pre-upgrade | Startup, only when alembic detects a pending upgrade | `addaxai-pre-upgrade-<rev>-<utc-iso>.db` | Never auto-pruned |
+| Manual to ring buffer | User clicks "Back up database" → "Save to backups folder" | `addaxai-<utc-iso>.db` | Counts toward the daily cap |
+| Manual to chosen folder | User clicks "Back up database" → "Save to chosen folder…" | `addaxai-<utc-iso>.db` in user-picked dir | Untouched by the app |
+
+Pre-upgrade backups are intentionally exempt from pruning because they are the safety net for the day a migration eats data; we want them to survive a string of routine restarts.
+
+**Restore flow.** The frontend posts `/api/backup/restore` with a source path. The backend validates it (`PRAGMA integrity_check`) and writes `~/AddaxAI/.restore-on-next-launch` containing the absolute path. The renderer then asks Electron to quit; the next launch's lifespan calls `consume_restore_marker(settings)` before `init_db()`, which force-snapshots the current live DB to the ring buffer first, then swaps the source file in. The marker is consumed unconditionally even on failure, so a corrupt request can't loop the user through restore-fail-restore-fail forever; the live DB is left untouched on validation failure.
+
+**Key files:**
+
+| File | Purpose |
+|---|---|
+| `backend/app/db/backup.py` | Snapshot / validate / ring-buffer logic, restore-marker helpers |
+| `backend/app/api/routers/backup.py` | `/api/backup/{dir,list,snapshot,restore}` endpoints |
+| `backend/app/main.py` lifespan | Consumes the restore marker, takes daily + pre-upgrade snapshots before `init_db()` |
+| `frontend/src/components/diagnostics/BackupNowDialog.tsx` | Manual backup UI (ring buffer or chosen folder) |
+| `frontend/src/components/diagnostics/RestoreBackupDialog.tsx` | Restore UI with type-`RESTORE`-to-confirm gate |
+| `frontend/src/components/layout/AppHamburger.tsx` | Back up / Restore / Open backups folder menu items |
+
+Pre-init backups in lifespan are best-effort. If `~/AddaxAI/` is read-only or the disk is full, the failed snapshot is logged at error level and startup continues, so the user can at least open the app to see the diagnostic banner and react.
+
 ## Linting (CI enforcement)
 
 GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:

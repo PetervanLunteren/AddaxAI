@@ -41,6 +41,10 @@ I want to hear about anything that feels wrong, weird, or could be better. You d
 
 If you are unsure whether it is a bug, send it anyway, I would rather see one too many than miss something.
 
+## If something looks wrong, try Restore from backup first
+
+The hamburger menu in the projects page has a Database section with three entries: Back up database, Restore from backup, Open backups folder. AddaxAI takes a snapshot of the project database once a day on startup and keeps the last five, so if a verification batch goes wrong or the app behaves oddly after an update, you can pick a snapshot from yesterday and restore it. The restore is reversible: a safety copy of the current database is saved before the swap. You do not have to email me to wipe anything, just try Restore first.
+
 ## How to send me a bug report
 
 Send everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com). Please give me as much detail as you can so I can reproduce it. Most useful:
