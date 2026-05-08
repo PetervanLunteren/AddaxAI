@@ -2,9 +2,9 @@
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
 - [x] Add backups options. 
 - [x] Make embedding count configurable and trackable. 
-- [ ] Add the logo (wide version) to the about page. It can take some space there, its OK. Also left align the logo. 
-- [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
+- [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] ADD ALL MODELS 
+- [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 
 ## Priority 2

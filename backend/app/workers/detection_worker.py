@@ -86,11 +86,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
     # Load classification model (if configured)
     classification_model = None
+    full_image_cls = False
     if classification_model_id:
         cls_manifest = manifest_manager.get_model(classification_model_id)
         cls_model_path = model_storage.get_model_file(cls_manifest)
         cls_model_dir = model_storage.get_model_path(cls_manifest)
         env_name = cls_manifest.env
+        full_image_cls = bool(getattr(cls_manifest, "full_image_cls", False))
 
         # Check for custom inference.py script
         inference_script = cls_model_dir / "inference.py"
@@ -211,6 +213,23 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             if not video_files and not image_files:
                 logger.warning(f"No images or videos found in {folder_path}, skipping")
                 queue_crud.update_queue_status(db, entry_id, status="completed")
+                continue
+
+            # Full-image classifiers (e.g. AHDRIFT-v1) label the whole
+            # frame and have no meaningful per-frame interpretation, so
+            # we refuse folders that contain videos. Other entries in
+            # the batch are unaffected.
+            if full_image_cls and video_files:
+                error_msg = (
+                    f"Full-image classifier '{classification_model_id}' "
+                    f"cannot process videos. Folder contains "
+                    f"{len(video_files)} video file(s); use a folder "
+                    f"with only images."
+                )
+                logger.error(error_msg)
+                queue_crud.update_queue_status(
+                    db, entry_id, status="failed", error=error_msg
+                )
                 continue
 
             total_files += len(video_files) + len(image_files)
@@ -403,8 +422,28 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             # ============================================================
             # PHASE 3: Image Detection (if images exist)
+            #
+            # Full-image classifiers skip MegaDetector entirely. Instead,
+            # we synthesise a detection JSON with one full-image bbox per
+            # image so the classification phase has something to consume.
             # ============================================================
-            if image_files:
+            if image_files and full_image_cls:
+                logger.info(
+                    f"Phase 3 (skipped): full-image classifier — "
+                    f"synthesising detection JSON for "
+                    f"{len(image_files)} image(s)"
+                )
+                await deployment_progress_callback(
+                    "Preparing images...", 0.0, "image_detection", 0.5
+                )
+                from app.ml.full_image_detection import synthesize_full_image_json
+
+                synthesize_full_image_json(
+                    image_files, folder_path, image_json_path
+                )
+                json_files_to_merge.append(image_json_path)
+
+            elif image_files:
                 logger.info(f"Phase 3: Running image detection on {len(image_files)} images")
 
                 # Create synchronous progress wrapper for executor

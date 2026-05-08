@@ -66,6 +66,11 @@ class ModelManifest(BaseModel):
     # Region the model is trained for. Used to group cls models in the
     # UI dropdown. None for detection / embedding (region-agnostic).
     region: ModelRegion | None = None
+    # Full-image classifier flag. When True, the model labels the whole
+    # frame and the worker skips MegaDetector entirely; a synthetic
+    # detection covering the full image is fed straight into the
+    # classification phase. See app.ml.full_image_detection.
+    full_image_cls: bool = False
 
     # Embedding-specific
     embedding_dim: int | None = None  # 384, 768, or 1024

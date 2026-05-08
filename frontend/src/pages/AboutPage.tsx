@@ -84,6 +84,12 @@ export default function AboutPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        <img
+          src="/branding/logo-wordmark.png"
+          alt="AddaxAI"
+          className="block h-32 w-auto"
+        />
+
         <section className="rounded-lg border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">What is AddaxAI</h2>
           <p className="mt-2 text-sm text-muted-foreground">
