@@ -9,24 +9,18 @@ user-facing surfaces are named after the unit of work, the observation.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.schemas.observation import (
     ObservationStatsResponse,
     SearchRequest,
-    SearchResponse,
     SortRequest,
-    SortResponse,
 )
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
-from app.services.observation_service import (
-    search_similar as search_similar_service,
-)
-from app.services.observation_service import (
-    sort_detections as sort_detections_service,
-)
+from app.services.observation_service import stream_search, stream_sort
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/projects", tags=["observations"])
@@ -39,40 +33,45 @@ def _set_project_tz(db: Session, project_id: str) -> None:
         set_active_project_timezone(tz)
 
 
-@router.post("/{project_id}/observations/sort", response_model=SortResponse)
+@router.post("/{project_id}/observations/sort")
 async def sort_detections(
     project_id: str,
     body: SortRequest,
     db: Session = Depends(get_db),
 ):
-    """Sort detections by visual similarity using greedy nearest-neighbor chain."""
+    """Sort detections by visual similarity (greedy nearest-neighbor chain).
+
+    Returns an `application/x-ndjson` event stream from the worker
+    subprocess: progress lines while loading and computing, then a
+    final `{"type":"result", ...}` line whose payload matches the
+    legacy SortResponse shape. The frontend renders a progress bar
+    from progress events and uses the result for the grid.
+    """
     _set_project_tz(db, project_id)
     try:
-        return sort_detections_service(project_id, body, db)
+        stream = stream_sort(project_id, body, db)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from None
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from None
+    return StreamingResponse(stream, media_type="application/x-ndjson")
 
 
-@router.post("/{project_id}/observations/search", response_model=SearchResponse)
+@router.post("/{project_id}/observations/search")
 async def search_similar(
     project_id: str,
     body: SearchRequest,
     db: Session = Depends(get_db),
 ):
-    """Find detections visually similar to an anchor detection."""
+    """Find detections visually similar to an anchor detection.
+
+    Same NDJSON event-stream shape as the sort endpoint; the final
+    `result` payload matches SearchResponse.
+    """
     _set_project_tz(db, project_id)
     try:
-        return search_similar_service(project_id, body, db)
+        stream = stream_search(project_id, body, db)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from None
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from None
+    return StreamingResponse(stream, media_type="application/x-ndjson")
 
 
 @router.get(

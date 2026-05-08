@@ -21,13 +21,17 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { observationsApi } from "../../api/observations";
+import {
+  observationsApi,
+  type ObservationsProgressEvent,
+} from "../../api/observations";
 import { detectionsApi } from "../../api/detections";
 import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
+import { Progress } from "../ui/progress";
 import { Slider } from "../ui/slider";
 import { API_BASE_URL } from "../../lib/api-client";
 import { invalidateProjectData } from "../../lib/invalidate-project";
@@ -175,6 +179,52 @@ function toFilterBarFilters(f: ObservationsFilterState): EventFilterParams {
     verification: f.verification ?? "unverified",
   };
 }
+
+/**
+ * Loading state for the Observations grid. Shows a real progress bar
+ * while the subprocess streams `progress` events; falls back to an
+ * indeterminate spinner during the brief window before the first
+ * event arrives. Always shows the "narrow by filter" tip so users
+ * know the wait is reducible.
+ */
+function ObservationsLoadingState({
+  progress,
+}: {
+  progress: ObservationsProgressEvent | null;
+}) {
+  const phaseLabel = progress
+    ? PHASE_LABELS[progress.phase] ?? progress.phase
+    : null;
+  const pct =
+    progress && progress.total > 0
+      ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+      : 0;
+
+  return (
+    <div className="flex flex-col items-center gap-3 w-full max-w-sm mx-auto">
+      {progress ? (
+        <>
+          <Progress value={pct} className="h-2" />
+          <p className="text-xs text-muted-foreground">
+            {phaseLabel}: {progress.done.toLocaleString()} /{" "}
+            {progress.total.toLocaleString()} ({pct}%)
+          </p>
+        </>
+      ) : (
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      )}
+      <p className="text-xs text-muted-foreground">
+        Narrow by species, site, or date to speed this up.
+      </p>
+    </div>
+  );
+}
+
+const PHASE_LABELS: Record<ObservationsProgressEvent["phase"], string> = {
+  load: "Loading embeddings",
+  sort: "Ordering by similarity",
+  neighbors: "Comparing neighbours",
+};
 
 export function ObservationsTab({
   projectId,
@@ -383,22 +433,37 @@ export function ObservationsTab({
     }
   }, [urlAnchor]);
 
+  // Streaming progress reported by the subprocess (load → sort → neighbors).
+  // Cleared whenever a new sort/search starts and when results land.
+  const [progress, setProgress] = useState<ObservationsProgressEvent | null>(
+    null,
+  );
+
   // Sort mutation — passes the chosen sort enum.
   const sortMutation = useMutation({
     mutationFn: () =>
-      observationsApi.sort(projectId, {
-        filters: toObservationFilters(obsFilters),
-        sort: obsSort,
-      }),
-    onMutate: () => setIsSorting(true),
+      observationsApi.sortStream(
+        projectId,
+        {
+          filters: toObservationFilters(obsFilters),
+          sort: obsSort,
+        },
+        setProgress,
+      ),
+    onMutate: () => {
+      setIsSorting(true);
+      setProgress(null);
+    },
     onSuccess: (data) => {
       setSortResult(data);
       clearSelection();
       setIsSorting(false);
+      setProgress(null);
     },
     onError: (err: Error) => {
       toast.error(err.message);
       setIsSorting(false);
+      setProgress(null);
     },
   });
 
@@ -418,17 +483,26 @@ export function ObservationsTab({
   // Search mutation
   const searchMutation = useMutation({
     mutationFn: (anchor: string) =>
-      observationsApi.search(projectId, {
-        anchor_detection_id: anchor,
-        filters: toObservationFilters(obsFilters),
-        limit: 100,
-        threshold,
-      }),
+      observationsApi.searchStream(
+        projectId,
+        {
+          anchor_detection_id: anchor,
+          filters: toObservationFilters(obsFilters),
+          limit: 100,
+          threshold,
+        },
+        setProgress,
+      ),
+    onMutate: () => setProgress(null),
     onSuccess: (data) => {
       setSearchResult(data);
       clearSelection();
+      setProgress(null);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setProgress(null);
+    },
   });
 
   // Trigger search when anchor or threshold changes
@@ -985,7 +1059,7 @@ export function ObservationsTab({
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <ObservationsLoadingState progress={progress} />
         </div>
       ) : !hasResults ? (
         viewMode === "search" ? (
@@ -1008,7 +1082,7 @@ export function ObservationsTab({
           // has not fired yet (e.g. stats still loading). Show a spinner
           // rather than the misleading "No search active" card.
           <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <ObservationsLoadingState progress={progress} />
           </div>
         )
       ) : allDetections.length === 0 && totalCount > 0 && verificationFilter === "suspicious" ? (

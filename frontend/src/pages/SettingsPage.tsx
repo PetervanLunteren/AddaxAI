@@ -114,6 +114,7 @@ const settingsSchema = z.object({
   detection_batch_size: z.number().int().min(1).max(256).nullable(),
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
+  observations_max_detections: z.number().int().min(1000).max(50000),
 });
 
 const INDEPENDENCE_INTERVAL_OPTIONS = [
@@ -125,6 +126,14 @@ const INDEPENDENCE_INTERVAL_OPTIONS = [
   { value: "3600", label: "60 minutes" },
   // Debugging option: large interval to group many videos into one event
   { value: "2592000", label: "1 month (for debugging)" },
+];
+
+const OBSERVATIONS_MAX_DETECTIONS_OPTIONS = [
+  { value: "5000", label: "5,000 detections (fastest)" },
+  { value: "10000", label: "10,000 detections" },
+  { value: "20000", label: "20,000 detections (default)" },
+  { value: "35000", label: "35,000 detections" },
+  { value: "50000", label: "50,000 detections (slowest)" },
 ];
 
 const VIDEO_FPS_OPTIONS = [
@@ -331,6 +340,7 @@ export default function SettingsPage() {
       detection_batch_size: null,
       classification_batch_size: null,
       embedding_batch_size: null,
+      observations_max_detections: 20000,
     },
   });
 
@@ -355,6 +365,7 @@ export default function SettingsPage() {
         detection_batch_size: project.detection_batch_size ?? null,
         classification_batch_size: project.classification_batch_size ?? null,
         embedding_batch_size: project.embedding_batch_size ?? null,
+        observations_max_detections: project.observations_max_detections ?? 20000,
       };
       form.reset(values);
 
@@ -775,6 +786,7 @@ export default function SettingsPage() {
         detection_batch_size: project.detection_batch_size ?? null,
         classification_batch_size: project.classification_batch_size ?? null,
         embedding_batch_size: project.embedding_batch_size ?? null,
+        observations_max_detections: project.observations_max_detections ?? 20000,
       });
       setExcludedClasses(project.excluded_classes || []);
     }
@@ -1239,6 +1251,53 @@ export default function SettingsPage() {
               );
             })()}
 
+            {/* Card 2b: Verification */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Verification</CardTitle>
+                <CardDescription>
+                  Settings that control the Observations grid in the verify tab.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-0 divide-y border-t">
+                <FormField
+                  control={form.control}
+                  name="observations_max_detections"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Max detections in similarity sort</FormLabel>
+                        <FormDescription className="text-sm">
+                          Hard limit on how many detections the Observations grid loads in a single similarity sort. Higher caps let large projects render without filters but cost more memory and a longer wait. The grid still respects your filters (species, site, date), so narrowing first is always faster than raising the cap.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <Select
+                          key={String(field.value)}
+                          value={String(field.value)}
+                          onValueChange={(val) => field.onChange(parseInt(val))}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {OBSERVATIONS_MAX_DETECTIONS_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
             {/* Card 3: Label selection */}
             {hasClassificationModel && taxonomy && (
               <Card>
@@ -1505,6 +1564,7 @@ export default function SettingsPage() {
                       form.setValue("detection_batch_size", null, { shouldDirty: true });
                       form.setValue("classification_batch_size", null, { shouldDirty: true });
                       form.setValue("embedding_batch_size", null, { shouldDirty: true });
+                      form.setValue("observations_max_detections", 20000, { shouldDirty: true });
                     }}
                     disabled={updateMutation.isPending}
                   >

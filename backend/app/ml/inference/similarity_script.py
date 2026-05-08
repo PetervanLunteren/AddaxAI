@@ -12,8 +12,15 @@ Usage:
         --operation sort \
         --params '{"filters": {...}}'
 
-Output: JSON to stdout matching SortResponse / SearchResponse structure.
-Errors: stderr + non-zero exit code.
+Output: NDJSON event stream on stdout. Each line is one of:
+    {"type": "progress", "phase": "load|sort|neighbors", "done": N, "total": M}
+    {"type": "result", "detections": [...], "total_detections": N}
+    {"type": "error", "message": "..."}
+
+Exit code: 0 on success (with a "result" line), non-zero on unhandled
+errors (an "error" line is still emitted before exit). Streaming via
+NDJSON keeps progress reporting on a single channel; the parent service
+just relays lines to the HTTP client.
 
 Following CONVENTIONS.md: crash early and loudly, no silent failures.
 """
@@ -23,10 +30,30 @@ import json
 import sqlite3
 import sys
 from collections import Counter
+from typing import Any
 
 import numpy as np
 
+# Hard fallback if the parent doesn't pass --max-detections. Real value
+# comes from Project.observations_max_detections on every call.
 MAX_DETECTIONS = 20_000
+
+# How often to emit progress events during long loops. Tuned for ~50ms
+# between updates at typical scales: 500 rows per SQL emission, 200
+# steps per O(n) loop. Smaller intervals would flood the wire; larger
+# would make the bar feel stuck.
+PROGRESS_LOAD_EVERY = 500
+PROGRESS_LOOP_EVERY = 200
+
+
+def _emit_event(event: dict[str, Any]) -> None:
+    """Write one NDJSON line to stdout. Flushed so the parent sees it live."""
+    sys.stdout.write(json.dumps(event, default=str) + "\n")
+    sys.stdout.flush()
+
+
+def _emit_progress(phase: str, done: int, total: int) -> None:
+    _emit_event({"type": "progress", "phase": phase, "done": done, "total": total})
 
 # ── SQL ──────────────────────────────────────────────────────────────────
 
@@ -125,66 +152,82 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
 
 
 def _load_embeddings(
-    db_path: str, project_id: str, filters: dict
+    db_path: str, project_id: str, filters: dict, max_detections: int = MAX_DETECTIONS
 ) -> tuple[np.ndarray, list[str], list[dict]]:
-    """Load embeddings from SQLite, returning (vectors, ids, metadata)."""
+    """Load embeddings from SQLite, returning (vectors, ids, metadata).
+
+    Streams the result set so the caller can report progress: a COUNT(*)
+    pass establishes the total, then row-by-row iteration emits a
+    progress event every PROGRESS_LOAD_EVERY rows.
+    """
     sql, params = _build_query(project_id, filters)
 
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
+        # COUNT(*) on a wrapped subquery: clean and dialect-portable, and
+        # SQLite plans it cheaply because the planner can short-circuit
+        # the SELECT list. Used purely to size the progress bar.
+        count_sql = f"SELECT COUNT(*) FROM ({sql})"
+        total = conn.execute(count_sql, params).fetchone()[0] or 0
+
+        if total == 0:
+            return np.empty((0, 0), dtype=np.float32), [], []
+
+        if total > max_detections:
+            raise ValueError(
+                f"Too many detections ({total}, current limit {max_detections}). "
+                "Narrow the result by species, site, or date, or raise the "
+                "limit in Settings → Verification."
+            )
+
+        _emit_progress("load", 0, total)
+
         cursor = conn.execute(sql, params)
-        rows = cursor.fetchall()
+        vectors: list[np.ndarray] = []
+        detection_ids: list[str] = []
+        metadata_list: list[dict] = []
+
+        for i, row in enumerate(cursor):
+            vec = np.frombuffer(row["vector"], dtype=np.float16).astype(np.float32)
+            l2_norm = row["l2_norm"]
+            if l2_norm and l2_norm > 0:
+                vec = vec / l2_norm
+            vectors.append(vec)
+            detection_ids.append(row["detection_id"])
+
+            ts = row["captured_at_local"]
+            if ts and isinstance(ts, str):
+                pass
+            elif ts:
+                ts = str(ts)
+
+            metadata_list.append({
+                "label": row["label"],
+                "label_confidence": row["label_confidence"],
+                "display_name": row["display_name"],
+                "confidence": row["confidence"],
+                "category": row["category"],
+                "verified": bool(row["verified"]),
+                "classification_method": row["classification_method"],
+                "file_id": row["file_id"],
+                "deployment_id": row["deployment_id"],
+                "captured_at_local": ts,
+                "site_name": row["site_name"],
+                "bbox_x": row["bbox_x"],
+                "bbox_y": row["bbox_y"],
+                "bbox_width": row["bbox_width"],
+                "bbox_height": row["bbox_height"],
+                "width_px": row["width_px"],
+                "height_px": row["height_px"],
+            })
+
+            if (i + 1) % PROGRESS_LOAD_EVERY == 0:
+                _emit_progress("load", i + 1, total)
+
+        _emit_progress("load", total, total)
     finally:
         conn.close()
-
-    if not rows:
-        return np.empty((0, 0), dtype=np.float32), [], []
-
-    if len(rows) > MAX_DETECTIONS:
-        raise ValueError(
-            f"Too many detections ({len(rows)}). "
-            f"Add a species, site, or date filter to narrow below {MAX_DETECTIONS}."
-        )
-
-    vectors = []
-    detection_ids = []
-    metadata_list = []
-
-    for row in rows:
-        vec = np.frombuffer(row["vector"], dtype=np.float16).astype(np.float32)
-        l2_norm = row["l2_norm"]
-        if l2_norm and l2_norm > 0:
-            vec = vec / l2_norm
-        vectors.append(vec)
-        detection_ids.append(row["detection_id"])
-
-        ts = row["captured_at_local"]
-        if ts and isinstance(ts, str):
-            # Keep as ISO string for JSON serialization
-            pass
-        elif ts:
-            ts = str(ts)
-
-        metadata_list.append({
-            "label": row["label"],
-            "label_confidence": row["label_confidence"],
-            "display_name": row["display_name"],
-            "confidence": row["confidence"],
-            "category": row["category"],
-            "verified": bool(row["verified"]),
-            "classification_method": row["classification_method"],
-            "file_id": row["file_id"],
-            "deployment_id": row["deployment_id"],
-            "captured_at_local": ts,
-            "site_name": row["site_name"],
-            "bbox_x": row["bbox_x"],
-            "bbox_y": row["bbox_y"],
-            "bbox_width": row["bbox_width"],
-            "bbox_height": row["bbox_height"],
-            "width_px": row["width_px"],
-            "height_px": row["height_px"],
-        })
 
     vectors_f32 = np.stack(vectors)
     return vectors_f32, detection_ids, metadata_list
@@ -282,10 +325,13 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
 
     filters = params.get("filters", {})
     sort_mode = params.get("sort", "similarity")
+    max_detections = int(params.get("max_detections", MAX_DETECTIONS))
     if sort_mode not in VALID_SORTS:
         raise ValueError(f"Unknown sort mode: {sort_mode}")
 
-    vectors, det_ids, metas = _load_embeddings(db_path, project_id, filters)
+    vectors, det_ids, metas = _load_embeddings(
+        db_path, project_id, filters, max_detections=max_detections
+    )
 
     n = len(det_ids)
     if n == 0:
@@ -308,12 +354,17 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     _, centroid_idx = index.search(centroid, 1)
     current = int(centroid_idx[0][0])
 
+    _emit_progress("sort", 0, n)
+
     # Greedy walk: always jump to nearest unvisited neighbor
     visited = np.zeros(n, dtype=bool)
     order = np.empty(n, dtype=np.int64)
     for step in range(n):
         order[step] = current
         visited[current] = True
+
+        if (step + 1) % PROGRESS_LOOP_EVERY == 0:
+            _emit_progress("sort", step + 1, n)
 
         if step == n - 1:
             break
@@ -337,12 +388,15 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
                 continue
             break
 
+    _emit_progress("sort", n, n)
+
     # Compute neighbor agreement: for each detection, what fraction of its
     # k nearest embedding neighbors share the same label?
     k_neighbors = 10
     k_query = min(k_neighbors + 1, n)  # +1 because first result is self
     _, neighbor_idxs = index.search(vectors, k_query)
 
+    _emit_progress("neighbors", 0, n)
     label_list = [metas[i]["label"] for i in range(n)]
     agreement_scores = np.zeros(n, dtype=np.float32)
     top_labels: list[str | None] = [None] * n
@@ -362,7 +416,10 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
         agreement_scores[i] = matches / count if count > 0 else 1.0
         if neighbor_labels:
             top_labels[i] = Counter(neighbor_labels).most_common(1)[0][0]
+        if (i + 1) % PROGRESS_LOOP_EVERY == 0:
+            _emit_progress("neighbors", i + 1, n)
 
+    _emit_progress("neighbors", n, n)
     final_order = order_indices(sort_mode, order.tolist(), metas)
 
     # Map raw label string → display_name from the same project's
@@ -485,8 +542,11 @@ def do_search(db_path: str, project_id: str, params: dict) -> dict:
     filters = params.get("filters", {})
     limit = params.get("limit", 100)
     threshold = params.get("threshold", 0.0)
+    max_detections = int(params.get("max_detections", MAX_DETECTIONS))
 
-    vectors, det_ids, metas = _load_embeddings(db_path, project_id, filters)
+    vectors, det_ids, metas = _load_embeddings(
+        db_path, project_id, filters, max_detections=max_detections
+    )
 
     # Find or load anchor
     anchor_idx = None
@@ -548,16 +608,18 @@ def main() -> None:
     elif args.operation == "search":
         result = do_search(args.db_path, args.project_id, params)
     else:
-        print(f"Unknown operation: {args.operation}", file=sys.stderr)
+        _emit_event({"type": "error", "message": f"Unknown operation: {args.operation}"})
         sys.exit(1)
 
-    # Output JSON to stdout
-    json.dump(result, sys.stdout, default=str)
+    _emit_event({"type": "result", **result})
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        # Surface a structured error event so the parent can render it
+        # inline. Stderr is reserved for actual log noise; everything
+        # the parent should react to goes via NDJSON on stdout.
+        _emit_event({"type": "error", "message": str(e)})
         sys.exit(1)
