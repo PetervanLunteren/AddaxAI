@@ -1,7 +1,7 @@
 ## Priority 1
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
-- [ ] How does updating work? Do we just reinstall the same setup exe and dmg? Do we need to have some kind of backup for the database in case disaster strikes? Add an option to backup the DB form the menu? And automatic backup when doing an update? What is good practise here? And How do other well known and mature apps do it?
-- [ ] Make sure you run the latest version on Windows and run SpeciesNet Ukraine on the simon dep002 images. Compare the rabbit predictions. Is there a diff? 
+- [ ] Add backups options. 
+- [ ] Make sure you run the latest version on Windows and run SpeciesNet Ukraine on the simon dep002 images. Compare the rabbit predictions. Is there a diff? Check /Users/peter/Desktop/mac-vs-windows-rollup-analysis.md.
 - [ ] For the embeddings comparison in observations verification, there is a hardcoded max of 20.000 to avoid too long waits, right? A few questions: 1) would it be an option to make this configurable in the settings (and note this when it hits the limit to tell users about this option)? 2) can we have the spinner be a progressbar (in other words, is it possible to track progress in percentage or iterations per total)? If so, should we note at the pbar that one can save time loading if they reduce the number of embeddings (i.e., set filters). 
 - [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] ADD ALL MODELS 

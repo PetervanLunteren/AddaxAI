@@ -3,13 +3,15 @@
  *
  * The user picks a `.db` file via Electron's file picker. The backend
  * validates it (PRAGMA integrity_check) and writes the
- * .restore-on-next-launch marker. We then ask Electron to quit; the
- * next launch swaps the file in before init_db runs and a safety
+ * .restore-on-next-launch marker. We then ask Electron to relaunch;
+ * the new process swaps the file in before init_db runs and a safety
  * snapshot of the current DB lands in the ring buffer.
  *
  * Type-to-confirm `RESTORE` mirrors the Reset dialog's UX. The DB
  * swap is destructive in spirit even though the safety snapshot makes
- * it recoverable.
+ * it recoverable. Reset still uses quitApp because its intent is
+ * "wipe and walk away"; Restore relaunches because the user is
+ * waiting for their old data to come back.
  */
 
 import { useEffect, useState } from "react";
@@ -70,9 +72,12 @@ export function RestoreBackupDialog({
       return backupApi.restore(sourcePath);
     },
     onSuccess: async () => {
-      // Backend has written the marker. Quit; next launch swaps the DB.
-      if (window.electronAPI?.quitApp) {
-        await window.electronAPI.quitApp();
+      // Backend has written the marker. Relaunch the desktop app so
+      // the lifespan in the new process consumes the marker and swaps
+      // the DB in before init_db. In dev (browser) we just close the
+      // dialog; the user has to restart the backend manually.
+      if (window.electronAPI?.relaunchApp) {
+        await window.electronAPI.relaunchApp();
       } else {
         onOpenChange(false);
       }
@@ -91,9 +96,9 @@ export function RestoreBackupDialog({
           </DialogTitle>
           <DialogDescription>
             Replaces the current project database with the contents of a
-            backup file. AddaxAI will quit; relaunch to finish the
-            restore. A safety snapshot of the current database is saved
-            to the backups folder before the swap, so this is reversible.
+            backup file. AddaxAI restarts to finish the swap. A safety
+            snapshot of the current database is saved to the backups
+            folder before the swap, so this is reversible.
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +174,7 @@ export function RestoreBackupDialog({
             onClick={() => restore.mutate()}
             disabled={!isConfirmValid || restore.isPending}
           >
-            {restore.isPending ? "Restoring…" : "Restore and quit"}
+            {restore.isPending ? "Restoring…" : "Restore and restart"}
           </Button>
         </DialogFooter>
       </DialogContent>

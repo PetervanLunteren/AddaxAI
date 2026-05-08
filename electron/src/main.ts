@@ -499,6 +499,15 @@ ipcMain.handle('app:quit', () => {
   app.quit();
 });
 
+// Relaunch the app: schedule a fresh start, then exit the current
+// process. Used by the Restore-from-backup flow so the user does not
+// have to manually double-click the app again to finish the restore.
+// Reset still uses app:quit because its intent is "wipe and walk away".
+ipcMain.handle('app:relaunch', () => {
+  app.relaunch();
+  app.exit(0);
+});
+
 // Open the Timelapse Analyser integration in a separate BrowserWindow.
 // Called from the main app's hamburger menu and from the --timelapse
 // CLI launcher. The window is intentionally a sibling of the main one

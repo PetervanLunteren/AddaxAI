@@ -32,6 +32,12 @@ export interface ElectronAPI {
    */
   quitApp: () => Promise<void>;
   /**
+   * Relaunch the app: exit and immediately start a fresh process.
+   * Used by Restore-from-backup so the user does not have to reopen
+   * the app manually after the DB swap.
+   */
+  relaunchApp: () => Promise<void>;
+  /**
    * Runtime app version, e.g. "0.2.0-beta.1". Stamped into the bundle
    * by the release workflow.
    */

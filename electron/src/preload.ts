@@ -61,6 +61,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Relaunch the app: schedule a fresh start, then exit. Used by the
+   * Restore-from-backup flow so the user does not need to reopen the
+   * app manually after the DB swap.
+   */
+  relaunchApp: async (): Promise<void> => {
+    return await ipcRenderer.invoke('app:relaunch');
+  },
+
+  /**
    * Return the runtime app version (e.g. "0.2.0-beta.1"). Comes from
    * electron/package.json, which the release workflow rewrites from
    * the git tag at build time.
