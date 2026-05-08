@@ -11,16 +11,19 @@ import pytest
 from app.core.config import Settings
 from app.db.backup import (
     DAILY_BACKUP_KEEP,
+    RESTORE_MARKER_FILENAME,
     BackupInvalidError,
     _classify,
     _daily_filename,
     _pre_upgrade_filename,
     _prune_ring_buffer,
+    consume_restore_marker,
     force_ring_buffer_backup,
     list_ring_buffer,
     pre_upgrade_backup,
     restore_db,
     ring_buffer_backup,
+    schedule_restore,
     snapshot_db,
     validate_backup,
 )
@@ -265,3 +268,94 @@ def test_restore_db_rejects_invalid_source(tmp_settings: Settings) -> None:
     bad.write_bytes(b"junk")
     with pytest.raises(BackupInvalidError):
         restore_db(tmp_settings, bad)
+
+
+# ── schedule_restore + consume_restore_marker ────────────────────────
+
+
+def test_schedule_restore_writes_marker_after_validation(tmp_settings: Settings) -> None:
+    snap = tmp_settings.user_data_dir / "snap.db"
+    snapshot_db(tmp_settings.user_data_dir / "addaxai.db", snap)
+
+    marker = schedule_restore(tmp_settings, snap)
+
+    assert marker.is_file()
+    assert marker.read_text().strip() == str(snap.resolve())
+
+
+def test_schedule_restore_rejects_invalid_source(tmp_settings: Settings) -> None:
+    bad = tmp_settings.user_data_dir / "bad.db"
+    bad.write_bytes(b"x")
+    with pytest.raises(BackupInvalidError):
+        schedule_restore(tmp_settings, bad)
+    assert not (tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME).exists()
+
+
+def test_consume_restore_marker_no_op_when_absent(tmp_settings: Settings) -> None:
+    consume_restore_marker(tmp_settings)  # must not raise
+
+
+def test_consume_restore_marker_swaps_db_and_consumes(tmp_settings: Settings) -> None:
+    # Build a "different" source DB
+    other = tmp_settings.user_data_dir / "other.db"
+    conn = sqlite3.connect(str(other))
+    try:
+        conn.execute("CREATE TABLE marker (note TEXT)")
+        conn.execute("INSERT INTO marker (note) VALUES ('from-source')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    schedule_restore(tmp_settings, other)
+    assert (tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME).is_file()
+
+    consume_restore_marker(tmp_settings)
+
+    # Marker consumed.
+    assert not (tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME).exists()
+
+    # Live DB swapped.
+    live = tmp_settings.user_data_dir / "addaxai.db"
+    with sqlite3.connect(str(live)) as conn:
+        row = conn.execute("SELECT note FROM marker").fetchone()
+    assert row == ("from-source",)
+
+
+def test_consume_restore_marker_self_cleans_on_missing_source(
+    tmp_settings: Settings,
+) -> None:
+    # Hand-craft a marker pointing at a non-existent file (bypasses
+    # schedule_restore's validation).
+    marker = tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME
+    marker.write_text(str(tmp_settings.user_data_dir / "nope.db"))
+
+    consume_restore_marker(tmp_settings)
+
+    # Marker consumed even though the source was bad.
+    assert not marker.exists()
+    # Live DB untouched.
+    assert (tmp_settings.user_data_dir / "addaxai.db").is_file()
+
+
+def test_consume_restore_marker_self_cleans_on_corrupt_source(
+    tmp_settings: Settings,
+) -> None:
+    bad = tmp_settings.user_data_dir / "bad.db"
+    bad.write_bytes(b"x")
+    marker = tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME
+    marker.write_text(str(bad))
+
+    consume_restore_marker(tmp_settings)
+
+    assert not marker.exists()
+
+
+def test_consume_restore_marker_self_cleans_on_empty_marker(
+    tmp_settings: Settings,
+) -> None:
+    marker = tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME
+    marker.write_text("")
+
+    consume_restore_marker(tmp_settings)
+
+    assert not marker.exists()

@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 
 DAILY_BACKUP_KEEP = 5
 ROLLING_MARKER_FILENAME = ".last-rolling-utc-date"
+RESTORE_MARKER_FILENAME = ".restore-on-next-launch"
 
 _DAILY_RE = re.compile(r"^addaxai-(\d{4}-\d{2}-\d{2}T\d{6}Z)\.db$")
 _PRE_UPGRADE_RE = re.compile(
@@ -160,6 +161,45 @@ def list_ring_buffer(settings: Settings) -> list[BackupEntry]:
         )
     entries.sort(key=lambda e: e.created_utc, reverse=True)
     return entries
+
+
+def schedule_restore(settings: Settings, source_path: Path) -> Path:
+    """Validate `source_path` and schedule it as the next-launch restore.
+
+    Writes `~/AddaxAI/.restore-on-next-launch` containing the absolute
+    source path. The frontend should ask Electron to quit immediately
+    after; the next launch consumes the marker via
+    `consume_restore_marker()` before `init_db()` runs.
+
+    Returns the marker path (mostly for tests).
+    """
+    validate_backup(source_path)
+    marker = settings.user_data_dir / RESTORE_MARKER_FILENAME
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(str(source_path.resolve()))
+    return marker
+
+
+def consume_restore_marker(settings: Settings) -> None:
+    """Process and remove a pending restore-on-next-launch marker.
+
+    No-op if the marker is absent. On failure (invalid source, missing
+    file, IO error) logs at error level and consumes the marker anyway,
+    so a corrupt request can't loop the user through restore-fail-
+    restore-fail forever. The live DB is left untouched on failure.
+    """
+    marker = settings.user_data_dir / RESTORE_MARKER_FILENAME
+    if not marker.is_file():
+        return
+    try:
+        raw = marker.read_text().strip()
+        if not raw:
+            raise BackupInvalidError("Restore marker is empty")
+        restore_db(settings, Path(raw))
+    except Exception as e:
+        logger.error(f"Restore from marker failed: {e}", exc_info=True)
+    finally:
+        marker.unlink(missing_ok=True)
 
 
 def restore_db(settings: Settings, source_path: Path) -> None:

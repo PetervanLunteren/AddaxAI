@@ -242,6 +242,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Database: {settings.database_url}")
     logger.info(f"User data directory: {settings.user_data_dir}")
 
+    # Honour a pending "restore DB from backup" request. Done BEFORE
+    # init_db so the alembic upgrade in init_db sees the restored DB.
+    # The marker is consumed unconditionally (even on validation failure)
+    # so a corrupt request can't loop the user through restore-fail-
+    # restore-fail forever. The current live DB is force-snapshotted to
+    # the ring buffer first as a safety net.
+    from app.db.backup import consume_restore_marker
+    consume_restore_marker(settings)
+
     # Honour a pending "wipe DB on next launch" request from the reset
     # flow. We do this BEFORE init_db so no SQLAlchemy connection is
     # holding the file open. Marker is consumed (deleted) regardless of
@@ -270,6 +279,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.error(
                 f"Failed to remove DB wipe marker: {e}", exc_info=True
             )
+
+    # Pre-init backups (best-effort; never block startup). Both run only
+    # when the live DB exists: a fresh install has nothing worth saving.
+    live_db = settings.user_data_dir / "addaxai.db"
+    if live_db.is_file():
+        from app.db.backup import pre_upgrade_backup, ring_buffer_backup
+        from app.db.base import get_engine
+        from app.db.migrations import get_current_revision, needs_upgrade
+        try:
+            ring_buffer_backup(settings)
+        except Exception as e:
+            logger.error(f"Daily backup failed: {e}", exc_info=True)
+        try:
+            engine = get_engine()
+            if needs_upgrade(engine):
+                pre_upgrade_backup(settings, rev=get_current_revision(engine))
+        except Exception as e:
+            logger.error(f"Pre-upgrade backup failed: {e}", exc_info=True)
 
     # Initialize database - will crash if it fails
     try:
