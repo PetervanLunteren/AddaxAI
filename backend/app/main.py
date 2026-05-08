@@ -281,17 +281,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 f"Failed to remove DB wipe marker: {e}", exc_info=True
             )
 
-    # Pre-init backups (best-effort; never block startup). Both run only
-    # when the live DB exists: a fresh install has nothing worth saving.
+    # Pre-upgrade backup (best-effort; never blocks startup). Must run
+    # BEFORE init_db so the snapshot captures the pre-migration schema.
+    # Skipped on a fresh install: there is no existing DB to preserve.
     live_db = settings.user_data_dir / "addaxai.db"
     if live_db.is_file():
-        from app.db.backup import pre_upgrade_backup, ring_buffer_backup
+        from app.db.backup import pre_upgrade_backup
         from app.db.base import get_engine
         from app.db.migrations import get_current_revision, needs_upgrade
-        try:
-            ring_buffer_backup(settings)
-        except Exception as e:
-            logger.error(f"Daily backup failed: {e}", exc_info=True)
         try:
             engine = get_engine()
             if needs_upgrade(engine):
@@ -306,6 +303,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise
+
+    # Daily rolling backup (best-effort). Runs AFTER init_db so a fresh
+    # install also produces a snapshot on first launch — at this point
+    # the DB exists either way (init_db creates it on fresh installs and
+    # opens it on subsequent launches). Throttled to one per UTC day, so
+    # rapid restarts do not clobber the ring buffer.
+    if live_db.is_file():
+        from app.db.backup import ring_buffer_backup
+        try:
+            ring_buffer_backup(settings)
+        except Exception as e:
+            logger.error(f"Daily backup failed: {e}", exc_info=True)
 
     # Start background tasks (non-blocking)
     sync_task = asyncio.create_task(update_model_catalog(app))
