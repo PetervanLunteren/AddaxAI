@@ -8,9 +8,22 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Force-disable TF32 in CUDA across every inference subprocess. TF32 (Ampere+
+# default in PyTorch) introduces small floating-point divergences vs MPS and
+# CPU that flip taxonomic-rollup decisions sitting near the 0.65 threshold,
+# producing different species/genus labels on Mac vs Windows for the same
+# image. NVIDIA_TF32_OVERRIDE=0 is the global PyTorch-respected disable that
+# covers both cuBLAS and cuDNN; setting it once at process start propagates
+# to all child subprocesses (megadetector, classification worker, embedding)
+# without each model author needing to remember it in their own inference.py.
+# No-op on Mac/MPS. setdefault so a sophisticated user can override it via
+# the environment for benchmarking comparisons.
+os.environ.setdefault("NVIDIA_TF32_OVERRIDE", "0")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -242,6 +255,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Starting AddaxAI Backend (Environment: {settings.environment})")
     logger.info(f"Database: {settings.database_url}")
     logger.info(f"User data directory: {settings.user_data_dir}")
+    logger.info(
+        f"NVIDIA_TF32_OVERRIDE={os.environ.get('NVIDIA_TF32_OVERRIDE', '<unset>')} "
+        "(0 disables TF32 on CUDA so Mac/MPS and Windows/CUDA agree more often)"
+    )
 
     # Honour a pending "restore DB from backup" request. Done BEFORE
     # init_db so the alembic upgrade in init_db sees the restored DB.
