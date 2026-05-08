@@ -37,6 +37,28 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 **Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days).
 
+## Database migrations
+
+Schema changes ship as Alembic migrations under `backend/alembic/versions/`. The app runs `alembic upgrade head` automatically on every startup (`init_db()` in `backend/app/db/base.py`), so users never run migrations by hand.
+
+**Adding a migration:**
+
+```bash
+cd backend
+source venv/bin/activate
+PYTHONPATH=. alembic revision --autogenerate -m "short description"
+```
+
+Review the generated file before committing. Autogenerate is helpful but imperfect: it misses index renames, check constraints, and server-default changes. Edit the upgrade/downgrade bodies if needed.
+
+**Three startup branches handled by `init_db()`:**
+
+1. Fresh install (no DB file or empty DB): `alembic upgrade head` creates the schema from scratch.
+2. Versioned DB (`alembic_version` table present): `alembic upgrade head` is a no-op when current matches head, applies pending migrations otherwise.
+3. Legacy DB (schema present, no `alembic_version` table): stamped at head. This branch only matters for beta-tester databases that predate the runtime alembic wiring; it's a one-shot upgrade and subsequent launches go through branch 2.
+
+**Helpers** (in `backend/app/db/migrations.py`): `get_current_revision(engine)`, `get_head_revision()`, `needs_upgrade(engine)`, `stamp_head()`, `upgrade_to_head()`. All alembic imports are local to the function bodies so the module is cheap to import.
+
 ## Linting (CI enforcement)
 
 GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:

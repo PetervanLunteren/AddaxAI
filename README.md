@@ -86,9 +86,7 @@ source venv/bin/activate  # On macOS/Linux
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Set up database
-# Apply all database migrations
-PYTHONPATH=. alembic upgrade head
+# Database migrations run automatically on first launch via init_db().
 
 # Deactivate venv (optional)
 deactivate

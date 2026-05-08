@@ -109,31 +109,35 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """
-    Initialize database - create all tables.
+    Initialize the database via Alembic migrations.
 
-    Crashes if database cannot be initialized.
-    Called on application startup.
+    - Fresh DB or DB already managed by alembic: run upgrade head (no-op
+      when already at head, applies pending migrations otherwise).
+    - Legacy DB with the head schema but no alembic_version table
+      (beta-tester DBs that predate runtime alembic wiring): stamp head.
+      Their schema is already at head because the previous startup path
+      ran Base.metadata.create_all + a hand-rolled column migrator on
+      every launch.
+
+    Crashes if migrations fail.
     """
-    from app.models import (  # noqa: F401
-        audit_log,
-        deployment,
-        detection,
-        detection_embedding,
-        event,
-        event_observation,
-        file,
-        job,
-        label_taxonomy,
-        project,
-        site,
-    )
+    import app.models  # noqa: F401  # populates Base.metadata
+    from app.db.migrations import stamp_head, upgrade_to_head
 
     engine = get_engine()
 
     try:
-        logger.info("Creating database tables...")
-        Base.metadata.create_all(bind=engine)
-        _migrate_missing_columns(engine)
+        inspector = inspect(engine)
+        has_user_tables = inspector.has_table("projects")
+        has_alembic = inspector.has_table("alembic_version")
+
+        if has_user_tables and not has_alembic:
+            logger.info("Legacy DB without alembic_version: stamping head")
+            stamp_head()
+        else:
+            logger.info("Running alembic upgrade head")
+            upgrade_to_head()
+
         _seed_builtin_labels()
         with engine.connect() as conn:
             conn.execute(text("ANALYZE"))
@@ -142,60 +146,6 @@ def init_db() -> None:
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize database: {e}") from e
-
-
-def _migrate_missing_columns(engine: Engine) -> None:
-    """Add any missing columns to existing tables (lightweight migration)."""
-    inspector = inspect(engine)
-
-    # ── Rename species → label columns on detections (SQLite 3.25+) ──
-    det_cols = {c["name"] for c in inspector.get_columns("detections")}
-    renames: list[tuple[str, str, str]] = [
-        # (table, old_column, new_column)
-        ("detections", "species", "label"),
-        ("detections", "species_confidence", "label_confidence"),
-    ]
-    for table, old_col, new_col in renames:
-        if old_col in det_cols and new_col not in det_cols:
-            logger.info(f"Migrating: renaming {table}.{old_col} → {new_col}")
-            with engine.begin() as conn:
-                conn.execute(text(
-                    f"ALTER TABLE {table} RENAME COLUMN {old_col} TO {new_col}"
-                ))
-    # Refresh column set after renames
-    det_cols = {c["name"] for c in inspector.get_columns("detections")}
-
-    # ── Add missing columns ──
-    migrations: list[tuple[str, str, str]] = [
-        # (table, column, SQL type + default)
-        ("projects", "shortcut_labels", "JSON NOT NULL DEFAULT '{}'"),
-        ("projects", "embedding_model_id", "VARCHAR(100)"),
-        ("detections", "verified", "BOOLEAN NOT NULL DEFAULT 0"),
-        ("detections", "verified_at_utc", "DATETIME"),
-        (
-            "detections", "label_taxonomy_id",
-            "VARCHAR(36) REFERENCES label_taxonomy(id) ON DELETE SET NULL",
-        ),
-        ("detections", "display_name", "VARCHAR(100)"),
-    ]
-    with engine.begin() as conn:
-        for table, column, col_type in migrations:
-            existing = {c["name"] for c in inspector.get_columns(table)}
-            if column not in existing:
-                logger.info(f"Migrating: adding {table}.{column}")
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
-
-    # Create index on label_taxonomy_id if the column exists but index doesn't
-    existing_indexes = {idx["name"] for idx in inspector.get_indexes("detections")}
-    if "idx_detections_label_taxonomy" not in existing_indexes:
-        det_cols = {c["name"] for c in inspector.get_columns("detections")}
-        if "label_taxonomy_id" in det_cols:
-            with engine.begin() as conn:
-                logger.info("Migrating: adding index idx_detections_label_taxonomy")
-                conn.execute(text(
-                    "CREATE INDEX idx_detections_label_taxonomy "
-                    "ON detections(label_taxonomy_id)"
-                ))
 
 
 def _seed_builtin_labels() -> None:
