@@ -166,7 +166,8 @@ export function FolderSelector({
         )}
 
         {/* Folder affordance:
-            - Selected: breadcrumb pill of the last 3 path segments + Change
+            - Selected: breadcrumb pill of the trailing path segments
+              (count adapts to segment length, see BreadcrumbsRow) + Change
               button (Change clears the value, returning to empty state).
             - Empty (Electron): drag-and-drop card. Click also opens the
               native picker so the affordance is discoverable for users who
@@ -498,11 +499,37 @@ function CompactScanLine({
 }
 
 /**
- * Breadcrumb pill for a selected folder. Shows the folder icon + last few
- * path segments separated by chevrons; longer paths get a leading ellipsis.
- * No bold weight: every segment reads at the same emphasis. The "Change"
- * button clears the selection so the parent re-renders the empty state.
+ * Breadcrumb pill for a selected folder. Shows the folder icon + the
+ * trailing path segments separated by chevrons; longer paths get a
+ * leading ellipsis. The number of segments adapts to their length:
+ * short names (e.g. `dep002 / loc_SIMON03 / project_kenya / data`) get
+ * up to 4 levels, long names collapse to fewer so the row does not
+ * overflow on typical container widths. No bold weight: every segment
+ * reads at the same emphasis. The "Change" button clears the
+ * selection so the parent re-renders the empty state.
  */
+const MAX_BREADCRUMB_CHARS = 40;
+const MAX_BREADCRUMB_SEGMENTS = 4;
+
+/** Pick the trailing segments that fit in a rough character budget,
+ *  always keeping at least the leaf. Tuned by visual judgement on
+ *  typical camera-trap paths; see header doc for examples. */
+function pickTailSegments(parts: string[]): string[] {
+  let charBudget = 0;
+  let kept = 0;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const segChars = parts[i].length + (kept > 0 ? 1 : 0); // +1 for the chevron
+    // Stop only after we have at least one segment, so an unusually long
+    // leaf still gets shown (it'll truncate via CSS).
+    if (kept >= 1 && (charBudget + segChars > MAX_BREADCRUMB_CHARS || kept >= MAX_BREADCRUMB_SEGMENTS)) {
+      break;
+    }
+    charBudget += segChars;
+    kept++;
+  }
+  return parts.slice(-Math.max(kept, 1));
+}
+
 function BreadcrumbsRow({
   path,
   error,
@@ -514,7 +541,7 @@ function BreadcrumbsRow({
 }) {
   // Split on either / or \ so Windows paths render the same way.
   const parts = path.split(/[\\/]/).filter(Boolean);
-  const tail = parts.slice(-2);
+  const tail = pickTailSegments(parts);
   const truncated = parts.length > tail.length;
 
   return (
