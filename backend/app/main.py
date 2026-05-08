@@ -19,6 +19,7 @@ from starlette.responses import FileResponse
 
 from app import __version__
 from app.api.routers import (
+    backup_router,
     deployment_queue_router,
     deployments_router,
     detections_router,
@@ -367,6 +368,7 @@ def create_app() -> FastAPI:
 
     # Register API routers (already have /api prefix in their definitions)
     app.include_router(projects_router)
+    app.include_router(backup_router)
     app.include_router(setup_router)
     app.include_router(sites_router)
     app.include_router(deployments_router)
