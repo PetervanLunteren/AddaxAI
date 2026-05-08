@@ -31,6 +31,7 @@ export interface ProjectCreate {
   detection_batch_size: number | null;
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
+  observations_max_detections: number;
 }
 
 export interface ProjectUpdate {
@@ -57,6 +58,7 @@ export interface ProjectUpdate {
   detection_batch_size?: number | null;
   classification_batch_size?: number | null;
   embedding_batch_size?: number | null;
+  observations_max_detections?: number | null;
 }
 
 export interface ProjectResponse {
@@ -83,6 +85,7 @@ export interface ProjectResponse {
   detection_batch_size: number | null;
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
+  observations_max_detections: number;
   postprocessing_settings_hash: string | null;
   thumbnail_path: string | null;
   created_at_utc: string;

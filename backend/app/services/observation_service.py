@@ -5,10 +5,18 @@ Delegates sort (greedy nearest-neighbor chain) and search (FAISS k-NN) to
 ml/inference/similarity_script.py running in the addaxai-base conda
 environment. The main backend process never imports numpy or faiss.
 
+The subprocess emits NDJSON events on stdout (progress, result, error).
+This module exposes:
+
+- `stream_observations_subprocess(...)` — generator yielding raw NDJSON
+  bytes lines for the streaming router endpoints to relay verbatim.
+- `sort_detections` / `search_similar` — non-streaming convenience
+  wrappers that drain the stream and return only the final result.
+  Used by tests and any caller that doesn't care about progress.
+
 The subprocess script is named for the underlying algorithm (cosine
 similarity); this service is named for the feature it serves (the
-Observations tab). Stats queries and detection summary building stay
-in-process (pure SQL).
+Observations tab).
 """
 
 from __future__ import annotations
@@ -16,13 +24,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.api.schemas.observation import (
-    DetectionSummary,
     ObservationFilters,
     SearchRequest,
     SearchResponse,
@@ -37,6 +45,7 @@ from app.models import Project
 logger = get_logger(__name__)
 
 _SCRIPT_PATH = Path(__file__).resolve().parent.parent / "ml" / "inference" / "similarity_script.py"
+
 
 def _get_env_python() -> Path:
     """Get Python path from the addaxai-base conda environment."""
@@ -89,10 +98,21 @@ def _filters_to_dict(filters: ObservationFilters) -> dict[str, Any]:
     return d
 
 
-def _run_observations_subprocess(
+def stream_observations_subprocess(
     operation: str, project_id: str, params: dict[str, Any]
-) -> dict[str, Any]:
-    """Run similarity_script.py as subprocess and return parsed JSON."""
+) -> Iterator[bytes]:
+    """Run similarity_script.py and yield each NDJSON line from its stdout.
+
+    Each yielded value already ends with `\\n` and is one of:
+
+    - `{"type": "progress", "phase": "...", "done": N, "total": M}`
+    - `{"type": "result", ...}`
+    - `{"type": "error", "message": "..."}`
+
+    The router relays these verbatim to the HTTP client. On non-zero
+    subprocess exit without an explicit error event (rare; usually the
+    subprocess emits one before exit), an error line is synthesised.
+    """
     python_path = _get_env_python()
     db_path = _get_db_path()
 
@@ -105,7 +125,7 @@ def _run_observations_subprocess(
         "--params", json.dumps(params, default=str),
     ]
 
-    logger.info(f"Running observations subprocess: {operation} for project {project_id}")
+    logger.info(f"Streaming observations subprocess: {operation} for project {project_id}")
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
@@ -115,29 +135,72 @@ def _run_observations_subprocess(
         stderr=subprocess.PIPE,
         text=True,
         env=env,
+        bufsize=1,
     )
 
-    stdout, stderr = process.communicate(timeout=120)
+    # 60s base + 6s per 1k cap. 20k → 180s, 50k → 360s. Subprocess
+    # progress reaches us steadily so this is a hard ceiling, not the
+    # typical wait. process.wait() at the end enforces it.
+    cap = int(params.get("max_detections", 20000))
+    timeout_s = 60 + (cap // 1000) * 6
 
-    if stderr:
-        for line in stderr.strip().splitlines():
-            logger.debug(f"similarity_script: {line}")
+    saw_terminal_event = False
+    try:
+        assert process.stdout is not None
+        for raw in process.stdout:
+            line = raw.rstrip("\n")
+            if not line:
+                continue
+            # Sanity-check that the line is JSON before relaying. If it
+            # isn't (subprocess crashed mid-write, env-addaxai-base
+            # printed a warning), skip it rather than corrupt the
+            # NDJSON stream.
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                logger.debug(f"similarity_script non-JSON stdout: {line!r}")
+                continue
+            if event.get("type") in ("result", "error"):
+                saw_terminal_event = True
+            yield (line + "\n").encode("utf-8")
 
-    if process.returncode != 0:
-        error_msg = stderr.strip() if stderr else "Unknown error"
-        # Check for known user-facing errors
-        if "Too many detections" in error_msg:
-            raise ValueError(error_msg.replace("ERROR: ", ""))
-        if "No embedding found" in error_msg:
-            raise ValueError(error_msg.replace("ERROR: ", ""))
-        raise RuntimeError(
-            f"Observations computation failed: {error_msg}"
-        )
+        process.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        msg = f"Observations subprocess timed out after {timeout_s}s"
+        logger.error(msg)
+        yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
+        return
+    finally:
+        if process.stderr is not None:
+            stderr = process.stderr.read()
+            if stderr:
+                for line in stderr.strip().splitlines():
+                    logger.debug(f"similarity_script: {line}")
 
-    if not stdout.strip():
-        raise RuntimeError("Observations script produced no output")
+    if process.returncode != 0 and not saw_terminal_event:
+        msg = f"Observations subprocess failed (exit {process.returncode})"
+        logger.error(msg)
+        yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
 
-    return json.loads(stdout)
+
+def _drain_to_result(events: Iterator[bytes]) -> dict[str, Any]:
+    """Consume an event stream and return just the final `result` payload.
+
+    Raises ValueError on `error` events. Used by callers that don't need
+    progress (tests, plain-JSON wrappers).
+    """
+    last_result: dict[str, Any] | None = None
+    for raw in events:
+        event = json.loads(raw.decode("utf-8"))
+        if event["type"] == "result":
+            last_result = {k: v for k, v in event.items() if k != "type"}
+        elif event["type"] == "error":
+            raise ValueError(event["message"])
+    if last_result is None:
+        raise RuntimeError("Observations subprocess produced no result event")
+    return last_result
 
 
 def _apply_project_threshold(
@@ -158,54 +221,67 @@ def _apply_project_threshold(
     return filters
 
 
+def _project_max_detections(project_id: str, db: Session) -> int:
+    """Read the per-project max-detections cap, falling back to 20000."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project and project.observations_max_detections:
+        return int(project.observations_max_detections)
+    return 20000
+
+
+def _build_sort_params(
+    project_id: str, body: SortRequest, db: Session
+) -> dict[str, Any]:
+    filters = _apply_project_threshold(body.filters, project_id, db)
+    return {
+        "filters": _filters_to_dict(filters),
+        "sort": body.sort,
+        "max_detections": _project_max_detections(project_id, db),
+    }
+
+
+def _build_search_params(
+    project_id: str, body: SearchRequest, db: Session
+) -> dict[str, Any]:
+    filters = _apply_project_threshold(body.filters, project_id, db)
+    return {
+        "filters": _filters_to_dict(filters),
+        "anchor_detection_id": body.anchor_detection_id,
+        "limit": body.limit,
+        "threshold": body.threshold,
+        "max_detections": _project_max_detections(project_id, db),
+    }
+
+
+def stream_sort(
+    project_id: str, body: SortRequest, db: Session
+) -> Iterator[bytes]:
+    """NDJSON event stream for the sort endpoint."""
+    params = _build_sort_params(project_id, body, db)
+    return stream_observations_subprocess("sort", project_id, params)
+
+
+def stream_search(
+    project_id: str, body: SearchRequest, db: Session
+) -> Iterator[bytes]:
+    """NDJSON event stream for the search endpoint."""
+    params = _build_search_params(project_id, body, db)
+    return stream_observations_subprocess("search", project_id, params)
+
+
 def sort_detections(
     project_id: str, body: SortRequest, db: Session
 ) -> SortResponse:
-    """Sort detections via subprocess, using the requested sort mode."""
-    filters = _apply_project_threshold(body.filters, project_id, db)
-    params = {
-        "filters": _filters_to_dict(filters),
-        "sort": body.sort,
-    }
-    result = _run_observations_subprocess("sort", project_id, params)
-    return SortResponse(**result)
+    """Drain the sort stream into a single SortResponse.
+
+    Used by tests; production traffic goes through `stream_sort` so the
+    UI can render a progress bar.
+    """
+    return SortResponse(**_drain_to_result(stream_sort(project_id, body, db)))
 
 
 def search_similar(
     project_id: str, body: SearchRequest, db: Session
 ) -> SearchResponse:
-    """Search for similar detections via subprocess."""
-    filters = _apply_project_threshold(body.filters, project_id, db)
-    params = {
-        "filters": _filters_to_dict(filters),
-        "anchor_detection_id": body.anchor_detection_id,
-        "limit": body.limit,
-        "threshold": body.threshold,
-    }
-    result = _run_observations_subprocess("search", project_id, params)
-    return SearchResponse(**result)
-
-
-def build_detection_summary(
-    detection_id: str,
-    meta: dict[str, Any],
-    distance_to_centroid: float | None = None,
-    similarity: float | None = None,
-) -> DetectionSummary:
-    """Build a DetectionSummary from metadata dict."""
-    return DetectionSummary(
-        detection_id=detection_id,
-        file_id=meta["file_id"],
-        label=meta["label"],
-        label_confidence=meta["label_confidence"],
-        confidence=meta["confidence"],
-        category=meta["category"],
-        verified=meta["verified"],
-        classification_method=meta["classification_method"],
-        distance_to_centroid=distance_to_centroid,
-        similarity=similarity,
-        site_name=meta.get("site_name"),
-        deployment_id=meta.get("deployment_id"),
-        timestamp=meta.get("timestamp"),
-        crop_url=f"/api/detections/{detection_id}/crop?size=200",
-    )
+    """Drain the search stream into a single SearchResponse."""
+    return SearchResponse(**_drain_to_result(stream_search(project_id, body, db)))

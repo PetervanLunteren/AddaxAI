@@ -1,8 +1,8 @@
 ## Priority 1
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
 - [x] Add backups options. 
-- [ ] I ran MD+SpeciesNet Ukraine on the simon dep002 images on both macOS and Windows. There are inconsistencies in the predictions. Compare the rabbit predictions. Is there a diff? Check /Users/peter/Desktop/mac-vs-windows-rollup-analysis.md for a previous analysis on this issue. See run jsons here: /Users/peter/Desktop/results-windows.json /Users/peter/Desktop/results-macos.json
-- [ ] For the embeddings comparison in observations verification, there is a hardcoded max of 20.000 to avoid too long waits, right? A few questions: 1) would it be an option to make this configurable in the settings (and note this when it hits the limit to tell users about this option)? 2) can we have the spinner be a progressbar (in other words, is it possible to track progress in percentage or iterations per total)? If so, should we note at the pbar that one can save time loading if they reduce the number of embeddings (i.e., set filters). 
+- [x] Make embedding count configurable and trackable. 
+- [ ] Add the logo (wide) to the about page. It can take some space there, its OK. Also left align the logo. 
 - [ ] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] ADD ALL MODELS 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
