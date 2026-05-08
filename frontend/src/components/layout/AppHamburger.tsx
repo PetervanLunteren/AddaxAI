@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import {
   BookOpen,
   Camera,
+  Database,
   Download,
   FolderOpen,
   Info,
@@ -29,18 +30,23 @@ import {
   Menu,
   RefreshCw,
   RotateCcw,
+  Save,
+  Undo2,
 } from "lucide-react";
 import { setupApi } from "../../api/setup";
+import { backupApi } from "../../api/backup";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { cn } from "../../lib/utils";
 import { isWindowsOrDev } from "../../lib/platform";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
+import { BackupNowDialog } from "../diagnostics/BackupNowDialog";
+import { RestoreBackupDialog } from "../diagnostics/RestoreBackupDialog";
 import { CheckForUpdatesDialog } from "../diagnostics/CheckForUpdatesDialog";
 
 const DOCS_URL = "https://github.com/PetervanLunteren/AddaxAI-WebUI";
 const FALLBACK_VERSION = "(dev)";
 
-type DialogId = "reset" | "updates" | null;
+type DialogId = "reset" | "updates" | "backup" | "restore" | null;
 
 export function AppHamburger() {
   const navigate = useNavigate();
@@ -128,6 +134,23 @@ export function AppHamburger() {
     }
   };
 
+  const openBackupsFolder = async () => {
+    close();
+    try {
+      const { path } = await backupApi.getDir();
+      if (!window.electronAPI?.openPath) {
+        toast.message(`Backups folder: ${path}`);
+        return;
+      }
+      const err = await window.electronAPI.openPath(path);
+      if (err) toast.error(`Could not open folder: ${err}`);
+    } catch (err) {
+      toast.error(
+        `Could not locate backups folder: ${(err as Error).message}`,
+      );
+    }
+  };
+
   const openTimelapseMode = async () => {
     close();
     // Electron spawns a separate BrowserWindow so users do not confuse
@@ -210,6 +233,32 @@ export function AppHamburger() {
 
             <Section>
               <Item
+                icon={Save}
+                label="Back up database"
+                onClick={() => {
+                  close();
+                  setDialog("backup");
+                }}
+              />
+              <Item
+                icon={Undo2}
+                label="Restore from backup..."
+                onClick={() => {
+                  close();
+                  setDialog("restore");
+                }}
+              />
+              <Item
+                icon={Database}
+                label="Open backups folder"
+                onClick={openBackupsFolder}
+              />
+            </Section>
+
+            <Separator />
+
+            <Section>
+              <Item
                 icon={Download}
                 label="Export diagnostic report"
                 onClick={exportDiagnostic}
@@ -236,6 +285,14 @@ export function AppHamburger() {
       <ResetAppDialog
         open={dialog === "reset"}
         onOpenChange={(o) => setDialog(o ? "reset" : null)}
+      />
+      <BackupNowDialog
+        open={dialog === "backup"}
+        onOpenChange={(o) => setDialog(o ? "backup" : null)}
+      />
+      <RestoreBackupDialog
+        open={dialog === "restore"}
+        onOpenChange={(o) => setDialog(o ? "restore" : null)}
       />
       <CheckForUpdatesDialog
         open={dialog === "updates"}

@@ -10,6 +10,15 @@ export interface ElectronAPI {
    */
   platform: NodeJS.Platform;
   selectFolder: () => Promise<string | null>;
+  /**
+   * Open a single-file picker. `filters` is the standard Electron
+   * file-filter shape; the dialog rejects extensions not listed.
+   * Returns the chosen absolute path, or null when the user cancels.
+   */
+  openFile: (opts?: {
+    title?: string;
+    filters?: { name: string; extensions: string[] }[];
+  }) => Promise<string | null>;
   showItemInFolder: (filePath: string) => Promise<void>;
   /**
    * Open a file or directory with the OS default handler. For directories

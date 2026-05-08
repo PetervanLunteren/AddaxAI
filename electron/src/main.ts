@@ -460,6 +460,25 @@ ipcMain.handle('dialog:selectFolder', async () => {
   return result.filePaths[0] || null;
 });
 
+// Handle single-file selection dialog. Caller can pass `filters` to
+// constrain the picker (e.g. .db files for the Restore-from-backup flow).
+// Returns the selected path or null when the user cancels.
+ipcMain.handle(
+  'dialog:openFile',
+  async (
+    _event,
+    opts?: { title?: string; filters?: Electron.FileFilter[] },
+  ) => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: opts?.title ?? 'Select file',
+      filters: opts?.filters,
+    });
+    if (result.canceled) return null;
+    return result.filePaths[0] ?? null;
+  },
+);
+
 // Reveal a file in the native file explorer
 ipcMain.handle('shell:showItemInFolder', async (_event, filePath: string) => {
   shell.showItemInFolder(filePath);

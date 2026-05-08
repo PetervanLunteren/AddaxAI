@@ -25,6 +25,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Open native single-file picker dialog. Optional `filters` constrain
+   * the picker by extension (e.g. `.db` for Restore-from-backup).
+   * Returns the selected absolute path, or null when the user cancels.
+   */
+  openFile: async (opts?: {
+    title?: string;
+    filters?: { name: string; extensions: string[] }[];
+  }): Promise<string | null> => {
+    return await ipcRenderer.invoke('dialog:openFile', opts);
+  },
+
+  /**
    * Reveal a file in the native file explorer (Finder / Explorer)
    */
   showItemInFolder: async (filePath: string): Promise<void> => {
