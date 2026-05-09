@@ -33,9 +33,10 @@ from app.models import (  # noqa: F401
 # Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging
+# disable_existing_loggers=False so alembic's logging config does not
+# silently mute the addaxai loggers that were set up at startup.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Get database URL from application settings
 settings = get_settings()

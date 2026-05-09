@@ -5,6 +5,7 @@
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] ADD ALL MODELS 
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
+- [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 
 ## Priority 2

@@ -25,12 +25,9 @@ block_cipher = None
 
 # Collect all data from key packages
 datas = [
-    # Include the app package
     ('app', 'app'),
-    # Include alembic for database migrations
     ('alembic', 'alembic'),
     ('alembic.ini', '.'),
-    # Include frontend static files
     ('../frontend/dist', 'frontend/dist'),
     # Single source of truth for the app version. Read at runtime by
     # backend/app/__init__.py via sys._MEIPASS / 'VERSION'.

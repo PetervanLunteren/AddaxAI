@@ -122,7 +122,7 @@ def init_db() -> None:
     Crashes if migrations fail.
     """
     import app.models  # noqa: F401  # populates Base.metadata
-    from app.db.migrations import stamp_head, upgrade_to_head
+    from app.db.migrations import get_head_revision, stamp_head, upgrade_to_head
 
     engine = get_engine()
 
@@ -130,6 +130,11 @@ def init_db() -> None:
         inspector = inspect(engine)
         has_user_tables = inspector.has_table("projects")
         has_alembic = inspector.has_table("alembic_version")
+
+        # Fail loudly if the alembic versions directory is missing.
+        # Otherwise alembic.command.upgrade is a silent no-op and
+        # init_db crashes later with a confusing "no such table" error.
+        get_head_revision()
 
         if has_user_tables and not has_alembic:
             logger.info("Legacy DB without alembic_version: stamping head")
