@@ -41,6 +41,89 @@ def hash_yaml_file(yaml_path: Path) -> str:
     return hashlib.sha256(yaml_path.read_bytes()).hexdigest()
 
 
+# Pre-conda baseline: matches the explicit "Starting package installation"
+# preset emitted just before micromamba spawns. The bar must never visibly
+# slide back to 0 while the resolve phase loads the package index, which
+# can take 20-60 s on a cold cache or slow mirror.
+ENV_PROGRESS_FLOOR = 0.10
+
+
+def parse_micromamba_progress(
+    line: str,
+    current_progress: float,
+    *,
+    conda_start: float,
+    conda_end: float,
+    pip_start: float,
+    pip_end: float,
+) -> tuple[float, str]:
+    """Map a line of micromamba verbose stderr to a (progress, caption).
+
+    Progress is monotonically non-decreasing: every checkpoint uses
+    max() against the caller's `current_progress`, so phases that
+    re-emit older patterns never make the bar slide backwards.
+
+    Caption is user-friendly when the line matches a known phase, and
+    falls back to a truncated copy of the raw line otherwise (so the
+    user always sees text changing under the bar, even on unrecognised
+    phases). Returned alongside progress so callers don't have to
+    re-match.
+
+    Pattern order matters: more specific patterns come first. Phase
+    progressions are roughly:
+      resolve (1-5%) -> conda download/link (5%-conda_end) -> pip (conda_end-95%).
+    """
+    pip_range = pip_end - pip_start
+    lower = line.lower()
+
+    # Resolve phase. Each step is cheap individually but the sum can
+    # easily stretch past a minute on cold caches. We move the bar by
+    # ~1% at each, so the user sees forward motion even before any
+    # actual package download has begun.
+    if "searching index cache" in lower:
+        return max(current_progress, 0.01), "Loading package index..."
+    if "fetch shard index" in lower:
+        return max(current_progress, 0.02), "Loading package index..."
+    if "parsing packages" in lower:
+        return max(current_progress, 0.03), "Resolving dependencies..."
+    if "resolving environment" in lower:
+        return max(current_progress, 0.04), "Resolving dependencies..."
+
+    # Conda download / link phase.
+    if "transaction" in lower and "starting" not in lower:
+        return max(current_progress, conda_start), "Downloading packages..."
+    if "using cache" in lower:
+        # Older event: package weights were already cached, conda is
+        # reusing them. Tiny lift between resolve and transaction.
+        return max(current_progress, conda_start * 0.5), "Downloading packages..."
+    if line.startswith("Linking "):
+        midpoint = conda_start + (conda_end - conda_start) * 0.5
+        return max(current_progress, midpoint), "Installing packages..."
+    if "transaction finished" in lower:
+        return max(current_progress, conda_end), "Conda packages installed"
+
+    # Pip phase.
+    if "installing pip packages" in lower:
+        return max(current_progress, pip_start), "Installing Python packages..."
+    if line.startswith("Collecting "):
+        return (
+            max(current_progress, pip_start + pip_range * 0.3),
+            "Downloading Python packages...",
+        )
+    if "installing collected packages" in lower:
+        return (
+            max(current_progress, pip_start + pip_range * 0.7),
+            "Installing Python packages...",
+        )
+    if line.startswith("Successfully installed"):
+        return max(current_progress, 0.95), "Python packages installed"
+
+    # No known phase: leave progress alone, show the raw line so the
+    # user still sees activity. Truncated so a 500-char libmamba diag
+    # line doesn't blow up the dialog.
+    return current_progress, line[:80]
+
+
 class EnvironmentManager:
     """
     Manages micromamba environments using static YAML files.
@@ -359,39 +442,26 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
 
-            current_progress = 0.0
+            # Seed at the floor we just announced via the explicit
+            # "Starting package installation..." callback above. The
+            # first uncategorised micromamba line would otherwise emit
+            # 0.0 and the bar would slide back to zero for the entire
+            # ~30 s resolve phase.
+            current_progress = ENV_PROGRESS_FLOOR
 
             def on_micromamba_line(line: str) -> None:
                 nonlocal current_progress
-                # Simple checkpoint-based progress estimation
-                if "using cache" in line.lower():
-                    current_progress = max(current_progress, conda_start * 0.5)
-                elif "transaction" in line.lower() and "starting" not in line.lower():
-                    current_progress = max(current_progress, conda_start)
-                elif line.startswith("Linking "):
-                    current_progress = max(
-                        current_progress,
-                        conda_start + (conda_end - conda_start) * 0.5,
-                    )
-                elif "transaction finished" in line.lower():
-                    current_progress = max(current_progress, conda_end)
-                elif "installing pip packages" in line.lower():
-                    current_progress = max(current_progress, pip_start)
-                elif line.startswith("Collecting "):
-                    pip_range = pip_end - pip_start
-                    current_progress = max(
-                        current_progress, pip_start + (pip_range * 0.3)
-                    )
-                elif "installing collected packages" in line.lower():
-                    pip_range = pip_end - pip_start
-                    current_progress = max(
-                        current_progress, pip_start + (pip_range * 0.7)
-                    )
-                elif line.startswith("Successfully installed"):
-                    current_progress = 0.95
-
+                new_progress, caption = parse_micromamba_progress(
+                    line,
+                    current_progress,
+                    conda_start=conda_start,
+                    conda_end=conda_end,
+                    pip_start=pip_start,
+                    pip_end=pip_end,
+                )
+                current_progress = new_progress
                 if progress_callback:
-                    progress_callback(line[:80], current_progress)
+                    progress_callback(caption, current_progress)
                 logger.debug(f"micromamba: {line}")
 
             result = stream_with_tail(
