@@ -138,17 +138,23 @@ class ModelStorage:
         model_path = self.models_dir / model_type / manifest.model_id
 
         if force and model_path.exists():
-            # Wipe everything except manifest.json so the catalog stub
-            # survives. Without manifest.json present, the next
-            # ManifestManager load would lose this model entirely until
-            # the catalog updater rebuilds it. Preserving it keeps the
-            # state recoverable mid-download too.
+            # Wipe everything except manifest.json and the weights file
+            # itself. manifest.json must survive so the catalog stub is
+            # not lost. The weights file must survive so the setup-status
+            # check (`_models_present` in routers/setup.py) keeps
+            # returning True while the redownload runs; otherwise the
+            # SetupGate sees `ready=false` mid-download and redirects the
+            # user to the first-run wizard. The HF downloader is
+            # size-checked per file (hf_downloader.py:212-217), so a kept
+            # weights file is re-fetched only if its on-disk size differs
+            # from the upstream size.
+            keep = {"manifest.json", manifest.model_fname}
             logger.info(
                 f"Force re-download: wiping cached files at {model_path} "
-                "(keeping manifest.json)"
+                f"(keeping {sorted(keep)})"
             )
             for child in model_path.iterdir():
-                if child.name == "manifest.json":
+                if child.name in keep:
                     continue
                 try:
                     if child.is_dir():

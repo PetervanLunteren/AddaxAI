@@ -8,6 +8,7 @@
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
+- [ ] remove the issue creation in the github actions for windows scan. I wont do this so better remove it. 
 
 ## Priority 2
 - [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 

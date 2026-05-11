@@ -6,7 +6,7 @@
  * - Type hints everywhere
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   BrowserRouter,
@@ -267,12 +267,27 @@ function SetupGate({ children }: { children: ReactNode }) {
   // the gate would bounce the second window back to /setup and the
   // user would never see the Timelapse form even after setup completes.
   const onTimelapseRoute = location.pathname.startsWith("/timelapse");
+  // Sticky-ready flag. Once the backend reports `ready=true` at least
+  // once in this session, we trust that setup is done and ignore later
+  // transient `ready=false` polls. Real resets bounce the whole app
+  // (Electron quit + relaunch), so the flag resets naturally and the
+  // wizard still triggers on a genuinely-empty install. Without this,
+  // any operation that briefly removes a default model weights file
+  // (e.g. the drift toast's force-redownload) flips setup-status to
+  // not-ready for the duration of the download and yanks the user back
+  // to the wizard mid-task.
+  const everReadyRef = useRef(false);
 
   const { data, isLoading, isError, errorUpdatedAt, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["setup-status"],
     queryFn: setupApi.getStatus,
     refetchInterval: 5000,
   });
+
+  if (data?.ready) {
+    everReadyRef.current = true;
+  }
+  const effectivelyReady = Boolean(data?.ready || everReadyRef.current);
 
   // Detect a persistently-down backend. A single flaky fetch shouldn't
   // fire this: we require either the very first fetch to fail (no
@@ -294,11 +309,11 @@ function SetupGate({ children }: { children: ReactNode }) {
     return null;
   }
 
-  if (!data.ready && !onSetupRoute && !onTimelapseRoute) {
+  if (!effectivelyReady && !onSetupRoute && !onTimelapseRoute) {
     return <Navigate to="/setup" replace />;
   }
 
-  if (data.ready && onSetupRoute) {
+  if (effectivelyReady && onSetupRoute) {
     return <Navigate to="/projects" replace />;
   }
 
@@ -307,7 +322,7 @@ function SetupGate({ children }: { children: ReactNode }) {
   // hamburger menu is rendered inline by the projects page header.
   return (
     <>
-      {data.ready && <CrashBanner />}
+      {effectivelyReady && <CrashBanner />}
       {children}
     </>
   );
