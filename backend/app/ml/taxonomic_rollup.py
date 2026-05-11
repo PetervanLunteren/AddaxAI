@@ -368,8 +368,11 @@ def apply_taxonomic_rollup_to_results(
     new_entries: list[dict] = []
     seen_rollup_labels: set[str] = set()
 
-    for img in md_results.get("images", []):
-        for det in img.get("detections", []):
+    # `images or []` / `detections or []` keeps the rollup safe against
+    # process_video failure entries (`detections: null` for corrupt
+    # videos). They contribute zero classifications either way.
+    for img in md_results.get("images") or []:
+        for det in img.get("detections") or []:
             classifications = det.get("classifications")
             if not classifications:
                 continue

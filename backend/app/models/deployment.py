@@ -87,6 +87,15 @@ class Deployment(Base):
         Integer, nullable=True
     )
 
+    # Non-fatal issues encountered during analysis. List of typed dicts
+    # mirroring the queue-entry warnings format: `missing_timestamp`
+    # files dropped from ingest, `video_processing_failure` videos that
+    # MegaDetector could not decode, etc. Copied from the queue entry
+    # on completion so the user can still see what was skipped after
+    # the queue row gets cleaned up. NULL when the deployment ran
+    # cleanly with nothing to flag.
+    warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

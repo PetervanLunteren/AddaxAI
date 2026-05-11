@@ -97,9 +97,19 @@ def select_best_frames(video_json_path: Path, frames_base_dir: Path) -> None:
     with open(video_json_path) as f:
         data = json.load(f)
 
-    for img_entry in data.get("images", []):
+    for img_entry in data.get("images") or []:
         relative_file = img_entry["file"]
         video_stem = Path(relative_file).stem
+
+        # Skip MegaDetector failure entries (corrupt videos etc.). They
+        # have `detections: null` and no extracted frames; there is
+        # nothing to score.
+        if img_entry.get("failure"):
+            logger.warning(
+                f"Skipping best-frame selection for {relative_file}: "
+                f"process_video reported failure ({img_entry['failure']})"
+            )
+            continue
 
         # Frames directory: extract_frames preserves relative dir structure
         frames_dir = frames_base_dir / relative_file
@@ -110,7 +120,7 @@ def select_best_frames(video_json_path: Path, frames_base_dir: Path) -> None:
             )
             continue
 
-        detections = img_entry.get("detections", [])
+        detections = img_entry.get("detections") or []
 
         # Build detection tuples: (frame_number_str, confidence, bbox)
         det_tuples = [

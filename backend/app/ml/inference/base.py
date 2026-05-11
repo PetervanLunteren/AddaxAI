@@ -55,6 +55,12 @@ class PipelineResult:
     # surfaces these to the user as a non-fatal warning on the queue
     # entry. Empty list when everything loaded cleanly.
     skipped_missing_timestamp: list[str] = field(default_factory=list)
+    # Videos that MegaDetector's process_video refused to decode (corrupt
+    # file, unsupported codec, no retrievable frames). Each entry is
+    # `{"file": "<relative-path>", "reason": "<process_video failure msg>"}`.
+    # Surfaced to the user as a non-fatal warning on the queue entry so
+    # they know which videos to look at.
+    skipped_video_failures: list[dict] = field(default_factory=list)
 
 
 class DetectionModel:

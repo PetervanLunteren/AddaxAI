@@ -94,6 +94,10 @@ class DeploymentResponse(DeploymentBase):
         None, description="When folder was last validated (UTC)"
     )
     created_at_utc: datetime
+    # Non-fatal issues recorded during analysis (files dropped for
+    # missing EXIF, videos the decoder rejected, etc). Survives queue
+    # cleanup. None when the run had nothing to flag.
+    warnings: list[dict] | None = None
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models
 
@@ -200,6 +204,14 @@ class DeploymentInfoResponse(BaseModel):
     # Earliest and latest File.captured_at_local in the deployment.
     first_captured_at_local: datetime | None
     last_captured_at_local: datetime | None
+    # Non-fatal issues recorded during this deployment's analysis run.
+    # Each entry is one file the pipeline skipped:
+    #   {"type": "missing_timestamp", "path": ...} for files without an
+    #   extractable EXIF / QuickTime capture timestamp, and
+    #   {"type": "video_processing_failure", "path": ..., "reason": ...}
+    #   for videos the decoder rejected (corrupt file, unsupported
+    #   codec, etc). None when the run had nothing to flag.
+    warnings: list[dict] | None = None
 
 
 class BulkRelinkItem(BaseModel):

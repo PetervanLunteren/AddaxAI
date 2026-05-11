@@ -239,8 +239,10 @@ def apply_label_exclusion_to_results(
     if not excluded_class_ids:
         return md_results
 
-    for img in md_results.get("images", []):
-        for det in img.get("detections", []):
+    # Iterate `images or []` / `detections or []` so failure entries from
+    # process_video (corrupt video → `detections: null`) don't crash this.
+    for img in md_results.get("images") or []:
+        for det in img.get("detections") or []:
             if "classifications" not in det or not det["classifications"]:
                 continue
             det["classifications"] = filter_classifications(
@@ -269,8 +271,8 @@ def strip_non_label_from_results(md_results: dict) -> dict:
     if not non_label_ids:
         return md_results
 
-    for img in md_results.get("images", []):
-        for det in img.get("detections", []):
+    for img in md_results.get("images") or []:
+        for det in img.get("detections") or []:
             if not det.get("classifications"):
                 continue
             det["classifications"] = [

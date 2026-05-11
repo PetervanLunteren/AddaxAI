@@ -7,6 +7,7 @@
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
+- [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 
 ## Priority 2
 - [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 

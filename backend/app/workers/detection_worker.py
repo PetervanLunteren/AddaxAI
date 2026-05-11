@@ -645,20 +645,47 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # rather than blocking the whole deployment. Persist a
                 # typed log so the UI can render warnings alongside any
                 # future categories in one unified table.
+                #
+                # Failed-video entries from MegaDetector's process_video
+                # (corrupt file, unsupported codec, etc.) share the same
+                # warnings table so the user sees both classes of issue
+                # in one place. Their reason string comes straight from
+                # process_video so the cause is visible.
+                warning_entries: list[dict] = []
                 if result.skipped_missing_timestamp:
                     logger.warning(
                         f"Skipped {len(result.skipped_missing_timestamp)} "
                         "file(s) with no extractable capture timestamp"
                     )
-                    log_entries = [
+                    warning_entries.extend(
                         {"type": "missing_timestamp", "path": p}
                         for p in result.skipped_missing_timestamp
-                    ]
+                    )
+                if result.skipped_video_failures:
+                    logger.warning(
+                        f"Skipped {len(result.skipped_video_failures)} "
+                        "video(s) that MegaDetector could not decode"
+                    )
+                    warning_entries.extend(
+                        {
+                            "type": "video_processing_failure",
+                            "path": f["file"],
+                            "reason": f["reason"],
+                        }
+                        for f in result.skipped_video_failures
+                    )
+                if warning_entries:
                     queue_crud.update_queue_warnings(
                         db,
                         entry_id,
-                        json.dumps(log_entries),
+                        json.dumps(warning_entries),
                     )
+                    # Mirror onto the deployment so the user can still see
+                    # what was skipped after the queue row is cleaned up.
+                    # Queue entries are ephemeral; the deployment is the
+                    # durable record of this run.
+                    deployment.warnings = warning_entries
+                    db.commit()
 
                 # Defensive fallback: link any detections that weren't
                 # resolved inline (should be a no-op)

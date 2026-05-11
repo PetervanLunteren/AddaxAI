@@ -496,11 +496,15 @@ def update_database_from_smoothed_results(
     # Track which files had label changes (for observation_type recomputation)
     changed_file_ids: set[str] = set()
 
-    for img in smoothed_results.get("images", []):
+    # `images or []` and the `failure` skip below tolerate failed-video
+    # entries from process_video (their `detections` field is None).
+    for img in smoothed_results.get("images") or []:
+        if img.get("failure"):
+            continue
         relative_file = img["file"]
         absolute_path = str((deployment_folder / relative_file).resolve())
 
-        for det in img.get("detections", []):
+        for det in img.get("detections") or []:
             try:
                 bbox = det["bbox"]
                 bbox_key = (
@@ -727,7 +731,10 @@ def _extract_capture_times_from_results(
     video_paths: list[Path] = []
     rel_for_abs: dict[Path, str] = {}
 
-    for img in md_results.get("images", []):
+    for img in md_results.get("images") or []:
+        # Failed-video entries from process_video have no usable timestamp.
+        if img.get("failure"):
+            continue
         rel = img["file"]
         abs_path = (deployment_folder / rel).resolve()
         ext = abs_path.suffix.lstrip(".").lower()

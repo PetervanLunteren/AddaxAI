@@ -610,6 +610,7 @@ def get_deployment_info(db: Session, deployment_id: str):
         mean_classification_confidence=mean_classification_confidence,
         first_captured_at_local=first_captured_at_local,
         last_captured_at_local=last_captured_at_local,
+        warnings=deployment.warnings,
     )
 
 

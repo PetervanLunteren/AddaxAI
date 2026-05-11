@@ -28,6 +28,7 @@ from app.core.media_types import VIDEO_EXTENSIONS
 from app.ml.inference.base import PipelineResult
 from app.ml.json_utils import (
     build_classification_category_descriptions,
+    collect_md_failures,
     extract_animal_detections,
 )
 from app.models import Deployment, File
@@ -156,9 +157,14 @@ def load_json_to_database(
         skipped_non_label = 0
 
         # Pre-extract video dates using exiftool (single process for all videos)
+        # Skip MegaDetector-failure entries (video could not be decoded;
+        # `detections: null`). The worker surfaces those separately as
+        # queue warnings; there is no usable file row to create here.
         video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
         video_paths: list[Path] = []
-        for img in results.get("images", []):
+        for img in results.get("images") or []:
+            if img.get("failure"):
+                continue
             abs_path = (deployment_folder / img["file"]).resolve()
             fmt = abs_path.suffix.lstrip(".").lower() if abs_path.exists() else ""
             if fmt in video_extensions:
@@ -173,10 +179,13 @@ def load_json_to_database(
         # loop — same mechanical shape as the existing non-label skip.
         # If *every* input file fails we raise below, because there is
         # nothing left to ingest.
-        total_input_images = len(results.get("images", []))
+        loadable_images = [
+            img for img in (results.get("images") or []) if not img.get("failure")
+        ]
+        total_input_images = len(loadable_images)
         skipped_missing_timestamp: list[str] = []
         resolved_timestamps: dict[str, datetime] = {}
-        for img in results.get("images", []):
+        for img in loadable_images:
             absolute_path = (deployment_folder / img["file"]).resolve()
             fmt = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
             ts = _resolve_capture_timestamp(
@@ -205,7 +214,7 @@ def load_json_to_database(
         video_frames_dir = _af / "video_frames"
         has_extracted_frames = video_frames_dir.exists()
 
-        for img in results.get("images", []):
+        for img in loadable_images:
             relative_file = img["file"]
             absolute_path = (deployment_folder / relative_file).resolve()
 
@@ -355,8 +364,10 @@ def load_json_to_database(
             frame_categories: dict[int, set[str]] = defaultdict(set)
             video_categories: set[str] = set()
 
-            # Create Detection records
-            for det in img.get("detections", []):
+            # Create Detection records. `detections or []` keeps the loop
+            # safe even if `loadable_images` filtering above is bypassed
+            # by future callers passing in raw process_video output.
+            for det in img.get("detections") or []:
                 # Map category
                 category_num = det["category"]
                 category_map = {"1": "animal", "2": "person", "3": "vehicle"}
@@ -504,13 +515,14 @@ def load_json_to_database(
         )
 
         return PipelineResult(
-            total_files=len(results.get("images", [])),
+            total_files=len(results.get("images") or []),
             total_detections=total_detections,
             animal_detections=animal_count,
             person_detections=person_count,
             vehicle_detections=vehicle_count,
             classified_detections=classified_count,
             skipped_missing_timestamp=skipped_missing_timestamp,
+            skipped_video_failures=collect_md_failures(results),
         )
 
     except MissingTimestampError:
@@ -777,10 +789,12 @@ def merge_json_files(
                 new_id = id_remapping.get(old_id, old_id)
                 merged_data["classification_category_descriptions"][new_id] = desc_str
 
-            for img in data.get("images", []):
-                if "detections" in img:
-                    for det in img["detections"]:
-                        if "classifications" in det and det["classifications"]:
+            for img in data.get("images") or []:
+                # Iterate `detections or []` so the merge survives any
+                # process_video failure entries that snuck through with
+                # `detections: null`.
+                for det in img.get("detections") or []:
+                    if "classifications" in det and det["classifications"]:
                             renumbered_classifications = []
                             for class_id, confidence in det["classifications"]:
                                 old_id_str = str(class_id)
@@ -798,7 +812,7 @@ def merge_json_files(
 
                             det["classifications"] = renumbered_classifications
 
-            merged_data["images"].extend(data.get("images", []))
+            merged_data["images"].extend(data.get("images") or [])
 
             if not merged_data["detection_categories"]:
                 merged_data["detection_categories"] = data.get("detection_categories", {})

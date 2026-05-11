@@ -14,6 +14,25 @@ import uuid
 from pathlib import Path
 
 
+def collect_md_failures(md_results: dict) -> list[dict]:
+    """Return one entry per failed image/video in a MegaDetector JSON.
+
+    MegaDetector's `process_video` writes entries shaped like
+    ``{"file": "...", "failure": "...", "detections": null}`` when a
+    video can't be decoded (corrupt file, unsupported codec, no
+    retrievable frames). Naive iteration over `detections` blows up
+    with `TypeError: 'NoneType' object is not iterable`. Use this
+    helper at the start of the pipeline to extract those entries for
+    user-facing warnings, and use the `iter_*` helpers below to walk
+    the JSON without tripping on them.
+    """
+    return [
+        {"file": img.get("file"), "reason": img.get("failure")}
+        for img in (md_results.get("images") or [])
+        if img.get("failure")
+    ]
+
+
 def extract_animal_detections(md_results: dict) -> list[tuple[int, int, dict]]:
     """
     Extract animal detections with their indices for classification.
@@ -27,8 +46,12 @@ def extract_animal_detections(md_results: dict) -> list[tuple[int, int, dict]]:
     """
     animals: list[tuple[int, int, dict]] = []
 
-    for img_idx, img in enumerate(md_results.get("images", [])):
-        for det_idx, det in enumerate(img.get("detections", [])):
+    # Failure entries have `detections: null` (see collect_md_failures).
+    # Skip them so this loop does not crash on a corrupt-video JSON.
+    for img_idx, img in enumerate(md_results.get("images") or []):
+        if img.get("failure"):
+            continue
+        for det_idx, det in enumerate(img.get("detections") or []):
             if det.get("category") == "1":  # animal
                 animals.append((img_idx, det_idx, det))
 
@@ -64,13 +87,14 @@ def assign_uuids_to_detection_json(md_results: dict) -> None:
     Args:
         md_results: MegaDetector JSON results dict (modified in-place)
     """
-    for img in md_results.get("images", []):
+    for img in md_results.get("images") or []:
         # Assign file_id if not present
         if "file_id" not in img:
             img["file_id"] = str(uuid.uuid4())
 
-        # Assign detection_id to each detection
-        for det in img.get("detections", []):
+        # Assign detection_id to each detection. Tolerant of failure
+        # entries where `detections` is null (process_video pattern).
+        for det in img.get("detections") or []:
             if "detection_id" not in det:
                 det["detection_id"] = str(uuid.uuid4())
 
@@ -180,10 +204,12 @@ def trim_classification_results(
 
     original_count = len(categories)
 
-    # Trim each detection and collect referenced class IDs
+    # Trim each detection and collect referenced class IDs. Tolerant of
+    # `detections: null` entries written by process_video for videos it
+    # could not decode.
     referenced_ids: set[str] = set()
-    for img in md_results.get("images", []):
-        for det in img.get("detections", []):
+    for img in md_results.get("images") or []:
+        for det in img.get("detections") or []:
             cls_list = det.get("classifications")
             if not cls_list:
                 continue

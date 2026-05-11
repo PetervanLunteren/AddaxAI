@@ -221,6 +221,16 @@ export interface SiteInfo {
   last_captured_at_local: string | null;
 }
 
+/** One row in DeploymentResponse.warnings — a file the pipeline skipped
+ * for a non-fatal reason. `path` is the file path (relative or absolute
+ * depending on which phase recorded it). `reason` is present for
+ * decoder failures, absent for missing-timestamp skips. */
+export interface DeploymentWarning {
+  type: "missing_timestamp" | "video_processing_failure" | string;
+  path: string;
+  reason?: string;
+}
+
 // Deployment types
 export interface DeploymentResponse {
   id: string;
@@ -240,6 +250,9 @@ export interface DeploymentResponse {
   tags: Record<string, string>;
   datetime_offset_seconds: number | null;
   created_at_utc: string;
+  /** Non-fatal issues from this deployment's analysis run. Null when
+   * the run had nothing to flag. */
+  warnings: DeploymentWarning[] | null;
 }
 
 export interface DeploymentUpdate {
@@ -362,6 +375,10 @@ export interface DeploymentInfo {
   mean_classification_confidence: number | null;
   first_captured_at_local: string | null;
   last_captured_at_local: string | null;
+  /** Non-fatal issues from this deployment's analysis run, persisted on
+   * the deployment so they survive queue cleanup. Null when the run
+   * had nothing to flag. */
+  warnings: DeploymentWarning[] | null;
 }
 
 export interface SplitPreviewTarget {
