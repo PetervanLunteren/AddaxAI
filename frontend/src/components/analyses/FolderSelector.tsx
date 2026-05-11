@@ -220,7 +220,7 @@ export function FolderSelector({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel>Test deployments</DropdownMenuLabel>
+                <DropdownMenuLabel>Tests</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {TEST_DEPLOYMENTS.map(({ scope, path }) => (
                   <DropdownMenuItem
