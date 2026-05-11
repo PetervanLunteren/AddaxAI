@@ -40,15 +40,15 @@ export function ObservationsSettings({
       <PopoverTrigger asChild>
         <button
           type="button"
-          title="Settings"
-          aria-label="Settings"
+          title="View options"
+          aria-label="View options"
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
           <Settings2 className="h-4 w-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 space-y-4">
-        <p className="text-sm font-medium">Settings</p>
+        <p className="text-sm font-medium">View options</p>
 
         <label
           className={cn(

@@ -253,12 +253,12 @@ export function FilesTab({
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              {isFiltered ? "No files match your filters" : "No files yet"}
+              {isFiltered ? "No captures match your filters" : "No captures yet"}
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
               {isFiltered
-                ? "Try adjusting or clearing your filters to see more files."
-                : "Files appear here once you run a deployment analysis."}
+                ? "Try adjusting or clearing your filters to see more captures."
+                : "Captures appear here once you run a deployment analysis."}
             </p>
             {isFiltered && (
               <Button
@@ -299,10 +299,9 @@ export function FilesTab({
               Previous
             </Button>
             <span className="text-sm text-muted-foreground">
-              {isFiltered
-                ? `${filteredFiles} of ${totalFiles} files`
-                : `${totalFiles} files`}
-              {" · "}Page {page + 1}
+              Showing {page * PAGE_SIZE + 1}-{page * PAGE_SIZE + files.length}
+              {" of "}
+              {isFiltered ? filteredFiles : totalFiles} captures
               {isFetching && " (loading...)"}
             </span>
             <Button

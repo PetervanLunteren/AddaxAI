@@ -138,7 +138,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     validationMessages.push("Selected folder contains no images");
   } else if (blockingDeployment) {
     validationMessages.push(
-      "This folder is already a deployment in this project. Open it on the Deployments page to review or delete it.",
+      "This folder is already a deployment in this project. To re-analyze it with different settings, delete the existing deployment first on the Deployments page.",
     );
   } else if (blockingQueueEntry) {
     validationMessages.push(
@@ -234,7 +234,11 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               <div className="flex-1">
                 {blockingDeployment ? (
-                  <>This folder is already a deployment in this project.</>
+                  <>
+                    This folder is already a deployment in this project. To
+                    re-analyze it with different settings, delete the existing
+                    deployment first on the Deployments page.
+                  </>
                 ) : (
                   <>
                     This folder is already in the queue (status:{" "}

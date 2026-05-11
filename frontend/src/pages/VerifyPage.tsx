@@ -495,10 +495,9 @@ export default function VerifyPage() {
                     Previous
                   </Button>
                   <span className="text-sm text-muted-foreground">
-                    {isFiltered
-                      ? `${filteredEvents} of ${totalEvents} events`
-                      : `${totalEvents} events`}
-                    {" · "}Page {page + 1}
+                    Showing {page * PAGE_SIZE + 1}-{page * PAGE_SIZE + events.length}
+                    {" of "}
+                    {isFiltered ? filteredEvents : totalEvents} events
                     {isFetching && " (loading...)"}
                   </span>
                   <Button

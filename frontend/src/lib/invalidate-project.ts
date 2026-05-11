@@ -34,6 +34,7 @@ export function invalidateProjectData(
     ["files-for-verify", projectId],
     ["files-count-for-verify", projectId],
     ["files-verification-stats", projectId],
+    ["observation-rate-map", projectId],
   ];
   for (const queryKey of keys) {
     void queryClient.invalidateQueries({ queryKey });

@@ -30,6 +30,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { sitesApi } from "@/api/sites";
 import type { SiteResponse } from "@/api/types";
 import { TagsEditor } from "@/components/ui/tags-editor";
+import { invalidateProjectData } from "@/lib/invalidate-project";
 import { SiteMap } from "./SiteMap";
 
 // Validation schema
@@ -156,8 +157,11 @@ export function AddSiteModal({
         tags,
       }),
     onSuccess: (newSite) => {
-      queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
+      // Site coordinates feed into the Map insights page, Dashboard
+      // sun bands, Activity overlap sun bands, deployment popups, and
+      // export pipelines. Use the blanket invalidator so every view
+      // refreshes after a create / edit, not just the sites table.
+      invalidateProjectData(queryClient, projectId);
       onSiteCreated?.(newSite.id);
       onOpenChange(false);
       reset();
@@ -181,9 +185,7 @@ export function AddSiteModal({
         tags,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sites", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["sites", site!.id] });
-      queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });
+      invalidateProjectData(queryClient, projectId);
       onOpenChange(false);
       reset();
       setSelectedLocation(null);

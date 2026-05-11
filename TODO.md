@@ -9,6 +9,7 @@
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 - [ ] remove the issue creation in the github actions for windows scan. I wont do this so better remove it. 
+- [ ] remove this banner "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." Its shows up whay to often. No need for this now. Leave the code behind it for later use, just done show it in the UI.
 
 ## Priority 2
 - [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
@@ -39,4 +40,6 @@
 ## Nice to haves
 - [ ] SUBSAHARA GEOFILE - Add a geolocation file for the Sub Saharan model too, like SpeciesNet, so users of the SSmodel can also prefil by country. 
 - [ ] CLS THRESH - add a classification threshold and a per species override. Check how that is one in AddaxAI-Connect. I want something like that.
+- [ ] Bulk-create sites and deployments from a text file (CSV). Columns: name, lat, lon, optional habitat, deployment folder, altitude. Requested by Simon for a 34-camera survey where adding each site/deployment by hand is laborious.
+- [ ] Follow Windows .lnk shortcuts when walking deployment folders. Currently Python's os.walk treats .lnk as regular files and skips them. Workaround for users: NTFS junctions (mklink /J) are followed natively. Requested by Simon for a per-camera-per-week shortcut layout.
 

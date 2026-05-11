@@ -212,13 +212,13 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             </div>
           </section>
 
-          {/* Settings */}
+          {/* View options */}
           <section>
-            <h3 className="text-sm font-semibold mb-2">Settings</h3>
+            <h3 className="text-sm font-semibold mb-2">View options</h3>
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                The gear icon opens settings:
+                The view options icon opens:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-1">
                 <li>Label dividers: show a header between groups of the same label. Only available when sorting by similarity.</li>
