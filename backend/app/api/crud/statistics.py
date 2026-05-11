@@ -1200,7 +1200,7 @@ def get_verification_progress_by_label(
 
 
 # ---------------------------------------------------------------------------
-# 7. Observation rate map (per-deployment GeoJSON-style features)
+# 7. Observation rate map (per-site GeoJSON-style features)
 # ---------------------------------------------------------------------------
 
 
@@ -1216,23 +1216,30 @@ def get_observation_rate_map(
     date_to: str | None = None,
     label_taxonomy_ids: list[str] | None = None,
 ) -> ObservationRateMapResponse:
-    """Per-deployment observation rate features for the map page.
+    """Per-site observation rate features for the map page.
+
+    Sites are the spatial unit (the camera stays put across multiple
+    deployments / SD-card pulls). Each feature represents one site
+    with summed trap nights and observation counts across all of its
+    deployments that pass the active filters.
 
     Uses the same MaxN-per-event metric as the dashboard so rates are
     consistent across pages: rate = sum(EventObservation.max_n) /
-    max(1, trap_nights) * 100.
-
-    Each feature represents one deployment with its site coordinates,
-    effort window, observation count, computed rate, and a per-species
-    breakdown for the popup. Deployments that fall entirely outside
-    the active filters (no events, no effort) are skipped. Deployments
-    with effort but zero observations are kept so the user can see
+    max(1, trap_nights) * 100. Sites with no effort and no observations
+    under the active filters are skipped. Sites with effort but zero
+    matching observations are kept (hollow markers) so the user can see
     where they monitored without finding anything.
+
+    `earliest_start_local` and `latest_end_local` describe the full
+    monitoring range across the site's contributing deployments and
+    are NOT clipped to the filter window. Deployments without a
+    `site_id` are counted into `deployments_without_site` for a banner.
     """
     clip_start = _parse_iso_date(date_from)
     clip_end = _parse_iso_date(date_to)
 
     # 1) Per-deployment trap nights (clipped to the active date range).
+    #    Aggregated up to per-site in step 4.
     trap_nights_by_dep = get_per_deployment_trap_nights(
         db, project_id, site_ids, date_from, date_to
     )
@@ -1242,7 +1249,31 @@ def get_observation_rate_map(
 
     eligible_dep_ids = list(trap_nights_by_dep.keys())
 
-    # 2) Per-deployment observation count + site/deployment metadata.
+    # 2) Resolve each eligible deployment back to its site and date
+    #    window. One query so the feature builder can group in Python
+    #    without N round-trips. Deployments with site_id IS NULL are
+    #    counted into the banner total here.
+    dep_meta_rows = db.execute(
+        select(
+            Deployment.id,
+            Deployment.site_id,
+            Deployment.start_date_local,
+            Deployment.end_date_local,
+        ).where(Deployment.id.in_(eligible_dep_ids))
+    ).all()
+
+    site_id_by_dep: dict[str, str | None] = {}
+    start_by_dep: dict[str, date] = {}
+    end_by_dep: dict[str, date | None] = {}
+    deployments_without_site = 0
+    for r in dep_meta_rows:
+        site_id_by_dep[r.id] = r.site_id
+        start_by_dep[r.id] = r.start_date_local
+        end_by_dep[r.id] = r.end_date_local
+        if r.site_id is None:
+            deployments_without_site += 1
+
+    # 3) Per-site observation count + site metadata.
     #
     # Date and label filters go into the outer-join ON clauses, NOT a
     # WHERE. Putting them in WHERE would drop deployments that have
@@ -1264,44 +1295,31 @@ def get_observation_rate_map(
     if label_taxonomy_ids:
         obs_on.append(EventObservation.label_taxonomy_id.in_(label_taxonomy_ids))
 
-    # Outer join Site so deployments with site_id IS NULL still come
-    # back; the UI counts them as skipped.
-    count_query = (
+    site_rows_query = (
         select(
-            Deployment.id.label("deployment_id"),
-            Deployment.site_id.label("site_id"),
-            Deployment.start_date_local.label("start_date_local"),
-            Deployment.end_date_local.label("end_date_local"),
+            Site.id.label("site_id"),
             Site.name.label("site_name"),
             Site.latitude.label("latitude"),
             Site.longitude.label("longitude"),
             func.coalesce(func.sum(EventObservation.max_n), 0).label("obs_count"),
         )
         .select_from(Deployment)
-        .outerjoin(Site, Deployment.site_id == Site.id)
+        .join(Site, Deployment.site_id == Site.id)
         .outerjoin(Event, and_(*event_on))
         .outerjoin(EventObservation, and_(*obs_on))
         .where(Deployment.id.in_(eligible_dep_ids))
-        .group_by(
-            Deployment.id,
-            Deployment.site_id,
-            Deployment.start_date_local,
-            Deployment.end_date_local,
-            Site.name,
-            Site.latitude,
-            Site.longitude,
-        )
+        .group_by(Site.id, Site.name, Site.latitude, Site.longitude)
     )
 
-    rows = db.execute(count_query).all()
+    site_rows = db.execute(site_rows_query).all()
 
-    # 3) Per-(deployment, label) breakdown for popups. Only fetch this if
+    # 4) Per-(site, label) breakdown for popups. Only fetch this if
     #    there's any data to break down.
-    breakdown_by_dep: dict[str, list[SpeciesObservationCount]] = {}
-    if any(row.obs_count > 0 for row in rows):
+    breakdown_by_site: dict[str, list[SpeciesObservationCount]] = {}
+    if any(row.obs_count > 0 for row in site_rows):
         breakdown_query = (
             select(
-                Event.deployment_id.label("deployment_id"),
+                Deployment.site_id.label("site_id"),
                 EventObservation.label.label("label"),
                 EventObservation.label_taxonomy_id.label("label_taxonomy_id"),
                 LabelTaxonomy.display_name.label("display_name"),
@@ -1309,13 +1327,15 @@ def get_observation_rate_map(
             )
             .select_from(EventObservation)
             .join(Event, Event.id == EventObservation.event_id)
+            .join(Deployment, Deployment.id == Event.deployment_id)
             .outerjoin(
                 LabelTaxonomy,
                 LabelTaxonomy.id == EventObservation.label_taxonomy_id,
             )
-            .where(Event.deployment_id.in_(eligible_dep_ids))
+            .where(Deployment.id.in_(eligible_dep_ids))
+            .where(Deployment.site_id.isnot(None))
             .group_by(
-                Event.deployment_id,
+                Deployment.site_id,
                 EventObservation.label,
                 EventObservation.label_taxonomy_id,
                 LabelTaxonomy.display_name,
@@ -1335,7 +1355,7 @@ def get_observation_rate_map(
 
         for row in db.execute(breakdown_query).all():
             label_display = row.display_name or row.label or "unknown"
-            breakdown_by_dep.setdefault(row.deployment_id, []).append(
+            breakdown_by_site.setdefault(row.site_id, []).append(
                 SpeciesObservationCount(
                     label=label_display,
                     label_taxonomy_id=row.label_taxonomy_id,
@@ -1343,40 +1363,50 @@ def get_observation_rate_map(
                 )
             )
 
-    # 4) Build the feature list. Drop deployments with neither effort nor
-    #    observations (truly empty under the active filters). Skip rows
-    #    with no site coordinates and count them separately so the
-    #    frontend can surface a "X deployments without a site" banner.
+    # 5) Pre-compute deployments grouped by site for nights / date roll-up.
+    deps_by_site: dict[str, list[str]] = {}
+    for dep_id, site_id in site_id_by_dep.items():
+        if site_id is None:
+            continue
+        deps_by_site.setdefault(site_id, []).append(dep_id)
+
+    # 6) Build the feature list. Drop sites with neither effort nor
+    #    observations (truly empty under the active filters).
     features: list[ObservationRateMapFeature] = []
-    deployments_without_site = 0
-    for row in rows:
-        nights = trap_nights_by_dep.get(row.deployment_id, 0)
+    for row in site_rows:
+        member_dep_ids = deps_by_site.get(row.site_id, [])
+        nights = sum(trap_nights_by_dep.get(d, 0) for d in member_dep_ids)
         obs = int(row.obs_count or 0)
         if nights == 0 and obs == 0:
             continue
 
-        if row.latitude is None or row.longitude is None:
-            deployments_without_site += 1
+        starts = [start_by_dep[d] for d in member_dep_ids if start_by_dep.get(d)]
+        ends = [end_by_dep[d] for d in member_dep_ids if end_by_dep.get(d) is not None]
+        if not starts:
+            # Defensive: should never happen; deployments always have
+            # start_date_local once analysed. Skip rather than crash.
             continue
 
         rate_per_100 = (obs / nights * 100) if nights > 0 else 0.0
-        breakdown = breakdown_by_dep.get(row.deployment_id, [])[:10]
+        breakdown = breakdown_by_site.get(row.site_id, [])[:10]
 
         features.append(
             ObservationRateMapFeature(
-                deployment_id=row.deployment_id,
                 site_id=row.site_id,
                 site_name=row.site_name,
                 latitude=row.latitude,
                 longitude=row.longitude,
-                start_date_local=row.start_date_local,
-                end_date_local=row.end_date_local,
+                deployment_count=len(member_dep_ids),
+                earliest_start_local=min(starts),
+                latest_end_local=max(ends) if ends else None,
                 trap_nights=nights,
                 observation_count=obs,
                 rate_per_100=rate_per_100,
                 species_breakdown=breakdown,
             )
         )
+
+    features.sort(key=lambda f: f.site_name.lower())
 
     return ObservationRateMapResponse(
         features=features,

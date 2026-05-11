@@ -406,6 +406,7 @@ function TimelapseFormPage() {
             metrics={runProgress.metrics}
             computeDevice={runProgress.computeDevice}
             deploymentContext={runProgress.deploymentContext}
+            message={runProgress.message}
             hideDeploymentHeader
           />
         </div>

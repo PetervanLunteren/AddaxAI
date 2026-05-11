@@ -13,6 +13,8 @@ import csv
 import uuid
 from pathlib import Path
 
+from app.utils.fs_hidden import mkdir_hidden_addaxai
+
 
 def collect_md_failures(md_results: dict) -> list[dict]:
     """Return one entry per failed image/video in a MegaDetector JSON.
@@ -72,7 +74,7 @@ def create_artifacts_folder(deployment_folder: Path) -> Path:
         OSError: If folder creation fails
     """
     artifacts = deployment_folder / ".addaxai"
-    artifacts.mkdir(parents=True, exist_ok=True)
+    mkdir_hidden_addaxai(artifacts)
     return artifacts
 
 

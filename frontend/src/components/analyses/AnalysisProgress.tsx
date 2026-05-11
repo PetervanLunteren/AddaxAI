@@ -73,6 +73,23 @@ export function getPhaseProgress(
   return 0;
 }
 
+/**
+ * Backend pushes a mix of clean status strings ("Loading DINOv2 model...",
+ * "Saving classifications...") and raw tqdm lines ("Embedding: 53%|██..."
+ * etc). Raw tqdm lines are already conveyed by the progress bar and look
+ * awful in a caption, so we strip them and fall back to the generic
+ * caption for anything that smells like tqdm output.
+ */
+function _cleanStatusMessage(message: string | undefined): string | null {
+  if (!message) return null;
+  const trimmed = message.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("%|") || trimmed.includes("it/s") || trimmed.includes("/s]")) {
+    return null;
+  }
+  return trimmed;
+}
+
 interface PhaseRowProps {
   label: string;
   phaseName: string;
@@ -81,6 +98,13 @@ interface PhaseRowProps {
   phaseProgress: number | undefined;
   metrics: TqdmMetrics | null;
   computeDevice: string | null;
+  /**
+   * Latest backend status line (e.g. "Loading DINOv2 model...", "Saving
+   * classifications..."). Used to replace the generic "Starting up..."
+   * and "Finalizing..." captions so the user sees what's actually
+   * happening during long stretches with no tqdm progress.
+   */
+  message?: string;
 }
 
 function PhaseRow({
@@ -91,6 +115,7 @@ function PhaseRow({
   phaseProgress,
   metrics,
   computeDevice,
+  message,
 }: PhaseRowProps) {
   const isActive = phaseName === currentPhase;
   const isFinalizing = isActive && progress >= 100;
@@ -157,14 +182,14 @@ function PhaseRow({
       {isStartingUp && (
         <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
           <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#156065" }} />
-          <span>Starting up...</span>
+          <span>{_cleanStatusMessage(message) ?? "Starting up..."}</span>
         </div>
       )}
 
       {isFinalizing && (
         <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
           <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#156065" }} />
-          <span>Finalizing...</span>
+          <span>{_cleanStatusMessage(message) ?? "Finalizing..."}</span>
         </div>
       )}
     </div>
@@ -182,6 +207,13 @@ interface AnalysisProgressProps {
   computeDevice: string | null;
   /** Deployment context from the Init websocket message. */
   deploymentContext: DeploymentContext | null;
+  /**
+   * Latest status string from the worker (e.g. "Loading DINOv2 model...",
+   * "Saving classifications..."). Surfaces inside the current phase's
+   * starting-up / finalizing captions so the user sees what's actually
+   * happening when there are no tqdm metrics yet.
+   */
+  message?: string;
   /**
    * Hide the "Deployment X of N" badge. Set this for one-shot runs
    * (Timelapse integration) where there is no concept of multiple deployments.
@@ -201,6 +233,7 @@ export function AnalysisProgress({
   metrics,
   computeDevice,
   deploymentContext,
+  message,
   hideDeploymentHeader = false,
 }: AnalysisProgressProps) {
   if (!deploymentContext) return null;
@@ -224,6 +257,14 @@ export function AnalysisProgress({
         label: "Image classification",
         phase: "image_classification",
       },
+    // The worker emits phase="saving" between classification and
+    // embedding (merging results, loading to database). Without this
+    // row, the user sees a long silent gap with image classification
+    // stuck on Finalizing... and embedding still at 0%.
+    {
+      label: "Saving",
+      phase: "saving",
+    },
     deploymentContext.hasEmbedding && {
       label: "Embedding",
       phase: "embedding",
@@ -258,6 +299,7 @@ export function AnalysisProgress({
             phaseProgress={phaseProgress}
             metrics={metrics}
             computeDevice={computeDevice}
+            message={message}
           />
         </div>
       ))}

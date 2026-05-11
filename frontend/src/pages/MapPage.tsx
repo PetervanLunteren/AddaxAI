@@ -1,5 +1,5 @@
 /**
- * Map page — spatial view of deployments colored by observation rate.
+ * Map page — spatial view of sites colored by observation rate.
  *
  * Page owns:
  *   - Filter state (sites, dates, labels) — persisted to the URL
@@ -211,26 +211,28 @@ export function MapPage() {
           plotKey="map"
           what={
             <p>
-              A marker per deployment, coloured by its observation rate
-              per 100 trap nights. Three layer modes: hexbins aggregate
-              nearby deployments onto a hex grid, points show each
-              deployment individually, and clusters group nearby points
-              into a single circle with the count inside. The labels
-              filter restricts the observation count to the selected
-              taxa.
+              A marker per site, coloured by its observation rate per
+              100 trap nights. A site can have multiple deployments
+              over time; each marker aggregates across them. Three
+              layer modes: hexbins aggregate nearby sites onto a hex
+              grid, points show each site individually, and clusters
+              group nearby points into a single circle with the count
+              inside. The labels filter restricts the observation
+              count to the selected taxa.
             </p>
           }
           how={
             <p>
               rate = observations / trap_nights × 100, where
-              observations is the sum of MaxN across all events passing
-              the active filters, and trap_nights is the deployment's
-              active days. Events respect the project's detection
-              threshold with the verified override applied, so verified
-              detections count even when they fall below threshold.
-              Hexbin colour scaling is per-render, so a hex's shade
-              reflects its rank within the current view rather than an
-              absolute comparison across projects.
+              observations is the sum of MaxN across all events at the
+              site passing the active filters, and trap_nights is
+              summed across the site's contributing deployments (clipped
+              to the active date filter). Events respect the project's
+              detection threshold with the verified override applied,
+              so verified detections count even when they fall below
+              threshold. Hexbin colour scaling is per-render, so a
+              hex's shade reflects its rank within the current view
+              rather than an absolute comparison across projects.
             </p>
           }
         />

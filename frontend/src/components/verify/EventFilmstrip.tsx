@@ -71,7 +71,7 @@ export function EventFilmstrip({
         className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto"
       >
         {files.map((file, index) => {
-          const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
+          const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image?size=thumb`;
           const isSelected = index === selectedIndex;
           const fileMaxNFrames = maxNByFile.get(file.id);
 

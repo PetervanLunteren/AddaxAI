@@ -26,6 +26,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.base import DetectionModel
+from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
 
@@ -232,7 +233,7 @@ class MegaDetectorV1000(DetectionModel):
                 output_file = output_path
             else:
                 artifacts_folder = deployment_folder / ".addaxai"
-                artifacts_folder.mkdir(parents=True, exist_ok=True)
+                mkdir_hidden_addaxai(artifacts_folder)
                 output_file = artifacts_folder / "detection_results.json"
 
             # Create temporary directory for working files

@@ -1,22 +1,22 @@
 /**
- * Single-deployment marker for the observation rate map.
+ * Single-site marker for the observation rate map.
  *
  * Renders a CircleMarker colored by rate, with a hollow/dashed look
- * for deployments that have effort but zero observations so users can
- * still see them on the map.
+ * for sites that have effort but zero observations so users can still
+ * see them on the map.
  */
 
 import { CircleMarker, Popup } from "react-leaflet";
 
 import type { ObservationRateMapFeature } from "../../api/statistics";
-import { DeploymentPopup } from "./DeploymentPopup";
+import { SitePopup } from "./SitePopup";
 
-interface DeploymentMarkerProps {
+interface SiteMarkerProps {
   feature: ObservationRateMapFeature;
   color: string;
 }
 
-export function DeploymentMarker({ feature, color }: DeploymentMarkerProps) {
+export function SiteMarker({ feature, color }: SiteMarkerProps) {
   const isZero = feature.observation_count === 0;
 
   return (
@@ -25,9 +25,9 @@ export function DeploymentMarker({ feature, color }: DeploymentMarkerProps) {
       radius={8}
       pathOptions={{
         fillColor: color,
-        // Zero-observation deployments render as hollow outline
-        // circles to make "effort but no observations" visually
-        // distinct from low-rate deployments.
+        // Zero-observation sites render as hollow outline circles to
+        // make "effort but no observations" visually distinct from
+        // low-rate sites.
         fillOpacity: isZero ? 0 : 0.7,
         color: "#555555",
         weight: 1,
@@ -35,7 +35,7 @@ export function DeploymentMarker({ feature, color }: DeploymentMarkerProps) {
       }}
     >
       <Popup>
-        <DeploymentPopup feature={feature} />
+        <SitePopup feature={feature} />
       </Popup>
     </CircleMarker>
   );

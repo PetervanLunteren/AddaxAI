@@ -37,6 +37,7 @@ from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.models import Deployment
+from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
 
@@ -252,7 +253,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             # Create project-scoped artifacts folder
             artifacts_folder = folder_path / ".addaxai" / "projects" / project_id
-            artifacts_folder.mkdir(parents=True, exist_ok=True)
+            mkdir_hidden_addaxai(artifacts_folder)
 
             # JSON file paths
             video_json_path = artifacts_folder / "detection_video.json"

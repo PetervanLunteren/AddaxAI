@@ -673,6 +673,12 @@ async def run_classification_on_json(
             sync_cls_progress(raw_line, current / total, metrics)
 
         logger.info("[DEBUG] Calling classify_detections()...")
+        # Surface a clean status caption while the classification
+        # subprocess loads its model. Without this, the frontend sits
+        # on a generic "Starting up..." for the duration of the model
+        # load (5-15s for SpeciesNet) until the first tqdm tick arrives.
+        if progress_callback:
+            sync_cls_progress("Loading classification model...", 0.0, None)
         results, class_names, compute_device = classification_model.classify_detections(
             items, batch_size=batch_size, progress_callback=on_progress,
             job_id=job_id,

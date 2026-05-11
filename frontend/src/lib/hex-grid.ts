@@ -20,11 +20,11 @@ import type { ObservationRateMapFeature } from "../api/statistics";
 
 export interface HexCell {
   hex: Feature<Polygon>;
-  deployments: ObservationRateMapFeature[];
+  sites: ObservationRateMapFeature[];
   trap_nights: number;
   observation_count: number;
   rate_per_100: number;
-  deployment_count: number;
+  site_count: number;
 }
 
 /**
@@ -156,27 +156,27 @@ export function generateHexGrid(
 }
 
 /**
- * Aggregate deployments into the hex cells they fall inside. See
- * module doc for why the aggregation still happens in geographic
- * coordinates — the hex polygons are valid lat/lon after un-projection
- * so turf's point-in-polygon works unchanged.
+ * Aggregate sites into the hex cells they fall inside. See module doc
+ * for why the aggregation still happens in geographic coordinates —
+ * the hex polygons are valid lat/lon after un-projection so turf's
+ * point-in-polygon works unchanged.
  */
-export function aggregateDeploymentsToHexes(
-  deployments: ObservationRateMapFeature[],
+export function aggregateSitesToHexes(
+  sites: ObservationRateMapFeature[],
   hexGridCollection: FeatureCollection<Polygon>
 ): HexCell[] {
-  const deploymentPoints = featureCollection(
-    deployments.map((d) =>
-      point([d.longitude, d.latitude], { deployment_id: d.deployment_id })
+  const sitePoints = featureCollection(
+    sites.map((s) =>
+      point([s.longitude, s.latitude], { site_id: s.site_id })
     )
   );
 
-  const byId = new Map<string, ObservationRateMapFeature>();
-  for (const d of deployments) byId.set(d.deployment_id, d);
+  const bySiteId = new Map<string, ObservationRateMapFeature>();
+  for (const s of sites) bySiteId.set(s.site_id, s);
 
   const cells: HexCell[] = [];
   for (const hex of hexGridCollection.features) {
-    const within = pointsWithinPolygon(deploymentPoints, hex);
+    const within = pointsWithinPolygon(sitePoints, hex);
     if (within.features.length === 0) continue;
 
     const members: ObservationRateMapFeature[] = [];
@@ -184,12 +184,12 @@ export function aggregateDeploymentsToHexes(
     let observationCount = 0;
 
     for (const pt of within.features) {
-      const id = (pt.properties as { deployment_id: string }).deployment_id;
-      const dep = byId.get(id);
-      if (!dep) continue;
-      members.push(dep);
-      trapNights += dep.trap_nights;
-      observationCount += dep.observation_count;
+      const id = (pt.properties as { site_id: string }).site_id;
+      const site = bySiteId.get(id);
+      if (!site) continue;
+      members.push(site);
+      trapNights += site.trap_nights;
+      observationCount += site.observation_count;
     }
 
     const ratePer100 =
@@ -197,11 +197,11 @@ export function aggregateDeploymentsToHexes(
 
     cells.push({
       hex,
-      deployments: members,
+      sites: members,
       trap_nights: trapNights,
       observation_count: observationCount,
       rate_per_100: ratePer100,
-      deployment_count: members.length,
+      site_count: members.length,
     });
   }
 
@@ -209,24 +209,24 @@ export function aggregateDeploymentsToHexes(
 }
 
 /**
- * Bounding box of all deployment points, in [minLon, minLat, maxLon, maxLat].
+ * Bounding box of all site points, in [minLon, minLat, maxLon, maxLat].
  * Returns world bounds if the input is empty.
  */
-export function getDeploymentsBounds(
-  deployments: ObservationRateMapFeature[]
+export function getSitesBounds(
+  sites: ObservationRateMapFeature[]
 ): BBox {
-  if (deployments.length === 0) {
+  if (sites.length === 0) {
     return [-180, -90, 180, 90];
   }
   let minLon = Infinity;
   let maxLon = -Infinity;
   let minLat = Infinity;
   let maxLat = -Infinity;
-  for (const d of deployments) {
-    if (d.longitude < minLon) minLon = d.longitude;
-    if (d.longitude > maxLon) maxLon = d.longitude;
-    if (d.latitude < minLat) minLat = d.latitude;
-    if (d.latitude > maxLat) maxLat = d.latitude;
+  for (const s of sites) {
+    if (s.longitude < minLon) minLon = s.longitude;
+    if (s.longitude > maxLon) maxLon = s.longitude;
+    if (s.latitude < minLat) minLat = s.latitude;
+    if (s.latitude > maxLat) maxLat = s.latitude;
   }
   return [minLon, minLat, maxLon, maxLat];
 }

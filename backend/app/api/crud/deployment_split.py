@@ -50,6 +50,7 @@ from app.models import (
     Job,
 )
 from app.models.event import event_files
+from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
 
@@ -407,7 +408,7 @@ def _copy_addaxai_slice(
     state when this happens.
     """
     child_addaxai = child.folder_path / ".addaxai" / "projects" / project_id
-    child_addaxai.mkdir(parents=True, exist_ok=True)
+    mkdir_hidden_addaxai(child_addaxai)
 
     child_file_paths = {f.file_path for f in child.files}
     child_json = _slice_results_json(

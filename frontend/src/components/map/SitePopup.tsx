@@ -1,43 +1,50 @@
 /**
- * Popup shown when a user clicks a single-deployment marker.
+ * Popup shown when a user clicks a single-site marker.
  *
- * Shows site name + start date as the primary identifier (biologists
- * think in those terms, not in "camera 3 deployment 2"), effort and
- * rate metrics, and a per-species chip list colored via
- * getSpeciesColor so chips match the rest of the dashboard.
+ * Shows site name as the primary identifier, the active monitoring
+ * range across the site's deployments, effort + rate metrics, and a
+ * per-species chip list coloured via getSpeciesColor so chips match
+ * the rest of the dashboard.
  */
 
 import type { ObservationRateMapFeature } from "../../api/statistics";
+import { formatCameraDate } from "../../lib/datetime";
 import {
   getSpeciesColor,
   getSpeciesTextColor,
 } from "../../utils/species-colors";
 
-interface DeploymentPopupProps {
+interface SitePopupProps {
   feature: ObservationRateMapFeature;
 }
 
-export function DeploymentPopup({ feature }: DeploymentPopupProps) {
+export function SitePopup({ feature }: SitePopupProps) {
   const {
     site_name,
-    start_date,
-    end_date,
+    deployment_count,
+    earliest_start_local,
+    latest_end_local,
     trap_nights,
     observation_count,
     rate_per_100,
     species_breakdown,
   } = feature;
 
-  const isActive = end_date === null;
+  const startStr = formatCameraDate(earliest_start_local);
+  const endStr = latest_end_local ? formatCameraDate(latest_end_local) : null;
 
   return (
     <div className="p-1 min-w-[220px]">
       <div className="font-semibold text-sm mb-1">{site_name}</div>
       <div className="text-xs text-gray-600 mb-2">
-        {start_date} {end_date ? `to ${end_date}` : "(active)"}
+        {endStr ? `${startStr} to ${endStr}` : startStr}
       </div>
 
       <div className="space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-600">Deployments</span>
+          <span className="font-medium">{deployment_count}</span>
+        </div>
         <div className="flex justify-between">
           <span className="text-gray-600">Trap nights</span>
           <span className="font-medium">{trap_nights}</span>
@@ -76,12 +83,6 @@ export function DeploymentPopup({ feature }: DeploymentPopupProps) {
               );
             })}
           </div>
-        </div>
-      )}
-
-      {isActive && (
-        <div className="mt-2 text-[10px] text-blue-700 bg-blue-50 px-2 py-1 rounded">
-          Currently active
         </div>
       )}
     </div>

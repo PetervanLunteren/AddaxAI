@@ -2,8 +2,8 @@
  * Hexbin layer for the observation rate map.
  *
  * Generates a viewport-filling hex grid directly in Mercator pixel
- * space, aggregates deployments into cells, and renders the result
- * as a Leaflet GeoJSON layer with a gradient fill per cell.
+ * space, aggregates sites into cells, and renders the result as a
+ * Leaflet GeoJSON layer with a gradient fill per cell.
  */
 
 import { useCallback, useMemo } from "react";
@@ -16,7 +16,7 @@ import type { LatLngBounds, Layer } from "leaflet";
 import type { ObservationRateMapFeature } from "../../api/statistics";
 import { getRateColor } from "../../lib/heat-color-scale";
 import {
-  aggregateDeploymentsToHexes,
+  aggregateSitesToHexes,
   generateHexGrid,
   getHexRadiusPx,
   type HexCell,
@@ -24,7 +24,7 @@ import {
 import { HexPopup } from "./HexPopup";
 
 interface HexbinLayerProps {
-  deployments: ObservationRateMapFeature[];
+  sites: ObservationRateMapFeature[];
   zoomLevel: number;
   /**
    * Current viewport bounds. The Leaflet LatLngBounds object is
@@ -40,7 +40,7 @@ interface HexFeatureProperties {
 }
 
 export function HexbinLayer({
-  deployments,
+  sites,
   zoomLevel,
   viewportBounds,
   maxRate,
@@ -48,11 +48,11 @@ export function HexbinLayer({
   const map = useMap();
 
   const hexCells = useMemo(() => {
-    if (deployments.length === 0) return [];
+    if (sites.length === 0) return [];
     const radiusPx = getHexRadiusPx(zoomLevel);
     const grid = generateHexGrid(map, viewportBounds, radiusPx);
-    return aggregateDeploymentsToHexes(deployments, grid);
-  }, [deployments, zoomLevel, viewportBounds, map]);
+    return aggregateSitesToHexes(sites, grid);
+  }, [sites, zoomLevel, viewportBounds, map]);
 
   const effectiveMax = useMemo(() => {
     if (maxRate !== undefined) return maxRate;

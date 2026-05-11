@@ -90,7 +90,7 @@ class VerificationProgressByLabel(BaseModel):
 
 
 class SpeciesObservationCount(BaseModel):
-    """One species (or category) and its MaxN sum within a single deployment."""
+    """One species (or category) and its MaxN sum within a single site."""
 
     label: str
     label_taxonomy_id: str | None
@@ -98,22 +98,25 @@ class SpeciesObservationCount(BaseModel):
 
 
 class ObservationRateMapFeature(BaseModel):
-    """One deployment plotted on the map.
+    """One site plotted on the map.
 
-    `observation_count` is the sum of EventObservation.max_n across
-    events that pass the active filters. `rate_per_100` is that count
-    divided by trap nights * 100, matching the dashboard's metric.
-    Features are only built for deployments that have a site, so
-    `site_id`, `site_name`, `latitude` and `longitude` are non-null.
+    A site can have multiple deployments over time. `trap_nights` and
+    `observation_count` are summed across the site's deployments;
+    `rate_per_100` is the summed count divided by summed nights * 100,
+    matching the dashboard's metric. `earliest_start_local` and
+    `latest_end_local` describe the full monitoring range across the
+    site's contributing deployments, not clipped to the active filter
+    window. Sites without a `site_id` (deployments lacking a site
+    assignment) are counted via `ObservationRateMapResponse.deployments_without_site`.
     """
 
-    deployment_id: str
     site_id: str
     site_name: str
     latitude: float
     longitude: float
-    start_date_local: date
-    end_date_local: date | None
+    deployment_count: int
+    earliest_start_local: date
+    latest_end_local: date | None
     trap_nights: int
     observation_count: int
     rate_per_100: float

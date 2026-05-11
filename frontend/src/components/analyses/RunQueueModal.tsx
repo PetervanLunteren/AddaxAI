@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle2, Download, Ban } from "lucide-react";
 import { basename } from "@/lib/path-utils";
@@ -233,6 +234,7 @@ export function RunQueueModal({
   onAnalysisComplete,
 }: RunQueueModalProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isComplete, setIsComplete] = useState(false);
@@ -377,7 +379,7 @@ export function RunQueueModal({
           </DialogTitle>
           <DialogDescription>
             {isComplete
-              ? "Review the results below, then close to clear the queue."
+              ? "All deployments processed. Open the dashboard, verify, or run more."
               : hasCancelled
                 ? "Review what finished before the run was stopped."
                 : hasError
@@ -507,6 +509,7 @@ export function RunQueueModal({
                   metrics={metrics}
                   computeDevice={computeDevice}
                   deploymentContext={deploymentContext}
+                  message={message}
                 />
               )}
 
@@ -523,16 +526,43 @@ export function RunQueueModal({
 
         {inTerminalState ? (
           <DialogFooter>
-            <Button onClick={handleClose} disabled={isClosing}>
+            <Button
+              variant="outline"
+              onClick={handleClose}
+              disabled={isClosing}
+            >
               {isClosing ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Closing...
                 </>
               ) : (
-                "Close"
+                "New analysis"
               )}
             </Button>
+            {isComplete && successCount > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={isClosing}
+                  onClick={async () => {
+                    await handleClose();
+                    navigate(`/projects/${projectId}/verify`);
+                  }}
+                >
+                  Verify
+                </Button>
+                <Button
+                  disabled={isClosing}
+                  onClick={async () => {
+                    await handleClose();
+                    navigate(`/projects/${projectId}/dashboard`);
+                  }}
+                >
+                  Dashboard
+                </Button>
+              </>
+            )}
           </DialogFooter>
         ) : hasJob && !isCancelling ? (
           <DialogFooter>

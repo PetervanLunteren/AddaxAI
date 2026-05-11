@@ -88,14 +88,21 @@ export interface SpeciesObservationCount {
 }
 
 export interface ObservationRateMapFeature {
-  deployment_id: string;
   site_id: string;
   site_name: string;
   latitude: number;
   longitude: number;
-  start_date_local: string;
-  end_date_local: string | null;
+  /** Number of deployments that contribute to this site feature. */
+  deployment_count: number;
+  /** Min start_date across the site's contributing deployments. */
+  earliest_start_local: string;
+  /** Max end_date across the site's contributing deployments, or null
+   * if no contributing deployment has an end date set (defensive). */
+  latest_end_local: string | null;
+  /** Summed trap nights across the site's deployments, clipped to the
+   * active date filter window. */
   trap_nights: number;
+  /** Summed MaxN observations across the site's deployments. */
   observation_count: number;
   rate_per_100: number;
   species_breakdown: SpeciesObservationCount[];
@@ -280,7 +287,8 @@ export const statisticsApi = {
   },
 
   /**
-   * Per-deployment observation rate features for the Map page.
+   * Per-site observation rate features for the Map page. Each feature
+   * aggregates across the site's contributing deployments.
    * Rate = observations / trap nights * 100, where observations is
    * sum(EventObservation.max_n) per event.
    */

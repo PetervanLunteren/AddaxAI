@@ -30,7 +30,7 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
   });
   const timeStr = formatCameraTime(file.captured_at_local);
 
-  const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image`;
+  const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image?size=thumb`;
   const dets = file.detections.filter((d) => d.confidence >= detectionThreshold);
 
   // Drop species chips whose display name duplicates an observation

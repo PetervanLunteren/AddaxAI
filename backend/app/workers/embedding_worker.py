@@ -20,6 +20,7 @@ from app.db.base import get_db
 from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
 from app.models import Deployment, Detection, File
 from app.models.detection_embedding import DetectionEmbedding
+from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
 
@@ -146,7 +147,7 @@ async def process_re_embedding_job(job_id: str) -> None:
 
                 # Write temp input JSON
                 artifacts_folder = Path(deployment.folder_path) / ".addaxai"
-                artifacts_folder.mkdir(parents=True, exist_ok=True)
+                mkdir_hidden_addaxai(artifacts_folder)
                 embedding_input_json = artifacts_folder / "re_embedding_input.json"
                 embedding_output_npz = artifacts_folder / "re_embeddings.npz"
 

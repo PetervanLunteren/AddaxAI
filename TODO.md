@@ -10,9 +10,10 @@
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 - [ ] remove the issue creation in the github actions for windows scan. I wont do this so better remove it. 
 - [ ] remove this banner "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." Its shows up whay to often. No need for this now. Leave the code behind it for later use, just done show it in the UI.
+- [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
 
 ## Priority 2
-- [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
+- [ ] 
 
 ## Priority 3 
 - [ ] 

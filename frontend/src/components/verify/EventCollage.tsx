@@ -159,7 +159,7 @@ function EventCollageTile({
   return (
     <div className={`relative overflow-hidden bg-muted ${className ?? ""}`}>
       <img
-        src={`${API_BASE_URL}/api/files/${fileId}/image`}
+        src={`${API_BASE_URL}/api/files/${fileId}/image?size=thumb`}
         alt=""
         className="w-full h-full object-cover"
         onError={(e) => {

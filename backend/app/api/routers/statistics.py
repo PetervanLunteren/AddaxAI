@@ -192,7 +192,7 @@ def observation_rate_map(
     label_taxonomy_ids: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> ObservationRateMapResponse:
-    """Per-deployment observation rate features for the Map page."""
+    """Per-site observation rate features for the Map page."""
     return stats_crud.get_observation_rate_map(
         db,
         project_id,
