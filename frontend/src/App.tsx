@@ -14,6 +14,7 @@ import {
   Route,
   Navigate,
   useLocation,
+  useParams,
 } from "react-router-dom";
 import { X } from "lucide-react";
 import { toast } from "sonner";
@@ -39,6 +40,7 @@ import { CrashBanner } from "./components/layout/CrashBanner";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
+import { projectsApi } from "./api/projects";
 import AboutPage from "./pages/AboutPage";
 
 interface ModelUpdate {
@@ -328,6 +330,26 @@ function SetupGate({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Project-index redirect. Sends users with imported data straight to
+ * the Dashboard; brand-new projects (no files yet) land on the
+ * Analyses page so the next step is obvious. Renders nothing while
+ * the stats query is in flight to avoid a Dashboard-then-Analyses
+ * flash.
+ */
+function ProjectIndexRoute() {
+  const { projectId } = useParams<{ projectId: string }>();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["project-stats", projectId],
+    queryFn: () => projectsApi.getWithStats(projectId!),
+    enabled: !!projectId,
+  });
+
+  if (isLoading) return null;
+  const hasData = !isError && (data?.file_count ?? 0) > 0;
+  return <Navigate to={hasData ? "dashboard" : "analyses"} replace />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -342,7 +364,7 @@ function App() {
 
             {/* Project routes with sidebar */}
             <Route path="/projects/:projectId" element={<AppLayout />}>
-              <Route index element={<Navigate to="analyses" replace />} />
+              <Route index element={<ProjectIndexRoute />} />
               <Route path="analyses" element={<AnalysesPage />} />
               <Route path="verify" element={<VerifyPage />} />
               <Route path="review" element={<Navigate to="../verify" replace />} />
