@@ -23,7 +23,9 @@ from app.api.schemas.project import (
     CustomLabelResponse,
     CustomLabelUpdate,
     GBIFSuggestion,
+    MissingModel,
     ProjectCreate,
+    ProjectModelReadiness,
     ProjectResponse,
     ProjectUpdate,
     ProjectWithStats,
@@ -269,6 +271,81 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectRespon
         f"{len(db_project.excluded_classes or [])} excluded_classes"
     )
     return ProjectResponse.model_validate(db_project)
+
+
+@router.get("/{project_id}/model-readiness", response_model=ProjectModelReadiness)
+def get_project_model_readiness(
+    project_id: str, db: Session = Depends(get_db)
+) -> ProjectModelReadiness:
+    """Report which of this project's configured models still need setup.
+
+    Drives the project-open dialog and the pre-analysis safety check.
+    Returns `ready=true` only when every configured model has its
+    weights and a valid env on disk; otherwise lists each missing piece
+    so the UI can offer "Set up" affordances per model.
+    """
+    from app.ml.environment_manager import EnvironmentManager
+    from app.ml.manifest_manager import ManifestManager
+    from app.ml.model_storage import ModelStorage
+
+    db_project = crud_project.get_project(db, project_id)
+    if db_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+    manifest_mgr = ManifestManager()
+    env_mgr = EnvironmentManager()
+    storage = ModelStorage(manifest_mgr.models_dir)
+
+    configured_ids = [
+        db_project.detection_model_id,
+        db_project.classification_model_id,
+        db_project.embedding_model_id,
+    ]
+    missing: list[MissingModel] = []
+    for model_id in configured_ids:
+        if not model_id:
+            continue
+        try:
+            manifest = manifest_mgr.get_model(model_id)
+        except Exception as e:
+            # An unknown model id on the project (e.g. catalog removed it
+            # between sessions) shows up as missing too, so the user
+            # cannot silently start a job against a model that no longer
+            # exists. Logged for diagnosability.
+            logger.warning(
+                f"Project {project_id} references unknown model {model_id}: {e}"
+            )
+            missing.append(
+                MissingModel(
+                    model_id=model_id,
+                    friendly_name=model_id,
+                    emoji="❓",
+                    category="unknown",
+                    needs_weights=True,
+                    needs_env=True,
+                )
+            )
+            continue
+
+        needs_weights = not storage.check_weights_ready(manifest)
+        env_path = env_mgr.envs_dir / f"env-{manifest.env}"
+        needs_env = not (env_path.exists() and env_mgr._validate_env(env_path))
+        if needs_weights or needs_env:
+            missing.append(
+                MissingModel(
+                    model_id=manifest.model_id,
+                    friendly_name=manifest.friendly_name,
+                    emoji=manifest.emoji or "📦",
+                    category=manifest.model_category,
+                    needs_weights=needs_weights,
+                    needs_env=needs_env,
+                )
+            )
+
+    return ProjectModelReadiness(ready=len(missing) == 0, missing=missing)
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

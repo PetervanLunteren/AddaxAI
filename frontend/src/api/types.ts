@@ -882,3 +882,17 @@ export interface ObservationStatsResponse {
   embedding_model_id: string | null;
   embedding_dimension: number | null;
 }
+
+export interface MissingModel {
+  model_id: string;
+  friendly_name: string;
+  emoji: string;
+  category: "detection" | "classification" | "embedding" | "unknown";
+  needs_weights: boolean;
+  needs_env: boolean;
+}
+
+export interface ProjectModelReadiness {
+  ready: boolean;
+  missing: MissingModel[];
+}

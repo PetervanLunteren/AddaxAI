@@ -2,11 +2,13 @@
  * App Layout with Sidebar
  */
 
-import { Outlet } from "react-router-dom";
+import { Outlet, useParams } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { DeploymentHealthToast } from "./DeploymentHealthToast";
+import { ModelSetupRequiredDialog } from "../models/ModelSetupRequiredDialog";
 
 export function AppLayout() {
+  const { projectId } = useParams<{ projectId: string }>();
   return (
     <div className="flex min-h-screen">
       <Sidebar />
@@ -14,6 +16,7 @@ export function AppLayout() {
         <Outlet />
       </main>
       <DeploymentHealthToast />
+      {projectId && <ModelSetupRequiredDialog projectId={projectId} />}
     </div>
   );
 }

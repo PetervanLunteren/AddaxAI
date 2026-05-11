@@ -110,12 +110,21 @@ const LAUNCH_STATUS = path.join(os.homedir(), 'AddaxAI', '.last-launch-status.js
 function snapshotPreviousShutdown(): void {
   try {
     fs.mkdirSync(path.dirname(LAUNCH_STATUS), { recursive: true });
+    // Existence of LAUNCH_STATUS is our "have we ever launched on this
+    // machine" signal. It is written every launch and is also part of
+    // the reset wipe, so a fresh install and a post-reset launch both
+    // look like first launches. Without this guard, the very first
+    // launch always reports previous_shutdown_clean: false (because
+    // SHUTDOWN_SENTINEL has never been written yet) and the user sees
+    // a false-positive crash banner the moment setup completes.
+    const haveLaunchedBefore = fs.existsSync(LAUNCH_STATUS);
     const wasClean = fs.existsSync(SHUTDOWN_SENTINEL);
+    const previousShutdownClean = !haveLaunchedBefore || wasClean;
     fs.writeFileSync(
       LAUNCH_STATUS,
       JSON.stringify(
         {
-          previous_shutdown_clean: wasClean,
+          previous_shutdown_clean: previousShutdownClean,
           current_launch_at: new Date().toISOString(),
         },
         null,
@@ -132,7 +141,7 @@ function snapshotPreviousShutdown(): void {
       } catch {
         /* ignore */
       }
-    } else {
+    } else if (haveLaunchedBefore) {
       console.warn(
         '[Electron] Previous shutdown was not clean; the app may have crashed.',
       );

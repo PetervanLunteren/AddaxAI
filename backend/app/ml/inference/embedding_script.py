@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -78,11 +79,26 @@ def get_batch_size(device: torch.device, user_batch_size: int) -> int:
 
 
 def load_model(model_arch: str, weights_path: str, device: torch.device) -> torch.nn.Module:
-    """Load DINOv2 model architecture and weights."""
-    # Load architecture from torch hub (cached during model preparation)
-    model = torch.hub.load("facebookresearch/dinov2", model_arch, pretrained=False)
+    """Load DINOv2 model architecture and weights.
 
-    # Load local weights
+    Both the .pth weights and the dinov2/ architecture source live in the
+    same HF repo (Addax-Data-Science/DINOV2-*), so the weights' parent
+    directory is also a valid torch.hub local source. This avoids the
+    facebookresearch/dinov2 GitHub fetch that fails on networks blocking
+    or throttling github.com.
+    """
+    model_dir = Path(weights_path).parent
+    hubconf = model_dir / "hubconf.py"
+    if not hubconf.is_file():
+        raise FileNotFoundError(
+            f"DINOv2 architecture files missing from {model_dir}. "
+            f"This usually means the embedding model was installed before "
+            f"the AddaxAI update that ships dinov2 source alongside the "
+            f"weights. Open AddaxAI and click the 'Re-download' button on "
+            f"the model-update toast, or remove {model_dir} and rerun setup."
+        )
+    model = torch.hub.load(str(model_dir), model_arch, source="local", pretrained=False)
+
     state_dict = torch.load(weights_path, map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
 

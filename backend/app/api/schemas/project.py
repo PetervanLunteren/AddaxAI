@@ -252,3 +252,26 @@ class GBIFSuggestion(BaseModel):
     taxon_family: str | None = None
     taxon_genus: str | None = None
     taxon_species: str | None = None
+
+
+class MissingModel(BaseModel):
+    """One row in ProjectModelReadiness.missing."""
+
+    model_id: str
+    friendly_name: str
+    emoji: str
+    category: str  # "detection" | "classification" | "embedding"
+    needs_weights: bool
+    needs_env: bool
+
+
+class ProjectModelReadiness(BaseModel):
+    """Readiness of the models configured for a single project.
+
+    `ready=true` means every configured model on the project has its
+    weights and a valid env on disk. When `ready=false`, `missing`
+    lists each model that still needs setup before analyses can run.
+    """
+
+    ready: bool
+    missing: list[MissingModel]

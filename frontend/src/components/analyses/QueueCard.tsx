@@ -8,11 +8,14 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Play, Loader2, ListTodo, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { deploymentQueueApi } from "@/api/deployment-queue";
+import { projectsApi } from "@/api/projects";
 import { invalidateProjectData } from "@/lib/invalidate-project";
+import { useModelSetupGate } from "@/lib/model-setup-gate";
 import { QueueItem } from "./QueueItem";
 import { RunQueueModal } from "./RunQueueModal";
 
@@ -68,6 +71,29 @@ export function QueueCard({ projectId }: QueueCardProps) {
     if (pendingCount === 0) {
       alert("No pending deployments to process");
       return;
+    }
+
+    // Pre-flight: refuse to start if any of this project's configured
+    // models is missing weights or env. The dialog (rendered in
+    // AppLayout) will surface the per-model setup buttons; we force it
+    // open in case the user dismissed it earlier this session.
+    try {
+      const readiness = await queryClient.fetchQuery({
+        queryKey: ["project-model-readiness", projectId],
+        queryFn: () => projectsApi.getModelReadiness(projectId),
+        staleTime: 0,
+      });
+      if (!readiness.ready) {
+        useModelSetupGate.getState().requestOpen();
+        toast.warning(
+          "Some models for this project need setup before you can run analyses.",
+        );
+        return;
+      }
+    } catch (error) {
+      console.error("[QueueCard] readiness check failed:", error);
+      // If the check itself fails we let the user proceed; the worker's
+      // own preflight will catch a missing model with a clear error.
     }
 
     try {

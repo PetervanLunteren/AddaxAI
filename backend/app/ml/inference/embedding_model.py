@@ -9,6 +9,7 @@ Following CONVENTIONS.md: crash early and loudly, no silent failures.
 
 import re
 import subprocess
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
@@ -140,14 +141,22 @@ class EmbeddingModel:
         )
 
         embedded_count = 0
+        # Keep a rolling tail of stderr so a non-zero exit produces a
+        # useful error. The progress-parsing loop below consumes stderr
+        # line by line and would otherwise discard the traceback that
+        # caused the crash; without this buffer, error messages look like
+        # "Embedding script failed (exit code 1): ... Stdout: " with no
+        # actual cause attached.
+        stderr_tail: deque[str] = deque(maxlen=200)
 
         with track_subprocess(job_id, process):
             # Parse stderr for tqdm progress and compute device
-            for line in iter(process.stderr.readline, ""):
-                if not line:
+            for raw_line in iter(process.stderr.readline, ""):
+                if not raw_line:
                     break
+                stderr_tail.append(raw_line)
 
-                line = line.strip()
+                line = raw_line.strip()
                 if not line:
                     continue
 
@@ -191,10 +200,12 @@ class EmbeddingModel:
             raise JobCancelledError()
 
         if process.returncode != 0:
+            stderr_text = "".join(stderr_tail).rstrip()
             raise RuntimeError(
                 f"Embedding script failed (exit code {process.returncode}):\n"
                 f"Command: {' '.join(cmd)}\n"
-                f"Stdout: {stdout}"
+                f"Stdout: {stdout}\n"
+                f"Stderr (last {len(stderr_tail)} lines):\n{stderr_text}"
             )
 
         logger.info(f"Embedding complete: {embedded_count} detections embedded")

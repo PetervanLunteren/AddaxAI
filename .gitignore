@@ -93,3 +93,6 @@ alembic/versions/*.pyc
 *.db
 *.db-wal
 *.db-shm
+
+# stuff for myself
+future-plans/dinov2-hf-vendor/

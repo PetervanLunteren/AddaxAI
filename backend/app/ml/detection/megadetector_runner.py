@@ -11,6 +11,7 @@ Uses the official megadetector package CLI for inference.
 
 import json
 import subprocess
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -207,10 +208,16 @@ class MegaDetectorRunner:
             # Monitor progress from stderr
             total_images = sum(1 for _ in open(file_list_path))
             processed = 0
+            # Buffer stderr while we parse it for progress. communicate()
+            # below cannot retrieve it again (the loop drains the stream
+            # to EOF), so without this buffer a non-zero exit produces an
+            # error message with an empty Stderr field and no traceback.
+            stderr_tail: deque[str] = deque(maxlen=200)
 
             for line in iter(process.stderr.readline, ""):
                 if not line:
                     break
+                stderr_tail.append(line)
 
                 # Parse progress from MegaDetector output
                 # MegaDetector prints: "Processing image X/Y"
@@ -231,14 +238,15 @@ class MegaDetectorRunner:
                         pass  # Ignore parsing errors
 
             # Wait for completion
-            stdout, stderr = process.communicate()
+            stdout, _ = process.communicate()
 
             if process.returncode != 0:
+                stderr_text = "".join(stderr_tail).rstrip()
                 raise RuntimeError(
                     f"MegaDetector CLI failed (exit code {process.returncode}):\n"
                     f"Command: {' '.join(cmd)}\n"
                     f"Stdout: {stdout}\n"
-                    f"Stderr: {stderr}"
+                    f"Stderr (last {len(stderr_tail)} lines):\n{stderr_text}"
                 )
 
             # Read results

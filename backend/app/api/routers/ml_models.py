@@ -454,34 +454,10 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
             # Build environment (blocking call in thread pool)
             await asyncio.to_thread(env_manager.get_or_create_env, manifest, env_progress)
 
-        # Step 3: Pre-cache torch.hub repo for embedding models (if needed)
-        if manifest.torch_hub_model:
-            await ws_manager.send_progress(task_id, "Caching model architecture...", 0.95)
-
-            python_path = env_manager.get_python(f"env-{manifest.env}")
-            cache_cmd = [
-                str(python_path),
-                "-c",
-                "import torch; torch.hub.load("
-                f"'facebookresearch/dinov2', "
-                f"'{manifest.torch_hub_model}', "
-                "pretrained=False)",
-            ]
-
-            import subprocess
-
-            result = await asyncio.to_thread(
-                subprocess.run,
-                cache_cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if result.returncode != 0:
-                logger.warning(f"torch.hub cache warming failed: {result.stderr}")
-                # Non-fatal — inference will still work if user has internet
-            else:
-                logger.info(f"Cached torch.hub architecture for {manifest.torch_hub_model}")
+        # No torch.hub pre-warm: DINOv2 architecture now ships inside each
+        # Addax-Data-Science/DINOV2-* HF repo alongside the .pth weights,
+        # and embedding_script.py loads it via source="local". So this step
+        # no longer needs network access to github.com.
 
         await ws_manager.send_complete(
             task_id,

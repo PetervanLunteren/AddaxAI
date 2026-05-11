@@ -71,13 +71,22 @@ class ModelStorage:
 
     def check_weights_ready(self, manifest: ModelManifest) -> bool:
         """
-        Check if model weights are downloaded and ready.
+        Check if model files are downloaded and ready for inference.
+
+        For embedding models that load their architecture via
+        torch.hub.load(..., source="local"), the HF repo also ships the
+        dinov2/ source and a hubconf.py next to the .pth. A pre-upgrade
+        install would have the .pth but be missing those, which manifests
+        at inference time as a FileNotFoundError. Treating that state as
+        "not ready" routes the user through the normal Prepare-model UI
+        instead, where the HF downloader fills in the missing files
+        (the existing .pth is recognized by size and skipped).
 
         Args:
             manifest: Model manifest
 
         Returns:
-            True if weights are ready, False if download needed
+            True if all required files are present, False if download needed
         """
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
         # Use model_category (set by ManifestManager based on directory) to determine path
@@ -87,8 +96,17 @@ class ModelStorage:
         model_path = self.models_dir / model_type / manifest.model_id
         model_file = model_path / manifest.model_fname
 
-        # Check if model file exists
-        return model_file.exists()
+        if not model_file.exists():
+            return False
+
+        # Architecture source check: only applies to models that load via
+        # torch.hub.load(source="local"). Other models load their
+        # architecture from PyPI packages in the analysis env and don't
+        # ship source alongside the weights.
+        if manifest.torch_hub_model and not (model_path / "hubconf.py").is_file():
+            return False
+
+        return True
 
     def download_weights(
         self,

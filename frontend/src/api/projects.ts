@@ -12,6 +12,7 @@ import type {
   CustomLabelUpdate,
   GBIFSuggestion,
   ProjectCreate,
+  ProjectModelReadiness,
   ProjectResponse,
   ProjectUpdate,
   ProjectWithStats,
@@ -69,6 +70,14 @@ export const projectsApi = {
    */
   getWithStats: (id: string) =>
     api.get<ProjectWithStats>(`/api/projects/${id}/stats`),
+
+  /**
+   * Check whether every model configured for this project has its
+   * weights + a valid env on disk. Drives the project-open setup
+   * dialog and the pre-analysis safety check.
+   */
+  getModelReadiness: (id: string) =>
+    api.get<ProjectModelReadiness>(`/api/projects/${id}/model-readiness`),
 
   /**
    * Reprocess classifications (apply/revert smoothing)
