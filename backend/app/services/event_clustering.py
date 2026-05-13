@@ -30,21 +30,11 @@ from app.models import File
 
 def folder_key(f: File) -> str:
     """
-    Return the clustering folder for a file.
-
-    For images and videos, it's the file's own parent directory. For
-    extracted video frames (`file_type='frame'`), the frame itself lives
-    inside `.addaxai/video_frames/...`, which is a pipeline artifact
-    path — not where the camera actually was. Fall back to the source
-    video's parent so frames of one video cluster with images shot at
-    the same camera.
-
-    A frame row without a source_video (shouldn't happen in healthy
-    data) falls back to its own file_path, which at worst over-splits
-    by one.
+    Return the clustering folder for a file: the file's own parent
+    directory. Post-2026-05 there are only `image` and `video` File
+    rows, both of which sit at the camera's actual location on disk, so
+    no special-case rewrite is needed.
     """
-    if f.file_type == "frame" and f.source_video is not None:
-        return str(Path(f.source_video.file_path).parent)
     return str(Path(f.file_path).parent)
 
 

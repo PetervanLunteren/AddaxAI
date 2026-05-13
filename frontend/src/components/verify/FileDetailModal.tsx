@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { basename, splitPath } from "../../lib/path-utils";
+import { basename } from "../../lib/path-utils";
 import {
   ChevronLeft,
   ChevronRight,
@@ -626,7 +626,7 @@ export function FileDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
-              {file.source_video_id != null && (
+              {file.file_type === "video" && (
                 <Button
                   variant={viewMode === "video" ? "default" : "ghost"}
                   size="icon"
@@ -861,7 +861,7 @@ export function FileDetailModal({
                   <VideoPlayer
                     file={file}
                     detectionThreshold={detectionThreshold}
-                    sourceVideoId={file.source_video_id ?? file.id}
+                    sourceVideoId={file.id}
                     allDetections={file.detections}
                     exportFnRef={exportFnRef}
                   />
@@ -943,17 +943,15 @@ export function FileDetailModal({
               <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h3 className="text-sm font-semibold">
-                    {file.source_video_id != null ? "Video frame" : "Image"}
+                    {file.file_type === "video" ? "Video" : "Image"}
                   </h3>
                 </div>
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
-                    {file.source_video_id != null
-                      ? splitPath(file.file_path).slice(-2, -1)[0]
-                      : basename(file.file_path)}
-                    {file.source_video_id != null &&
-                      file.source_frame_number != null && (
-                        <span> · frame {file.source_frame_number}</span>
+                    {basename(file.file_path)}
+                    {file.file_type === "video" &&
+                      file.best_frame_number != null && (
+                        <span> · best frame {file.best_frame_number}</span>
                       )}
                   </div>
                   <div>

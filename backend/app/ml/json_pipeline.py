@@ -13,7 +13,6 @@ import asyncio
 import json
 import time
 import uuid
-from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -33,7 +32,6 @@ from app.ml.json_utils import (
 )
 from app.models import Deployment, File
 from app.utils.media_dates import extract_video_dates
-from app.utils.video_utils import _filename_to_frame_number
 
 logger = get_logger(__name__)
 
@@ -206,13 +204,11 @@ def load_json_to_database(
             # the worker rolls the placeholder deployment back.
             raise MissingTimestampError(skipped_missing_timestamp)
 
-        # Group detections by file
-        defaultdict(list)
-
-        # Check for extracted video frames directory
+        # Best-frame JPEGs (one per video) land under this directory.
+        # `best_frame_path` on each video File row points into the same
+        # tree; legacy data uses the same layout, so the path math works
+        # for new and old runs alike.
         _af = artifacts_folder or (deployment_folder / ".addaxai")
-        video_frames_dir = _af / "video_frames"
-        has_extracted_frames = video_frames_dir.exists()
 
         for img in loadable_images:
             relative_file = img["file"]
@@ -298,89 +294,11 @@ def load_json_to_database(
                 db.add(file_record)
                 db.flush()  # Get file_record.id
 
-            # For video files with extracted frames: create frame File rows
-            # and build a mapping from frame_number -> frame File record.
-            # Only frames that carry detections or are the chosen best
-            # frame get a row. Blank frames are skipped here and their
-            # JPEGs are pruned by cleanup_unused_frames after this loop,
-            # so a blank video occupies one JPEG (best frame) instead of
-            # one per extracted frame.
-            frame_file_map: dict[int, File] = {}
-            if is_video and has_extracted_frames:
-                # MegaDetector's extract_frames_from_video preserves the
-                # relative directory structure from the deployment folder
-                relative_video_path = absolute_path.relative_to(deployment_folder)
-                frames_subdir = video_frames_dir / relative_video_path
-
-                if frames_subdir.exists():
-                    video_captured_at_local = file_record.captured_at_local
-                    native_frame_rate = img.get("frame_rate") or 30.0
-
-                    # Find all extracted frame JPEGs
-                    frame_jpgs = sorted(frames_subdir.glob("frame*.jpg"))
-
-                    # Build keep-set for this video: frame numbers carrying
-                    # detections plus the best frame. Anything else stays
-                    # off the database and gets cleaned up from disk.
-                    keep_frames: set[int] = set()
-                    for det in img.get("detections") or []:
-                        fn = det.get("frame_number")
-                        if fn is not None:
-                            keep_frames.add(int(fn))
-                    if best_frame_number is not None:
-                        keep_frames.add(int(best_frame_number))
-
-                    # Read dimensions from the first frame JPEG (all frames
-                    # from the same video share the same resolution)
-                    frame_width = img.get("width")
-                    frame_height = img.get("height")
-                    if (not frame_width or not frame_height) and frame_jpgs:
-                        from PIL import Image as PILImage
-
-                        with PILImage.open(frame_jpgs[0]) as pil_img:
-                            frame_width, frame_height = pil_img.size
-
-                    for frame_jpg in frame_jpgs:
-                        try:
-                            frame_num = _filename_to_frame_number(frame_jpg.name)
-                        except ValueError:
-                            continue
-
-                        if frame_num not in keep_frames:
-                            continue
-
-                        # Compute timestamp offset from video start
-                        frame_offset_seconds = frame_num / native_frame_rate
-                        frame_captured_at_local = (
-                            video_captured_at_local + timedelta(seconds=frame_offset_seconds)
-                        )
-
-                        frame_file = File(
-                            id=str(uuid.uuid4()),
-                            deployment_id=deployment_id,
-                            file_path=str(frame_jpg),
-                            file_type="frame",
-                            file_format="jpg",
-                            size_bytes=frame_jpg.stat().st_size if frame_jpg.exists() else None,
-                            captured_at_local=frame_captured_at_local,
-                            width_px=frame_width,
-                            height_px=frame_height,
-                            frame_rate=native_frame_rate,
-                            source_video_id=file_record.id,
-                            source_frame_number=frame_num,
-                        )
-                        db.add(frame_file)
-                        frame_file_map[frame_num] = frame_file
-
-                    db.flush()
-                    frame_count = len(frame_file_map)
-                    logger.debug(
-                        f"Created {frame_count} frame records "
-                        f"for video {relative_video_path}"
-                    )
-
-            # Track categories per-frame (for frame observation_type) and per-video
-            frame_categories: dict[int, set[str]] = defaultdict(set)
+            # Video detections live on the parent video File row and
+            # keep their `frame_number` column. We no longer create one
+            # File row per detection-bearing frame; the disk used to
+            # back those rows is gone too (the classifier worker now
+            # streams frames straight from the source video).
             video_categories: set[str] = set()
 
             # Create Detection records. `detections or []` keeps the loop
@@ -433,14 +351,8 @@ def load_json_to_database(
                 # Extract frame_number if present (for video detections)
                 frame_number = det.get("frame_number")
 
-                # Map detection to frame File if available, otherwise to video/image File
-                detection_file_id = file_record.id
-                if frame_number is not None and frame_number in frame_file_map:
-                    detection_file_id = frame_file_map[frame_number].id
-                    frame_categories[frame_number].add(category)
-
                 detection_data = DetectionCreate(
-                    file_id=detection_file_id,
+                    file_id=file_record.id,
                     job_id=job_id,
                     category=category,
                     confidence=float(det["conf"]),
@@ -492,18 +404,6 @@ def load_json_to_database(
                     file_record.observation_type = "vehicle"
             else:
                 file_record.observation_type = "blank"
-
-            # Set observation_type on each frame File record
-            for frame_num, frame_file in frame_file_map.items():
-                cats = frame_categories.get(frame_num, set())
-                if "animal" in cats:
-                    frame_file.observation_type = "animal"
-                elif "person" in cats:
-                    frame_file.observation_type = "human"
-                elif "vehicle" in cats:
-                    frame_file.observation_type = "vehicle"
-                else:
-                    frame_file.observation_type = "blank"
 
         # Commit all records
         db.commit()
@@ -561,15 +461,18 @@ async def run_classification_on_json(
     batch_size: int,
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
     classification_model_dir: Path | None = None,
-    video_frames_base_dir: Path | None = None,
+    best_frame_output_base: Path | None = None,
     job_id: str | None = None,
 ) -> None:
     """
     Run classification on a detection JSON file.
 
-    Updates the JSON file in-place with classification results. Pure JSON
-    operation, no database access. Reused by both the deployment worker
-    and the Timelapse runner.
+    Updates the JSON file in-place with classification results. Also picks
+    a `best_frame_number` for every video in the JSON during the same
+    streaming pass (the classifier worker scores sharpness while it has
+    the frames in memory) and stamps it onto the per-image entry. Pure
+    JSON operation, no database access. Reused by both the deployment
+    worker and the Timelapse runner.
 
     Args:
         json_path: Path to detection JSON file
@@ -580,8 +483,12 @@ async def run_classification_on_json(
         progress_callback: Optional progress callback
         classification_model_dir: Path to classification model directory
             (for taxonomy.csv)
-        video_frames_base_dir: Path to video_frames directory. If None,
-            falls back to deployment_folder / ".addaxai" / "video_frames"
+        best_frame_output_base: Directory under which the worker drops
+            one best-frame JPEG per video, mirroring the relative video
+            path. If None, falls back to
+            `deployment_folder/.addaxai/video_frames` (the legacy layout
+            so `best_frame_path` math in `_load_to_database` keeps
+            working unchanged).
 
     Raises:
         RuntimeError: If classification fails
@@ -592,11 +499,25 @@ async def run_classification_on_json(
         md_results = json.load(f)
 
     animal_detections = extract_animal_detections(md_results)
-    total_animals = len(animal_detections)
 
-    if total_animals == 0:
-        logger.info("No animals to classify")
-        return
+    # Build the best-frame output map up front: every non-failed video
+    # in the JSON gets a destination directory, including blank videos
+    # so we still produce a thumbnail for them.
+    _bf_base = best_frame_output_base or (
+        deployment_folder / ".addaxai" / "video_frames"
+    )
+    best_frame_outputs: dict[str, str] = {}
+    video_path_by_abs: dict[str, Path] = {}
+    for img_info in md_results.get("images", []) or []:
+        if img_info.get("failure"):
+            continue
+        file_path = (deployment_folder / img_info["file"]).resolve()
+        if file_path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        relative_video_path = file_path.relative_to(deployment_folder)
+        dest_dir = _bf_base / relative_video_path
+        best_frame_outputs[str(file_path)] = str(dest_dir)
+        video_path_by_abs[str(file_path)] = file_path
 
     items: list[dict] = []
     indices: list[tuple[int, int]] = []
@@ -613,40 +534,35 @@ async def run_classification_on_json(
             if frame_number is None:
                 logger.warning("Detection missing frame_number, skipping")
                 continue
-
-            _frames_base = video_frames_base_dir or (
-                deployment_folder / ".addaxai" / "video_frames"
-            )
-            relative_video_path = file_path.relative_to(deployment_folder)
-            frame_path = (
-                _frames_base / relative_video_path / f"frame{frame_number:06d}.jpg"
-            )
-            if not frame_path.exists():
-                logger.warning(f"Frame {frame_path.name} not found on disk, skipping")
-                continue
-            image_path = str(frame_path)
+            items.append({
+                "source": "video",
+                "video_path": str(file_path),
+                "frame_number": int(frame_number),
+                "bbox": detection["bbox"],
+                "detection_conf": float(detection.get("conf", 0.0)),
+            })
         else:
             if not file_path.exists():
                 logger.warning(f"Image not found: {file_path}, skipping")
                 continue
-            image_path = str(file_path)
-
-        items.append({
-            "image_path": image_path,
-            "bbox": detection["bbox"],
-        })
+            items.append({
+                "source": "image",
+                "image_path": str(file_path),
+                "bbox": detection["bbox"],
+            })
         indices.append((img_idx, det_idx))
 
-    video_items = sum(1 for it in items if "frame" in it["image_path"])
+    video_items = sum(1 for it in items if it["source"] == "video")
     image_items = len(items) - video_items
+    total_animals = len(animal_detections)
     logger.info(
         f"[DEBUG] Built {len(items)} items for batch classification "
-        f"({image_items} images, {video_items} video frames), "
-        f"{len(indices)} indices"
+        f"({image_items} image crops, {video_items} video-frame crops) "
+        f"plus {len(best_frame_outputs)} best-frame targets"
     )
 
-    if not items:
-        logger.info("No valid items to classify after path resolution")
+    if not items and not best_frame_outputs:
+        logger.info("No valid items to classify and no best frames to score")
         return
 
     loop = asyncio.get_event_loop()
@@ -698,17 +614,38 @@ async def run_classification_on_json(
         # load (5-15s for SpeciesNet) until the first tqdm tick arrives.
         if progress_callback:
             sync_cls_progress("Loading classification model...", 0.0, None)
-        results, class_names, compute_device = classification_model.classify_detections(
-            items, batch_size=batch_size, progress_callback=on_progress,
-            job_id=job_id,
+        results, class_names, compute_device, best_frames = (
+            classification_model.classify_detections(
+                items,
+                best_frame_outputs=best_frame_outputs,
+                batch_size=batch_size,
+                progress_callback=on_progress,
+                job_id=job_id,
+            )
         )
         logger.info(
             f"[DEBUG] classify_detections() returned: "
-            f"{len(results)} results, {len(class_names)} classes, device={compute_device}"
+            f"{len(results)} results, {len(class_names)} classes, "
+            f"{len(best_frames)} best frames, device={compute_device}"
         )
 
         if progress_callback and compute_device:
             sync_cls_progress("Classifying...", 1.0, {"compute_device": compute_device})
+
+        # Stamp best_frame_number onto each video's image entry. Map by
+        # absolute file path because the worker keyed its output that way.
+        if best_frames:
+            abs_to_img_idx: dict[str, int] = {}
+            for img_idx, img_info in enumerate(md_results.get("images", []) or []):
+                if img_info.get("failure"):
+                    continue
+                abs_path = str((deployment_folder / img_info["file"]).resolve())
+                abs_to_img_idx[abs_path] = img_idx
+            for video_path, best_fn in best_frames.items():
+                idx = abs_to_img_idx.get(video_path)
+                if idx is None:
+                    continue
+                md_results["images"][idx]["best_frame_number"] = int(best_fn)
 
         name_to_id = {name: class_id for class_id, name in class_names.items()}
         classified_count = 0

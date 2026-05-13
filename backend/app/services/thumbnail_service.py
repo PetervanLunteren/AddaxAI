@@ -46,14 +46,17 @@ def generate_thumbnail(source_path: Path, dest_path: Path) -> Path:
 def _resolve_image_path(file: File) -> Path | None:
     """Get the displayable image path for a file.
 
-    For videos, returns the best frame JPEG. For images, returns
-    the file itself. Returns None if the path does not exist on disk.
+    For videos, returns the best frame JPEG (or None if it's not on
+    disk — never the .mp4, which would crash PIL). For images, returns
+    the file itself. Returns None if no displayable image is available.
     """
-    if file.file_type == "video" and file.best_frame_path:
+    if file.file_type == "video":
+        if not file.best_frame_path:
+            return None
         p = Path(file.best_frame_path)
-    else:
-        p = Path(file.file_path)
+        return p if p.exists() else None
 
+    p = Path(file.file_path)
     return p if p.exists() else None
 
 

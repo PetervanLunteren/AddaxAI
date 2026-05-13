@@ -592,6 +592,8 @@ export interface FileSummaryDetection {
   bbox_height: number;
   label: string | null;
   label_taxonomy_id: string | null;
+  /** Video detections carry their frame index; image detections are null. */
+  frame_number: number | null;
 }
 
 export interface FileSummary {
@@ -878,6 +880,8 @@ export interface DetectionSummary {
   captured_at_local: string | null;
   crop_url: string;
   crop_bbox: CropBbox | null;
+  /** Video detections carry their frame index; image detections are null. */
+  frame_number: number | null;
 }
 
 export interface SortResponse {

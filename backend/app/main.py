@@ -198,6 +198,97 @@ async def _warm_up_query_caches() -> None:
         logger.warning(f"Database warm-up failed: {e}")
 
 
+async def _reclaim_legacy_video_frames() -> None:
+    """
+    Delete legacy bulk-extracted video frame JPEGs left over from the
+    pre-2026-05 pipeline. The 2026-05 refactor stopped writing per-frame
+    JPEGs to disk (only the single best frame per video survives), and
+    the matching `file_type='frame'` DB rows are collapsed by the
+    alembic migration `drop_frame_file_rows`. This task removes the
+    JPEGs the migration intentionally doesn't touch (alembic stays out
+    of the filesystem).
+
+    For each video File row, the only JPEG we keep under
+    `<deployment>/.addaxai/projects/*/video_frames/<rel_video>/` is the
+    one named `frame{best_frame_number:06d}.jpg`. Everything else gets
+    unlinked. Empty subdirectories are tolerated; the function never
+    creates files, so re-running it on a clean tree is a no-op.
+
+    Best-effort and non-fatal: a slow / unmounted drive, a permission
+    error, or a removed deployment folder all surface as a warning and
+    move on. We never block startup on this.
+    """
+    from app.db.base import get_session_factory
+    from app.models import File
+
+    def _run() -> dict[str, int]:
+        session_factory = get_session_factory()
+        db = session_factory()
+        reclaimed_bytes = 0
+        deleted = 0
+        scanned = 0
+        try:
+            videos = (
+                db.query(File)
+                .filter(File.file_type == "video")
+                .all()
+            )
+            # Group by deployment.folder_path so we only stat each
+            # deployment's video_frames tree once.
+            keep_filenames: dict[Path, set[Path]] = {}
+            for v in videos:
+                if not v.best_frame_path:
+                    continue
+                bf = Path(v.best_frame_path)
+                # The best-frame JPEG lives inside a deployment's
+                # `.addaxai/projects/<pid>/video_frames/<rel_video>/`.
+                # `bf.parent` is that per-video directory.
+                keep_filenames.setdefault(bf.parent, set()).add(bf.name)
+
+            for video_dir, keep_names in keep_filenames.items():
+                if not video_dir.exists():
+                    continue
+                scanned += 1
+                for jpeg in video_dir.glob("frame*.jpg"):
+                    if jpeg.name in keep_names:
+                        continue
+                    try:
+                        size = jpeg.stat().st_size
+                        jpeg.unlink()
+                        reclaimed_bytes += size
+                        deleted += 1
+                    except OSError as e:
+                        logger.warning(
+                            f"Could not delete legacy frame {jpeg}: {e}"
+                        )
+            return {
+                "scanned_video_dirs": scanned,
+                "deleted_jpegs": deleted,
+                "reclaimed_bytes": reclaimed_bytes,
+            }
+        finally:
+            db.close()
+
+    try:
+        result = await asyncio.to_thread(_run)
+        if result["deleted_jpegs"]:
+            mb = result["reclaimed_bytes"] / (1024 * 1024)
+            logger.info(
+                f"Legacy video-frame cleanup: "
+                f"removed {result['deleted_jpegs']} JPEG(s) "
+                f"across {result['scanned_video_dirs']} video dir(s), "
+                f"reclaimed {mb:.1f} MB"
+            )
+        else:
+            logger.debug(
+                f"Legacy video-frame cleanup: "
+                f"nothing to reclaim across "
+                f"{result['scanned_video_dirs']} video dir(s)"
+            )
+    except Exception as e:
+        logger.error(f"Legacy video-frame cleanup failed: {e}", exc_info=True)
+
+
 async def _check_deployment_folders_on_startup() -> None:
     """
     Re-stat every deployment's folder_path so the folder_status column
@@ -321,11 +412,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     thumbnail_task = asyncio.create_task(auto_generate_thumbnails())
     folder_check_task = asyncio.create_task(_check_deployment_folders_on_startup())
     warmup_task = asyncio.create_task(_warm_up_query_caches())
+    legacy_frame_cleanup_task = asyncio.create_task(_reclaim_legacy_video_frames())
 
     yield
 
     # Shutdown: cancel background tasks if still running
-    for task in (sync_task, thumbnail_task, folder_check_task, warmup_task):
+    for task in (
+        sync_task,
+        thumbnail_task,
+        folder_check_task,
+        warmup_task,
+        legacy_frame_cleanup_task,
+    ):
         if not task.done():
             task.cancel()
             try:

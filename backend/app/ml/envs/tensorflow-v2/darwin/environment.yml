@@ -19,6 +19,9 @@ dependencies:
       - scikit-learn==1.4.2
       - tqdm==4.66.4
       - jsonpickle==4.0.1
-      - opencv-python==4.11.0.86
+      # Headless variant: no GUI deps. Used by the classification
+      # worker to stream frames straight from source videos so we
+      # never write frame JPEGs to disk.
+      - opencv-python-headless==4.11.0.86
       - tensorflow-metal==1.1.0
       - tensorflow-macos==2.16.2

@@ -70,13 +70,18 @@ def test_merge_unifies_classification_ids(deployment_scaffold):
                 assert str(cls_id) in cats, f"ID {cls_id} not in unified categories"
 
 
-def test_load_creates_video_image_and_frame_files(deployment_scaffold):
-    """file_type='video', 'image', 'frame' records; frame has source_video_id FK."""
+def test_load_creates_video_and_image_files(deployment_scaffold):
+    """file_type='video' and 'image' rows only — video detections live on
+    the video File row with `frame_number` set; no `file_type='frame'`
+    rows are produced post-refactor."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
-    # Create video frames on disk
-    create_video_frames(s["artifacts"], "videos/clip.mp4", [0, 30, 60])
+    # The best-frame JPEG would be written by the classifier worker (or
+    # the no-classifier streaming path) during the real pipeline. We
+    # pre-seed it here so the on-disk layout matches what
+    # `best_frame_path` will point at.
+    create_video_frames(s["artifacts"], "videos/clip.mp4", [30])
 
     images = [
         {
@@ -112,34 +117,30 @@ def test_load_creates_video_image_and_frame_files(deployment_scaffold):
 
     all_files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
     types = {f.file_type for f in all_files}
-    assert types == {"video", "image", "frame"}
+    assert types == {"video", "image"}
 
     video_files = [f for f in all_files if f.file_type == "video"]
     assert len(video_files) == 1
     assert video_files[0].best_frame_number == 30
-
-    frame_files = [f for f in all_files if f.file_type == "frame"]
-    # Frames 0 and 30 carry detections; 30 is also the best frame. Frame
-    # 60 is blank and not the best frame, so it does not get a row (and
-    # cleanup_unused_frames would prune its JPEG too).
-    assert len(frame_files) == 2
-    assert {ff.source_frame_number for ff in frame_files} == {0, 30}
-    for ff in frame_files:
-        assert ff.source_video_id == video_files[0].id
+    assert video_files[0].best_frame_path is not None
+    assert video_files[0].best_frame_path.endswith("frame000030.jpg")
 
     image_files = [f for f in all_files if f.file_type == "image"]
     assert len(image_files) == 1
 
 
-def test_detections_linked_to_frames_not_videos(deployment_scaffold):
-    """Video detections with frame_number → detection.file_id points to frame File."""
+def test_detections_linked_to_video_with_frame_number(deployment_scaffold):
+    """Video detections land on the parent video File row; frame_number
+    on each Detection remains the way per-frame information is recovered
+    downstream (filmstrip, MaxN, etc.)."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
-    create_video_frames(s["artifacts"], "videos/clip.mp4", [0, 30])
+    create_video_frames(s["artifacts"], "videos/clip.mp4", [0])  # best-frame stub
 
     images = [{
         "file": "videos/clip.mp4",
+        "best_frame_number": 0,
         "frame_rate": 30.0,
         "detections": [
             {"category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
@@ -171,25 +172,18 @@ def test_detections_linked_to_frames_not_videos(deployment_scaffold):
     assert len(detections) == 2
 
     for det in detections:
-        # Detection should be linked to a frame, not the video
-        linked_file = db.query(File).filter(File.id == det.file_id).one()
-        assert linked_file.file_type == "frame"
-        assert linked_file.source_video_id == video_file.id
+        assert det.file_id == video_file.id
+
+    assert {d.frame_number for d in detections} == {0, 30}
 
 
-def test_blank_video_keeps_only_best_frame(deployment_scaffold):
-    """Blank video → one frame row (the best frame), observation_type='blank'.
-
-    In production select_best_frames always picks a sharpest sample even
-    when nothing was detected, so a blank video still has a representative
-    frame for thumbnails. The load step therefore keeps exactly that
-    frame and drops every other extracted JPEG (cleanup_unused_frames
-    prunes the JPEGs in turn).
-    """
+def test_blank_video_loads_one_video_row(deployment_scaffold):
+    """Blank video → one File(video) row with observation_type='blank' and
+    best_frame_number set. No frame rows, no detection rows."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
-    create_video_frames(s["artifacts"], "videos/clip.mp4", [0, 30])
+    create_video_frames(s["artifacts"], "videos/clip.mp4", [0])
 
     images = [{
         "file": "videos/clip.mp4",
@@ -210,18 +204,10 @@ def test_blank_video_keeps_only_best_frame(deployment_scaffold):
             artifacts_folder=s["artifacts"],
         )
 
-    frame_files = (
-        db.query(File)
-        .filter(File.deployment_id == s["deployment"].id, File.file_type == "frame")
-        .all()
-    )
-    assert len(frame_files) == 1
-    assert frame_files[0].source_frame_number == 0
-    assert frame_files[0].observation_type == "blank"
-
-    video_file = (
-        db.query(File)
-        .filter(File.deployment_id == s["deployment"].id, File.file_type == "video")
-        .one()
-    )
+    files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
+    assert [f.file_type for f in files] == ["video"]
+    video_file = files[0]
     assert video_file.observation_type == "blank"
+    assert video_file.best_frame_number == 0
+
+    assert db.query(Detection).count() == 0

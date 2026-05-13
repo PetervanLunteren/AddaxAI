@@ -83,25 +83,37 @@ class CustomClassificationModel:
     def classify_detections(
         self,
         items: list[dict],
+        *,
+        best_frame_outputs: dict[str, str] | None = None,
         batch_size: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         job_id: str | None = None,
-    ) -> tuple[list[ClassificationResult | None], dict[str, str], str]:
+    ) -> tuple[list[ClassificationResult | None], dict[str, str], str, dict[str, int]]:
         """
         Classify a batch of detections in a one-shot subprocess.
 
         Args:
-            items: List of {"image_path": str, "bbox": [x, y, w, h]} dicts
+            items: List of items in the worker's discriminated-union shape:
+                  `{"source": "image", "image_path": ..., "bbox": ...}` or
+                  `{"source": "video", "video_path": ..., "frame_number": ...,
+                    "bbox": ..., "detection_conf": ...}`.
+            best_frame_outputs: Map `{video_path: destination_directory}`.
+                The worker fuses best-frame scoring into the same pass
+                that classifies video detections, and writes one JPEG per
+                video into the supplied directory. Blank videos (no items
+                of source=video) still get scored if listed here.
             batch_size: Number of crops processed per batch. None means let the
                 classification worker use its own default (auto-detects GPU).
                 A non-None integer is the user's Custom override.
             progress_callback: Optional callback(current, total) for progress updates
 
         Returns:
-            Tuple of (results, class_names, compute_device) where:
+            Tuple of (results, class_names, compute_device, best_frames) where:
             - results: List parallel to items, ClassificationResult or None per item
             - class_names: Dict mapping class ID (str) to class name (str)
             - compute_device: Friendly device name (e.g., "GPU (Apple Silicon)")
+            - best_frames: Map `{video_path: best_frame_number}` for every
+              video the worker successfully scored.
 
         Raises:
             RuntimeError: If subprocess fails to start or crashes
@@ -115,6 +127,8 @@ class CustomClassificationModel:
                 mode="w", suffix=".json", prefix="cls_input_", delete=False
             )
             payload: dict = {"items": items}
+            if best_frame_outputs:
+                payload["best_frame_outputs"] = best_frame_outputs
             if batch_size is not None:
                 payload["batch_size"] = batch_size
             json.dump(payload, input_file)
@@ -228,9 +242,11 @@ class CustomClassificationModel:
 
             class_names = output_data["class_names"]
             raw_results = output_data["results"]
+            best_frames: dict[str, int] = output_data.get("best_frames", {}) or {}
             logger.info(
                 f"[DEBUG] Output: {len(raw_results)} results, "
-                f"{len(class_names)} class names, device={compute_device}"
+                f"{len(class_names)} class names, "
+                f"{len(best_frames)} best frames, device={compute_device}"
             )
 
             # Convert to ClassificationResult objects
@@ -258,8 +274,10 @@ class CustomClassificationModel:
                 # above.
                 if not math.isfinite(top_confidence):
                     item_path = (
-                        items[i].get("image_path", "<unknown>")
-                        if i < len(items) else "<unknown>"
+                        items[i].get("image_path")
+                        or items[i].get("video_path", "<unknown>")
+                        if i < len(items)
+                        else "<unknown>"
                     )
                     logger.warning(
                         f"Classification produced non-finite confidence "
@@ -276,9 +294,10 @@ class CustomClassificationModel:
 
             success_count = sum(1 for r in results if r is not None)
             logger.info(
-                f"[DEBUG] Returning {success_count}/{len(results)} successful classifications"
+                f"[DEBUG] Returning {success_count}/{len(results)} successful classifications, "
+                f"{len(best_frames)} best frames"
             )
-            return results, class_names, compute_device
+            return results, class_names, compute_device, best_frames
 
         finally:
             # Clean up temp files

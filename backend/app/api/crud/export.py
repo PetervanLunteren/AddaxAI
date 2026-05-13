@@ -202,7 +202,7 @@ def get_scoped_detection_rows(
             LabelTaxonomy, LabelTaxonomy.id == Detection.label_taxonomy_id
         )
         .where(Deployment.project_id == project.id)
-        .where(File.file_type.in_(("image", "frame")))
+        .where(File.file_type.in_(("image", "video")))
         .order_by(File.captured_at_local.asc(), File.id, Detection.id)
     )
 

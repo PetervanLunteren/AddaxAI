@@ -46,14 +46,13 @@ export function EventFilmstrip({
     return map;
   }, [maxNFrames]);
 
-  // Count unique source videos in this event
-  const videoCount = useMemo(() => {
-    const ids = new Set<string>();
-    for (const f of files) {
-      if (f.source_video_id) ids.add(f.source_video_id);
-    }
-    return ids.size;
-  }, [files]);
+  // Count video File rows in this event. Post-2026-05 each video is
+  // its own File row (no separate per-frame rows), so this is just a
+  // type filter.
+  const videoCount = useMemo(
+    () => files.filter((f) => f.file_type === "video").length,
+    [files],
+  );
 
   // Scroll selected thumbnail into view
   useEffect(() => {

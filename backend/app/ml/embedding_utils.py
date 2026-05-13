@@ -25,8 +25,14 @@ def build_embedding_input(
     """
     Query all detections for a deployment and build input for embedding_script.py.
 
-    Uses File.file_path directly for both images and video frames
-    (video frame paths are stored in the DB by the loader).
+    Image detections embed against `File.file_path`. Video detections
+    only embed when their `frame_number` matches the parent video's
+    `best_frame_number`, in which case they embed against
+    `File.best_frame_path`. Non-best-frame video detections are skipped:
+    they are invisible in the verification UI and similarity search
+    anyway, and embedding them would require the streaming-from-video
+    pattern the classifier worker uses, which isn't worth the extra
+    code for a feature nobody can see.
 
     Args:
         deployment_id: Deployment ID to query detections for
@@ -44,13 +50,25 @@ def build_embedding_input(
     )
 
     entries = []
+    skipped_non_best_frame = 0
 
     for det, file in detections:
         if skip_detection_ids and det.id in skip_detection_ids:
             continue
-        # Use file_path directly — for images it's the original path,
-        # for video frames it's the extracted frame path (stored by DB loader)
-        image_path = file.file_path
+
+        if file.file_type == "video":
+            if (
+                det.frame_number is None
+                or file.best_frame_number is None
+                or det.frame_number != file.best_frame_number
+                or not file.best_frame_path
+            ):
+                skipped_non_best_frame += 1
+                continue
+            image_path = file.best_frame_path
+        else:
+            image_path = file.file_path
+
         if not Path(image_path).exists():
             logger.warning(
                 f"Image not found for detection {det.id}: {image_path}, skipping"
@@ -65,7 +83,8 @@ def build_embedding_input(
 
     logger.info(
         f"Built embedding input: {len(entries)} detections "
-        f"({len(detections)} total, {len(detections) - len(entries)} skipped)"
+        f"({len(detections)} total; "
+        f"{skipped_non_best_frame} video detections off the best frame skipped)"
     )
 
     return {"detections": entries}

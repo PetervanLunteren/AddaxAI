@@ -91,15 +91,21 @@ def _crop_with_blur_fill(
 
 
 def _resolve_image_path(file: File) -> Path | None:
-    """Resolve the source image path for a file (image, video best_frame, or frame)."""
-    if file.file_type == "video" and file.best_frame_path:
-        p = Path(file.best_frame_path)
-        if p.exists():
-            return p
-    if file.file_type == "frame" and file.file_path:
-        p = Path(file.file_path)
-        if p.exists():
-            return p
+    """Resolve the source image path for a file.
+
+    Images render from `file.file_path`. Videos render from
+    `file.best_frame_path` (the canonical thumbnail written by the
+    classifier worker or the no-classifier streaming pass). We never
+    fall back to the .mp4 path: that would hand a video file to PIL,
+    which crashes loudly downstream. Returning None lets the caller
+    surface a clean "no thumbnail" state.
+    """
+    if file.file_type == "video":
+        if file.best_frame_path:
+            p = Path(file.best_frame_path)
+            if p.exists():
+                return p
+        return None
     if file.file_path:
         p = Path(file.file_path)
         if p.exists():

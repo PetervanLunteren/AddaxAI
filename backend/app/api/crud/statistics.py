@@ -1083,7 +1083,7 @@ def get_detection_categories(
     a person lands in Animals only, never both. The sum can be at most
     the total capture count, never above it.
     """
-    capture_types = ("image", "frame")
+    capture_types = ("image", "video")
 
     query = (
         select(

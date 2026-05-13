@@ -1,160 +1,173 @@
 """
-Best frame selection for video files.
+Best-frame selection for video files.
 
-After video detection (Phase 1) produces per-frame detections with confidence
-scores, selects the "best" frame using detection confidence as the primary
-signal and image sharpness (Laplacian variance) as a tiebreaker.
+Two code paths can produce a best frame per video:
 
-Blank videos (no detections) get the sharpest sampled frame.
+1. **Fused with classification.** The classifier worker already iterates
+   the source video to crop and classify each animal detection, so it
+   scores sharpness in the same pass and writes the winning JPEG itself.
+   This is the common case and lives in
+   `app/ml/inference/classification_worker.py`.
 
-Created by Claude Code on 2026-02-13
+2. **No classifier configured.** This module covers that case: it opens
+   each video itself, sharpness-scores the frames that carry detections
+   (or evenly-spaced samples for blank videos), picks the winner with
+   the existing detection-confidence scorer, and writes the JPEG.
+
+In both paths the picker is `scoring.pick_best_candidate` with the same
+tier rules, so a classifier-on vs classifier-off run produces consistent
+results.
+
+Created 2026-02-13. Rewritten 2026-05-13 to drop bulk frame extraction.
 """
+
+from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import numpy as np
-from PIL import Image
-
 from app.core.logging_config import get_logger
-from app.ml.scoring import compute_sharpness, pick_best_candidate, score_detections
+from app.core.media_types import VIDEO_EXTENSIONS
+from app.ml.inference.scoring import compute_sharpness, pick_best_candidate, score_detections
+from app.ml.inference.video_iter import (
+    iter_wanted_frames,
+    open_video,
+    pil_to_rgb_array,
+    sample_indices,
+    write_best_frame,
+)
 
 logger = get_logger(__name__)
 
+# Same constant the classifier worker uses for blank-video fallbacks.
+BLANK_VIDEO_SAMPLE_COUNT = 3
 
-def _pick_sharpest(frames_dir: Path, candidate_frames: list[int]) -> int:
+
+def select_best_frames_streaming(
+    json_path: Path,
+    deployment_folder: Path,
+    output_base: Path,
+) -> None:
     """
-    Pick the sharpest frame from a list of candidates by reading JPEGs from disk.
+    Pick the best frame for every video listed in the detection JSON and
+    write its JPEG, by reading the source videos directly. Used by both
+    the deployment worker and the Timelapse runner when no classifier is
+    configured (or when classification was skipped).
 
-    Args:
-        frames_dir: Directory containing extracted frame JPEGs
-        candidate_frames: List of frame numbers to evaluate
+    Updates the JSON file in-place with `best_frame_number` on each
+    non-failed video entry. Writes one JPEG per video at
+    `output_base/<relative_video_path>/frame{best:06d}.jpg`, matching
+    the path scheme `_load_to_database` expects on `best_frame_path`.
 
-    Returns:
-        Frame number of the sharpest frame
+    Videos that can't be opened or have zero decodable frames are
+    skipped with a warning. The overall sweep is best-effort: a failure
+    on one video never stops the others.
     """
-    sharpness_scores: dict[int, float] = {}
+    cv2 = _import_cv2()
 
-    for frame_num in candidate_frames:
-        frame_path = frames_dir / f"frame{frame_num:06d}.jpg"
-        if not frame_path.exists():
-            logger.debug(f"Frame {frame_path.name} not found, skipping")
-            continue
-        image_np = np.array(Image.open(frame_path))
-        sharpness_scores[frame_num] = compute_sharpness(image_np)
-
-    if not sharpness_scores:
-        # Fall back to first candidate if no frames found on disk
-        return candidate_frames[0] if candidate_frames else 0
-
-    return max(sharpness_scores, key=sharpness_scores.get)  # type: ignore[arg-type]
-
-
-def _blank_video_sample_frames(frames_dir: Path) -> list[int]:
-    """
-    Sample ~3 evenly-spaced frame numbers from available extracted frames.
-
-    Args:
-        frames_dir: Directory containing extracted frame JPEGs
-
-    Returns:
-        List of frame numbers to evaluate
-    """
-    import re
-
-    frame_files = sorted(frames_dir.glob("frame*.jpg"))
-    if not frame_files:
-        return [0]
-
-    # Extract frame numbers from filenames
-    frame_numbers = []
-    for f in frame_files:
-        m = re.match(r"frame(\d+)\.jpg", f.name)
-        if m:
-            frame_numbers.append(int(m.group(1)))
-
-    if not frame_numbers:
-        return [0]
-
-    num_samples = min(3, len(frame_numbers))
-    step = max(1, len(frame_numbers) // num_samples)
-    return [frame_numbers[i] for i in range(0, len(frame_numbers), step)][:num_samples]
-
-
-def select_best_frames(video_json_path: Path, frames_base_dir: Path) -> None:
-    """
-    Select the best frame for each video in the detection JSON.
-
-    Reads the detection JSON (output of Phase 1), computes the best frame
-    number for each video, and updates the JSON in-place with
-    best_frame_number. No frames are saved — the corresponding JPEG already
-    exists in video_frames/.
-
-    Args:
-        video_json_path: Path to detection_video.json
-        frames_base_dir: Path to video_frames directory (e.g. .addaxai/projects/{id}/video_frames)
-    """
-    with open(video_json_path) as f:
+    with open(json_path) as f:
         data = json.load(f)
 
-    for img_entry in data.get("images") or []:
-        relative_file = img_entry["file"]
-        video_stem = Path(relative_file).stem
+    images = data.get("images") or []
 
-        # Skip MegaDetector failure entries (corrupt videos etc.). They
-        # have `detections: null` and no extracted frames; there is
-        # nothing to score.
+    for img_entry in images:
         if img_entry.get("failure"):
-            logger.warning(
-                f"Skipping best-frame selection for {relative_file}: "
-                f"process_video reported failure ({img_entry['failure']})"
-            )
             continue
 
-        # Frames directory: extract_frames preserves relative dir structure
-        frames_dir = frames_base_dir / relative_file
-
-        if not frames_dir.exists():
-            logger.warning(
-                f"Frames directory not found for {relative_file}, skipping best frame selection"
-            )
+        relative_file = img_entry["file"]
+        absolute = (deployment_folder / relative_file).resolve()
+        if absolute.suffix.lower() not in VIDEO_EXTENSIONS:
             continue
 
         detections = img_entry.get("detections") or []
+        wanted: set[int] = {
+            int(d["frame_number"])
+            for d in detections
+            if d.get("frame_number") is not None
+        }
 
-        # Build detection tuples: (frame_number_str, confidence, bbox)
-        det_tuples = [
-            (str(det["frame_number"]), float(det.get("conf", 0)), tuple(det["bbox"]))
-            for det in detections
-            if det.get("frame_number") is not None
-        ]
-
-        frame_scores = score_detections(det_tuples)
-
-        # Sharpness tiebreaker wrapper: converts str keys <-> int frame numbers
-        def get_sharpest(keys: list[str], _fd: Path = frames_dir) -> str:
-            frame_nums = [int(k) for k in keys]
-            return str(_pick_sharpest(_fd, frame_nums))
-
-        fallback_keys = [str(f) for f in _blank_video_sample_frames(frames_dir)]
+        cap = open_video(absolute)
+        if cap is None:
+            logger.warning(
+                f"select_best_frames_streaming: could not open {absolute}, "
+                "skipping"
+            )
+            continue
 
         try:
-            best_key = pick_best_candidate(
-                frame_scores,
-                get_sharpest=get_sharpest,
-                fallback_keys=fallback_keys,
+            # Blank video fallback: sample N evenly-spaced frames so the
+            # sharpness scorer has something to work with.
+            if not wanted:
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                wanted = set(sample_indices(total_frames, BLANK_VIDEO_SAMPLE_COUNT))
+                if not wanted:
+                    logger.warning(
+                        f"select_best_frames_streaming: {absolute} has 0 "
+                        "frames according to cv2, skipping"
+                    )
+                    continue
+
+            sharpness_by_frame: dict[int, float] = {}
+            pixels_by_frame: dict[int, object] = {}
+            for frame_num, pil_image in iter_wanted_frames(cap, wanted):
+                sharpness_by_frame[frame_num] = compute_sharpness(
+                    pil_to_rgb_array(pil_image)
+                )
+                pixels_by_frame[frame_num] = pil_image
+        finally:
+            cap.release()
+
+        if not sharpness_by_frame:
+            logger.warning(
+                f"select_best_frames_streaming: no decodable frames for "
+                f"{absolute}, skipping"
             )
-            best_frame = int(best_key) if best_key is not None else 0
+            continue
 
-            # Update JSON entry (frame already exists in video_frames/)
-            img_entry["best_frame_number"] = best_frame
+        det_tuples = [
+            (
+                str(int(d["frame_number"])),
+                float(d.get("conf", 0.0)),
+                tuple(d["bbox"]),
+            )
+            for d in detections
+            if d.get("frame_number") is not None
+        ]
+        frame_scores = score_detections(det_tuples)
 
-            logger.info(f"Best frame for {video_stem}: frame {best_frame}")
+        def get_sharpest(keys: list[str], _sb=sharpness_by_frame) -> str:
+            return str(max((int(k) for k in keys), key=lambda fn: _sb.get(fn, 0.0)))
 
+        fallback_keys = [str(fn) for fn in sorted(sharpness_by_frame)]
+        best_key = pick_best_candidate(
+            frame_scores,
+            get_sharpest=get_sharpest,
+            fallback_keys=fallback_keys,
+        )
+        if best_key is None:
+            continue
+
+        best_frame_number = int(best_key)
+        img_entry["best_frame_number"] = best_frame_number
+
+        # Write the chosen JPEG using the same filename scheme legacy
+        # data uses, so `best_frame_path` math stays unchanged.
+        relative_video_path = absolute.relative_to(deployment_folder)
+        dest = output_base / relative_video_path / f"frame{best_frame_number:06d}.jpg"
+        try:
+            write_best_frame(pixels_by_frame[best_frame_number], dest)
         except Exception as e:
-            logger.error(f"Best frame selection failed for {video_stem}: {e}", exc_info=True)
-            # Continue with next video
+            logger.warning(
+                f"select_best_frames_streaming: failed to write best frame "
+                f"for {absolute}: {e}"
+            )
 
-    # Write updated JSON back
-    with open(video_json_path, "w") as f:
+    with open(json_path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def _import_cv2():
+    """Lazy cv2 import so unrelated tests don't pay the cost."""
+    import cv2  # type: ignore  # noqa: PLC0415
+
+    return cv2

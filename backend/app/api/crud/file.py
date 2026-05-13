@@ -225,7 +225,7 @@ def get_observation_type_stats(
         .join(Deployment)
         .join(Deployment.site)
         .filter(Deployment.site.has(project_id=project_id))
-        .filter(File.file_type.in_(["image", "frame"]))
+        .filter(File.file_type.in_(["image", "video"]))
         .group_by(File.observation_type)
         .all()
     )
@@ -250,9 +250,10 @@ def _apply_file_verify_filters(
 ):
     """Apply shared filters to a File query. Expects File already joined to Deployment.
 
-    Files are filtered to file_type IN ("image", "frame"): every tile in
-    the Images grid is a single still. Video rows hold mp4 metadata and
-    stay out of the grid.
+    Files are filtered to file_type IN ("image", "video"): images render
+    directly, videos render their `best_frame_path` JPEG. Legacy
+    `file_type="frame"` rows (pre-2026-05 migration) are dropped from
+    the grid by the same filter and surface via their parent video row.
 
     `min_label_confidence` / `max_label_confidence` filter on
     `Detection.label_confidence` (the classifier score). NULL values are
@@ -284,7 +285,7 @@ def _apply_file_verify_filters(
         max_label_confidence = None
         project_floor = None
 
-    query = query.filter(File.file_type.in_(("image", "frame")))
+    query = query.filter(File.file_type.in_(("image", "video")))
 
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
@@ -424,9 +425,10 @@ def get_files_for_verify(
 ) -> list[dict]:
     """List file summaries for the Images verify tab.
 
-    Returns a list of dicts shaped like FileSummary. One row per still:
-    file_type IN ("image", "frame"). Video rows hold mp4 metadata and
-    are not listed here.
+    Returns a list of dicts shaped like FileSummary. One row per file:
+    file_type IN ("image", "video"). Video rows render via their
+    `best_frame_path` thumbnail; the underlying mp4 stays out of the
+    grid.
     """
     query = (
         db.query(File)
@@ -523,6 +525,7 @@ def get_files_for_verify(
                         "bbox_height": d.bbox_height,
                         "label": d.label,
                         "label_taxonomy_id": d.label_taxonomy_id,
+                        "frame_number": d.frame_number,
                     }
                     for d in dets
                 ],

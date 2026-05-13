@@ -30,3 +30,7 @@ dependencies:
     - tensorflow==2.10.0
     - tensorflow_addons
     - tqdm
+    # OpenCV (headless variant: no GUI deps, only the cv2 module).
+    # Used by the classification worker to stream frames straight
+    # from source videos so we never write frame JPEGs to disk.
+    - opencv-python-headless==4.11.0.86

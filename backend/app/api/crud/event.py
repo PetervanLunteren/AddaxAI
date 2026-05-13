@@ -413,7 +413,7 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
             db.query(File)
             .options(joinedload(File.source_video))
             .filter(File.deployment_id == deployment.id)
-            .filter(File.file_type.in_(["image", "frame"]))
+            .filter(File.file_type.in_(["image", "video"]))
             .all()
         )
 
@@ -584,14 +584,20 @@ def get_events_by_project(
                 dominant_priority = p
                 dominant_type = f.observation_type
 
-        # Count files by type and verification
+        # Count files by type and verification. Post-frame-row-removal
+        # (2026-05) only "image" and "video" file types exist. The
+        # `frame_count` field is kept on the response shape so the
+        # frontend doesn't break; it counts distinct frame_numbers from
+        # video detections, which is the natural successor metric.
         image_count = sum(1 for f in sorted_files if f.file_type == "image")
-        frame_count = sum(1 for f in sorted_files if f.file_type == "frame")
-        video_count = len(
+        video_count = sum(1 for f in sorted_files if f.file_type == "video")
+        frame_count = len(
             {
-                f.source_video_id
+                (d.file_id, d.frame_number)
                 for f in sorted_files
-                if f.file_type == "frame" and f.source_video_id
+                if f.file_type == "video"
+                for d in (f.detections or [])
+                if d.frame_number is not None
             }
         )
         verified_count = sum(1 for f in sorted_files if f.verified)

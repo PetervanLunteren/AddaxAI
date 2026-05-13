@@ -351,33 +351,35 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 json_files_to_merge.append(video_json_path)
                 logger.info(f"Video detection complete: {video_json_path}")
 
-            # Extract ALL video frames to disk (for frame-level DB records)
-            if video_files and video_json_path.exists():
+            # Best-frame selection.
+            #
+            # When a classifier is configured, the classification worker
+            # iterates each video itself (Phase 2 below) and writes the
+            # winning JPEG as a side effect, so we have nothing to do
+            # here. Without a classifier we still want a thumbnail per
+            # video, so run a small streaming pass that opens each video
+            # once, sharpness-scores the detection-bearing frames, and
+            # writes the chosen JPEG.
+            if (
+                video_files
+                and video_json_path.exists()
+                and classification_model is None
+            ):
                 try:
-                    from app.ml.frame_extraction import extract_all_video_frames
+                    from app.ml.best_frame import select_best_frames_streaming
 
-                    extract_all_video_frames(
-                        folder_path,
-                        project.video_fps,
-                        env_manager,
-                        output_dir=artifacts_folder / "video_frames",
-                        job_id=job_id,
+                    select_best_frames_streaming(
+                        video_json_path,
+                        deployment_folder=folder_path,
+                        output_base=artifacts_folder / "video_frames",
                     )
-                    logger.info("Video frame extraction complete")
+                    logger.info("Best frame selection complete (no-classifier path)")
                 except Exception as e:
-                    logger.error(f"Video frame extraction failed: {e}", exc_info=True)
-                    # Non-fatal — continue pipeline
-
-            # Best frame selection (scoring only — frames already on disk)
-            if video_files and video_json_path.exists():
-                try:
-                    from app.ml.best_frame import select_best_frames
-
-                    select_best_frames(video_json_path, artifacts_folder / "video_frames")
-                    logger.info("Best frame selection complete")
-                except Exception as e:
-                    logger.error(f"Best frame selection failed: {e}", exc_info=True)
-                    # Non-fatal — continue pipeline
+                    logger.error(
+                        f"Best frame selection failed: {e}", exc_info=True
+                    )
+                    # Non-fatal — best_frame_path on the video File will
+                    # be None and the UI falls back gracefully.
 
             # ============================================================
             # PHASE 2: Video Classification (if videos + classifier)
@@ -415,7 +417,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     batch_size=project.classification_batch_size,
                     progress_callback=video_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
-                    video_frames_base_dir=artifacts_folder / "video_frames",
+                    best_frame_output_base=artifacts_folder / "video_frames",
                     job_id=job_id,
                 )
 
@@ -520,7 +522,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     batch_size=project.classification_batch_size,
                     progress_callback=image_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
-                    video_frames_base_dir=artifacts_folder / "video_frames",
+                    best_frame_output_base=artifacts_folder / "video_frames",
                     job_id=job_id,
                 )
 
@@ -694,25 +696,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     link_detections_to_taxonomy(project_id, db)
                 except Exception as e:
                     logger.warning(f"Failed to link detections to taxonomy: {e}")
-
-            # Prune extracted frame JPEGs that the DB load did not turn
-            # into File rows. Blank frames carry no detections and are not
-            # the best frame, so they have no consumer downstream. Doing
-            # this between Phase 6 and Phase 7 is safe: postprocessing
-            # works off the JSON and the DB, and embedding (Phase 8)
-            # builds its input from Detection rows, which only reference
-            # frames we kept.
-            if video_files and video_json_path.exists():
-                try:
-                    from app.ml.frame_extraction import cleanup_unused_frames
-
-                    cleanup_unused_frames(
-                        video_json_path,
-                        artifacts_folder / "video_frames",
-                    )
-                except Exception as e:
-                    logger.warning(f"Frame cleanup failed: {e}", exc_info=True)
-                    # Non-fatal: leftover JPEGs cost disk, not correctness.
 
             # ============================================================
             # PHASE 7: Postprocessing (exclusion + rollup + smoothing)

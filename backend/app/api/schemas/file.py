@@ -98,6 +98,10 @@ class FileSummaryDetection(BaseModel):
     bbox_height: float
     label: str | None
     label_taxonomy_id: str | None = None
+    # Video detections carry their frame index; image detections have None.
+    # Used by the verify grid / filmstrip to filter to the best-frame
+    # detections and to enumerate distinct frames per video.
+    frame_number: int | None = None
 
     class Config:
         from_attributes = True

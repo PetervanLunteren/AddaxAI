@@ -65,3 +65,37 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] Take the heatmap for deploment timeline feature from AddaxAI Connect
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 
+
+
+
+
+
+
+
+
+
+Have a look at how the app uses and saves video frames. Report back to me how it works, how the plsitting works, how the reading works, etc. I want a full audit of how this works, as we'll talk about different scenarios of improving the frame splitting and saving. The main reason for delving into this is the following user report. 
+
+It looks like video frames were extracted to disk inside the .addaxai folder during processing (within "video_frames"), and not deleted.  The frames are around the same size as the original videos, even at the default frame sampling rate, so I think this will be problematic.  If we crank up the frame rate at all, the frames would quickly become much larger than the original videos.  If you want to extract frames to disk, I would process each image one frame at a time, then delete the frames.  But are you sure you want to extract frames to disk?  This used to be how I processed videos, but neither run_md_and_speciesnet nor process_video require this.  Best case, you become dependent on (possibly slow) hard drive write speeds, worst case, you also add a lot of storage overhead.
+
+SO long story short, can we somehow avoid saving videos to disk? And hoq would that work? What would be affected by it? Can we run analysis on frames on the fly? Or on batches of frames? Or batches of frames per video? The real issue is that if somebody will analyse a backlog of 1TB videos, this current method will be very destructive. What do you think? How would analysis look if we not save the frames? That means extracting the frames for the detection, classification, and embedding phases. And how would the UI work? Perhaps save thumbnails to disk for UI quickness, and extract on the fly for verification of high quality frames? IDK. Anyway, just some thoughts. I would like to hear the best appraoches from you. 
+
+Instructions:
+* Claude code will review your output once you are done, so make sure you exceed his expectations
+* do not sugar coat, be honest and clear
+* Switch to plan mode, I want this task to be done with "plan mode on"
+* Read all MD file in root to get a understanding of the project. 
+* If something is unclear at any point, stop and ask before continuing.
+* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+* Ask me clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. The minimum number of questions to ask me is 3
+
+Workflow:
+* Based on my answers, suggest a few general approaches. These should range from simple solutions to more sophisticated alternatives, with clear trade-offs for each. For every approach, explain:
+   - Complexity (difficulty, dependencies, maintainability)
+   - Readability (clarity for collaborators)
+   - Effect (impact on performance, usability, flexibility)
+* Give your recommendation regarding the alternatives discribed earlier, with a short reasoning. Be short and concise. Key words if possible.
+* After I select an approach, draft a detailed plan for implementation.
+* Only start working if I agree with the proposed plan.

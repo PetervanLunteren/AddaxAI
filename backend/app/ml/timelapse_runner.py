@@ -241,21 +241,21 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
         )
         json_files_to_merge.append(video_json_path)
 
-    # Extract video frames (needed for video classification crops).
-    if video_files and video_json_path.exists() and has_classifier:
-        from app.ml.frame_extraction import extract_all_video_frames
+    # Best-frame selection (no-classifier path only). When a classifier
+    # is configured, Phase 2 below streams each video itself and writes
+    # the best-frame JPEG as a side effect.
+    if video_files and video_json_path.exists() and not has_classifier:
+        from app.ml.best_frame import select_best_frames_streaming
 
         try:
-            extract_all_video_frames(
-                folder_path,
-                request.video_fps,
-                env_manager,
-                output_dir=artifacts_folder / "video_frames",
-                job_id=job_id,
+            select_best_frames_streaming(
+                video_json_path,
+                deployment_folder=folder_path,
+                output_base=artifacts_folder / "video_frames",
             )
         except Exception as e:
-            logger.error(f"Video frame extraction failed: {e}", exc_info=True)
-            # Non-fatal — classification will skip videos with missing frames.
+            logger.error(f"Best-frame selection failed: {e}", exc_info=True)
+            # Non-fatal — best_frame_path stays None.
 
     # Phase 2: Video classification.
     if video_files and classification_model and video_json_path.exists():
@@ -273,7 +273,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
             batch_size=request.classification_batch_size,
             progress_callback=video_cls_progress,
             classification_model_dir=paths["cls_model_dir"],
-            video_frames_base_dir=artifacts_folder / "video_frames",
+            best_frame_output_base=artifacts_folder / "video_frames",
             job_id=job_id,
         )
 
@@ -317,7 +317,7 @@ async def run(request: TimelapseRunRequest, job_id: str) -> Path:
             batch_size=request.classification_batch_size,
             progress_callback=image_cls_progress,
             classification_model_dir=paths["cls_model_dir"],
-            video_frames_base_dir=artifacts_folder / "video_frames",
+            best_frame_output_base=artifacts_folder / "video_frames",
             job_id=job_id,
         )
 

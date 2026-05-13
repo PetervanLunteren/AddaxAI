@@ -67,11 +67,11 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
           }}
         />
 
-        {/* Video-frame marker — this still was extracted from a video clip */}
-        {file.source_video_id != null && (
+        {/* Video marker — this tile renders the video's best-frame JPEG */}
+        {file.file_type === "video" && (
           <div className="absolute top-2 left-2 bg-black/55 text-white rounded px-1.5 py-0.5 text-[10px] flex items-center gap-1">
             <VideoIcon className="h-3 w-3" />
-            Video frame
+            Video
           </div>
         )}
 

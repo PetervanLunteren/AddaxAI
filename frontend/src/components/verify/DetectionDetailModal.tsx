@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, Check, Search, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
-import { basename, splitPath } from "../../lib/path-utils";
+import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
@@ -423,15 +423,13 @@ export function DetectionDetailModal({
               {fileData && (
                 <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
                   <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
-                    {fileData.file_type === "frame" ? "Video" : "Image"}
+                    {fileData.file_type === "video" ? "Video" : "Image"}
                   </h3>
                   <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                     <div className="truncate">
-                      {fileData.file_type === "frame"
-                        ? splitPath(fileData.file_path).slice(-2, -1)[0]
-                        : basename(fileData.file_path)}
-                      {fileData.file_type === "frame" && fileData.source_frame_number != null && (
-                        <span> · frame {fileData.source_frame_number}</span>
+                      {basename(fileData.file_path)}
+                      {fileData.file_type === "video" && detection.frame_number != null && (
+                        <span> · frame {detection.frame_number}</span>
                       )}
                     </div>
                     <div>

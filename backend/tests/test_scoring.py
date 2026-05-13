@@ -1,11 +1,11 @@
 """
-Tests for the shared scoring module (app.ml.scoring).
+Tests for the shared scoring module (app.ml.inference.scoring).
 """
 
 import numpy as np
 import pytest
 
-from app.ml.scoring import (
+from app.ml.inference.scoring import (
     compute_sharpness,
     compute_union_area,
     pick_best_candidate,

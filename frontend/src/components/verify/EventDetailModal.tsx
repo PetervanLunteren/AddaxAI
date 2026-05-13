@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { basename, splitPath } from "../../lib/path-utils";
+import { basename } from "../../lib/path-utils";
 import {
   ChevronLeft,
   ChevronRight,
@@ -29,7 +29,6 @@ import {
   CircleHelp,
   Play,
   Image as ImageIcon,
-  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
@@ -258,31 +257,33 @@ export function EventDetailModal({
     return event.max_n_frames.filter((f) => f.file_id === currentFile.id);
   }, [currentFile, event?.max_n_frames]);
 
-  // Derive list of unique source videos from the event's files
+  // Derive list of video File rows from the event's files. Post-2026-05
+  // refactor, each video File row carries all its detections directly
+  // (with `frame_number` set per detection), so `frameCount` is the
+  // number of distinct frames that produced ≥1 detection.
   const sourceVideos = useMemo(() => {
-    const videoMap = new Map<string, { id: string; frameCount: number }>();
+    const videos: { id: string; frameCount: number }[] = [];
     for (const f of files) {
-      if (f.source_video_id && !videoMap.has(f.source_video_id)) {
-        const frameCount = files.filter(
-          (ff) => ff.source_video_id === f.source_video_id
-        ).length;
-        videoMap.set(f.source_video_id, { id: f.source_video_id, frameCount });
+      if (f.file_type !== "video") continue;
+      const frameSet = new Set<number>();
+      for (const d of f.detections) {
+        if (d.frame_number != null) frameSet.add(d.frame_number);
       }
+      videos.push({ id: f.id, frameCount: frameSet.size });
     }
-    return [...videoMap.values()];
+    return videos;
   }, [files]);
 
-  // For frame files: aggregate detections from all sibling frames (same source video)
-  // so the VideoPlayer can show boxes across all frames during playback
+  // For video files: hand the VideoPlayer every detection on that
+  // file so boxes can render against the right frame during playback.
   const videoPlaybackProps = useMemo(() => {
-    const videoId = selectedVideoId ?? currentFile?.source_video_id;
+    const videoId = selectedVideoId ?? (currentFile?.file_type === "video" ? currentFile.id : null);
     if (!videoId) return undefined;
-    const siblingDetections = files
-      .filter((f) => f.source_video_id === videoId)
-      .flatMap((f) => f.detections);
+    const videoFile = files.find((f) => f.id === videoId);
+    if (!videoFile) return undefined;
     return {
       sourceVideoId: videoId,
-      allDetections: siblingDetections,
+      allDetections: videoFile.detections,
     };
   }, [currentFile, files, selectedVideoId]);
 
@@ -916,8 +917,8 @@ export function EventDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
-              {/* Video toggle (for video files and frame files from a video) */}
-              {(currentFile.file_type === "video" || (currentFile.file_type === "frame" && currentFile.source_video_id)) && (
+              {/* Video toggle (for video file rows) */}
+              {currentFile.file_type === "video" && (
                 sourceVideos.length > 1 ? (
                   <Popover open={videoPopoverOpen} onOpenChange={setVideoPopoverOpen}>
                     <PopoverTrigger asChild>
@@ -959,11 +960,11 @@ export function EventDetailModal({
                             className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
                             onClick={() => {
                               setSelectedVideoId(sv.id);
-                              const firstFrameIndex = files.findIndex(
-                                (f) => f.source_video_id === sv.id
+                              const videoFileIndex = files.findIndex(
+                                (f) => f.id === sv.id
                               );
-                              if (firstFrameIndex >= 0)
-                                setSelectedFileIndex(firstFrameIndex);
+                              if (videoFileIndex >= 0)
+                                setSelectedFileIndex(videoFileIndex);
                               setVideoPopoverOpen(false);
                               setViewMode("video");
                             }}
@@ -1308,7 +1309,7 @@ export function EventDetailModal({
               <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
                 <div className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <h3 className="text-sm font-semibold">
-                    {currentFile.file_type === "frame" ? "Video" : "Image"}
+                    {currentFile.file_type === "video" ? "Video" : "Image"}
                   </h3>
                   {currentFileMaxNFrames.map((frame) => (
                     <span
@@ -1322,11 +1323,9 @@ export function EventDetailModal({
                 </div>
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
-                    {currentFile.file_type === "frame"
-                      ? splitPath(currentFile.file_path).slice(-2, -1)[0]
-                      : basename(currentFile.file_path)}
-                    {currentFile.file_type === "frame" && currentFile.source_frame_number != null && (
-                      <span> · frame {currentFile.source_frame_number}</span>
+                    {basename(currentFile.file_path)}
+                    {currentFile.file_type === "video" && currentFile.best_frame_number != null && (
+                      <span> · best frame {currentFile.best_frame_number}</span>
                     )}
                   </div>
                   <div>

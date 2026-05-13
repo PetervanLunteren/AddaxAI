@@ -51,16 +51,11 @@ const FADE_FRAMES = 25;
 
 /** Check whether a file's video format is browser-playable. */
 export function isPlayableVideo(file: FileWithDetections): boolean {
-  if (file.file_type === "video") {
-    return (
-      file.frame_rate != null &&
-      PLAYABLE_FORMATS.has((file.file_format || "").toLowerCase())
-    );
-  }
-  if (file.file_type === "frame" && file.source_video_id != null && file.frame_rate != null) {
-    return true;
-  }
-  return false;
+  if (file.file_type !== "video") return false;
+  return (
+    file.frame_rate != null &&
+    PLAYABLE_FORMATS.has((file.file_format || "").toLowerCase())
+  );
 }
 
 // ── Canvas overlay drawing (for video export) ─────────────────────

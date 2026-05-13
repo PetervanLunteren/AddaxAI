@@ -51,11 +51,15 @@ def calculate_max_n_for_event(
     # COALESCE(label, category) for display string.
     effective_label = func.coalesce(Detection.label, Detection.category)
 
-    # Count detections per file per taxonomy_id, plus summed confidence
-    # for tie-breaking when multiple files share the same MaxN count.
+    # Count detections per (file, frame, taxonomy) so a video that shows
+    # 4 animals in frame A and 4 in frame B reports MaxN=4 instead of
+    # collapsing into MaxN=8. For image rows, `frame_number` is NULL and
+    # all detections in one file land in a single group (NULL == NULL in
+    # GROUP BY semantics), preserving the legacy per-image behaviour.
     counts = (
         db.query(
             Detection.file_id,
+            Detection.frame_number,
             Detection.label_taxonomy_id,
             effective_label.label("eff_label"),
             Detection.category,
@@ -68,6 +72,7 @@ def calculate_max_n_for_event(
         .filter(_threshold_clause(detection_threshold))
         .group_by(
             Detection.file_id,
+            Detection.frame_number,
             Detection.label_taxonomy_id,
             effective_label,
             Detection.category,
@@ -84,11 +89,14 @@ def calculate_max_n_for_event(
         )
         return []
 
-    # Find MaxN per taxonomy_id (or label string as fallback key).
-    # Score is (det_count, conf_sum) so that ties on count are broken by
-    # the file with the highest summed detection confidence.
+    # Find MaxN per taxonomy_id (or label string as fallback key). The
+    # winning row's `file_id` is stored as max_n_file_id; for videos
+    # this is the parent video File row regardless of which frame
+    # within it contributed the MaxN count. The UI surfaces the video's
+    # `best_frame_path` thumbnail, which is the canonical representative
+    # of the file.
     max_n_per_key: dict[str, dict] = {}
-    for file_id, taxonomy_id, label, category, det_count, conf_sum in counts:
+    for file_id, _frame_number, taxonomy_id, label, category, det_count, conf_sum in counts:
         key = taxonomy_id or label
         new_score = (det_count, conf_sum)
         existing = max_n_per_key.get(key)

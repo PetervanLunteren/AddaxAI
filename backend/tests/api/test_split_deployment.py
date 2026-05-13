@@ -578,14 +578,13 @@ def test_split_duplicates_straddling_event(client, db, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_split_handles_video_only_project_with_frame_rows(
-    client, db, tmp_path
-):
+def test_split_handles_video_only_project(client, db, tmp_path):
     """
-    Video-only projects hold both `file_type='video'` rows (pointing to the
-    real .mp4) and `file_type='frame'` rows (pointing inside `.addaxai/`).
-    Frame rows don't live in any visible subfolder, so the walker must
-    exclude them from bucketing and reattach them post-hoc via source_video.
+    Video-only projects no longer hold `file_type='frame'` rows
+    post-2026-05: detections live on the parent video File and the only
+    artifact under `.addaxai/` is the single best-frame JPEG per video.
+    Splitting a video-only project must rewrite each video's
+    `best_frame_path` into its new child layout and move the JPEG on disk.
     """
     root = tmp_path / "parent"
     root.mkdir()
@@ -603,7 +602,14 @@ def test_split_handles_video_only_project_with_frame_rows(
         folder_path=str(root),
         start_date_local=date(2024, 1, 1),
     )
-    # Video rows.
+    # Seed best-frame JPEGs under parent's .addaxai.
+    parent_artifacts = root / ".addaxai" / "projects" / d.project_id
+    bf_a = parent_artifacts / "video_frames" / "siteA" / "REC001.mp4" / "frame000042.jpg"
+    bf_b = parent_artifacts / "video_frames" / "siteB" / "REC002.mp4" / "frame000017.jpg"
+    for bf in (bf_a, bf_b):
+        bf.parent.mkdir(parents=True, exist_ok=True)
+        bf.write_bytes(b"\x00")
+
     v_a = make_file(
         db,
         deployment_id=d.id,
@@ -612,10 +618,7 @@ def test_split_handles_video_only_project_with_frame_rows(
         file_format="mp4",
         captured_at_local=datetime(2024, 1, 5, 10),
         best_frame_number=42,
-        best_frame_path=str(
-            root / ".addaxai" / "projects" / d.project_id
-            / "video_frames" / "siteA" / "REC001.mp4" / "frame000042.jpg"
-        ),
+        best_frame_path=str(bf_a),
     )
     v_b = make_file(
         db,
@@ -624,28 +627,9 @@ def test_split_handles_video_only_project_with_frame_rows(
         file_type="video",
         file_format="mp4",
         captured_at_local=datetime(2024, 1, 5, 11),
+        best_frame_number=17,
+        best_frame_path=str(bf_b),
     )
-    # Frame rows pointing inside parent's .addaxai.
-    frame_paths: list[Path] = []
-    for v, rel_video in ((v_a, "siteA/REC001.mp4"), (v_b, "siteB/REC002.mp4")):
-        for n in (0, 42):
-            fp = (
-                root / ".addaxai" / "projects" / d.project_id
-                / "video_frames" / rel_video / f"frame{n:06d}.jpg"
-            )
-            fp.parent.mkdir(parents=True, exist_ok=True)
-            fp.write_bytes(b"\x00")
-            frame_paths.append(fp)
-            make_file(
-                db,
-                deployment_id=d.id,
-                file_path=str(fp),
-                file_type="frame",
-                file_format="jpg",
-                captured_at_local=v.captured_at_local,
-                source_video_id=v.id,
-                source_frame_number=n,
-            )
     db.commit()
 
     # Minimal parent results.json covering just the two videos.
@@ -667,32 +651,25 @@ def test_split_handles_video_only_project_with_frame_rows(
     )
     assert resp.status_code == 200, resp.text
 
-    # Frames moved on disk under each child's .addaxai.
-    for sub, expected_video in (("siteA", "REC001.mp4"), ("siteB", "REC002.mp4")):
-        child_frames = (
+    # Best-frame JPEGs moved on disk to each child's .addaxai.
+    for sub, expected_video, expected_frame in (
+        ("siteA", "REC001.mp4", "frame000042.jpg"),
+        ("siteB", "REC002.mp4", "frame000017.jpg"),
+    ):
+        child_frame = (
             root / sub / ".addaxai" / "projects" / d.project_id
-            / "video_frames" / expected_video
+            / "video_frames" / expected_video / expected_frame
         )
-        assert child_frames.exists(), f"missing frames dir {child_frames}"
-        assert (child_frames / "frame000000.jpg").exists()
-        assert (child_frames / "frame000042.jpg").exists()
+        assert child_frame.exists(), f"missing best frame {child_frame}"
 
-    # Frame File rows now carry the child-relative path.
+    # No more `file_type='frame'` rows are produced anywhere.
     db.expire_all()
     frames = db.execute(
         select(File).where(File.file_type == "frame")
     ).scalars().all()
-    for fr in frames:
-        # Path should start with one of the child folders.
-        assert any(
-            fr.file_path.startswith(
-                str(root / sub / ".addaxai" / "projects" / d.project_id)
-            )
-            for sub in ("siteA", "siteB")
-        ), f"frame still points at parent: {fr.file_path}"
-        assert Path(fr.file_path).exists()
+    assert frames == []
 
-    # Video best_frame_path rewritten too.
+    # Video best_frame_path rewritten to point under siteA's child layout.
     reloaded_va = db.get(File, v_a.id)
     assert reloaded_va.best_frame_path is not None
     assert "siteA" in reloaded_va.best_frame_path

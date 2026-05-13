@@ -93,6 +93,9 @@ class DetectionSummary(BaseModel):
     captured_at_local: datetime | None = None
     crop_url: str
     crop_bbox: CropBbox | None = None
+    # Video detections carry the frame index they came from; image
+    # detections expose None.
+    frame_number: int | None = None
 
     @field_serializer("captured_at_local")
     def _serialize_captured_at_local(self, value: datetime | None) -> str | None:

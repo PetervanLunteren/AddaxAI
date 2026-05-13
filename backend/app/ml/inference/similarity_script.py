@@ -60,7 +60,7 @@ def _emit_progress(phase: str, done: int, total: int) -> None:
 BASE_SQL = """
 SELECT de.detection_id, de.vector, de.l2_norm,
        d.label, d.label_confidence, d.display_name, d.confidence, d.category,
-       d.verified, d.classification_method, d.file_id,
+       d.verified, d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
        s.name AS site_name
@@ -295,6 +295,7 @@ def _build_summary(
         "captured_at_local": meta.get("captured_at_local"),
         "crop_url": f"/api/detections/{detection_id}/crop?size=200",
         "crop_bbox": _compute_crop_bbox(meta),
+        "frame_number": meta.get("frame_number"),
     }
 
 

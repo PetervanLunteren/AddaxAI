@@ -304,10 +304,9 @@ def build_split_preview(
     root = Path(deployment.folder_path)
     blocked_reason = _find_blocking_activity(db, deployment)
 
-    # Frame rows live inside `.addaxai/` by design; they'd never match a
-    # visible subfolder during bucketing. They follow their source video's
-    # bucket in `split_deployment`. Exclude from the preview walker.
-    bucketable = [f for f in deployment.files if f.file_type != "frame"]
+    # Only image/video File rows after 2026-05; both live at the
+    # camera's actual on-disk path and feed the walker directly.
+    bucketable = list(deployment.files)
     max_depth = _max_descent_depth(root, bucketable)
     effective_depth = max(1, depth)
 
@@ -755,16 +754,11 @@ def split_deployment(
     parent_folder = Path(parent.folder_path)
     project_id = parent.project_id
 
-    # Frame rows live inside `.addaxai/` by design; bucket them post-hoc via
-    # source_video_id once the video buckets are known. Everything else
-    # (videos + images) feeds the file-aware descent.
-    all_files = list(parent.files)
-    frame_files = [f for f in all_files if f.file_type == "frame"]
-    bucketable = [f for f in all_files if f.file_type != "frame"]
-
+    # Only `image` and `video` File rows exist post-2026-05; both live at
+    # their actual on-disk path and feed the file-aware descent directly.
     buckets = [
         b
-        for b in _descend(parent_folder, depth, bucketable)
+        for b in _descend(parent_folder, depth, list(parent.files))
         if b.folder_path != parent_folder
     ]
 
@@ -773,29 +767,6 @@ def split_deployment(
             "Split produces fewer than 2 non-empty deployments. Try a "
             "different depth."
         )
-
-    # Reattach frame rows to the bucket that contains their source video.
-    # A frame whose source video ended up in no bucket (shouldn't happen in
-    # a healthy DB, but defend anyway) sticks with the first bucket that
-    # owns any file so we don't orphan it.
-    video_to_bucket: dict[str, _TargetBucket] = {}
-    for b in buckets:
-        for f in b.files:
-            if f.file_type == "video":
-                video_to_bucket[f.id] = b
-    for frame in frame_files:
-        target = (
-            video_to_bucket.get(frame.source_video_id)
-            if frame.source_video_id
-            else None
-        )
-        if target is None:
-            logger.warning(
-                f"Frame {frame.id} has no source video in any bucket; "
-                "assigning to first bucket as fallback"
-            )
-            target = buckets[0]
-        target.files.append(frame)
 
     # --- Parent results.json (read once; used by copy step) ------------------
     parent_json_path = (
@@ -870,15 +841,6 @@ def split_deployment(
                     )
                     if new_bfp is not None:
                         f.best_frame_path = new_bfp
-                if f.file_type == "frame":
-                    new_fp = _rewrite_frame_path(
-                        f.file_path,
-                        parent_folder,
-                        bucket.folder_path,
-                        project_id,
-                    )
-                    if new_fp is not None:
-                        f.file_path = new_fp
         db.flush()
 
         _reassign_events(
