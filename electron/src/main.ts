@@ -455,12 +455,20 @@ async function createTimelapseWindow(prefilledPath?: string): Promise<void> {
  * IPC handlers
  */
 
-// Handle folder selection dialog
-ipcMain.handle('dialog:selectFolder', async () => {
-  const result = await dialog.showOpenDialog({
+// Handle folder selection dialog. The dialog is made window-modal to the
+// calling window so users cannot click around the form while the picker
+// is open, nor open two pickers in parallel by double-clicking the
+// drop zone. Resolves the sender's window via event.sender so the same
+// handler also attaches correctly when called from the Timelapse window.
+ipcMain.handle('dialog:selectFolder', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.OpenDialogOptions = {
     properties: ['openDirectory'],
     title: 'Select folder with camera trap images',
-  });
+  };
+  const result = win
+    ? await dialog.showOpenDialog(win, options)
+    : await dialog.showOpenDialog(options);
 
   if (result.canceled) {
     return null;
@@ -471,18 +479,23 @@ ipcMain.handle('dialog:selectFolder', async () => {
 
 // Handle single-file selection dialog. Caller can pass `filters` to
 // constrain the picker (e.g. .db files for the Restore-from-backup flow).
+// Window-modal to the calling window for the same reason as selectFolder.
 // Returns the selected path or null when the user cancels.
 ipcMain.handle(
   'dialog:openFile',
   async (
-    _event,
+    event,
     opts?: { title?: string; filters?: Electron.FileFilter[] },
   ) => {
-    const result = await dialog.showOpenDialog({
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions = {
       properties: ['openFile'],
       title: opts?.title ?? 'Select file',
       filters: opts?.filters,
-    });
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled) return null;
     return result.filePaths[0] ?? null;
   },

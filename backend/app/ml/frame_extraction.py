@@ -8,6 +8,8 @@ ingested as individual File rows in the database.
 Created by Claude Code on 2026-02-20
 """
 
+import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -71,7 +73,7 @@ def extract_all_video_frames(
         "--frame_sample",
         str(frame_sample),
         "--quality",
-        "90",
+        "80",
         "--n_workers",
         "4",
     ]
@@ -113,3 +115,72 @@ def extract_all_video_frames(
     except subprocess.SubprocessError as e:
         logger.error(f"Frame extraction subprocess error: {e}", exc_info=True)
         raise RuntimeError(f"Frame extraction failed: {e}") from e
+
+
+_FRAME_NAME_RE = re.compile(r"^frame(\d+)\.jpg$")
+
+
+def cleanup_unused_frames(video_json_path: Path, frames_base_dir: Path) -> int:
+    """
+    Delete extracted frame JPEGs that no detection or best-frame pointer
+    refers to.
+
+    For each video in the detection JSON, the keep-set is
+    {frame_numbers in detections} ∪ {best_frame_number}. Everything else
+    under that video's frames subdirectory is removed. Empty subdirectories
+    are left in place because downstream code already tolerates missing
+    dirs and re-creating one on retry is free.
+
+    Best-effort: per-file unlink errors are logged and skipped, the
+    overall sweep keeps going. The JSON must have been updated with
+    best_frame_number first (run after select_best_frames).
+
+    Args:
+        video_json_path: Path to detection_video.json. Returns 0 if missing.
+        frames_base_dir: Path to the video_frames directory.
+
+    Returns:
+        Number of JPEGs deleted across all videos.
+    """
+    if not video_json_path.exists():
+        return 0
+
+    with open(video_json_path) as f:
+        data = json.load(f)
+
+    deleted_count = 0
+
+    for img_entry in data.get("images") or []:
+        # Skip process_video failure entries (corrupt videos): no
+        # detections recorded and no frames extracted.
+        if img_entry.get("failure"):
+            continue
+
+        relative_file = img_entry["file"]
+        frames_dir = frames_base_dir / relative_file
+        if not frames_dir.exists():
+            continue
+
+        keep: set[int] = set()
+        for det in img_entry.get("detections") or []:
+            fn = det.get("frame_number")
+            if fn is not None:
+                keep.add(int(fn))
+        best = img_entry.get("best_frame_number")
+        if best is not None:
+            keep.add(int(best))
+
+        for frame_jpg in frames_dir.glob("frame*.jpg"):
+            m = _FRAME_NAME_RE.match(frame_jpg.name)
+            if m is None:
+                continue
+            if int(m.group(1)) in keep:
+                continue
+            try:
+                frame_jpg.unlink()
+                deleted_count += 1
+            except OSError as e:
+                logger.warning(f"Could not delete {frame_jpg}: {e}")
+
+    logger.info(f"Frame cleanup: deleted {deleted_count} unused JPEGs")
+    return deleted_count

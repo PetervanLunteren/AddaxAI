@@ -299,7 +299,12 @@ def load_json_to_database(
                 db.flush()  # Get file_record.id
 
             # For video files with extracted frames: create frame File rows
-            # and build a mapping from frame_number -> frame File record
+            # and build a mapping from frame_number -> frame File record.
+            # Only frames that carry detections or are the chosen best
+            # frame get a row. Blank frames are skipped here and their
+            # JPEGs are pruned by cleanup_unused_frames after this loop,
+            # so a blank video occupies one JPEG (best frame) instead of
+            # one per extracted frame.
             frame_file_map: dict[int, File] = {}
             if is_video and has_extracted_frames:
                 # MegaDetector's extract_frames_from_video preserves the
@@ -313,6 +318,17 @@ def load_json_to_database(
 
                     # Find all extracted frame JPEGs
                     frame_jpgs = sorted(frames_subdir.glob("frame*.jpg"))
+
+                    # Build keep-set for this video: frame numbers carrying
+                    # detections plus the best frame. Anything else stays
+                    # off the database and gets cleaned up from disk.
+                    keep_frames: set[int] = set()
+                    for det in img.get("detections") or []:
+                        fn = det.get("frame_number")
+                        if fn is not None:
+                            keep_frames.add(int(fn))
+                    if best_frame_number is not None:
+                        keep_frames.add(int(best_frame_number))
 
                     # Read dimensions from the first frame JPEG (all frames
                     # from the same video share the same resolution)
@@ -328,6 +344,9 @@ def load_json_to_database(
                         try:
                             frame_num = _filename_to_frame_number(frame_jpg.name)
                         except ValueError:
+                            continue
+
+                        if frame_num not in keep_frames:
                             continue
 
                         # Compute timestamp offset from video start

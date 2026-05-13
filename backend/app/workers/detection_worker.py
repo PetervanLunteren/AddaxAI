@@ -695,6 +695,25 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 except Exception as e:
                     logger.warning(f"Failed to link detections to taxonomy: {e}")
 
+            # Prune extracted frame JPEGs that the DB load did not turn
+            # into File rows. Blank frames carry no detections and are not
+            # the best frame, so they have no consumer downstream. Doing
+            # this between Phase 6 and Phase 7 is safe: postprocessing
+            # works off the JSON and the DB, and embedding (Phase 8)
+            # builds its input from Detection rows, which only reference
+            # frames we kept.
+            if video_files and video_json_path.exists():
+                try:
+                    from app.ml.frame_extraction import cleanup_unused_frames
+
+                    cleanup_unused_frames(
+                        video_json_path,
+                        artifacts_folder / "video_frames",
+                    )
+                except Exception as e:
+                    logger.warning(f"Frame cleanup failed: {e}", exc_info=True)
+                    # Non-fatal: leftover JPEGs cost disk, not correctness.
+
             # ============================================================
             # PHASE 7: Postprocessing (exclusion + rollup + smoothing)
             # This is the single code path for all label processing.

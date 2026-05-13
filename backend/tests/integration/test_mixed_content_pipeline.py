@@ -119,7 +119,11 @@ def test_load_creates_video_image_and_frame_files(deployment_scaffold):
     assert video_files[0].best_frame_number == 30
 
     frame_files = [f for f in all_files if f.file_type == "frame"]
-    assert len(frame_files) == 3  # 3 extracted frames
+    # Frames 0 and 30 carry detections; 30 is also the best frame. Frame
+    # 60 is blank and not the best frame, so it does not get a row (and
+    # cleanup_unused_frames would prune its JPEG too).
+    assert len(frame_files) == 2
+    assert {ff.source_frame_number for ff in frame_files} == {0, 30}
     for ff in frame_files:
         assert ff.source_video_id == video_files[0].id
 
@@ -173,8 +177,15 @@ def test_detections_linked_to_frames_not_videos(deployment_scaffold):
         assert linked_file.source_video_id == video_file.id
 
 
-def test_blank_video_creates_blank_frames(deployment_scaffold):
-    """Video with no detections → all frames have observation_type='blank'."""
+def test_blank_video_keeps_only_best_frame(deployment_scaffold):
+    """Blank video → one frame row (the best frame), observation_type='blank'.
+
+    In production select_best_frames always picks a sharpest sample even
+    when nothing was detected, so a blank video still has a representative
+    frame for thumbnails. The load step therefore keeps exactly that
+    frame and drops every other extracted JPEG (cleanup_unused_frames
+    prunes the JPEGs in turn).
+    """
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -182,6 +193,7 @@ def test_blank_video_creates_blank_frames(deployment_scaffold):
 
     images = [{
         "file": "videos/clip.mp4",
+        "best_frame_number": 0,
         "frame_rate": 30.0,
         "detections": [],
     }]
@@ -203,9 +215,9 @@ def test_blank_video_creates_blank_frames(deployment_scaffold):
         .filter(File.deployment_id == s["deployment"].id, File.file_type == "frame")
         .all()
     )
-    assert len(frame_files) == 2
-    for ff in frame_files:
-        assert ff.observation_type == "blank"
+    assert len(frame_files) == 1
+    assert frame_files[0].source_frame_number == 0
+    assert frame_files[0].observation_type == "blank"
 
     video_file = (
         db.query(File)

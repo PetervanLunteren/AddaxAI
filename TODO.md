@@ -2,15 +2,23 @@
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
 - [x] Add backups options. 
 - [x] Make embedding count configurable and trackable. 
+- [ ] Add different modes at the home screen. Something like
+    > Simple mode (Point at folder, select model, get CSV)
+    > .... [IDK propose name] (Point at folder, select model, write JSON, show postprocesing options like visualise, separte into subfolders, etc. )
+    > Timelapse mode (Create JSON for timelapse) (Already written, just needs a card a t home page). 
+
+    > I think it would be great to have a "simple mode" that includes things like folder separation and doesn't include things like projects/deployments, and I would probably make that the default.  Even going through it a second time, where I knew what to expect, I was still somewhat overwhelmed by the project/deployment structure that seems like it's only maybe relevant to AddaxAI (i.e., it sounds like this kind of integrated analysis is still more of a future goal?).  You should ignore this comment if you think 80% of AddaxAI users are going to be doing lots of spatial analysis in AddaxAI, but I would guess that 80+% of users will be using AddaxAI for the AI (it's literally in the name :) ), and the project structure may be confusing.  
+
+    > It's true 100% of users have a concept projects/deployments, and 100% of users do spatiotemporal analyses, but I would guess that very few of them will do those in AddaxAI unless you write lots and lots and lots and lots and lots of population analysis code that I don't think you want to write, to entirely replace what people do in, e.g., camtrapR, spOccupancy, etc.  Assuming that most this functionality is going to be done in other packages, tracking deployments/projects in AddaxAI is asking users to track all of this in two places, without any direct way of connecting them.
+
+    > Along the same lines, I don't see a common scenario where someone would want to export from AddaxAI directly to CamtrapDP... is that a scenario you've seen come up?  That seems outside the scope of what CamtrapDP is intended for; it's a format for (correct) observations, rather than (sometimes-correct) AI predictions.  FWIW I really really really really don't want people to use CamtrapDP to publish datasets that haven't been human-reviewed.
+
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] ADD ALL MODELS 
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
-- [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
-- [x] remove the issue creation in the github actions for windows scan. I wont do this so better remove it. 
-- [x] remove this banner "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." Its shows up whay to often. No need for this now. Leave the code behind it for later use, just done show it in the UI.
-- [x] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
+
 
 ## Priority 2
 - [ ] 
@@ -51,4 +59,5 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] Show time delta between adjacent images / videos in EventDetailModal and FileDetailModal (e.g. "+12s since previous"). Helps verifiers spot independent events vs. continuous bursts. Requested by Simon.
 - [ ] Verification-status layer on the Map insights page (e.g. dot color = % verified, or filter to deployments still unverified). Requested by Simon for tracking field-work progress across many cameras.
 - [ ] Take the heatmap for deploment timeline feature from AddaxAI Connect
+- [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 
