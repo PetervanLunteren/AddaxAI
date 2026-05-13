@@ -119,7 +119,10 @@ export function ProjectsPage() {
                   logger.info(`User navigated to project: ${project.name}`, {
                     projectId: project.id,
                   });
-                  navigate(`/projects/${project.id}/analyses`);
+                  // Land on the index route; ProjectIndexRoute then
+                  // redirects to Dashboard or Analyses based on whether
+                  // the project has any files yet.
+                  navigate(`/projects/${project.id}`);
                 }}
               >
                 <div className="relative">

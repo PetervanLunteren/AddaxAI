@@ -49,9 +49,10 @@ export function Sidebar() {
     enabled: !!projectId,
   });
 
-  // "Work" pages — daily-flow actions and views.
+  // "Work" pages — daily-flow actions and views, end-to-end pipeline
+  // from queueing an analysis through verifying and exporting results.
   const workItems: NavItem[] = [
-    { to: `/projects/${projectId}/analyses`, icon: Play, label: "Process" },
+    { to: `/projects/${projectId}/process`, icon: Play, label: "Process" },
     { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
     { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
     {
@@ -86,6 +87,7 @@ export function Sidebar() {
         },
       ],
     },
+    { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
   ];
 
   // "Config" pages — set up monitoring locations and deployments.
@@ -94,11 +96,9 @@ export function Sidebar() {
     { to: `/projects/${projectId}/deployments`, icon: CardSim, label: "Deployments" },
   ];
 
-  // Utility pages — settings + future tools. Export sits last because
-  // it's still a placeholder.
+  // Utility pages — settings only for now.
   const utilityItems: NavItem[] = [
     { to: `/projects/${projectId}/settings`, icon: Settings, label: "Settings" },
-    { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
   ];
 
   const renderNavLink = (item: NavItem) => {

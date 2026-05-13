@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: write  # Required to attach assets to a release
-  issues: write    # Required by the WDSI submission-reminder step (Windows release events)
 
 jobs:
   build:
@@ -372,60 +371,3 @@ jobs:
           files: ${{ matrix.artifact-glob }}
           fail_on_unmatched_files: true
 
-      # Open a tracking issue prompting the maintainer to submit the new
-      # Windows installer to Microsoft Defender (WDSI). Microsoft has no
-      # public REST API for this, but submitting each release pre-
-      # whitelists the binary and dramatically speeds up the first-time
-      # download for beta testers (who would otherwise wait 20-30 min
-      # while Defender does a full cloud scan). The actual submission
-      # is a 30-second web form; this issue surfaces the SHA-256 and
-      # link so it doesn't get forgotten.
-      #
-      # continue-on-error so a failure here (e.g. transient gh-cli
-      # blip) never blocks a release build.
-      - name: Open Microsoft WDSI submission reminder issue
-        if: github.event_name == 'release' && matrix.os == 'windows'
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
-        run: |
-          installer=$(ls electron/dist-build/*.exe 2>/dev/null | head -n 1)
-          if [ -z "$installer" ]; then
-            echo "::error::No installer found in electron/dist-build/"
-            exit 1
-          fi
-          name=$(basename "$installer")
-          sha=$(sha256sum "$installer" | awk '{print $1}')
-          size_mb=$(du -m "$installer" | awk '{print $1}')
-
-          body=$(cat <<EOF
-          Submit the new Windows installer to Microsoft Defender (WDSI) so the binary is pre-whitelisted before beta testers download it. Without this, Microsoft Defender's first-time deep scan can stretch the download to 20-30 minutes per tester even though the .exe is already Authenticode-signed.
-
-          **Steps (~30 seconds)**
-
-          1. Open https://www.microsoft.com/en-us/wdsi/filesubmission
-          2. Sign in with a Microsoft account.
-          3. Submitter type: **Software developer**.
-          4. Upload the installer (download it from the release link below) **or** paste the SHA-256 hash if the upload form accepts hashes for already-public binaries.
-          5. Submit. Verdict typically arrives within 24 hours.
-
-          **Installer details**
-
-          | Field | Value |
-          |---|---|
-          | Release | [${RELEASE_TAG}](${RELEASE_URL}) |
-          | Filename | \`${name}\` |
-          | Size | ~${size_mb} MB |
-          | SHA-256 | \`${sha}\` |
-
-          Close this issue once submitted.
-          EOF
-          )
-
-          gh issue create \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "Submit ${name} (${RELEASE_TAG}) to Microsoft WDSI" \
-            --body "$body"

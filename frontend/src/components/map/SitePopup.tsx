@@ -78,7 +78,7 @@ export function SitePopup({ feature }: SitePopupProps) {
                   className="rounded px-1.5 py-0.5 text-[10px] font-medium"
                   style={{ backgroundColor: bg, color: fg }}
                 >
-                  {sp.label} · {sp.count}
+                  {sp.label}
                 </span>
               );
             })}

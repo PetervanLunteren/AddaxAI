@@ -384,7 +384,7 @@ export function DeploymentsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button onClick={() => navigate(`/projects/${projectId}/analyses`)}>
+              <Button onClick={() => navigate(`/projects/${projectId}/process`)}>
                 <Plus className="mr-2 h-4 w-4" />
                 New deployment
               </Button>

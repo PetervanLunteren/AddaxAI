@@ -240,45 +240,49 @@ export function ActivityOverlapPage() {
     };
   }, [searchParams]);
 
-  // Species A auto-pick: persisted via sessionStorage, keyed per
-  // project. Survives navigating away and back within a session, but
-  // clears on app/tab close so a fresh session re-evaluates the
-  // most-observed default.
+  // Species A and B auto-pick: each slot's decision is persisted via
+  // sessionStorage, keyed per project. Survives navigating away and
+  // back within a session, but clears on app/tab close so a fresh
+  // session re-evaluates the most-observed defaults.
   //
-  // Storage value semantics (single string key):
+  // Storage value semantics (one key per slot):
   //   - missing  = never attempted (fire auto-pick when URL is empty)
-  //   - ""       = attempted, Species A is deliberately empty now
-  //                (zero species in scope, or user cleared the picker)
-  //   - "Tiger"  = the Species A currently in use
+  //   - ""       = attempted, the slot is deliberately empty now
+  //                (zero candidates, or user cleared the picker)
+  //   - "Tiger"  = the current value
   //
-  // Every URL write funnels through `writeFilters`, which is the
-  // single point that keeps sessionStorage in lock-step with the URL.
-  // That way a user pick, a user clear, and the auto-pick itself all
-  // update storage atomically with the URL change, with no ordering
-  // race against the auto-pick query.
-  const storageKey = projectId
+  // Two write helpers below: `writeUrl` updates only the URL,
+  // `writeFilters` updates URL + storage for both slots. Restore-
+  // from-session uses `writeUrl` so filling A from storage does not
+  // poison B's "never decided" sentinel (and vice versa). User
+  // changes and auto-pick decisions go through `writeFilters` so the
+  // decision they make is durable.
+  const storageKeyA = projectId
     ? `addaxai:plots:activity-overlap:species-a:${projectId}`
     : null;
+  const storageKeyB = projectId
+    ? `addaxai:plots:activity-overlap:species-b:${projectId}`
+    : null;
 
-  const readStoredSpeciesA = (): string | null => {
-    if (!storageKey) return null;
+  const readStored = (key: string | null): string | null => {
+    if (!key) return null;
     try {
-      return sessionStorage.getItem(storageKey);
+      return sessionStorage.getItem(key);
     } catch {
       return null;
     }
   };
 
-  const writeStoredSpeciesA = (value: string) => {
-    if (!storageKey) return;
+  const writeStored = (key: string | null, value: string) => {
+    if (!key) return;
     try {
-      sessionStorage.setItem(storageKey, value);
+      sessionStorage.setItem(key, value);
     } catch {
       /* ignore — private mode or quota, not fatal */
     }
   };
 
-  const writeFilters = (
+  const writeUrl = (
     next: ActivityOverlapPageFilters,
     options?: { replace?: boolean },
   ) => {
@@ -296,20 +300,31 @@ export function ActivityOverlapPage() {
       ),
       options,
     );
-    writeStoredSpeciesA(next.speciesA ?? "");
+  };
+
+  const writeFilters = (
+    next: ActivityOverlapPageFilters,
+    options?: { replace?: boolean },
+  ) => {
+    writeUrl(next, options);
+    writeStored(storageKeyA, next.speciesA ?? "");
+    writeStored(storageKeyB, next.speciesB ?? "");
   };
 
   const handleFiltersChange = (next: ActivityOverlapPageFilters) => {
     writeFilters(next);
   };
 
-  // Only trigger the expensive API call when the URL has no species_a
-  // AND sessionStorage has no record. A stored "" is a decision
-  // ("empty on purpose"), so it disables auto-pick too.
-  const hasStoredDecision = readStoredSpeciesA() !== null;
+  // Only trigger the species-distribution API call when at least one
+  // slot has no URL value AND no storage decision. A stored "" means
+  // "deliberately empty" and blocks auto-pick for that slot.
+  const hasStoredA = readStored(storageKeyA) !== null;
+  const hasStoredB = readStored(storageKeyB) !== null;
   const siteIdsCsv = filters.siteIds.length > 0 ? filters.siteIds.join(",") : undefined;
   const shouldAutoPickA =
-    !!projectId && filters.speciesA === null && !hasStoredDecision;
+    !!projectId && filters.speciesA === null && !hasStoredA;
+  const shouldAutoPickB =
+    !!projectId && filters.speciesB === null && !hasStoredB;
 
   const { data: autoPickCandidates } = useQuery({
     queryKey: [
@@ -328,36 +343,58 @@ export function ActivityOverlapPage() {
         filters.dateFrom ?? undefined,
         filters.dateTo ?? undefined,
       ),
-    enabled: shouldAutoPickA,
+    enabled: shouldAutoPickA || shouldAutoPickB,
   });
 
   // Restore-from-session: URL empty but session remembers a species →
-  // write it back to the URL. Runs on mount and on any transition to
-  // speciesA=null (which happens after a user clear; in that case the
-  // stored value is "" and we correctly skip).
+  // write it back to the URL. URL-only update so we do not overwrite
+  // the "never decided" sentinel for any slot we did not just restore.
   useEffect(() => {
-    if (!projectId || filters.speciesA !== null) return;
-    const stored = readStoredSpeciesA();
-    if (stored && stored !== "") {
-      writeFilters({ ...filters, speciesA: stored }, { replace: true });
+    if (!projectId) return;
+    if (filters.speciesA !== null && filters.speciesB !== null) return;
+    const storedA = readStored(storageKeyA);
+    const storedB = readStored(storageKeyB);
+    const nextA =
+      filters.speciesA === null && storedA && storedA !== ""
+        ? storedA
+        : filters.speciesA;
+    const nextB =
+      filters.speciesB === null && storedB && storedB !== ""
+        ? storedB
+        : filters.speciesB;
+    if (nextA !== filters.speciesA || nextB !== filters.speciesB) {
+      writeUrl(
+        { ...filters, speciesA: nextA, speciesB: nextB },
+        { replace: true },
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, filters.speciesA]);
+  }, [projectId, filters.speciesA, filters.speciesB]);
 
-  // Auto-pick once per session per project: pick the most-observed
-  // species under the current scope, write URL + session storage.
-  // A zero-result query still writes "" to storage so we don't retry.
+  // Auto-pick once per session per project. A = most-observed species;
+  // B = next most-observed species not equal to A, so the chart
+  // immediately shows an overlap instead of an empty B picker. Writes
+  // URL + storage for both slots in one go. A null result writes ""
+  // ("deliberately empty") so we do not retry.
   useEffect(() => {
-    if (!shouldAutoPickA || !autoPickCandidates) return;
-    if (autoPickCandidates.length === 0) {
-      writeStoredSpeciesA("");
-      return;
+    if (!autoPickCandidates) return;
+    if (!shouldAutoPickA && !shouldAutoPickB) return;
+    const sorted = [...autoPickCandidates].sort((a, b) => b.count - a.count);
+    let nextA = filters.speciesA;
+    let nextB = filters.speciesB;
+    if (shouldAutoPickA) {
+      nextA = sorted.length > 0 ? sorted[0].species : null;
     }
-    const top = [...autoPickCandidates].sort((a, b) => b.count - a.count)[0];
-    if (!top) return;
-    writeFilters({ ...filters, speciesA: top.species }, { replace: true });
+    if (shouldAutoPickB) {
+      const candidate = sorted.find((s) => s.species !== nextA);
+      nextB = candidate ? candidate.species : null;
+    }
+    writeFilters(
+      { ...filters, speciesA: nextA, speciesB: nextB },
+      { replace: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldAutoPickA, autoPickCandidates]);
+  }, [shouldAutoPickA, shouldAutoPickB, autoPickCandidates]);
 
   const enabled = !!projectId && !!filters.speciesA;
 

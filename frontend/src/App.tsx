@@ -319,12 +319,15 @@ function SetupGate({ children }: { children: ReactNode }) {
     return <Navigate to="/projects" replace />;
   }
 
-  // Crash banner only renders once setup is ready: while the wizard
-  // is open, the user has more pressing things to look at. The
-  // hamburger menu is rendered inline by the projects page header.
+  // Crash banner is intentionally suppressed for the current beta —
+  // it fires too eagerly and creates noise. The detection logic
+  // (sentinel files + last-launch snapshot in Electron, banner
+  // component in React) is kept fully wired so we can flip the flag
+  // back to true to re-enable without re-implementing anything.
+  const SHOW_CRASH_BANNER = false;
   return (
     <>
-      {effectivelyReady && <CrashBanner />}
+      {effectivelyReady && SHOW_CRASH_BANNER && <CrashBanner />}
       {children}
     </>
   );
@@ -347,7 +350,7 @@ function ProjectIndexRoute() {
 
   if (isLoading) return null;
   const hasData = !isError && (data?.file_count ?? 0) > 0;
-  return <Navigate to={hasData ? "dashboard" : "analyses"} replace />;
+  return <Navigate to={hasData ? "dashboard" : "process"} replace />;
 }
 
 function App() {
@@ -365,7 +368,7 @@ function App() {
             {/* Project routes with sidebar */}
             <Route path="/projects/:projectId" element={<AppLayout />}>
               <Route index element={<ProjectIndexRoute />} />
-              <Route path="analyses" element={<AnalysesPage />} />
+              <Route path="process" element={<AnalysesPage />} />
               <Route path="verify" element={<VerifyPage />} />
               <Route path="review" element={<Navigate to="../verify" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />

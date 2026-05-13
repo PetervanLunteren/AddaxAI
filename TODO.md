@@ -8,12 +8,15 @@
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
-- [ ] remove the issue creation in the github actions for windows scan. I wont do this so better remove it. 
-- [ ] remove this banner "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." Its shows up whay to often. No need for this now. Leave the code behind it for later use, just done show it in the UI.
-- [ ] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
+- [x] remove the issue creation in the github actions for windows scan. I wont do this so better remove it. 
+- [x] remove this banner "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." Its shows up whay to often. No need for this now. Leave the code behind it for later use, just done show it in the UI.
+- [x] Activity overlap. The default pick for label A is the most common one, right (max samples)? Should we auto pick the second most common one for label B? Then they see directly what it does. 
 
 ## Priority 2
 - [ ] 
+
+
+Open a project with completed deployments → should land on Dashboard. - DOES NOT LAND ON DASHBOARD. LANDS ON PROCESS. 
 
 ## Priority 3 
 - [ ] 
@@ -47,4 +50,5 @@
 - [ ] Ranked flat label filter (descending count) as an alternative to the hierarchical tree on Verify and Insights. Requested by Simon.
 - [ ] Show time delta between adjacent images / videos in EventDetailModal and FileDetailModal (e.g. "+12s since previous"). Helps verifiers spot independent events vs. continuous bursts. Requested by Simon.
 - [ ] Verification-status layer on the Map insights page (e.g. dot color = % verified, or filter to deployments still unverified). Requested by Simon for tracking field-work progress across many cameras.
+- [ ] Take the heatmap for deploment timeline feature from AddaxAI Connect
 
