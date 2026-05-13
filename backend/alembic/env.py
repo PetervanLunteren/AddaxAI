@@ -6,11 +6,12 @@ Following DEVELOPERS.md principles:
 - Crash early if config missing
 """
 
+import logging
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
 
@@ -24,18 +25,27 @@ from app.models import (  # noqa: F401
     EventObservation,
     File,
     Job,
+    LabelTaxonomy,
     Project,
     Site,
-    LabelTaxonomy,
     event_files,
 )
 
 # Alembic Config object
 config = context.config
 
-# disable_existing_loggers=False so alembic's logging config does not
-# silently mute the addaxai loggers that were set up at startup.
-if config.config_file_name is not None:
+# Only apply alembic.ini's logging config when nothing else has wired
+# up the root logger yet, i.e. the dev `alembic` CLI. Inside the running
+# app, setup_logging() has already attached a RotatingFileHandler to
+# the root logger; fileConfig would replace it with alembic.ini's
+# stderr-only console handler via [logger_root], leaving the rest of
+# the process with no file log. disable_existing_loggers=False on its
+# own does not prevent this, because the root logger is listed in
+# [loggers] and gets reconfigured regardless of that flag.
+if (
+    config.config_file_name is not None
+    and not logging.getLogger().handlers
+):
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Get database URL from application settings

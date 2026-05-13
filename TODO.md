@@ -2,10 +2,14 @@
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
 - [x] Add backups options. 
 - [x] Make embedding count configurable and trackable. 
+- [ ] Think about how to solve the frames issue. Check dans email. 
 - [ ] Add different modes at the home screen. Something like
     > Simple mode (Point at folder, select model, get CSV)
     > .... [IDK propose name] (Point at folder, select model, write JSON, show postprocesing options like visualise, separte into subfolders, etc. )
     > Timelapse mode (Create JSON for timelapse) (Already written, just needs a card a t home page). 
+
+
+    > Lets think about it a bit more before we go directly into planning. What is good UX, UI, what are good names? How do we want to define the modes? Can we merge modes? Have a look at how the legacy AddaxAI worked (that is how users are used to use AddaxAI: /Users/peter/Documents/Repos/AddaxAI). The legacy AddaxAI had two modes (simple and advanced). I dont think we need to recreate those 
 
     > I think it would be great to have a "simple mode" that includes things like folder separation and doesn't include things like projects/deployments, and I would probably make that the default.  Even going through it a second time, where I knew what to expect, I was still somewhat overwhelmed by the project/deployment structure that seems like it's only maybe relevant to AddaxAI (i.e., it sounds like this kind of integrated analysis is still more of a future goal?).  You should ignore this comment if you think 80% of AddaxAI users are going to be doing lots of spatial analysis in AddaxAI, but I would guess that 80+% of users will be using AddaxAI for the AI (it's literally in the name :) ), and the project structure may be confusing.  
 
