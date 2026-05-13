@@ -324,12 +324,21 @@ export function FileDetailModal({
     onSuccess: invalidateAfterMutation,
   });
 
-  // Filtered detections for Up/Down cycling (respects threshold)
+  // Filtered detections for Up/Down cycling. Respects threshold, and
+  // for videos pins to the best-frame detections so keyboard navigation
+  // walks the same set the AnnotationCanvas overlay renders.
   const filteredDetections = useMemo(() => {
     if (!file) return [];
-    return file.detections.filter(
-      (d) => d.confidence >= detectionThreshold,
-    );
+    return file.detections.filter((d) => {
+      if (d.confidence < detectionThreshold) return false;
+      if (
+        file.file_type === "video" &&
+        file.best_frame_number != null
+      ) {
+        return d.frame_number === file.best_frame_number;
+      }
+      return true;
+    });
   }, [file, detectionThreshold]);
 
   const deleteDetectionMutation = useMutation({

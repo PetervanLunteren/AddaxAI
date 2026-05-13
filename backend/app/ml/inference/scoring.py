@@ -4,13 +4,23 @@ Shared scoring logic for picking the best candidate from a set.
 Used by:
 - best_frame.py: picks the best video frame during detection pipeline
 - event.py CRUD: picks the representative file for an event
+- classification_worker.py (subprocess): same scoring on the worker side
+
+The classifier subprocess runs in `env-pytorch` (Python 3.8), so this
+module must stay 3.8-importable. We use `from __future__ import
+annotations` to defer PEP 585 generic syntax in function signatures
+and variable annotations, and `typing.Tuple` for the runtime `Bbox`
+alias (PEP 585 `tuple[...]` only supports subscription on 3.9+).
 
 Dependencies: only cv2, numpy. No app imports.
 """
 
+from __future__ import annotations
+
 import math
 from collections import defaultdict
 from collections.abc import Callable
+from typing import Tuple
 
 import cv2
 import numpy as np
@@ -18,7 +28,11 @@ import numpy as np
 CONFIDENCE_THRESHOLD = 0.3
 TOP_FRACTION = 0.9  # candidates within 90% of top score
 
-Bbox = tuple[float, float, float, float]  # (x, y, width, height)
+# Runtime alias — must be subscript-compatible on Python 3.8. `tuple[...]`
+# isn't (that's PEP 585, 3.9+), so use `typing.Tuple[...]`. The alias
+# itself is still referenced inside function annotations elsewhere in
+# this module, where __future__ deferral keeps everything string-based.
+Bbox = Tuple[float, float, float, float]  # (x, y, width, height)
 
 
 def compute_union_area(boxes: list[Bbox]) -> float:

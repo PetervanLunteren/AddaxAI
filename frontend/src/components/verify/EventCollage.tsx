@@ -126,8 +126,18 @@ function EventCollageTile({
   const VW = viewBox.width;
   const VH = viewBox.height;
 
+  // Same filter as FileCard / AnnotationCanvas: a video tile renders
+  // the single best-frame JPEG, so only detections from that frame
+  // should overlay. Without this the events grid stacks every sampled
+  // frame's bboxes on the same still.
   const dets = file
-    ? file.detections.filter((d) => d.confidence >= detectionThreshold)
+    ? file.detections.filter((d) => {
+        if (d.confidence < detectionThreshold) return false;
+        if (file.file_type === "video" && file.best_frame_number != null) {
+          return d.frame_number === file.best_frame_number;
+        }
+        return true;
+      })
     : [];
 
   let boxes: Array<{

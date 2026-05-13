@@ -14,6 +14,7 @@ import {
   Route,
   Navigate,
   useLocation,
+  useNavigate,
   useParams,
 } from "react-router-dom";
 import { X } from "lucide-react";
@@ -64,6 +65,8 @@ interface ModelUpdatesResponse {
 function ModelUpdateToast() {
   const [dismissed, setDismissed] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Fetch model updates once on app load.
   const { data: updates } = useQuery({
@@ -112,20 +115,24 @@ function ModelUpdateToast() {
     }
   };
 
-  const handleRebuildEnv = async (env: DriftedEnv) => {
-    if (busyIds.has(env.env_name)) return;
-    markBusy(env.env_name);
-    try {
-      await api.post("/api/setup/install-env", { force_envs: [env.env_name] });
-      toast.success(`Rebuilding ${env.env_name}`, {
-        description:
-          "Running in the background. This can take 10-30 minutes.",
-      });
-    } catch (err) {
-      toast.error(`Rebuild failed for ${env.env_name}`, {
-        description: err instanceof Error ? err.message : String(err),
-      });
+  // Env drift is surfaced as a passive notice that points users at the
+  // per-project Settings page. We deliberately do NOT auto-rebuild from
+  // the toast: a previous version did, and it raced with the per-model
+  // "Prepare" flow (both call paths share `.{env}.tmp/` on disk and
+  // would collide mid-build). The Settings → Models card runs the
+  // canonical, single-track preparation flow with WebSocket progress;
+  // sending users there keeps env rebuilds on one path.
+  const handleOpenSettings = () => {
+    // If the user is currently in a project, jump straight to its
+    // Settings page. Otherwise drop them on the project list — env
+    // rebuilds only make sense in the context of a project.
+    const match = location.pathname.match(/^\/projects\/([^/]+)\b/);
+    if (match && match[1] !== "" && match[1] !== "new") {
+      navigate(`/projects/${match[1]}/settings`);
+    } else {
+      navigate("/projects");
     }
+    setDismissed(true);
   };
 
   return (
@@ -187,27 +194,29 @@ function ModelUpdateToast() {
           {driftedEnvs.length > 0 && (
             <div>
               <div className="font-semibold text-sm mb-2">
-                Environment update{driftedEnvs.length === 1 ? "" : "s"}
+                Environment update{driftedEnvs.length === 1 ? "" : "s"}{" "}
+                available
               </div>
-              <ul className="text-sm text-muted-foreground space-y-1.5">
+              <p className="text-sm text-muted-foreground mb-2">
+                The analysis environment ships a newer version than the
+                one installed on this machine. Open a project's Settings
+                to rebuild it on the canonical single-track flow.
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 mb-2">
                 {driftedEnvs.map((env) => (
-                  <li
-                    key={env.env_name}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <span className="truncate">{env.env_name}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 text-xs"
-                      disabled={busyIds.has(env.env_name)}
-                      onClick={() => handleRebuildEnv(env)}
-                    >
-                      {busyIds.has(env.env_name) ? "Started" : "Rebuild"}
-                    </Button>
+                  <li key={env.env_name} className="font-mono truncate">
+                    env-{env.env_name}
                   </li>
                 ))}
               </ul>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs w-full"
+                onClick={handleOpenSettings}
+              >
+                Open settings
+              </Button>
             </div>
           )}
         </div>

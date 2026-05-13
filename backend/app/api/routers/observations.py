@@ -87,12 +87,28 @@ def get_observation_stats(
     project = db.query(Project).filter(Project.id == project_id).first()
     embedding_model_id = project.embedding_model_id if project else None
 
-    # Total detections in project
+    # Embeddability gate: image detections embed unconditionally; video
+    # detections only embed when they sit on the parent video's best
+    # frame (matches `build_embedding_input` in embedding_utils.py).
+    # Non-best-frame video detections are invisible to the Observations
+    # grid and similarity search anyway, so we leave them out of the
+    # "missing embeddings" count — otherwise the banner would chase a
+    # population that `/embed-now` is deliberately designed to skip.
+    from sqlalchemy import and_, or_
+    embeddable_clause = or_(
+        File.file_type == "image",
+        and_(
+            File.file_type == "video",
+            Detection.frame_number == File.best_frame_number,
+        ),
+    )
+
     total = (
         db.query(func.count(Detection.id))
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
+        .filter(embeddable_clause)
         .scalar()
     ) or 0
 
@@ -104,6 +120,7 @@ def get_observation_stats(
             .join(File, File.id == Detection.file_id)
             .join(Deployment, Deployment.id == File.deployment_id)
             .filter(Deployment.project_id == project_id)
+            .filter(embeddable_clause)
             .filter(DetectionEmbedding.embedding_model_id == embedding_model_id)
             .scalar()
         ) or 0

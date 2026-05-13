@@ -276,6 +276,28 @@ def load_json_to_database(
                 # Frame rate (video only) - output by MegaDetector's process_video
                 frame_rate = img.get("frame_rate")
 
+                # Image dimensions. MD writes `width`/`height` for images
+                # but `process_video` does not, so video entries arrive
+                # without them. Backfill from the best-frame JPEG (which
+                # the classifier worker or the no-classifier streaming
+                # pass has already written by the time we reach DB load).
+                # Without this `_compute_crop_bbox` returns None and the
+                # observations grid renders crops with no bbox overlay.
+                width_px = img.get("width")
+                height_px = img.get("height")
+                if is_video and (not width_px or not height_px) and best_frame_path:
+                    bf = Path(best_frame_path)
+                    if bf.is_file():
+                        try:
+                            from PIL import Image as PILImage
+
+                            with PILImage.open(bf) as bf_img:
+                                width_px, height_px = bf_img.size
+                        except Exception as e:
+                            logger.warning(
+                                f"Could not read dims from {bf}: {e}"
+                            )
+
                 file_record = File(
                     id=file_id,
                     deployment_id=deployment_id,
@@ -284,8 +306,8 @@ def load_json_to_database(
                     file_format=file_format,
                     size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
                     captured_at_local=captured_at_local,
-                    width_px=img.get("width"),
-                    height_px=img.get("height"),
+                    width_px=width_px,
+                    height_px=height_px,
                     exif_data=exif_metadata,
                     best_frame_number=best_frame_number,
                     best_frame_path=best_frame_path,

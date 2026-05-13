@@ -31,7 +31,17 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
   const timeStr = formatCameraTime(file.captured_at_local);
 
   const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image?size=thumb`;
-  const dets = file.detections.filter((d) => d.confidence >= detectionThreshold);
+  // For video tiles the thumbnail is the single `best_frame_path` JPEG,
+  // so only detections from that frame should draw — otherwise every
+  // sampled frame's bboxes pile onto the same still. Image tiles get
+  // the threshold filter unchanged.
+  const dets = file.detections.filter((d) => {
+    if (d.confidence < detectionThreshold) return false;
+    if (file.file_type === "video" && file.best_frame_number != null) {
+      return d.frame_number === file.best_frame_number;
+    }
+    return true;
+  });
 
   // Drop species chips whose display name duplicates an observation
   // badge that's already on this tile (Person / Vehicle). Without this,

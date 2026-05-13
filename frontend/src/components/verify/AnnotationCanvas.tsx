@@ -92,9 +92,21 @@ export function AnnotationCanvas({
   const imgWidth = file.width_px || 1;
   const imgHeight = file.height_px || 1;
 
-  const filteredDetections = file.detections.filter(
-    (d) => d.confidence >= detectionThreshold
-  );
+  // For video files: only show detections whose frame_number matches
+  // the best frame the canvas is actually rendering. Without this, every
+  // detection from every sampled frame piles up on the same still and
+  // the overlay looks like double-vision. Matches the filter
+  // EventDetailModal already applies for parity across the verify flows.
+  const filteredDetections = file.detections.filter((d) => {
+    if (d.confidence < detectionThreshold) return false;
+    if (
+      file.file_type === "video" &&
+      file.best_frame_number != null
+    ) {
+      return d.frame_number === file.best_frame_number;
+    }
+    return true;
+  });
 
   // Load image — clear immediately to avoid showing old image with new detections,
   // and ignore stale loads from rapid navigation (A → B → C where B's onload

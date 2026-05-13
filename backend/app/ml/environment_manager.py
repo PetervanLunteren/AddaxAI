@@ -15,9 +15,11 @@ import os
 import platform
 import shutil
 import subprocess
+import threading
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
+from typing import ClassVar
 
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
@@ -131,6 +133,24 @@ class EnvironmentManager:
     Environments are defined in backend/app/ml/envs/{env_name}/{platform}/environment.yml
     and created in ~/AddaxAI/envs/env-{env_name}/
     """
+
+    # Class-level so the locks are shared across every `EnvironmentManager`
+    # instance in the process. Two callers (e.g. the setup install-env
+    # path and the per-model prepare-env path) used to race on
+    # `.<env>.tmp/` because they constructed their own managers; now they
+    # serialise on the same per-env lock no matter who owns the instance.
+    _env_locks: ClassVar[dict[str, threading.Lock]] = {}
+    _env_locks_registry_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    @classmethod
+    def _env_build_lock(cls, env_name: str) -> threading.Lock:
+        """Return the (lazily-created) lock that gates builds of `env_name`."""
+        with cls._env_locks_registry_lock:
+            lock = cls._env_locks.get(env_name)
+            if lock is None:
+                lock = threading.Lock()
+                cls._env_locks[env_name] = lock
+            return lock
 
     def __init__(self, envs_dir: Path | None = None, micromamba_path: Path | None = None):
         """
@@ -290,27 +310,60 @@ class EnvironmentManager:
         env_name = f"env-{manifest.env}"
         env_path = self.envs_dir / env_name
 
-        # Check if environment exists and is valid
+        # Cheap fast-path before we touch the lock: if the env is
+        # already complete, no build is needed regardless of who else
+        # might be working on a different env.
         if env_path.exists() and self._validate_env(env_path):
             logger.info(f"Using existing environment: {env_name}")
-            # Don't call progress callback here - this should have been caught earlier
-            # If we reach this point, it's likely a race condition or the validation
-            # in the caller was incorrect. Just return the path silently.
             return env_path
 
-        # Get environment YAML path
-        yaml_path = self.get_env_yaml_path(manifest.env)
+        # Serialise concurrent builds of the same env. Two pathways
+        # (`/api/setup/install-env` and `/api/ml/models/{id}/prepare-env`)
+        # used to race on `.{env_name}.tmp/` because they each created
+        # their own `EnvironmentManager`; the lock is class-level so it
+        # gates them both. Another env (different name) can still build
+        # in parallel because each name has its own lock.
+        lock = self._env_build_lock(env_name)
+        already_held = not lock.acquire(blocking=False)
+        if already_held:
+            logger.info(
+                f"Another build of {env_name} is in flight; waiting for "
+                "it to finish before proceeding"
+            )
+            if progress_callback:
+                progress_callback(
+                    f"Another rebuild of {env_name} is already running; "
+                    "waiting for it to finish...",
+                    0.0,
+                )
+            lock.acquire(blocking=True)
 
-        # If env_path exists but is invalid (from failed previous attempt), remove it
-        if env_path.exists():
-            logger.warning(f"Removing invalid/incomplete environment at {env_path}")
-            self._safe_rmtree(env_path)
+        try:
+            # The previous holder may have just finished a successful
+            # build; pick up its result instead of starting our own.
+            if env_path.exists() and self._validate_env(env_path):
+                logger.info(
+                    f"{env_name} was built while we were waiting; "
+                    "skipping our own build"
+                )
+                return env_path
 
-        # Create new environment
-        logger.info(f"Creating environment {env_name} from {yaml_path}")
-        self._create_env(env_name, env_path, yaml_path, progress_callback)
+            yaml_path = self.get_env_yaml_path(manifest.env)
 
-        return env_path
+            # If env_path exists but is invalid (from failed previous
+            # attempt), remove it before retrying.
+            if env_path.exists():
+                logger.warning(
+                    f"Removing invalid/incomplete environment at {env_path}"
+                )
+                self._safe_rmtree(env_path)
+
+            logger.info(f"Creating environment {env_name} from {yaml_path}")
+            self._create_env(env_name, env_path, yaml_path, progress_callback)
+
+            return env_path
+        finally:
+            lock.release()
 
     def _parse_env_yaml(self, yaml_path: Path) -> tuple[int, int]:
         """
