@@ -127,6 +127,12 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "not fingerprinted via PRAGMA table_info"
         ),
     ),
+    _Fingerprint(
+        revision="c3d4e5f6a7b8",
+        table="projects",
+        column="mode",
+        description="add project mode and folder_run_state",
+    ),
 )
 
 

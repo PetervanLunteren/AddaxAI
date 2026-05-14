@@ -34,6 +34,7 @@ import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
 import { AppHamburger } from "../components/layout/AppHamburger";
+import { Breadcrumbs } from "../components/layout/Breadcrumbs";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -42,8 +43,8 @@ export function ProjectsPage() {
   const [deletingProject, setDeletingProject] = useState<ProjectWithStats | null>(null);
 
   const { data: projects, isLoading, error } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => projectsApi.getProjects(),
+    queryKey: ["projects", "research"],
+    queryFn: () => projectsApi.getProjects("research"),
   });
 
 
@@ -66,6 +67,7 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <Breadcrumbs />
       {/* Header. relative + z-40 lifts the header's stacking context
           above <main>, so the AppHamburger dropdown (z-50 absolute,
           contained within this stacking context because backdrop-blur
@@ -81,13 +83,23 @@ export function ProjectsPage() {
                 className="h-16 w-16 shrink-0"
               />
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  Research projects
+                </h1>
                 <p className="text-sm text-muted-foreground">
-                  Manage your camera trap projects
+                  Use projects when you want to combine multiple
+                  deployments, keep verification history, analyse
+                  metadata, and build exports over time.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate("/folder-runs/new")}
+              >
+                Analyse a folder instead
+              </Button>
               <Button
                 onClick={() => {
                   logger.info("User clicked New Project button");
@@ -95,7 +107,7 @@ export function ProjectsPage() {
                 }}
               >
                 <Plus className="h-4 w-4" />
-                New project
+                New research project
               </Button>
               <AppHamburger />
             </div>
@@ -215,12 +227,14 @@ export function ProjectsPage() {
         ) : (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="mb-4 text-muted-foreground">
-                No projects yet. Create your first project to get started.
+              <p className="mb-4 max-w-md text-center text-muted-foreground">
+                Create a project for studies with multiple camera
+                locations, deployments, maps, verification, dashboards,
+                and exports.
               </p>
               <Button onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="h-4 w-4" />
-                Create project
+                New research project
               </Button>
             </CardContent>
           </Card>

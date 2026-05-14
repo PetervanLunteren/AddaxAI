@@ -12,6 +12,7 @@ import type {
   CustomLabelUpdate,
   GBIFSuggestion,
   ProjectCreate,
+  ProjectMode,
   ProjectModelReadiness,
   ProjectResponse,
   ProjectUpdate,
@@ -19,7 +20,20 @@ import type {
 } from "./types";
 
 // Re-export types for convenience
-export type { ProjectCreate, ProjectResponse, ProjectUpdate, ProjectWithStats };
+export type {
+  ProjectCreate,
+  ProjectMode,
+  ProjectResponse,
+  ProjectUpdate,
+  ProjectWithStats,
+};
+
+/**
+ * Backend filter values for the list endpoint. `research` and
+ * `folder_run` map to the DB column; `all` is a query-only sentinel
+ * that bypasses the filter.
+ */
+export type ProjectListMode = ProjectMode | "all";
 
 /**
  * Banner payload returned by /deployments-without-site. Used by
@@ -34,14 +48,20 @@ export interface DeploymentsWithoutSiteResponse {
 
 export const projectsApi = {
   /**
-   * List all projects with statistics
+   * List projects with statistics, filtered by workflow mode.
+   *
+   * Defaults to `research` so the Research projects list (and any
+   * caller that does not pass a mode) excludes folder runs. Pass
+   * `folder_run` for the home recents strip or `all` to include both.
    */
-  getProjects: () => api.get<ProjectWithStats[]>("/api/projects"),
+  getProjects: (mode: ProjectListMode = "research") =>
+    api.get<ProjectWithStats[]>(`/api/projects?mode=${mode}`),
 
   /**
-   * List all projects with statistics (alias for getProjects)
+   * Alias for getProjects with the same default.
    */
-  list: () => api.get<ProjectWithStats[]>("/api/projects"),
+  list: (mode: ProjectListMode = "research") =>
+    api.get<ProjectWithStats[]>(`/api/projects?mode=${mode}`),
 
   /**
    * Create a new project

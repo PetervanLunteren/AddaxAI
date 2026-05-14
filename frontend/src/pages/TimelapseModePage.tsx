@@ -73,6 +73,7 @@ import {
 
 import { AnalysisProgress } from "@/components/analyses/AnalysisProgress";
 import { BatchSizeRow } from "@/components/analyses/BatchSizeRow";
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { DiagnosticReportButton } from "@/components/diagnostics/DiagnosticReportButton";
 import { FolderSelector } from "@/components/analyses/FolderSelector";
 import { ClassificationModelGroupedItems } from "@/components/models/ClassificationModelGroupedItems";
@@ -932,6 +933,7 @@ function TimelapseFormPage() {
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
+      <Breadcrumbs />
       {/* Tall AddaxAI + Timelapse lockup centered as a hero. The logo
           already contains both wordmarks, so we drop the redundant
           "Timelapse integration" h1 — the artwork carries the title role.

@@ -8,9 +8,12 @@ Following DEVELOPERS.md principles:
 """
 
 from datetime import datetime
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
+
+ProjectMode = Literal["folder_run", "research"]
 
 
 def _validate_iana_timezone(value: str) -> str:
@@ -135,6 +138,22 @@ class ProjectBase(BaseModel):
         ),
     )
 
+    # Workflow mode. 'research' = full project workspace (Sites,
+    # Deployments, Insights). 'folder_run' = legacy-style point-at-a-
+    # folder workflow with a hidden single deployment. Defaults to
+    # 'research' so the regular create endpoint stays backwards-
+    # compatible; the folder-runs router overrides it explicitly.
+    mode: ProjectMode = Field(
+        default="research", description="Workflow mode: 'research' or 'folder_run'"
+    )
+
+    # In-progress stepper state for a folder run. NULL for research
+    # projects and for folder runs that have not advanced past step 1.
+    folder_run_state: dict | None = Field(
+        default=None,
+        description="Stepper state for an in-progress folder run, null otherwise",
+    )
+
 
 class ProjectCreate(ProjectBase):
     """
@@ -183,6 +202,8 @@ class ProjectUpdate(BaseModel):
     classification_batch_size: int | None = Field(None, ge=1, le=256)
     embedding_batch_size: int | None = Field(None, ge=1, le=256)
     observations_max_detections: int | None = Field(None, ge=1000, le=50000)
+    mode: ProjectMode | None = None
+    folder_run_state: dict | None = None
 
 
 class ProjectResponse(ProjectBase):

@@ -208,12 +208,17 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
 
     head = get_head_revision()
 
-    # Drop the two columns that the later migrations add so we get a
-    # DB that LOOKS like initial schema, but is stamped at head. SQLite
-    # supports DROP COLUMN since 3.35.
+    # Drop every column that post-initial migrations add so the live
+    # schema LOOKS like initial schema but is stamped at head. SQLite
+    # supports DROP COLUMN since 3.35. The list grows as we add
+    # column-introducing migrations; keep it in sync with
+    # SCHEMA_FINGERPRINTS' detectable entries beyond the initial one.
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE projects DROP COLUMN observations_max_detections"))
         conn.execute(text("ALTER TABLE deployments DROP COLUMN warnings"))
+        conn.execute(text("DROP INDEX IF EXISTS ix_projects_mode"))
+        conn.execute(text("ALTER TABLE projects DROP COLUMN mode"))
+        conn.execute(text("ALTER TABLE projects DROP COLUMN folder_run_state"))
 
     # alembic_version row stays at head — that is exactly the bug.
     assert get_current_revision(engine) == head
@@ -229,12 +234,14 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
     #    revision and then upgrade_to_head should re-add both columns.
     init_db()
 
-    # 3) Both columns are back, alembic_version is at head.
+    # 3) Every dropped column is back, alembic_version is at head.
     insp = inspect(engine)
     projects_cols = {c["name"] for c in insp.get_columns("projects")}
     deployments_cols = {c["name"] for c in insp.get_columns("deployments")}
     assert "observations_max_detections" in projects_cols
     assert "warnings" in deployments_cols
+    assert "mode" in projects_cols
+    assert "folder_run_state" in projects_cols
     assert get_current_revision(engine) == head
 
 

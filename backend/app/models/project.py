@@ -148,6 +148,21 @@ class Project(Base):
         Text, nullable=True
     )
 
+    # Workflow mode. 'research' is the full Sites/Deployments/Insights
+    # workspace; 'folder_run' is the legacy-style point-at-a-folder
+    # workflow that lives behind a hidden single deployment. Promotion
+    # from 'folder_run' to 'research' just flips this column.
+    mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="research", server_default="research", index=True
+    )
+
+    # Stepper state for an in-progress folder run (current step, save
+    # options, output dir). NULL for research projects. Cleared when a
+    # folder run is promoted.
+    folder_run_state: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True
+    )
+
     # Relationships
     sites: Mapped[list["Site"]] = relationship(
         "Site", back_populates="project", cascade="all, delete-orphan"

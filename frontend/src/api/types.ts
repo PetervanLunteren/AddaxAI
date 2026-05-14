@@ -7,6 +7,19 @@
  */
 
 // Project types
+
+/**
+ * Workflow mode for a project.
+ *
+ * - `research`: the full project workspace with Sites, Deployments,
+ *   Insights, Exports. Default for new projects created via the
+ *   Research projects flow.
+ * - `folder_run`: the legacy-style point-at-a-folder workflow.
+ *   Hidden from the Research projects list; surfaced separately on
+ *   the home screen.
+ */
+export type ProjectMode = "folder_run" | "research";
+
 export interface ProjectCreate {
   name: string;
   description?: string | null;
@@ -32,6 +45,8 @@ export interface ProjectCreate {
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
   observations_max_detections: number;
+  mode?: ProjectMode;
+  folder_run_state?: Record<string, unknown> | null;
 }
 
 export interface ProjectUpdate {
@@ -59,6 +74,9 @@ export interface ProjectUpdate {
   classification_batch_size?: number | null;
   embedding_batch_size?: number | null;
   observations_max_detections?: number | null;
+  /** Promotion sets this to "research". */
+  mode?: ProjectMode | null;
+  folder_run_state?: Record<string, unknown> | null;
 }
 
 export interface ProjectResponse {
@@ -90,6 +108,8 @@ export interface ProjectResponse {
   thumbnail_path: string | null;
   created_at_utc: string;
   updated_at_utc: string;
+  mode: ProjectMode;
+  folder_run_state: Record<string, unknown> | null;
 }
 
 export interface ProjectWithStats extends ProjectResponse {

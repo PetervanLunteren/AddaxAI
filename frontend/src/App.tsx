@@ -36,6 +36,14 @@ import SetupPage from "./pages/SetupPage";
 import TimelapseModePage from "./pages/TimelapseModePage";
 import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
+import { HomePage } from "./pages/HomePage";
+import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
+import { FolderRunFolderStep } from "./pages/folder-run/FolderRunFolderStep";
+import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
+import { FolderRunRunStep } from "./pages/folder-run/FolderRunRunStep";
+import { FolderRunReviewStep } from "./pages/folder-run/FolderRunReviewStep";
+import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
+import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
 import { Toaster } from "./components/ui/sonner";
@@ -325,7 +333,7 @@ function SetupGate({ children }: { children: ReactNode }) {
   }
 
   if (effectivelyReady && onSetupRoute) {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/" replace />;
   }
 
   // Crash banner is intentionally suppressed for the current beta —
@@ -371,7 +379,25 @@ function App() {
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/timelapse" element={<TimelapseModePage />} />
-            <Route path="/" element={<Navigate to="/projects" replace />} />
+            <Route path="/" element={<HomePage />} />
+
+            {/* New folder-run: project id does not exist yet, only the
+                folder step is meaningful here. */}
+            <Route path="/folder-runs/new" element={<FolderRunLayout />}>
+              <Route index element={<FolderRunFolderStep />} />
+            </Route>
+
+            {/* Existing / resumed folder run. Hitting the bare id
+                redirects to the persisted step. */}
+            <Route path="/folder-runs/:runId" element={<FolderRunLayout />}>
+              <Route index element={<FolderRunResumeIndex />} />
+              <Route path="folder" element={<FolderRunFolderStep />} />
+              <Route path="model" element={<FolderRunModelStep />} />
+              <Route path="run" element={<FolderRunRunStep />} />
+              <Route path="review" element={<FolderRunReviewStep />} />
+              <Route path="save" element={<FolderRunSaveStep />} />
+            </Route>
+
             <Route path="/projects" element={<ProjectsPage />} />
 
             {/* Project routes with sidebar */}

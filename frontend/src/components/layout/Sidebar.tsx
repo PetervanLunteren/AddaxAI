@@ -138,7 +138,7 @@ export function Sidebar() {
           to="/projects"
           className="mt-2 text-xs text-primary hover:underline"
         >
-          ← Back to Projects
+          ← Back to research projects
         </NavLink>
       </div>
     </aside>

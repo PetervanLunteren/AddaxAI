@@ -11,18 +11,26 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud.statistics import get_trap_nights
-from app.api.schemas.project import ProjectCreate, ProjectUpdate
+from app.api.schemas.project import ProjectCreate, ProjectMode, ProjectUpdate
 from app.models import Deployment, Event, File, Project, Site
 from app.models.event_observation import EventObservation
 
 
-def get_projects(db: Session) -> list[Project]:
+def get_projects(
+    db: Session, mode: ProjectMode | None = None
+) -> list[Project]:
     """
-    Get all projects.
+    Get projects, optionally filtered by mode.
 
-    Returns empty list if no projects exist.
+    When `mode` is None, returns every project regardless of workflow
+    mode. Callers that render the user-facing Research projects list
+    pass `mode='research'` so folder runs stay hidden. Returns empty
+    list if no projects match.
     """
-    result = db.execute(select(Project).order_by(Project.created_at_utc.desc()))
+    stmt = select(Project).order_by(Project.created_at_utc.desc())
+    if mode is not None:
+        stmt = stmt.where(Project.mode == mode)
+    result = db.execute(stmt)
     return list(result.scalars().all())
 
 
@@ -59,6 +67,8 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
         taxonomic_rollup=project.taxonomic_rollup,
         taxonomic_rollup_threshold=project.taxonomic_rollup_threshold,
         independence_interval=project.independence_interval,
+        mode=project.mode,
+        folder_run_state=project.folder_run_state,
     )
     db.add(db_project)
     db.commit()
@@ -164,7 +174,9 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
     }
 
 
-def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
+def get_all_projects_stats(
+    db: Session, mode: ProjectMode | None = None
+) -> dict[str, dict[str, int]]:
     """
     Get statistics for all projects in bulk.
 
@@ -172,18 +184,33 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
     sites, deployments, files, observations, and trap nights.
     Deployments with no site (site_id=None) still belong to their
     project and are counted.
+
+    When `mode` is set, only projects with that workflow mode are
+    included. Folder runs typically have one auto-named deployment and
+    no sites, so leaving them in the totals would skew the Research
+    projects list display.
     """
+    project_filter: list = []
+    if mode is not None:
+        project_filter.append(Project.mode == mode)
+
     site_rows = db.execute(
-        select(Site.project_id, func.count(Site.id)).group_by(Site.project_id)
+        select(Site.project_id, func.count(Site.id))
+        .join(Project, Project.id == Site.project_id)
+        .where(*project_filter)
+        .group_by(Site.project_id)
     ).all()
     dep_rows = db.execute(
-        select(Deployment.project_id, func.count(Deployment.id)).group_by(
-            Deployment.project_id
-        )
+        select(Deployment.project_id, func.count(Deployment.id))
+        .join(Project, Project.id == Deployment.project_id)
+        .where(*project_filter)
+        .group_by(Deployment.project_id)
     ).all()
     file_rows = db.execute(
         select(Deployment.project_id, func.count(File.id))
         .join(File, File.deployment_id == Deployment.id)
+        .join(Project, Project.id == Deployment.project_id)
+        .where(*project_filter)
         .group_by(Deployment.project_id)
     ).all()
     obs_rows = db.execute(
@@ -193,6 +220,8 @@ def get_all_projects_stats(db: Session) -> dict[str, dict[str, int]]:
         )
         .join(Event, Event.deployment_id == Deployment.id)
         .join(EventObservation, EventObservation.event_id == Event.id)
+        .join(Project, Project.id == Deployment.project_id)
+        .where(*project_filter)
         .group_by(Deployment.project_id)
     ).all()
 

@@ -10,6 +10,7 @@ Following DEVELOPERS.md principles:
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -37,21 +38,32 @@ from app.models import Deployment, Detection, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.label_taxonomy import LabelTaxonomy
 
+# Query-only type. The DB column is one of the two real modes, but the
+# list endpoint also accepts `all` to bypass filtering.
+ListProjectsMode = Literal["folder_run", "research", "all"]
+
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
 
 @router.get("", response_model=list[ProjectWithStats])
-def list_projects(db: Session = Depends(get_db)) -> list[ProjectWithStats]:
+def list_projects(
+    mode: ListProjectsMode = "research",
+    db: Session = Depends(get_db),
+) -> list[ProjectWithStats]:
     """
-    List all projects with statistics.
+    List projects with statistics, filtered by workflow mode.
 
-    Returns empty list if no projects exist.
+    Defaults to `mode='research'` so the Research projects list
+    excludes folder runs. Pass `?mode=folder_run` to get the recent
+    folder runs strip, or `?mode=all` to include both.
+
     Each project includes counts for sites, deployments, files,
-    detections, and trap nights.
+    detections, and trap nights, scoped to the selected mode.
     """
-    projects = crud_project.get_projects(db)
-    all_stats = crud_project.get_all_projects_stats(db)
+    effective_mode = None if mode == "all" else mode
+    projects = crud_project.get_projects(db, mode=effective_mode)
+    all_stats = crud_project.get_all_projects_stats(db, mode=effective_mode)
 
     result: list[ProjectWithStats] = []
     empty_stats = {

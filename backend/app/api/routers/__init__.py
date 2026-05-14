@@ -7,6 +7,7 @@ from .detections import router as detections_router
 from .events import router as events_router
 from .export import router as export_router
 from .files import router as files_router
+from .folder_runs import router as folder_runs_router
 from .jobs import router as jobs_router
 from .logs import router as logs_router
 from .ml_models import router as ml_models_router
@@ -26,6 +27,7 @@ __all__ = [
     "events_router",
     "export_router",
     "files_router",
+    "folder_runs_router",
     "jobs_router",
     "logs_router",
     "ml_models_router",
