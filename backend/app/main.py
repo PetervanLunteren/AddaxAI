@@ -455,6 +455,40 @@ def create_app() -> FastAPI:
         debug=settings.debug,
     )
 
+    # Unhandled-exception middleware. Without this, an unhandled
+    # exception flows up to starlette's default ServerErrorMiddleware,
+    # which sits OUTSIDE CORSMiddleware in the stack. The 500 it
+    # generates ships without `Access-Control-Allow-Origin`, and the
+    # renderer (which treats `localhost:8000` and `127.0.0.1:8000` as
+    # cross-origin) reports the response as `TypeError: Failed to
+    # fetch`, hiding the real status code and making diagnostics
+    # painful. Registering a FastAPI `@app.exception_handler(Exception)`
+    # does NOT fix this: Starlette's build_middleware_stack routes
+    # Exception/500 handlers to ServerErrorMiddleware (also outermost).
+    #
+    # The middleware below must be added BEFORE CORSMiddleware.
+    # add_middleware inserts each new entry at the front of
+    # `user_middleware`, then the stack is built by wrapping that list
+    # in reverse, so the first-registered middleware ends up innermost.
+    # We want exception-handling to be inside CORS so the 500 response
+    # it produces gets the CORS header on the way out.
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+
+    @app.middleware("http")
+    async def unhandled_exception_middleware(request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            logger.error(
+                f"Unhandled exception on {request.method} {request.url.path}: {exc}",
+                exc_info=True,
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal Server Error"},
+            )
+
     # CORS middleware - allow frontend to access API
     # In Electron: frontend and backend both served from port 8000 (same origin)
     # In dev: frontend on Vite dev server (5173), backend on 8000

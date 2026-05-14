@@ -11,7 +11,7 @@ import hashlib
 from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -111,37 +111,45 @@ def init_db() -> None:
     """
     Initialize the database via Alembic migrations.
 
-    - Fresh DB or DB already managed by alembic: run upgrade head (no-op
-      when already at head, applies pending migrations otherwise).
-    - Legacy DB with the head schema but no alembic_version table
-      (beta-tester DBs that predate runtime alembic wiring): stamp head.
-      Their schema is already at head because the previous startup path
-      ran Base.metadata.create_all + a hand-rolled column migrator on
-      every launch.
+    The reconciliation is fingerprint-based: introspect the live
+    schema, decide which revision it actually matches, stamp that
+    revision if `alembic_version` disagrees, then run upgrade_to_head
+    to apply any pending migrations. Three cases collapse into one
+    code path:
 
-    Crashes if migrations fail.
+    - Fresh install: `reconcile_alembic_version` sees no user tables,
+      returns None, leaves `alembic_version` empty. `upgrade_to_head`
+      runs every migration from base.
+    - Legacy DB without `alembic_version`: stamps at the detected
+      revision. `upgrade_to_head` applies anything newer.
+    - Existing DB with a stored revision that disagrees with the
+      live schema (e.g. a historical stamp_head bug, a half-applied
+      migration on power loss, a hand-restored backup): re-stamps at
+      the detected revision and logs a WARNING. `upgrade_to_head`
+      then applies the migrations the recorded revision skipped.
+
+    Crashes if migrations fail. Schema integrity is non-negotiable;
+    the rest of the app assumes the model and the DB agree.
     """
     import app.models  # noqa: F401  # populates Base.metadata
-    from app.db.migrations import get_head_revision, stamp_head, upgrade_to_head
+    from app.db.migrations import (
+        get_head_revision,
+        reconcile_alembic_version,
+        upgrade_to_head,
+    )
 
     engine = get_engine()
 
     try:
-        inspector = inspect(engine)
-        has_user_tables = inspector.has_table("projects")
-        has_alembic = inspector.has_table("alembic_version")
-
         # Fail loudly if the alembic versions directory is missing.
         # Otherwise alembic.command.upgrade is a silent no-op and
         # init_db crashes later with a confusing "no such table" error.
         get_head_revision()
 
-        if has_user_tables and not has_alembic:
-            logger.info("Legacy DB without alembic_version: stamping head")
-            stamp_head()
-        else:
-            logger.info("Running alembic upgrade head")
-            upgrade_to_head()
+        reconcile_alembic_version(engine)
+
+        logger.info("Running alembic upgrade head")
+        upgrade_to_head()
 
         _seed_builtin_labels()
         with engine.connect() as conn:
