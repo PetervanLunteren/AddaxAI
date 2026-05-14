@@ -58,7 +58,7 @@ const TEST_DEPLOYMENTS: { scope: string; path: string }[] = [
     path: "/Users/peter/Downloads/example-data/project_Kenya",
   },
   {
-    scope: "Mixed formats",
+    scope: "Videos",
     path: "/Users/peter/Downloads/example-data/project_Ukraine/loc_SIMON03/dep001",
   },
   {

@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Pencil, Plus } from "lucide-react";
+import { Check, ChevronsUpDown, Pencil, Plus, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -77,7 +77,7 @@ function pushRecentLabel(value: string, projectId?: string): void {
   localStorage.setItem(key, JSON.stringify(current.slice(0, RECENT_LABELS_MAX)));
 }
 
-interface PinnedOption {
+export interface PinnedOption {
   key: number;
   option: LabelOption;
 }
@@ -95,6 +95,15 @@ interface LabelPickerProps {
   hideDot?: boolean;
   hideLabel?: boolean;
   projectId?: string;
+  /** Icon rendered on the trigger button. Defaults to ChevronsUpDown
+   *  (combobox idiom). The modal sidebar uses `Tag` for the always-
+   *  visible active-species picker so it reads as "set label" rather
+   *  than "expand combobox". */
+  triggerIcon?: LucideIcon;
+  /** Tooltip on the trigger button. Defaults to the current value's
+   *  display label; pass a sentence-style hint for the always-visible
+   *  sidebar control. */
+  triggerTitle?: string;
 }
 
 export function LabelPicker({
@@ -109,6 +118,8 @@ export function LabelPicker({
   hideDot,
   hideLabel,
   projectId,
+  triggerIcon: TriggerIcon = ChevronsUpDown,
+  triggerTitle,
 }: LabelPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -256,7 +267,7 @@ export function LabelPicker({
         variant="ghost"
         size="sm"
         className="h-6 px-1.5 gap-1 text-xs font-medium justify-start"
-        title={displayLabel}
+        title={triggerTitle ?? displayLabel}
         onClick={(e) => {
           e.stopPropagation();
           setOpen(true);
@@ -271,7 +282,7 @@ export function LabelPicker({
         {!hideLabel && (
           <span className="truncate max-w-[180px]">{displayLabel}</span>
         )}
-        <ChevronsUpDown className="h-3 w-3 opacity-50 shrink-0" />
+        <TriggerIcon className="h-3 w-3 opacity-50 shrink-0" />
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

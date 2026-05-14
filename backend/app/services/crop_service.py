@@ -130,6 +130,12 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
     if not detection:
         return None
 
+    # Event-level observations have no bbox to crop. Caller (the crop
+    # endpoint) will surface this as a 404; the UI never asks for these
+    # because no-bbox rows render without a thumbnail.
+    if detection.bbox_x is None:
+        return None
+
     file = db.query(File).filter(File.id == detection.file_id).first()
     if not file:
         return None

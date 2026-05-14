@@ -283,3 +283,77 @@ def test_person_and_vehicle_max_n(db):
     obs_by_label = {o.label: o for o in obs}
     assert obs_by_label["person"].max_n == 3
     assert obs_by_label["vehicle"].max_n == 4
+
+
+def test_max_n_counts_no_bbox_observations(db):
+    """Event-level observations (no bbox, no bbox-anchor) still count
+    toward MaxN. Two user-added observations of "deer" on the same
+    video file should be MaxN=2 — they collapse into one (file, frame,
+    label) group because both have frame_number=None."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12), [
+            {"detections": []},  # one file, no AI detections
+        ],
+    )
+    # Two user-added event-level observations on the same file.
+    for _ in range(2):
+        make_detection(
+            db,
+            file_id=files[0].id,
+            category="animal",
+            confidence=1.0,
+            label="deer",
+            bbox_x=None,
+            bbox_y=None,
+            bbox_width=None,
+            bbox_height=None,
+            classification_method="human",
+        )
+    db.flush()
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    obs_by_label = {o.label: o for o in obs}
+    assert obs_by_label["deer"].max_n == 2
+
+
+def test_max_n_groups_per_frame_for_videos(db):
+    """Two video detections of "deer" on the same frame group into 2;
+    two more on a different frame don't add up to 4. This is the core
+    promise of adding `frame_number` to the GROUP BY — MaxN is the
+    peak per-frame count, not the per-video total."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12), [
+            {"detections": []},
+        ],
+    )
+    for frame, count in [(10, 2), (20, 3)]:
+        for _ in range(count):
+            make_detection(
+                db,
+                file_id=files[0].id,
+                category="animal",
+                confidence=0.9,
+                label="deer",
+                bbox_x=0.1,
+                bbox_y=0.1,
+                bbox_width=0.2,
+                bbox_height=0.2,
+                frame_number=frame,
+            )
+    db.flush()
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    obs_by_label = {o.label: o for o in obs}
+    assert obs_by_label["deer"].max_n == 3

@@ -28,7 +28,8 @@ import {
   FolderOpen,
   CircleHelp,
   Play,
-  Image as ImageIcon,
+  Binoculars,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
@@ -74,7 +75,10 @@ export function EventDetailModal({
     null
   );
   const [drawMode, setDrawMode] = useState(false);
-  const [drawLabel, setDrawLabel] = useState<{ category: string; label: string | undefined } | null>(null);
+  // Active species for both drawing new boxes AND adding event-level
+  // observations. Sidebar Tag picker is the manual override; falls
+  // back to `defaultActiveLabel` (most common in this event) when null.
+  const [activeLabel, setActiveLabel] = useState<{ category: string; label: string | undefined } | null>(null);
   const [bulkSelection, setBulkSelection] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
@@ -287,8 +291,11 @@ export function EventDetailModal({
     };
   }, [currentFile, files, selectedVideoId]);
 
-  // Compute most common detection label for smart draw defaults
-  const defaultLabel = useMemo(() => {
+  // Default active label: most common species across all detections
+  // in the event. The sidebar Tag picker uses this when the user
+  // hasn't set a manual override. Same value drives Draw-box and
+  // Add-Obs so both apply the same species.
+  const defaultActiveLabel = useMemo(() => {
     if (!event?.files)
       return { category: "animal", label: undefined as string | undefined };
 
@@ -327,13 +334,15 @@ export function EventDetailModal({
     return best;
   }, [event?.files, detectionThreshold]);
 
-  // Effective draw label: user override or auto-detected default
-  const effectiveDrawLabel = drawLabel ?? defaultLabel;
+  // Effective active label: manual override falls through to default.
+  const effectiveActiveLabel = activeLabel ?? defaultActiveLabel;
 
-  // Reset draw label when draw mode is toggled off
+  // Reset manual override when the event changes. Within one event we
+  // keep the override across files so a "wolf" pick survives navigating
+  // between files of the same encounter.
   useEffect(() => {
-    if (!drawMode) setDrawLabel(null);
-  }, [drawMode]);
+    setActiveLabel(null);
+  }, [eventId]);
 
   // Calculate modal dimensions to tightly fit the image + UI panels.
   // Keep previous size while loading to avoid a resize flash between images.
@@ -397,19 +406,25 @@ export function EventDetailModal({
       .sort((a, b) => b.confidence - a.confidence);
   }, [currentFile, detectionThreshold]);
 
-  // Add box mutation - promote highest confidence hidden detection
+  // Add box mutation - promote highest confidence hidden detection.
+  // Only operates on detections that actually have a bbox (event-level
+  // observations are not "hidden detections" — they're user-added).
   const addBoxMutation = useMutation({
     mutationFn: async () => {
       if (!currentFile || hiddenDetections.length === 0) return;
       const best = hiddenDetections[0];
+      if (best.bbox_x === null) return;
       await detectionsApi.create({
         file_id: currentFile.id,
         category: best.category,
         bbox_x: best.bbox_x,
-        bbox_y: best.bbox_y,
-        bbox_width: best.bbox_width,
-        bbox_height: best.bbox_height,
+        bbox_y: best.bbox_y ?? 0,
+        bbox_width: best.bbox_width ?? 0,
+        bbox_height: best.bbox_height ?? 0,
         label: best.label,
+        // Preserve the hidden detection's anchor frame; otherwise the
+        // promoted row drops out of the canvas overlay for videos.
+        frame_number: best.frame_number,
       });
       await detectionsApi.delete(best.id);
     },
@@ -429,6 +444,30 @@ export function EventDetailModal({
     }
     addBoxMutation.mutate();
   }, [addBoxMutation, hiddenDetections.length]);
+
+  // Direct-action observation create. Same flow as Draw-box: uses
+  // the currently-active species (auto-default or Tag-picker override)
+  // and submits immediately, no confirmation popover.
+  const observeMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentFile) return;
+      await detectionsApi.createObservation({
+        file_id: currentFile.id,
+        category: effectiveActiveLabel.category,
+        label: effectiveActiveLabel.label ?? null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["file"] });
+      const name =
+        effectiveActiveLabel.label ?? effectiveActiveLabel.category;
+      toast.success(`Added ${name} observation`);
+    },
+    onError: (err: Error) => {
+      toast.error("Could not add observation", { description: err.message });
+    },
+  });
 
   // Favorite mutation
   const favoriteMutation = useMutation({
@@ -757,6 +796,12 @@ export function EventDetailModal({
             handlePromoteHiddenBox();
           }
           break;
+        case "n":
+        case "N":
+          if (e.metaKey || e.ctrlKey) break;
+          e.preventDefault();
+          observeMutation.mutate();
+          break;
         case "Delete":
         case "Backspace":
           if (selectedDetectionId) {
@@ -884,25 +929,6 @@ export function EventDetailModal({
               >
                 <Pencil className="h-4 w-4" />
               </Button>
-              {drawMode && (
-                <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100" title="Label for new boxes">
-                  <LabelPicker
-                    value={effectiveDrawLabel.label || effectiveDrawLabel.category}
-                    onSelect={(option) =>
-                      setDrawLabel({ category: option.category, label: option.label ?? undefined })
-                    }
-                    options={labelOptions}
-                    isLoading={labelOptionsLoading}
-                    pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
-                      key: Number(k),
-                      option: v,
-                    }))}
-                    hideDot
-                    hideLabel
-                    projectId={projectId}
-                  />
-                </div>
-              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -917,6 +943,47 @@ export function EventDetailModal({
               >
                 <SquarePlus className="h-4 w-4" />
               </Button>
+              {/* Add observation (N). Direct action using the active
+                  species; same pattern as Draw-box. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => observeMutation.mutate()}
+                disabled={observeMutation.isPending}
+                title="Add observation without a bounding box (N)"
+              >
+                <Binoculars className="h-4 w-4" />
+              </Button>
+              {/* Active species picker — always visible. Sets the
+                  species both Draw-box and Add-Obs apply. Auto-defaults
+                  to the event's most-common label; click to override. */}
+              <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100">
+                <LabelPicker
+                  value={effectiveActiveLabel.label || effectiveActiveLabel.category}
+                  onSelect={(option) =>
+                    setActiveLabel({ category: option.category, label: option.label ?? undefined })
+                  }
+                  options={labelOptions}
+                  isLoading={labelOptionsLoading}
+                  pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
+                    key: Number(k),
+                    option: v,
+                  }))}
+                  hideDot
+                  hideLabel
+                  projectId={projectId}
+                  triggerIcon={Tag}
+                  triggerTitle={
+                    effectiveActiveLabel.label
+                      ? `Set label for new boxes and observations · current: ${
+                          effectiveActiveLabel.label.charAt(0).toUpperCase() +
+                          effectiveActiveLabel.label.slice(1).replace(/[_-]+/g, " ")
+                        }`
+                      : "Set label for new boxes and observations · not set (defaults to animal)"
+                  }
+                />
+              </div>
               {/* Video toggle (for video file rows) */}
               {currentFile.file_type === "video" && (
                 sourceVideos.length > 1 ? (
@@ -942,11 +1009,7 @@ export function EventDetailModal({
                               : "Play video"
                         }
                       >
-                        {viewMode === "video" ? (
-                          <ImageIcon className="h-4 w-4" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
+                        <Play className="h-4 w-4" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent side="right" className="w-48 p-2">
@@ -993,11 +1056,7 @@ export function EventDetailModal({
                           : "Play video"
                     }
                   >
-                    {viewMode === "video" ? (
-                      <ImageIcon className="h-4 w-4" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
+                    <Play className="h-4 w-4" />
                   </Button>
                 )
               )}
@@ -1234,8 +1293,8 @@ export function EventDetailModal({
                       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
                     }}
                     imageFilter={imageFilter}
-                    defaultCategory={effectiveDrawLabel.category}
-                    defaultLabel={effectiveDrawLabel.label}
+                    defaultCategory={effectiveActiveLabel.category}
+                    defaultLabel={effectiveActiveLabel.label}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
                     zoomFnRef={zoomFnRef}
@@ -1324,9 +1383,6 @@ export function EventDetailModal({
                 <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
                   <div className="truncate">
                     {basename(currentFile.file_path)}
-                    {currentFile.file_type === "video" && currentFile.best_frame_number != null && (
-                      <span> · best frame {currentFile.best_frame_number}</span>
-                    )}
                   </div>
                   <div>
                     {formatCameraDate(currentFile.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
@@ -1356,7 +1412,6 @@ export function EventDetailModal({
                   key: Number(k),
                   option: v,
                 }))}
-                onDraw={() => setDrawMode(true)}
                 onAddBox={handlePromoteHiddenBox}
                 canAddBox={!addBoxMutation.isPending}
                 onMutated={() => {

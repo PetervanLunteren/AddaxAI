@@ -30,7 +30,6 @@ import {
   PILL_BG,
 } from "../../lib/detection-overlay";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
-
 interface VideoPlayerProps {
   file: FileWithDetections;
   detectionThreshold: number;
@@ -58,13 +57,24 @@ export function isPlayableVideo(file: FileWithDetections): boolean {
   );
 }
 
+// Detections that paint onto the video canvas always carry a bbox;
+// event-level observations (null bbox) are filtered out upstream and
+// never reach the renderer. This alias narrows the bbox fields so the
+// canvas math doesn't need null guards at every coordinate.
+type BboxedDetection = DetectionResponse & {
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+};
+
 // ── Canvas overlay drawing (for video export) ─────────────────────
 // Mirrors the SVG overlay rendering using the shared detection-overlay
 // constants, so exported videos match the on-screen appearance.
 
 function drawOverlaysOnCanvas(
   ctx: CanvasRenderingContext2D,
-  dets: DetectionResponse[],
+  dets: BboxedDetection[],
   w: number,
   h: number,
   opacity: number,
@@ -158,7 +168,13 @@ function drawOverlaysOnCanvas(
 
 // ── Component ─────────────────────────────────────────────────────
 
-export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetections, exportFnRef }: VideoPlayerProps) {
+export function VideoPlayer({
+  file,
+  detectionThreshold,
+  sourceVideoId,
+  allDetections,
+  exportFnRef,
+}: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentFrame, setCurrentFrame] = useState<number>(0);
@@ -189,16 +205,21 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
 
   const detections = allDetections ?? file.detections;
 
-  // Group detections by frame_number, filtered by threshold
+  // Group detections by frame_number, filtered by threshold. Event-
+  // level observations (null bbox) never paint onto the canvas — they
+  // surface only in the verification list.
   const detectionsByFrame = useMemo(() => {
-    const map = new Map<number, DetectionResponse[]>();
+    const map = new Map<number, BboxedDetection[]>();
     for (const d of detections) {
-      if (d.confidence < detectionThreshold || d.frame_number == null) continue;
+      if (d.confidence < detectionThreshold) continue;
+      if (d.bbox_x === null) continue;
+      if (d.frame_number == null) continue;
+      const bb = d as BboxedDetection;
       const existing = map.get(d.frame_number);
       if (existing) {
-        existing.push(d);
+        existing.push(bb);
       } else {
-        map.set(d.frame_number, [d]);
+        map.set(d.frame_number, [bb]);
       }
     }
     return map;
@@ -207,7 +228,7 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
   // Find detections for the current video frame, persisting the last-seen
   // detections through frames that have none so boxes don't disappear between
   // analyzed frames.
-  const lastDetectionsRef = useRef<DetectionResponse[]>([]);
+  const lastDetectionsRef = useRef<BboxedDetection[]>([]);
   const lastMatchFrameRef = useRef<number>(0);
 
   const currentDetections = useMemo(() => {
@@ -296,7 +317,7 @@ export function VideoPlayer({ file, detectionThreshold, sourceVideoId, allDetect
     const exportScale = s;
 
     // Independent detection lookup state for the export
-    let lastDets: DetectionResponse[] = [];
+    let lastDets: BboxedDetection[] = [];
     let lastMatch = 0;
 
     const findDets = (frame: number) => {

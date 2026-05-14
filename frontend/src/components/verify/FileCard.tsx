@@ -7,10 +7,10 @@
  * card's top-right corner. Clicking opens FileDetailModal.
  */
 
-import { Video as VideoIcon } from "lucide-react";
+import { Image as ImageIcon, Video as VideoIcon } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
-import { getDetectionColor, getObservationBadge } from "../../lib/detection-utils";
+import { getDetectionColor, getObservationBadge, shouldDrawBbox } from "../../lib/detection-utils";
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import { Badge } from "../ui/badge";
 import { Card, CardContent } from "../ui/card";
@@ -31,17 +31,9 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
   const timeStr = formatCameraTime(file.captured_at_local);
 
   const thumbnailUrl = `${API_BASE_URL}/api/files/${file.id}/image?size=thumb`;
-  // For video tiles the thumbnail is the single `best_frame_path` JPEG,
-  // so only detections from that frame should draw — otherwise every
-  // sampled frame's bboxes pile onto the same still. Image tiles get
-  // the threshold filter unchanged.
-  const dets = file.detections.filter((d) => {
-    if (d.confidence < detectionThreshold) return false;
-    if (file.file_type === "video" && file.best_frame_number != null) {
-      return d.frame_number === file.best_frame_number;
-    }
-    return true;
-  });
+  const dets = file.detections.filter((d) =>
+    shouldDrawBbox(d, file, detectionThreshold),
+  );
 
   // Drop species chips whose display name duplicates an observation
   // badge that's already on this tile (Person / Vehicle). Without this,
@@ -76,14 +68,6 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
             (e.target as HTMLImageElement).style.display = "none";
           }}
         />
-
-        {/* Video marker — this tile renders the video's best-frame JPEG */}
-        {file.file_type === "video" && (
-          <div className="absolute top-2 left-2 bg-black/55 text-white rounded px-1.5 py-0.5 text-[10px] flex items-center gap-1">
-            <VideoIcon className="h-3 w-3" />
-            Video
-          </div>
-        )}
 
         {/* Spotlight + detection overlay. Rendered for every tile,
             including empties: the dim layer keeps brightness uniform
@@ -202,8 +186,23 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
         {file.site_name && (
           <div className="text-sm font-medium truncate">{file.site_name}</div>
         )}
-        <div className="text-xs text-muted-foreground">
-          {dateStr} · {timeStr}
+        <div className="flex items-center justify-between gap-1.5 text-xs text-muted-foreground">
+          <span>
+            {dateStr} · {timeStr}
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-muted-foreground/40 px-1.5 py-0.5 text-[10px] font-medium">
+            {file.file_type === "video" ? (
+              <>
+                <VideoIcon className="h-3 w-3" />
+                Video
+              </>
+            ) : (
+              <>
+                <ImageIcon className="h-3 w-3" />
+                Image
+              </>
+            )}
+          </span>
         </div>
       </CardContent>
     </Card>

@@ -514,6 +514,7 @@ def get_files_for_verify(
                 "favorited": f.favorited,
                 "flagged": f.flagged,
                 "source_video_id": f.source_video_id,
+                "best_frame_number": f.best_frame_number,
                 "detections": [
                     {
                         "id": d.id,

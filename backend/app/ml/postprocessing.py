@@ -458,10 +458,16 @@ def update_database_from_smoothed_results(
     # `img["file"]` directly. Legacy frame rows are removed by the
     # one-shot migration that runs on startup, so we never see them
     # here.
+    # Event-level observations have no bbox and are never produced by
+    # the AI pipeline, so the smoothing/rollup matcher (which keys on
+    # bbox geometry) has nothing to match them against. Excluding them
+    # here keeps the lookup keys total and avoids ever overwriting a
+    # deliberate user observation.
     detections = (
         db.query(Detection)
         .join(File)
         .filter(File.deployment_id == deployment_id)
+        .filter(Detection.bbox_x.isnot(None))
         .all()
     )
 

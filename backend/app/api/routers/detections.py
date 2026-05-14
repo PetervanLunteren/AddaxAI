@@ -21,6 +21,7 @@ from app.api.crud.event_observation import (
 )
 from app.api.schemas.detection import (
     DetectionCreateHuman,
+    DetectionCreateObservation,
     DetectionResponse,
     DetectionUpdate,
 )
@@ -52,6 +53,26 @@ def create_detection(
     Sets classification_method="human", confidence=1.0, job_id=None.
     """
     detection = detection_crud.create_human_detection(db, data)
+    file_crud.recalculate_observation_type(db, data.file_id)
+    _recalculate_max_n(db, [detection.id])
+    return detection
+
+
+@router.post("/observation", response_model=DetectionResponse, status_code=201)
+def create_observation(
+    data: DetectionCreateObservation,
+    db: Session = Depends(get_db),
+):
+    """
+    Create an event-level observation (no bbox).
+
+    Used when a user spots an animal that the AI missed, or that's only
+    visible in a non-best frame of a video — the kind of record
+    Camtrap-DP models as observationLevel="event". Behaves like
+    `create_detection` minus the bbox, with `verified=True` from the
+    start since it's a deliberate user action.
+    """
+    detection = detection_crud.create_observation(db, data)
     file_crud.recalculate_observation_type(db, data.file_id)
     _recalculate_max_n(db, [detection.id])
     return detection

@@ -87,21 +87,27 @@ def get_observation_stats(
     project = db.query(Project).filter(Project.id == project_id).first()
     embedding_model_id = project.embedding_model_id if project else None
 
-    # Embeddability gate: image detections embed unconditionally; video
-    # detections only embed when they sit on the parent video's best
-    # frame (matches `build_embedding_input` in embedding_utils.py).
-    # Non-best-frame video detections are invisible to the Observations
-    # grid and similarity search anyway, so we leave them out of the
+    # Embeddability gate. A detection is embeddable when:
+    #  - it has a bbox (event-level observations are bbox-less and have
+    #    no crop to embed), AND
+    #  - it sits on a pixel surface the embedding worker can read:
+    #    images embed unconditionally; video detections only embed when
+    #    they sit on the parent video's best frame (matches
+    #    `build_embedding_input` in embedding_utils.py).
+    # Non-embeddable detections are invisible to the Observations grid
+    # and similarity search anyway, so we leave them out of the
     # "missing embeddings" count — otherwise the banner would chase a
     # population that `/embed-now` is deliberately designed to skip.
     from sqlalchemy import and_, or_
-    embeddable_clause = or_(
+    has_bbox = Detection.bbox_x.isnot(None)
+    on_embeddable_surface = or_(
         File.file_type == "image",
         and_(
             File.file_type == "video",
             Detection.frame_number == File.best_frame_number,
         ),
     )
+    embeddable_clause = and_(has_bbox, on_embeddable_surface)
 
     total = (
         db.query(func.count(Detection.id))

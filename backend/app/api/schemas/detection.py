@@ -16,23 +16,31 @@ DetectionCategory = Literal["animal", "person", "vehicle"]
 
 
 class DetectionBase(BaseModel):
-    """Base schema with common detection fields."""
+    """Base schema with common detection fields.
+
+    Bounding box fields are nullable to accommodate event-level
+    observations (a user noting "deer seen in this clip" without a
+    frame-anchored ROI). The four coordinates must be all-set or
+    all-null per row; the `validate_bbox_all_or_nothing` validator
+    enforces this. Aligns with Camtrap-DP, which makes bboxX/Y/W/H
+    explicitly optional and supports observationLevel="event".
+    """
 
     category: DetectionCategory = Field(..., description="Detection category")
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="Detection confidence (0.0-1.0)"
     )
-    bbox_x: float = Field(
-        ..., ge=0.0, le=1.0, description="Bounding box top-left X (normalized 0-1)"
+    bbox_x: float | None = Field(
+        None, ge=0.0, le=1.0, description="Bounding box top-left X (normalized 0-1)"
     )
-    bbox_y: float = Field(
-        ..., ge=0.0, le=1.0, description="Bounding box top-left Y (normalized 0-1)"
+    bbox_y: float | None = Field(
+        None, ge=0.0, le=1.0, description="Bounding box top-left Y (normalized 0-1)"
     )
-    bbox_width: float = Field(
-        ..., ge=0.0, le=1.0, description="Bounding box width (normalized 0-1)"
+    bbox_width: float | None = Field(
+        None, ge=0.0, le=1.0, description="Bounding box width (normalized 0-1)"
     )
-    bbox_height: float = Field(
-        ..., ge=0.0, le=1.0, description="Bounding box height (normalized 0-1)"
+    bbox_height: float | None = Field(
+        None, ge=0.0, le=1.0, description="Bounding box height (normalized 0-1)"
     )
     label: str | None = Field(None, max_length=100, description="Label name")
     label_confidence: float | None = Field(
@@ -59,6 +67,24 @@ class DetectionBase(BaseModel):
             raise ValueError("label_confidence requires label to be set")
         return v
 
+    @field_validator("bbox_height")
+    @classmethod
+    def validate_bbox_all_or_nothing(cls, v: float | None, info) -> float | None:
+        """All four bbox coordinates must be set together, or all null.
+        Runs on the last bbox field so the other three are in `info.data`."""
+        present = [
+            info.data.get("bbox_x") is not None,
+            info.data.get("bbox_y") is not None,
+            info.data.get("bbox_width") is not None,
+            v is not None,
+        ]
+        if any(present) and not all(present):
+            raise ValueError(
+                "bbox_x, bbox_y, bbox_width, bbox_height must all be set "
+                "or all be null"
+            )
+        return v
+
 
 class DetectionCreate(DetectionBase):
     """
@@ -80,6 +106,30 @@ class DetectionCreateHuman(BaseModel):
     bbox_y: float = Field(..., ge=0.0, le=1.0)
     bbox_width: float = Field(..., ge=0.0, le=1.0)
     bbox_height: float = Field(..., ge=0.0, le=1.0)
+    label: str | None = Field(None, max_length=100)
+    # Anchors the new box to a video frame so the overlay still
+    # renders it. Null for images.
+    frame_number: int | None = Field(None, ge=0)
+
+
+class DetectionCreateObservation(BaseModel):
+    """Schema for creating an event-level observation (no bbox).
+
+    Used when a user spots an animal in a video clip that the AI missed,
+    or that's only visible in a non-best frame. Per Camtrap-DP this maps
+    to observationLevel="event" with no spatial annotation. One row per
+    individual seen; the user adds the button N times for N animals.
+
+    Deliberately has no `frame_number` field. Observations are file-
+    level facts ("this clip contains a deer"), not frame-level
+    annotations — that's what the AI's bboxed detections are for. The
+    backend hardcodes `frame_number=NULL` so all observations on the
+    same file with the same label collapse into one MaxN group and
+    count additively, matching the Camtrap-DP convention.
+    """
+
+    file_id: str = Field(..., description="ID of the file")
+    category: DetectionCategory = Field(..., description="Detection category")
     label: str | None = Field(None, max_length=100)
 
 

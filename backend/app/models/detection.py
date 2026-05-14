@@ -42,15 +42,20 @@ class Detection(Base):
         String(36), ForeignKey("jobs.id"), nullable=True
     )
 
-    # Detection bounding box (normalized coordinates 0-1)
+    # Detection bounding box (normalized coordinates 0-1). Nullable
+    # because event-level observations — species seen in a video clip
+    # without a frame-anchored ROI — have no spatial annotation. The
+    # four columns are required to be all-set or all-null in practice
+    # (Pydantic + a CHECK constraint below enforce this); we cannot
+    # express the joint nullability in SQLAlchemy's column types alone.
     category: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # "animal", "person", "vehicle"
     confidence: Mapped[float] = mapped_column(Float, nullable=False)  # 0.0 - 1.0
-    bbox_x: Mapped[float] = mapped_column(Float, nullable=False)  # Top-left X
-    bbox_y: Mapped[float] = mapped_column(Float, nullable=False)  # Top-left Y
-    bbox_width: Mapped[float] = mapped_column(Float, nullable=False)
-    bbox_height: Mapped[float] = mapped_column(Float, nullable=False)
+    bbox_x: Mapped[float | None] = mapped_column(Float, nullable=True)  # Top-left X
+    bbox_y: Mapped[float | None] = mapped_column(Float, nullable=True)  # Top-left Y
+    bbox_width: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_height: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Classification results (filled by classification models)
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)

@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circle, Group } from "react-konva";
 import { useMutation } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
-import { getDetectionColor } from "../../lib/detection-utils";
+import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
 import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
@@ -93,20 +93,12 @@ export function AnnotationCanvas({
   const imgHeight = file.height_px || 1;
 
   // For video files: only show detections whose frame_number matches
-  // the best frame the canvas is actually rendering. Without this, every
-  // detection from every sampled frame piles up on the same still and
-  // the overlay looks like double-vision. Matches the filter
-  // EventDetailModal already applies for parity across the verify flows.
-  const filteredDetections = file.detections.filter((d) => {
-    if (d.confidence < detectionThreshold) return false;
-    if (
-      file.file_type === "video" &&
-      file.best_frame_number != null
-    ) {
-      return d.frame_number === file.best_frame_number;
-    }
-    return true;
-  });
+  // the best frame the canvas is actually rendering. Event-level
+  // observations (no bbox) never draw. `shouldDrawBbox` centralises
+  // both gates.
+  const filteredDetections = file.detections.filter((d) =>
+    shouldDrawBbox(d, file, detectionThreshold),
+  );
 
   // Load image — clear immediately to avoid showing old image with new detections,
   // and ignore stale loads from rapid navigation (A → B → C where B's onload
@@ -301,7 +293,12 @@ export function AnnotationCanvas({
   const pixelToNorm = (v: number, dim: number) =>
     v / (dim === imgWidth ? stageSize.width : stageSize.height);
 
-  // Create detection mutation
+  // Create detection mutation. The drawn box is anchored to whatever
+  // pixels the canvas is rendering — for videos that's the best frame,
+  // so we stamp `frame_number = best_frame_number` on the new row.
+  // Without this, `shouldDrawBbox` filters the fresh detection out of
+  // the overlay (null !== best_frame_number) and the user sees the
+  // box disappear as soon as they release the mouse.
   const createMutation = useMutation({
     mutationFn: (box: DrawingBox) => {
       const normX = pixelToNorm(box.x, imgWidth);
@@ -316,6 +313,8 @@ export function AnnotationCanvas({
         bbox_width: Math.max(0, Math.min(1, normW)),
         bbox_height: Math.max(0, Math.min(1, normH)),
         label: defaultLabel,
+        frame_number:
+          file.file_type === "video" ? file.best_frame_number ?? null : null,
       });
     },
     onSuccess: () => onMutated?.(),

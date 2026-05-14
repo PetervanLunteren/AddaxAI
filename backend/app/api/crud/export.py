@@ -798,6 +798,11 @@ def build_camtrap_dp_tables(
             )
 
             # Row order must match _CAMTRAP_OBS_HEADERS exactly.
+            # Event-level observations (no bbox) emit at
+            # observationLevel="event" with empty bbox columns; this is
+            # the canonical Camtrap-DP shape for "species was seen in
+            # this clip without a frame-anchored ROI."
+            has_bbox = detection.bbox_x is not None
             observations_rows.append(
                 [
                     f"{obs_id_prefix}-{detection.id}",    # observationID
@@ -806,7 +811,7 @@ def build_camtrap_dp_tables(
                     event_id,                              # eventID
                     event_start or captured_iso,           # eventStart
                     event_end or captured_iso,             # eventEnd
-                    "media",                               # observationLevel
+                    "media" if has_bbox else "event",      # observationLevel
                     obs_type,                              # observationType
                     "",                                    # cameraSetupType
                     sci_name,                              # scientificName
@@ -818,10 +823,10 @@ def build_camtrap_dp_tables(
                     "",                                    # individualPositionRadius
                     "",                                    # individualPositionAngle
                     "",                                    # individualSpeed
-                    round(detection.bbox_x, 6),            # bboxX
-                    round(detection.bbox_y, 6),            # bboxY
-                    round(detection.bbox_width, 6),        # bboxWidth
-                    round(detection.bbox_height, 6),       # bboxHeight
+                    round(detection.bbox_x, 6) if has_bbox else "",     # bboxX
+                    round(detection.bbox_y, 6) if has_bbox else "",     # bboxY
+                    round(detection.bbox_width, 6) if has_bbox else "", # bboxWidth
+                    round(detection.bbox_height, 6) if has_bbox else "",# bboxHeight
                     method,                                # classificationMethod
                     classified_by,                         # classifiedBy
                     "",                                    # classificationTimestamp
@@ -973,7 +978,7 @@ def _build_datapackage(
             "samplingDesign": "opportunistic",
             "captureMethod": ["activityDetection"],
             "individualAnimals": False,
-            "observationLevel": ["media"],
+            "observationLevel": ["media", "event"],
         },
         "spatial": spatial,
         "temporal": temporal,

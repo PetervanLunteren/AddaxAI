@@ -18,7 +18,7 @@ import { Layers } from "lucide-react";
 
 import { filesApi } from "../../api/files";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getDetectionColor } from "../../lib/detection-utils";
+import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
 
 interface EventCollageProps {
   /** Up to four file IDs from EventSummary.collage_file_ids. Empty
@@ -126,18 +126,10 @@ function EventCollageTile({
   const VW = viewBox.width;
   const VH = viewBox.height;
 
-  // Same filter as FileCard / AnnotationCanvas: a video tile renders
-  // the single best-frame JPEG, so only detections from that frame
-  // should overlay. Without this the events grid stacks every sampled
-  // frame's bboxes on the same still.
   const dets = file
-    ? file.detections.filter((d) => {
-        if (d.confidence < detectionThreshold) return false;
-        if (file.file_type === "video" && file.best_frame_number != null) {
-          return d.frame_number === file.best_frame_number;
-        }
-        return true;
-      })
+    ? file.detections.filter((d) =>
+        shouldDrawBbox(d, file, detectionThreshold),
+      )
     : [];
 
   let boxes: Array<{
@@ -167,7 +159,7 @@ function EventCollageTile({
   const maskId = `m-tile-${fileId}`;
 
   return (
-    <div className={`relative overflow-hidden bg-muted ${className ?? ""}`}>
+    <div className={`relative overflow-hidden bg-muted h-full w-full ${className ?? ""}`}>
       <img
         src={`${API_BASE_URL}/api/files/${fileId}/image?size=thumb`}
         alt=""

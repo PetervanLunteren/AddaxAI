@@ -10,15 +10,21 @@ from app.utils.datetime_serialization import serialize_local_datetime
 
 
 class DetectionResponse(BaseModel):
-    """Detection response schema."""
+    """Detection response schema.
+
+    bbox fields are nullable because event-level observations (species
+    seen in a video clip without a frame-anchored ROI) have no spatial
+    annotation. All four fields are null-together for those rows; AI
+    and user-drawn detections set all four.
+    """
 
     id: str
     category: str
     confidence: float
-    bbox_x: float
-    bbox_y: float
-    bbox_width: float
-    bbox_height: float
+    bbox_x: float | None
+    bbox_y: float | None
+    bbox_width: float | None
+    bbox_height: float | None
     label: str | None
     label_confidence: float | None
     display_name: str | None = None
@@ -87,15 +93,18 @@ class FileUpdate(BaseModel):
 
 
 class FileSummaryDetection(BaseModel):
-    """Minimal detection payload for Files-tab grid overlays."""
+    """Minimal detection payload for Files-tab grid overlays.
+
+    bbox fields nullable for event-level observations — no bbox to
+    overlay on a tile, but the row still belongs to the file. """
 
     id: str
     category: str
     confidence: float
-    bbox_x: float
-    bbox_y: float
-    bbox_width: float
-    bbox_height: float
+    bbox_x: float | None
+    bbox_y: float | None
+    bbox_width: float | None
+    bbox_height: float | None
     label: str | None
     label_taxonomy_id: str | None = None
     # Video detections carry their frame index; image detections have None.
@@ -127,6 +136,11 @@ class FileSummary(BaseModel):
     favorited: bool
     flagged: bool
     source_video_id: str | None
+    # Video rows expose `best_frame_number` so the grid overlay can
+    # filter detections to that one frame (the thumbnail's frame).
+    # Null for images and for any video whose best frame failed to
+    # resolve.
+    best_frame_number: int | None = None
     detections: list[FileSummaryDetection]
 
     @field_serializer("captured_at_local")

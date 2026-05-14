@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Pencil, SquarePlus, Trash2 } from "lucide-react";
+import { Check, Binoculars, SquareDashed, SquarePlus, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { Button } from "../ui/button";
@@ -35,7 +35,6 @@ interface FileVerificationPanelProps {
   openLabelPickerFor?: string | null;
   onLabelPickerOpenChange?: (open: boolean) => void;
   pinnedOptions?: PinnedOption[];
-  onDraw?: () => void;
   onAddBox?: () => void;
   canAddBox?: boolean;
   /**
@@ -57,7 +56,6 @@ export function FileVerificationPanel({
   openLabelPickerFor,
   onLabelPickerOpenChange,
   pinnedOptions,
-  onDraw,
   onAddBox,
   canAddBox,
   onMutated,
@@ -104,12 +102,22 @@ export function FileVerificationPanel({
   const isVideo = file.file_type === "video";
 
   const filteredDetections = useMemo(() => {
-    let dets = file.detections.filter((d) => d.confidence >= detectionThreshold);
-    // For videos, only show detections from the best frame
-    if (isVideo && file.best_frame_number != null) {
-      dets = dets.filter((d) => d.frame_number === file.best_frame_number);
-    }
-    return dets;
+    return file.detections.filter((d) => {
+      if (d.confidence < detectionThreshold) return false;
+      // Event-level observations (no bbox) always surface in the list
+      // regardless of frame, because they live at clip level rather
+      // than frame level. They render with an "observation" icon
+      // instead of a bbox indicator.
+      if (d.bbox_x === null) return true;
+      // Bboxed detections on videos: only the ones from the best
+      // frame are shown, matching what the canvas overlay paints. The
+      // others exist in the data but stay out of the verify list for
+      // now; surfacing them is a separate follow-up.
+      if (isVideo && file.best_frame_number != null) {
+        return d.frame_number === file.best_frame_number;
+      }
+      return true;
+    });
   }, [file.detections, detectionThreshold, isVideo, file.best_frame_number]);
 
   // Build lookup from labelOptions for taxonomy captions
@@ -261,26 +269,29 @@ export function FileVerificationPanel({
 
               {filteredDetections.length === 0 && (
                 <div className="text-center py-4 space-y-2">
-                  <p className="text-xs text-muted-foreground">No detections found.</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <Button variant="outline" size="sm" onClick={onDraw}>
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                      Draw
-                    </Button>
+                  <p className="text-xs text-muted-foreground">
+                    No detections found.
+                  </p>
+                  {canAddBox && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={onAddBox}
-                      disabled={!canAddBox}
                       title="Promote highest below-threshold AI box"
                     >
                       <SquarePlus className="h-3.5 w-3.5 mr-1.5" />
-                      Add
+                      Promote hidden box
                     </Button>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* "Draw box" / "Add observation" create-actions live in
+                the modal toolbar (Pencil / Binoculars icons) with
+                tooltips and keyboard shortcuts (D / N). The
+                AddObservationPopover that listens for N is wired
+                there too — see FileDetailModal / EventDetailModal. */}
 
             {/* Verify button */}
             <div className="px-3 py-3">
@@ -388,7 +399,24 @@ function DetectionItem({
       )}
       onClick={onSelect}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-1">
+        {/* Origin marker: every row tells the user where the
+            detection came from. Bboxed rows get a scan icon (the same
+            shape the canvas paints); bbox-less event-level
+            observations get an eye icon ("seen, no box"). Symmetric
+            visual contract — every row signals its origin, not just
+            the unusual one. */}
+        {detection.bbox_x === null ? (
+          <Binoculars
+            className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+            aria-label="Observation (no bounding box)"
+          />
+        ) : (
+          <SquareDashed
+            className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+            aria-label="Detection with bounding box"
+          />
+        )}
         <LabelPicker
           value={currentLabel}
           displayName={currentDisplayName}

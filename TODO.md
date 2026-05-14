@@ -2,6 +2,18 @@
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
 - [x] Add backups options. 
 - [x] Make embedding count configurable and trackable. 
+
+
+We used to have a gird item for each frame in the captures verification tab. That was the reason we named it Captures, to cover both frames and images. But now after the latets commit we have a single item per video, so it only shows images and videos. Shoudlw e rename it to Files? Or Media? What do you recommend? And also, if we decide to rename it, we shoudl do it properly, and also update the code parameter names etc, pages, filenames, urls, etc. Make it consisntent with the new name. 
+
+How do other platforms use this level? What would you recommend int erms of good UX? 
+
+Now that we have a single gird item for each video and each image on the captures tab (before we had all frames and images in there, so we had to name 
+  it something like captures). Now that we have one item per file, we can rename it to files? Right? Or Media? What do you think is best?  
+
+
+
+
 - [ ] Think about how to solve the frames issue. Check dans email. 
 - [ ] Add different modes at the home screen. Something like
     > Simple mode (Point at folder, select model, get CSV)
@@ -16,7 +28,7 @@
     > It's true 100% of users have a concept projects/deployments, and 100% of users do spatiotemporal analyses, but I would guess that very few of them will do those in AddaxAI unless you write lots and lots and lots and lots and lots of population analysis code that I don't think you want to write, to entirely replace what people do in, e.g., camtrapR, spOccupancy, etc.  Assuming that most this functionality is going to be done in other packages, tracking deployments/projects in AddaxAI is asking users to track all of this in two places, without any direct way of connecting them.
 
     > Along the same lines, I don't see a common scenario where someone would want to export from AddaxAI directly to CamtrapDP... is that a scenario you've seen come up?  That seems outside the scope of what CamtrapDP is intended for; it's a format for (correct) observations, rather than (sometimes-correct) AI predictions.  FWIW I really really really really don't want people to use CamtrapDP to publish datasets that haven't been human-reviewed.
-
+- [ ] Do Sauls feedback
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] ADD ALL MODELS 
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
@@ -64,6 +76,7 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] Verification-status layer on the Map insights page (e.g. dot color = % verified, or filter to deployments still unverified). Requested by Simon for tracking field-work progress across many cameras.
 - [ ] Take the heatmap for deploment timeline feature from AddaxAI Connect
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
+- [ ] Update the exports page to match the 2 col format. Check Connect. 
 
 
 

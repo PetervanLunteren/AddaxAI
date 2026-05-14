@@ -481,10 +481,13 @@ export interface DetectionResponse {
   id: string;
   category: string;
   confidence: number;
-  bbox_x: number;
-  bbox_y: number;
-  bbox_width: number;
-  bbox_height: number;
+  /** All four bbox fields are null together for event-level observations
+   * (a species seen in a video clip without a frame-anchored ROI). For
+   * AI-produced and user-drawn detections they are all set. */
+  bbox_x: number | null;
+  bbox_y: number | null;
+  bbox_width: number | null;
+  bbox_height: number | null;
   label: string | null;
   label_confidence: number | null;
   display_name: string | null;
@@ -586,10 +589,11 @@ export interface FileSummaryDetection {
   id: string;
   category: string;
   confidence: number;
-  bbox_x: number;
-  bbox_y: number;
-  bbox_width: number;
-  bbox_height: number;
+  /** All four bbox fields are null together for event-level observations. */
+  bbox_x: number | null;
+  bbox_y: number | null;
+  bbox_width: number | null;
+  bbox_height: number | null;
   label: string | null;
   label_taxonomy_id: string | null;
   /** Video detections carry their frame index; image detections are null. */
@@ -615,6 +619,9 @@ export interface FileSummary {
   favorited: boolean;
   flagged: boolean;
   source_video_id: string | null;
+  /** Video rows expose this so the grid overlay can filter detections
+   * to the one frame the thumbnail actually shows. Null for images. */
+  best_frame_number: number | null;
   detections: FileSummaryDetection[];
 }
 
@@ -724,6 +731,18 @@ export interface DetectionCreate {
   bbox_y: number;
   bbox_width: number;
   bbox_height: number;
+  label?: string | null;
+  /** Anchors the new box to a frame for videos (so the overlay still
+   * renders it). Null for images. */
+  frame_number?: number | null;
+}
+
+/** Event-level observation: user spots an animal in a clip (or anywhere
+ * else without a bbox). File-level fact; no bbox, no frame_number —
+ * matches Camtrap-DP observationLevel="event". */
+export interface DetectionCreateObservation {
+  file_id: string;
+  category: string;
   label?: string | null;
 }
 

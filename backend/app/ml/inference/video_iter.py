@@ -139,13 +139,35 @@ def pil_to_rgb_array(image: Image.Image) -> np.ndarray:
     return np.array(image)
 
 
-def write_best_frame(image: Image.Image, dest: Path, quality: int = 90) -> None:
+def write_best_frame(
+    image: Image.Image,
+    dest: Path,
+    quality: int = 80,
+    max_dim: int = 1920,
+) -> None:
     """
-    Write the best-frame JPEG to `dest`. Creates parent directories. The
-    quality default matches the legacy `extract_frames_from_video --quality 80`
-    bumped a notch since we now save exactly one JPEG per video.
+    Write the best-frame JPEG to `dest`. Creates parent directories.
+
+    `quality=80` is the visually-indistinguishable sweet spot for JPEG
+    at thumbnail and modal sizes. `max_dim` caps the longest side; 4K
+    cameras get downsampled here because nothing in the UI consumes
+    above 1920 px (modal renders ≤1920, thumbnails ≤320, crop service
+    outputs ≤512). Detection bboxes are normalised so the cap doesn't
+    affect overlay positioning. `optimize=True` and progressive encoding
+    cost negligible CPU at write time and shave a further ~5-10%.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     if image.mode != "RGB":
         image = image.convert("RGB")
-    image.save(str(dest), "JPEG", quality=quality)
+    if max(image.size) > max_dim:
+        # Copy so we never mutate a frame the caller might still hold;
+        # `thumbnail` operates in-place and shrinks only (never upscales).
+        image = image.copy()
+        image.thumbnail((max_dim, max_dim), Image.LANCZOS)
+    image.save(
+        str(dest),
+        "JPEG",
+        quality=quality,
+        optimize=True,
+        progressive=True,
+    )

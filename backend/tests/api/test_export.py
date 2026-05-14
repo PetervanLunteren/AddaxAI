@@ -398,6 +398,54 @@ def test_export_camtrap_dp_blank_row_for_file_without_detections(client, db):
     assert obs_rows[1][2] == f.id
 
 
+def test_export_camtrap_dp_writes_event_level_for_no_bbox(client, db):
+    """An event-level observation (bbox null) emits observationLevel='event'
+    and blank bbox columns. Aligned with the Camtrap-DP standard, which
+    makes bboxX/Y/W/H optional and supports event-level rows."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=1.0,
+        label="deer",
+        bbox_x=None,
+        bbox_y=None,
+        bbox_width=None,
+        bbox_height=None,
+        classification_method="human",
+        verified=True,
+    )
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        headers, *obs_rows = csv.reader(
+            io.StringIO(zf.read("observations.csv").decode())
+        )
+
+    # Find the column indexes by name so the test survives header reorders.
+    level_i = headers.index("observationLevel")
+    bx_i = headers.index("bboxX")
+    by_i = headers.index("bboxY")
+    bw_i = headers.index("bboxWidth")
+    bh_i = headers.index("bboxHeight")
+    method_i = headers.index("classificationMethod")
+
+    assert len(obs_rows) == 1
+    row = obs_rows[0]
+    assert row[level_i] == "event"
+    assert row[bx_i] == row[by_i] == row[bw_i] == row[bh_i] == ""
+    assert row[method_i] == "human"
+
+
 # ---------------------------------------------------------------------------
 # Unit tests for the pure serializers
 # ---------------------------------------------------------------------------

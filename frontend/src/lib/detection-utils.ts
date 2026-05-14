@@ -17,6 +17,48 @@ export function getDetectionColor(detection: {
   return key ? getSpeciesColor(key) : getCategoryColor(detection.category);
 }
 
+/**
+ * Whether a detection should render as a bounding box on a given file's
+ * visible image. Three gates, in priority order:
+ *
+ *  1. Confidence must meet the project's detection threshold.
+ *  2. The detection must have a bbox — event-level observations are
+ *     bbox-less by design and never draw.
+ *  3. For videos, the detection must be on the frame the JPEG actually
+ *     renders (the best frame). Non-best-frame AI detections still
+ *     exist in the data and surface in the verification list, but they
+ *     don't paint onto the canvas of an unrelated frame.
+ *
+ * Centralised so every grid tile / canvas / modal applies the same
+ * rules; without this, regressions slipped in tile-by-tile.
+ */
+export function shouldDrawBbox<
+  D extends {
+    confidence: number;
+    bbox_x: number | null;
+    bbox_y: number | null;
+    bbox_width: number | null;
+    bbox_height: number | null;
+    frame_number: number | null;
+  },
+>(
+  detection: D,
+  file: { file_type: string; best_frame_number: number | null },
+  detectionThreshold: number,
+): detection is D & {
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+} {
+  if (detection.confidence < detectionThreshold) return false;
+  if (detection.bbox_x === null) return false;
+  if (file.file_type === "video" && file.best_frame_number != null) {
+    return detection.frame_number === file.best_frame_number;
+  }
+  return true;
+}
+
 /** Get display name for a detection, with capitalized fallback. */
 export function getDetectionDisplayName(detection: {
   display_name?: string | null;

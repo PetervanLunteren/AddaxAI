@@ -10,7 +10,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleHelp, Layers, Loader2 } from "lucide-react";
+import {
+  CircleHelp,
+  Image as ImageIcon,
+  Layers,
+  Loader2,
+  Video as VideoIcon,
+} from "lucide-react";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { projectsApi } from "../api/projects";
@@ -640,18 +646,37 @@ function EventCard({
           )}
         </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">
-            {[
-              event.image_count > 0 && `${event.image_count} ${event.image_count === 1 ? "image" : "images"}`,
-              event.video_count > 0 && `${event.video_count} ${event.video_count === 1 ? "video" : "videos"}`,
-            ].filter(Boolean).join(", ")}
+        {/* Same 3-row footer pattern as FileCard:
+              row 2 — site name (font-medium, own row, omitted when absent)
+              row 3 — date · time on the left, content-summary chip on the right
+            The chip shows what's inside the event: image/video count.
+            Mixed events drop the icon and use the compact "N img + M vid"
+            form because both icons in one chip looks crowded. */}
+        {event.site_name && (
+          <div className="text-sm font-medium truncate">{event.site_name}</div>
+        )}
+        <div className="flex items-center justify-between gap-1.5 text-xs text-muted-foreground">
+          <span>{dateTimeStr}</span>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-muted-foreground/40 px-1.5 py-0.5 text-[10px] font-medium">
+            {event.image_count > 0 && event.video_count === 0 && (
+              <>
+                <ImageIcon className="h-3 w-3" />
+                {event.image_count} {event.image_count === 1 ? "image" : "images"}
+              </>
+            )}
+            {event.video_count > 0 && event.image_count === 0 && (
+              <>
+                <VideoIcon className="h-3 w-3" />
+                {event.video_count} {event.video_count === 1 ? "video" : "videos"}
+              </>
+            )}
+            {event.image_count > 0 && event.video_count > 0 && (
+              <>
+                {event.image_count} img + {event.video_count} vid
+              </>
+            )}
           </span>
-          {event.site_name && (
-            <span className="text-xs text-muted-foreground truncate ml-2 max-w-[120px]">{event.site_name}</span>
-          )}
         </div>
-        <div className="text-xs text-muted-foreground">{dateTimeStr}</div>
       </CardContent>
     </Card>
   );

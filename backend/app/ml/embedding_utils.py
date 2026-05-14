@@ -51,9 +51,17 @@ def build_embedding_input(
 
     entries = []
     skipped_non_best_frame = 0
+    skipped_no_bbox = 0
 
     for det, file in detections:
         if skip_detection_ids and det.id in skip_detection_ids:
+            continue
+
+        # Event-level observations carry no bbox and therefore no crop
+        # for the embedder to read. Skip silently — they're a deliberate
+        # part of the data, not a failure mode.
+        if det.bbox_x is None:
+            skipped_no_bbox += 1
             continue
 
         if file.file_type == "video":
@@ -84,7 +92,8 @@ def build_embedding_input(
     logger.info(
         f"Built embedding input: {len(entries)} detections "
         f"({len(detections)} total; "
-        f"{skipped_non_best_frame} video detections off the best frame skipped)"
+        f"{skipped_non_best_frame} video detections off the best frame skipped; "
+        f"{skipped_no_bbox} event-level observations skipped)"
     )
 
     return {"detections": entries}

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getDetectionColor } from "../../lib/detection-utils";
+import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import type { FileWithDetections, MaxNFrame } from "../../api/types";
 
@@ -102,13 +102,9 @@ export function EventFilmstrip({
                   When there are no detections the mask has no holes,
                   so the layer covers the full image. */}
               {(() => {
-                let dets = file.detections.filter(
-                  (d) => d.confidence >= detectionThreshold
+                const dets = file.detections.filter((d) =>
+                  shouldDrawBbox(d, file, detectionThreshold),
                 );
-                // For videos, only show detections from the best frame
-                if (file.file_type === "video" && file.best_frame_number != null) {
-                  dets = dets.filter((d) => d.frame_number === file.best_frame_number);
-                }
                 const imgW = file.width_px || 1;
                 const imgH = file.height_px || 1;
                 // Compute object-cover transform

@@ -279,13 +279,17 @@ export function DetectionDetailModal({
                 alt="Source image"
                 className="max-w-full max-h-full object-contain"
               />
-              {fullDetection && (() => {
+              {fullDetection && fullDetection.bbox_x !== null && (() => {
+                // Event-level observations carry no bbox and never reach
+                // this modal (the Observations grid excludes them), but
+                // the type system can't see that — the guard above keeps
+                // the canvas math typesafe.
                 const s = Math.max(imgW, imgH) / 1000;
                 const pill = computePillLayout(fullDetection);
                 const bx = fullDetection.bbox_x * imgW;
-                const by = fullDetection.bbox_y * imgH;
-                const bw = fullDetection.bbox_width * imgW;
-                const bh = fullDetection.bbox_height * imgH;
+                const by = (fullDetection.bbox_y ?? 0) * imgH;
+                const bw = (fullDetection.bbox_width ?? 0) * imgW;
+                const bh = (fullDetection.bbox_height ?? 0) * imgH;
                 const pillH = pill.pillHeight * s;
                 const pillY = by - pillH > 0 ? by - pillH : by;
                 const spotlightPath =
