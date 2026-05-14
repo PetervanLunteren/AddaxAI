@@ -56,8 +56,8 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
                 missing other detections.
               </p>
               <p>
-                Want to work by event or by capture instead? Use the Events
-                or Captures tab.
+                Want to work by event or by file instead? Use the Events
+                or Media tab.
               </p>
             </div>
           </section>
@@ -74,7 +74,7 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
               <ul className="list-disc list-inside space-y-1 ml-1">
                 <li>Similarity (typical first): greedy nearest-neighbor walk; similar crops sit side by side.</li>
                 <li>Similarity (outliers first): same walk in reverse; unusual crops show up at the top.</li>
-                <li>Newest / Oldest: by capture date.</li>
+                <li>Newest / Oldest: by file date.</li>
                 <li>Lowest classifier confidence: hardest cases first.</li>
               </ul>
               <p>

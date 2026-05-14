@@ -52,11 +52,10 @@ export const AlertCounters: React.FC<AlertCountersProps> = ({
             <DashboardAboutPopover
               what={
                 <p>
-                  Captures grouped by what is in them. Each capture (still
-                  photo or extracted video frame) lands in exactly one
-                  tile: Animals, People, Vehicles, or Empties. The four
-                  counts add up to the total captures in the filtered
-                  view.
+                  Files grouped by what is in them. Each file (still
+                  photo or video) lands in exactly one tile: Animals,
+                  People, Vehicles, or Empties. The four counts add up
+                  to the total files in the filtered view.
                 </p>
               }
               how={
@@ -71,7 +70,7 @@ export const AlertCounters: React.FC<AlertCountersProps> = ({
             />
           </div>
           <p className="text-sm text-muted-foreground">
-            Captures grouped by what is in them
+            Files grouped by what is in them
           </p>
         </div>
       </CardHeader>

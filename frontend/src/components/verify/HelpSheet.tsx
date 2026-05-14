@@ -85,8 +85,8 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 frames are covered.
               </p>
               <p>
-                Want to work capture by capture instead of by event? Use the
-                Captures tab. Want one detection at a time across the whole
+                Want to work file by file instead of by event? Use the
+                Media tab. Want one detection at a time across the whole
                 project? Use the Observations tab.
               </p>
             </div>

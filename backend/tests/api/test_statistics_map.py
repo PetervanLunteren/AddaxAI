@@ -91,7 +91,7 @@ def _build_fixture(db):
 
 
 def test_per_deployment_trap_nights_sums_to_total(db):
-    """Trap nights is folder-aware and driven by actual file captures.
+    """Trap nights is folder-aware and driven by actual file rows.
     dep_a has files at Jan 2 and Jan 5 (same folder) -> 4 inclusive days.
     dep_b has a single file at Feb 3 -> 1 day. Total 5."""
     project, _, _, dep_a, dep_b = _build_fixture(db)

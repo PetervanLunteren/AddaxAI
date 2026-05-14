@@ -1073,17 +1073,17 @@ def get_detection_categories(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> DetectionCategories:
-    """Count captures (still images and extracted video frames) per category.
+    """Count files (images and videos) per category.
 
-    Each capture is attributed to a single category by its
+    Each file is attributed to a single category by its
     `observation_type` column, which encodes the priority rule
     animal > human > vehicle > blank (see
     `recalculate_observation_type` in `crud/file.py`). The four counts
-    therefore partition the captures: a photo with both an animal and
+    therefore partition the files: a photo with both an animal and
     a person lands in Animals only, never both. The sum can be at most
-    the total capture count, never above it.
+    the total file count, never above it.
     """
-    capture_types = ("image", "video")
+    file_types = ("image", "video")
 
     query = (
         select(
@@ -1092,7 +1092,7 @@ def get_detection_categories(
         )
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
-        .where(File.file_type.in_(capture_types))
+        .where(File.file_type.in_(file_types))
         .group_by(File.observation_type)
     )
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)

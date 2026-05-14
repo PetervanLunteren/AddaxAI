@@ -166,7 +166,7 @@ function InfoBody({ info }: { info: SiteInfo }) {
           label="Count"
           value={info.deployment_count.toLocaleString()}
         />
-        <Row label="First / last capture" value={firstLast ?? <NotSet />} />
+        <Row label="First / last file" value={firstLast ?? <NotSet />} />
         <Row
           label="Trap nights"
           value={

@@ -158,7 +158,7 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
       <Separator />
 
       <Section title="Dates">
-        <Row label="First / last capture" value={firstLast ?? <NotSet />} />
+        <Row label="First / last file" value={firstLast ?? <NotSet />} />
         <Row
           label="Trap nights"
           value={

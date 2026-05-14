@@ -2,19 +2,7 @@
 - [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
 - [x] Add backups options. 
 - [x] Make embedding count configurable and trackable. 
-
-
-We used to have a gird item for each frame in the captures verification tab. That was the reason we named it Captures, to cover both frames and images. But now after the latets commit we have a single item per video, so it only shows images and videos. Shoudlw e rename it to Files? Or Media? What do you recommend? And also, if we decide to rename it, we shoudl do it properly, and also update the code parameter names etc, pages, filenames, urls, etc. Make it consisntent with the new name. 
-
-How do other platforms use this level? What would you recommend int erms of good UX? 
-
-Now that we have a single gird item for each video and each image on the captures tab (before we had all frames and images in there, so we had to name 
-  it something like captures). Now that we have one item per file, we can rename it to files? Right? Or Media? What do you think is best?  
-
-
-
-
-- [ ] Think about how to solve the frames issue. Check dans email. 
+- [x] Think about how to solve the frames issue. Check dans email. 
 - [ ] Add different modes at the home screen. Something like
     > Simple mode (Point at folder, select model, get CSV)
     > .... [IDK propose name] (Point at folder, select model, write JSON, show postprocesing options like visualise, separte into subfolders, etc. )

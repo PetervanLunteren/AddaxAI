@@ -55,7 +55,7 @@ import { StatusBadgeCluster } from "../components/verify/StatusBadgeCluster";
 
 const EVENTS_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
 
-type VerifyTab = "events" | "captures" | "observations";
+type VerifyTab = "events" | "media" | "observations";
 
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
@@ -154,7 +154,7 @@ export default function VerifyPage() {
   // Tab state from URL
   const rawTab = searchParams.get("tab");
   const activeTab: VerifyTab =
-    rawTab === "captures" || rawTab === "events" ? rawTab : "observations";
+    rawTab === "media" || rawTab === "events" ? rawTab : "observations";
   const setActiveTab = useCallback(
     (tab: VerifyTab) => {
       // Cancel in-flight queries for the tab we are leaving so the browser
@@ -163,7 +163,7 @@ export default function VerifyPage() {
         queryClient.cancelQueries({ queryKey: ["events"] });
         queryClient.cancelQueries({ queryKey: ["event-count-filtered"] });
       }
-      if (tab !== "captures") {
+      if (tab !== "media") {
         queryClient.cancelQueries({ queryKey: ["files-for-verify"] });
         queryClient.cancelQueries({ queryKey: ["files-count-for-verify"] });
         queryClient.cancelQueries({ queryKey: ["files-verification-stats"] });
@@ -215,7 +215,7 @@ export default function VerifyPage() {
     (next: EventFilterParams) => {
       const sp = filtersToSearchParams(next);
       // Preserve tab-related params. Observations is the implicit
-      // default and has no tab= param; Events and Captures keep
+      // default and has no tab= param; Events and Media keep
       // theirs so a filter edit doesn't warp the user back home.
       if (activeTab !== "observations") sp.set("tab", activeTab);
       const mode = searchParams.get("mode");
@@ -369,7 +369,7 @@ export default function VerifyPage() {
           {(
             [
               ["observations", "Observations"],
-              ["captures", "Captures"],
+              ["media", "Media"],
               ["events", "Events"],
             ] as const
           ).map(([tab, label]) => (
@@ -388,7 +388,7 @@ export default function VerifyPage() {
         </div>
 
         {/* Tab content */}
-        {activeTab === "captures" ? (
+        {activeTab === "media" ? (
           <FilesTab
             projectId={projectId!}
             filters={filters}

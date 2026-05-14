@@ -1,6 +1,6 @@
 /**
  * Three stacked progress bars showing verification progress for the
- * three verify-tab units: events, captures, and observations.
+ * three verify-tab units: events, media, and observations.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -54,9 +54,9 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
 }) => {
   // Events + Observations rows come from the events stats endpoint, which
   // scopes to events with at least one above-threshold detection (the same
-  // scope the Events tab uses). The Captures row reads the per-capture
-  // verification stats so its total matches the Captures tab even when an
-  // event is otherwise blank — captures are still verifiable items.
+  // scope the Events tab uses). The Media row reads the per-file
+  // verification stats so its total matches the Media tab even when an
+  // event is otherwise blank — files are still verifiable items.
   const filterArgs = {
     site_ids: siteIds ? siteIds.split(",") : undefined,
     date_from: dateFrom,
@@ -67,8 +67,8 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
     queryKey: ["statistics", "verification-progress", "events", projectId, siteIds, dateFrom, dateTo],
     queryFn: () => eventsApi.verificationStats(projectId, filterArgs),
   });
-  const { data: captureStats, isLoading: capturesLoading } = useQuery({
-    queryKey: ["statistics", "verification-progress", "captures", projectId, siteIds, dateFrom, dateTo],
+  const { data: mediaStats, isLoading: mediaLoading } = useQuery({
+    queryKey: ["statistics", "verification-progress", "media", projectId, siteIds, dateFrom, dateTo],
     queryFn: () => filesApi.verificationStats(projectId, filterArgs),
   });
   const { data: labelStats } = useQuery({
@@ -77,12 +77,12 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
       statisticsApi.getVerificationProgressByLabel(projectId, siteIds, dateFrom, dateTo),
   });
 
-  const isLoading = eventsLoading || capturesLoading;
+  const isLoading = eventsLoading || mediaLoading;
   const rows: BarRow[] =
-    eventStats && captureStats
+    eventStats && mediaStats
       ? [
           { label: "Events", verified: eventStats.events_fully_verified, total: eventStats.events_total },
-          { label: "Captures", verified: captureStats.verified_files, total: captureStats.total_files },
+          { label: "Media", verified: mediaStats.verified_files, total: mediaStats.total_files },
           { label: "Observations", verified: eventStats.verified_detections, total: eventStats.total_detections },
         ]
       : [];
@@ -99,7 +99,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                   <p>Verification progress per unit:</p>
                   <ul className="list-disc pl-5 space-y-0.5">
                     <li>Events: files grouped by time.</li>
-                    <li>Captures: stills and video frames.</li>
+                    <li>Media: stills and videos.</li>
                     <li>Observations: AI detections.</li>
                   </ul>
                   <p>
@@ -112,7 +112,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                 <>
                   <p>
                     An event is verified when all its MaxN frames are. A
-                    capture is verified when you mark it. A detection is
+                    file is verified when you mark it. A detection is
                     verified when you confirm or correct its label. The
                     three rows are independent.
                   </p>

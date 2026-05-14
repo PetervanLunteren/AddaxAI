@@ -62,7 +62,7 @@ export function VerifyToolbarIcon({
 interface VerifyProgressPillProps {
   /** 0 to 100. Bar width and the percentage label render from this. */
   pct: number;
-  /** Trailing text, e.g. "events verified" / "captures verified". */
+  /** Trailing text, e.g. "events verified" / "files verified". */
   label: string;
 }
 

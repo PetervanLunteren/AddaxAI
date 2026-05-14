@@ -1421,7 +1421,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Independence interval</FormLabel>
                         <FormDescription className="text-sm">
-                          Consecutive captures at the same camera within this window are merged into one independent event. The count for each event uses MaxN, the peak number of individuals visible in a single image within that event. Affects all statistics retroactively.
+                          Consecutive files at the same camera within this window are merged into one independent event. The count for each event uses MaxN, the peak number of individuals visible in a single image within that event. Affects all statistics retroactively.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">

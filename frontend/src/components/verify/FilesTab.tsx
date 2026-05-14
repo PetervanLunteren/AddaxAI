@@ -1,5 +1,5 @@
 /**
- * FilesTab - per-capture verification workflow ("Captures" tab).
+ * FilesTab - per-file verification workflow ("Media" tab).
  *
  * Shows one tile per still photo and per extracted video frame for a
  * project, with the same filter surface as the Events tab (sites, dates,
@@ -26,8 +26,8 @@ import { FileCard } from "./FileCard";
 import { FileDetailModal } from "./FileDetailModal";
 import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
 import { VerifyFilterBar } from "./VerifyFilterBar";
-import { CapturesHelpSheet } from "./CapturesHelpSheet";
-import { CapturesWelcomePopover } from "./CapturesWelcomePopover";
+import { MediaHelpSheet } from "./MediaHelpSheet";
+import { MediaWelcomePopover } from "./MediaWelcomePopover";
 import { SortSelector } from "./SortSelector";
 import {
   VerifyProgressPill,
@@ -67,11 +67,11 @@ export function FilesTab({
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
-    () => !localStorage.getItem("addaxai:capturesWelcomeDismissed")
+    () => !localStorage.getItem("addaxai:mediaWelcomeDismissed")
   );
   const handleDismissWelcome = useCallback(() => {
     setShowWelcome(false);
-    localStorage.setItem("addaxai:capturesWelcomeDismissed", "1");
+    localStorage.setItem("addaxai:mediaWelcomeDismissed", "1");
   }, []);
 
   const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
@@ -240,7 +240,7 @@ export function FilesTab({
               onFiltersChange(updated);
             }}
           />
-          <VerifyProgressPill pct={pct} label="captures verified" />
+          <VerifyProgressPill pct={pct} label="files verified" />
         </VerifyToolbar>
       )}
 
@@ -253,12 +253,12 @@ export function FilesTab({
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              {isFiltered ? "No captures match your filters" : "No captures yet"}
+              {isFiltered ? "No files match your filters" : "No files yet"}
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
               {isFiltered
-                ? "Try adjusting or clearing your filters to see more captures."
-                : "Captures appear here once you run a deployment analysis."}
+                ? "Try adjusting or clearing your filters to see more files."
+                : "Files appear here once you run a deployment analysis."}
             </p>
             {isFiltered && (
               <Button
@@ -301,7 +301,7 @@ export function FilesTab({
             <span className="text-sm text-muted-foreground">
               Showing {page * PAGE_SIZE + 1}-{page * PAGE_SIZE + files.length}
               {" of "}
-              {isFiltered ? filteredFiles : totalFiles} captures
+              {isFiltered ? filteredFiles : totalFiles} files
               {isFetching && " (loading...)"}
             </span>
             <Button
@@ -324,9 +324,9 @@ export function FilesTab({
         filters={debouncedFilters}
       />
 
-      <CapturesHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <MediaHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
-      <CapturesWelcomePopover
+      <MediaWelcomePopover
         open={showWelcome}
         onDismiss={handleDismissWelcome}
       />

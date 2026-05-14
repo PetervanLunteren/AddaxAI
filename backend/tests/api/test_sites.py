@@ -226,7 +226,7 @@ def test_site_info_happy_path(client, db):
         {"label": "lion", "display_name": None, "count": 2}
     ]
     # Trap nights is folder-aware (sum per deployment of per-folder
-    # (max - min + 1) over actual captures). dep1's 4 files all fall on
+    # (max - min + 1) over actual files). dep1's 4 files all fall on
     # June 5 → 1 night. dep2's single file is July 3 → 1 night. Total 2.
     # The manually-set Deployment.start_date_local / end_date_local are
     # ignored now (they're display-only).

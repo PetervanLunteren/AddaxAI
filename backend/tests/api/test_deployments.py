@@ -309,7 +309,7 @@ def test_deployment_info_happy_path(client, db):
         {"label": "lion", "display_name": None, "count": 3}
     ]
     # Trap nights is folder-aware: sum of (max - min + 1) per folder over
-    # file captures. Here all 5 files live under /fake/ and span June 15
+    # files. Here all 5 files live under /fake/ and span June 15
     # to June 16, so trap_nights = 2 regardless of the manually-set
     # Deployment.start_date_local / end_date_local. Rate = 3 / 2 * 100.
     assert data["trap_nights"] == 2

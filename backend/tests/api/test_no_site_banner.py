@@ -63,8 +63,10 @@ def test_observation_rate_map_reports_missing_sites(db):
     project, _site, _d1, _d2, _dep_null = _seed_project_with_mixed_sites(db)
 
     response = get_observation_rate_map(db, project.id)
-    # Only deployments with a site show up on the map.
-    assert len(response.features) == 2
+    # Both with-site deployments share one site, so the map collapses them
+    # into a single feature with deployment_count=2.
+    assert len(response.features) == 1
+    assert response.features[0].deployment_count == 2
     assert all(f.latitude is not None and f.longitude is not None for f in response.features)
     assert response.deployments_without_site == 1
 

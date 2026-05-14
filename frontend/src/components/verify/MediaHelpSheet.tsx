@@ -1,5 +1,5 @@
 /**
- * Help sheet with comprehensive guide for the Captures tab and modal.
+ * Help sheet with comprehensive guide for the Media tab and modal.
  * Slides in from the left, covering the toolbar area. Mirrors the
  * structure of HelpSheet.tsx (the Events guide) so users can transfer
  * what they learn between tabs.
@@ -30,7 +30,7 @@ import {
 } from "../ui/sheet";
 import { Separator } from "../ui/separator";
 
-interface CapturesHelpSheetProps {
+interface MediaHelpSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -50,14 +50,14 @@ function ToolRow({
   );
 }
 
-export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps) {
+export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Capture verification guide</SheetTitle>
+          <SheetTitle>Media verification guide</SheetTitle>
           <SheetDescription>
-            How to review and verify detections capture by capture
+            How to review and verify detections file by file
           </SheetDescription>
         </SheetHeader>
 
@@ -68,19 +68,18 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Each tile in this tab is one capture: a still photo or a
-                single frame extracted from a video. The AI detects and
-                labels animals, people, and vehicles automatically. Browse
-                here and verify by confirming or correcting the
-                detections.
+                Each tile in this tab is one file: a still photo or a
+                video. The AI detects and labels animals, people, and
+                vehicles automatically. Browse here and verify by
+                confirming or correcting the detections.
               </p>
               <p>
-                This tab verifies at the capture level. A capture counts
-                as verified when you
+                This tab verifies at the file level. A file counts as
+                verified when you
                 press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> on
-                it in the modal: the capture and all its detections are
+                it in the modal: the file and all its detections are
                 marked verified. The progress bar in the toolbar shows
-                how many captures are verified.
+                how many files are verified.
               </p>
               <p>
                 Want to work by event (a group of files captured close
@@ -100,7 +99,7 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
                 Click a tile to open it. The label pill on each box shows
                 what the AI thinks. If the labels look right,
                 press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to
-                verify and jump to the next unverified capture. You only
+                verify and jump to the next unverified file. You only
                 need to correct what the AI got wrong.
               </p>
               <p>
@@ -110,9 +109,9 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">D</code>.
                 Remove false positives
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Del</code>.
-                Mark a capture as empty
+                Mark a file as empty
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">E</code>:
-                this wipes the detections, marks the capture verified, and
+                this wipes the detections, marks the file verified, and
                 jumps to the next.
               </p>
               <p>
@@ -125,7 +124,7 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
                 verify and move on.
               </p>
               <p>
-                Captures that came from a video have
+                Files that came from a video have
                 a <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Video</code> badge
                 on the tile. In the modal,
                 press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">P</code> to
@@ -138,7 +137,7 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
                 the bottom of the sidebar to see every shortcut. You can
                 assign labels to
                 keys <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code> to
-                relabel every detection in a capture with one key.
+                relabel every detection in a file with one key.
               </p>
             </div>
           </section>
@@ -161,7 +160,7 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
               </ToolRow>
               <ToolRow icon={<Play className="h-4 w-4" />}>
                 Toggle between the still frame and video playback (only
-                for captures that came from a video).
+                for files that came from a video).
               </ToolRow>
               <ToolRow icon={<ZoomIn className="h-4 w-4" />}>
                 Zoom in.
@@ -173,7 +172,7 @@ export function CapturesHelpSheet({ open, onOpenChange }: CapturesHelpSheetProps
                 Reset zoom to fit.
               </ToolRow>
               <ToolRow icon={<Scale className="h-4 w-4" />}>
-                Adjust the view threshold for this capture. Local override;
+                Adjust the view threshold for this file. Local override;
                 it does not change the project setting. Lowering it shows
                 lower-confidence detections in the modal.
               </ToolRow>
