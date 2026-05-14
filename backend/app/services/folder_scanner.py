@@ -23,6 +23,7 @@ from PIL.ExifTags import GPSTAGS
 
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from app.utils.media_dates import _DATE_FIELDS as _VIDEO_DATE_FIELDS
 from app.utils.media_dates import extract_video_dates as _shared_extract_video_dates
 
 logger = get_logger(__name__)
@@ -258,13 +259,9 @@ def _extract_date_range(
     2. DateTimeDigitized (36868) - when digitized
     3. DateTime (306) - file modification time in camera
 
-    For videos, tries metadata fields in order:
-    1. CreateDate - most common for camera traps
-    2. DateTimeOriginal - some cameras use this
-    3. MediaCreateDate - MP4 container metadata
-    4. TrackCreateDate - video track metadata
-    5. RIFF:DateTimeOriginal - AVI camera trap metadata
-    6. RIFF:DateCreated - AVI container metadata
+    For videos, tries the exiftool fields listed in
+    app.utils.media_dates._DATE_FIELDS (CreateDate first, then EXIF / MP4 /
+    RIFF fallbacks).
 
     Validates that date range is at least 3 hours (filters out invalid/corrupt timestamps).
 
@@ -329,9 +326,7 @@ def _extract_date_range(
     # Extract dates from videos
     if video_sample:
         validation_log.append(
-            "Videos: Trying CreateDate → DateTimeOriginal"
-            " → MediaCreateDate → TrackCreateDate"
-            " → RIFF:DateTimeOriginal → RIFF:DateCreated"
+            "Videos: trying " + " → ".join(_VIDEO_DATE_FIELDS)
         )
         video_dates = _extract_video_dates(video_sample)
     else:

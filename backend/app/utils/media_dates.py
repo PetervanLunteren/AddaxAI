@@ -24,9 +24,22 @@ _DATE_FIELDS = [
     "RIFF:DateCreated",
 ]
 
+# Placeholder that container date fields hold when a tool (typically
+# ffmpeg) re-encoded the video and never wrote a real timestamp. ExifTool
+# returns the prefix "0000:00:00 00:00:00" verbatim. We treat zero-stamps
+# as a parse failure so the loop keeps trying the remaining fields, and
+# so the warning we log identifies the cause for the user.
+_ZERO_STAMP_PREFIX = "0000:00:00 00:00:00"
+
 
 def _parse_date_string(date_str: str) -> datetime | None:
-    """Parse a date string from exiftool metadata."""
+    """Parse a date string from exiftool metadata, or None on failure.
+
+    The all-zero placeholder is returned as None so the caller can fall
+    through to the next field instead of accepting a garbage date.
+    """
+    if date_str.startswith(_ZERO_STAMP_PREFIX):
+        return None
     try:
         return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
     except ValueError:
@@ -39,15 +52,15 @@ def _parse_date_string(date_str: str) -> datetime | None:
 
 def extract_video_dates(paths: list[Path]) -> dict[Path, datetime]:
     """
-    Extract creation dates from multiple video files using a single exiftool process.
+    Extract creation dates from multiple video files using a single
+    exiftool process.
 
-    Tries metadata fields in order of preference:
-    1. QuickTime:CreateDate — most common for camera traps
-    2. EXIF:DateTimeOriginal — some cameras use this
-    3. QuickTime:MediaCreateDate — MP4 container metadata
-    4. QuickTime:TrackCreateDate — video track metadata
-
-    Files that yield no date are omitted from the returned dict.
+    Tries the fields in ``_DATE_FIELDS`` in order. The first field that
+    parses to a valid datetime wins; malformed or zero-stamp values are
+    skipped and the next field is tried. Files that yield nothing
+    parseable are omitted from the returned dict and a warning is
+    logged identifying the cause (no date fields at all, all fields
+    zero-stamped, or unparseable values).
     """
     if not paths:
         return {}
@@ -60,28 +73,62 @@ def extract_video_dates(paths: list[Path]) -> dict[Path, datetime]:
                 try:
                     metadata_list = et.get_metadata([str(video_path)])
                     if not metadata_list:
+                        logger.warning(
+                            f"No metadata returned by exiftool for "
+                            f"{video_path.name}"
+                        )
                         continue
 
                     metadata = metadata_list[0]
 
-                    date_str = None
+                    date_obj: datetime | None = None
+                    fields_tried: list[tuple[str, str]] = []
                     for field in _DATE_FIELDS:
-                        if field in metadata:
-                            date_str = metadata[field]
+                        if field not in metadata:
+                            continue
+                        value = str(metadata[field])
+                        fields_tried.append((field, value))
+                        date_obj = _parse_date_string(value)
+                        if date_obj is not None:
                             break
 
-                    if date_str:
-                        date_obj = _parse_date_string(date_str)
-                        if date_obj:
-                            date_map[video_path] = date_obj
-                        else:
-                            logger.debug(
-                                f"Invalid date format in {video_path.name}: {date_str}"
-                            )
+                    if date_obj is not None:
+                        date_map[video_path] = date_obj
+                        continue
+
+                    if not fields_tried:
+                        logger.warning(
+                            f"No capture-date fields in {video_path.name}; "
+                            f"tried {_DATE_FIELDS}"
+                        )
+                    elif all(
+                        v.startswith(_ZERO_STAMP_PREFIX)
+                        for _, v in fields_tried
+                    ):
+                        # FFMP in VendorID is ffmpeg's signature. When we see
+                        # it alongside all-zero dates, the file was almost
+                        # certainly re-encoded by ffmpeg and the original
+                        # camera capture time was wiped from the container.
+                        vendor = metadata.get("QuickTime:VendorID")
+                        hint = (
+                            " (re-encoded by ffmpeg, original capture date lost)"
+                            if vendor == "FFMP"
+                            else ""
+                        )
+                        logger.warning(
+                            f"All date fields zero-stamped in "
+                            f"{video_path.name}{hint}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Unparseable date(s) in {video_path.name}: "
+                            f"{fields_tried}"
+                        )
 
                 except Exception as e:
-                    logger.debug(
-                        f"Cannot read metadata from {video_path.name}: {type(e).__name__}: {e}"
+                    logger.warning(
+                        f"Cannot read metadata from {video_path.name}: "
+                        f"{type(e).__name__}: {e}"
                     )
                     continue
 
