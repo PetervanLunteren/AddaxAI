@@ -40,10 +40,10 @@ def test_create_folder_run_auto_name(client):
     assert body["project"]["mode"] == "folder_run"
     assert body["project"]["timezone"] == "UTC"
     assert body["project"]["folder_run_state"] == {
-        "step": "folder",
+        "step": "model",
         "source_folder": "/Volumes/Photos/Kruger_April",
     }
-    assert body["step"] == "folder"
+    assert body["step"] == "model"
     assert body["queue_entry"]["folder_path"] == "/Volumes/Photos/Kruger_April"
     assert body["queue_entry"]["site_id"] is None
     assert body["queue_entry"]["video_count"] == 7
@@ -74,6 +74,84 @@ def test_create_folder_run_rejects_duplicate_name(client):
     assert resp.status_code == 409
 
 
+def test_same_source_folder_resumes_existing_run(client):
+    """Legacy-AddaxAI behaviour: re-selecting an analysed folder
+    returns the existing folder-run project rather than creating a
+    new one. There is no "recent work" list in the UI; this is how
+    users revisit their work."""
+    first = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/resume-me"},
+    ).json()
+    first_id = first["project"]["id"]
+
+    second = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/resume-me"},
+    )
+    assert second.status_code == 201
+    assert second.json()["project"]["id"] == first_id
+
+
+def test_resume_preserves_persisted_step(client):
+    """If the user got to step `save` and then reopens the folder,
+    they should land on `save`, not back at `folder`."""
+    created = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/resume-step"},
+    ).json()
+    run_id = created["project"]["id"]
+
+    client.patch(
+        f"/api/folder-runs/{run_id}/step", json={"step": "save"}
+    )
+
+    resumed = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/resume-step"},
+    ).json()
+    assert resumed["project"]["id"] == run_id
+    assert resumed["step"] == "save"
+
+
+def test_resume_ignores_explicit_name(client):
+    """A second POST with a different explicit name on the same
+    folder still resumes the existing run rather than failing on
+    a duplicate name or creating a parallel project."""
+    first = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/tmp/named-folder",
+            "name": "first-attempt",
+        },
+    ).json()
+
+    second = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/tmp/named-folder",
+            "name": "second-attempt",
+        },
+    ).json()
+
+    assert second["project"]["id"] == first["project"]["id"]
+    # The original name is preserved; we are resuming, not renaming.
+    assert second["project"]["name"] == "first-attempt"
+
+
+def test_different_source_folder_creates_new_run(client):
+    first = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/folder-a"},
+    ).json()
+    second = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/folder-b"},
+    ).json()
+
+    assert first["project"]["id"] != second["project"]["id"]
+
+
 def test_get_folder_run(client):
     created = client.post(
         "/api/folder-runs",
@@ -84,11 +162,94 @@ def test_get_folder_run(client):
     resp = client.get(f"/api/folder-runs/{run_id}")
     assert resp.status_code == 200
     assert resp.json()["project"]["id"] == run_id
-    assert resp.json()["step"] == "folder"
+    assert resp.json()["step"] == "model"
 
 
 def test_get_folder_run_404_for_unknown(client):
     resp = client.get("/api/folder-runs/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_output_preview_endpoint_returns_counts(client, db):
+    """End-to-end: create a run, manually attach a file + detection,
+    and GET the preview. Confirms the response shape matches the
+    Pydantic schema and the underlying compute is wired up."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+    )
+
+    project = make_project(
+        db, name="preview-endpoint", mode="folder_run"
+    )
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        observation_type="animal",
+        size_bytes=1234,
+    )
+    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
+
+    resp = client.post(
+        f"/api/folder-runs/{project.id}/output-preview", json={}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_files"] == 1
+    assert data["image_count"] == 1
+    assert data["video_count"] == 0
+    assert data["total_bytes"] == 1234
+    assert data["files_with_known_size"] == 1
+    assert data["dropped_by_filter"] == 0
+    assert data["in_scope_files"] == 1
+    # Unmapped label → falls back to Other/<label> in the tree, and
+    # to a single-segment "dog" entry in the flat bucket.
+    assert data["by_taxonomic_tree"] == {"Other/dog": 1}
+    assert data["by_flat"] == {"dog": 1}
+    assert data["multi_species_files"] == 0
+
+
+def test_output_preview_honours_excluded_label_ids(client, db):
+    """Excluding the only species drops the file from in-scope."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+    )
+
+    project = make_project(
+        db, name="preview-filter", mode="folder_run"
+    )
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        observation_type="animal",
+        size_bytes=1234,
+    )
+    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
+
+    resp = client.post(
+        f"/api/folder-runs/{project.id}/output-preview",
+        json={"excluded_label_ids": ["dog"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dropped_by_filter"] == 1
+    assert data["in_scope_files"] == 0
+    assert data["by_taxonomic_tree"] == {}
+
+
+def test_output_preview_404_for_research_project(client, db):
+    research = make_project(db, name="research-preview", mode="research")
+
+    resp = client.post(
+        f"/api/folder-runs/{research.id}/output-preview", json={}
+    )
     assert resp.status_code == 404
 
 

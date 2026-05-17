@@ -171,7 +171,10 @@ _CAMTRAP_OBS_HEADERS = [
 
 
 def get_scoped_detection_rows(
-    db: Session, project: Project
+    db: Session,
+    project: Project,
+    *,
+    extra_excluded: list[str] | None = None,
 ) -> list[Row[Any]]:
     """
     Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
@@ -179,6 +182,12 @@ def get_scoped_detection_rows(
 
     LEFT JOIN on Detection: keeps files with zero in-scope detections so
     the caller can emit a blank row.
+
+    ``extra_excluded`` augments ``project.excluded_classes`` with a
+    per-call exclusion list. The folder-run Save step uses this so the
+    user's "exclude these species from outputs" choice on the Save
+    page applies to exports without mutating the project's persistent
+    exclusion list.
     """
     threshold_clause = or_(
         Detection.confidence >= project.detection_threshold,
@@ -207,6 +216,8 @@ def get_scoped_detection_rows(
     )
 
     excluded = [s.lower() for s in (project.excluded_classes or [])]
+    if extra_excluded:
+        excluded = list({*excluded, *(s.lower() for s in extra_excluded)})
     if excluded:
         # Drop animal detections whose taxonomy name OR raw label matches
         # the excluded list (case-insensitive). ``coalesce`` turns null

@@ -24,7 +24,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Play, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Play } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import {
@@ -36,6 +36,7 @@ import {
   CardTitle,
 } from "../../components/ui/card";
 import { AnalysisProgress } from "../../components/analyses/AnalysisProgress";
+import { JobProgressModal } from "../../components/folder-run/JobProgressModal";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 
 import { deploymentQueueApi } from "../../api/deployment-queue";
@@ -171,15 +172,10 @@ export function FolderRunRunStep() {
         )}
 
         {stage === "running" && (
-          <AnalysisProgress
-            phase={progress.phase}
-            phaseProgress={progress.phaseProgress}
-            metrics={progress.metrics}
-            computeDevice={progress.computeDevice}
-            deploymentContext={progress.deploymentContext}
-            message={progress.message}
-            hideDeploymentHeader
-          />
+          <p className="text-sm text-muted-foreground">
+            Analysis is running. A progress dialog will stay on
+            screen until it's done.
+          </p>
         )}
 
         {stage === "done" && (
@@ -234,20 +230,7 @@ export function FolderRunRunStep() {
             <Play className="h-4 w-4" />
             {stage === "idle" ? "Start analysis" : "Try again"}
           </Button>
-        ) : stage === "running" ? (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setIsCancelling(true);
-              progress.cancel();
-            }}
-            disabled={isCancelling}
-            className="gap-2"
-          >
-            <X className="h-4 w-4" />
-            {isCancelling ? "Cancelling..." : "Cancel"}
-          </Button>
-        ) : (
+        ) : stage === "done" ? (
           <Button
             onClick={() => navigate(`/folder-runs/${runId}/review`)}
             className="gap-2"
@@ -255,8 +238,28 @@ export function FolderRunRunStep() {
           >
             Continue
           </Button>
-        )}
+        ) : null}
       </CardFooter>
+
+      <JobProgressModal
+        open={stage === "running"}
+        title="Running analysis"
+        isCancelling={isCancelling}
+        onCancel={() => {
+          setIsCancelling(true);
+          progress.cancel();
+        }}
+      >
+        <AnalysisProgress
+          phase={progress.phase}
+          phaseProgress={progress.phaseProgress}
+          metrics={progress.metrics}
+          computeDevice={progress.computeDevice}
+          deploymentContext={progress.deploymentContext}
+          message={progress.message}
+          hideDeploymentHeader
+        />
+      </JobProgressModal>
     </Card>
   );
 }

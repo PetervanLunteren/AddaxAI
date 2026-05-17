@@ -3,31 +3,6 @@
 - [x] Add backups options. 
 - [x] Make embedding count configurable and trackable. 
 - [x] Think about how to solve the frames issue. Check dans email. 
-
-
-
-This task is not about code editing, but about designing a proper UX UI workflow that user understand, and is a simple mind model. 
-
-Context: I've built this repo to replace the legacy AddaxAI (/Users/peter/Documents/Repos/AddaxAI). The current version has a lot extra features, and in the beta tests I'm getting a lot of mesages about confusion, and it being too complex, and that users are missing the good old legacy-AddaxAI simpleness and features. 
-
-My idea was to give the user two options at a home screen. Two modes, as it were. 
-1. Simple mode (propose different namings, this one might not be the best: "Quick analysis"?), that resembles the legacy AddaxAI feel. Simple in the sense that you just point at folder, set settings, run analysis, and after analysis do verification on a subset of your choice, and then move to prostprocessing, which has features like "separate into subfolders", "Visualise and blur people", "Export results". No DB, just JSON writing. 
-2. Projects mode (propose different namings, this one might not be the best: "Project workspace"?), which is what we basically have now. Users can create different projects, run models add deployments, site metadata, etc. Much more features, exports, insights, etc. 
-
-Then let the user decide which one he want to use. 
-
-What do you think about that? This is just an idea, what do you recommend? Two modes? Or stick with one mode but just somehow make it simpler? What is your best recommendation based on your knowledge of the app now and the UX UI patterns. 
-
-I want a recommendation in the form of a UX design with terms and captions, etc. Write it to the projects root in the form of an MD file. 
-
-
-
-
-
-
-
-
-
 - [ ] Add different modes at the home screen. Something like
     > Simple mode (Point at folder, select model, get CSV)
     > .... [IDK propose name] (Point at folder, select model, write JSON, show postprocesing options like visualise, separte into subfolders, etc. )
@@ -41,6 +16,8 @@ I want a recommendation in the form of a UX design with terms and captions, etc.
     > It's true 100% of users have a concept projects/deployments, and 100% of users do spatiotemporal analyses, but I would guess that very few of them will do those in AddaxAI unless you write lots and lots and lots and lots and lots of population analysis code that I don't think you want to write, to entirely replace what people do in, e.g., camtrapR, spOccupancy, etc.  Assuming that most this functionality is going to be done in other packages, tracking deployments/projects in AddaxAI is asking users to track all of this in two places, without any direct way of connecting them.
 
     > Along the same lines, I don't see a common scenario where someone would want to export from AddaxAI directly to CamtrapDP... is that a scenario you've seen come up?  That seems outside the scope of what CamtrapDP is intended for; it's a format for (correct) observations, rather than (sometimes-correct) AI predictions.  FWIW I really really really really don't want people to use CamtrapDP to publish datasets that haven't been human-reviewed.
+- [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
+- [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] ADD ALL MODELS 
@@ -50,7 +27,7 @@ I want a recommendation in the form of a UX design with terms and captions, etc.
 
 
 ## Priority 2
-- [ ] 
+- [ ] Make projects-mode analysis blocking too, like the folder-run flow now does. Today it runs in the background queue worker with the `DeploymentHealthToast` showing progress; user can navigate everywhere while it runs, kick off other deployments, etc. For consistency with folder-run's modal-blocking pattern (and the same "ML uses all your compute, don't do other heavy stuff simultaneously" reasoning), wrap the running deployment in the same blocking modal. Keeps the queue concept (sequential deployments), just makes the active one block the UI. Reuse the JobProgressModal from folder-run.
 
 
 Open a project with completed deployments → should land on Dashboard. - DOES NOT LAND ON DASHBOARD. LANDS ON PROCESS. 

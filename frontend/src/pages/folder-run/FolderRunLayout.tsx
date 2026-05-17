@@ -56,6 +56,7 @@ export function useFolderRun(): FolderRunContextValue {
 function stepFromPath(pathname: string): FolderRunStep {
   if (pathname.endsWith("/model")) return "model";
   if (pathname.endsWith("/run")) return "run";
+  if (pathname.endsWith("/overview")) return "overview";
   if (pathname.endsWith("/review")) return "review";
   if (pathname.endsWith("/save")) return "save";
   return "folder";
@@ -71,6 +72,17 @@ export function FolderRunLayout() {
   });
 
   const currentStep = stepFromPath(window.location.pathname);
+
+  // Steps 4 (Overview), 5 (Review) and 6 (Save) need horizontal
+  // room: Overview embeds the Dashboard, Review embeds the verify
+  // grid, Save renders a two-column options + preview layout. The
+  // form-shaped earlier steps stay narrow.
+  const mainMaxWidth =
+    currentStep === "overview" ||
+    currentStep === "review" ||
+    currentStep === "save"
+      ? "max-w-7xl"
+      : "max-w-3xl";
 
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>
@@ -91,7 +103,9 @@ export function FolderRunLayout() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+        <main
+          className={`mx-auto ${mainMaxWidth} px-4 py-8 sm:px-6 lg:px-8`}
+        >
           <Outlet />
         </main>
       </div>

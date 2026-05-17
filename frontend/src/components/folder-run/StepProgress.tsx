@@ -6,7 +6,7 @@
  * steps are muted. Pure presentational: takes the current step name
  * and computes the visual state.
  *
- * Step ordering is fixed: folder → model → run → review → save.
+ * Step ordering is fixed: folder → model → run → review → overview → save.
  * "Completed" means a step preceding the current one. The flow does
  * not enforce forward-only navigation here; that lives in the
  * FolderRunLayout (and on the backend via folder_run_state.step).
@@ -22,11 +22,12 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { id: "folder", label: "Choose folder" },
-  { id: "model", label: "Choose AI" },
-  { id: "run", label: "Run analysis" },
-  { id: "review", label: "Review results" },
-  { id: "save", label: "Save outputs" },
+  { id: "folder", label: "Folder" },
+  { id: "model", label: "Setup" },
+  { id: "run", label: "Analysis" },
+  { id: "review", label: "Verification" },
+  { id: "overview", label: "Summary" },
+  { id: "save", label: "Output" },
 ];
 
 interface StepProgressProps {

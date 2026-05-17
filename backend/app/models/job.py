@@ -24,6 +24,7 @@ JobType = Literal[
     "postprocessing",
     "re_embedding",
     "camtrap_export",
+    "folder_run_save_outputs",
 ]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 

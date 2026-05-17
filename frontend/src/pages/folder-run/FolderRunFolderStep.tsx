@@ -41,9 +41,12 @@ export function FolderRunFolderStep() {
     mutationFn: folderRunsApi.create,
     onSuccess: (run) => {
       // Prime the cache so step 2 mounts with the run already loaded.
+      // The endpoint resumes when the same folder has been analysed
+      // before (legacy AddaxAI behaviour), so `run.step` may be a
+      // later step; the FolderRunResumeIndex on /folder-runs/:id
+      // takes the user to the right place if they revisit by id.
       queryClient.setQueryData(["folder-run", run.project.id], run);
-      queryClient.invalidateQueries({ queryKey: ["projects", "folder_run"] });
-      navigate(`/folder-runs/${run.project.id}/model`);
+      navigate(`/folder-runs/${run.project.id}/${run.step}`);
     },
   });
 

@@ -41,6 +41,7 @@ import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
 import { FolderRunFolderStep } from "./pages/folder-run/FolderRunFolderStep";
 import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
 import { FolderRunRunStep } from "./pages/folder-run/FolderRunRunStep";
+import { FolderRunOverviewStep } from "./pages/folder-run/FolderRunOverviewStep";
 import { FolderRunReviewStep } from "./pages/folder-run/FolderRunReviewStep";
 import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
@@ -394,6 +395,7 @@ function App() {
               <Route path="folder" element={<FolderRunFolderStep />} />
               <Route path="model" element={<FolderRunModelStep />} />
               <Route path="run" element={<FolderRunRunStep />} />
+              <Route path="overview" element={<FolderRunOverviewStep />} />
               <Route path="review" element={<FolderRunReviewStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
             </Route>

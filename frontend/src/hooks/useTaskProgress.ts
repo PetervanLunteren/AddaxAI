@@ -50,6 +50,11 @@ interface UseTaskProgressOptions {
   onComplete?: (data?: Record<string, unknown>) => void;
   onError?: (message: string) => void;
   onCancelled?: (message: string) => void;
+  /** Fired for every progress event with the raw message. Use this
+   * when a worker emits custom fields under ``data`` that the hook
+   * doesn't surface as first-class state (e.g. per-module job
+   * checklists). */
+  onProgress?: (message: ProgressMessage) => void;
 }
 
 export function useTaskProgress({
@@ -57,6 +62,7 @@ export function useTaskProgress({
   onComplete,
   onError,
   onCancelled,
+  onProgress,
 }: UseTaskProgressOptions) {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
@@ -133,6 +139,13 @@ export function useTaskProgress({
           const data: ProgressMessage = JSON.parse(event.data);
 
           if (data.type === "progress") {
+            // Hand the raw progress event to the consumer first so
+            // job-specific fields under `data.data` can flow into
+            // bespoke state (per-module checklists, etc.) before
+            // the hook updates its own internal state below.
+            if (onProgress) {
+              onProgress(data);
+            }
             // Extract deployment context and update when deployment_index changes
             if (data.data?.deployment_index !== undefined) {
               const newContext = {

@@ -71,11 +71,12 @@ const PROJECT_PAGE_LABELS: Record<string, string> = {
 // Labels for folder-run stepper steps. Same step ids as the
 // FolderRunStep type and the URL slugs.
 const FOLDER_RUN_STEP_LABELS: Record<string, string> = {
-  folder: "Choose folder",
-  model: "Choose AI",
-  run: "Run analysis",
-  review: "Review results",
-  save: "Save outputs",
+  folder: "Folder",
+  model: "Setup",
+  run: "Analysis",
+  review: "Verification",
+  overview: "Summary",
+  save: "Output",
 };
 
 const ROUTES: BreadcrumbRoute[] = [
