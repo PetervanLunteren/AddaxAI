@@ -1,0 +1,615 @@
+"""Combined per-file pass: blur people / vehicles, draw detection boxes.
+
+This module replaces the old ``visualised_images`` + ``blur_people``
+pair. Doing both effects in one open / save round-trip means a user
+who picks both gets one image per source (legacy AddaxAI behaviour),
+not two parallel trees, and writes land directly into the file's
+post-separation destination(s) instead of a siloed wrapper folder.
+
+Effect composition (applies in this order):
+
+1. ``anonymise``: blur every person / vehicle bounding box on the
+   underlying RGB pixels in place. Privacy-safe: the bystander's face
+   or licence plate is gone before the box is drawn over it.
+2. ``draw_bboxes``: composite a translucent rounded-box overlay with
+   a pill label per detection on top of the (possibly blurred) image.
+
+Destination resolution (via ``OutputContext``):
+
+- Separation ran: write to every path the file was placed at. A
+  multi-species file lands in N label folders, so the annotated image
+  ends up in N folders too. Videos write the annotated best frame to
+  ``<sibling>.jpg`` next to each video destination.
+- Separation did not run: write to a fresh destination under
+  ``output_root`` (``<original_name>`` for images, ``<stem>.jpg`` for
+  videos). Collision-suffixed to avoid clobbering an existing file.
+
+EXIF: every saved destination gets the detection tag set written via
+the shared ``ExifBatch``. PIL save strips EXIF from the source, so
+this module writes it back on its own outputs whether or not
+separation already wrote the same tags on the (now-overwritten)
+separated copy.
+
+Source-vs-destination semantics:
+
+- Images: source is ``File.file_path`` (post-separation for ``move``
+  mode, original for ``copy`` / no-separation). Effects are computed
+  on the source pixels and saved to the destination.
+- Videos: source is the per-video best-frame JPEG
+  (``File.best_frame_path``). That path is unaffected by separation
+  (the best frame lives inside ``.addaxai/projects/...``). The
+  annotated JPEG is saved alongside the video destination, NOT
+  written into the video container itself.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from app import __version__ as APP_VERSION
+from app.core.logging_config import get_logger
+from app.models import Deployment, Detection, File, Project
+
+from ._exif_writer import ExifBatch, build_tag_set, is_image_path
+from ._label_filter import file_is_dropped_by_filter
+from ._output_context import OutputContext
+from ._visualisation_style import (
+    BBOX_CORNER_RADIUS,
+    BBOX_OPACITY,
+    BBOX_STROKE_WIDTH,
+    DOT_R,
+    FONT_LG,
+    FONT_SM,
+    LINE_GAP,
+    PILL_BG_RGBA,
+    PILL_PAD_X,
+    PILL_PAD_Y,
+    TEXT_START_X,
+    WHITE,
+    WHITE_DIM,
+    detection_color,
+)
+
+logger = get_logger(__name__)
+
+
+# Detection.category values treated as identifying for the anonymise
+# pass. Animals stay sharp.
+_BLUR_CATEGORIES = ("person", "vehicle")
+
+# Blur radius as a fraction of the image's shorter side. Same value
+# legacy AddaxAI used so testers comparing outputs see an identical
+# blur strength.
+_BLUR_FRACTION = 0.04
+# Floor for very small images so the blur never disappears entirely.
+_MIN_BLUR_RADIUS_PX = 8
+
+
+@dataclass
+class AnnotatedCopiesResult:
+    """Summary of an annotated-copies run.
+
+    ``written_count`` counts placements (one per saved destination),
+    so a multi-species file under separation contributes once per
+    label folder. ``bbox_count`` and ``blurred_box_count`` are
+    per-source totals (boxes drawn / blurred); they do not multiply
+    with placement count because the same set of detections produces
+    every copy.
+    """
+
+    written_count: int = 0
+    bbox_count: int = 0
+    blurred_box_count: int = 0
+    skipped_no_change: int = 0
+    skipped_missing_source: int = 0
+    skipped_excluded: int = 0
+    renamed_count: int = 0
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "written_count": self.written_count,
+            "bbox_count": self.bbox_count,
+            "blurred_box_count": self.blurred_box_count,
+            "skipped_no_change": self.skipped_no_change,
+            "skipped_missing_source": self.skipped_missing_source,
+            "skipped_excluded": self.skipped_excluded,
+            "renamed_count": self.renamed_count,
+            "errors": list(self.errors),
+        }
+
+
+# ─────────────────────────────────────────────────────────────────
+# Source / destination resolution
+# ─────────────────────────────────────────────────────────────────
+
+
+def _source_for(file: File) -> Path | None:
+    """The on-disk file to read pixels from.
+
+    Images use their own path (which is the post-separation location
+    under ``move`` mode, the original under ``copy`` / no separation).
+    Videos use the pre-rendered best-frame JPEG, which sits in the
+    project's ``.addaxai`` cache and is unaffected by separation.
+    """
+    if file.file_type == "image":
+        return Path(file.file_path)
+    if file.file_type == "video":
+        if not file.best_frame_path:
+            return None
+        return Path(file.best_frame_path)
+    return None
+
+
+def _fallback_destination_name(file: File) -> str:
+    """Filename for the no-separation case. Image keeps its name;
+    video's annotated best frame uses ``<stem>.jpg``."""
+    source = Path(file.file_path)
+    if file.file_type == "video":
+        return source.stem + ".jpg"
+    return source.name
+
+
+def _unique_destination(target_dir: Path, name: str) -> tuple[Path, bool]:
+    """Collision-safe destination under ``target_dir``. Appends
+    ``_2``, ``_3``, ... until the name is free. Returns the path
+    plus a flag indicating whether the rename happened."""
+    stem = Path(name).stem
+    suffix = Path(name).suffix
+    candidate = target_dir / name
+    if not candidate.exists():
+        return candidate, False
+    counter = 2
+    while True:
+        candidate = target_dir / f"{stem}_{counter}{suffix}"
+        if not candidate.exists():
+            return candidate, True
+        counter += 1
+
+
+def _video_jpeg_sibling(video_path: Path) -> Path:
+    """For a separated video at ``<dir>/video.mp4`` we want the
+    annotated best frame at ``<dir>/video.jpg``. The video destination
+    already has a unique name (separation collision-suffixed it), so
+    swapping the suffix produces a unique JPEG sibling too."""
+    return video_path.with_suffix(".jpg")
+
+
+def _resolve_destinations(
+    file: File,
+    ctx: OutputContext,
+    result: AnnotatedCopiesResult,
+) -> list[Path]:
+    """Where to write annotated copies for one file.
+
+    Returns the post-separation placements (one per label folder),
+    or a single freshly allocated path under ``output_root`` when
+    separation did not place the file. Videos always end up at a
+    ``.jpg`` sibling of the video destination.
+    """
+    resolved = ctx.resolved_for(file.id)
+    if resolved:
+        if file.file_type == "video":
+            return [_video_jpeg_sibling(p) for p in resolved]
+        return resolved
+
+    name = _fallback_destination_name(file)
+    dest, renamed = _unique_destination(ctx.output_root, name)
+    if renamed:
+        result.renamed_count += 1
+    return [dest]
+
+
+# ─────────────────────────────────────────────────────────────────
+# Blur pass (anonymise)
+# ─────────────────────────────────────────────────────────────────
+
+
+def _detections_to_blur(
+    db: Session, file: File, threshold: float
+) -> list[Detection]:
+    """Person / vehicle detections to blur on this file.
+
+    Threshold + verified override matches the rule used everywhere
+    else: a verified person below threshold is still blurred — the
+    human reviewer confirmed it.
+    """
+    stmt = (
+        select(Detection)
+        .where(Detection.file_id == file.id)
+        .where(Detection.category.in_(_BLUR_CATEGORIES))
+        .where(
+            or_(
+                Detection.confidence >= threshold,
+                Detection.verified == True,  # noqa: E712
+            )
+        )
+        .where(Detection.bbox_x.is_not(None))
+    )
+    if file.file_type == "video":
+        if file.best_frame_number is None:
+            return []
+        stmt = stmt.where(
+            Detection.frame_number == file.best_frame_number
+        )
+    return list(db.execute(stmt).scalars().all())
+
+
+def _blur_radius(image: Image.Image) -> int:
+    short_side = min(image.size)
+    return max(_MIN_BLUR_RADIUS_PX, int(short_side * _BLUR_FRACTION))
+
+
+def _blur_region(
+    image: Image.Image, detection: Detection, radius: int
+) -> None:
+    """Blur a single bbox in place on ``image``."""
+    if (
+        detection.bbox_x is None
+        or detection.bbox_y is None
+        or detection.bbox_width is None
+        or detection.bbox_height is None
+    ):
+        return
+    w, h = image.size
+    x0 = max(0, int(detection.bbox_x * w))
+    y0 = max(0, int(detection.bbox_y * h))
+    x1 = min(w, int((detection.bbox_x + detection.bbox_width) * w))
+    y1 = min(h, int((detection.bbox_y + detection.bbox_height) * h))
+    if x1 <= x0 or y1 <= y0:
+        return
+    region = image.crop((x0, y0, x1, y1))
+    blurred = region.filter(ImageFilter.GaussianBlur(radius=radius))
+    image.paste(blurred, (x0, y0))
+
+
+# ─────────────────────────────────────────────────────────────────
+# Bbox + pill drawing pass
+# ─────────────────────────────────────────────────────────────────
+
+
+def _load_fonts() -> tuple[ImageFont.ImageFont, ImageFont.ImageFont]:
+    """Return ``(small, large)`` fonts for the pill layout."""
+    try:
+        small = ImageFont.load_default(size=FONT_SM)
+        large = ImageFont.load_default(size=FONT_LG)
+    except (TypeError, AttributeError):  # Pillow < 10 fallback
+        default = ImageFont.load_default()
+        small = default
+        large = default
+    return small, large
+
+
+def _text_width(draw: ImageDraw.ImageDraw, text: str, font) -> int:
+    """Pillow-version-agnostic text width."""
+    if hasattr(draw, "textbbox"):
+        left, _, right, _ = draw.textbbox((0, 0), text, font=font)
+        return right - left
+    return draw.textsize(text, font=font)[0]  # type: ignore[attr-defined]
+
+
+@dataclass
+class _PillLayout:
+    category_text: str
+    label_text: str
+    has_label: bool
+    pill_width: int
+    pill_height: int
+    color: tuple[int, int, int]
+
+
+def _compute_pill_layout(
+    draw: ImageDraw.ImageDraw,
+    detection: Detection,
+    font_sm,
+    font_lg,
+) -> _PillLayout:
+    """Pill geometry for one detection. Mirrors the frontend's
+    ``computePillLayout`` (detection-overlay.ts): two-line when a
+    species label is present, single-line otherwise."""
+    color = detection_color(detection.label, detection.category)
+    has_label = bool(detection.label)
+    category_text = (
+        f"{detection.category.capitalize()} "
+        f"{int(round(detection.confidence * 100))}%"
+    )
+    if has_label:
+        display_name = detection.display_name or detection.label
+        label_text = (
+            f"{display_name[:1].upper()}{display_name[1:]} "
+            f"{int(round((detection.label_confidence or detection.confidence) * 100))}%"
+        )
+        pill_height = (
+            PILL_PAD_Y + FONT_SM + LINE_GAP + FONT_LG + PILL_PAD_Y
+        )
+        w1 = _text_width(draw, category_text, font_sm)
+        w2 = _text_width(draw, label_text, font_lg)
+        pill_width = TEXT_START_X + max(w1, w2) + PILL_PAD_X
+    else:
+        label_text = ""
+        pill_height = PILL_PAD_Y + FONT_LG + PILL_PAD_Y
+        tw = _text_width(draw, category_text, font_lg)
+        pill_width = TEXT_START_X + tw + PILL_PAD_X
+    return _PillLayout(
+        category_text=category_text,
+        label_text=label_text,
+        has_label=has_label,
+        pill_width=pill_width,
+        pill_height=pill_height,
+        color=color,
+    )
+
+
+def _draw_one(
+    draw: ImageDraw.ImageDraw,
+    detection: Detection,
+    image_size: tuple[int, int],
+    font_sm,
+    font_lg,
+) -> None:
+    """Draw one bbox + pill onto the RGBA overlay."""
+    if (
+        detection.bbox_x is None
+        or detection.bbox_y is None
+        or detection.bbox_width is None
+        or detection.bbox_height is None
+    ):
+        return
+    img_w, img_h = image_size
+    x0 = max(0, int(detection.bbox_x * img_w))
+    y0 = max(0, int(detection.bbox_y * img_h))
+    x1 = min(img_w, int((detection.bbox_x + detection.bbox_width) * img_w))
+    y1 = min(img_h, int((detection.bbox_y + detection.bbox_height) * img_h))
+    if x1 <= x0 or y1 <= y0:
+        return
+
+    color = detection_color(detection.label, detection.category)
+    stroke_rgba = (color[0], color[1], color[2], int(round(BBOX_OPACITY * 255)))
+
+    draw.rounded_rectangle(
+        (x0, y0, x1, y1),
+        radius=BBOX_CORNER_RADIUS,
+        outline=stroke_rgba,
+        width=BBOX_STROKE_WIDTH,
+    )
+
+    pill = _compute_pill_layout(draw, detection, font_sm, font_lg)
+    pill_x = max(0, min(x0, img_w - pill.pill_width))
+    pill_y = (
+        y0 - pill.pill_height if y0 - pill.pill_height >= 0 else y0
+    )
+
+    draw.rounded_rectangle(
+        (pill_x, pill_y, pill_x + pill.pill_width, pill_y + pill.pill_height),
+        radius=BBOX_CORNER_RADIUS,
+        fill=PILL_BG_RGBA,
+    )
+
+    dot_cx = pill_x + PILL_PAD_X + DOT_R
+    dot_cy = pill_y + pill.pill_height // 2
+    draw.ellipse(
+        (dot_cx - DOT_R, dot_cy - DOT_R, dot_cx + DOT_R, dot_cy + DOT_R),
+        fill=(*color, 255),
+    )
+
+    text_x = pill_x + TEXT_START_X
+    if pill.has_label:
+        draw.text(
+            (text_x, pill_y + PILL_PAD_Y),
+            pill.category_text,
+            fill=WHITE_DIM,
+            font=font_sm,
+        )
+        draw.text(
+            (text_x, pill_y + PILL_PAD_Y + FONT_SM + LINE_GAP),
+            pill.label_text,
+            fill=(*WHITE, 255),
+            font=font_lg,
+        )
+    else:
+        draw.text(
+            (text_x, pill_y + PILL_PAD_Y),
+            pill.category_text,
+            fill=(*WHITE, 255),
+            font=font_lg,
+        )
+
+
+def _detections_to_draw(
+    db: Session,
+    file: File,
+    threshold: float,
+    excluded_label_ids: frozenset[str] | None,
+) -> list[Detection]:
+    """Detections to draw bboxes for.
+
+    Images: every threshold-or-verified detection with a bbox.
+    Videos: only detections anchored to the best frame.
+    Excluded species labels are filtered out so visualised copies do
+    not show boxes for taxa the user removed.
+    """
+    stmt = (
+        select(Detection)
+        .where(Detection.file_id == file.id)
+        .where(
+            or_(
+                Detection.confidence >= threshold,
+                Detection.verified == True,  # noqa: E712
+            )
+        )
+        .where(Detection.bbox_x.is_not(None))
+    )
+    if file.file_type == "video":
+        if file.best_frame_number is None:
+            return []
+        stmt = stmt.where(
+            Detection.frame_number == file.best_frame_number
+        )
+    detections = list(db.execute(stmt).scalars().all())
+    if excluded_label_ids:
+        detections = [
+            d for d in detections
+            if not (
+                (d.label_taxonomy_id and d.label_taxonomy_id in excluded_label_ids)
+                or (d.label and d.label in excluded_label_ids)
+            )
+        ]
+    return detections
+
+
+# ─────────────────────────────────────────────────────────────────
+# Driver
+# ─────────────────────────────────────────────────────────────────
+
+
+def write_annotated_copies(
+    db: Session,
+    project_id: str,
+    ctx: OutputContext,
+    *,
+    draw_bboxes: bool,
+    anonymise: bool,
+    excluded_label_ids: frozenset[str] | None = None,
+) -> AnnotatedCopiesResult:
+    """Apply the requested per-file effects and write the result to
+    every destination the file lives at under ``ctx``.
+
+    At least one of ``draw_bboxes`` / ``anonymise`` must be true;
+    otherwise the worker should not have invoked the module at all.
+    A file with nothing to draw AND nothing to blur (given the
+    selected effects and the threshold + exclusion filters) is
+    skipped — no point in producing an identical copy.
+    """
+    if not draw_bboxes and not anonymise:
+        raise ValueError(
+            "write_annotated_copies needs at least one of "
+            "draw_bboxes / anonymise to be true"
+        )
+
+    project = db.get(Project, project_id)
+    if project is None:
+        raise ValueError(f"Project {project_id!r} not found")
+
+    threshold = project.detection_threshold
+
+    files = db.execute(
+        select(File)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .where(Deployment.project_id == project_id)
+    ).scalars().all()
+
+    result = AnnotatedCopiesResult()
+    font_sm, font_lg = _load_fonts()
+
+    with ExifBatch() as exif_batch:
+        for file in files:
+            # Same file-level exclusion the other modules use, so the
+            # whole save pipeline agrees on which files are dropped.
+            if file_is_dropped_by_filter(
+                db, file, threshold, excluded_label_ids
+            ):
+                result.skipped_excluded += 1
+                continue
+
+            blur_targets = (
+                _detections_to_blur(db, file, threshold)
+                if anonymise
+                else []
+            )
+            bbox_dets = (
+                _detections_to_draw(
+                    db, file, threshold, excluded_label_ids
+                )
+                if draw_bboxes
+                else []
+            )
+
+            if not blur_targets and not bbox_dets:
+                # No visible change would result from saving a copy.
+                result.skipped_no_change += 1
+                continue
+
+            source = _source_for(file)
+            if source is None or not source.exists():
+                result.skipped_missing_source += 1
+                continue
+
+            try:
+                image = Image.open(source).convert("RGB")
+            except OSError as e:
+                result.errors.append(f"Could not open {source}: {e}")
+                logger.exception(
+                    f"annotated_copies: open failed for {source}"
+                )
+                continue
+
+            # Blur first, so the box drawn over a blurred person sits
+            # on the obscured pixels (matches legacy ordering).
+            if blur_targets:
+                radius = _blur_radius(image)
+                for det in blur_targets:
+                    _blur_region(image, det, radius)
+                    result.blurred_box_count += 1
+
+            if bbox_dets:
+                rgba = image.convert("RGBA")
+                overlay = Image.new("RGBA", rgba.size, (0, 0, 0, 0))
+                draw = ImageDraw.Draw(overlay, "RGBA")
+                for det in bbox_dets:
+                    _draw_one(draw, det, rgba.size, font_sm, font_lg)
+                    result.bbox_count += 1
+                image = Image.alpha_composite(rgba, overlay).convert("RGB")
+
+            destinations = _resolve_destinations(file, ctx, result)
+
+            # Tag set is the same across destinations for one source.
+            tag_set = build_tag_set(
+                db,
+                file,
+                project,
+                APP_VERSION,
+                excluded_label_ids=excluded_label_ids,
+            )
+
+            for dest in destinations:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    image.save(dest)
+                except OSError as e:
+                    result.errors.append(
+                        f"Could not save {dest}: {e}"
+                    )
+                    logger.exception(
+                        f"annotated_copies: save failed for {dest}"
+                    )
+                    continue
+
+                result.written_count += 1
+
+                # PIL drops EXIF on save, so re-write the predictions
+                # tag set onto every saved file.
+                if tag_set is not None and is_image_path(dest):
+                    try:
+                        exif_batch.write(dest, tag_set)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(
+                            f"annotated_copies: EXIF write failed "
+                            f"for {dest}: {e}"
+                        )
+
+    logger.info(
+        f"annotated_copies: project={project_id} "
+        f"draw_bboxes={draw_bboxes} anonymise={anonymise} "
+        f"written={result.written_count} "
+        f"bboxes={result.bbox_count} "
+        f"blurred={result.blurred_box_count} "
+        f"no_change={result.skipped_no_change} "
+        f"missing={result.skipped_missing_source} "
+        f"excluded={result.skipped_excluded}"
+    )
+    return result

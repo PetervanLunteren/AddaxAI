@@ -318,16 +318,18 @@ def _build_readme_text(
     lines.append(_section("Output manifest"))
     lines.append(
         "  README.txt                          this file\n"
-        "  separated/<label>/...               files grouped by species\n"
-        "  visualised/<file>.jpg               copies with bounding boxes\n"
-        "  blurred/<file>.jpg                  privacy-safe copies\n"
-        "  exif-tagged/<file>.jpg              copies with EXIF metadata\n"
+        "  <label>/...                         files grouped by species\n"
+        "                                      (when separation was enabled)\n"
+        "  <file>.jpg                          annotated copies with boxes\n"
+        "                                      drawn and / or people blurred\n"
+        "                                      (when separation was off)\n"
         "  observations.csv                    flat observation rows\n"
         "  observations.xlsx                   same rows, Excel format\n"
         "  timelapse_recognition_file.json     canonical recognition JSON\n"
         "\n"
         "  (subfolders / files only appear when the matching output\n"
-        "  option was selected for this run)\n"
+        "  option was selected for this run; EXIF detection tags are\n"
+        "  embedded silently on every image written)\n"
     )
 
     return "".join(lines)

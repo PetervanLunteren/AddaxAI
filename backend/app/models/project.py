@@ -135,14 +135,6 @@ class Project(Base):
         String(64), nullable=True
     )
 
-    # Max detections loaded into the verify-tab Observations grid in a
-    # single similarity sort. Higher values let large projects render
-    # without filters but cost more SQL time, more memory in the
-    # subprocess, and a longer wait. Surfaced in Settings → Verification.
-    observations_max_detections: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=20000
-    )
-
     # Project card thumbnail (absolute path to resized JPEG on disk)
     thumbnail_path: Mapped[str | None] = mapped_column(
         Text, nullable=True

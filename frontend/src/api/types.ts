@@ -44,7 +44,6 @@ export interface ProjectCreate {
   detection_batch_size: number | null;
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
-  observations_max_detections: number;
   mode?: ProjectMode;
   folder_run_state?: Record<string, unknown> | null;
 }
@@ -73,7 +72,6 @@ export interface ProjectUpdate {
   detection_batch_size?: number | null;
   classification_batch_size?: number | null;
   embedding_batch_size?: number | null;
-  observations_max_detections?: number | null;
   /** Promotion sets this to "research". */
   mode?: ProjectMode | null;
   folder_run_state?: Record<string, unknown> | null;
@@ -103,7 +101,6 @@ export interface ProjectResponse {
   detection_batch_size: number | null;
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
-  observations_max_detections: number;
   postprocessing_settings_hash: string | null;
   thumbnail_path: string | null;
   created_at_utc: string;
@@ -882,6 +879,10 @@ export type ObservationSort =
 export interface SortRequest {
   filters?: ObservationFilters;
   sort?: ObservationSort;
+  /** Per-user memory budget for one sort, set in the Observations
+   * view-options popover (localStorage). Backend defaults to 20000
+   * when omitted. */
+  max_detections?: number;
 }
 
 export interface SearchRequest {
@@ -889,6 +890,9 @@ export interface SearchRequest {
   filters?: ObservationFilters;
   limit?: number;
   threshold?: number;
+  /** Same cap the sort endpoint takes; bounds the candidate pool the
+   * subprocess loads. */
+  max_detections?: number;
 }
 
 export interface CropBbox {

@@ -3,7 +3,14 @@
  *
  * Renders its own toolbar icon trigger (Settings2) so it sits inline
  * with the other utility icons in the verify toolbar. Hosts the
- * label-divider toggle and tile-size segmented control.
+ * label-divider toggle, tile-size segmented control, and the per-user
+ * max-detections cap for similarity sort.
+ *
+ * All values are persisted to localStorage by the parent (see
+ * ObservationsTab's persistSetting helper). The max-detections cap
+ * used to live on the project DB row; it moved here because it's a
+ * per-user memory budget that benefits from being one click away
+ * from the feature it controls.
  *
  * Label dividers only group adjacent same-label tiles in similarity
  * mode, so the toggle is auto-disabled for non-similarity sorts. The
@@ -13,15 +20,25 @@
 import { Settings2 } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { Switch } from "../ui/switch";
 import { cn } from "../../lib/utils";
 import type { TileSize } from "./CropGrid";
+import { OBSERVATIONS_MAX_DETECTIONS_OPTIONS } from "./observationsViewOptions";
 
 interface ObservationsSettingsProps {
   showLabelDividers: boolean;
   onShowLabelDividersChange: (v: boolean) => void;
   tileSize: TileSize;
   onTileSizeChange: (v: TileSize) => void;
+  maxDetections: number;
+  onMaxDetectionsChange: (v: number) => void;
   /** When false, label dividers don't group anything — toggle is disabled. */
   similaritySort: boolean;
 }
@@ -33,6 +50,8 @@ export function ObservationsSettings({
   onShowLabelDividersChange,
   tileSize,
   onTileSizeChange,
+  maxDetections,
+  onMaxDetectionsChange,
   similaritySort,
 }: ObservationsSettingsProps) {
   return (
@@ -89,6 +108,30 @@ export function ObservationsSettings({
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-sm">Max detections per sort</p>
+          <p className="text-xs text-muted-foreground">
+            Hard limit on how many detections one similarity sort
+            loads. Narrowing filters first is always faster than
+            raising the cap.
+          </p>
+          <Select
+            value={String(maxDetections)}
+            onValueChange={(v) => onMaxDetectionsChange(parseInt(v, 10))}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {OBSERVATIONS_MAX_DETECTIONS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </PopoverContent>
     </Popover>

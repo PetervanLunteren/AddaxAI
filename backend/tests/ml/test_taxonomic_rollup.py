@@ -492,3 +492,70 @@ def test_top5_only_used_for_sums(taxonomy_lookup, class_id_to_name):
     assert result["label"] == "mammalia"
 
 
+
+
+# ---------------------------------------------------------------------
+# Threshold parameter (regression: was hardcoded to 0.65 in-module
+# despite Project.taxonomic_rollup_threshold being a configurable field)
+# ---------------------------------------------------------------------
+
+
+def test_rollup_threshold_parameter_demotes_a_species_below_it(
+    taxonomy_lookup,
+):
+    """A species-level top-1 just under a custom threshold rolls up to
+    genus, even though it would have stayed at species under the
+    default 0.65. Pins that the threshold parameter is actually read."""
+    class_id_to_name = {"0": "lion", "1": "leopard"}
+    # Top-1 lion at 0.7: above default 0.65 → stays at species.
+    # Bumping threshold to 0.8 pushes it under, forcing rollup.
+    classifications = [["0", 0.7], ["1", 0.15]]
+
+    default = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+    )
+    # Default threshold (0.65) keeps the confident species — no rollup.
+    assert default is None
+
+    tightened = rollup_single_detection(
+        classifications,
+        class_id_to_name,
+        taxonomy_lookup,
+        threshold=0.8,
+    )
+    # 0.7 < 0.8 at species. Lion + leopard share genus panthera so the
+    # genus-level sum (0.85) crosses 0.8 first and rollup stops there.
+    # The threshold parameter demonstrably did its job — the species
+    # answer was suppressed in favour of a broader rank.
+    assert tightened is not None
+    assert tightened["level"] != "species"
+
+
+def test_rollup_threshold_parameter_loosens_kingdom_fallback(
+    taxonomy_lookup,
+):
+    """Spreading confidence across taxonomically unrelated species
+    drives every level below the default threshold; lowering the
+    threshold lets a level cross it instead of falling all the way
+    back to kingdom."""
+    class_id_to_name = {"0": "lion", "1": "zebra", "2": "bird"}
+    # lion 0.3 + zebra 0.25 + bird 0.2 = 0.75 at kingdom; nothing
+    # crosses 0.65 at any narrower level.
+    classifications = [["0", 0.3], ["1", 0.25], ["2", 0.2]]
+
+    default = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup,
+    )
+    assert default is not None
+    assert default["level"] == "kingdom"
+
+    relaxed = rollup_single_detection(
+        classifications,
+        class_id_to_name,
+        taxonomy_lookup,
+        threshold=0.5,
+    )
+    # lion + zebra = 0.55 at class=mammalia under threshold 0.5.
+    assert relaxed is not None
+    assert relaxed["level"] == "class"
+    assert relaxed["label"] == "mammalia"

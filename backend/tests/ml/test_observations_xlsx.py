@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.observations_xlsx import (
     XLSX_FILENAME,
     write_observations_xlsx,
@@ -29,6 +30,10 @@ def _write_placeholder(path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"x")
     return str(path)
+
+
+def _ctx(output_root: Path) -> OutputContext:
+    return OutputContext(output_root=output_root)
 
 
 def test_writes_xlsx_at_canonical_path(db, tmp_path):
@@ -53,7 +58,7 @@ def test_writes_xlsx_at_canonical_path(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = write_observations_xlsx(db, project.id, target)
+    result = write_observations_xlsx(db, project.id, _ctx(target))
 
     assert result.output_path.endswith(XLSX_FILENAME)
     output_path = target / XLSX_FILENAME
@@ -90,11 +95,11 @@ def test_row_count_matches_observation_rows(db, tmp_path):
         )
 
     target = tmp_path / "out"
-    result = write_observations_xlsx(db, project.id, target)
+    result = write_observations_xlsx(db, project.id, _ctx(target))
 
     assert result.row_count == 2
 
 
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_observations_xlsx(db, "no-such-id", tmp_path / "out")
+        write_observations_xlsx(db, "no-such-id", _ctx(tmp_path / "out"))

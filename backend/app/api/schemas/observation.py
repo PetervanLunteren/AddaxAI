@@ -46,20 +46,38 @@ class ObservationFilters(BaseModel):
     verified: bool | None = None
 
 
+_DEFAULT_MAX_DETECTIONS = 20000
+
+
 class SortRequest(BaseModel):
-    """Request body for the Observations sort endpoint."""
+    """Request body for the Observations sort endpoint.
+
+    ``max_detections`` is the per-user memory budget for one sort,
+    set in the Observations view-options popover (localStorage on
+    the client). Defaults to 20000 when the client omits it.
+    """
 
     filters: ObservationFilters = Field(default_factory=ObservationFilters)
     sort: ObservationSort = "similarity"
+    max_detections: int = Field(
+        default=_DEFAULT_MAX_DETECTIONS, ge=1000, le=50000
+    )
 
 
 class SearchRequest(BaseModel):
-    """Request body for the Observations search endpoint."""
+    """Request body for the Observations search endpoint.
+
+    ``max_detections`` mirrors the sort endpoint — same per-user cap
+    drives the underlying neighbour query.
+    """
 
     anchor_detection_id: str
     filters: ObservationFilters = Field(default_factory=ObservationFilters)
     limit: int = Field(100, ge=1, le=500)
     threshold: float = Field(0.0, ge=-1.0, le=1.0)
+    max_detections: int = Field(
+        default=_DEFAULT_MAX_DETECTIONS, ge=1000, le=50000
+    )
 
 
 class CropBbox(BaseModel):

@@ -49,6 +49,7 @@ import {
 } from "./VerifyToolbar";
 import { getDetectionDisplayName } from "../../lib/detection-utils";
 import { ObservationsSettings } from "./ObservationsSettings";
+import { OBSERVATIONS_MAX_DETECTIONS_DEFAULT } from "./observationsViewOptions";
 import { ObservationsKeyboardPopover } from "./ObservationsKeyboardPopover";
 import { ObservationsHelpSheet } from "./ObservationsHelpSheet";
 import { ObservationsWelcomePopover } from "./ObservationsWelcomePopover";
@@ -322,6 +323,22 @@ export function ObservationsTab({
   const [showLabelDividers, _setShowLabelDividers] = useState(savedSettings.showLabelDividers ?? false);
   const setShowLabelDividers = useCallback((v: boolean) => { _setShowLabelDividers(v); persistSetting("showLabelDividers", v); }, [persistSetting]);
 
+  // Max-detections cap for similarity sort. Per-user / per-browser
+  // memory budget; lives next to tileSize and showLabelDividers because
+  // it's tuned at the same surface and persisted the same way.
+  const [maxDetections, _setMaxDetections] = useState<number>(
+    typeof savedSettings.maxDetections === "number"
+      ? savedSettings.maxDetections
+      : OBSERVATIONS_MAX_DETECTIONS_DEFAULT,
+  );
+  const setMaxDetections = useCallback(
+    (v: number) => {
+      _setMaxDetections(v);
+      persistSetting("maxDetections", v);
+    },
+    [persistSetting],
+  );
+
   // Toolbar sheet/popover state (welcome popover only; keyboard and
   // settings are self-contained popovers anchored to their toolbar
   // icons, so they own their own open state).
@@ -447,6 +464,7 @@ export function ObservationsTab({
         {
           filters: toObservationFilters(obsFilters),
           sort: obsSort,
+          max_detections: maxDetections,
         },
         setProgress,
       ),
@@ -468,8 +486,11 @@ export function ObservationsTab({
   });
 
   // Stable key for filter + sort comparison; drives auto re-sort.
+  // maxDetections is part of the key so raising or lowering the cap
+  // in the view-options popover triggers a fresh sort with the new
+  // candidate pool — otherwise the old result would stay stale.
   const filtersKey = JSON.stringify(toObservationFilters(obsFilters));
-  const sortKey = `${filtersKey}|${obsSort}`;
+  const sortKey = `${filtersKey}|${obsSort}|${maxDetections}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
   // Auto-sort on mount and when filters or sort mode change.
@@ -490,6 +511,7 @@ export function ObservationsTab({
           filters: toObservationFilters(obsFilters),
           limit: 100,
           threshold,
+          max_detections: maxDetections,
         },
         setProgress,
       ),
@@ -992,6 +1014,8 @@ export function ObservationsTab({
           onShowLabelDividersChange={setShowLabelDividers}
           tileSize={tileSize}
           onTileSizeChange={setTileSize}
+          maxDetections={maxDetections}
+          onMaxDetectionsChange={setMaxDetections}
           similaritySort={obsSort === "similarity" || obsSort === "similarity_reverse"}
         />
         <VerifyToolbarIcon

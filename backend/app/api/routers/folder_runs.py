@@ -28,7 +28,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, distinct, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
@@ -43,7 +43,6 @@ from app.api.schemas.project import ProjectCreate, ProjectResponse
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.postprocessing_outputs.exif_metadata import ExifMode
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -51,14 +50,14 @@ from app.ml.postprocessing_outputs.separate_folders import (
     SeparateGroupBy,
     SeparateMode,
 )
-from app.models import DeploymentQueue, Project
+from app.models import Deployment, DeploymentQueue, Detection, File, Project
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
 FolderRunStep = Literal[
-    "folder", "model", "run", "review", "overview", "save"
+    "folder", "model", "review", "overview", "save"
 ]
 
 
@@ -74,12 +73,20 @@ class FolderRunCreate(BaseModel):
     optional and defaults to the folder's basename. `video_count` /
     `image_count` come from the same client-side folder scan that
     drives the deployment-queue create flow.
+
+    ``force_new`` is the "Discard and start over" path from the
+    folder-picker step: when set and an existing folder-run project
+    already points at ``source_folder``, the existing project is
+    cascade-deleted (DB rows + on-disk ``.addaxai`` cache) before the
+    fresh one is created. Default ``False`` keeps the legacy
+    create-or-resume behaviour: an existing run is returned as-is.
     """
 
     source_folder: str = Field(..., min_length=1)
     name: str | None = Field(None, min_length=1, max_length=255)
     video_count: int = Field(default=0, ge=0)
     image_count: int = Field(default=0, ge=0)
+    force_new: bool = False
 
 
 class FolderRunStepUpdate(BaseModel):
@@ -107,39 +114,41 @@ class FolderRunResponse(BaseModel):
 class SaveOutputsRequest(BaseModel):
     """Request body for POST /api/folder-runs/{id}/save-outputs.
 
-    `output_dir` is the absolute path the deliverables should land in.
-    Each boolean flag toggles one output module. Only flags that map
-    to a shipped module produce files; others are accepted but report
-    "module not yet implemented" so the UI can render a placeholder.
+    ``output_dir`` is the absolute path the deliverables should land in;
+    files land directly at the root (separation places per-label folders
+    under it, the exports drop their files at the root next to the
+    README). Each boolean flag toggles one output module.
+
+    ``draw_bboxes`` and ``anonymise`` drive the combined per-file
+    annotated-copies pass: either, neither, or both — when both are
+    on, one image per source is written with blurred people/vehicles
+    and detection boxes drawn on top.
     """
 
     output_dir: str = Field(..., min_length=1)
     separate_folders: bool = False
-    # File placement when separate_folders is on. Default is the
-    # safest option; move rewrites File.file_path in the DB so the
-    # verify UI keeps working post-move; symlink may fail on Windows
-    # without Developer Mode (each failed link is recorded per-file).
+    # File placement when separate_folders is on. ``copy`` is the safe
+    # default; ``move`` rewrites ``File.file_path`` in the DB so the
+    # verify UI keeps working post-move, and removes the source from
+    # its original location (the form requires an explicit confirm).
     separate_method: SeparateMode = "copy"
-    # How animal files are grouped under the separated/ root.
-    # `taxonomic` produces a nested Class/Order/Family/Genus/species
-    # tree; `flat` produces a single folder per species label.
+    # How animal files are grouped at the output root. ``taxonomic``
+    # produces a nested Class/Order/Family/Genus/species tree; ``flat``
+    # produces a single folder per species label.
     separate_group_by: SeparateGroupBy = "taxonomic"
     # Label identifiers to exclude from every output. Each entry is
-    # either a LabelTaxonomy.id UUID (for taxonomy-mapped labels) or
-    # a raw Detection.label string (for unmapped labels under the
-    # tree's "Other" branch). Applied as a file-level filter for
-    # Separate / Visualise / Blur / EXIF copies and as a row-level
-    # filter for CSV / XLSX / recognition JSON.
+    # either a LabelTaxonomy.id UUID (for taxonomy-mapped labels) or a
+    # raw Detection.label string (for unmapped labels under the tree's
+    # "Other" branch). Applied as a file-level filter for separate /
+    # annotated_copies and as a row-level filter for CSV / XLSX /
+    # recognition JSON.
     excluded_label_ids: list[str] = Field(default_factory=list)
-    visualised_images: bool = False
-    blur_people: bool = False
-    # Explicit EXIF writer. The other modules already embed detection
-    # metadata into the copies they create silently; this flag is the
-    # opt-in for writing tags onto the source files in place
-    # (`exif_mode="overwrite"`) or producing tagged copies in
-    # `<output>/exif-tagged/` (`exif_mode="copy"`).
-    write_exif: bool = False
-    exif_mode: ExifMode = "copy"
+    # Draw detection bounding boxes + pill labels on the annotated
+    # copies.
+    draw_bboxes: bool = False
+    # Blur person / vehicle detections on the annotated copies — for
+    # sharing datasets without identifying bystanders or vehicles.
+    anonymise: bool = False
     recognition_json: bool = False
     csv: bool = False
     xlsx: bool = False
@@ -180,6 +189,41 @@ class OutputPreviewResponse(BaseModel):
     multi_species_files: int
 
 
+class FolderRunLookupResponse(BaseModel):
+    """Summary the Step 1 folder picker uses to render the
+    "already analysed" notice card.
+
+    The numbers are intentionally cheap to compute — a handful of
+    aggregate queries that run on every folder-picker change.
+
+    ``verified_detection_count`` is the canonical "how much has the
+    user reviewed" number. Marking a File as verified cascades
+    Detection.verified=True onto every visible detection in that
+    file (see ``crud/file.py:update_file``), so this count grows
+    whether the user verifies file-by-file or detection-by-detection
+    in the verify grid.
+
+    Model name fields are resolved through the local manifest; when
+    the model is not installed (catalog drift, fresh install) we
+    surface the raw id so the card still says something useful.
+    """
+
+    id: str
+    name: str
+    created_at_utc: datetime
+    updated_at_utc: datetime
+    detection_model_id: str | None
+    classification_model_id: str | None
+    detection_model_name: str | None
+    classification_model_name: str | None
+    step: FolderRunStep
+    file_count: int
+    detection_count: int
+    species_count: int
+    verified_file_count: int
+    verified_detection_count: int
+
+
 class SaveOutputsResponse(BaseModel):
     """Job-id handle returned when the user kicks off Save outputs.
 
@@ -198,6 +242,29 @@ class SaveOutputsResponse(BaseModel):
 # ----------------------------------------------------------------------
 
 
+def _friendly_model_name(model_id: str | None) -> str | None:
+    """Resolve a model id to its user-facing friendly name.
+
+    Falls back to the raw id when the manifest does not know the model
+    (catalog drift, fresh install, etc.) so the notice card still
+    surfaces something the user recognises.
+    """
+    if not model_id:
+        return None
+    from app.core.config import get_settings
+    from app.ml.manifest_manager import ManifestManager
+
+    settings = get_settings()
+    try:
+        manifest = ManifestManager(
+            settings.user_data_dir / "models"
+        ).get_model(model_id)
+        return manifest.friendly_name or model_id
+    except Exception:
+        # Manifest missing, catalog drift, IO error — surface the id.
+        return model_id
+
+
 def _auto_name(source_folder: str) -> str:
     """Derive a folder-run name from the chosen folder.
 
@@ -208,6 +275,31 @@ def _auto_name(source_folder: str) -> str:
     if basename:
         return basename
     return f"folder-run-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
+
+
+def _unique_project_name(db: Session, base: str) -> str:
+    """Return a Project.name that doesn't already exist in the DB.
+
+    Returns ``base`` if free; otherwise appends `` (2)``, `` (3)``, ...
+    until a free name turns up. The bound at 1000 is purely defensive;
+    we should never get anywhere near it.
+
+    Folder-run auto-names derive from the source folder basename, so a
+    folder previously analysed and then promoted to a research project
+    leaves its name occupied. Without this dedup the user re-picking
+    the same folder hits a 409. The promote flow can rename later in
+    its own dialog if the user wants the cleaner name back.
+    """
+    candidate = base
+    counter = 2
+    while db.scalar(select(Project.id).where(Project.name == candidate)):
+        candidate = f"{base} ({counter})"
+        counter += 1
+        if counter > 1000:
+            raise RuntimeError(
+                f"could not find a free project name starting from {base!r}"
+            )
+    return candidate
 
 
 def _find_existing_run(db: Session, source_folder: str) -> Project | None:
@@ -296,7 +388,7 @@ def create_folder_run(
     project.
     """
     existing = _find_existing_run(db, payload.source_folder)
-    if existing is not None:
+    if existing is not None and not payload.force_new:
         # Re-submitting the folder picker counts as completing the
         # folder step. Bump the persisted step forward to "model" if
         # it was still on "folder" (covers legacy runs created
@@ -315,7 +407,25 @@ def create_folder_run(
         )
         return _load_run(db, existing.id)
 
-    name = payload.name or _auto_name(payload.source_folder)
+    if existing is not None and payload.force_new:
+        # "Discard and start over": cascade-delete the existing run +
+        # its on-disk .addaxai cache before creating fresh. The
+        # destructive confirm dialog on the frontend gates this path.
+        logger.info(
+            f"Discarding existing folder run: project_id={existing.id} "
+            f"folder={payload.source_folder!r}"
+        )
+        crud_project.delete_folder_run(db, existing.id)
+
+    # Auto-named runs dedup transparently against any colliding project
+    # in the DB (including research projects promoted out of an earlier
+    # folder run for the same folder). Explicit names from the caller
+    # are taken as-is and surface a 409 on collision so the user can
+    # rename intentionally.
+    if payload.name:
+        name = payload.name
+    else:
+        name = _unique_project_name(db, _auto_name(payload.source_folder))
 
     # Persist step="model" because the act of creating the run is
     # what completes the folder picker. The user is about to land on
@@ -334,15 +444,16 @@ def create_folder_run(
     try:
         project = crud_project.create_project(db, project_create)
     except Exception as e:
-        # Duplicate names get IntegrityError; we surface a 409 the same
-        # way the regular project create endpoint does.
+        # Duplicate names get IntegrityError; surface a 409. The
+        # auto-named path is dedup'd above, so this only fires when
+        # the caller passed an explicit colliding name.
         from sqlalchemy.exc import IntegrityError
 
         if isinstance(e, IntegrityError):
             db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"A folder run named '{name}' already exists",
+                detail=f"A project named '{name}' already exists",
             ) from e
         raise
 
@@ -363,6 +474,98 @@ def create_folder_run(
         project=ProjectResponse.model_validate(project),
         queue_entry=DeploymentQueueResponse.model_validate(queue_entry),
         step="model",
+    )
+
+
+@router.get("/lookup", response_model=FolderRunLookupResponse | None)
+def lookup_folder_run(
+    folder: str, db: Session = Depends(get_db)
+) -> FolderRunLookupResponse | None:
+    """Probe for an existing folder-run project that points at ``folder``.
+
+    Returns the summary the Step 1 picker needs to render the
+    "already analysed" notice card. Returns ``null`` when no matching
+    run exists — that's the common case, the form just proceeds.
+
+    Declared above ``GET /{run_id}`` so the ``lookup`` literal is
+    routed correctly (FastAPI matches routes in declaration order).
+    """
+    existing = _find_existing_run(db, folder)
+    if existing is None:
+        return None
+
+    state: dict = existing.folder_run_state or {}
+    step: FolderRunStep = state.get("step", "folder")
+
+    # Cheap aggregates: total files, total threshold+verified
+    # detections, distinct species label count, count of files with a
+    # human verification on them. The threshold-or-verified rule is
+    # the same one used everywhere else (DEVELOPERS.md "Detection
+    # threshold and verified override").
+    threshold = existing.detection_threshold
+    deployment_ids_subq = (
+        select(Deployment.id)
+        .where(Deployment.project_id == existing.id)
+        .scalar_subquery()
+    )
+    file_count = db.scalar(
+        select(func.count(File.id)).where(
+            File.deployment_id.in_(deployment_ids_subq)
+        )
+    ) or 0
+    detection_filter = and_(
+        File.deployment_id.in_(deployment_ids_subq),
+        or_(
+            Detection.confidence >= threshold,
+            Detection.verified.is_(True),
+        ),
+    )
+    detection_count = db.scalar(
+        select(func.count(Detection.id))
+        .select_from(Detection)
+        .join(File, Detection.file_id == File.id)
+        .where(detection_filter)
+    ) or 0
+    species_count = db.scalar(
+        select(func.count(distinct(Detection.label)))
+        .select_from(Detection)
+        .join(File, Detection.file_id == File.id)
+        .where(detection_filter)
+        .where(Detection.label.isnot(None))
+    ) or 0
+    verified_file_count = db.scalar(
+        select(func.count(File.id))
+        .where(File.deployment_id.in_(deployment_ids_subq))
+        .where(File.verified.is_(True))
+    ) or 0
+    verified_detection_count = db.scalar(
+        select(func.count(Detection.id))
+        .select_from(Detection)
+        .join(File, Detection.file_id == File.id)
+        .where(File.deployment_id.in_(deployment_ids_subq))
+        .where(Detection.verified.is_(True))
+    ) or 0
+
+    detection_model_name = _friendly_model_name(existing.detection_model_id)
+    classification_model_name = _friendly_model_name(
+        existing.classification_model_id
+    )
+
+    return FolderRunLookupResponse(
+        id=existing.id,
+        name=existing.name,
+        created_at_utc=existing.created_at_utc,
+        updated_at_utc=existing.updated_at_utc,
+        detection_model_id=existing.detection_model_id,
+        classification_model_id=existing.classification_model_id,
+        detection_model_name=detection_model_name,
+        classification_model_name=classification_model_name,
+        step=step,
+        file_count=file_count,
+        detection_count=detection_count,
+        species_count=species_count,
+        verified_file_count=verified_file_count,
+        verified_detection_count=verified_detection_count,
     )
 
 
@@ -446,10 +649,8 @@ async def save_outputs(
                 "separate_folders": payload.separate_folders,
                 "separate_method": payload.separate_method,
                 "separate_group_by": payload.separate_group_by,
-                "visualised_images": payload.visualised_images,
-                "blur_people": payload.blur_people,
-                "write_exif": payload.write_exif,
-                "exif_mode": payload.exif_mode,
+                "draw_bboxes": payload.draw_bboxes,
+                "anonymise": payload.anonymise,
                 "recognition_json": payload.recognition_json,
                 "csv": payload.csv,
                 "xlsx": payload.xlsx,

@@ -16,11 +16,16 @@ from tests.conftest import make_project
 
 @pytest.fixture(autouse=True)
 def mock_manifest_manager():
-    """The folder-run create path runs through the regular project
-    create flow, which validates models against the on-disk manifest.
-    Stub it out so the test does not need the real model directory."""
+    """The folder-run create + lookup paths reach into ManifestManager:
+    create validates models, lookup resolves friendly names. Stub it
+    out so the test does not need the real model directory. The mock
+    manifest exposes both ``model_id`` and ``friendly_name`` as real
+    strings; the lookup endpoint's Pydantic schema requires string
+    types and would otherwise reject MagicMock attributes."""
     mock_mgr = MagicMock()
-    mock_mgr.get_model.return_value = MagicMock(model_id="MD5A-0-0")
+    mock_mgr.get_model.return_value = MagicMock(
+        model_id="MD5A-0-0", friendly_name="MegaDetector 5a"
+    )
     with patch("app.ml.manifest_manager.ManifestManager", return_value=mock_mgr):
         yield mock_mgr
 
@@ -319,3 +324,296 @@ def test_folder_run_visible_when_listing_by_mode(client):
     assert resp.status_code == 200
     names = [p["name"] for p in resp.json()]
     assert "listed-run" in names
+
+
+# ---------------------------------------------------------------------
+# Lookup endpoint + force_new "Discard and start over" flow
+# ---------------------------------------------------------------------
+
+
+def test_lookup_returns_null_when_no_match(client):
+    """The common case: user picks a brand-new folder, lookup says
+    nothing's there, the form proceeds without a notice."""
+    resp = client.get(
+        "/api/folder-runs/lookup", params={"folder": "/tmp/never-seen"}
+    )
+    assert resp.status_code == 200
+    assert resp.json() is None
+
+
+def test_lookup_returns_summary_for_existing_run(client, db):
+    """Lookup should give the Step 1 notice card everything it needs:
+    project id, name, dates, models, step, and a few headline counts."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+    )
+
+    created = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/tmp/lookup-target",
+            "name": "lookup-run",
+        },
+    ).json()
+    run_id = created["project"]["id"]
+
+    # Attach a deployment + files + detections so the count fields
+    # have something meaningful to assert on.
+    from app.models import Project
+    project = db.get(Project, run_id)
+    project.detection_model_id = "MD5A-0-0"
+    project.classification_model_id = "SPECIESNET-0-0"
+    db.commit()
+    dep = make_deployment(
+        db, project_id=run_id, folder_path="/tmp/lookup-target"
+    )
+    f1 = make_file(db, deployment_id=dep.id, verified=True)
+    f2 = make_file(db, deployment_id=dep.id, verified=False)
+    # f1 was verified by the user, so its detection got cascaded to
+    # verified=True too. The make_file fixture writes columns directly
+    # (no cascade), so reflect the production behaviour by setting both
+    # explicitly here.
+    make_detection(
+        db, file_id=f1.id, confidence=0.9, label="dog", verified=True
+    )
+    make_detection(db, file_id=f2.id, confidence=0.85, label="wolf")
+
+    resp = client.get(
+        "/api/folder-runs/lookup",
+        params={"folder": "/tmp/lookup-target"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == run_id
+    assert body["name"] == "lookup-run"
+    assert body["detection_model_id"] == "MD5A-0-0"
+    assert body["classification_model_id"] == "SPECIESNET-0-0"
+    # Friendly names fall back to the id when the manifest doesn't
+    # know the model (the stubbed manifest in this suite returns the
+    # MD5A id), so we just assert presence rather than exact wording.
+    assert body["detection_model_name"]
+    assert body["classification_model_name"]
+    # Resume from step "model" because the user finished the folder picker.
+    assert body["step"] == "model"
+    assert body["file_count"] == 2
+    assert body["detection_count"] == 2
+    assert body["species_count"] == 2
+    assert body["verified_file_count"] == 1
+    # 1 of 2 files verified → its detection got cascaded to verified
+    # too (see crud/file.py:update_file). The other file's detection
+    # is still unverified.
+    assert body["verified_detection_count"] == 1
+
+
+def test_lookup_returns_zero_counts_for_freshly_picked_folder(client):
+    """A run with no deployment yet still has a valid lookup response —
+    counts just sit at zero. Important: a user might pick a folder,
+    close the wizard, reopen later — the lookup must still work even
+    before analysis has produced anything."""
+    created = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/empty-lookup"},
+    ).json()
+    run_id = created["project"]["id"]
+
+    resp = client.get(
+        "/api/folder-runs/lookup",
+        params={"folder": "/tmp/empty-lookup"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == run_id
+    assert body["file_count"] == 0
+    assert body["detection_count"] == 0
+    assert body["species_count"] == 0
+    assert body["verified_file_count"] == 0
+    assert body["verified_detection_count"] == 0
+
+
+def test_create_force_new_replaces_existing_run(client):
+    """force_new=True on a folder with an existing run cascade-deletes
+    the previous project and returns a brand-new one — different id,
+    fresh state."""
+    first = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/replace-me"},
+    ).json()
+    first_id = first["project"]["id"]
+
+    second = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/tmp/replace-me",
+            "force_new": True,
+        },
+    )
+    assert second.status_code == 201
+    second_id = second.json()["project"]["id"]
+    assert second_id != first_id
+
+    # The previous project is gone; loading it 404s.
+    assert client.get(f"/api/folder-runs/{first_id}").status_code == 404
+
+
+def test_create_force_new_with_no_existing_match_still_creates(client):
+    """force_new on a folder that has no previous run is harmless —
+    same as a regular create. Lets the frontend always pass the flag
+    after the user clicked "Discard and start over" without needing
+    to track whether the lookup actually found something."""
+    resp = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/tmp/no-previous",
+            "force_new": True,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["project"]["folder_run_state"]["source_folder"] == (
+        "/tmp/no-previous"
+    )
+
+
+def test_create_default_resumes_existing_run(client):
+    """Sanity: force_new defaults to False, so the legacy
+    create-or-resume behaviour is unchanged for callers that don't
+    pass the flag."""
+    first = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/default-resume"},
+    ).json()
+    first_id = first["project"]["id"]
+
+    second = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/default-resume"},
+    ).json()
+    assert second["project"]["id"] == first_id
+
+
+def test_delete_folder_run_removes_cache_folder(db, tmp_path):
+    """The cascade-delete helper cleans up the ``.addaxai/projects/<pid>/``
+    folder under the deployment's folder_path. Best-effort: missing
+    folders are fine."""
+    from app.api.crud import project as crud_project
+    from tests.conftest import make_deployment, make_project
+
+    source_folder = tmp_path / "source"
+    source_folder.mkdir()
+    project = make_project(db, name="cleanup-test", mode="folder_run")
+    make_deployment(
+        db, project_id=project.id, folder_path=str(source_folder)
+    )
+
+    # Drop a fake artifact tree where the worker would have written it.
+    cache_dir = source_folder / ".addaxai" / "projects" / project.id
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "results.json").write_text("{}")
+
+    deleted = crud_project.delete_folder_run(db, project.id)
+    assert deleted is True
+    assert not cache_dir.exists()
+    # Empty parent dirs are cleaned up so the source folder is left clean.
+    assert not (source_folder / ".addaxai").exists()
+
+
+def test_delete_folder_run_returns_false_for_unknown(db):
+    from app.api.crud import project as crud_project
+
+    assert crud_project.delete_folder_run(db, "does-not-exist") is False
+
+
+def test_lookup_counts_detection_verifications_independently_of_files(
+    client, db
+):
+    """A user can verify individual observations in the verify grid
+    without marking the whole file as done. Those verifications still
+    show up in ``verified_detection_count`` so the Step 1 picker can
+    honestly say "X of Y observations verified" — independent of
+    whether the file-level done flag has been ticked."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+    )
+
+    created = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/det-verified-only"},
+    ).json()
+    run_id = created["project"]["id"]
+    dep = make_deployment(
+        db, project_id=run_id, folder_path="/tmp/det-verified-only"
+    )
+    # Two files, neither File.verified, but every detection on f1 is
+    # human-confirmed.
+    f1 = make_file(db, deployment_id=dep.id, verified=False)
+    f2 = make_file(db, deployment_id=dep.id, verified=False)
+    make_detection(
+        db, file_id=f1.id, confidence=0.9, label="dog", verified=True
+    )
+    make_detection(db, file_id=f2.id, confidence=0.85, label="wolf")
+
+    resp = client.get(
+        "/api/folder-runs/lookup",
+        params={"folder": "/tmp/det-verified-only"},
+    )
+    body = resp.json()
+    assert body["verified_file_count"] == 0
+    assert body["verified_detection_count"] == 1
+    assert body["detection_count"] == 2
+
+
+def test_create_after_promote_auto_dedupes_name(client, db):
+    """Regression: a user analysed /tmp/foo (folder run named "foo"),
+    promoted that to a research project, then re-picked the same
+    folder. The new folder run must NOT 409 — auto-named runs should
+    silently dedup to "foo (2)" so the flow stays zero-friction.
+    Reported by the user during beta testing."""
+    from app.api.crud import project as crud_project
+    from app.api.schemas.project import ProjectUpdate
+
+    first = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/dedupe-after-promote"},
+    ).json()
+    first_id = first["project"]["id"]
+    # The auto-name derives from the folder basename.
+    assert first["project"]["name"] == "dedupe-after-promote"
+
+    # Simulate the promote flow: flip the project's mode + clear the
+    # folder_run_state. Going through the crud helper keeps this in
+    # lockstep with what PromoteDialog actually does.
+    crud_project.update_project(
+        db,
+        first_id,
+        ProjectUpdate(mode="research", folder_run_state=None),
+    )
+
+    second = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/dedupe-after-promote"},
+    )
+    assert second.status_code == 201
+    body = second.json()
+    # New project id (the previous one is now a research project),
+    # name dedup'd with the canonical " (N)" suffix.
+    assert body["project"]["id"] != first_id
+    assert body["project"]["name"] == "dedupe-after-promote (2)"
+
+
+def test_create_with_explicit_colliding_name_still_409s(client):
+    """When the caller passes an explicit name that collides, the
+    409 stands and the message says "project" (not "folder run")
+    because the existing row might be a research project."""
+    client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/explicit-a", "name": "explicit-collide"},
+    )
+    resp = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/explicit-b", "name": "explicit-collide"},
+    )
+    assert resp.status_code == 409
+    assert "project named" in resp.json()["detail"]

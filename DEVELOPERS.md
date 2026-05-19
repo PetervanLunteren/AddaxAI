@@ -59,6 +59,35 @@ Review the generated file before committing. Autogenerate is helpful but imperfe
 
 **Helpers** (in `backend/app/db/migrations.py`): `get_current_revision(engine)`, `get_head_revision()`, `needs_upgrade(engine)`, `stamp_head()`, `upgrade_to_head()`. All alembic imports are local to the function bodies so the module is cheap to import.
 
+**Dropping a column on SQLite: use raw DDL, not batch mode.** Alembic's `op.batch_alter_table(...) as batch: batch.drop_column(...)` is the textbook pattern but it builds its starting-point table from `target_metadata` (the SQLAlchemy models). When you remove the column from the model in the same commit as the migration (the natural workflow), the metadata no longer has the column and the batch flush dies with `KeyError`. `copy_from=sa.Table(name, sa.MetaData(), autoload_with=op.get_bind())` is the documented escape hatch but does not reliably pick up the column on every live DB. Since SQLite 3.35+ (Python 3.13 ships with 3.51) supports native `ALTER TABLE DROP COLUMN`, just write the DDL directly.
+
+**Always guard column drops with a presence check.** Some beta-tester DBs have ended up in states where the alembic stamp disagrees with the live schema (historical `stamp_head` bug, half-applied migration, hand-edited `alembic_version` row). A blind `DROP COLUMN` on a DB that's stamped past the add-column migration but never actually got the column will crash startup. Skip the DDL when the column isn't there — the end state matches what the migration was trying to achieve:
+
+```python
+import sqlalchemy as sa
+from alembic import op
+
+def _projects_columns(bind) -> set[str]:
+    return {c["name"] for c in sa.inspect(bind).get_columns("projects")}
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    if "observations_max_detections" in _projects_columns(bind):
+        op.execute(
+            "ALTER TABLE projects DROP COLUMN observations_max_detections"
+        )
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    if "observations_max_detections" not in _projects_columns(bind):
+        op.execute(
+            "ALTER TABLE projects "
+            "ADD COLUMN observations_max_detections INTEGER NOT NULL DEFAULT 20000"
+        )
+```
+
+One line of DDL, no reflection gymnastics, no batch-mode failure mode, idempotent against drifted DBs. Add-column never needed batch (`op.add_column` works directly). Batch mode is still the right call for type changes and nullability tweaks, which do not have a native single-statement DDL on SQLite.
+
 ## Database backups
 
 The DB at `~/AddaxAI/addaxai.db` holds irreversible work (human verifications). It is the only piece of user state that cannot be rebuilt by re-running analysis, so it gets a backup story. Backups live under `~/AddaxAI/backups/` and use SQLite's online backup API (`sqlite3.Connection.backup`) so they are WAL-safe and produce a single consolidated `.db` file with no `-wal` / `-shm` siblings.

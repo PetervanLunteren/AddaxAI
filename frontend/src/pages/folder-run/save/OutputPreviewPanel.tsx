@@ -52,17 +52,17 @@ export function OutputPreviewPanel({
   runName: string;
   isLoading: boolean;
 }) {
-  const { separate, visualise, exif, exportOpts } = form;
+  const { separate, visualise, anonymise, exportOpts } = form;
 
   const tree = useMemo<{ folders: SubFolder[]; files: FileEntry[] }>(
-    () => buildTree({ preview, separate, visualise, exif, exportOpts }),
-    [preview, separate, visualise, exif, exportOpts],
+    () => buildTree({ preview, separate, visualise, anonymise, exportOpts }),
+    [preview, separate, visualise, anonymise, exportOpts],
   );
 
   const anyPicked =
     separate.enabled ||
     visualise.enabled ||
-    exif.enabled ||
+    anonymise.enabled ||
     (exportOpts.enabled &&
       (exportOpts.csv || exportOpts.xlsx || exportOpts.recognitionJson));
 
@@ -113,66 +113,44 @@ function buildTree({
   preview,
   separate,
   visualise,
-  exif,
+  anonymise,
   exportOpts,
 }: {
   preview: OutputPreview | undefined;
   separate: UseSaveOutputsFormResult["separate"];
   visualise: UseSaveOutputsFormResult["visualise"];
-  exif: UseSaveOutputsFormResult["exif"];
+  anonymise: UseSaveOutputsFormResult["anonymise"];
   exportOpts: UseSaveOutputsFormResult["exportOpts"];
 }): { folders: SubFolder[]; files: FileEntry[] } {
   const folders: SubFolder[] = [];
   const files: FileEntry[] = [];
 
+  // Separation places per-label folders directly at the output root,
+  // matching legacy AddaxAI. No `separated/` wrapper.
   if (separate.enabled && preview) {
     if (separate.groupBy === "taxonomic") {
-      const children = nestedFoldersFromPaths(preview.by_taxonomic_tree);
-      folders.push({
-        name: "separated/",
-        count: sumNestedFolders(children),
-        unit: "files",
-        children,
-      });
+      folders.push(...nestedFoldersFromPaths(preview.by_taxonomic_tree));
     } else {
-      const flatChildren = flatFoldersFromMap(preview.by_flat);
-      folders.push({
-        name: "separated/",
-        count: flatChildren.reduce((a, c) => a + (c.count ?? 0), 0),
-        unit: "files",
-        children: flatChildren,
-      });
+      folders.push(...flatFoldersFromMap(preview.by_flat));
     }
   }
 
-  // Use in-scope image count when filter is applied; matches the
-  // number of files each per-image output module will actually
-  // write. Falls back to the full image count when no filter is set.
+  // Annotated copies: one image per source file. When separation is
+  // on, the annotated image is written into the per-label folder
+  // alongside the file. When separation is off, the images land at
+  // the run root. The preview surfaces the second case as a single
+  // line because enumerating every file would dominate the tree.
   const scopedImageCount = preview
     ? preview.dropped_by_filter > 0
       ? preview.in_scope_image_count
       : preview.image_count
     : 0;
-
-  if (visualise.enabled && preview) {
-    folders.push({
-      name: "visualised/",
-      count: scopedImageCount,
-      unit: "images",
-    });
-  }
-  if (visualise.enabled && visualise.blur && preview) {
-    folders.push({
-      name: "blurred/",
-      count: undefined,
-      unit: "images",
-    });
-  }
-  if (exif.enabled && exif.mode === "copy" && preview) {
-    folders.push({
-      name: "exif-tagged/",
-      count: scopedImageCount,
-      unit: "images",
+  if ((visualise.enabled || anonymise.enabled) && preview && !separate.enabled) {
+    files.push({
+      name: `${scopedImageCount.toLocaleString()} annotated image${
+        scopedImageCount === 1 ? "" : "s"
+      }`,
+      hint: annotatedHint(visualise.enabled, anonymise.enabled),
     });
   }
 
@@ -187,6 +165,12 @@ function buildTree({
   files.push({ name: "README.txt" });
 
   return { folders, files };
+}
+
+function annotatedHint(visualise: boolean, anonymise: boolean): string {
+  if (visualise && anonymise) return "boxes drawn + people blurred";
+  if (visualise) return "boxes drawn";
+  return "people blurred";
 }
 
 /** Turn a flat map of slash-paths into a nested SubFolder tree.
@@ -241,10 +225,6 @@ function sortLevels(nodes: SubFolder[]): void {
       sortLevels(node.children);
     }
   }
-}
-
-function sumNestedFolders(folders: SubFolder[]): number {
-  return folders.reduce((acc, f) => acc + (f.count ?? 0), 0);
 }
 
 /** Turn a flat ``label -> count`` map into the leaf SubFolders for
@@ -422,17 +402,20 @@ function SummaryFooter({
   form: UseSaveOutputsFormResult;
   folderCount: number;
 }) {
-  const { separate, visualise, exif, exportOpts } = form;
+  const { separate, visualise, anonymise } = form;
+  const annotateOn = visualise.enabled || anonymise.enabled;
   const placementsPerSourceFile = countCopiesPerFile({
     separate,
-    visualise,
-    exif,
+    annotateOn,
   });
 
-  // Total files written across copy-creating outputs. Multi-species
-  // files inflate beyond the in-scope file count; the bucket sum
-  // captures both single- and multi-placement totals at whichever
-  // mode the user picked.
+  // Total files written. Separation produces one placement per source
+  // file × number of label folders it landed in (multi-species
+  // inflates the bucket sum). When separation is also on, annotated
+  // copies are written INTO the separated folders (same files,
+  // overwritten with effects) — so they don't add to the placement
+  // count. When separation is off, annotated copies write one image
+  // per in-scope file at the root.
   const separatedSource =
     separate.groupBy === "taxonomic"
       ? preview.by_taxonomic_tree
@@ -445,17 +428,10 @@ function SummaryFooter({
     preview.dropped_by_filter > 0
       ? preview.in_scope_image_count
       : preview.image_count;
-  const visualisedWritten = visualise.enabled ? scopedImageCount : 0;
-  const blurredWritten =
-    visualise.enabled && visualise.blur ? scopedImageCount : 0;
-  const exifWritten =
-    exif.enabled && exif.mode === "copy" ? scopedImageCount : 0;
+  const annotatedWritten =
+    annotateOn && !separate.enabled ? scopedImageCount : 0;
 
-  const writtenTotal =
-    separatedPlacements +
-    visualisedWritten +
-    blurredWritten +
-    exifWritten;
+  const writtenTotal = separatedPlacements + annotatedWritten;
 
   // Byte estimate uses in-scope average so exclusion-affected runs
   // give a number that matches what'll actually land on disk.
@@ -537,19 +513,17 @@ function SummaryFooter({
 
 function countCopiesPerFile({
   separate,
-  visualise,
-  exif,
+  annotateOn,
 }: {
   separate: UseSaveOutputsFormResult["separate"];
-  visualise: UseSaveOutputsFormResult["visualise"];
-  exif: UseSaveOutputsFormResult["exif"];
+  annotateOn: boolean;
 }): number {
-  let copies = 0;
-  if (separate.enabled) copies += 1;
-  if (visualise.enabled) copies += 1;
-  if (visualise.enabled && visualise.blur) copies += 1;
-  if (exif.enabled && exif.mode === "copy") copies += 1;
-  return copies;
+  // Separation and annotation share the same on-disk file when both
+  // are on (annotation mutates the separated copy in place), so they
+  // do not multiply with each other.
+  if (separate.enabled) return 1;
+  if (annotateOn) return 1;
+  return 0;
 }
 
 function formatBytes(n: number): string {

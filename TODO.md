@@ -1,34 +1,21 @@
 ## Priority 1
-- [x] The app shows "AddaxAI didn't shut down cleanly last time. If this is unexpected, export a diagnostic report and email it to support." quite often. Not sure why, but it seems to also show it there wasnt much going on. IS it a little to tight or is there really something going on?
-- [x] Add backups options. 
-- [x] Make embedding count configurable and trackable. 
-- [x] Think about how to solve the frames issue. Check dans email. 
-- [ ] Add different modes at the home screen. Something like
-    > Simple mode (Point at folder, select model, get CSV)
-    > .... [IDK propose name] (Point at folder, select model, write JSON, show postprocesing options like visualise, separte into subfolders, etc. )
-    > Timelapse mode (Create JSON for timelapse) (Already written, just needs a card a t home page). 
-
-
-    > Lets think about it a bit more before we go directly into planning. What is good UX, UI, what are good names? How do we want to define the modes? Can we merge modes? Have a look at how the legacy AddaxAI worked (that is how users are used to use AddaxAI: /Users/peter/Documents/Repos/AddaxAI). The legacy AddaxAI had two modes (simple and advanced). I dont think we need to recreate those 
-
-    > I think it would be great to have a "simple mode" that includes things like folder separation and doesn't include things like projects/deployments, and I would probably make that the default.  Even going through it a second time, where I knew what to expect, I was still somewhat overwhelmed by the project/deployment structure that seems like it's only maybe relevant to AddaxAI (i.e., it sounds like this kind of integrated analysis is still more of a future goal?).  You should ignore this comment if you think 80% of AddaxAI users are going to be doing lots of spatial analysis in AddaxAI, but I would guess that 80+% of users will be using AddaxAI for the AI (it's literally in the name :) ), and the project structure may be confusing.  
-
-    > It's true 100% of users have a concept projects/deployments, and 100% of users do spatiotemporal analyses, but I would guess that very few of them will do those in AddaxAI unless you write lots and lots and lots and lots and lots of population analysis code that I don't think you want to write, to entirely replace what people do in, e.g., camtrapR, spOccupancy, etc.  Assuming that most this functionality is going to be done in other packages, tracking deployments/projects in AddaxAI is asking users to track all of this in two places, without any direct way of connecting them.
-
-    > Along the same lines, I don't see a common scenario where someone would want to export from AddaxAI directly to CamtrapDP... is that a scenario you've seen come up?  That seems outside the scope of what CamtrapDP is intended for; it's a format for (correct) observations, rather than (sometimes-correct) AI predictions.  FWIW I really really really really don't want people to use CamtrapDP to publish datasets that haven't been human-reviewed.
+- [ ] Add different modes at the home screen.
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
-- [ ] ADD ALL MODELS 
+- [ ] ADD ALL MODELS (Also Caras model, and make TODO on the cls-pipeline to fix this properly there too)
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 
+❯ Make the caption more user friendly: "Hard limit on how many detections one similarity sort loads. Narrowing filters first is always faster than raising the
+  cap." What do users want to know? This is a limit. The higher the limit, the more memory needed and the slower it gets. Lowering the number of observations 
+  with the filters is generally easier and faster. 
 
 ## Priority 2
 - [ ] Make projects-mode analysis blocking too, like the folder-run flow now does. Today it runs in the background queue worker with the `DeploymentHealthToast` showing progress; user can navigate everywhere while it runs, kick off other deployments, etc. For consistency with folder-run's modal-blocking pattern (and the same "ML uses all your compute, don't do other heavy stuff simultaneously" reasoning), wrap the running deployment in the same blocking modal. Keeps the queue concept (sequential deployments), just makes the active one block the UI. Reuse the JobProgressModal from folder-run.
-
+- [ ] Fallback to read datetimeorignal from filename as a fallback. Reach out to flavio to see how to format the read exactly. example "S1_20250222_072314.mp4", regex: the last two parts separated by "_" in the format of <whatever>_<YYYYMMDD>_<HHMMSS>.<extention>
 
 Open a project with completed deployments → should land on Dashboard. - DOES NOT LAND ON DASHBOARD. LANDS ON PROCESS. 
 
@@ -40,7 +27,7 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] Any other non used imports or requirements in the environments YMLS? 
 - [ ] Bump addaxai-base from cu118 to cu128 so RTX 50-series (sm_120, Blackwell) gets native kernels instead of the 4-5 min PTX JIT fallback. Suggested pins: torch==2.8.0+cu128, torchvision==0.23.0+cu128, --extra-index-url https://download.pytorch.org/whl/cu128. Both windows and linux YAMLs. Adds ~700 MB to the install but fixes the GPU warning reported at https://forum.addaxai.com/t/model-warning-on-running-with-gpu/202. Requires NVIDIA driver >= 555.x, mention in the beta-tester readme. 
 - [ ] Bump the pytorch env from Python 3.8 to 3.11 (3.8 is EOL since Oct 2024 and recent torch wheels are starting to drop py38 builds). Also bump torch alongside the python jump. SpeciesNet-fine-tuned classifiers (.pt files with pickled onnx2torch operator classes) need a smoke test after the bump: load NAM-ADS-v1 or similar and confirm torch.load() succeeds across the major version jump. 
-- [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. 
+- [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. Also add a Check for updates option. Make it look like a mature app. What else would you recommend in the menu items, and in which order, groupings? How do other mature apps do it? And what do you recommend for this app? You can web query if you want. 
 - [ ] Would it be a good idea to add a extra level for the smoothing "Very aggresive" (or something similar), that does not run the MD utils smoothing script at all, but just flattens out the entire event to a single label. We'll need to think about which label of course (the max cls conf label for all? or some kind of average label for all?). If we decide to do this, we might also want to add captions in the dropdown that try to explain the tiers off / mild / aggresive / etc. Make it a tall dropdown just like the models dropdown with captions, use the same format. What do you think? 
 
 

@@ -7,18 +7,17 @@
 
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   FolderOpen,
   Save,
-  Sparkles,
 } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../../../components/ui/card";
@@ -34,7 +33,7 @@ import {
 } from "../../../components/ui/select";
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
 import { isElectron } from "../../../lib/platform";
-import type { SaveOutputsResponse } from "../../../api/folder-runs";
+import type { SaveOutputsResult } from "../../../api/folder-runs";
 import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
 
 // ─────────────────────────────────────────────────────────────────
@@ -123,6 +122,12 @@ export function OutputFolderField({
             </Button>
           )}
         </div>
+        {form.sourceFolderConflict && (
+          <p className="text-xs text-destructive">
+            Pick a folder outside the source. Writing here would
+            overwrite your original files.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -138,10 +143,6 @@ export function SeparateBody({
   form: UseSaveOutputsFormResult;
 }) {
   const { separate, setSeparate } = form;
-  const winElectron =
-    typeof window !== "undefined" &&
-    !!window.electronAPI &&
-    window.electronAPI.platform === "win32";
   return (
     <div className="space-y-3">
       <Row label="Folder structure">
@@ -164,10 +165,9 @@ export function SeparateBody({
       <Row label="File placement">
         <Select
           value={separate.method}
-          onValueChange={(v) => {
-            if (v === "symlink" && winElectron) return;
-            setSeparate({ ...separate, method: v as typeof separate.method });
-          }}
+          onValueChange={(v) =>
+            setSeparate({ ...separate, method: v as typeof separate.method })
+          }
         >
           <SelectTrigger>
             <SelectValue />
@@ -175,65 +175,18 @@ export function SeparateBody({
           <SelectContent>
             <SelectItem value="copy">Copy</SelectItem>
             <SelectItem value="move">Move</SelectItem>
-            <SelectItem value="symlink" disabled={winElectron}>
-              Symbolic link
-            </SelectItem>
           </SelectContent>
         </Select>
       </Row>
 
-      {separate.method === "symlink" && winElectron && (
-        <p className="text-xs text-destructive">
-          Symbolic links need Windows Developer Mode. Use Copy or
-          Move instead.
+      {separate.method === "move" && (
+        <p className="flex items-start gap-2 text-xs text-amber-700">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <span>
+            Moving files means touching your originals. Are you sure?
+          </span>
         </p>
       )}
-    </div>
-  );
-}
-
-export function VisualiseBody({
-  form,
-}: {
-  form: UseSaveOutputsFormResult;
-}) {
-  const { visualise, setVisualise } = form;
-  return (
-    <CheckboxRow
-      id="visualise-blur"
-      checked={visualise.blur}
-      onChange={(v) => setVisualise({ ...visualise, blur: v })}
-      label="Also blur people and vehicles"
-    />
-  );
-}
-
-export function WriteExifBody({
-  form,
-}: {
-  form: UseSaveOutputsFormResult;
-}) {
-  const { exif, setExif } = form;
-  return (
-    <div className="space-y-3">
-      <Row label="Where to write">
-        <Select
-          value={exif.mode}
-          onValueChange={(v) =>
-            setExif({ ...exif, mode: v as typeof exif.mode })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="copy">Save tagged copies</SelectItem>
-            <SelectItem value="overwrite">
-              Overwrite originals in place
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </Row>
     </div>
   );
 }
@@ -284,7 +237,7 @@ export function SaveErrorLine({ error }: { error: Error | null }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Completion screen + result panels
+// Completion screen
 // ─────────────────────────────────────────────────────────────────
 
 export function CompletionScreen({
@@ -300,69 +253,76 @@ export function CompletionScreen({
   const { result, promoteOpen, setPromoteOpen, handleOpenResults } = form;
   if (!result) return null;
 
+  const issues = collectIssues(result);
+
+  // Promote-to-research path is intentionally hidden from the folder-run
+  // completion screen — beta testers found the supporting jargon
+  // (Camtrap-DP, GeoJSON, Shapefile, dashboards) intimidating, and any
+  // extra control at the moment of success reads as upsell. The
+  // PromoteDialog + form state + backend promote endpoint stay wired
+  // so re-enabling is a one-block uncomment if we add an entry point
+  // elsewhere (e.g. the Step 1 "you analysed this folder before"
+  // notice card).
+  //
+  // Known tradeoff: users who later decide they want dashboards on
+  // this folder must spin up a fresh research project and re-run
+  // analysis on the same media. The redo cost is real but rare.
+  //
+  // To re-enable, drop this block back inside the Card above the
+  // bottom nav (also re-import Sparkles from lucide-react):
+  //
+  // <div className="border-t pt-4">
+  //   <div className="flex items-start gap-3">
+  //     <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+  //     <div className="flex-1">
+  //       <p className="text-xs text-muted-foreground">
+  //         Want dashboards, insights, and full exports? Turn
+  //         this into a research project.
+  //       </p>
+  //       <Button
+  //         onClick={() => setPromoteOpen(true)}
+  //         variant="outline"
+  //         size="sm"
+  //         className="mt-2"
+  //       >
+  //         Promote to research project
+  //       </Button>
+  //     </div>
+  //   </div>
+  // </div>
+
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-primary" />
-            Folder analysis complete
-          </CardTitle>
-          <CardDescription>
-            Results saved to{" "}
-            <code className="font-mono text-xs">
-              {result.output_dir}
-            </code>
-            .
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {result.separate_folders && (
-            <SeparateResultPanel data={result.separate_folders} />
-          )}
-          {(result.visualised_images || result.blur_people) && (
-            <AnnotatedCopiesPanel
-              visualised={result.visualised_images}
-              blurred={result.blur_people}
-            />
-          )}
-          {result.write_exif && (
-            <WriteExifResultPanel data={result.write_exif} />
-          )}
-          {(result.csv || result.xlsx || result.recognition_json) && (
-            <ExportResultPanel
-              csv={result.csv}
-              xlsx={result.xlsx}
-              json={result.recognition_json}
-            />
-          )}
-          {result.run_readme && (
-            <RunReadmeResultPanel data={result.run_readme} />
-          )}
-
-          <div className="rounded-md border bg-card-background p-4 text-sm">
-            <div className="flex items-start gap-3">
-              <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <div>
-                <p className="font-medium">
-                  Keep this as a research project
+        <CardContent className="space-y-4 p-6">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div className="flex-1 space-y-1">
+              <p className="text-sm font-semibold">
+                Folder analysis complete
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Saved to{" "}
+                <code className="font-mono">{result.output_dir}</code>
+              </p>
+              {result.source_file_count > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {result.source_file_count.toLocaleString()} source
+                  file{result.source_file_count === 1 ? "" : "s"}{" "}
+                  processed
                 </p>
-                <p className="mt-1 text-muted-foreground">
-                  Promote to access dashboards, insights, full export
-                  formats (Camtrap-DP, GeoJSON, Shapefile, etc.), and
-                  long-term verification history.
-                </p>
-                <Button
-                  onClick={() => setPromoteOpen(true)}
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                >
-                  Promote to research project
-                </Button>
-              </div>
+              )}
             </div>
           </div>
+
+          {issues.length > 0 && <IssuesPanel issues={issues} />}
+
+          {isElectron() && (
+            <Button onClick={handleOpenResults} className="gap-2" size="lg">
+              <FolderOpen className="h-4 w-4" />
+              Open results folder
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -370,23 +330,12 @@ export function CompletionScreen({
         <Button variant="outline" onClick={() => navigate("/")}>
           Back to home
         </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => navigate("/folder-runs/new")}
-          >
-            Analyse another folder
-          </Button>
-          <Button variant="ghost" onClick={form.clearResult}>
-            Save again
-          </Button>
-          {isElectron() && (
-            <Button onClick={handleOpenResults} className="gap-2">
-              <FolderOpen className="h-4 w-4" />
-              Open results folder
-            </Button>
-          )}
-        </div>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/folder-runs/new")}
+        >
+          Analyse another folder
+        </Button>
       </div>
 
       <PromoteDialog
@@ -399,185 +348,65 @@ export function CompletionScreen({
   );
 }
 
-function SeparateResultPanel({
-  data,
-}: {
-  data: NonNullable<SaveOutputsResponse["separate_folders"]>;
-}) {
-  const verb =
-    data.moved_count > 0
-      ? "Moved"
-      : data.linked_count > 0
-        ? "Linked"
-        : "Copied";
+/** Roll every module's reported errors + missing-source counts into a
+ * flat list. Returns an empty array when nothing went wrong, which
+ * is the case the completion screen optimises for: no banner. */
+function collectIssues(result: SaveOutputsResult): string[] {
+  const out: string[] = [];
+
+  // Friendly "couldn't find these files" summary per module that
+  // reports missing sources separately. Surfacing this matters because
+  // it usually means the user's source folder moved or was edited
+  // between analysis and save.
+  const missing =
+    (result.separate_folders?.skipped_missing_source ?? 0) +
+    (result.annotated_copies?.skipped_missing_source ?? 0);
+  if (missing > 0) {
+    out.push(
+      `${missing.toLocaleString()} source file${
+        missing === 1 ? "" : "s"
+      } could not be found on disk.`,
+    );
+  }
+
+  // Per-module errors[] — actual exceptions during write.
+  const all = [
+    ...(result.separate_folders?.errors ?? []),
+    ...(result.annotated_copies?.errors ?? []),
+    ...(result.recognition_json?.errors ?? []),
+    ...(result.csv?.errors ?? []),
+    ...(result.xlsx?.errors ?? []),
+    ...(result.run_readme?.errors ?? []),
+  ];
+  out.push(...all);
+
+  return out;
+}
+
+function IssuesPanel({ issues }: { issues: string[] }) {
+  const shown = issues.slice(0, 5);
+  const extra = issues.length - shown.length;
   return (
-    <div className="rounded-md border bg-card-background p-4 text-sm">
-      <p className="font-medium">
-        {verb} {data.written_count} file
-        {data.written_count === 1 ? "" : "s"} into{" "}
-        {Object.keys(data.by_label).length} label subfolder
-        {Object.keys(data.by_label).length === 1 ? "" : "s"}.
-      </p>
-      {data.multi_placement_count > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {data.multi_placement_count} file
-          {data.multi_placement_count === 1 ? "" : "s"} had multiple
-          species and appear in more than one folder.
+    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+      <div className="flex-1 space-y-1">
+        <p className="font-medium">
+          {issues.length} issue{issues.length === 1 ? "" : "s"} during
+          save
         </p>
-      )}
-      {data.renamed_count > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {data.renamed_count} file
-          {data.renamed_count === 1 ? " was" : "s were"} renamed to
-          avoid collisions.
-        </p>
-      )}
-      {data.skipped_missing_source > 0 && (
-        <p className="mt-1 text-xs text-destructive">
-          {data.skipped_missing_source} file
-          {data.skipped_missing_source === 1 ? "" : "s"} could not be
-          found on disk.
-        </p>
-      )}
-      <ul className="mt-3 space-y-0.5 text-xs text-muted-foreground">
-        {Object.entries(data.by_label)
-          .sort((a, b) => b[1] - a[1])
-          .map(([label, n]) => (
-            <li key={label}>
-              <span className="font-medium text-foreground">
-                {label}
-              </span>
-              : {n}
+        <ul className="space-y-0.5">
+          {shown.map((msg, i) => (
+            <li key={i} className="break-all">
+              {msg}
             </li>
           ))}
-      </ul>
-    </div>
-  );
-}
-
-function AnnotatedCopiesPanel({
-  visualised,
-  blurred,
-}: {
-  visualised: SaveOutputsResponse["visualised_images"];
-  blurred: SaveOutputsResponse["blur_people"];
-}) {
-  return (
-    <div className="rounded-md border bg-card-background p-4 text-sm">
-      <p className="font-medium">Annotated copies</p>
-      {visualised && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Visualised: {visualised.written_count} file
-          {visualised.written_count === 1 ? "" : "s"} written with
-          rounded boxes and pill labels.
-        </p>
-      )}
-      {blurred && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Blurred: {blurred.blurred_box_count} person
-          {blurred.blurred_box_count === 1 ? "" : "s"} / vehicle
-          {blurred.blurred_box_count === 1 ? "" : "s"} hidden across{" "}
-          {blurred.written_count} file
-          {blurred.written_count === 1 ? "" : "s"}.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function WriteExifResultPanel({
-  data,
-}: {
-  data: NonNullable<SaveOutputsResponse["write_exif"]>;
-}) {
-  const mode = data.mode === "overwrite" ? "in place" : "as tagged copies";
-  return (
-    <div className="rounded-md border bg-card-background p-4 text-sm">
-      <p className="font-medium">
-        Wrote EXIF metadata on {data.written_count} file
-        {data.written_count === 1 ? "" : "s"} {mode}.
-      </p>
-      {data.skipped_no_detections > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {data.skipped_no_detections} file
-          {data.skipped_no_detections === 1 ? "" : "s"} had no
-          detections to write.
-        </p>
-      )}
-      {data.skipped_video > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {data.skipped_video} video
-          {data.skipped_video === 1 ? " was" : "s were"} skipped
-          (videos don't carry EXIF in this output; their best frames
-          do via the Visualise output).
-        </p>
-      )}
-      {data.skipped_missing_source > 0 && (
-        <p className="mt-1 text-xs text-destructive">
-          {data.skipped_missing_source} source file
-          {data.skipped_missing_source === 1 ? "" : "s"} could not be
-          found on disk.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function RunReadmeResultPanel({
-  data,
-}: {
-  data: NonNullable<SaveOutputsResponse["run_readme"]>;
-}) {
-  return (
-    <div className="rounded-md border bg-card-background p-4 text-sm">
-      <p className="font-medium">Run summary written.</p>
-      <p className="mt-1 text-xs text-muted-foreground font-mono">
-        {data.output_path}
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Plain-text manifest with app version, models, all settings,
-        and a results summary. Open it later to remember exactly what
-        produced this folder.
-      </p>
-    </div>
-  );
-}
-
-function ExportResultPanel({
-  csv,
-  xlsx,
-  json,
-}: {
-  csv: SaveOutputsResponse["csv"];
-  xlsx: SaveOutputsResponse["xlsx"];
-  json: SaveOutputsResponse["recognition_json"];
-}) {
-  return (
-    <div className="rounded-md border bg-card-background p-4 text-sm">
-      <p className="font-medium">Exports</p>
-      {csv && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          CSV: {csv.row_count} observation
-          {csv.row_count === 1 ? "" : "s"} —{" "}
-          <span className="font-mono">{csv.output_path}</span>
-        </p>
-      )}
-      {xlsx && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          XLSX: {xlsx.row_count} observation
-          {xlsx.row_count === 1 ? "" : "s"} —{" "}
-          <span className="font-mono">{xlsx.output_path}</span>
-        </p>
-      )}
-      {json && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Recognition JSON: {json.image_count} image
-          {json.image_count === 1 ? "" : "s"},{" "}
-          {json.detection_count} detection
-          {json.detection_count === 1 ? "" : "s"} —{" "}
-          <span className="font-mono">{json.output_path}</span>
-        </p>
-      )}
+          {extra > 0 && (
+            <li className="italic">
+              and {extra} more (see ~/AddaxAI/logs/backend.log)
+            </li>
+          )}
+        </ul>
+      </div>
     </div>
   );
 }

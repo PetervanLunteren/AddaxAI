@@ -114,6 +114,52 @@ def delete_project(db: Session, project_id: str) -> bool:
     return True
 
 
+def delete_folder_run(db: Session, project_id: str) -> bool:
+    """
+    Delete a folder-run project and its on-disk artifacts.
+
+    Cascade-deletes the Project + its DeploymentQueue + Deployment(s) +
+    Files + Detections + Events + EventObservations via SQLAlchemy
+    relationships, then removes the per-project ``.addaxai/projects/
+    <project_id>/`` cache folder from every source folder the project
+    pointed at.
+
+    Use this rather than ``delete_project`` for folder-run cleanup
+    because the artifact cleanup is required to free the cache (PIL
+    best frames, intermediate JSONs) the analysis worker dropped on
+    disk during the previous run.
+
+    Returns True on success, False when the project doesn't exist.
+    Jobs are intentionally left alone — they have no FK to project
+    and serve as a history record.
+    """
+    from app.api.crud.deployment import _delete_deployment_artifacts
+
+    db_project = get_project(db, project_id)
+    if db_project is None:
+        return False
+
+    # Capture every folder_path that might host a ``.addaxai`` cache
+    # before the cascade fires. Deployments hold the path when analysis
+    # has run; the queue entry holds it when the user picked the folder
+    # but never ran analysis. Either way we'd rather try and find
+    # nothing than miss a stale cache.
+    folder_paths: set[str] = set()
+    folder_paths.update(
+        d.folder_path for d in db_project.deployments if d.folder_path
+    )
+    folder_paths.update(
+        q.folder_path for q in db_project.deployment_queue if q.folder_path
+    )
+
+    db.delete(db_project)
+    db.commit()
+
+    for folder_path in folder_paths:
+        _delete_deployment_artifacts(folder_path, project_id)
+    return True
+
+
 def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
     """
     Get statistics for a single project.

@@ -17,9 +17,7 @@ import { Progress } from "../ui/progress";
 
 const MODULE_LABELS: Record<string, string> = {
   separate_folders: "Separating files",
-  visualised_images: "Visualising detections",
-  blur_people: "Blurring people and vehicles",
-  write_exif: "Writing EXIF tags",
+  annotated_copies: "Writing annotated copies",
   recognition_json: "Writing recognition JSON",
   csv: "Writing CSV",
   xlsx: "Writing XLSX",

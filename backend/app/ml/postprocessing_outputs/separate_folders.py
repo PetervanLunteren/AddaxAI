@@ -1,18 +1,18 @@
-"""Reorganise a project's media files into target/<label>/ subfolders.
+"""Reorganise a project's media files into ``<output_root>/<label>/``.
 
 The legacy-AddaxAI mental model for postprocessing: browse the run's
-output as ``target/dog/``, ``target/leopard/``, ``target/blank/``, …,
-in the file manager. This module re-creates that experience on top
-of the modern DB pipeline.
+output as ``output_root/dog/``, ``output_root/leopard/``,
+``output_root/blank/``, …, in the file manager. This module re-creates
+that experience on top of the modern DB pipeline.
 
 Multi-species behaviour (hardcoded, no opt-out):
 
 A file with detections of multiple distinct species lands in every
-matching folder. So an image with `dog` + `wolf` appears in both
-`target/dog/` and `target/wolf/`. This is the convention the wider
-camera-trap ecosystem uses (camtrapR's `getSpeciesImages`, the Data
-Carpentry guide) — the alternative of a single "top label wins"
-placement is the headline UX complaint from beta testers because
+matching folder. So an image with ``dog`` + ``wolf`` appears in both
+``output_root/dog/`` and ``output_root/wolf/``. This is the convention
+the wider camera-trap ecosystem uses (camtrapR's ``getSpeciesImages``,
+the Data Carpentry guide) — the alternative of a single "top label
+wins" placement is the headline UX complaint from beta testers because
 information gets dropped at the file system level. We pay the disk
 cost; the user finds their image when they look for any of its
 species.
@@ -22,37 +22,38 @@ Modes:
 - ``copy``: every matching folder gets its own copy of the source.
 - ``move``: the file moves to the **primary** label folder (top
   confidence) and gets copied into the others. The DB's
-  ``File.file_path`` is rewritten to the new primary location so
-  the verify UI keeps working. Source folder loses the media.
-- ``symlink``: every matching folder gets a symlink pointing at the
-  original source. Source folder stays in place; no duplication.
-  Windows without Developer Mode rejects the syscall and we record
-  the failure per file rather than crashing the run.
+  ``File.file_path`` is rewritten to the new primary location so the
+  verify UI keeps working. Source folder loses the media.
 
 Grouping:
 
-- ``label`` (default): one folder per species (``dog/``, ``leopard/``,
-  …). Animals without any surviving species label go to ``animal/``.
-- ``category``: one folder per observation type only (``animal/``,
-  ``person/``, ``vehicle/``, ``blank/``, …). Multi-species placement
-  is moot in this mode — there's only ever one folder per file.
+- ``taxonomic`` (default): a nested chain
+  ``Class/Order/Family/Genus/species/`` derived from each label's
+  ``LabelTaxonomy`` entry. Labels with no taxonomy mapping fall to
+  ``Other/<label>/``.
+- ``flat``: one folder per species label at the root (``dog/``,
+  ``leopard/`` …). Best when only a few species are in play.
 
 Non-animal observation types (human / vehicle / blank / unknown /
-unclassified) route to a single fixed folder in every mode.
+unclassified) route to a single fixed folder in both modes.
 
-Collision handling: ``target/<label>/IMG_001.jpg`` already exists →
-append ``_2``, ``_3``, … per destination folder until the name is
-unique. Original files are never overwritten.
+Collision handling: ``output_root/<label>/IMG_001.jpg`` already
+exists → append ``_2``, ``_3``, … per destination folder until the
+name is unique. Original files are never overwritten.
 
 Videos: the source video file is reorganised. The per-video best
 frame JPEG (under ``.addaxai/projects/<pid>/video_frames/``) is NOT
-moved or linked here; it is an internal pipeline artefact, not a
-user deliverable.
+moved here; it stays in the project cache and is consumed by
+``annotated_copies`` if the user asked for visualised / anonymised
+output.
+
+Each successful placement is recorded on the shared ``OutputContext``
+so downstream modules (``annotated_copies``, the CSV / XLSX writers)
+write into / reference the same path the separated file landed at.
 """
 
 from __future__ import annotations
 
-import os
 import shutil
 from collections import Counter
 from dataclasses import dataclass, field
@@ -71,22 +72,21 @@ from ._label_filter import (
     file_is_dropped_by_filter,
     passing_labels_for_file,
 )
+from ._output_context import OutputContext
 
 logger = get_logger(__name__)
 
 
-SeparateMode = Literal["copy", "move", "symlink"]
-# `taxonomic` nests Class > Order > Family > Genus > species as
-# subdirectories so the on-disk tree mirrors the biological
-# hierarchy; labels with no taxonomy mapping fall to ``Other/<label>/``.
-# `flat` collapses to one folder per species label at the root,
-# best when only a few species are in play.
+SeparateMode = Literal["copy", "move"]
+# ``taxonomic`` nests Class > Order > Family > Genus > species; labels
+# with no taxonomy mapping fall to ``Other/<label>/``. ``flat`` collapses
+# to one folder per species label at the root.
 SeparateGroupBy = Literal["taxonomic", "flat"]
-# Bucket name for labels with no taxonomy mapping under `taxonomic`.
+# Bucket name for labels with no taxonomy mapping under ``taxonomic``.
 UNRANKED_FOLDER = "Other"
-# Order of taxonomic ranks. Path construction walks these in order
-# and stops at the label's own rank; missing intermediate ancestors
-# pad with UNRANKED_FOLDER so the depth stays consistent.
+# Order of taxonomic ranks. Path construction walks these in order and
+# stops at the label's own rank; missing intermediate ancestors pad
+# with ``UNRANKED_FOLDER`` so the depth stays consistent.
 _TAXONOMIC_RANK_ORDER: tuple[str, ...] = (
     "class",
     "order",
@@ -100,11 +100,11 @@ _TAXONOMIC_RANK_ORDER: tuple[str, ...] = (
 class SeparateFoldersResult:
     """Summary of a separate-into-folders run.
 
-    Counters reflect placements, not source files: a file that ends
-    up in three folders counts three times. `multi_placement_count`
-    is the count of distinct source files that appeared in more
-    than one folder, so the UI can call that out when copy/symlink
-    inflates the placement total beyond the file total.
+    Counters reflect placements, not source files: a file that ends up
+    in three folders counts three times. ``multi_placement_count`` is
+    the count of distinct source files that appeared in more than one
+    folder, so the UI can call that out when ``copy`` mode inflates
+    the placement total beyond the file total.
 
     ``skipped_excluded`` counts animal files whose every passing
     species label was in the exclusion set — the user asked for the
@@ -113,7 +113,6 @@ class SeparateFoldersResult:
 
     copied_count: int = 0
     moved_count: int = 0
-    linked_count: int = 0
     skipped_missing_source: int = 0
     skipped_excluded: int = 0
     renamed_count: int = 0
@@ -123,14 +122,13 @@ class SeparateFoldersResult:
 
     @property
     def written_count(self) -> int:
-        """Total placements across copy/move/symlink modes."""
-        return self.copied_count + self.moved_count + self.linked_count
+        """Total placements across copy and move modes."""
+        return self.copied_count + self.moved_count
 
     def to_dict(self) -> dict:
         return {
             "copied_count": self.copied_count,
             "moved_count": self.moved_count,
-            "linked_count": self.linked_count,
             "written_count": self.written_count,
             "skipped_missing_source": self.skipped_missing_source,
             "skipped_excluded": self.skipped_excluded,
@@ -162,10 +160,9 @@ class _LabelPlan:
     """Destination folders for one file: a primary plus zero or more
     additional folders the file should also appear in.
 
-    Move mode places the file at the primary destination and copies
-    to the others (the file can only move once). Copy and Symlink
-    modes treat primary and others identically — three placements
-    of the same source.
+    ``move`` mode places the file at the primary destination and copies
+    to the others (the file can only move once). ``copy`` mode treats
+    primary and others identically — N placements of the same source.
     """
 
     primary: str
@@ -179,13 +176,10 @@ class _LabelPlan:
 def _build_taxonomy_map(
     db: Session, project: Project
 ) -> dict[str, LabelTaxonomy]:
-    """Preload the LabelTaxonomy rows for the project's classification
-    model so the per-file plan can resolve the taxonomic chain
-    without an extra query per file.
-
-    Returns an empty dict when the project has no classification
-    model — every label will fall back to ``Other/<label>`` in that
-    case.
+    """Preload the ``LabelTaxonomy`` rows for the project's classifier
+    so per-file plans resolve the taxonomic chain without a query per
+    file. Empty dict when the project has no classifier — every label
+    then falls back to ``Other/<label>``.
     """
     model_id = project.classification_model_id
     if not model_id:
@@ -204,26 +198,13 @@ def _taxonomic_path_for_label(
 ) -> str:
     """Build the nested taxonomic path for one label.
 
-    Returns a slash-separated path of the form
-    ``<ancestors>/<label>``. The ancestors are the LabelTaxonomy
-    columns above the label's own rank (e.g. for a species-level
-    label, the path includes class / order / family / genus plus
-    the label itself; for a family-level rollup it includes class /
-    order plus the family label). Missing intermediate ancestor
-    ranks are padded with ``UNRANKED_FOLDER`` so the on-disk depth
-    is consistent across siblings.
-
-    The label itself is always the leaf segment — that's what the
-    classifier emitted, and it's what users expect to see when
-    they navigate to the deepest folder. A species row with
-    ``taxon_species="Canis lupus familiaris"`` and ``name="dog"``
-    lands at ``Mammalia/Carnivora/Canidae/Canis/dog``, not at
-    ``.../Canis lupus familiaris``.
-
-    Labels with no LabelTaxonomy row (custom labels, raw classifier
-    output without mapping) fall back to ``Other/<label>``.
-    Labels whose taxonomy ``level`` isn't in the recognised rank
-    chain fall back to a single-segment ``<label>``.
+    Returns a slash-separated path of the form ``<ancestors>/<label>``.
+    Ancestors are the ``LabelTaxonomy`` columns above the label's own
+    rank; missing intermediate ranks are padded with
+    ``UNRANKED_FOLDER`` so the on-disk depth is consistent across
+    siblings. The label itself is always the leaf segment (what the
+    classifier emitted, not ``taxon_species``). Labels with no
+    taxonomy row fall back to ``Other/<label>``.
     """
     taxon = taxonomy_map.get(label)
     if taxon is None:
@@ -235,16 +216,10 @@ def _taxonomic_path_for_label(
 
     label_level_idx = _TAXONOMIC_RANK_ORDER.index(label_level)
 
-    # Ancestor ranks above the label's level. Pad missing ones with
-    # UNRANKED_FOLDER so the path depth stays consistent.
     parts: list[str] = []
     for rank in _TAXONOMIC_RANK_ORDER[:label_level_idx]:
         value = getattr(taxon, f"taxon_{rank}", None)
         parts.append(value if value else UNRANKED_FOLDER)
-
-    # Leaf: the label name itself (what the classifier emitted),
-    # not taxon_species. Users navigate to "dog", not to
-    # "Canis lupus familiaris".
     parts.append(label)
     return "/".join(parts)
 
@@ -259,13 +234,10 @@ def _label_plan_for_file(
 ) -> _LabelPlan:
     """Compute the set of destination paths for a single file.
 
-    Non-animal files (person / vehicle / blank / unknown) route to
-    their fixed observation-type folder under both grouping modes.
-
-    Animal files under ``taxonomic`` mode build a slash-path
-    ``Mammalia/Carnivora/Canidae/Canis/dog`` per passing label;
-    under ``flat`` mode each label becomes a single-segment folder
-    (``dog/``). Multi-species files end up in multiple distinct
+    Non-animal files route to their fixed observation-type folder
+    under both grouping modes. Animal files build a slash-path per
+    passing label (``taxonomic``) or a single-segment folder per
+    label (``flat``). Multi-species files end up in multiple distinct
     destinations either way. Animal files with no surviving labels
     fall back to ``animal/``.
     """
@@ -306,11 +278,10 @@ def _label_plan_for_file(
 
 
 def _unique_destination(target_dir: Path, source_name: str) -> tuple[Path, bool]:
-    """Return a path inside `target_dir` that doesn't already exist.
+    """Return a path inside ``target_dir`` that doesn't already exist.
 
-    Appends `_2`, `_3`, … before the suffix until the name is free.
-    Returns the path plus a flag indicating whether a rename
-    happened, so the caller can report it.
+    Appends ``_2``, ``_3``, … before the suffix until the name is free.
+    Returns the path plus a flag indicating whether a rename happened.
     """
     stem = Path(source_name).stem
     suffix = Path(source_name).suffix
@@ -328,9 +299,9 @@ def _unique_destination(target_dir: Path, source_name: str) -> tuple[Path, bool]
 def _place_primary(
     source: Path, destination: Path, mode: SeparateMode
 ) -> None:
-    """Execute the move / copy / symlink for the primary placement.
+    """Execute the copy / move for the primary placement.
 
-    Raises `OSError` on failure; the caller records and moves on.
+    Raises ``OSError`` on failure; the caller records and moves on.
     """
     if mode == "copy":
         # copy2 preserves mtime. Important for downstream tools that
@@ -341,8 +312,6 @@ def _place_primary(
         # The DB rewrite happens after a successful move so partial
         # failures leave the DB consistent with what's on disk.
         shutil.move(str(source), str(destination))
-    elif mode == "symlink":
-        os.symlink(str(source.resolve()), str(destination))
     else:
         raise ValueError(f"unsupported separate_folders mode: {mode!r}")
 
@@ -355,20 +324,11 @@ def _place_extra(
 ) -> None:
     """Execute an additional placement for a multi-species file.
 
-    `source` is the original on-disk file (still present for `copy`
-    and `symlink`, gone for `move`). `primary_dest` is where the
+    ``source`` is the original on-disk file (still present under
+    ``copy``, gone under ``move``). ``primary_dest`` is where the
     file's primary placement was just written, used as the copy
-    source under `move`.
-
-    `move` uses copy here because the file can only be moved once
-    and the primary destination already holds it. `symlink` always
-    points at the original source (not at the primary symlink) to
-    keep links one hop deep. `copy` copies from the source for
-    symmetry with the primary placement.
+    source under ``move`` (which can only move once).
     """
-    if mode == "symlink":
-        os.symlink(str(source.resolve()), str(extra_dest))
-        return
     copy_source = primary_dest if mode == "move" else source
     shutil.copy2(copy_source, extra_dest)
 
@@ -376,39 +336,41 @@ def _place_extra(
 def separate_into_folders(
     db: Session,
     project_id: str,
-    target_dir: Path,
+    ctx: OutputContext,
     *,
     mode: SeparateMode = "copy",
     group_by: SeparateGroupBy = "taxonomic",
     excluded_label_ids: frozenset[str] | None = None,
 ) -> SeparateFoldersResult:
-    """Reorganise every file in the project into subdirectories
-    under ``target_dir``.
+    """Reorganise every file in the project into subdirectories under
+    ``ctx.output_root``.
 
     Under ``group_by="taxonomic"`` (default) animal files land in a
-    nested chain ``<Class>/<Order>/<Family>/<Genus>/<species>/``
-    derived from their detection labels' LabelTaxonomy entry.
-    Under ``group_by="flat"`` each animal file lands in a
-    single-segment folder named after the species label
-    (``dog/``, ``leopard/`` ...). Either way, non-animal files land
-    in their fixed observation-type folder (``person/`` /
-    ``vehicle/`` / ``blank/``) and files with multiple species
-    labels appear in every matching destination.
+    nested chain ``<Class>/<Order>/<Family>/<Genus>/<species>/``;
+    under ``group_by="flat"`` each animal file lands in a
+    single-segment folder named after the species label. Non-animal
+    files always land in their fixed observation-type folder. Files
+    with multiple species labels appear in every matching destination.
 
     ``mode`` controls placement at the primary destination
-    (copy / move / symlink); extras are always copies under
-    ``move`` and follow ``mode`` under ``copy`` / ``symlink``.
+    (``copy`` / ``move``); extras are always copies (a file can only
+    move once and the primary already holds the moved bytes).
 
-    ``excluded_label_ids`` filters labelled detections: animal
-    files where every passing label is in the set are skipped
-    entirely (counted in ``skipped_excluded``). Files with mixed
-    inclusion still go through but only land in folders for their
-    non-excluded labels.
+    ``excluded_label_ids`` filters labelled detections: animal files
+    where every passing label is in the set are skipped entirely
+    (counted in ``skipped_excluded``). Files with mixed inclusion
+    still go through but only land in folders for their non-excluded
+    labels.
+
+    Each successful placement is recorded on ``ctx`` so downstream
+    modules can find the file on disk without re-reading
+    ``File.file_path``.
     """
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
+    target_dir = ctx.output_root
     target_dir.mkdir(parents=True, exist_ok=True)
     threshold = project.detection_threshold
     taxonomy_map = _build_taxonomy_map(db, project)
@@ -421,9 +383,9 @@ def separate_into_folders(
 
     result = SeparateFoldersResult()
 
-    # One ExifToolHelper for the whole batch. Symlinks share data
-    # with the source so we never write EXIF on those (the write
-    # would modify the user's source file through the link).
+    # One ExifToolHelper for the whole batch so the underlying
+    # exiftool process stays alive across writes — start-up is the
+    # expensive part.
     with ExifBatch() as exif_batch:
         for file in files:
             source = Path(file.file_path)
@@ -448,8 +410,6 @@ def separate_into_folders(
                 group_by,
                 excluded_label_ids,
             )
-            project = db.get(Project, project_id)
-            assert project is not None  # checked above
 
             # Primary placement.
             primary_dir = target_dir / plan.primary
@@ -470,18 +430,19 @@ def separate_into_folders(
                 file.file_path = str(primary_dest)
                 db.commit()
                 result.moved_count += 1
-            elif mode == "symlink":
-                result.linked_count += 1
             else:
                 result.copied_count += 1
             result.by_label[plan.primary] += 1
             if renamed_primary:
                 result.renamed_count += 1
+            ctx.record(file.id, primary_dest)
 
-            # Silent EXIF write on the primary placement when it is
-            # a real file we own (not a symlink) and the file is an
-            # image format that carries EXIF.
-            if mode != "symlink" and is_image_path(primary_dest):
+            # Silent EXIF on the primary placement when the file is an
+            # image format that carries EXIF. ``annotated_copies`` will
+            # overwrite this if the user also asked for visualised /
+            # anonymised output, which is fine — the tag set is the
+            # same.
+            if is_image_path(primary_dest):
                 tag_set = build_tag_set(
                     db,
                     file,
@@ -507,7 +468,9 @@ def separate_into_folders(
                     extra_dir, source.name
                 )
                 try:
-                    _place_extra(source, primary_dest, extra_dest, mode)
+                    _place_extra(
+                        source, primary_dest, extra_dest, mode
+                    )
                 except OSError as e:
                     result.errors.append(
                         f"Failed extra placement {extra_dest}: {e}"
@@ -518,25 +481,23 @@ def separate_into_folders(
                     )
                     continue
 
-                if mode == "symlink":
-                    result.linked_count += 1
-                else:
-                    result.copied_count += 1
+                result.copied_count += 1
                 result.by_label[extra_label] += 1
                 if renamed_extra:
                     result.renamed_count += 1
                 extras_written += 1
+                ctx.record(file.id, extra_dest)
 
-                if mode != "symlink" and is_image_path(extra_dest):
+                if is_image_path(extra_dest):
                     # Reuse the same tag set; multi-species files
                     # carry the same detection summary in every folder.
                     tag_set = build_tag_set(
-                    db,
-                    file,
-                    project,
-                    APP_VERSION,
-                    excluded_label_ids=excluded_label_ids,
-                )
+                        db,
+                        file,
+                        project,
+                        APP_VERSION,
+                        excluded_label_ids=excluded_label_ids,
+                    )
                     if tag_set is not None:
                         try:
                             exif_batch.write(extra_dest, tag_set)

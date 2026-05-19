@@ -221,14 +221,6 @@ def _apply_project_threshold(
     return filters
 
 
-def _project_max_detections(project_id: str, db: Session) -> int:
-    """Read the per-project max-detections cap, falling back to 20000."""
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if project and project.observations_max_detections:
-        return int(project.observations_max_detections)
-    return 20000
-
-
 def _build_sort_params(
     project_id: str, body: SortRequest, db: Session
 ) -> dict[str, Any]:
@@ -236,7 +228,7 @@ def _build_sort_params(
     return {
         "filters": _filters_to_dict(filters),
         "sort": body.sort,
-        "max_detections": _project_max_detections(project_id, db),
+        "max_detections": body.max_detections,
     }
 
 
@@ -249,7 +241,7 @@ def _build_search_params(
         "anchor_detection_id": body.anchor_detection_id,
         "limit": body.limit,
         "threshold": body.threshold,
-        "max_detections": _project_max_detections(project_id, db),
+        "max_detections": body.max_detections,
     }
 
 

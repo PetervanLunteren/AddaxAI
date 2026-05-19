@@ -1,16 +1,17 @@
 """Tests for the separate_folders postprocess output module.
 
-Covers the taxonomic-tree placement rules (animal labels with /
-without taxonomy, animal-no-label fallback, non-animal observation
-types), multi-species placement, file-placement modes (copy / move
-/ symlink), collision handling, and the missing-source-file
-short-circuit.
+Covers the placement rules (animal labels with / without taxonomy,
+animal-no-label fallback, non-animal observation types), multi-species
+placement, file-placement modes (copy / move), collision handling, the
+missing-source-file short-circuit, and the OutputContext recording
+contract downstream modules depend on.
 """
 
 from pathlib import Path
 
 import pytest
 
+from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.separate_folders import (
     separate_into_folders,
 )
@@ -28,6 +29,10 @@ def _make_source(tmp_path: Path, name: str, content: bytes = b"x") -> str:
     src.parent.mkdir(parents=True, exist_ok=True)
     src.write_bytes(content)
     return str(src)
+
+
+def _ctx(output_root: Path) -> OutputContext:
+    return OutputContext(output_root=output_root)
 
 
 def test_separate_routes_animal_to_other_when_no_taxonomy(db, tmp_path):
@@ -48,10 +53,15 @@ def test_separate_routes_animal_to_other_when_no_taxonomy(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    ctx = _ctx(target)
+    result = separate_into_folders(db, project.id, ctx)
 
     assert result.copied_count == 1
     assert (target / "Other" / "dog" / "IMG_001.jpg").is_file()
+    # Context records the placement so downstream modules can find it.
+    assert ctx.resolved_for(file.id) == [
+        target / "Other" / "dog" / "IMG_001.jpg"
+    ]
 
 
 def test_separate_animal_without_label_falls_back_to_animal_folder(db, tmp_path):
@@ -69,7 +79,7 @@ def test_separate_animal_without_label_falls_back_to_animal_folder(db, tmp_path)
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert dict(result.by_label) == {"animal": 1}
     assert (target / "animal" / "IMG_002.jpg").is_file()
@@ -96,7 +106,7 @@ def test_separate_threshold_filters_low_confidence_detections(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     # No detection passes threshold → falls back to animal/ folder.
     assert dict(result.by_label) == {"animal": 1}
@@ -114,7 +124,7 @@ def test_separate_routes_human_to_person_folder(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert dict(result.by_label) == {"person": 1}
     assert (target / "person" / "IMG_004.jpg").is_file()
@@ -132,7 +142,7 @@ def test_separate_routes_blank_to_blank_folder(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert dict(result.by_label) == {"blank": 1}
     assert (target / "blank" / "IMG_005.jpg").is_file()
@@ -159,7 +169,7 @@ def test_separate_renames_on_collision(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert result.copied_count == 2
     assert result.renamed_count == 1
@@ -179,7 +189,7 @@ def test_separate_skips_missing_source(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert result.copied_count == 0
     assert result.skipped_missing_source == 1
@@ -198,7 +208,7 @@ def test_separate_preserves_original(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, target)
+    separate_into_folders(db, project.id, _ctx(target))
 
     # Source is still where it was; we never move.
     assert Path(src_path).is_file()
@@ -209,7 +219,9 @@ def test_separate_preserves_original(db, tmp_path):
 
 def test_separate_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        separate_into_folders(db, "does-not-exist", tmp_path / "out")
+        separate_into_folders(
+            db, "does-not-exist", _ctx(tmp_path / "out")
+        )
 
 
 def test_move_relocates_file_and_rewrites_db(db, tmp_path):
@@ -228,7 +240,8 @@ def test_move_relocates_file_and_rewrites_db(db, tmp_path):
     file_id = file.id
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target, mode="move")
+    ctx = _ctx(target)
+    result = separate_into_folders(db, project.id, ctx, mode="move")
 
     # File moved on disk: source gone, destination present.
     assert not Path(src_path).exists()
@@ -241,50 +254,15 @@ def test_move_relocates_file_and_rewrites_db(db, tmp_path):
     assert result.copied_count == 0
     assert result.written_count == 1
 
+    # Context records the moved location.
+    assert ctx.resolved_for(file_id) == [moved_to]
+
     # DB has been rewritten so the verify UI keeps working post-move.
     db.expire_all()
     from app.models import File as FileModel
 
     refreshed = db.get(FileModel, file_id)
     assert refreshed.file_path == str(moved_to)
-
-
-def test_symlink_creates_link_pointing_at_source(db, tmp_path):
-    """Symlink mode leaves the source in place and creates a link
-    pointing at it. DB stays unchanged because the original path is
-    still authoritative."""
-    project = make_project(db, name="sep-link")
-    dep = make_deployment(db, project_id=project.id)
-    src_path = _make_source(tmp_path, "IMG_L01.jpg", b"link-target")
-    file = make_file(
-        db,
-        deployment_id=dep.id,
-        file_path=src_path,
-        observation_type="blank",
-    )
-    file_id = file.id
-
-    target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target, mode="symlink")
-
-    link_path = target / "blank" / "IMG_L01.jpg"
-    assert link_path.is_symlink(), "expected a symlink at the destination"
-    # Reading through the link returns the original bytes.
-    assert link_path.read_bytes() == b"link-target"
-
-    # Source untouched.
-    assert Path(src_path).exists()
-
-    # DB untouched.
-    db.expire_all()
-    from app.models import File as FileModel
-
-    refreshed = db.get(FileModel, file_id)
-    assert refreshed.file_path == src_path
-
-    assert result.linked_count == 1
-    assert result.moved_count == 0
-    assert result.copied_count == 0
 
 
 # ---------------------------------------------------------------------
@@ -312,7 +290,8 @@ def test_multi_species_lands_in_each_leaf_folder(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    ctx = _ctx(target)
+    result = separate_into_folders(db, project.id, ctx)
 
     assert (target / "Other" / "dog" / "IMG_M01.jpg").is_file()
     assert (target / "Other" / "wolf" / "IMG_M01.jpg").is_file()
@@ -321,6 +300,11 @@ def test_multi_species_lands_in_each_leaf_folder(db, tmp_path):
     assert result.multi_placement_count == 1
     assert (target / "Other" / "dog" / "IMG_M01.jpg").read_bytes() == b"multi-species"
     assert (target / "Other" / "wolf" / "IMG_M01.jpg").read_bytes() == b"multi-species"
+    # Context lists both placements in order (primary first).
+    assert ctx.resolved_for(file.id) == [
+        target / "Other" / "dog" / "IMG_M01.jpg",
+        target / "Other" / "wolf" / "IMG_M01.jpg",
+    ]
 
 
 def test_multi_species_repeated_labels_dedupe(db, tmp_path):
@@ -342,7 +326,7 @@ def test_multi_species_repeated_labels_dedupe(db, tmp_path):
         )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert result.copied_count == 1
     assert result.multi_placement_count == 0
@@ -371,7 +355,7 @@ def test_multi_species_threshold_filters(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert (target / "Other" / "dog" / "IMG_M03.jpg").is_file()
     assert not (target / "Other" / "wolf").exists()
@@ -400,7 +384,7 @@ def test_multi_species_verified_below_threshold_still_placed(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert (target / "Other" / "dog" / "IMG_M04.jpg").is_file()
     assert (target / "Other" / "wolf" / "IMG_M04.jpg").is_file()
@@ -426,7 +410,7 @@ def test_multi_species_move_moves_primary_copies_others(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target, mode="move")
+    result = separate_into_folders(db, project.id, _ctx(target), mode="move")
 
     # Source is gone.
     assert not Path(src).exists()
@@ -450,37 +434,3 @@ def test_multi_species_move_moves_primary_copies_others(db, tmp_path):
 
     refreshed = db.get(FileModel, file_id)
     assert refreshed.file_path == str(dog_path)
-
-
-def test_multi_species_symlink_links_each_folder(db, tmp_path):
-    """Symlink mode produces a symlink in every matching leaf,
-    each pointing at the original source."""
-    project = make_project(db, name="multi-link", detection_threshold=0.5)
-    dep = make_deployment(db, project_id=project.id)
-    src = _make_source(tmp_path, "IMG_M06.jpg", b"link-target")
-    file = make_file(
-        db, deployment_id=dep.id, file_path=src, observation_type="animal"
-    )
-    make_detection(
-        db, file_id=file.id, category="animal", confidence=0.95, label="dog"
-    )
-    make_detection(
-        db, file_id=file.id, category="animal", confidence=0.80, label="wolf"
-    )
-
-    target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target, mode="symlink")
-
-    dog_link = target / "Other" / "dog" / "IMG_M06.jpg"
-    wolf_link = target / "Other" / "wolf" / "IMG_M06.jpg"
-    assert dog_link.is_symlink()
-    assert wolf_link.is_symlink()
-    # Both links resolve to the original source path.
-    assert dog_link.resolve() == Path(src).resolve()
-    assert wolf_link.resolve() == Path(src).resolve()
-    # Source is untouched.
-    assert Path(src).exists()
-    assert Path(src).read_bytes() == b"link-target"
-
-    assert result.linked_count == 2
-    assert result.multi_placement_count == 1

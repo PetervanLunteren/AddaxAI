@@ -2,21 +2,24 @@
 
 The Save step on the folder-run stepper kicks off a job rather than
 running synchronously, so the frontend can render a blocking progress
-modal with per-module status and a Cancel button. Each enabled
-module (Separate / Visualise / Blur / EXIF / CSV / XLSX / Recognition
-JSON / README) runs sequentially in an executor; progress events are
-emitted on the WebSocket between modules so the UI can update the
-checklist in real time.
+modal with per-module status and a Cancel button. Each enabled module
+runs sequentially in an executor; progress events are emitted on the
+WebSocket between modules so the UI can update the checklist in real
+time.
 
-Cancellation is honoured between modules only — the individual
-modules iterate full file lists internally and don't yet accept
-mid-loop cancellation. That's a future refinement; the current
-between-module check is good enough for the typical run (one slow
-module of a few minutes, not hours).
+Cancellation is honoured between modules only — the individual modules
+iterate full file lists internally and don't yet accept mid-loop
+cancellation. That's a future refinement; the current between-module
+check is good enough for the typical run.
 
-The job's ``result`` payload mirrors the shape the synchronous
-endpoint used to return so the completion modal in the UI can
-render the same per-module summary panels with no shape change.
+Module sequencing matters: ``separate_folders`` runs first so the
+shared ``OutputContext`` knows where each file ended up, then
+``annotated_copies`` reads those placements and writes the
+combined-effect image into each one. The data exports run last and
+can pick up the resolved paths for the new ``relative_path`` column.
+
+The job's ``result`` payload mirrors the per-module dataclass dicts so
+the completion modal in the UI can render summary panels directly.
 """
 
 from __future__ import annotations
@@ -35,9 +38,9 @@ from app.core.job_cancellation import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.postprocessing_outputs.blur_people import blur_people
-from app.ml.postprocessing_outputs.exif_metadata import (
-    write_exif_predictions,
+from app.ml.postprocessing_outputs._output_context import OutputContext
+from app.ml.postprocessing_outputs.annotated_copies import (
+    write_annotated_copies,
 )
 from app.ml.postprocessing_outputs.observations_csv import (
     write_observations_csv,
@@ -52,21 +55,18 @@ from app.ml.postprocessing_outputs.run_readme import write_run_readme
 from app.ml.postprocessing_outputs.separate_folders import (
     separate_into_folders,
 )
-from app.ml.postprocessing_outputs.visualised_images import (
-    visualise_images,
-)
 
 logger = get_logger(__name__)
 
 
-# Module ids — match the keys the frontend expects on the result
-# payload + the labels in the progress events. The order here is
-# the order the worker runs them in.
+# Module ids — match the keys the frontend expects on the result payload
+# and the labels in the progress events. The order here is the order
+# the worker runs them in. ``separate_folders`` must come before
+# ``annotated_copies`` so the shared ``OutputContext`` is populated
+# before any module that consumes it.
 _MODULE_ORDER: tuple[str, ...] = (
     "separate_folders",
-    "visualised_images",
-    "blur_people",
-    "write_exif",
+    "annotated_copies",
     "recognition_json",
     "csv",
     "xlsx",
@@ -76,9 +76,7 @@ _MODULE_ORDER: tuple[str, ...] = (
 # User-facing names for the progress messages.
 _MODULE_LABELS: dict[str, str] = {
     "separate_folders": "Separating files",
-    "visualised_images": "Visualising detections",
-    "blur_people": "Blurring people and vehicles",
-    "write_exif": "Writing EXIF tags",
+    "annotated_copies": "Writing annotated copies",
     "recognition_json": "Writing recognition JSON",
     "csv": "Writing CSV",
     "xlsx": "Writing XLSX",
@@ -92,14 +90,7 @@ def _check_cancelled(job_id: str) -> None:
 
 
 async def process_save_outputs_job(job_id: str) -> None:
-    """Run the picked postprocess modules for a folder-run save job.
-
-    Each module runs synchronously in an executor so the asyncio
-    loop stays free to flush WebSocket progress events between
-    them. The job payload carries every flag and parameter the
-    synchronous endpoint used to take; the result payload mirrors
-    the synchronous response shape.
-    """
+    """Run the picked postprocess modules for a folder-run save job."""
     db = next(get_db())
     try:
         job = job_crud.get_job(db, job_id)
@@ -120,18 +111,17 @@ async def process_save_outputs_job(job_id: str) -> None:
 
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
+        ctx = OutputContext(output_root=output_root)
 
-        # Resolve which modules to run. Same flags as the
-        # synchronous endpoint accepted.
+        draw_bboxes = bool(payload.get("draw_bboxes"))
+        anonymise = bool(payload.get("anonymise"))
+
+        # Which modules actually fire on this run.
         active_modules: list[str] = []
         if payload.get("separate_folders"):
             active_modules.append("separate_folders")
-        if payload.get("visualised_images"):
-            active_modules.append("visualised_images")
-        if payload.get("blur_people"):
-            active_modules.append("blur_people")
-        if payload.get("write_exif"):
-            active_modules.append("write_exif")
+        if draw_bboxes or anonymise:
+            active_modules.append("annotated_copies")
         if payload.get("recognition_json"):
             active_modules.append("recognition_json")
         if payload.get("csv"):
@@ -147,10 +137,11 @@ async def process_save_outputs_job(job_id: str) -> None:
         total_modules = len(active_modules)
 
         # Resolve the per-call exclusion list once. The export
-        # modules want a list of label name strings (not UUIDs);
-        # see folder_runs router for the rationale.
-        from app.models import LabelTaxonomy
-        from sqlalchemy import select
+        # modules want a list of label name strings (not UUIDs); see
+        # the folder_runs router for the rationale.
+        from sqlalchemy import func, select
+
+        from app.models import Deployment, File, LabelTaxonomy
 
         raw_excluded = payload.get("excluded_label_ids") or []
         excluded_frozen = (
@@ -180,8 +171,19 @@ async def process_save_outputs_job(job_id: str) -> None:
         )
 
         loop = asyncio.get_event_loop()
+        # Count source files once up front so the completion screen can
+        # show a single "N source files processed" tally without
+        # double-counting multi-placement inflation in any per-module
+        # number.
+        source_file_count = db.scalar(
+            select(func.count(File.id))
+            .join(Deployment, File.deployment_id == Deployment.id)
+            .where(Deployment.project_id == project.id)
+        ) or 0
+
         result_payload: dict[str, Any] = {
             "output_dir": str(output_root),
+            "source_file_count": int(source_file_count),
         }
 
         for idx, module in enumerate(active_modules):
@@ -198,65 +200,49 @@ async def process_save_outputs_job(job_id: str) -> None:
 
             def _run(m: str = module) -> dict[str, Any]:
                 if m == "separate_folders":
-                    target = output_root / "separated"
                     return separate_into_folders(
                         db,
                         project.id,
-                        target,
+                        ctx,
                         mode=payload.get("separate_method", "copy"),
                         group_by=payload.get(
                             "separate_group_by", "taxonomic"
                         ),
                         excluded_label_ids=excluded_frozen,
                     ).to_dict()
-                if m == "visualised_images":
-                    target = output_root / "visualised"
-                    return visualise_images(
+                if m == "annotated_copies":
+                    return write_annotated_copies(
                         db,
                         project.id,
-                        target,
-                        excluded_label_ids=excluded_frozen,
-                    ).to_dict()
-                if m == "blur_people":
-                    target = output_root / "blurred"
-                    return blur_people(
-                        db,
-                        project.id,
-                        target,
-                        excluded_label_ids=excluded_frozen,
-                    ).to_dict()
-                if m == "write_exif":
-                    return write_exif_predictions(
-                        db,
-                        project.id,
-                        output_root,
-                        mode=payload.get("exif_mode", "copy"),
+                        ctx,
+                        draw_bboxes=draw_bboxes,
+                        anonymise=anonymise,
                         excluded_label_ids=excluded_frozen,
                     ).to_dict()
                 if m == "recognition_json":
                     return write_recognition_json(
                         db,
                         project.id,
-                        output_root,
+                        ctx.output_root,
                         excluded_species=excluded_names_for_exports,
                     ).to_dict()
                 if m == "csv":
                     return write_observations_csv(
                         db,
                         project.id,
-                        output_root,
+                        ctx,
                         excluded_species=excluded_names_for_exports,
                     ).to_dict()
                 if m == "xlsx":
                     return write_observations_xlsx(
                         db,
                         project.id,
-                        output_root,
+                        ctx,
                         excluded_species=excluded_names_for_exports,
                     ).to_dict()
                 if m == "run_readme":
                     return write_run_readme(
-                        db, project.id, output_root
+                        db, project.id, ctx.output_root
                     ).to_dict()
                 raise ValueError(f"Unknown module: {m}")
 

@@ -2,7 +2,7 @@
 filter on ``separate_into_folders``.
 
 The base routing tests (animal-no-label fallback, person / vehicle /
-blank routing, mode = copy / move / symlink, collisions) live in
+blank routing, copy / move modes, collisions) live in
 ``test_separate_folders.py``. This file pins the behaviour that
 depends on the project's LabelTaxonomy chain: full nested paths,
 truncation at the deepest known rank, multi-species placement, and
@@ -11,6 +11,7 @@ how the exclusion filter interacts with both.
 
 from pathlib import Path
 
+from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.separate_folders import (
     UNRANKED_FOLDER,
     separate_into_folders,
@@ -29,6 +30,10 @@ def _make_source(tmp_path: Path, name: str) -> str:
     src.parent.mkdir(parents=True, exist_ok=True)
     src.write_bytes(b"x")
     return str(src)
+
+
+def _ctx(output_root: Path) -> OutputContext:
+    return OutputContext(output_root=output_root)
 
 
 def _add_taxonomy(
@@ -86,7 +91,7 @@ def test_writes_full_five_level_nested_path(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert result.copied_count == 1
     expected = (
@@ -127,7 +132,7 @@ def test_truncates_at_deepest_known_rank(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="Canidae")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, target)
+    separate_into_folders(db, project.id, _ctx(target))
 
     assert (
         target / "Mammalia" / "Carnivora" / "Canidae" / "IMG_001.jpg"
@@ -173,7 +178,7 @@ def test_multi_species_two_leaves(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.85, label="lion")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, target)
+    result = separate_into_folders(db, project.id, _ctx(target))
 
     assert result.copied_count == 2
     assert result.multi_placement_count == 1
@@ -201,7 +206,7 @@ def test_unmapped_label_falls_back_to_other(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="mystery")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, target)
+    separate_into_folders(db, project.id, _ctx(target))
 
     assert (target / UNRANKED_FOLDER / "mystery" / "IMG_001.jpg").is_file()
 
@@ -225,7 +230,7 @@ def test_excluded_label_ids_drops_animal_file(db, tmp_path):
     result = separate_into_folders(
         db,
         project.id,
-        target,
+        _ctx(target),
         excluded_label_ids=frozenset({"dog"}),
     )
 
@@ -254,7 +259,7 @@ def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(
     result = separate_into_folders(
         db,
         project.id,
-        target,
+        _ctx(target),
         excluded_label_ids=frozenset({"wolf"}),
     )
 
@@ -290,7 +295,7 @@ def test_flat_mode_places_single_segment_per_species(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, target, group_by="flat")
+    separate_into_folders(db, project.id, _ctx(target), group_by="flat")
 
     assert (target / "dog" / "IMG_001.jpg").is_file()
     assert not (target / "Mammalia").exists()
@@ -308,7 +313,7 @@ def test_flat_mode_multi_species_two_leaves(db, tmp_path):
 
     target = tmp_path / "out"
     result = separate_into_folders(
-        db, project.id, target, group_by="flat"
+        db, project.id, _ctx(target), group_by="flat"
     )
 
     assert result.copied_count == 2
@@ -339,7 +344,7 @@ def test_excluded_label_ids_does_not_affect_non_animal_files(db, tmp_path):
     result = separate_into_folders(
         db,
         project.id,
-        target,
+        _ctx(target),
         excluded_label_ids=frozenset({"dog", "wolf", "cat"}),
     )
 

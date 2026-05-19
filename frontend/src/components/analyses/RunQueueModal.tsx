@@ -214,6 +214,17 @@ function LogTable({ rows }: LogTableProps) {
   );
 }
 
+/** Terminal-state info passed to ``renderTerminalFooter`` so the caller
+ * can render an appropriate continue / retry button row. ``close``
+ * runs the modal's standard close logic (including queue-entry cleanup
+ * when enabled) and resolves when done. */
+export type RunQueueTerminalKind = "completed" | "failed" | "cancelled";
+export interface RunQueueTerminalInfo {
+  kind: RunQueueTerminalKind;
+  close: () => Promise<void>;
+  isClosing: boolean;
+}
+
 interface RunQueueModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -222,6 +233,22 @@ interface RunQueueModalProps {
   projectId: string;
   queueEntryIds: string[];
   onAnalysisComplete?: () => void;
+  /** Override the default terminal-state footer (New analysis +
+   * Verify + Dashboard). Receives the terminal kind and a close
+   * callback so the caller can chain navigation after close. When
+   * omitted, the projects-mode default is rendered. */
+  renderTerminalFooter?: (info: RunQueueTerminalInfo) => React.ReactNode;
+  /** Whether to delete completed/failed queue entries on close.
+   * Projects mode wants this (true, default) because the queue is a
+   * scratch list. Folder-run mode wants this off so the entry stays
+   * available for the "you analysed this folder before" lookup. */
+  deleteQueueEntriesOnClose?: boolean;
+  /** Caller context. Drives wording in the terminal-state UI:
+   * projects mode talks about "deployments" (the run is a batch of
+   * N items from the queue), folder-run mode talks about a single
+   * folder and drops the deployment count entirely. Defaults to
+   * "projects" so existing callers stay unchanged. */
+  mode?: "projects" | "folder-run";
 }
 
 export function RunQueueModal({
@@ -232,6 +259,9 @@ export function RunQueueModal({
   projectId,
   queueEntryIds,
   onAnalysisComplete,
+  renderTerminalFooter,
+  deleteQueueEntriesOnClose = true,
+  mode = "projects",
 }: RunQueueModalProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -320,18 +350,20 @@ export function RunQueueModal({
     if (isClosing) return;
     setIsClosing(true);
     try {
-      // Only delete entries that reached a terminal state in this run.
-      // After a cancel, entries reset back to "pending" must survive so
-      // the user can re-run them without re-adding the folders.
-      const terminalStatuses = new Set(["completed", "failed"]);
-      const idsToDelete = runEntries
-        .filter((e) => terminalStatuses.has(e.status))
-        .map((e) => e.id);
-      await Promise.all(
-        idsToDelete.map((id) =>
-          deploymentQueueApi.remove(id).catch(() => null),
-        ),
-      );
+      if (deleteQueueEntriesOnClose) {
+        // Only delete entries that reached a terminal state in this run.
+        // After a cancel, entries reset back to "pending" must survive so
+        // the user can re-run them without re-adding the folders.
+        const terminalStatuses = new Set(["completed", "failed"]);
+        const idsToDelete = runEntries
+          .filter((e) => terminalStatuses.has(e.status))
+          .map((e) => e.id);
+        await Promise.all(
+          idsToDelete.map((id) =>
+            deploymentQueueApi.remove(id).catch(() => null),
+          ),
+        );
+      }
     } finally {
       void queryClient.invalidateQueries({
         queryKey: ["deployment-queue", projectId],
@@ -379,15 +411,23 @@ export function RunQueueModal({
           </DialogTitle>
           <DialogDescription>
             {isComplete
-              ? "All deployments processed. Open the dashboard, verify, or run more."
+              ? mode === "folder-run"
+                ? "Your folder has been analysed."
+                : "All deployments processed. Open the dashboard, verify, or run more."
               : hasCancelled
-                ? "Review what finished before the run was stopped."
+                ? mode === "folder-run"
+                  ? "The run was stopped before finishing."
+                  : "Review what finished before the run was stopped."
                 : hasError
                   ? "The run stopped before finishing. Review the details below."
                   : isCancelling
-                    ? "Stopping the current deployment..."
+                    ? mode === "folder-run"
+                      ? "Stopping the analysis..."
+                      : "Stopping the current deployment..."
                     : isWaitingForJob
-                      ? "Preparing the deployment queue..."
+                      ? mode === "folder-run"
+                        ? "Preparing the analysis..."
+                        : "Preparing the deployment queue..."
                       : "This analysis is resource intensive. Please avoid other heavy tasks while it runs."}
           </DialogDescription>
         </DialogHeader>
@@ -398,15 +438,6 @@ export function RunQueueModal({
             const warningCount = logRows.filter((r) => r.severity === "warning").length;
             const totalAttempted = successCount + failureCount;
             const stillLoading = runEntries.length === 0;
-
-            // Deployment phrase: "M of N deployments" when some failed,
-            // otherwise "N deployments". Fall back to the pre-run queue
-            // count while the terminal-state fetch is still in flight.
-            const deploymentN = stillLoading ? queueCount : successCount;
-            const deploymentsText =
-              failureCount > 0
-                ? `${successCount} of ${totalAttempted} deployments`
-                : `${deploymentN} deployment${deploymentN === 1 ? '' : 's'}`;
 
             const mediaParts: string[] = [];
             if (savedImageCount > 0) {
@@ -419,10 +450,29 @@ export function RunQueueModal({
                 `${savedVideoCount} video${savedVideoCount === 1 ? '' : 's'}`,
               );
             }
-            const mediaText = mediaParts.length > 0 ? ` with ${mediaParts.join(' and ')}` : '';
+            const mediaText = mediaParts.join(' and ');
 
             const hasIssues = !stillLoading && (warningCount > 0 || failureCount > 0);
-            const prefix = hasIssues ? "Processed" : "Successfully processed";
+
+            // Body string: projects mode talks about deployments, folder
+            // mode drops the deployment count (always 1) and uses media
+            // counts as the headline number.
+            let mainText: string;
+            if (mode === "folder-run") {
+              const prefix = hasIssues ? "Processed" : "Successfully processed";
+              mainText = mediaText
+                ? `${prefix} ${mediaText}.`
+                : `${prefix} the folder.`;
+            } else {
+              const deploymentN = stillLoading ? queueCount : successCount;
+              const deploymentsText =
+                failureCount > 0
+                  ? `${successCount} of ${totalAttempted} deployments`
+                  : `${deploymentN} deployment${deploymentN === 1 ? '' : 's'}`;
+              const withMedia = mediaText ? ` with ${mediaText}` : '';
+              const prefix = hasIssues ? "Processed" : "Successfully processed";
+              mainText = `${prefix} ${deploymentsText}${withMedia}.`;
+            }
 
             // Hint at the log table so users know where the details are.
             const issueBits: string[] = [];
@@ -430,9 +480,15 @@ export function RunQueueModal({
               issueBits.push(`${warningCount} file${warningCount === 1 ? '' : 's'} skipped`);
             }
             if (failureCount > 0) {
-              issueBits.push(
-                `${failureCount} deployment${failureCount === 1 ? '' : 's'} failed`,
-              );
+              if (mode === "folder-run") {
+                issueBits.push(
+                  `${failureCount} error${failureCount === 1 ? '' : 's'}`,
+                );
+              } else {
+                issueBits.push(
+                  `${failureCount} deployment${failureCount === 1 ? '' : 's'} failed`,
+                );
+              }
             }
             const issueText = issueBits.length > 0 ? ` See details below: ${issueBits.join(', ')}.` : '';
 
@@ -449,7 +505,7 @@ export function RunQueueModal({
                   style={{ color: iconColor }}
                 />
                 <div className="text-sm font-medium" style={{ color: iconColor }}>
-                  {prefix} {deploymentsText}{mediaText}.{issueText}
+                  {mainText}{issueText}
                 </div>
               </div>
             );
@@ -464,19 +520,28 @@ export function RunQueueModal({
             ).length;
             const totalInRun = runEntries.length || queueCount;
 
-            const parts: string[] = [
-              `${completedCount} of ${totalInRun} deployment${totalInRun === 1 ? '' : 's'} completed`,
-            ];
-            if (pendingCount > 0) {
+            const parts: string[] = [];
+            if (mode === "folder-run") {
               parts.push(
-                `${pendingCount} returned to the queue`,
+                completedCount > 0
+                  ? "The folder was partly processed before the run was stopped."
+                  : "The run was stopped before the folder finished processing.",
               );
+            } else {
+              parts.push(
+                `${completedCount} of ${totalInRun} deployment${totalInRun === 1 ? '' : 's'} completed`,
+              );
+              if (pendingCount > 0) {
+                parts.push(
+                  `${pendingCount} returned to the queue`,
+                );
+              }
             }
             return (
               <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
                 <Ban className="h-5 w-5 shrink-0 mt-0.5" />
                 <div className="text-sm font-medium">
-                  {parts.join('. ')}.
+                  {parts.join('. ')}{parts[parts.length - 1]?.endsWith('.') ? '' : '.'}
                 </div>
               </div>
             );
@@ -497,7 +562,9 @@ export function RunQueueModal({
                 <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                   <span className="text-sm font-medium">
-                    Stopping the current deployment...
+                    {mode === "folder-run"
+                      ? "Stopping the analysis..."
+                      : "Stopping the current deployment..."}
                   </span>
                 </div>
               )}
@@ -526,41 +593,55 @@ export function RunQueueModal({
 
         {inTerminalState ? (
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={handleClose}
-              disabled={isClosing}
-            >
-              {isClosing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Closing...
-                </>
-              ) : (
-                "New analysis"
-              )}
-            </Button>
-            {isComplete && successCount > 0 && (
+            {renderTerminalFooter ? (
+              renderTerminalFooter({
+                kind: isComplete
+                  ? "completed"
+                  : hasCancelled
+                    ? "cancelled"
+                    : "failed",
+                close: handleClose,
+                isClosing,
+              })
+            ) : (
               <>
                 <Button
                   variant="outline"
+                  onClick={handleClose}
                   disabled={isClosing}
-                  onClick={async () => {
-                    await handleClose();
-                    navigate(`/projects/${projectId}/verify`);
-                  }}
                 >
-                  Verify
+                  {isClosing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Closing...
+                    </>
+                  ) : (
+                    "New analysis"
+                  )}
                 </Button>
-                <Button
-                  disabled={isClosing}
-                  onClick={async () => {
-                    await handleClose();
-                    navigate(`/projects/${projectId}/dashboard`);
-                  }}
-                >
-                  Dashboard
-                </Button>
+                {isComplete && successCount > 0 && (
+                  <>
+                    <Button
+                      variant="outline"
+                      disabled={isClosing}
+                      onClick={async () => {
+                        await handleClose();
+                        navigate(`/projects/${projectId}/verify`);
+                      }}
+                    >
+                      Verify
+                    </Button>
+                    <Button
+                      disabled={isClosing}
+                      onClick={async () => {
+                        await handleClose();
+                        navigate(`/projects/${projectId}/dashboard`);
+                      }}
+                    >
+                      Dashboard
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </DialogFooter>

@@ -1,19 +1,17 @@
-"""Observations XLSX export — Excel-native flat observation table.
+"""Observations XLSX — Excel-native flat observation table.
 
-Same row schema as the CSV exporter (``observations_csv.py`` and the
-research-projects Export page). Wraps the existing
-``export_crud.build_observation_rows`` + ``export_formats.serialize_xlsx``
-pipeline so the row contents stay in lockstep across CSV, XLSX, and
-Camtrap-DP outputs.
+Same row schema as ``observations_csv.py``, including the folder-run
+``relative_path`` column inserted after ``filename`` (populated from
+``OutputContext.resolved_paths`` when separation ran). Wraps the
+existing ``export_crud.build_observation_rows`` +
+``export_formats.serialize_xlsx`` pipeline.
 
-Writes ``<target_dir>/observations.xlsx`` at the root, parallel to the
-CSV and recognition JSON deliverables.
+Writes ``<output_root>/observations.xlsx``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +19,9 @@ from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.core.logging_config import get_logger
 from app.models import Project
+
+from ._output_context import OutputContext
+from .observations_csv import _enrich_with_relative_path
 
 logger = get_logger(__name__)
 
@@ -46,7 +47,7 @@ class ObservationsXlsxResult:
 def write_observations_xlsx(
     db: Session,
     project_id: str,
-    target_dir: Path,
+    ctx: OutputContext,
     *,
     excluded_species: list[str] | None = None,
 ) -> ObservationsXlsxResult:
@@ -60,17 +61,18 @@ def write_observations_xlsx(
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    target_dir.mkdir(parents=True, exist_ok=True)
+    ctx.output_root.mkdir(parents=True, exist_ok=True)
 
     scoped = export_crud.get_scoped_detection_rows(
         db, project, extra_excluded=excluded_species
     )
     headers, rows = export_crud.build_observation_rows(db, project, scoped)
+    headers, rows = _enrich_with_relative_path(headers, rows, ctx)
     payload = export_formats.serialize_xlsx(
         headers, rows, sheet_title="Observations"
     )
 
-    output_path = target_dir / XLSX_FILENAME
+    output_path = ctx.output_root / XLSX_FILENAME
     with open(output_path, "wb") as f:
         f.write(payload)
 

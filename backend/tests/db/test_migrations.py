@@ -142,24 +142,6 @@ def test_detect_returns_initial_for_initial_schema(isolated_db_settings) -> None
     assert detect_schema_revision(engine) == "9c173fff3bcd"
 
 
-def test_detect_returns_observations_revision_when_only_that_column_exists(
-    isolated_db_settings,
-) -> None:
-    """`projects.observations_max_detections` present but not `deployments.warnings`."""
-    engine = _engine_for(isolated_db_settings)
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "CREATE TABLE projects ("
-                "id TEXT PRIMARY KEY, "
-                "observations_max_detections INTEGER NOT NULL DEFAULT 20000"
-                ")"
-            )
-        )
-
-    assert detect_schema_revision(engine) == "03e058c707df"
-
-
 def test_detect_returns_warnings_revision_when_warnings_column_exists(
     isolated_db_settings,
 ) -> None:
@@ -214,7 +196,9 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
     # column-introducing migrations; keep it in sync with
     # SCHEMA_FINGERPRINTS' detectable entries beyond the initial one.
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE projects DROP COLUMN observations_max_detections"))
+        # observations_max_detections was added by revision 03e058c707df
+        # and later dropped by d4e5f6a7b8c9, so it is not in the head
+        # schema and is not part of the "looks like initial" simulation.
         conn.execute(text("ALTER TABLE deployments DROP COLUMN warnings"))
         conn.execute(text("DROP INDEX IF EXISTS ix_projects_mode"))
         conn.execute(text("ALTER TABLE projects DROP COLUMN mode"))
@@ -225,9 +209,7 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
 
     # Sanity-check: the schema looks like initial, the version row lies.
     insp = inspect(engine)
-    projects_cols = {c["name"] for c in insp.get_columns("projects")}
     deployments_cols = {c["name"] for c in insp.get_columns("deployments")}
-    assert "observations_max_detections" not in projects_cols
     assert "warnings" not in deployments_cols
 
     # 2) Run init_db. Reconciliation should re-stamp at the initial
@@ -238,7 +220,6 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
     insp = inspect(engine)
     projects_cols = {c["name"] for c in insp.get_columns("projects")}
     deployments_cols = {c["name"] for c in insp.get_columns("deployments")}
-    assert "observations_max_detections" in projects_cols
     assert "warnings" in deployments_cols
     assert "mode" in projects_cols
     assert "folder_run_state" in projects_cols

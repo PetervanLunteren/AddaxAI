@@ -13,7 +13,6 @@ import type { ProjectResponse } from "./types";
 export type FolderRunStep =
   | "folder"
   | "model"
-  | "run"
   | "review"
   | "overview"
   | "save";
@@ -48,19 +47,52 @@ export interface FolderRunCreate {
   name?: string;
   video_count?: number;
   image_count?: number;
+  /** "Discard and start over": when true and a folder-run project
+   * already points at this source folder, the existing project is
+   * cascade-deleted (DB rows + on-disk .addaxai cache) before the
+   * fresh one is created. Default false keeps the create-or-resume
+   * behaviour for callers that don't care. */
+  force_new?: boolean;
 }
 
-export type SeparateMode = "copy" | "move" | "symlink";
+/** Summary returned by GET /api/folder-runs/lookup. The Step 1 notice
+ * card renders this when the user picks a folder that already has a
+ * folder-run project. ``null`` from the API means "no existing run".
+ *
+ * ``verified_detection_count`` is the canonical "how much has the
+ * user reviewed" signal: marking a file as verified cascades
+ * Detection.verified=True onto every visible detection in the file,
+ * so this count grows whether the user works file-by-file or
+ * observation-by-observation in the verify grid. */
+export interface FolderRunLookup {
+  id: string;
+  name: string;
+  created_at_utc: string;
+  updated_at_utc: string;
+  detection_model_id: string | null;
+  classification_model_id: string | null;
+  /** Friendly name from the local manifest; falls back to the id
+   * when the model isn't installed (catalog drift, fresh install). */
+  detection_model_name: string | null;
+  classification_model_name: string | null;
+  step: FolderRunStep;
+  file_count: number;
+  detection_count: number;
+  species_count: number;
+  verified_file_count: number;
+  verified_detection_count: number;
+}
+
+export type SeparateMode = "copy" | "move";
 export type SeparateGroupBy = "taxonomic" | "flat";
-export type ExifMode = "overwrite" | "copy";
 
 /** Per-module summary from the save-outputs endpoint. */
 export interface SeparateFoldersResult {
   copied_count: number;
   moved_count: number;
-  linked_count: number;
   written_count: number;
   skipped_missing_source: number;
+  skipped_excluded: number;
   renamed_count: number;
   /** Distinct source files that ended up in more than one folder
    * because their detections covered multiple species. */
@@ -69,19 +101,23 @@ export interface SeparateFoldersResult {
   errors: string[];
 }
 
-export interface VisualisedImagesResult {
+/** Combined per-file annotation pass — blur people / vehicles and / or
+ * draw detection boxes, single image per source written into each
+ * separated destination (or directly under the output root when
+ * separation is off). */
+export interface AnnotatedCopiesResult {
+  /** Saved destinations (one per source file × number of separated
+   * placements). */
   written_count: number;
-  skipped_no_bbox: number;
-  skipped_missing_source: number;
-  renamed_count: number;
-  errors: string[];
-}
-
-export interface BlurPeopleResult {
-  written_count: number;
+  /** Total bbox + pill placements drawn across all sources. */
+  bbox_count: number;
+  /** Total person / vehicle bboxes blurred across all sources. */
   blurred_box_count: number;
-  skipped_no_target: number;
+  /** Files where neither effect would have produced a visible change
+   * (e.g. only anonymise on, no person / vehicle detections). */
+  skipped_no_change: number;
   skipped_missing_source: number;
+  skipped_excluded: number;
   renamed_count: number;
   errors: string[];
 }
@@ -103,15 +139,6 @@ export interface ObservationsCsvResult {
 export interface ObservationsXlsxResult {
   output_path: string;
   row_count: number;
-  errors: string[];
-}
-
-export interface ExifMetadataResult {
-  mode: ExifMode;
-  written_count: number;
-  skipped_no_detections: number;
-  skipped_video: number;
-  skipped_missing_source: number;
   errors: string[];
 }
 
@@ -172,10 +199,11 @@ export interface SaveOutputsRequest {
    * the heterogeneous output of the label-tree endpoint. Empty /
    * omitted = no filter. */
   excluded_label_ids?: string[];
-  visualised_images?: boolean;
-  blur_people?: boolean;
-  write_exif?: boolean;
-  exif_mode?: ExifMode;
+  /** Draw detection bounding boxes + pill labels on annotated copies. */
+  draw_bboxes?: boolean;
+  /** Blur person / vehicle detections on annotated copies (privacy
+   * mode for shareable datasets). */
+  anonymise?: boolean;
   recognition_json?: boolean;
   csv?: boolean;
   xlsx?: boolean;
@@ -189,14 +217,16 @@ export interface SaveOutputsResponse {
 }
 
 /** Shape of the data payload emitted on the job's complete event.
- * Same per-module summaries the synchronous endpoint used to
- * return inline — the completion screen still consumes this shape. */
+ * Per-module summaries that the completion screen aggregates into
+ * a single confirmation + an error banner when applicable. */
 export interface SaveOutputsResult {
   output_dir: string;
+  /** Count of source files in the run, computed once on the backend
+   * so the completion tally doesn't have to reconstruct it from
+   * multi-placement-inflated per-module counters. */
+  source_file_count: number;
   separate_folders?: SeparateFoldersResult;
-  visualised_images?: VisualisedImagesResult;
-  blur_people?: BlurPeopleResult;
-  write_exif?: ExifMetadataResult;
+  annotated_copies?: AnnotatedCopiesResult;
   recognition_json?: RecognitionJsonResult;
   csv?: ObservationsCsvResult;
   xlsx?: ObservationsXlsxResult;
@@ -211,6 +241,13 @@ export const folderRunsApi = {
   /** Resume an existing folder run by id (the project id). */
   get: (runId: string) =>
     api.get<FolderRunResponse>(`/api/folder-runs/${runId}`),
+
+  /** Probe for an existing folder-run project pointing at this source
+   * folder. Returns null when there's no match (the common case). */
+  lookup: (folder: string) =>
+    api.get<FolderRunLookup | null>(
+      `/api/folder-runs/lookup?folder=${encodeURIComponent(folder)}`,
+    ),
 
   /** Persist the current step so a reopened run lands here. */
   updateStep: (runId: string, step: FolderRunStep) =>

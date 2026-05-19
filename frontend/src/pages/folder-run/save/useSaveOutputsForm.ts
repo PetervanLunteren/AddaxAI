@@ -6,13 +6,21 @@
  * the JobProgressModal hands back on completion. The page component
  * is responsible for the WebSocket subscription (``useTaskProgress``)
  * and the modal rendering — this hook just exposes the handles.
+ *
+ * Two safety nets live here:
+ * - ``sourceFolderConflict``: blocks Save when the chosen output
+ *   folder is the source folder or sits inside it. Writing copies at
+ *   the root with original names would overwrite the source.
+ * - ``pendingMoveConfirm``: when ``separate.method === "move"`` the
+ *   click on Save flips this flag instead of spawning immediately, so
+ *   the page can render a confirm dialog (Move removes files from the
+ *   source folder; explicit acknowledgement required).
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   folderRunsApi,
-  type ExifMode,
   type SaveOutputsRequest,
   type SaveOutputsResult,
   type SeparateGroupBy,
@@ -28,12 +36,10 @@ export interface SeparateState {
 
 export interface VisualiseState {
   enabled: boolean;
-  blur: boolean;
 }
 
-export interface ExifState {
+export interface AnonymiseState {
   enabled: boolean;
-  mode: ExifMode;
 }
 
 /** Label-exclusion filter — list of LabelTaxonomy ids and / or raw
@@ -51,7 +57,7 @@ function buildRequest(
   outputDir: string,
   separate: SeparateState,
   visualise: VisualiseState,
-  exif: ExifState,
+  anonymise: AnonymiseState,
   exportOpts: ExportState,
   excludedLabelIds: ExcludedLabelIds,
 ): SaveOutputsRequest {
@@ -61,51 +67,50 @@ function buildRequest(
     separate_method: separate.method,
     separate_group_by: separate.groupBy,
     excluded_label_ids: [...excludedLabelIds],
-    visualised_images: visualise.enabled,
-    blur_people: visualise.enabled && visualise.blur,
-    write_exif: exif.enabled,
-    exif_mode: exif.mode,
+    draw_bboxes: visualise.enabled,
+    anonymise: anonymise.enabled,
     csv: exportOpts.enabled && exportOpts.csv,
     xlsx: exportOpts.enabled && exportOpts.xlsx,
     recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
   };
 }
 
-/** Default output directory: sibling "AddaxAI results" folder next
- * to the source folder, run name as the leaf. Empty string when
- * the source folder isn't known yet. */
-function defaultOutputDir(
-  sourceFolder: string | undefined,
-  runName: string,
-): string {
-  if (!sourceFolder) return "";
-  const sep = sourceFolder.includes("\\") ? "\\" : "/";
-  const trimmed = sourceFolder.replace(/[\\/]+$/, "");
-  const parts = trimmed.split(sep);
-  parts.pop();
-  parts.push("AddaxAI results");
-  parts.push(runName);
-  return parts.join(sep);
+/** True when ``output`` equals ``source`` or sits inside it. Handles
+ * both POSIX and Windows separators so the check works regardless of
+ * which one the OS picker emitted. */
+function outputConflictsWithSource(
+  output: string,
+  source: string | undefined,
+): boolean {
+  if (!output || !source) return false;
+  const norm = (p: string) => p.replace(/[\\/]+$/, "").replace(/\\/g, "/");
+  const o = norm(output);
+  const s = norm(source);
+  if (!s) return false;
+  return o === s || o.startsWith(s + "/");
 }
 
 export interface UseSaveOutputsFormParams {
   runId: string;
   sourceFolder: string | undefined;
-  runName: string;
 }
 
 export interface UseSaveOutputsFormResult {
   outputDir: string;
   setOutputDir: (v: string) => void;
-  /** The dir that will actually be used: typed value or the default. */
+  /** The dir the form will submit. There is no default — the user must
+   * pick one explicitly. Equal to ``outputDir``. */
   effectiveOutputDir: string;
+  /** True when the chosen output dir is the source folder or
+   * nested inside it. Save is disabled in this state. */
+  sourceFolderConflict: boolean;
 
   separate: SeparateState;
   setSeparate: (s: SeparateState) => void;
   visualise: VisualiseState;
   setVisualise: (s: VisualiseState) => void;
-  exif: ExifState;
-  setExif: (s: ExifState) => void;
+  anonymise: AnonymiseState;
+  setAnonymise: (s: AnonymiseState) => void;
   exportOpts: ExportState;
   setExportOpts: (s: ExportState) => void;
   excludedLabelIds: ExcludedLabelIds;
@@ -121,6 +126,14 @@ export interface UseSaveOutputsFormResult {
   /** Set during the brief HTTP roundtrip that spawns the job. */
   isSpawning: boolean;
   saveError: Error | null;
+
+  /** True while waiting for the user to confirm a Move-mode save in
+   * the dialog. The page renders the dialog off this flag. */
+  pendingMoveConfirm: boolean;
+  /** Dismiss the Move-confirm dialog without saving. */
+  cancelMoveConfirm: () => void;
+  /** Confirm the Move-mode save: clears the flag and spawns the job. */
+  confirmMoveAndSave: () => void;
 
   /** Spawn the save-outputs job. */
   saveAll: () => void;
@@ -143,14 +156,13 @@ export interface UseSaveOutputsFormResult {
 export function useSaveOutputsForm({
   runId,
   sourceFolder,
-  runName,
 }: UseSaveOutputsFormParams): UseSaveOutputsFormResult {
-  const initialOutputDir = useMemo(
-    () => defaultOutputDir(sourceFolder, runName),
-    [sourceFolder, runName],
-  );
   const [outputDir, setOutputDir] = useState("");
-  const effectiveOutputDir = outputDir || initialOutputDir;
+  const effectiveOutputDir = outputDir;
+  const sourceFolderConflict = outputConflictsWithSource(
+    effectiveOutputDir,
+    sourceFolder,
+  );
 
   const [separate, setSeparate] = useState<SeparateState>({
     enabled: true,
@@ -159,11 +171,9 @@ export function useSaveOutputsForm({
   });
   const [visualise, setVisualise] = useState<VisualiseState>({
     enabled: false,
-    blur: false,
   });
-  const [exif, setExif] = useState<ExifState>({
+  const [anonymise, setAnonymise] = useState<AnonymiseState>({
     enabled: false,
-    mode: "copy",
   });
   const [exportOpts, setExportOpts] = useState<ExportState>({
     enabled: false,
@@ -182,6 +192,7 @@ export function useSaveOutputsForm({
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<SaveOutputsResult | null>(null);
   const [saveError, setSaveError] = useState<Error | null>(null);
+  const [pendingMoveConfirm, setPendingMoveConfirm] = useState(false);
 
   const spawn = useMutation({
     mutationFn: (payload: SaveOutputsRequest) =>
@@ -191,19 +202,33 @@ export function useSaveOutputsForm({
       setSaveError(e instanceof Error ? e : new Error("unknown")),
   });
 
-  const saveAll = () => {
-    setSaveError(null);
-    setResult(null);
+  const runSpawn = () => {
     spawn.mutate(
       buildRequest(
         effectiveOutputDir,
         separate,
         visualise,
-        exif,
+        anonymise,
         exportOpts,
         excludedLabelIds,
       ),
     );
+  };
+
+  const saveAll = () => {
+    setSaveError(null);
+    setResult(null);
+    if (separate.enabled && separate.method === "move") {
+      setPendingMoveConfirm(true);
+      return;
+    }
+    runSpawn();
+  };
+
+  const cancelMoveConfirm = () => setPendingMoveConfirm(false);
+  const confirmMoveAndSave = () => {
+    setPendingMoveConfirm(false);
+    runSpawn();
   };
 
   const onJobComplete = (data: SaveOutputsResult) => {
@@ -238,23 +263,25 @@ export function useSaveOutputsForm({
     (exportOpts.csv || exportOpts.xlsx || exportOpts.recognitionJson);
   const canSave =
     !!effectiveOutputDir &&
+    !sourceFolderConflict &&
     !spawn.isPending &&
     jobId === null &&
     (separate.enabled ||
       visualise.enabled ||
-      exif.enabled ||
+      anonymise.enabled ||
       exportPicked);
 
   return {
     outputDir,
     setOutputDir,
     effectiveOutputDir,
+    sourceFolderConflict,
     separate,
     setSeparate,
     visualise,
     setVisualise,
-    exif,
-    setExif,
+    anonymise,
+    setAnonymise,
     exportOpts,
     setExportOpts,
     excludedLabelIds,
@@ -265,6 +292,9 @@ export function useSaveOutputsForm({
     result,
     isSpawning: spawn.isPending,
     saveError,
+    pendingMoveConfirm,
+    cancelMoveConfirm,
+    confirmMoveAndSave,
     saveAll,
     onJobComplete,
     onJobError,

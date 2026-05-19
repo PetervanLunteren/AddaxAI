@@ -20,6 +20,10 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]  # broadest → most specific
+# Documented default for the rollup confidence threshold. Callers pass
+# the per-project ``Project.taxonomic_rollup_threshold`` value at runtime;
+# this constant stays as the canonical default so test data, fixtures, and
+# any caller without a project context all agree on the same number.
 ROLLUP_THRESHOLD = 0.65
 
 
@@ -170,6 +174,7 @@ def rollup_single_detection(
     taxonomy_lookup: dict[str, dict[str, str]],
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
+    threshold: float = ROLLUP_THRESHOLD,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
@@ -181,8 +186,8 @@ def rollup_single_detection(
     Walks family, order, class (skips species and genus).
 
     **Path B (confidence rollup)**: top-1 is allowed but confidence
-    < 0.65. Roll up to the nearest level above 0.65. Walks genus,
-    family, order, class.
+    < ``threshold``. Roll up to the nearest level above ``threshold``.
+    Walks genus, family, order, class.
 
     Both paths use only the top-5 predictions for summing (matching
     the official SpeciesNet classifier which returns top-5 only).
@@ -199,6 +204,11 @@ def rollup_single_detection(
             (format "class;order;family;genus;species") that are allowed
             in the project's country. Rollup candidates are checked
             against this set.
+        threshold: Confidence floor for Path B and for the kingdom-level
+            fallback. Callers pass the per-project
+            ``Project.taxonomic_rollup_threshold`` so the DB value is
+            authoritative; the default ``ROLLUP_THRESHOLD`` (0.65) is
+            kept for tests and any caller without a project context.
 
     Returns:
         None if no rollup found (keep raw top-1 as-is).
@@ -229,7 +239,7 @@ def rollup_single_detection(
     if (
         top_in_taxonomy
         and not top_is_excluded
-        and top_conf >= ROLLUP_THRESHOLD
+        and top_conf >= threshold
         and top_is_species
     ):
         # Top-1 is a confident species-level prediction: no rollup needed.
@@ -267,14 +277,14 @@ def rollup_single_detection(
 
     if top_is_excluded:
         # Path A: geofence rollup
-        threshold = top_conf
+        walk_threshold = top_conf
         walk_levels = ["family", "order", "class"]
     else:
         # Path B: confidence rollup. Species sits at the front so models
         # with multiple classes per species (e.g. age or sex variants of
         # one species) can roll up sibling probabilities to the shared
         # species before falling back to genus.
-        threshold = ROLLUP_THRESHOLD
+        walk_threshold = threshold
         walk_levels = ["species", "genus", "family", "order", "class"]
 
     # Walk from most specific to broadest. At each level, find the
@@ -285,7 +295,7 @@ def rollup_single_detection(
         if not sums:
             continue
         for taxon in sorted(sums, key=sums.get, reverse=True):
-            if sums[taxon] < threshold:
+            if sums[taxon] < walk_threshold:
                 break  # remaining taxa have even lower scores
             if allowed_taxonomy_keys is not None:
                 entry = level_entries[level][taxon]
@@ -304,13 +314,13 @@ def rollup_single_detection(
 
     # No level crossed the threshold with an allowed result.
     # Try kingdom level (last resort): sum all top-5 with any taxonomy
-    # info. If the sum >= 0.65, return "animal" at that score.
+    # info. If the sum >= threshold, return "animal" at that score.
     # Matches official API behavior of rolling up to kingdom.
     kingdom_sum = sum(
         conf for cls_id, conf in top5
         if class_id_to_name.get(str(cls_id), "").lower() in taxonomy_lookup
     )
-    if kingdom_sum >= ROLLUP_THRESHOLD:
+    if kingdom_sum >= threshold:
         return {
             "label": "animal",
             "confidence": kingdom_sum,
@@ -328,6 +338,7 @@ def apply_taxonomic_rollup_to_results(
     taxonomy_csv_path: Path,
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
+    threshold: float = ROLLUP_THRESHOLD,
 ) -> RollupResult:
     """
     Apply taxonomic rollup to all detections in a MegaDetector JSON dict (in place).
@@ -341,6 +352,10 @@ def apply_taxonomic_rollup_to_results(
         taxonomy_csv_path: Path to taxonomy.csv
         excluded_names: Lowercase names of excluded species (enables Path A)
         allowed_taxonomy_keys: Geofence taxonomy keys allowed in the country
+        threshold: Confidence floor for Path B and kingdom fallback. Pass
+            ``Project.taxonomic_rollup_threshold`` for the canonical
+            per-project value; ``ROLLUP_THRESHOLD`` (0.65) is kept as
+            the documented default.
 
     Returns:
         RollupResult with the modified dict and list of new rolled-up entries.
@@ -383,6 +398,7 @@ def apply_taxonomic_rollup_to_results(
                 taxonomy_lookup,
                 excluded_names=excluded_names,
                 allowed_taxonomy_keys=allowed_taxonomy_keys,
+                threshold=threshold,
             )
             if result is None:
                 # No rollup needed or rollup found nothing - keep raw top-1

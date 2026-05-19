@@ -25,6 +25,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { StepHeader } from "../../components/folder-run/StepHeader";
 import { VerifyView } from "../../components/verify/VerifyView";
 import { folderRunsApi } from "../../api/folder-runs";
 import { useFolderRun } from "./FolderRunLayout";
@@ -59,6 +60,10 @@ export function FolderRunReviewStep() {
 
   return (
     <div className="space-y-6 pb-24">
+      <StepHeader
+        title="Verify predictions"
+        caption="Check the AI's predictions and correct anything wrong. Optional, but it improves your data."
+      />
       {/* Bottom padding clears the sticky action bar so the last row of
           the verify grid (or pagination strip) is fully visible above
           it on short pages. */}
@@ -68,7 +73,7 @@ export function FolderRunReviewStep() {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           <Button
             variant="outline"
-            onClick={() => navigate(`/folder-runs/${runId}/run`)}
+            onClick={() => navigate(`/folder-runs/${runId}/model`)}
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />

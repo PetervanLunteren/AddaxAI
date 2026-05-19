@@ -21,7 +21,7 @@
  */
 
 import { createContext, useContext } from "react";
-import { Outlet, useParams } from "react-router-dom";
+import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Breadcrumbs } from "../../components/layout/Breadcrumbs";
 import { StepProgress } from "../../components/folder-run/StepProgress";
@@ -55,7 +55,6 @@ export function useFolderRun(): FolderRunContextValue {
  * first dot lit. */
 function stepFromPath(pathname: string): FolderRunStep {
   if (pathname.endsWith("/model")) return "model";
-  if (pathname.endsWith("/run")) return "run";
   if (pathname.endsWith("/overview")) return "overview";
   if (pathname.endsWith("/review")) return "review";
   if (pathname.endsWith("/save")) return "save";
@@ -64,6 +63,7 @@ function stepFromPath(pathname: string): FolderRunStep {
 
 export function FolderRunLayout() {
   const { runId } = useParams<{ runId: string }>();
+  const navigate = useNavigate();
 
   const { data: run, isLoading } = useQuery({
     queryKey: ["folder-run", runId],
@@ -73,16 +73,25 @@ export function FolderRunLayout() {
 
   const currentStep = stepFromPath(window.location.pathname);
 
-  // Steps 4 (Overview), 5 (Review) and 6 (Save) need horizontal
-  // room: Overview embeds the Dashboard, Review embeds the verify
-  // grid, Save renders a two-column options + preview layout. The
-  // form-shaped earlier steps stay narrow.
+  // URL-only navigation: clicking a chip just moves the user. The
+  // backend step ("furthest reached") is not regressed when going
+  // backward, and forward chip-nav past it is disabled by the chip
+  // itself, so we don't need to PATCH the backend here.
+  const handleStepClick = (step: FolderRunStep) => {
+    if (!runId) return;
+    navigate(`/folder-runs/${runId}/${step}`);
+  };
+
+  // Two widths only: form steps (folder, model) sit in a narrower
+  // shell so their two-column rows don't stretch awkwardly; canvas
+  // steps (review, overview, save) get the wide shell because they
+  // embed the verify grid / dashboard / save preview which need
+  // horizontal room. Header strip above always lives at max-w-5xl so
+  // breadcrumbs + step progress stay anchored across all five steps.
   const mainMaxWidth =
-    currentStep === "overview" ||
-    currentStep === "review" ||
-    currentStep === "save"
-      ? "max-w-7xl"
-      : "max-w-3xl";
+    currentStep === "folder" || currentStep === "model"
+      ? "max-w-5xl"
+      : "max-w-7xl";
 
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>
@@ -90,16 +99,11 @@ export function FolderRunLayout() {
         <Breadcrumbs />
         <header className="border-b bg-white/80 backdrop-blur-sm">
           <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold tracking-tight">
-                Analyse a folder
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Run AI on one folder and save results you can use right
-                away.
-              </p>
-            </div>
-            <StepProgress current={currentStep} />
+            <StepProgress
+              current={currentStep}
+              furthest={run?.step}
+              onStepClick={runId ? handleStepClick : undefined}
+            />
           </div>
         </header>
 

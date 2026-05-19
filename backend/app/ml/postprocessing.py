@@ -299,6 +299,7 @@ def run_postprocessing_for_deployment(
                     taxonomy_csv,
                     excluded_names=excluded_names,
                     allowed_taxonomy_keys=allowed_taxonomy_keys,
+                    threshold=project.taxonomic_rollup_threshold,
                 )
                 md_results = rollup_result.md_results
 
@@ -648,6 +649,7 @@ def reload_raw_classifications_from_json(
     taxonomy_csv_path: Path | None = None,
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
+    rollup_threshold: float | None = None,
 ) -> dict:
     """
     Reload raw (unsmoothed) classifications from JSON back to database.
@@ -665,6 +667,8 @@ def reload_raw_classifications_from_json(
         taxonomy_csv_path: Optional path to taxonomy.csv for rollup
         excluded_names: Lowercase excluded species names for rollup
         allowed_taxonomy_keys: Geofence taxonomy keys for rollup
+        rollup_threshold: Per-project taxonomic-rollup confidence floor.
+            None falls back to the documented default in taxonomic_rollup.
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -686,13 +690,21 @@ def reload_raw_classifications_from_json(
 
     # Apply geofence-aware rollup (same logic as main postprocessing)
     if taxonomy_csv_path and taxonomy_csv_path.exists():
-        from app.ml.taxonomic_rollup import apply_taxonomic_rollup_to_results
+        from app.ml.taxonomic_rollup import (
+            ROLLUP_THRESHOLD,
+            apply_taxonomic_rollup_to_results,
+        )
 
         rollup_result = apply_taxonomic_rollup_to_results(
             raw_results,
             taxonomy_csv_path,
             excluded_names=excluded_names,
             allowed_taxonomy_keys=allowed_taxonomy_keys,
+            threshold=(
+                rollup_threshold
+                if rollup_threshold is not None
+                else ROLLUP_THRESHOLD
+            ),
         )
         raw_results = rollup_result.md_results
 

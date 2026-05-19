@@ -99,9 +99,14 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
     ),
     _Fingerprint(
         revision="03e058c707df",
-        table="projects",
-        column="observations_max_detections",
-        description="add observations_max_detections to project",
+        table=None,
+        column=None,
+        description=(
+            "add observations_max_detections to project — column was "
+            "dropped by d4e5f6a7b8c9, so its presence is no longer a "
+            "reliable revision marker (live schema at head no longer "
+            "has it)"
+        ),
     ),
     _Fingerprint(
         revision="2540e6edbee2",
@@ -132,6 +137,24 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
         table="projects",
         column="mode",
         description="add project mode and folder_run_state",
+    ),
+    _Fingerprint(
+        revision="d4e5f6a7b8c9",
+        table=None,
+        column=None,
+        description=(
+            "drop observations_max_detections — column removal, "
+            "not fingerprintable via PRAGMA table_info presence"
+        ),
+    ),
+    _Fingerprint(
+        revision="e5f6a7b8c9d0",
+        table=None,
+        column=None,
+        description=(
+            "drop folder-run 'run' step — JSON data-only UPDATE, no "
+            "schema-level signal to fingerprint"
+        ),
     ),
 )
 

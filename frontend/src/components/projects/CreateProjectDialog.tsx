@@ -374,28 +374,25 @@ export function CreateProjectDialog({
                         />
                       </SelectContent>
                     </Select>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="self-center">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="px-3"
-                            onClick={() => field.value && field.value !== "none" && setShowModelInfo(true)}
-                            disabled={!field.value || field.value === "none"}
-                          >
-                            <InfoIcon className="h-4 w-4" />
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          {field.value
-                            ? "View model information"
-                            : "Select a classification model to view details"}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
+                    {field.value && field.value !== "none" && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="self-center">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="px-3"
+                              onClick={() => setShowModelInfo(true)}
+                            >
+                              <InfoIcon className="h-4 w-4" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>View model information</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </div>
                   <FormMessage />
                 </FormItem>

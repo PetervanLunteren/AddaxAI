@@ -522,30 +522,25 @@ function TimelapseFormPage() {
                               />
                             </SelectContent>
                           </Select>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="self-center">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="px-3"
-                                  onClick={() =>
-                                    hasClassifier && setShowClsInfo(true)
-                                  }
-                                  disabled={!hasClassifier}
-                                >
-                                  <InfoIcon className="h-4 w-4" />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                {hasClassifier
-                                  ? "View model information"
-                                  : "Select a classification model to view details"}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
+                          {hasClassifier && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="self-center">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3"
+                                    onClick={() => setShowClsInfo(true)}
+                                  >
+                                    <InfoIcon className="h-4 w-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>View model information</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </div>
                         {hasClassifier &&
                           classificationStatus &&
@@ -667,24 +662,25 @@ function TimelapseFormPage() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="self-center">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="px-3"
-                                  onClick={() => setShowDetInfo(true)}
-                                  disabled={!field.value}
-                                >
-                                  <InfoIcon className="h-4 w-4" />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>View model information</p>
-                            </TooltipContent>
-                          </Tooltip>
+                          {field.value && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="self-center">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3"
+                                    onClick={() => setShowDetInfo(true)}
+                                  >
+                                    <InfoIcon className="h-4 w-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>View model information</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </div>
                         {detectionStatus &&
                           detectionStatus.status !== "ready" && (

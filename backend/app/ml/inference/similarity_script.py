@@ -35,7 +35,8 @@ from typing import Any
 import numpy as np
 
 # Hard fallback if the parent doesn't pass --max-detections. Real value
-# comes from Project.observations_max_detections on every call.
+# comes from the per-user cap stored in the Observations view-options
+# popover (localStorage) and forwarded through the sort/search request.
 MAX_DETECTIONS = 20_000
 
 # How often to emit progress events during long loops. Tuned for ~50ms
@@ -178,7 +179,7 @@ def _load_embeddings(
             raise ValueError(
                 f"Too many detections ({total}, current limit {max_detections}). "
                 "Narrow the result by species, site, or date, or raise the "
-                "limit in Settings → Verification."
+                "limit in the Observations view options (gear icon)."
             )
 
         _emit_progress("load", 0, total)

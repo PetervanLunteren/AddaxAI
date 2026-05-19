@@ -126,18 +126,6 @@ class ProjectBase(BaseModel):
         description="Override embedding model batch size (null = use default)",
     )
 
-    # Verify-tab Observations max-detections cap.
-    observations_max_detections: int = Field(
-        default=20000,
-        ge=1000,
-        le=50000,
-        description=(
-            "Max detections loaded into the Observations grid in one similarity "
-            "sort. Higher values let large projects render without filters but "
-            "cost more SQL time, more memory, and a longer wait."
-        ),
-    )
-
     # Workflow mode. 'research' = full project workspace (Sites,
     # Deployments, Insights). 'folder_run' = legacy-style point-at-a-
     # folder workflow with a hidden single deployment. Defaults to
@@ -201,7 +189,6 @@ class ProjectUpdate(BaseModel):
     detection_batch_size: int | None = Field(None, ge=1, le=256)
     classification_batch_size: int | None = Field(None, ge=1, le=256)
     embedding_batch_size: int | None = Field(None, ge=1, le=256)
-    observations_max_detections: int | None = Field(None, ge=1000, le=50000)
     mode: ProjectMode | None = None
     folder_run_state: dict | None = None
 
