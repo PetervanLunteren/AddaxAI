@@ -99,11 +99,11 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                   <p>Verification progress per unit:</p>
                   <ul className="list-disc pl-5 space-y-0.5">
                     <li>Events: files grouped by time.</li>
-                    <li>Media: stills and videos.</li>
-                    <li>Observations: AI detections.</li>
+                    <li>Media: images and videos.</li>
+                    <li>Observations: individual AI predictions.</li>
                   </ul>
                   <p>
-                    The list below shows verified vs total detections per
+                    The list below shows verified vs total observations per
                     label, sorted by support.
                   </p>
                 </>
@@ -111,13 +111,20 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
               how={
                 <>
                   <p>
-                    An event is verified when all its MaxN frames are. A
-                    file is verified when you mark it. A detection is
-                    verified when you confirm or correct its label. The
-                    three rows are independent.
+                    Verification cascades downward, not upward.
+                    Verifying a media file confirms every observation in
+                    it at once, and means you've reviewed the whole
+                    frame, so you'd also catch an animal the AI missed.
+                    An event rests on its MaxN frames (one per taxon
+                    found), so verifying an event usually means checking
+                    just one or two media, which cascades to those
+                    observations. Verifying observations on their own
+                    only confirms those labels, so the media and the
+                    event stay unverified. Media is the most thorough
+                    check, and the most effort.
                   </p>
                   <p>
-                    Per-class rows count detections that pass the project
+                    Per-class rows count observations that pass the project
                     threshold or are verified, and skip false detections.
                   </p>
                 </>

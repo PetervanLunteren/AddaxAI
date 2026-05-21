@@ -81,7 +81,7 @@ export function DeleteProjectDialog({
             <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
               <li>All sites and deployment information</li>
               <li>All AI predictions and classifications</li>
-              <li>All detection results and analyses</li>
+              <li>All observation results and analyses</li>
               <li>All metadata and database records</li>
             </ul>
           </div>

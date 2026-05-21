@@ -125,33 +125,29 @@ function buildTree({
   const folders: SubFolder[] = [];
   const files: FileEntry[] = [];
 
-  // Separation places per-label folders directly at the output root,
-  // matching legacy AddaxAI. No `separated/` wrapper.
+  // Media copies. "taxonomic" / "flat" lay them out in per-label
+  // subfolders at the output root (counts from the preview); "none"
+  // drops them flat at the root, surfaced as a single line. Boxes /
+  // blur render onto these same copies, so they add no separate tree.
   if (separate.enabled && preview) {
     if (separate.groupBy === "taxonomic") {
       folders.push(...nestedFoldersFromPaths(preview.by_taxonomic_tree));
-    } else {
+    } else if (separate.groupBy === "flat") {
       folders.push(...flatFoldersFromMap(preview.by_flat));
+    } else {
+      // Flat copy: one file each. in_scope_files already reflects the
+      // empties skip, so this line tracks the "copy empties" toggle.
+      const count = preview.in_scope_files;
+      const annotated = visualise.enabled || anonymise.enabled;
+      files.push({
+        name: `${count.toLocaleString()} media file${
+          count === 1 ? "" : "s"
+        }`,
+        hint: annotated
+          ? annotatedHint(visualise.enabled, anonymise.enabled)
+          : "copied",
+      });
     }
-  }
-
-  // Annotated copies: one image per source file. When separation is
-  // on, the annotated image is written into the per-label folder
-  // alongside the file. When separation is off, the images land at
-  // the run root. The preview surfaces the second case as a single
-  // line because enumerating every file would dominate the tree.
-  const scopedImageCount = preview
-    ? preview.dropped_by_filter > 0
-      ? preview.in_scope_image_count
-      : preview.image_count
-    : 0;
-  if ((visualise.enabled || anonymise.enabled) && preview && !separate.enabled) {
-    files.push({
-      name: `${scopedImageCount.toLocaleString()} annotated image${
-        scopedImageCount === 1 ? "" : "s"
-      }`,
-      hint: annotatedHint(visualise.enabled, anonymise.enabled),
-    });
   }
 
   if (exportOpts.enabled) {

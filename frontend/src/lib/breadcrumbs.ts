@@ -61,7 +61,7 @@ const INSIGHTS_LABELS: Record<string, string> = {
 const PROJECT_PAGE_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   process: "Process",
-  verify: "Verify",
+  edit: "Edit",
   sites: "Sites",
   deployments: "Deployments",
   export: "Export",
@@ -71,10 +71,8 @@ const PROJECT_PAGE_LABELS: Record<string, string> = {
 // Labels for folder-run stepper steps. Same step ids as the
 // FolderRunStep type and the URL slugs.
 const FOLDER_RUN_STEP_LABELS: Record<string, string> = {
-  folder: "Folder",
   model: "Setup",
-  run: "Analysis",
-  review: "Verification",
+  edit: "Edit",
   overview: "Summary",
   save: "Output",
 };

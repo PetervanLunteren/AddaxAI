@@ -203,8 +203,8 @@ export function SaveResultsModal({
 
         <div className="space-y-3 overflow-y-auto min-h-0">
           <StatCard
-            title="Detections"
-            subtitle="All detections above confidence threshold"
+            title="Observations"
+            subtitle="All observations above confidence threshold"
             before={results.observations.before}
             after={results.observations.after}
             expanded={detectionsExpanded}

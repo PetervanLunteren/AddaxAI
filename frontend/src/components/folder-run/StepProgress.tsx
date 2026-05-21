@@ -1,11 +1,11 @@
 /**
  * Step progress indicator for the folder-run stepper.
  *
- * Renders the five steps as numbered chips. The current step is
+ * Renders the four steps as numbered chips. The current step is
  * highlighted, completed steps render with a check mark, upcoming
  * steps are muted.
  *
- * Step ordering is fixed: folder → model → review → overview → save.
+ * Step ordering is fixed: model → edit → overview → save.
  * "Completed" means a step preceding the current one.
  *
  * Direct navigation: chips up to and including the backend's
@@ -27,9 +27,8 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { id: "folder", label: "Folder" },
   { id: "model", label: "Setup" },
-  { id: "review", label: "Verification" },
+  { id: "edit", label: "Edit" },
   { id: "overview", label: "Summary" },
   { id: "save", label: "Output" },
 ];
@@ -62,16 +61,21 @@ export function StepProgress({
   const reachableIndex = Math.max(currentIndex, furthestIndex);
 
   return (
-    <ol className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2">
+    <ol className="flex w-full items-start">
       {STEPS.map((step, index) => {
         const isCurrent = index === currentIndex;
         const isDone = index < currentIndex;
         const isLast = index === STEPS.length - 1;
         const isClickable =
           !!onStepClick && index <= reachableIndex && !isCurrent;
+        // Connector halves: the segment between step i-1 and i is
+        // filled once step i-1 is done. The left half of a step shows
+        // that incoming segment, the right half shows the outgoing one.
+        const leftDone = index <= currentIndex;
+        const rightDone = index < currentIndex;
 
         const chipInner = (
-          <div className="flex items-center gap-2">
+          <>
             <div
               className={cn(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors",
@@ -92,7 +96,7 @@ export function StepProgress({
             </div>
             <span
               className={cn(
-                "hidden text-xs font-medium sm:inline",
+                "hidden text-center text-xs font-medium sm:block",
                 isCurrent && "text-foreground",
                 isDone && "text-muted-foreground",
                 !isCurrent && !isDone && "text-muted-foreground/70",
@@ -101,33 +105,48 @@ export function StepProgress({
             >
               {step.label}
             </span>
-          </div>
+          </>
         );
 
         return (
           <li
             key={step.id}
-            className="flex flex-1 items-center gap-2 last:flex-none"
+            className="relative flex flex-1 flex-col items-center gap-2"
           >
-            {isClickable ? (
-              <button
-                type="button"
-                onClick={() => onStepClick?.(step.id)}
-                className="group flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              >
-                {chipInner}
-              </button>
-            ) : (
-              chipInner
+            {/* Connector halves sit at the circle's vertical centre
+                (h-7 = 28px, so 14px) and stop short of the circle
+                (radius 14px + 10px gap = 24px from centre), meeting the
+                neighbour's half at the column boundary. */}
+            {index > 0 && (
+              <div
+                className={cn(
+                  "absolute left-0 right-[calc(50%+24px)] top-[13px] h-px",
+                  leftDone ? "bg-primary/30" : "bg-border",
+                )}
+                aria-hidden="true"
+              />
             )}
             {!isLast && (
               <div
                 className={cn(
-                  "h-px flex-1",
-                  isDone ? "bg-primary/30" : "bg-border",
+                  "absolute left-[calc(50%+24px)] right-0 top-[13px] h-px",
+                  rightDone ? "bg-primary/30" : "bg-border",
                 )}
                 aria-hidden="true"
               />
+            )}
+            {isClickable ? (
+              <button
+                type="button"
+                onClick={() => onStepClick?.(step.id)}
+                className="group relative z-10 flex flex-col items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                {chipInner}
+              </button>
+            ) : (
+              <div className="relative z-10 flex flex-col items-center gap-2">
+                {chipInner}
+              </div>
             )}
           </li>
         );

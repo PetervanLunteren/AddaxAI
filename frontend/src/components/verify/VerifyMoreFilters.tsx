@@ -146,11 +146,14 @@ export function VerifyMoreFilters({
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Empty</label>
               <Select
-                value={filters.empty ?? "all"}
+                value={filters.empty ?? "hide"}
                 onValueChange={(v) =>
                   onChange({
                     ...filters,
-                    empty: v === "all" ? undefined : (v as EmptyFilter),
+                    // Record the choice literally — "hide" is the
+                    // implicit default, so "all" must be explicit
+                    // (undefined would fall back to "hide").
+                    empty: v as EmptyFilter,
                   })
                 }
               >

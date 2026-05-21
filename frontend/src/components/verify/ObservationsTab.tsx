@@ -26,9 +26,7 @@ import {
   type ObservationsProgressEvent,
 } from "../../api/observations";
 import { detectionsApi } from "../../api/detections";
-import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
-import { sitesApi } from "../../api/sites";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Progress } from "../ui/progress";
@@ -39,7 +37,6 @@ import { CropGrid } from "./CropGrid";
 import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
-import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
 import { VerifyFilterBar, type VerificationOption } from "./VerifyFilterBar";
 import { SortSelector } from "./SortSelector";
 import {
@@ -63,6 +60,7 @@ import type {
   ObservationSort,
   EventFilterParams,
   VerifySort,
+  VerifyViewMode,
 } from "../../api/types";
 
 const OBSERVATIONS_SORT_MODES: readonly VerifySort[] = [
@@ -76,6 +74,8 @@ const OBSERVATIONS_SORT_MODES: readonly VerifySort[] = [
 interface ObservationsTabProps {
   projectId: string;
   classificationModelId: string | null;
+  view: VerifyViewMode;
+  onViewChange: (view: VerifyViewMode) => void;
 }
 
 // ── Observations filter state (independent from Events / Files filters) ──
@@ -230,6 +230,8 @@ const PHASE_LABELS: Record<ObservationsProgressEvent["phase"], string> = {
 export function ObservationsTab({
   projectId,
   classificationModelId,
+  view,
+  onViewChange,
 }: ObservationsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -391,26 +393,6 @@ export function ObservationsTab({
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => projectsApi.get(projectId),
-  });
-
-  // Site + filter-options queries: needed so the chip row below can
-  // resolve site IDs and label IDs into human-readable names. Same
-  // query keys VerifyFilterBar uses so react-query dedupes the work.
-  const { data: sites } = useQuery({
-    queryKey: ["sites", projectId],
-    queryFn: () => sitesApi.list(projectId),
-    enabled: !!projectId && (obsFilters.site_ids?.length ?? 0) > 0,
-  });
-  const siteNames = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const s of sites ?? []) map[s.id] = s.name;
-    return map;
-  }, [sites]);
-
-  const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
-    enabled: !!projectId,
   });
 
   const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
@@ -892,12 +874,14 @@ export function ObservationsTab({
   }, [sortResult]);
 
   // Verified-detections progress for the toolbar pill.
+  // Progress over the whole dataset (unfiltered project stats), not the
+  // currently-loaded / filtered detections — otherwise a user filtering
+  // to "unverified" would see a misleading 0%, or a narrowed view could
+  // read 100% while most of the project is unverified.
   const verifiedPct = useMemo(() => {
-    const dets = sortResult?.detections ?? [];
-    if (dets.length === 0) return 0;
-    const verified = dets.filter((d) => d.verified).length;
-    return (verified / dets.length) * 100;
-  }, [sortResult]);
+    if (!stats || stats.reviewable_detections === 0) return 0;
+    return (stats.verified_detections / stats.reviewable_detections) * 100;
+  }, [stats]);
 
   // No embeddings state
   if (stats && stats.embedded_detections === 0) {
@@ -955,19 +939,9 @@ export function ObservationsTab({
         countBy="detection"
         verificationOptions={verificationOptions}
         showLikedFlaggedEmpty={false}
+        view={view}
+        onViewChange={onViewChange}
       />
-
-      {hasAnyActiveFilter(toFilterBarFilters(obsFilters)) && (
-        <FilterChips
-          filters={toFilterBarFilters(obsFilters)}
-          onChange={handleFilterBarChange}
-          filteredCount={allDetections.length}
-          totalCount={totalCount}
-          siteNames={siteNames}
-          displayLabels={filterOptions?.display_labels}
-          detectionFloor={project?.detection_threshold ?? 0}
-        />
-      )}
 
       {/* Warning when embeddings are incomplete */}
       {stats && stats.missing_embeddings > 0 && (
@@ -1034,7 +1008,7 @@ export function ObservationsTab({
           }}
         />
         {sortResult && (
-          <VerifyProgressPill pct={verifiedPct} label="detections verified" />
+          <VerifyProgressPill pct={verifiedPct} label="observations verified" />
         )}
       </VerifyToolbar>
 
@@ -1112,23 +1086,23 @@ export function ObservationsTab({
       ) : allDetections.length === 0 && totalCount > 0 && verificationFilter === "suspicious" ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <p className="text-sm">No suspicious labels in the current selection.</p>
-          <p className="text-xs mt-1">All detections have been verified or have high neighbor agreement.</p>
+          <p className="text-xs mt-1">All observations have been verified or have high neighbor agreement.</p>
         </div>
       ) : allDetections.length === 0 && totalCount > 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
-          <p className="text-sm">All {totalCount} detections in this view are verified.</p>
-          <p className="text-xs mt-1">Switch to &quot;All&quot; to see them.</p>
+          <p className="text-sm">All {totalCount} observations in this view are verified.</p>
+          <p className="text-xs mt-1">Set the verification filter to &quot;All&quot; to see them.</p>
         </div>
       ) : allDetections.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              No detections match your filters
+              No observations match your filters
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Try adjusting or clearing your filters to see more detections.
+              Try adjusting or clearing your filters to see more observations.
             </p>
           </CardContent>
         </Card>
@@ -1228,7 +1202,7 @@ export function ObservationsTab({
               }
             }
             // All verified — close the sheet
-            toast.success("All detections verified");
+            toast.success("All observations verified");
             setDetailDetection(null);
             return false;
           }

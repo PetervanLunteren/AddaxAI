@@ -98,7 +98,7 @@ def get_observation_stats(
     # and similarity search anyway, so we leave them out of the
     # "missing embeddings" count — otherwise the banner would chase a
     # population that `/embed-now` is deliberately designed to skip.
-    from sqlalchemy import and_, or_
+    from sqlalchemy import and_, exists, or_
     has_bbox = Detection.bbox_x.isnot(None)
     on_embeddable_surface = or_(
         File.file_type == "image",
@@ -115,6 +115,41 @@ def get_observation_stats(
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
         .filter(embeddable_clause)
+        .scalar()
+    ) or 0
+
+    # Verification progress pill. This must count the population the
+    # Observations view actually shows — detections that HAVE an
+    # embedding AND pass the project's threshold-or-verified rule —
+    # mirroring the similarity-sort query. Counting the raw embeddable
+    # population instead (no threshold, embedding not required) would
+    # report e.g. 95% while every on-screen observation is verified,
+    # because below-threshold / not-yet-embedded detections drag it
+    # down even though they never appear here.
+    threshold = project.detection_threshold if project else 0.0
+    has_embedding = exists().where(
+        DetectionEmbedding.detection_id == Detection.id
+    )
+    floor_or_verified = or_(
+        Detection.confidence >= threshold,
+        Detection.verified == True,  # noqa: E712
+    )
+    reviewable = (
+        db.query(func.count(Detection.id))
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(has_embedding)
+        .filter(floor_or_verified)
+        .scalar()
+    ) or 0
+    verified = (
+        db.query(func.count(Detection.id))
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(has_embedding)
+        .filter(Detection.verified == True)  # noqa: E712
         .scalar()
     ) or 0
 
@@ -146,6 +181,8 @@ def get_observation_stats(
 
     return ObservationStatsResponse(
         total_detections=total,
+        reviewable_detections=reviewable,
+        verified_detections=verified,
         embedded_detections=embedded,
         missing_embeddings=total - embedded,
         embedding_model_id=embedding_model_id,

@@ -31,8 +31,6 @@ export function hasAnyActiveFilter(filters: EventFilterParams): boolean {
 interface FilterChipsProps {
   filters: EventFilterParams;
   onChange: (filters: EventFilterParams) => void;
-  filteredCount: number;
-  totalCount: number;
   siteNames: Record<string, string>;
   displayLabels?: Record<string, string>;
   /** Project detection_threshold — used to detect when det range is "default". */
@@ -70,8 +68,6 @@ const EMPTY_LABELS: Record<string, string> = {
 export function FilterChips({
   filters,
   onChange,
-  filteredCount,
-  totalCount,
   siteNames,
   displayLabels,
   detectionFloor = 0,
@@ -165,12 +161,15 @@ export function FilterChips({
     });
   }
 
-  // Empty chip
+  // Empty chip. "hide" is the implicit default (shown as a removable
+  // chip like the Observations "Unverified" default); removing it means
+  // "show everything", which must be set to "all" explicitly because
+  // undefined falls back to the "hide" default.
   if (filters.empty && filters.empty !== "all") {
     chips.push({
       key: "empty",
       label: EMPTY_LABELS[filters.empty] ?? filters.empty,
-      onRemove: () => onChange({ ...filters, empty: undefined }),
+      onRemove: () => onChange({ ...filters, empty: "all" }),
     });
   }
 
@@ -211,8 +210,6 @@ export function FilterChips({
   }
 
   if (chips.length === 0) return null;
-
-  const isFiltered = filteredCount !== totalCount;
 
   return (
     <div className="flex items-center gap-2 flex-wrap">

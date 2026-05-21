@@ -114,6 +114,7 @@ def build_output_preview(
     project_id: str,
     *,
     excluded_label_ids: frozenset[str] | None = None,
+    include_empty: bool = True,
 ) -> OutputPreviewResult:
     """Aggregate the counts the Save step needs for its live preview.
 
@@ -220,6 +221,11 @@ def build_output_preview(
 
         if dropped:
             result.dropped_by_filter += 1
+            continue
+
+        # Empties are skipped from the copies unless opted in, so they
+        # add no placements or in-scope counts in the preview either.
+        if not include_empty and row.observation_type == "blank":
             continue
 
         result.in_scope_files += 1

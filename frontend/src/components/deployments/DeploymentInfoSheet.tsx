@@ -229,7 +229,7 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
 
       <Separator />
 
-      <Section title="Detection categories">
+      <Section title="Observation categories">
         <Row
           label="Animal"
           value={info.detection_categories.animal.toLocaleString()}

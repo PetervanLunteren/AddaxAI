@@ -111,9 +111,9 @@ export function ObservationsSettings({
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm">Max detections per sort</p>
+          <p className="text-sm">Max observations per sort</p>
           <p className="text-xs text-muted-foreground">
-            Hard limit on how many detections one similarity sort
+            Hard limit on how many observations one similarity sort
             loads. Narrowing filters first is always faster than
             raising the cap.
           </p>

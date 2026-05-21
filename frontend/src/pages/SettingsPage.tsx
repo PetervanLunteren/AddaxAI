@@ -1700,7 +1700,7 @@ export default function SettingsPage() {
         <AlertDialog open={reEmbedConfirmOpen} onOpenChange={setReEmbedConfirmOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Re-embed detections?</AlertDialogTitle>
+              <AlertDialogTitle>Re-embed observations?</AlertDialogTitle>
               <AlertDialogDescription>
                 Changing the embedding model from{" "}
                 <strong>
@@ -1711,7 +1711,7 @@ export default function SettingsPage() {
                   {embeddingModels.find(m => m.model_id === pendingFormData.current?.embedding_model_id)?.friendly_name ?? "None"}
                 </strong>{" "}
                 requires re-embedding{" "}
-                <strong>{reEmbedDetectionCount.toLocaleString()}</strong> detections.
+                <strong>{reEmbedDetectionCount.toLocaleString()}</strong> observations.
                 This may take a while.
               </AlertDialogDescription>
             </AlertDialogHeader>

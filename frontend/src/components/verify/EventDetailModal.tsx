@@ -32,6 +32,7 @@ import {
   Tag,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
@@ -105,11 +106,29 @@ export function EventDetailModal({
   const fileNavRef = useRef<"forward" | "backward" | null>(null);
 
   // Fetch event data
-  const { data: event } = useQuery({
+  const { data: event, isError: eventError, error: eventErrorObj } = useQuery({
     queryKey: ["event", eventId],
     queryFn: () => eventsApi.get(eventId!),
     enabled: !!eventId && isOpen,
+    // A re-run regenerates events with new ids, so a stale id 404s.
+    // Don't retry that (it can't succeed); other errors keep one retry.
+    retry: (failureCount, err) =>
+      !(err instanceof ApiError && err.status === 404) && failureCount < 1,
   });
+
+  // The event no longer exists (its id went stale after a re-run). Close
+  // the modal and refresh the lists so the dead row disappears, instead
+  // of leaving the user staring at an empty modal.
+  useEffect(() => {
+    if (
+      eventError &&
+      eventErrorObj instanceof ApiError &&
+      eventErrorObj.status === 404
+    ) {
+      onClose();
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    }
+  }, [eventError, eventErrorObj, onClose, queryClient]);
 
   // Fetch adjacent events for navigation (scoped to filtered set)
   const { data: adjacent } = useQuery({
@@ -438,7 +457,7 @@ export function EventDetailModal({
     if (hiddenDetections.length === 0) {
       toast.info("Nothing to promote", {
         description:
-          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed detection. The AI has no box below the project threshold for this frame, so there is nothing to promote.",
+          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed observation. The AI has no box below the project threshold for this frame, so there is nothing to promote.",
       });
       return;
     }
@@ -938,7 +957,7 @@ export function EventDetailModal({
                 title={
                   hiddenDetections.length > 0
                     ? `Promote highest below-threshold AI box (${hiddenDetections.length} candidate${hiddenDetections.length === 1 ? "" : "s"})`
-                    : "No hidden detections to promote"
+                    : "No hidden observations to promote"
                 }
               >
                 <SquarePlus className="h-4 w-4" />
@@ -1435,7 +1454,7 @@ export function EventDetailModal({
                       {[
                         ["← →", "Prev / next MaxN frame"],
                         ["Shift + ← →", "Prev / next frame in event"],
-                        ["↑ ↓", "Select detection"],
+                        ["↑ ↓", "Select observation"],
                         ["Shift + Click", "Select file range"],
                         [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all files"],
                         ["Scroll", "Zoom in / out"],
@@ -1458,7 +1477,7 @@ export function EventDetailModal({
                         ["Tab", "Change label"],
                         ["A", "Promote highest below-threshold box"],
                         ["D", "Toggle draw mode"],
-                        ["Del", "Delete detection"],
+                        ["Del", "Delete observation"],
                       ].map(([key, action]) => (
                         <div key={key} className="flex items-center text-xs gap-3 h-7">
                           <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>

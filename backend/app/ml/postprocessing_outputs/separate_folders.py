@@ -81,7 +81,7 @@ SeparateMode = Literal["copy", "move"]
 # ``taxonomic`` nests Class > Order > Family > Genus > species; labels
 # with no taxonomy mapping fall to ``Other/<label>/``. ``flat`` collapses
 # to one folder per species label at the root.
-SeparateGroupBy = Literal["taxonomic", "flat"]
+SeparateGroupBy = Literal["taxonomic", "flat", "none"]
 # Bucket name for labels with no taxonomy mapping under ``taxonomic``.
 UNRANKED_FOLDER = "Other"
 # Order of taxonomic ranks. Path construction walks these in order and
@@ -241,6 +241,12 @@ def _label_plan_for_file(
     destinations either way. Animal files with no surviving labels
     fall back to ``animal/``.
     """
+    # "none": no subfolders. Every file lands flat in the output root
+    # (a single copy each, regardless of species). Primary "" joins to
+    # the output root unchanged.
+    if group_by == "none":
+        return _LabelPlan(primary="", others=())
+
     obs_type = file.observation_type
     fixed_folder = _OBSERVATION_TYPE_FOLDER.get(obs_type)
 
@@ -340,6 +346,7 @@ def separate_into_folders(
     *,
     mode: SeparateMode = "copy",
     group_by: SeparateGroupBy = "taxonomic",
+    include_empty: bool = True,
     excluded_label_ids: frozenset[str] | None = None,
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
@@ -400,6 +407,10 @@ def separate_into_folders(
                 db, file, threshold, excluded_label_ids
             ):
                 result.skipped_excluded += 1
+                continue
+
+            # Empties are skipped from the copies unless opted in.
+            if not include_empty and file.observation_type == "blank":
                 continue
 
             plan = _label_plan_for_file(

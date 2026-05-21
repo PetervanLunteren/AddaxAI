@@ -335,12 +335,14 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
                 }
                 how={
                   <p>
-                    For each hour 0 to 23, sums MaxN across every event
-                    whose start time falls in that hour. The bands come
-                    from python-astral applied to the project's averaged
-                    site coordinates and IANA timezone for a date drawn
-                    from the filter range midpoint. When the project has
-                    no sites with coordinates, the bands are hidden.
+                    For each hour 0 to 23, sums each event's MaxN across
+                    every event whose start time falls in that hour.
+                    MaxN is the most individuals of the taxon visible in
+                    a single frame within an event. The bands come from
+                    python-astral applied to the project's averaged site
+                    coordinates and IANA timezone for a date drawn from
+                    the filter range midpoint. When the project has no
+                    sites with coordinates, the bands are hidden.
                   </p>
                 }
               />

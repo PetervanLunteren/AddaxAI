@@ -238,6 +238,13 @@ export function AnalysisProgress({
 }: AnalysisProgressProps) {
   if (!deploymentContext) return null;
 
+  // Only show the "Deployment X of N" badge when there's actually a
+  // queue to position the user in. A single deployment (always the
+  // case in folder mode, and common for one-off project runs) carries
+  // no information as "1 of 1", so we drop it.
+  const showDeploymentHeader =
+    !hideDeploymentHeader && deploymentContext.totalDeployments > 1;
+
   const phases = [
     deploymentContext.videoCount > 0 && {
       label: "Video detection",
@@ -273,7 +280,7 @@ export function AnalysisProgress({
 
   return (
     <div className="border rounded-lg p-4 space-y-4">
-      {!hideDeploymentHeader && (
+      {showDeploymentHeader && (
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-gray-600">Deployment</span>
           <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
@@ -285,7 +292,7 @@ export function AnalysisProgress({
 
       {phases.map((entry, idx) => (
         <div key={entry.phase}>
-          {(idx > 0 || !hideDeploymentHeader) && <Separator className="mb-4" />}
+          {(idx > 0 || showDeploymentHeader) && <Separator className="mb-4" />}
           <PhaseRow
             label={entry.label}
             phaseName={entry.phase}

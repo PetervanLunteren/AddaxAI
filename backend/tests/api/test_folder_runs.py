@@ -100,7 +100,7 @@ def test_same_source_folder_resumes_existing_run(client):
 
 def test_resume_preserves_persisted_step(client):
     """If the user got to step `save` and then reopens the folder,
-    they should land on `save`, not back at `folder`."""
+    they should land on `save`, not back at the first step."""
     created = client.post(
         "/api/folder-runs",
         json={"source_folder": "/tmp/resume-step"},
@@ -617,3 +617,90 @@ def test_create_with_explicit_colliding_name_still_409s(client):
     )
     assert resp.status_code == 409
     assert "project named" in resp.json()["detail"]
+
+
+def test_rerun_resets_data(client, db):
+    """``POST /api/folder-runs/{id}/rerun`` wipes deployment data and
+    moves the queue entry back to pending, but keeps the project and
+    queue entry rows so the run id survives. Verified detections are
+    destroyed by design (the destructive confirm dialog warns)."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+    )
+
+    created = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/tmp/rerun-target"},
+    ).json()
+    run_id = created["project"]["id"]
+    queue_entry_id = created["queue_entry"]["id"]
+
+    # Simulate a completed run: queue entry processed, one deployment,
+    # files, detections (one verified).
+    from app.models import DeploymentQueue
+    dep = make_deployment(
+        db, project_id=run_id, folder_path="/tmp/rerun-target"
+    )
+    f1 = make_file(db, deployment_id=dep.id, verified=True)
+    f2 = make_file(db, deployment_id=dep.id, verified=False)
+    make_detection(
+        db, file_id=f1.id, confidence=0.9, label="dog", verified=True
+    )
+    make_detection(db, file_id=f2.id, confidence=0.85, label="wolf")
+
+    queue_entry = db.get(DeploymentQueue, queue_entry_id)
+    queue_entry.status = "completed"
+    queue_entry.deployment_id = dep.id
+    db.commit()
+
+    resp = client.post(f"/api/folder-runs/{run_id}/rerun")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Project + queue entry survive, run id is unchanged.
+    assert body["project"]["id"] == run_id
+    assert body["queue_entry"] is not None
+    assert body["queue_entry"]["id"] == queue_entry_id
+
+    # Queue entry reset to pending with cleared lifecycle fields.
+    assert body["queue_entry"]["status"] == "pending"
+    assert body["queue_entry"]["deployment_id"] is None
+    assert body["queue_entry"]["processed_at_utc"] is None
+    assert body["queue_entry"]["error"] is None
+    assert body["queue_entry"]["warnings"] is None
+
+    # Deployments + files + detections all gone (cascade through
+    # Deployment.delete).
+    from app.models import Deployment, Detection, File
+    db.expire_all()
+    assert db.query(Deployment).filter_by(project_id=run_id).count() == 0
+    assert (
+        db.query(File)
+        .join(Deployment)
+        .filter(Deployment.project_id == run_id)
+        .count()
+        == 0
+    )
+    assert (
+        db.query(Detection)
+        .join(File)
+        .join(Deployment)
+        .filter(Deployment.project_id == run_id)
+        .count()
+        == 0
+    )
+
+
+def test_rerun_404_for_unknown_run(client):
+    resp = client.post("/api/folder-runs/does-not-exist/rerun")
+    assert resp.status_code == 404
+
+
+def test_rerun_404_for_research_project(client, db):
+    """Research-mode projects are not folder runs; rerun must 404 on
+    them rather than corrupting the project's deployments."""
+    proj = make_project(db, mode="research")
+    resp = client.post(f"/api/folder-runs/{proj.id}/rerun")
+    assert resp.status_code == 404

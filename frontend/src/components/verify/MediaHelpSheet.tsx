@@ -57,7 +57,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
         <SheetHeader>
           <SheetTitle>Media verification guide</SheetTitle>
           <SheetDescription>
-            How to review and verify detections file by file
+            How to review and verify observations file by file
           </SheetDescription>
         </SheetHeader>
 
@@ -71,21 +71,21 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
                 Each tile in this tab is one file: a still photo or a
                 video. The AI detects and labels animals, people, and
                 vehicles automatically. Browse here and verify by
-                confirming or correcting the detections.
+                confirming or correcting the observations.
               </p>
               <p>
                 This tab verifies at the file level. A file counts as
                 verified when you
                 press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> on
-                it in the modal: the file and all its detections are
+                it in the modal: the file and all its observations are
                 marked verified. The progress bar in the toolbar shows
                 how many files are verified.
               </p>
               <p>
                 Want to work by event (a group of files captured close
-                together in time)? Use the Events tab. Want one detection
-                at a time across the whole project? Use the Observations
-                tab.
+                together in time)? Use the Events tab. Want one
+                observation at a time across the whole project? Use the
+                Observations tab.
               </p>
             </div>
           </section>
@@ -103,7 +103,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
                 need to correct what the AI got wrong.
               </p>
               <p>
-                Add missing detections
+                Add missing observations
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code>,
                 or draw one yourself
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">D</code>.
@@ -111,7 +111,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Del</code>.
                 Mark a file as empty
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">E</code>:
-                this wipes the detections, marks the file verified, and
+                this wipes the observations, marks the file verified, and
                 jumps to the next.
               </p>
               <p>
@@ -137,7 +137,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
                 the bottom of the sidebar to see every shortcut. You can
                 assign labels to
                 keys <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code> to
-                relabel every detection in a file with one key.
+                relabel every observation in a file with one key.
               </p>
             </div>
           </section>
@@ -148,7 +148,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
             <Separator className="mb-3" />
             <div className="space-y-3">
               <ToolRow icon={<Pencil className="h-4 w-4" />}>
-                Draw a new detection box manually.
+                Draw a new observation box manually.
               </ToolRow>
               <ToolRow icon={<ChevronsUpDown className="h-4 w-4" />}>
                 Choose the label for drawn boxes. Appears in the toolbar
@@ -156,7 +156,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
               </ToolRow>
               <ToolRow icon={<SquarePlus className="h-4 w-4" />}>
                 Promote the highest-confidence below-threshold AI box into
-                a confirmed detection.
+                a confirmed observation.
               </ToolRow>
               <ToolRow icon={<Play className="h-4 w-4" />}>
                 Toggle between the still frame and video playback (only
@@ -174,7 +174,7 @@ export function MediaHelpSheet({ open, onOpenChange }: MediaHelpSheetProps) {
               <ToolRow icon={<Scale className="h-4 w-4" />}>
                 Adjust the view threshold for this file. Local override;
                 it does not change the project setting. Lowering it shows
-                lower-confidence detections in the modal.
+                lower-confidence observations in the modal.
               </ToolRow>
               <ToolRow icon={<Sun className="h-4 w-4" />}>
                 Adjust brightness for dark images.

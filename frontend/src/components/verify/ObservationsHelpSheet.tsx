@@ -39,7 +39,7 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <div>
-                The AI turns each detection crop into a vector and groups
+                The AI turns each observation crop into a vector and groups
                 similar-looking crops next to each other. This makes
                 mislabels easy to spot and easy to fix in bulk. Each card
                 shows its label (e.g.{" "}
@@ -49,11 +49,11 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
                 ) below the crop.
               </div>
               <p>
-                This tab verifies at the detection level. Each crop is its
+                This tab verifies at the observation level. Each crop is its
                 own unit. This is the fastest way to sweep mislabels across
                 the whole project. It does not verify whole files: you only
                 see the crop, so you cannot tell if the original image is
-                missing other detections.
+                missing other observations.
               </p>
               <p>
                 Want to work by event or by file instead? Use the Events
@@ -94,7 +94,7 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Select a detection and press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code>,
+                Select an observation and press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code>,
                 or click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Find similar</code> in
                 the selection bar or in the detail window. The grid switches
                 to search mode against that anchor crop. Results are ranked
@@ -110,9 +110,9 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <div>
-                The system checks each detection's 10 nearest embedding
-                neighbors. If fewer than 7 share the same label, the detection
-                is flagged as suspicious with a red label:{" "}
+                The system checks each observation's 10 nearest embedding
+                neighbors. If fewer than 7 share the same label, the
+                observation is flagged as suspicious with a red label:{" "}
                 <Badge
                   variant="outline"
                   className="text-[9px] px-1 py-0 leading-tight capitalize border-transparent bg-[#882000] text-white hover:bg-[#882000]"
@@ -138,7 +138,7 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
               </div>
               <p>
                 Pick "Suspicious" in the Verified filter to focus on these.
-                Once you verify a detection, it is no longer flagged as
+                Once you verify an observation, it is no longer flagged as
                 suspicious, even if its neighbours disagree.
               </p>
             </div>
@@ -146,12 +146,12 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
 
           {/* Detection detail */}
           <section>
-            <h3 className="text-sm font-semibold mb-2">Detection detail</h3>
+            <h3 className="text-sm font-semibold mb-2">Observation detail</h3>
             <Separator className="mb-3" />
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>
                 Double-click a card to open the detail window. For unverified
-                detections with neighbor data, you'll see a label agreement
+                observations with neighbor data, you'll see a label agreement
                 section with a progress bar showing how many of the 10
                 neighbors agree:
               </p>
@@ -190,7 +190,7 @@ export function ObservationsHelpSheet({ open, onOpenChange }: ObservationsHelpSh
                 Double-click any card to open the detail window.
               </p>
               <p>
-                Verified detections show a{" "}
+                Verified observations show a{" "}
                 <span className="inline-flex items-center align-middle bg-primary rounded-full p-px">
                   <Check className="h-2.5 w-2.5 text-primary-foreground" />
                 </span>

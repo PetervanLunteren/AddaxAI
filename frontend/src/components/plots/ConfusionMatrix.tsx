@@ -65,11 +65,11 @@ export function ConfusionMatrix({
   if (data.classes.length === 0) {
     return (
       <EmptyState
-        title="No verified detections to compare"
+        title="No verified observations to compare"
         body={
           <>
-            Verify some detections on the Verify page; once there are machine-
-            labelled detections that a user has confirmed or relabelled, they
+            Verify some observations on the Edit page; once there are machine-
+            labelled observations that a user has confirmed or relabelled, they
             will show up here.
           </>
         }

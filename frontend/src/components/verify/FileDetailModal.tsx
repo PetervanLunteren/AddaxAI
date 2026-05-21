@@ -324,7 +324,7 @@ export function FileDetailModal({
     if (hiddenDetections.length === 0) {
       toast.info("Nothing to promote", {
         description:
-          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed detection. The AI has no box below the project threshold for this image, so there is nothing to promote.",
+          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed observation. The AI has no box below the project threshold for this image, so there is nothing to promote.",
       });
       return;
     }
@@ -638,7 +638,7 @@ export function FileDetailModal({
                 title={
                   hiddenDetections.length > 0
                     ? `Promote highest below-threshold AI box (${hiddenDetections.length} candidate${hiddenDetections.length === 1 ? "" : "s"})`
-                    : "No hidden detections to promote"
+                    : "No hidden observations to promote"
                 }
               >
                 <SquarePlus className="h-4 w-4" />
@@ -1075,7 +1075,7 @@ export function FileDetailModal({
                       <div>
                         {[
                           ["← →", "Navigate files"],
-                          ["↑ ↓", "Select detection"],
+                          ["↑ ↓", "Select observation"],
                           ["Scroll", "Zoom in / out"],
                           ["P", "Toggle video / frame"],
                           ["B (hold)", "Hide boxes"],
@@ -1100,7 +1100,7 @@ export function FileDetailModal({
                           ["Tab", "Change label"],
                           ["A", "Promote highest below-threshold box"],
                           ["D", "Toggle draw mode"],
-                          ["Del", "Delete detection"],
+                          ["Del", "Delete observation"],
                         ].map(([key, action]) => (
                           <div
                             key={key}

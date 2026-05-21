@@ -28,6 +28,12 @@ from app.utils.media_dates import extract_video_dates as _shared_extract_video_d
 
 logger = get_logger(__name__)
 
+# Marker file dropped inside AddaxAI output folders. Any directory that
+# contains it is a results folder and is skipped during scans, so the
+# copies / visualisations it holds never get re-ingested as input media
+# (this is what lets the save step default to a subfolder of the source).
+OUTPUT_DIR_MARKER = ".addaxai-output"
+
 
 class GPSCoordinates(TypedDict):
     """GPS coordinates extracted from EXIF."""
@@ -85,7 +91,15 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
     video_files: list[Path] = []
 
     for root, dirs, files in os.walk(folder):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip .addaxai etc.
+        # Skip dot-folders (.addaxai etc.) and any folder carrying the
+        # output marker — that's an AddaxAI results folder whose copies
+        # must not be scanned back in as input media.
+        dirs[:] = [
+            d
+            for d in dirs
+            if not d.startswith(".")
+            and not os.path.exists(os.path.join(root, d, OUTPUT_DIR_MARKER))
+        ]
         for filename in files:
             file_path = Path(root) / filename
             ext = file_path.suffix.lower()

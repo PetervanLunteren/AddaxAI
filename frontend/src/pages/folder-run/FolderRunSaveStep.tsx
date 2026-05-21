@@ -1,9 +1,10 @@
 /**
  * Step 5: Save outputs.
  *
- * Two-column layout on wide screens: options on the left (four
- * GroupCards: Separate / Visualise / Write EXIF / Export), live
- * folder preview on the right. The preview reads from
+ * Two-column layout on wide screens: options on the left (two output
+ * groups — "Export results" on by default, and an opt-in "Save copies
+ * of your media"), live folder preview on the right. The preview reads
+ * from
  * `/api/folder-runs/{id}/output-preview` and updates reactively as
  * the user ticks options, so the disk impact of each choice is
  * visible before the user hits Save. On narrower viewports the
@@ -23,20 +24,10 @@ import {
   BackSaveBar,
   CompletionScreen,
   ExportBody,
+  MediaBody,
   OutputFolderField,
   SaveErrorLine,
-  SeparateBody,
 } from "./save/SaveShared";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
-import { Button } from "../../components/ui/button";
-import { OutputFilterCard } from "./save/OutputFilterCard";
 import { OutputPreviewPanel } from "./save/OutputPreviewPanel";
 import { useSaveOutputsForm } from "./save/useSaveOutputsForm";
 import { useFolderRun } from "./FolderRunLayout";
@@ -99,15 +90,14 @@ export function FolderRunSaveStep() {
     },
   });
 
-  // Sorted exclusion list as part of the query key so React Query
-  // refetches the preview whenever the filter changes. Sort first
-  // so {dog, wolf} and {wolf, dog} map to the same cache entry.
-  const excludedKey = [...form.excludedLabelIds].sort();
+  // The empties toggle is part of the query key so the preview
+  // refetches when it changes (it adds / drops the blank captures).
+  const includeEmpty = form.separate.copyEmpties;
   const { data: preview, isLoading: previewLoading } = useQuery({
-    queryKey: ["folder-run-output-preview", runId, excludedKey],
+    queryKey: ["folder-run-output-preview", runId, includeEmpty],
     queryFn: () =>
       folderRunsApi.getOutputPreview(runId!, {
-        excluded_label_ids: excludedKey,
+        include_empty: includeEmpty,
       }),
     enabled: !!runId,
     staleTime: 30_000,
@@ -148,46 +138,30 @@ export function FolderRunSaveStep() {
       <div className="space-y-6">
         <OutputFolderField form={form} />
 
-        <OutputFilterCard form={form} projectId={runId} />
-
+        {/* Data exports: lightweight, non-destructive, on by default. */}
         <GroupCard
-          title="Separate files into subfolders"
-          caption="Group files by species so you can browse them in your file manager."
-          enabled={form.separate.enabled}
-          onEnabledChange={(v) =>
-            form.setSeparate({ ...form.separate, enabled: v })
-          }
-        >
-          <SeparateBody form={form} />
-        </GroupCard>
-
-        <GroupCard
-          title="Visualise detections"
-          caption="Save a copy of each image with detection boxes drawn on top."
-          enabled={form.visualise.enabled}
-          onEnabledChange={(v) =>
-            form.setVisualise({ ...form.visualise, enabled: v })
-          }
-        />
-
-        <GroupCard
-          title="Anonymise people and vehicles"
-          caption="Save a copy of each image with people and vehicles blurred."
-          enabled={form.anonymise.enabled}
-          onEnabledChange={(v) =>
-            form.setAnonymise({ ...form.anonymise, enabled: v })
-          }
-        />
-
-        <GroupCard
-          title="Export results and metadata"
-          caption="Save flat observation tables and the recognition JSON."
+          title="Export results"
+          caption="Observation tables (CSV, XLSX) and the recognition JSON. Doesn't touch your media."
           enabled={form.exportOpts.enabled}
           onEnabledChange={(v) =>
             form.setExportOpts({ ...form.exportOpts, enabled: v })
           }
         >
           <ExportBody form={form} />
+        </GroupCard>
+
+        {/* Media copies: one feature with folder structure + render
+            options. Off by default (opt-in), so the common run is just
+            data exports. */}
+        <GroupCard
+          title="Save copies of your media"
+          caption="Copy your images and videos to the output folder — optionally into subfolders, with boxes drawn or people blurred."
+          enabled={form.separate.enabled}
+          onEnabledChange={(v) =>
+            form.setSeparate({ ...form.separate, enabled: v })
+          }
+        >
+          <MediaBody form={form} />
         </GroupCard>
 
         <SaveErrorLine error={form.saveError} />
@@ -219,48 +193,8 @@ export function FolderRunSaveStep() {
           progress={progress.progress}
         />
       </JobProgressModal>
-
-      <ConfirmMoveDialog
-        open={form.pendingMoveConfirm}
-        onCancel={form.cancelMoveConfirm}
-        onConfirm={form.confirmMoveAndSave}
-      />
       </div>
     </>
-  );
-}
-
-function ConfirmMoveDialog({
-  open,
-  onCancel,
-  onConfirm,
-}: {
-  open: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={(v) => (v ? null : onCancel())}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Move files from the source folder?</DialogTitle>
-          <DialogDescription>
-            Move places each file under the output folder and removes
-            it from its original location. The source folder will no
-            longer contain those files after the run. Copy is the
-            safer option if you want to keep the originals in place.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={onConfirm}>
-            Move and save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

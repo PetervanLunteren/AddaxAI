@@ -104,8 +104,8 @@ export function DeleteDeploymentDialog({
             </p>
             <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
               <li>The deployment and all its metadata</li>
-              <li>All file records, detections, and events</li>
-              <li>All human verifications on those detections</li>
+              <li>All file records, observations, and events</li>
+              <li>All human verifications on those observations</li>
             </ul>
           </div>
 

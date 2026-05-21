@@ -132,7 +132,7 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {isComplete ? "Re-embedding complete" : "Re-embedding detections"}
+            {isComplete ? "Re-embedding complete" : "Re-embedding observations"}
           </DialogTitle>
         </DialogHeader>
 

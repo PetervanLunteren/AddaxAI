@@ -48,16 +48,16 @@ from app.ml.postprocessing_outputs.output_preview import (
 )
 from app.ml.postprocessing_outputs.separate_folders import (
     SeparateGroupBy,
-    SeparateMode,
 )
 from app.models import Deployment, DeploymentQueue, Detection, File, Project
+from app.services.folder_scanner import OUTPUT_DIR_MARKER
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
 FolderRunStep = Literal[
-    "folder", "model", "review", "overview", "save"
+    "model", "edit", "overview", "save"
 ]
 
 
@@ -127,15 +127,13 @@ class SaveOutputsRequest(BaseModel):
 
     output_dir: str = Field(..., min_length=1)
     separate_folders: bool = False
-    # File placement when separate_folders is on. ``copy`` is the safe
-    # default; ``move`` rewrites ``File.file_path`` in the DB so the
-    # verify UI keeps working post-move, and removes the source from
-    # its original location (the form requires an explicit confirm).
-    separate_method: SeparateMode = "copy"
-    # How animal files are grouped at the output root. ``taxonomic``
-    # produces a nested Class/Order/Family/Genus/species tree; ``flat``
-    # produces a single folder per species label.
-    separate_group_by: SeparateGroupBy = "taxonomic"
+    # How media copies are grouped at the output root. ``taxonomic``
+    # nests Class/Order/Family/Genus/species; ``flat`` is one folder
+    # per species label; ``none`` copies everything flat at the root.
+    separate_group_by: SeparateGroupBy = "flat"
+    # Copy empty captures (no animal / person / vehicle) too. Off by
+    # default so the media copies aren't padded with blank captures.
+    include_empty: bool = False
     # Label identifiers to exclude from every output. Each entry is
     # either a LabelTaxonomy.id UUID (for taxonomy-mapped labels) or a
     # raw Detection.label string (for unmapped labels under the tree's
@@ -165,6 +163,9 @@ class OutputPreviewRequest(BaseModel):
     """
 
     excluded_label_ids: list[str] = Field(default_factory=list)
+    # Copy empty captures too; off by default. Mirrors the save
+    # request so the preview matches what will be written.
+    include_empty: bool = False
 
 
 class OutputPreviewResponse(BaseModel):
@@ -346,7 +347,7 @@ def _load_run(db: Session, run_id: str) -> FolderRunResponse:
     queue_entry = entries[0] if entries else None
 
     state: dict = project.folder_run_state or {}
-    step: FolderRunStep = state.get("step", "folder")
+    step: FolderRunStep = state.get("step", "model")
 
     return FolderRunResponse(
         project=ProjectResponse.model_validate(project),
@@ -381,7 +382,7 @@ def create_folder_run(
     the caller navigates to that step.
 
     For new folders the original path applies: create the project +
-    queue entry with `step='folder'`. Timezone defaults to UTC
+    queue entry with `step='model'`. Timezone defaults to UTC
     because folder runs do not expose the sun-overlay / Camtrap-DP
     flows that depend on it; the promotion dialog asks for a real
     timezone when the user converts a folder run into a research
@@ -389,18 +390,6 @@ def create_folder_run(
     """
     existing = _find_existing_run(db, payload.source_folder)
     if existing is not None and not payload.force_new:
-        # Re-submitting the folder picker counts as completing the
-        # folder step. Bump the persisted step forward to "model" if
-        # it was still on "folder" (covers legacy runs created
-        # before this advance landed, plus any future case where
-        # we leave the step un-bumped). Don't touch later persisted
-        # steps — they encode actual progress the user made.
-        state: dict = dict(existing.folder_run_state or {})
-        if state.get("step") == "folder":
-            state["step"] = "model"
-            existing.folder_run_state = state
-            db.commit()
-            db.refresh(existing)
         logger.info(
             f"Resuming folder run: project_id={existing.id} "
             f"folder={payload.source_folder!r}"
@@ -495,7 +484,7 @@ def lookup_folder_run(
         return None
 
     state: dict = existing.folder_run_state or {}
-    step: FolderRunStep = state.get("step", "folder")
+    step: FolderRunStep = state.get("step", "model")
 
     # Cheap aggregates: total files, total threshold+verified
     # detections, distinct species label count, count of files with a
@@ -577,6 +566,39 @@ def get_folder_run(
     return _load_run(db, run_id)
 
 
+@router.post("/{run_id}/rerun", response_model=FolderRunResponse)
+def rerun_folder_run(
+    run_id: str, db: Session = Depends(get_db)
+) -> FolderRunResponse:
+    """Reset a folder run for re-analysis.
+
+    Wipes the deployment / file / detection / event / embedding rows
+    plus the on-disk ``.addaxai/projects/<id>/`` cache, and moves the
+    queue entry back to ``status='pending'`` so the existing process
+    endpoint picks it up. The project row and the queue entry id
+    survive, so the URL stays valid and the persisted step stays put.
+
+    This destroys human verifications. The caller surfaces a
+    destructive confirm dialog before invoking it.
+    """
+    project = crud_project.get_project(db, run_id)
+    if project is None or project.mode != "folder_run":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Folder run with id '{run_id}' not found",
+        )
+
+    ok = crud_project.reset_folder_run_data(db, run_id)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Folder run with id '{run_id}' not found",
+        )
+
+    logger.info(f"Reset folder run for re-analysis: project_id={run_id}")
+    return _load_run(db, run_id)
+
+
 @router.post(
     "/{run_id}/output-preview", response_model=OutputPreviewResponse
 )
@@ -604,7 +626,10 @@ def get_output_preview(
         else None
     )
     preview = build_output_preview(
-        db, run_id, excluded_label_ids=excluded
+        db,
+        run_id,
+        excluded_label_ids=excluded,
+        include_empty=bool(payload.include_empty) if payload else False,
     )
     return OutputPreviewResponse(**preview.to_dict())
 
@@ -636,8 +661,16 @@ async def save_outputs(
     except OSError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Could not create output directory: {e}",
+            detail=f"Could not create output folder: {e}",
         ) from e
+    # Mark the output folder so future scans skip it — its copies and
+    # visualisations must never be re-ingested as input media. This is
+    # what makes a subfolder of the source a safe default destination.
+    # Best-effort: a failed marker doesn't block the save.
+    try:
+        (output_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
+    except OSError as e:
+        logger.warning(f"Could not write output marker in {output_root}: {e}")
 
     job = job_crud.create_job(
         db,
@@ -647,8 +680,8 @@ async def save_outputs(
                 "run_id": run_id,
                 "output_dir": str(output_root),
                 "separate_folders": payload.separate_folders,
-                "separate_method": payload.separate_method,
                 "separate_group_by": payload.separate_group_by,
+                "include_empty": payload.include_empty,
                 "draw_bboxes": payload.draw_bboxes,
                 "anonymise": payload.anonymise,
                 "recognition_json": payload.recognition_json,

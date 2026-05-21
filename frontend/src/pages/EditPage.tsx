@@ -1,5 +1,5 @@
 /**
- * Verify page — thin wrapper around `VerifyView`.
+ * Edit page — thin wrapper around `VerifyView`.
  *
  * Provides the canonical research-projects page chrome (full-viewport
  * background, top header with title + subtitle + DiagnosticReportButton,
@@ -8,9 +8,11 @@
  * and modals.
  *
  * The same `VerifyView` is also mounted inline inside the folder-run
- * stepper at step 4 (`FolderRunReviewStep`). Keeping the verify body
- * in one component means filter logic, sort modes, modals, and
- * pagination behave identically across the two flows.
+ * stepper Edit step (`FolderRunEditStep`). Keeping the body in one
+ * component means filter logic, sort modes, modals, and pagination
+ * behave identically across the two flows. (The shared component keeps
+ * the `Verify*` name because it operates on the `verified` data; only
+ * the page/route is renamed to "Edit".)
  */
 
 import { useParams } from "react-router-dom";
@@ -19,7 +21,7 @@ import { eventsApi } from "../api/events";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { VerifyView } from "../components/verify/VerifyView";
 
-export default function VerifyPage() {
+export default function EditPage() {
   const { projectId } = useParams<{ projectId: string }>();
 
   // Drive the subtitle from the unfiltered event count. Same query key
@@ -38,10 +40,10 @@ export default function VerifyPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Verify</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Edit</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
-                  ? "Confirm or correct AI detections"
+                  ? "Correct the AI's predictions"
                   : "Run a deployment analysis to get started"}
               </p>
             </div>

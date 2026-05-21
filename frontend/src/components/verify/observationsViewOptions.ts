@@ -7,11 +7,11 @@
  */
 
 export const OBSERVATIONS_MAX_DETECTIONS_OPTIONS = [
-  { value: 5000, label: "5,000 detections (fastest)" },
-  { value: 10000, label: "10,000 detections" },
-  { value: 20000, label: "20,000 detections (default)" },
-  { value: 35000, label: "35,000 detections" },
-  { value: 50000, label: "50,000 detections (slowest)" },
+  { value: 5000, label: "5,000 observations (fastest)" },
+  { value: 10000, label: "10,000 observations" },
+  { value: 20000, label: "20,000 observations (default)" },
+  { value: 35000, label: "35,000 observations" },
+  { value: 50000, label: "50,000 observations (slowest)" },
 ];
 
 export const OBSERVATIONS_MAX_DETECTIONS_DEFAULT = 20000;

@@ -136,7 +136,8 @@ class ProjectBase(BaseModel):
     )
 
     # In-progress stepper state for a folder run. NULL for research
-    # projects and for folder runs that have not advanced past step 1.
+    # projects; folder runs always have at least the persisted step
+    # populated by the create endpoint.
     folder_run_state: dict | None = Field(
         default=None,
         description="Stepper state for an in-progress folder run, null otherwise",

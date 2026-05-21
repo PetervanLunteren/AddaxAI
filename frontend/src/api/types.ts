@@ -558,6 +558,10 @@ export type VerificationFilter =
   | "unverified"
   | "suspicious";
 
+/** Which grouping the verify/edit canvas shows the same dataset under.
+ * Driven by the "View as" dropdown in the filter bar (no tabs). */
+export type VerifyViewMode = "observations" | "media" | "events";
+
 export type FlaggedFilter = "all" | "flagged" | "not_flagged";
 export type FavoritedFilter = "all" | "favorited" | "not_favorited";
 /** "show_only" = empties only, "hide" = no empties, "all" = both. */
@@ -941,6 +945,10 @@ export interface SearchResponse {
 
 export interface ObservationStatsResponse {
   total_detections: number;
+  /** Observations the view can show (embedded + threshold-or-verified).
+   * Denominator for the verification pill. */
+  reviewable_detections: number;
+  verified_detections: number;
   embedded_detections: number;
   missing_embeddings: number;
   embedding_model_id: string | null;

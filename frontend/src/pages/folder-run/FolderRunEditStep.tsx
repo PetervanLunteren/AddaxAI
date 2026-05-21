@@ -1,27 +1,29 @@
 /**
- * Step 4: Review results.
+ * Edit step (slug `edit`, optional).
  *
- * Embeds the full Verify UI inline via the shared `VerifyView`
- * component, so users get the same three tabs (Observations / Media /
- * Events), filters, sort modes, modals, and similarity sort they have
- * in research projects — without the Research-projects sidebar
- * appearing and confusing them.
+ * Editing is optional, so the heavy editor grid is collapsed behind a
+ * toggle. The default page is lightweight — title, caption, an "Open
+ * editor" button, and the Back / Continue bar — so the obvious path is
+ * to skip ahead. This was a direct response to user feedback that
+ * landing on a wall of grid made the step feel required.
+ *
+ * Only when the user opens the editor do we mount `VerifyView` (the
+ * same grid used by the research-projects Edit page), which also means
+ * its data isn't fetched until opted in.
  *
  * Layout above us is provided by `FolderRunLayout`, which switches to
  * `max-w-7xl` for this step so the grid breakpoints match the
  * research-projects verify exactly. The Back / Continue bar at the
- * bottom is `sticky` so the user can advance the step from anywhere
- * in the (potentially long) scrollable verify body.
+ * bottom is `sticky` so the user can advance from anywhere in the
+ * (potentially long) scrollable body once the editor is open.
  *
- * Continue PATCHes `step=save` server-side and navigates to /save.
- * The "Skip review" affordance from earlier slices is gone — with
- * inline verify the user is already looking at the review canvas;
- * Continue serves both "I'm done reviewing" and "I'm skipping" intents.
+ * Continue PATCHes `step=overview` server-side and navigates onward.
  */
 
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Pencil } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -30,10 +32,11 @@ import { VerifyView } from "../../components/verify/VerifyView";
 import { folderRunsApi } from "../../api/folder-runs";
 import { useFolderRun } from "./FolderRunLayout";
 
-export function FolderRunReviewStep() {
+export function FolderRunEditStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const advance = useMutation({
     mutationFn: () => folderRunsApi.updateStep(runId!, "overview"),
@@ -58,37 +61,75 @@ export function FolderRunReviewStep() {
     );
   }
 
+  // Back / editor toggle / Continue, one row, middle centred.
+  const actionRow = (
+    <div className="grid grid-cols-3 items-center gap-3">
+      <Button
+        variant="outline"
+        onClick={() => navigate(`/folder-runs/${runId}/model`)}
+        className="justify-self-start gap-2"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => setEditorOpen((open) => !open)}
+        className="justify-self-center gap-2"
+      >
+        {editorOpen ? (
+          <>
+            <ChevronDown className="h-4 w-4 rotate-180" />
+            Close editor
+          </>
+        ) : (
+          <>
+            <Pencil className="h-4 w-4" />
+            Open editor
+          </>
+        )}
+      </Button>
+      <Button
+        onClick={() => advance.mutate()}
+        disabled={advance.isPending}
+        className="justify-self-end gap-2"
+        size="lg"
+      >
+        Continue
+        <ArrowRight className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
+  // Collapsed: a lean carded decision point ("open the editor, or move
+  // on"). No grid mounted, no data fetched. It fills the same width as
+  // the open grid below, so opening the editor inserts the grid without
+  // the page width changing.
+  if (!editorOpen) {
+    return (
+      <div className="space-y-6">
+        <StepHeader
+          title="Edit predictions"
+          caption="Correct the AI's predictions if you want, or skip ahead."
+        />
+        <Card>
+          <CardContent className="py-4">{actionRow}</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Open: full-width grid with the action row pinned to the bottom so
+  // the user can advance from anywhere in the long scrollable body.
   return (
     <div className="space-y-6 pb-24">
       <StepHeader
-        title="Verify predictions"
-        caption="Check the AI's predictions and correct anything wrong. Optional, but it improves your data."
+        title="Edit predictions"
+        caption="Correct the AI's predictions if you want, or skip ahead."
       />
-      {/* Bottom padding clears the sticky action bar so the last row of
-          the verify grid (or pagination strip) is fully visible above
-          it on short pages. */}
       <VerifyView projectId={runId} />
-
       <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-          <Button
-            variant="outline"
-            onClick={() => navigate(`/folder-runs/${runId}/model`)}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <Button
-            onClick={() => advance.mutate()}
-            disabled={advance.isPending}
-            className="gap-2"
-            size="lg"
-          >
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <div className="mx-auto max-w-7xl">{actionRow}</div>
       </div>
     </div>
   );

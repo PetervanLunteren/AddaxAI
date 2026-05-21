@@ -7,7 +7,6 @@ import { NavLink, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   CardSim,
-  CheckCircle,
   ChevronRight,
   Download,
   GanttChartSquare,
@@ -17,6 +16,7 @@ import {
   LineChart,
   Map,
   MapPin,
+  Pencil,
   Play,
   Settings,
   Table2,
@@ -53,7 +53,7 @@ export function Sidebar() {
   // from queueing an analysis through verifying and exporting results.
   const workItems: NavItem[] = [
     { to: `/projects/${projectId}/process`, icon: Play, label: "Process" },
-    { to: `/projects/${projectId}/verify`, icon: CheckCircle, label: "Verify" },
+    { to: `/projects/${projectId}/edit`, icon: Pencil, label: "Edit" },
     { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
     {
       to: `/projects/${projectId}/insights`,

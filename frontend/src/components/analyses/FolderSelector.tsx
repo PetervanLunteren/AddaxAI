@@ -99,6 +99,10 @@ interface FolderSelectorProps {
    *  space is at a premium and GPS / adjust-dates / missing-datetime are
    *  all hidden anyway. */
   compactScanResult?: boolean;
+  /** Skip the folder scan entirely. For picking a *destination* folder,
+   *  which may not exist yet and whose contents are irrelevant. Pair
+   *  with ``hideScanResult`` so no scan panel renders. */
+  noScan?: boolean;
 }
 
 export function FolderSelector({
@@ -112,8 +116,11 @@ export function FolderSelector({
   hideGps = false,
   hideDatetimeWarning = false,
   compactScanResult = false,
+  noScan = false,
 }: FolderSelectorProps) {
-  const { data: scanResult, isLoading: isScanning } = useFolderScan(value);
+  const { data: scanResult, isLoading: isScanning } = useFolderScan(
+    noScan ? null : value,
+  );
   const [showManualInput, setShowManualInput] = useState(!isElectron());
   const [isDragOver, setIsDragOver] = useState(false);
   const inElectron = isElectron();

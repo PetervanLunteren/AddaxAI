@@ -4,6 +4,7 @@
  */
 
 import type React from "react";
+import chroma from "chroma-js";
 import { getSpeciesColor } from "../utils/species-colors";
 
 /** Get color for a detection: species color if labeled, category color otherwise.
@@ -82,6 +83,14 @@ export function getCategoryColor(category: string): string {
     default:
       return "#882000"; // dark red
   }
+}
+
+/** Text color (white or dark) for a category chip whose background is
+ *  getCategoryColor(category). Mirrors getSpeciesTextColor's contrast
+ *  rule so category chips read the same way as species chips. */
+export function getCategoryTextColor(category: string): string {
+  const bg = getCategoryColor(category);
+  return chroma.contrast(bg, "white") >= 3 ? "white" : "#1f2937";
 }
 
 /** Get styled badge props for an observation type. */

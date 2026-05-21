@@ -239,7 +239,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       labels,
       datasets: [
         {
-          label: "Detections",
+          label: "Observations",
           data: normalizedValues,
           borderColor: lineColor,
           backgroundColor: (context: { chart: ChartJS }) => {
@@ -295,7 +295,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-1.5">
-              <CardTitle className="text-lg">Detection trend</CardTitle>
+              <CardTitle className="text-lg">Observation trend</CardTitle>
               <DashboardAboutPopover
                 what={
                   <p>
@@ -307,10 +307,12 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
                 }
                 how={
                   <p>
-                    For each bin, sums MaxN across every event whose
-                    start time falls in the bin. The bar height is the
-                    number of independent individuals observed that
-                    bin, not the number of detections.
+                    For each bin, sums each event's MaxN across every
+                    event whose start time falls in the bin. MaxN is
+                    the most individuals of the taxon visible in a
+                    single frame within an event. The bar height is
+                    the number of independent individuals observed
+                    that bin, not the number of detections.
                   </p>
                 }
               />
@@ -356,7 +358,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
             <Line ref={chartRef} data={chartData} options={chartOptions} />
           ) : (
             <div className="flex items-center justify-center h-full">
-              <p className="text-muted-foreground">No detection data available</p>
+              <p className="text-muted-foreground">No observation data available</p>
             </div>
           )}
         </div>

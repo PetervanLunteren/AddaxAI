@@ -86,7 +86,7 @@ export function LabelFilterModal({
             mode="inclusion"
             onSelectionChange={setWorkingSet}
             fillHeight
-            emptyMessage="No labels with detections"
+            emptyMessage="No labels with observations"
             countUnit={countUnit ?? "event"}
           />
         </div>

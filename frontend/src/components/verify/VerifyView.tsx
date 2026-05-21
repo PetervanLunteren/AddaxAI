@@ -1,21 +1,24 @@
 /**
- * Verify view — the verify page body, decoupled from the page chrome.
+ * Verify view — the Edit page body, decoupled from the page chrome.
  *
- * Pure presentational: takes a `projectId` prop and owns the state +
- * queries + render needed to display the three verify tabs. Mounted
- * in two contexts today:
+ * Keeps the `Verify*` name because it operates on the `verified` data
+ * model; the user-facing page/step it powers is called "Edit". Pure
+ * presentational: takes a `projectId` prop and owns the state +
+ * queries + render needed to show the same dataset under three
+ * groupings (Observations / Media / Events), switched via the "View
+ * as" dropdown in the filter bar (no tabs). Mounted in two contexts:
  *
- * - Research projects: wrapped by `pages/VerifyPage.tsx`, which adds
- *   the canonical page chrome (min-h-screen, header with h1 "Verify",
+ * - Research projects: wrapped by `pages/EditPage.tsx`, which adds the
+ *   canonical page chrome (min-h-screen, header with h1 "Edit",
  *   subtitle, DiagnosticReportButton) and the `<main>` container.
- * - Folder runs: wrapped by `pages/folder-run/FolderRunReviewStep.tsx`,
+ * - Folder runs: wrapped by `pages/folder-run/FolderRunEditStep.tsx`,
  *   which mounts this inside the folder-run stepper with no extra
  *   header (the step header is enough) and a sticky Back / Continue
  *   bar below.
  *
  * Filter URL state lives in `useSearchParams`, which is path-agnostic
- * — the same filter wiring works on `/projects/<id>/verify` and on
- * `/folder-runs/<id>/review` without any route-aware code here.
+ * — the same filter wiring works on `/projects/<id>/edit` and on
+ * `/folder-runs/<id>/edit` without any route-aware code here.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,7 +32,6 @@ import {
   Video as VideoIcon,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
-import { sitesApi } from "../../api/sites";
 import { projectsApi } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { Badge } from "../ui/badge";
@@ -46,12 +48,13 @@ import type {
   EventFilterParams,
   VerificationFilter,
   VerifySort,
+  VerifyViewMode,
 } from "../../api/types";
 
 import { EventCollage } from "./EventCollage";
 import { EventDetailModal } from "./EventDetailModal";
 import { VerifyFilterBar } from "./VerifyFilterBar";
-import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
+import { hasAnyActiveFilter } from "./FilterChips";
 import { HelpSheet } from "./HelpSheet";
 import { WelcomePopover } from "./WelcomePopover";
 import { FilesTab } from "./FilesTab";
@@ -66,7 +69,6 @@ import { StatusBadgeCluster } from "./StatusBadgeCluster";
 
 const EVENTS_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
 
-type VerifyTab = "events" | "media" | "observations";
 
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
@@ -101,8 +103,12 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (flagged && flagged !== "all") filters.flagged = flagged;
   const favorited = sp.get("favorited") as EventFilterParams["favorited"] | null;
   if (favorited && favorited !== "all") filters.favorited = favorited;
+  // Empty defaults to "hide": most users don't want to scroll blank
+  // tiles / all-blank events, and it's one click to "All". Absent
+  // param ⇒ "hide"; an explicit "all" / "show_only" is persisted.
+  // (Mirrors the Observations view defaulting to "unverified".)
   const empty = sp.get("empty") as EventFilterParams["empty"] | null;
-  if (empty && empty !== "all") filters.empty = empty;
+  filters.empty = empty ?? "hide";
   const minC = sp.get("min_confidence");
   if (minC !== null) filters.min_confidence = parseFloat(minC);
   const maxC = sp.get("max_confidence");
@@ -131,7 +137,9 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
     sp.set("flagged", filters.flagged);
   if (filters.favorited && filters.favorited !== "all")
     sp.set("favorited", filters.favorited);
-  if (filters.empty && filters.empty !== "all") sp.set("empty", filters.empty);
+  // "hide" is the implicit default, so only persist a deviation
+  // ("all" to show everything, or "show_only").
+  if (filters.empty && filters.empty !== "hide") sp.set("empty", filters.empty);
   if (filters.min_confidence !== undefined)
     sp.set("min_confidence", String(filters.min_confidence));
   if (filters.max_confidence !== undefined)
@@ -163,33 +171,33 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     localStorage.setItem("addaxai:verifyWelcomeDismissed", "1");
   }, []);
 
-  // Tab state from URL
-  const rawTab = searchParams.get("tab");
-  const activeTab: VerifyTab =
-    rawTab === "media" || rawTab === "events" ? rawTab : "observations";
-  const setActiveTab = useCallback(
-    (tab: VerifyTab) => {
-      // Cancel in-flight queries for the tab we are leaving so the browser
+  // View grouping from URL (the "View as" dropdown in the filter bar).
+  const rawView = searchParams.get("view");
+  const activeView: VerifyViewMode =
+    rawView === "media" || rawView === "events" ? rawView : "observations";
+  const setActiveView = useCallback(
+    (view: VerifyViewMode) => {
+      // Cancel in-flight queries for the view we are leaving so the browser
       // connection pool isn't tied up loading data that is about to be hidden.
-      if (tab !== "events") {
+      if (view !== "events") {
         queryClient.cancelQueries({ queryKey: ["events"] });
         queryClient.cancelQueries({ queryKey: ["event-count-filtered"] });
       }
-      if (tab !== "media") {
+      if (view !== "media") {
         queryClient.cancelQueries({ queryKey: ["files-for-verify"] });
         queryClient.cancelQueries({ queryKey: ["files-count-for-verify"] });
         queryClient.cancelQueries({ queryKey: ["files-verification-stats"] });
       }
       setSearchParams(
         (prev) => {
-          // Observations is the default tab, so it has no ?tab= param.
-          if (tab === "observations") {
-            prev.delete("tab");
+          // Observations is the default view, so it has no ?view= param.
+          if (view === "observations") {
+            prev.delete("view");
           } else {
-            prev.set("tab", tab);
+            prev.set("view", view);
           }
-          // Observations-only params are stripped when leaving the Observations tab.
-          if (tab !== "observations") {
+          // Observations-only params are stripped when leaving Observations.
+          if (view !== "observations") {
             prev.delete("mode");
             prev.delete("anchor");
             for (const key of [...prev.keys()]) {
@@ -226,17 +234,17 @@ export function VerifyView({ projectId }: VerifyViewProps) {
   const setFilters = useCallback(
     (next: EventFilterParams) => {
       const sp = filtersToSearchParams(next);
-      // Preserve tab-related params. Observations is the implicit
-      // default and has no tab= param; Events and Media keep
-      // theirs so a filter edit doesn't warp the user back home.
-      if (activeTab !== "observations") sp.set("tab", activeTab);
+      // Preserve the active view. Observations is the implicit default
+      // and has no view= param; Events and Media keep theirs so a
+      // filter edit doesn't warp the user back to Observations.
+      if (activeView !== "observations") sp.set("view", activeView);
       const mode = searchParams.get("mode");
       if (mode) sp.set("mode", mode);
       const anchor = searchParams.get("anchor");
       if (anchor) sp.set("anchor", anchor);
       // Preserve Observations-owned filter params (obs_*). Events and Files
       // share the unprefixed filter params above; Observations has its own
-      // namespace and must survive a shared-filter edit from another tab.
+      // namespace and must survive a shared-filter edit from another view.
       for (const key of [...searchParams.keys()]) {
         if (key.startsWith("obs_")) {
           sp.set(key, searchParams.get(key)!);
@@ -244,7 +252,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
       }
       setSearchParams(sp, { replace: true });
     },
-    [setSearchParams, activeTab, searchParams],
+    [setSearchParams, activeView, searchParams],
   );
 
   // Listen for navigation events from the modal
@@ -279,15 +287,18 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     enabled: isDebouncedFiltered,
   });
 
-  // Get verification stats across filtered events (only for Events tab)
+  // Verification stats for the progress pill. Deliberately UNFILTERED:
+  // the bar measures progress against the whole project, not the
+  // current filter view, so the user can't mistake a narrowed view for
+  // "everything verified".
   const { data: verificationStats } = useQuery({
-    queryKey: ["events", "verification-stats", projectId, debouncedFilters],
-    queryFn: () => eventsApi.verificationStats(projectId, debouncedFilters),
-    enabled: activeTab === "events",
+    queryKey: ["events", "verification-stats", projectId],
+    queryFn: () => eventsApi.verificationStats(projectId),
+    enabled: activeView === "events",
   });
 
   // Data queries for Events and Files share filters, so Events-only data
-  // fetches below gate on activeTab === "events" to avoid busy connections
+  // fetches below gate on activeView === "events" to avoid busy connections
   // while sitting on the Files or Observations tab.
 
   // Get events with debounced filters (only when Events tab is active)
@@ -305,7 +316,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         limit: PAGE_SIZE,
         filters: debouncedFilters,
       }),
-    enabled: activeTab === "events",
+    enabled: activeView === "events",
     placeholderData: (prev) => prev,
   });
 
@@ -329,24 +340,6 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     }
   }, [events]);
 
-  // Fetch filter options for display_labels mapping (shared cache with VerifyFilterBar)
-  const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
-  });
-
-  // Fetch sites for name mapping in filter chips
-  const { data: sites } = useQuery({
-    queryKey: ["sites", projectId],
-    queryFn: () => sitesApi.list(projectId),
-    enabled: (filters.site_ids?.length ?? 0) > 0,
-  });
-  const siteNames = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const s of sites ?? []) map[s.id] = s.name;
-    return map;
-  }, [sites]);
-
   const totalEvents = totalCountData?.count ?? 0;
   const filteredEvents = isFiltered
     ? (filteredCountData?.count ?? totalEvents)
@@ -355,38 +348,18 @@ export function VerifyView({ projectId }: VerifyViewProps) {
 
   return (
     <div className="space-y-4">
-      {/* Tab strip */}
-      <div className="flex items-center gap-1 border-b">
-        {(
-          [
-            ["observations", "Observations"],
-            ["media", "Media"],
-            ["events", "Events"],
-          ] as const
-        ).map(([tab, label]) => (
-          <button
-            key={tab}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {activeTab === "media" ? (
+      {/* No tabs: the "View as" dropdown inside the filter bar switches
+          the grouping, so the user reads one dataset shown three ways. */}
+      {activeView === "media" ? (
         <FilesTab
           projectId={projectId}
           filters={filters}
           onFiltersChange={setFilters}
           classificationModelId={project?.classification_model_id ?? null}
+          view={activeView}
+          onViewChange={setActiveView}
         />
-      ) : activeTab === "events" ? (
+      ) : activeView === "events" ? (
         <>
           <VerifyFilterBar
             filters={filters}
@@ -395,18 +368,9 @@ export function VerifyView({ projectId }: VerifyViewProps) {
             classificationModelId={project?.classification_model_id}
             detectionFloor={detectionThreshold}
             countBy="event"
+            view={activeView}
+            onViewChange={setActiveView}
           />
-          {isFiltered && (
-            <FilterChips
-              filters={filters}
-              onChange={setFilters}
-              filteredCount={filteredEvents}
-              totalCount={totalEvents}
-              siteNames={siteNames}
-              displayLabels={filterOptions?.display_labels}
-              detectionFloor={detectionThreshold}
-            />
-          )}
           {totalEvents > 0 && verificationStats && (
             <VerifyToolbar>
               <VerifyToolbarIcon
@@ -449,14 +413,16 @@ export function VerifyView({ projectId }: VerifyViewProps) {
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
                 <p className="text-lg font-medium text-muted-foreground">
-                  {isFiltered ? "No events match your filters" : "No events yet"}
+                  {totalEvents === 0
+                    ? "No events yet"
+                    : "No events match your filters"}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                  {isFiltered
-                    ? "Try adjusting or clearing your filters to see more events."
-                    : "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."}
+                  {totalEvents === 0
+                    ? "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."
+                    : "Try adjusting or clearing your filters to see more events."}
                 </p>
-                {isFiltered && (
+                {totalEvents > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -527,13 +493,15 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         <ObservationsTab
           projectId={projectId}
           classificationModelId={project?.classification_model_id ?? null}
+          view={activeView}
+          onViewChange={setActiveView}
         />
       )}
 
       <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <WelcomePopover
-        open={activeTab === "events" && showEventsWelcome && totalEvents > 0}
+        open={activeView === "events" && showEventsWelcome && totalEvents > 0}
         onDismiss={handleDismissEventsWelcome}
       />
     </div>

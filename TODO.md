@@ -1,5 +1,23 @@
+
+# DAN and SAULs feedback
+- [ ] make sure the verified / edited / corrected stuff is in the output files (JSON, CSV / XLSX). Extra bounding boxes, add verified flag (or something like "AI", "Human", etc). So the database should refelct the in the JSON, all the stuff that is in the DB should be in the JSON and CSV/XLSX. 
+- [x] Rename the Verification step of the folder to something like Edit, or Change. Make sure it feels like its optional. Optionally change AI predictions. Optionally edit predictions. 
+- [x] Perhaps we should hide the edit / verify / change step, and the summary step by default. Since it is optionally. Anyways, I received feedback that it felt like it was required to do something with it. That is not the case. 
+- [x] make the edit / verify step not have tabs, but do this (observation / media / events) in a dropdown in the filter bar under View as or something like that. So that its clear that the user is seeing the same dataset under the different groupings. 
+- [x] add view options to the events and media views too. So S / M / L to increase the number of columns one can scroll through. 
+- [x] on the save stap, default to only outputting CSV and JSON. Leave the rest non selected. 
+- [ ] Nest blurring and visualisations under separation. Or better yet, rethink the all the options. Now we have 3 options (separate, blur, visualise) that kind of are dependent on each other. They all do something with the source data, they should somehow be grouped together. Agree? And then we have the export results option, with options to CSV, XLSX, and JSON, which are doing stuff with the results and not the source data. 
+- [ ] make sure the JSON takes all the relevant info form the folder run DB and puts it into the JSON, following the format of MegaDetector. See how the projects page writes its JSONs, follow that format exactly. Including the classification_descxriptions with the taxonomy information (just like results mode does it). 
+- [ ] Save outpout settings to localStorage on buttoin click too. Next time the user has the same settings for saving as last time. 
+
+
+- [ ] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
+
+
+
 ## Priority 1
 - [ ] Add different modes at the home screen.
+- [ ] Add a country dropdown for models with geofence data (speciesnet eg), I;ve received the feedback that the country dropdown was hard to find. Perhaps a country dropdown and then a small line saying something like "X of Y labels included/excluded. Click here to refine." Or something like that. Because it is a pretty powerful feature that one can refine the geofence reules themselves. What do you think? How would that look? Give me a few options as previews, so I can visually see, we can refine, and then I can choose. We'll need to replace all the label slection pickers that are visible (fodler mode step 1, create project modal, project settings, more?). 
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback

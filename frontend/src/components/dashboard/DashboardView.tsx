@@ -51,6 +51,7 @@ import {
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { statisticsApi } from "../../api/statistics";
 import { sitesApi } from "../../api/sites";
+import { projectsApi } from "../../api/projects";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { normalizeLabel } from "../../utils/labels";
@@ -88,13 +89,22 @@ export function DashboardView({ projectId }: { projectId: string }) {
   const [taxonomicRank, setTaxonomicRank] = useState("all");
   const [speciesCountMode, setSpeciesCountMode] = useState<
     "events" | "max_n"
-  >("events");
+  >("max_n");
 
   // Fetch sites for filter options
+  // Folder runs are a single deployment with no site, so site / site-tag
+  // filters and the site / deployment count cards are meaningless there.
+  const { data: project } = useQuery({
+    queryKey: ["projects", projectId],
+    queryFn: () => projectsApi.get(projectId),
+    enabled: !!projectId,
+  });
+  const isFolderRun = project?.mode === "folder_run";
+
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
     queryFn: () => sitesApi.list(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId && !isFolderRun,
   });
   const { data: noSite } = useNoSiteDeployments(projectId);
 
@@ -210,8 +220,14 @@ export function DashboardView({ projectId }: { projectId: string }) {
   };
 
   const summaryCards = [
-    { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
-    { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
+    // Site + deployment counts are always 1 / 0 for a folder run, so
+    // they're omitted there.
+    ...(isFolderRun
+      ? []
+      : [
+          { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
+          { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
+        ]),
     { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: CalendarDays, color: "#0f6064" },
     { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
     { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
@@ -221,7 +237,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
   const speciesAxisLabel =
     speciesCountMode === "events"
       ? "Independent events per 100 trap nights"
-      : "Observations (MaxN) per 100 trap nights";
+      : "Observations per 100 trap nights";
 
   const speciesData = {
     labels: species?.map((s) => normalizeLabel(s.species)) ?? [],
@@ -278,22 +294,28 @@ export function DashboardView({ projectId }: { projectId: string }) {
   };
 
   const filterFields: FilterFieldDef[] = [
-    {
-      kind: "multi-select",
-      key: "sites",
-      label: "Sites",
-      options: siteOptions,
-      placeholder: "All sites",
-      summary: (n) => `${n} site${n > 1 ? "s" : ""}`,
-    },
-    {
-      kind: "multi-select",
-      key: "tag_pairs",
-      label: "Site tags",
-      options: tagPairOptions,
-      placeholder: "Any tags",
-      summary: (n) => `${n} tag${n > 1 ? "s" : ""}`,
-    },
+    // Site + site-tag filters don't apply to a single-deployment,
+    // siteless folder run.
+    ...(isFolderRun
+      ? []
+      : ([
+          {
+            kind: "multi-select",
+            key: "sites",
+            label: "Sites",
+            options: siteOptions,
+            placeholder: "All sites",
+            summary: (n: number) => `${n} site${n > 1 ? "s" : ""}`,
+          },
+          {
+            kind: "multi-select",
+            key: "tag_pairs",
+            label: "Site tags",
+            options: tagPairOptions,
+            placeholder: "Any tags",
+            summary: (n: number) => `${n} tag${n > 1 ? "s" : ""}`,
+          },
+        ] as FilterFieldDef[])),
     {
       kind: "date_range",
       key: "date_from",
@@ -319,7 +341,13 @@ export function DashboardView({ projectId }: { projectId: string }) {
         fields={filterFields}
       />
 
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <div
+        className={`grid gap-4 grid-cols-2 ${
+          isFolderRun
+            ? "md:grid-cols-2 xl:grid-cols-4"
+            : "md:grid-cols-3 xl:grid-cols-6"
+        }`}
+      >
         {summaryCards.map((card) => (
           <Card key={card.title}>
             <CardContent className="p-4">
@@ -368,7 +396,11 @@ export function DashboardView({ projectId }: { projectId: string }) {
                       <p>
                         Frequency counts the number of independent
                         events containing the taxon. Abundance sums
-                        MaxN across those events. Events come from
+                        each event's MaxN across those events. MaxN
+                        is an event's count of a taxon: the most
+                        individuals of it visible in any single frame
+                        of that event, so the same animals are not
+                        re-counted frame to frame. Events come from
                         files captured close together in time,
                         grouped by the project's independence
                         interval. Frequency is the basis for RAI in
@@ -380,7 +412,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
                 <p className="text-sm text-muted-foreground">
                   {speciesCountMode === "events"
                     ? "Top 10 by number of independent events"
-                    : "Top 10 by total observations (MaxN sum)"}
+                    : "Top 10 by total observations"}
                 </p>
               </div>
               <div className="flex items-center gap-2">

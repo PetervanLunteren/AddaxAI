@@ -29,7 +29,7 @@ import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
-import VerifyPage from "./pages/VerifyPage";
+import EditPage from "./pages/EditPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import SetupPage from "./pages/SetupPage";
@@ -38,10 +38,9 @@ import { SitesPage } from "./pages/SitesPage";
 import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { HomePage } from "./pages/HomePage";
 import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
-import { FolderRunFolderStep } from "./pages/folder-run/FolderRunFolderStep";
 import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
 import { FolderRunOverviewStep } from "./pages/folder-run/FolderRunOverviewStep";
-import { FolderRunReviewStep } from "./pages/folder-run/FolderRunReviewStep";
+import { FolderRunEditStep } from "./pages/folder-run/FolderRunEditStep";
 import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
@@ -381,20 +380,20 @@ function App() {
             <Route path="/timelapse" element={<TimelapseModePage />} />
             <Route path="/" element={<HomePage />} />
 
-            {/* New folder-run: project id does not exist yet, only the
-                folder step is meaningful here. */}
+            {/* New folder-run: project id does not exist yet. The
+                Setup page handles the no-runId case by creating a
+                project on Start analysis. */}
             <Route path="/folder-runs/new" element={<FolderRunLayout />}>
-              <Route index element={<FolderRunFolderStep />} />
+              <Route index element={<FolderRunModelStep />} />
             </Route>
 
             {/* Existing / resumed folder run. Hitting the bare id
                 redirects to the persisted step. */}
             <Route path="/folder-runs/:runId" element={<FolderRunLayout />}>
               <Route index element={<FolderRunResumeIndex />} />
-              <Route path="folder" element={<FolderRunFolderStep />} />
               <Route path="model" element={<FolderRunModelStep />} />
               <Route path="overview" element={<FolderRunOverviewStep />} />
-              <Route path="review" element={<FolderRunReviewStep />} />
+              <Route path="edit" element={<FolderRunEditStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
             </Route>
 
@@ -404,8 +403,7 @@ function App() {
             <Route path="/projects/:projectId" element={<AppLayout />}>
               <Route index element={<ProjectIndexRoute />} />
               <Route path="process" element={<AnalysesPage />} />
-              <Route path="verify" element={<VerifyPage />} />
-              <Route path="review" element={<Navigate to="../verify" replace />} />
+              <Route path="edit" element={<EditPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />

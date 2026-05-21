@@ -21,12 +21,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { eventsApi } from "../../api/events";
+import { projectsApi } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import type {
   EventFilterParams,
   VerificationFilter,
+  VerifyViewMode,
 } from "../../api/types";
 import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
@@ -38,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { FilterChips } from "./FilterChips";
 import { LabelFilterModal } from "./LabelFilterModal";
 import { VerifyMoreFilters } from "./VerifyMoreFilters";
 
@@ -50,6 +53,12 @@ const DEFAULT_VERIFICATION_OPTIONS: VerificationOption[] = [
   { value: "all", label: "All" },
   { value: "unverified", label: "Unverified" },
   { value: "verified", label: "Verified" },
+];
+
+const VIEW_OPTIONS: { value: VerifyViewMode; label: string }[] = [
+  { value: "observations", label: "Observations" },
+  { value: "media", label: "Media" },
+  { value: "events", label: "Events" },
 ];
 
 interface VerifyFilterBarProps {
@@ -66,6 +75,10 @@ interface VerifyFilterBarProps {
   /** Whether the More popover renders the liked / flagged / empty
    *  selects. False on Observations (those don't apply there). */
   showLikedFlaggedEmpty?: boolean;
+  /** Current grouping + setter for the "View as" dropdown. The same
+   *  dataset is shown as observations / media / events. */
+  view: VerifyViewMode;
+  onViewChange: (view: VerifyViewMode) => void;
 }
 
 export function VerifyFilterBar({
@@ -77,13 +90,25 @@ export function VerifyFilterBar({
   countBy,
   verificationOptions = DEFAULT_VERIFICATION_OPTIONS,
   showLikedFlaggedEmpty = true,
+  view,
+  onViewChange,
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
+
+  // Folder runs are a single deployment with no site, so the Sites
+  // filter is meaningless there. Detect the mode from the project
+  // (deduped query — VerifyView already fetches it).
+  const { data: project } = useQuery({
+    queryKey: ["projects", projectId],
+    queryFn: () => projectsApi.get(projectId),
+    enabled: !!projectId,
+  });
+  const showSites = project?.mode !== "folder_run";
 
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
     queryFn: () => sitesApi.list(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId && showSites,
   });
   const { data: noSite } = useNoSiteDeployments(projectId);
 
@@ -100,6 +125,10 @@ export function VerifyFilterBar({
   });
   const hasTaxonomy = !!labelTree?.tree?.length;
 
+  // Id → name map for the active-filter chips' site labels.
+  const siteNames: Record<string, string> = {};
+  for (const s of sites ?? []) siteNames[s.id] = s.name;
+
   const siteOptions: MultiSelectOption[] = buildSiteOptions(
     sites,
     noSite?.count ?? 0,
@@ -111,23 +140,50 @@ export function VerifyFilterBar({
       label: filterOptions?.display_labels?.[lbl] ?? lbl,
     })) ?? [];
 
+  // Five controls without Sites (folder runs), six with it (projects).
+  const gridCols = showSites ? "lg:grid-cols-6" : "lg:grid-cols-5";
+
   return (
-    <div className="rounded-lg border bg-white px-3 py-2">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+    <div className="space-y-2 rounded-lg border bg-white px-3 py-2">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-3`}>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Sites</label>
-          <MultiSelect
-            options={siteOptions}
-            value={filters.site_ids ?? []}
-            onChange={(v) =>
-              onChange({ ...filters, site_ids: v.length ? v : undefined })
-            }
-            placeholder="All sites"
-            searchPlaceholder="Search sites..."
-            emptyMessage="No sites found."
-            summary={(n) => `${n} site${n > 1 ? "s" : ""}`}
-          />
+          <label className="text-xs font-medium text-muted-foreground">
+            View as
+          </label>
+          <Select
+            value={view}
+            onValueChange={(v) => onViewChange(v as VerifyViewMode)}
+          >
+            <SelectTrigger className="h-9 min-h-0 text-sm">
+              <span className="truncate">
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {VIEW_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+        {showSites && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Sites</label>
+            <MultiSelect
+              options={siteOptions}
+              value={filters.site_ids ?? []}
+              onChange={(v) =>
+                onChange({ ...filters, site_ids: v.length ? v : undefined })
+              }
+              placeholder="All sites"
+              searchPlaceholder="Search sites..."
+              emptyMessage="No sites found."
+              summary={(n) => `${n} site${n > 1 ? "s" : ""}`}
+            />
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Date range</label>
@@ -228,6 +284,17 @@ export function VerifyFilterBar({
           />
         </div>
       </div>
+
+      {/* Active-filter chips live inside the bar (one shared place for
+          all three views) so the card holds both the controls and the
+          chips that reflect them. Renders null when no chips. */}
+      <FilterChips
+        filters={filters}
+        onChange={onChange}
+        siteNames={siteNames}
+        displayLabels={filterOptions?.display_labels}
+        detectionFloor={detectionFloor}
+      />
     </div>
   );
 }

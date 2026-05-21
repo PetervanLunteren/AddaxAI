@@ -7,6 +7,8 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
+from datetime import UTC, datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -153,6 +155,55 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
     )
 
     db.delete(db_project)
+    db.commit()
+
+    for folder_path in folder_paths:
+        _delete_deployment_artifacts(folder_path, project_id)
+    return True
+
+
+def reset_folder_run_data(db: Session, project_id: str) -> bool:
+    """
+    Reset a folder-run for re-analysis.
+
+    Wipes the analysis output (deployments, files, detections, events,
+    embeddings) and the on-disk ``.addaxai/projects/<project_id>/``
+    cache, but keeps the project row and the queue entry so the run id
+    survives across the re-run. The queue entry is moved back to
+    ``status='pending'`` with cleared error / warning / processed-at /
+    deployment-id fields so the existing ``POST /api/deployment-queue/
+    process`` flow picks it up as if it had never run.
+
+    Returns True on success, False when the project doesn't exist.
+
+    Verified detections are destroyed by this operation. The caller
+    must surface a destructive confirm dialog before invoking it.
+    """
+    from app.api.crud.deployment import _delete_deployment_artifacts
+
+    db_project = get_project(db, project_id)
+    if db_project is None:
+        return False
+
+    folder_paths: set[str] = set()
+    folder_paths.update(
+        d.folder_path for d in db_project.deployments if d.folder_path
+    )
+    folder_paths.update(
+        q.folder_path for q in db_project.deployment_queue if q.folder_path
+    )
+
+    for deployment in list(db_project.deployments):
+        db.delete(deployment)
+
+    for queue_entry in db_project.deployment_queue:
+        queue_entry.status = "pending"
+        queue_entry.error = None
+        queue_entry.warnings = None
+        queue_entry.processed_at_utc = None
+        queue_entry.deployment_id = None
+
+    db_project.updated_at_utc = datetime.now(UTC)
     db.commit()
 
     for folder_path in folder_paths:

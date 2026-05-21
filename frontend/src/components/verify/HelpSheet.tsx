@@ -55,7 +55,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
         <SheetHeader>
           <SheetTitle>Event verification guide</SheetTitle>
           <SheetDescription>
-            How to review and verify detections event by event
+            How to review and verify observations event by event
           </SheetDescription>
         </SheetHeader>
 
@@ -68,7 +68,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               <p>
                 The AI detects and labels animals, people, and vehicles
                 automatically. Browse your events here and verify them by
-                confirming or correcting the detections.
+                confirming or correcting the observations.
               </p>
               <p>
                 This tab verifies at the event level. An event counts as
@@ -80,13 +80,13 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               </p>
               <p>
                 Verification still works file by file. When you press Enter
-                on a file in the modal, that file and its detections are
+                on a file in the modal, that file and its observations are
                 marked verified. The event status updates once all MaxN
                 frames are covered.
               </p>
               <p>
                 Want to work file by file instead of by event? Use the
-                Media tab. Want one detection at a time across the whole
+                Media tab. Want one observation at a time across the whole
                 project? Use the Observations tab.
               </p>
             </div>
@@ -118,7 +118,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 toggle between frame view and video playback.
               </p>
               <p>
-                Add missing detections
+                Add missing observations
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">A</code>,
                 or draw one yourself
                 with <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">D</code>.
@@ -149,7 +149,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
                 the bottom of the sidebar to see every shortcut. You can
                 assign labels to
                 keys <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">1</code> to <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">5</code> to
-                relabel every detection in a file with one key.
+                relabel every observation in a file with one key.
               </p>
             </div>
           </section>
@@ -160,7 +160,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
             <Separator className="mb-3" />
             <div className="space-y-3">
               <ToolRow icon={<Pencil className="h-4 w-4" />}>
-                Draw a new detection box manually.
+                Draw a new observation box manually.
               </ToolRow>
               <ToolRow icon={<ChevronsUpDown className="h-4 w-4" />}>
                 Choose the label for drawn boxes. Appears in the toolbar when
@@ -168,7 +168,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               </ToolRow>
               <ToolRow icon={<SquarePlus className="h-4 w-4" />}>
                 Promote the highest-confidence below-threshold AI box into a
-                confirmed detection.
+                confirmed observation.
               </ToolRow>
               <ToolRow icon={<Play className="h-4 w-4" />}>
                 Toggle between frame view and video playback (for video files).
@@ -185,7 +185,7 @@ export function HelpSheet({ open, onOpenChange }: HelpSheetProps) {
               <ToolRow icon={<Scale className="h-4 w-4" />}>
                 Adjust the view threshold for this event. Local override; it
                 does not change the project setting. Lowering it shows
-                lower-confidence detections in the modal.
+                lower-confidence observations in the modal.
               </ToolRow>
               <ToolRow icon={<Sun className="h-4 w-4" />}>
                 Adjust brightness for dark images.

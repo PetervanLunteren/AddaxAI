@@ -33,7 +33,7 @@ export function DashboardAboutPopover({ what, how }: DashboardAboutPopoverProps)
         sideOffset={6}
         collisionPadding={16}
         avoidCollisions
-        className="w-80 max-w-[calc(100vw-2rem)] p-4 space-y-4"
+        className="w-80 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height,80vh)] overflow-y-auto p-4 space-y-4"
       >
         <p className="text-sm font-semibold">About this view</p>
         <section className="space-y-1.5">

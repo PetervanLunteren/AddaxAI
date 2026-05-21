@@ -3,8 +3,8 @@
  *
  * Looks up the persisted step on the run and redirects the user
  * there. Used when someone reopens a folder run by id (e.g. from the
- * recent work strip on the home screen). Falls back to "folder" when
- * the lookup is still in flight or the run has no step set.
+ * recent work strip on the home screen). Renders nothing while the
+ * lookup is in flight; the backend always returns a valid step.
  */
 
 import { Navigate, useParams } from "react-router-dom";

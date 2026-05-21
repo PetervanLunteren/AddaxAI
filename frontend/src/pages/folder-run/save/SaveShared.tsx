@@ -15,14 +15,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../../../components/ui/card";
+import { Card, CardContent } from "../../../components/ui/card";
 import { Checkbox } from "../../../components/ui/checkbox";
-import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import {
   Select,
@@ -32,6 +26,7 @@ import {
   SelectValue,
 } from "../../../components/ui/select";
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
+import { FolderSelector } from "../../../components/analyses/FolderSelector";
 import { isElectron } from "../../../lib/platform";
 import type { SaveOutputsResult } from "../../../api/folder-runs";
 import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
@@ -98,34 +93,19 @@ export function OutputFolderField({
 }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Save outputs</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <Label htmlFor="output-dir">Output folder</Label>
-        <div className="flex gap-2">
-          <Input
-            id="output-dir"
-            value={form.effectiveOutputDir}
-            onChange={(e) => form.setOutputDir(e.target.value)}
-            placeholder="Pick where the outputs should land"
-            className="font-mono text-xs"
-          />
-          {isElectron() && (
-            <Button
-              variant="outline"
-              type="button"
-              onClick={form.handleBrowse}
-              className="shrink-0"
-            >
-              Browse...
-            </Button>
-          )}
-        </div>
+      <CardContent className="space-y-2 p-6">
+        <Label>Output folder</Label>
+        <FolderSelector
+          value={form.outputDir || null}
+          onChange={form.setOutputDir}
+          hideLabel
+          hideScanResult
+          noScan
+        />
         {form.sourceFolderConflict && (
           <p className="text-xs text-destructive">
-            Pick a folder outside the source. Writing here would
-            overwrite your original files.
+            Saving into the source folder itself would overwrite your
+            originals. Pick a subfolder or another location.
           </p>
         )}
       </CardContent>
@@ -137,12 +117,19 @@ export function OutputFolderField({
 // Group bodies — used inside every variant
 // ─────────────────────────────────────────────────────────────────
 
-export function SeparateBody({
+export function MediaBody({
   form,
 }: {
   form: UseSaveOutputsFormResult;
 }) {
-  const { separate, setSeparate } = form;
+  const {
+    separate,
+    setSeparate,
+    visualise,
+    setVisualise,
+    anonymise,
+    setAnonymise,
+  } = form;
   return (
     <div className="space-y-3">
       <Row label="Folder structure">
@@ -156,37 +143,49 @@ export function SeparateBody({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="none">No subfolders</SelectItem>
+            <SelectItem value="flat">One folder per species</SelectItem>
             <SelectItem value="taxonomic">Nested by taxonomy</SelectItem>
-            <SelectItem value="flat">Flat by species</SelectItem>
           </SelectContent>
         </Select>
       </Row>
 
-      <Row label="File placement">
-        <Select
-          value={separate.method}
-          onValueChange={(v) =>
-            setSeparate({ ...separate, method: v as typeof separate.method })
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-primary"
+          checked={visualise.enabled}
+          onChange={(e) => setVisualise({ enabled: e.target.checked })}
+        />
+        Draw detection boxes
+      </label>
+
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-primary"
+          checked={anonymise.enabled}
+          onChange={(e) => setAnonymise({ enabled: e.target.checked })}
+        />
+        Blur people and vehicles
+      </label>
+
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-primary"
+          checked={separate.copyEmpties}
+          onChange={(e) =>
+            setSeparate({ ...separate, copyEmpties: e.target.checked })
           }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="copy">Copy</SelectItem>
-            <SelectItem value="move">Move</SelectItem>
-          </SelectContent>
-        </Select>
-      </Row>
-
-      {separate.method === "move" && (
-        <p className="flex items-start gap-2 text-xs text-amber-700">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-          <span>
-            Moving files means touching your originals. Are you sure?
+        />
+        <span>
+          Also copy empty captures
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Images and videos with no animals, people, or vehicles.
           </span>
-        </p>
-      )}
+        </span>
+      </label>
     </div>
   );
 }

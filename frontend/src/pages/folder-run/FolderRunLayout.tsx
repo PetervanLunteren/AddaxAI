@@ -50,15 +50,13 @@ export function useFolderRun(): FolderRunContextValue {
 }
 
 /** Step inferred from the current URL. Used to drive the visual
- * progress indicator. Defaults to "folder" so the new-run path
- * (which has no :stepSlug yet at /folder-runs/new) still shows the
- * first dot lit. */
+ * progress indicator. Defaults to "model" because the brand-new path
+ * (/folder-runs/new) renders the merged Setup page. */
 function stepFromPath(pathname: string): FolderRunStep {
-  if (pathname.endsWith("/model")) return "model";
   if (pathname.endsWith("/overview")) return "overview";
-  if (pathname.endsWith("/review")) return "review";
+  if (pathname.endsWith("/edit")) return "edit";
   if (pathname.endsWith("/save")) return "save";
-  return "folder";
+  return "model";
 }
 
 export function FolderRunLayout() {
@@ -82,23 +80,22 @@ export function FolderRunLayout() {
     navigate(`/folder-runs/${runId}/${step}`);
   };
 
-  // Two widths only: form steps (folder, model) sit in a narrower
-  // shell so their two-column rows don't stretch awkwardly; canvas
-  // steps (review, overview, save) get the wide shell because they
-  // embed the verify grid / dashboard / save preview which need
-  // horizontal room. Header strip above always lives at max-w-5xl so
-  // breadcrumbs + step progress stay anchored across all five steps.
-  const mainMaxWidth =
-    currentStep === "folder" || currentStep === "model"
-      ? "max-w-5xl"
-      : "max-w-7xl";
+  // One width for the whole flow. Every step shares the wide shell so
+  // nothing jumps — not between steps, and not when the Edit grid or
+  // Summary dashboard expand in place. The canvas steps embed the
+  // verify grid / dashboard / save preview, which sit at this same 7xl
+  // width in research-projects mode too. The Setup form keeps its two
+  // equal-column rows here as well, just at the wider width.
+  const mainMaxWidth = "max-w-7xl";
 
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <Breadcrumbs />
+        {/* Same width as the page content below so the indicator lines
+            up with each step's body across the whole flow. */}
         <header className="border-b bg-white/80 backdrop-blur-sm">
-          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             <StepProgress
               current={currentStep}
               furthest={run?.step}

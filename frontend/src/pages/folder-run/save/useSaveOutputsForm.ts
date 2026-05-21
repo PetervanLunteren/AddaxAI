@@ -7,31 +7,28 @@
  * is responsible for the WebSocket subscription (``useTaskProgress``)
  * and the modal rendering — this hook just exposes the handles.
  *
- * Two safety nets live here:
- * - ``sourceFolderConflict``: blocks Save when the chosen output
- *   folder is the source folder or sits inside it. Writing copies at
- *   the root with original names would overwrite the source.
- * - ``pendingMoveConfirm``: when ``separate.method === "move"`` the
- *   click on Save flips this flag instead of spawning immediately, so
- *   the page can render a confirm dialog (Move removes files from the
- *   source folder; explicit acknowledgement required).
+ * Safety net: ``sourceFolderConflict`` blocks Save only when the chosen
+ * output folder *is* the source folder — the flat-copy mode writes
+ * original filenames at the output root, which would overwrite the
+ * source. Subfolders inside the source are allowed; the save drops a
+ * marker so future scans skip them.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   folderRunsApi,
   type SaveOutputsRequest,
   type SaveOutputsResult,
   type SeparateGroupBy,
-  type SeparateMode,
 } from "../../../api/folder-runs";
 import { isElectron } from "../../../lib/platform";
 
 export interface SeparateState {
   enabled: boolean;
-  method: SeparateMode;
   groupBy: SeparateGroupBy;
+  /** Copy empty captures (no detections) too. Off = skip them. */
+  copyEmpties: boolean;
 }
 
 export interface VisualiseState {
@@ -41,10 +38,6 @@ export interface VisualiseState {
 export interface AnonymiseState {
   enabled: boolean;
 }
-
-/** Label-exclusion filter — list of LabelTaxonomy ids and / or raw
- * label strings to remove from every output. */
-export type ExcludedLabelIds = readonly string[];
 
 export interface ExportState {
   enabled: boolean;
@@ -59,25 +52,27 @@ function buildRequest(
   visualise: VisualiseState,
   anonymise: AnonymiseState,
   exportOpts: ExportState,
-  excludedLabelIds: ExcludedLabelIds,
 ): SaveOutputsRequest {
   return {
     output_dir: outputDir,
     separate_folders: separate.enabled,
-    separate_method: separate.method,
     separate_group_by: separate.groupBy,
-    excluded_label_ids: [...excludedLabelIds],
-    draw_bboxes: visualise.enabled,
-    anonymise: anonymise.enabled,
+    // Visualise / anonymise / copy-empties are facets of the media
+    // copy: only emit them when the media output itself is on.
+    draw_bboxes: separate.enabled && visualise.enabled,
+    anonymise: separate.enabled && anonymise.enabled,
+    include_empty: separate.enabled && separate.copyEmpties,
     csv: exportOpts.enabled && exportOpts.csv,
     xlsx: exportOpts.enabled && exportOpts.xlsx,
     recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
   };
 }
 
-/** True when ``output`` equals ``source`` or sits inside it. Handles
- * both POSIX and Windows separators so the check works regardless of
- * which one the OS picker emitted. */
+/** True only when ``output`` *is* ``source``. The flat-copy mode writes
+ * original filenames at the output root, so saving into the source root
+ * itself would overwrite the originals. Subfolders of the source are
+ * fine — they get a scan-skip marker — so they don't conflict. Handles
+ * both POSIX and Windows separators regardless of which the OS emitted. */
 function outputConflictsWithSource(
   output: string,
   source: string | undefined,
@@ -87,7 +82,7 @@ function outputConflictsWithSource(
   const o = norm(output);
   const s = norm(source);
   if (!s) return false;
-  return o === s || o.startsWith(s + "/");
+  return o === s;
 }
 
 export interface UseSaveOutputsFormParams {
@@ -98,11 +93,11 @@ export interface UseSaveOutputsFormParams {
 export interface UseSaveOutputsFormResult {
   outputDir: string;
   setOutputDir: (v: string) => void;
-  /** The dir the form will submit. There is no default — the user must
-   * pick one explicitly. Equal to ``outputDir``. */
+  /** The dir the form will submit. Defaults to an ``AddaxAI-output``
+   * subfolder of the source; equal to ``outputDir``. */
   effectiveOutputDir: string;
-  /** True when the chosen output dir is the source folder or
-   * nested inside it. Save is disabled in this state. */
+  /** True when the chosen output dir is the source folder itself
+   * (would overwrite originals). Save is disabled in this state. */
   sourceFolderConflict: boolean;
 
   separate: SeparateState;
@@ -113,8 +108,6 @@ export interface UseSaveOutputsFormResult {
   setAnonymise: (s: AnonymiseState) => void;
   exportOpts: ExportState;
   setExportOpts: (s: ExportState) => void;
-  excludedLabelIds: ExcludedLabelIds;
-  setExcludedLabelIds: (v: ExcludedLabelIds) => void;
 
   promoteOpen: boolean;
   setPromoteOpen: (v: boolean) => void;
@@ -126,14 +119,6 @@ export interface UseSaveOutputsFormResult {
   /** Set during the brief HTTP roundtrip that spawns the job. */
   isSpawning: boolean;
   saveError: Error | null;
-
-  /** True while waiting for the user to confirm a Move-mode save in
-   * the dialog. The page renders the dialog off this flag. */
-  pendingMoveConfirm: boolean;
-  /** Dismiss the Move-confirm dialog without saving. */
-  cancelMoveConfirm: () => void;
-  /** Confirm the Move-mode save: clears the flag and spawns the job. */
-  confirmMoveAndSave: () => void;
 
   /** Spawn the save-outputs job. */
   saveAll: () => void;
@@ -164,10 +149,25 @@ export function useSaveOutputsForm({
     sourceFolder,
   );
 
+  // Seed a sensible default once the source folder is known: an
+  // "AddaxAI-output" subfolder inside the source. The save writes a
+  // marker there so future scans skip it, which makes nesting under the
+  // source safe. Fires once, and only while the field is still empty, so
+  // it never clobbers a user-picked path.
+  const hasSeededOutputRef = useRef(false);
+  useEffect(() => {
+    if (hasSeededOutputRef.current || !sourceFolder) return;
+    hasSeededOutputRef.current = true;
+    // One-time seed of a default from an async-loaded prop, guarded by
+    // the ref so it can't loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOutputDir((cur) => (cur ? cur : `${sourceFolder}/AddaxAI-output`));
+  }, [sourceFolder]);
+
   const [separate, setSeparate] = useState<SeparateState>({
-    enabled: true,
-    method: "copy",
-    groupBy: "taxonomic",
+    enabled: false,
+    groupBy: "flat",
+    copyEmpties: false,
   });
   const [visualise, setVisualise] = useState<VisualiseState>({
     enabled: false,
@@ -176,23 +176,16 @@ export function useSaveOutputsForm({
     enabled: false,
   });
   const [exportOpts, setExportOpts] = useState<ExportState>({
-    enabled: false,
+    enabled: true,
     csv: true,
     xlsx: false,
-    recognitionJson: false,
+    recognitionJson: true,
   });
-
-  const [excludedLabelIds, setExcludedLabelIdsState] = useState<
-    readonly string[]
-  >([]);
-  const setExcludedLabelIds = (v: ExcludedLabelIds) =>
-    setExcludedLabelIdsState([...v]);
 
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<SaveOutputsResult | null>(null);
   const [saveError, setSaveError] = useState<Error | null>(null);
-  const [pendingMoveConfirm, setPendingMoveConfirm] = useState(false);
 
   const spawn = useMutation({
     mutationFn: (payload: SaveOutputsRequest) =>
@@ -210,7 +203,6 @@ export function useSaveOutputsForm({
         visualise,
         anonymise,
         exportOpts,
-        excludedLabelIds,
       ),
     );
   };
@@ -218,16 +210,6 @@ export function useSaveOutputsForm({
   const saveAll = () => {
     setSaveError(null);
     setResult(null);
-    if (separate.enabled && separate.method === "move") {
-      setPendingMoveConfirm(true);
-      return;
-    }
-    runSpawn();
-  };
-
-  const cancelMoveConfirm = () => setPendingMoveConfirm(false);
-  const confirmMoveAndSave = () => {
-    setPendingMoveConfirm(false);
     runSpawn();
   };
 
@@ -241,7 +223,7 @@ export function useSaveOutputsForm({
     setJobId(null);
   };
 
-  const onJobCancelled = (_message: string) => {
+  const onJobCancelled = () => {
     setJobId(null);
   };
 
@@ -266,10 +248,7 @@ export function useSaveOutputsForm({
     !sourceFolderConflict &&
     !spawn.isPending &&
     jobId === null &&
-    (separate.enabled ||
-      visualise.enabled ||
-      anonymise.enabled ||
-      exportPicked);
+    (separate.enabled || exportPicked);
 
   return {
     outputDir,
@@ -284,17 +263,12 @@ export function useSaveOutputsForm({
     setAnonymise,
     exportOpts,
     setExportOpts,
-    excludedLabelIds,
-    setExcludedLabelIds,
     promoteOpen,
     setPromoteOpen,
     jobId,
     result,
     isSpawning: spawn.isPending,
     saveError,
-    pendingMoveConfirm,
-    cancelMoveConfirm,
-    confirmMoveAndSave,
     saveAll,
     onJobComplete,
     onJobError,

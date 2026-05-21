@@ -172,7 +172,7 @@ export function FileVerificationPanel({
             {/* Header */}
             <div className="px-3 pt-3 pb-2">
               <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-semibold">Detections</h3>
+                <h3 className="text-sm font-semibold">Observations</h3>
                 <Badge variant="outline" className="text-xs">
                   {filteredDetections.length}
                 </Badge>
@@ -194,7 +194,7 @@ export function FileVerificationPanel({
 
               {filteredDetections.length === 0 && (
                 <div className="text-center text-xs text-muted-foreground py-4">
-                  No detections
+                  No observations
                 </div>
               )}
             </div>
@@ -231,7 +231,7 @@ export function FileVerificationPanel({
             {/* Header */}
             <div className="px-3 pt-3 pb-2">
               <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-semibold">Detections</h3>
+                <h3 className="text-sm font-semibold">Observations</h3>
                 <Badge variant="outline" className="text-xs">
                   {filteredDetections.length}
                 </Badge>
@@ -270,7 +270,7 @@ export function FileVerificationPanel({
               {filteredDetections.length === 0 && (
                 <div className="text-center py-4 space-y-2">
                   <p className="text-xs text-muted-foreground">
-                    No detections found.
+                    No observations found.
                   </p>
                   {canAddBox && (
                     <Button
@@ -414,7 +414,7 @@ function DetectionItem({
         ) : (
           <SquareDashed
             className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-            aria-label="Detection with bounding box"
+            aria-label="Observation (with bounding box)"
           />
         )}
         <LabelPicker
@@ -438,7 +438,7 @@ function DetectionItem({
             onDelete();
           }}
           className="text-muted-foreground hover:text-[#882000] p-0.5"
-          title="Delete detection"
+          title="Delete observation"
         >
           <Trash2 className="h-3 w-3" />
         </button>

@@ -52,8 +52,8 @@ export const AlertCounters: React.FC<AlertCountersProps> = ({
             <DashboardAboutPopover
               what={
                 <p>
-                  Files grouped by what is in them. Each file (still
-                  photo or video) lands in exactly one tile: Animals,
+                  Files grouped by what is in them. Each file (image
+                  or video) lands in exactly one tile: Animals,
                   People, Vehicles, or Empties. The four counts add up
                   to the total files in the filtered view.
                 </p>

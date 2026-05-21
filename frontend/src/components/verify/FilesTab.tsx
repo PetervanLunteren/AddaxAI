@@ -1,30 +1,31 @@
 /**
- * FilesTab - per-file verification workflow ("Media" tab).
+ * FilesTab - per-file workflow (the "Media" grouping of the Edit view).
  *
  * Shows one tile per still photo and per extracted video frame for a
- * project, with the same filter surface as the Events tab (sites, dates,
- * labels, verification state), paginated at 48/page. Clicking a tile
- * opens FileDetailModal. Filter state is owned by the parent (VerifyPage)
- * and shared with Events; FilesTab owns only pagination and modal
- * selection.
+ * project, with the same filter surface as the Events grouping (sites,
+ * dates, labels, verification state), paginated at 48/page. Clicking a
+ * tile opens FileDetailModal. Filter state is owned by the parent
+ * (VerifyView) and shared with Events; FilesTab owns only pagination
+ * and modal selection.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CircleHelp, Layers, Loader2 } from "lucide-react";
-import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
-import { sitesApi } from "../../api/sites";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import {
   setSpeciesContext,
 } from "../../utils/species-colors";
-import type { EventFilterParams } from "../../api/types";
+import type {
+  EventFilterParams,
+  VerifyViewMode,
+} from "../../api/types";
 import { FileCard } from "./FileCard";
 import { FileDetailModal } from "./FileDetailModal";
-import { FilterChips, hasAnyActiveFilter } from "./FilterChips";
+import { hasAnyActiveFilter } from "./FilterChips";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import { MediaHelpSheet } from "./MediaHelpSheet";
 import { MediaWelcomePopover } from "./MediaWelcomePopover";
@@ -55,6 +56,8 @@ interface FilesTabProps {
   filters: EventFilterParams;
   onFiltersChange: (next: EventFilterParams) => void;
   classificationModelId: string | null;
+  view: VerifyViewMode;
+  onViewChange: (view: VerifyViewMode) => void;
 }
 
 export function FilesTab({
@@ -62,6 +65,8 @@ export function FilesTab({
   filters,
   onFiltersChange,
   classificationModelId,
+  view,
+  onViewChange,
 }: FilesTabProps) {
   const [page, setPage] = useState(0);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
@@ -109,14 +114,12 @@ export function FilesTab({
     enabled: !!projectId,
   });
 
-  // Aggregate verified/total for the filtered set.
+  // Verified/total for the progress pill. UNFILTERED on purpose: the
+  // bar measures progress against the whole project, not the current
+  // filter view (a narrowed view must not read as fully verified).
   const { data: verificationStats } = useQuery({
-    queryKey: [
-      "files-verification-stats",
-      projectId,
-      debouncedFilters,
-    ],
-    queryFn: () => filesApi.verificationStats(projectId, debouncedFilters),
+    queryKey: ["files-verification-stats", projectId],
+    queryFn: () => filesApi.verificationStats(projectId),
     enabled: !!projectId,
   });
 
@@ -138,25 +141,6 @@ export function FilesTab({
     enabled: !!projectId,
     placeholderData: (prev) => prev,
   });
-
-  // Filter options for label display name mapping in FilterChips.
-  const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
-    enabled: !!projectId,
-  });
-
-  // Site name lookup for chips.
-  const { data: sites } = useQuery({
-    queryKey: ["sites", projectId],
-    queryFn: () => sitesApi.list(projectId),
-    enabled: !!projectId && (filters.site_ids?.length ?? 0) > 0,
-  });
-  const siteNames = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const s of sites ?? []) map[s.id] = s.name;
-    return map;
-  }, [sites]);
 
   // Register species colors for labels in this page so FileCard chips match
   // the rest of the verify UI.
@@ -207,18 +191,9 @@ export function FilesTab({
         classificationModelId={classificationModelId}
         detectionFloor={detectionThreshold}
         countBy="file"
+        view={view}
+        onViewChange={onViewChange}
       />
-      {isFiltered && (
-        <FilterChips
-          filters={filters}
-          onChange={onFiltersChange}
-          filteredCount={filteredFiles}
-          totalCount={totalFiles}
-          siteNames={siteNames}
-          displayLabels={filterOptions?.display_labels}
-          detectionFloor={detectionThreshold}
-        />
-      )}
 
       {totalFiles > 0 && (
         <VerifyToolbar>
@@ -253,14 +228,16 @@ export function FilesTab({
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              {isFiltered ? "No files match your filters" : "No files yet"}
+              {totalFiles === 0
+                ? "No files yet"
+                : "No files match your filters"}
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              {isFiltered
-                ? "Try adjusting or clearing your filters to see more files."
-                : "Files appear here once you run a deployment analysis."}
+              {totalFiles === 0
+                ? "Files appear here once you run a deployment analysis."
+                : "Try adjusting or clearing your filters to see more files."}
             </p>
-            {isFiltered && (
+            {totalFiles > 0 && (
               <Button
                 variant="outline"
                 size="sm"

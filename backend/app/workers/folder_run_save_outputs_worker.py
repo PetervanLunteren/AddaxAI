@@ -141,24 +141,16 @@ async def process_save_outputs_job(job_id: str) -> None:
         # the folder_runs router for the rationale.
         from sqlalchemy import func, select
 
-        from app.models import Deployment, File, LabelTaxonomy
+        from app.models import Deployment, File
 
+        # The label filter scopes the MEDIA outputs only (separate /
+        # visualise / anonymise). Data exports (CSV / XLSX / recognition
+        # JSON) are the complete record of the run and always include
+        # every label.
         raw_excluded = payload.get("excluded_label_ids") or []
         excluded_frozen = (
             frozenset(raw_excluded) if raw_excluded else None
         )
-        excluded_names_for_exports: list[str] = []
-        if raw_excluded:
-            resolved = db.execute(
-                select(LabelTaxonomy.id, LabelTaxonomy.name).where(
-                    LabelTaxonomy.id.in_(raw_excluded)
-                )
-            ).all()
-            resolved_ids = {r.id for r in resolved}
-            excluded_names_for_exports = [r.name for r in resolved]
-            excluded_names_for_exports.extend(
-                item for item in raw_excluded if item not in resolved_ids
-            )
 
         job_crud.update_job_status(db, job_id, "running")
         await _emit_module_event(
@@ -204,9 +196,12 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         ctx,
-                        mode=payload.get("separate_method", "copy"),
+                        mode="copy",
                         group_by=payload.get(
-                            "separate_group_by", "taxonomic"
+                            "separate_group_by", "flat"
+                        ),
+                        include_empty=bool(
+                            payload.get("include_empty", False)
                         ),
                         excluded_label_ids=excluded_frozen,
                     ).to_dict()
@@ -224,21 +219,18 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         ctx.output_root,
-                        excluded_species=excluded_names_for_exports,
                     ).to_dict()
                 if m == "csv":
                     return write_observations_csv(
                         db,
                         project.id,
                         ctx,
-                        excluded_species=excluded_names_for_exports,
                     ).to_dict()
                 if m == "xlsx":
                     return write_observations_xlsx(
                         db,
                         project.id,
                         ctx,
-                        excluded_species=excluded_names_for_exports,
                     ).to_dict()
                 if m == "run_readme":
                     return write_run_readme(

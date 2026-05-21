@@ -560,7 +560,7 @@ def get_activity_pattern(
             )
             query = query.outerjoin(
                 LabelTaxonomy,
-                LabelTaxonomy.name == EventObservation.label,
+                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
             )
             query = query.where(display_label == species)
         else:
@@ -588,7 +588,7 @@ def get_activity_pattern(
                 )
                 query = query.outerjoin(
                     LabelTaxonomy,
-                    LabelTaxonomy.name == EventObservation.label,
+                    LabelTaxonomy.id == EventObservation.label_taxonomy_id,
                 )
                 query = query.where(label_expr == species)
             else:
@@ -1014,7 +1014,7 @@ def get_detection_trend(
             )
             query = query.outerjoin(
                 LabelTaxonomy,
-                LabelTaxonomy.name == EventObservation.label,
+                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
             )
             query = query.where(display_label == species)
         else:
@@ -1042,7 +1042,7 @@ def get_detection_trend(
                 )
                 query = query.outerjoin(
                     LabelTaxonomy,
-                    LabelTaxonomy.name == EventObservation.label,
+                    LabelTaxonomy.id == EventObservation.label_taxonomy_id,
                 )
                 query = query.where(label_expr == species)
             else:

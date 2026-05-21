@@ -10,7 +10,7 @@
 import { Image as ImageIcon, Video as VideoIcon } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
-import { getDetectionColor, getObservationBadge, shouldDrawBbox } from "../../lib/detection-utils";
+import { getCategoryColor, getCategoryTextColor, getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import { Badge } from "../ui/badge";
 import { Card, CardContent } from "../ui/card";
@@ -35,19 +35,17 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
     shouldDrawBbox(d, file, detectionThreshold),
   );
 
-  // Drop species chips whose display name duplicates an observation
-  // badge that's already on this tile (Person / Vehicle). Without this,
-  // a vehicle file shows two "Vehicle" chips: the observation badge and
-  // the redundant species chip.
-  const observationBadgeNames = new Set(
-    file.observation_types
-      .filter((t) => t === "human" || t === "vehicle")
-      .map((t) => (t === "human" ? "person" : t)),
-  );
-  const speciesLabels = file.labels.filter((sp) => {
-    const display = (file.display_labels?.[sp] || sp).toLowerCase();
-    return !observationBadgeNames.has(display);
-  });
+  // Chips mirror the boxes drawn above (`dets`), so what's labelled
+  // matches what's outlined — including unclassified animals and the
+  // person / vehicle boxes that never carry a species label. A box with
+  // a species label becomes a species chip; a box without one becomes an
+  // observation badge for its category (Animal / Person / Vehicle).
+  const drawnSpecies = [
+    ...new Set(dets.filter((d) => d.label).map((d) => d.label as string)),
+  ];
+  const drawnCategories = [
+    ...new Set(dets.filter((d) => !d.label).map((d) => d.category)),
+  ];
 
   return (
     <Card
@@ -126,60 +124,53 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
       </div>
 
       <CardContent className="p-3 space-y-1.5">
-        {/* Label chips — moved out of the thumbnail so the image is
-            unobstructed. Observation-type chips first (human/vehicle),
-            then the top two species labels. "+N" when more. "Empty"
-            when there are no labels on this file. [&>*]:rounded-sm
-            overrides the Badge default rounded-full so the chips read
-            as rectangles, not pills. */}
+        {/* Label chips mirror the boxes drawn above: a category badge
+            (Animal / Person / Vehicle) for each unlabelled box, then the
+            top two species labels with "+N" for the rest. "Empty" only
+            when nothing is boxed. [&>*]:rounded-sm overrides the Badge
+            default rounded-full so the chips read as rectangles. */}
         <div className="flex flex-wrap gap-1 [&>*]:rounded-sm">
-          {file.observation_types
-            .filter((t) => t === "human" || t === "vehicle")
-            .map((t) => {
-              const badge = getObservationBadge(t);
-              return (
-                <Badge
-                  key={t}
-                  variant="outline"
-                  className={`text-[10px] px-1.5 py-0.5 ${badge.className}`}
-                  style={badge.style}
-                >
-                  {badge.label}
-                </Badge>
-              );
-            })}
-          {speciesLabels.length > 0 ? (
-            <>
-              {speciesLabels.slice(0, 2).map((sp) => (
-                <Badge
-                  key={sp}
-                  variant="default"
-                  className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
-                  style={{
-                    backgroundColor: getSpeciesColor(sp),
-                    color: getSpeciesTextColor(sp),
-                  }}
-                >
-                  <span className="truncate">
-                    {file.display_labels?.[sp] || sp.charAt(0).toUpperCase() + sp.slice(1)}
-                  </span>
-                </Badge>
-              ))}
-              {speciesLabels.length > 2 && (
-                <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
-                  +{speciesLabels.length - 2}
-                </Badge>
-              )}
-            </>
-          ) : (
-            observationBadgeNames.size === 0 && (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
-              >
-                Empty
-              </Badge>
-            )
+          {drawnCategories.map((cat) => (
+            <Badge
+              key={cat}
+              variant="default"
+              className="text-[10px] px-1.5 py-0.5"
+              style={{
+                backgroundColor: getCategoryColor(cat),
+                color: getCategoryTextColor(cat),
+              }}
+            >
+              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </Badge>
+          ))}
+          {drawnSpecies.slice(0, 2).map((sp) => (
+            <Badge
+              key={sp}
+              variant="default"
+              className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
+              style={{
+                backgroundColor: getSpeciesColor(sp),
+                color: getSpeciesTextColor(sp),
+              }}
+            >
+              <span className="truncate">
+                {file.display_labels?.[sp] ||
+                  sp.charAt(0).toUpperCase() + sp.slice(1)}
+              </span>
+            </Badge>
+          ))}
+          {drawnSpecies.length > 2 && (
+            <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
+              +{drawnSpecies.length - 2}
+            </Badge>
+          )}
+          {dets.length === 0 && (
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0.5 border-muted-foreground/40 text-muted-foreground"
+            >
+              Empty
+            </Badge>
           )}
         </div>
 

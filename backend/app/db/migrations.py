@@ -156,6 +156,24 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "schema-level signal to fingerprint"
         ),
     ),
+    _Fingerprint(
+        revision="f6a7b8c9d0e1",
+        table=None,
+        column=None,
+        description=(
+            "drop folder-run 'folder' step — JSON data-only UPDATE, no "
+            "schema-level signal to fingerprint"
+        ),
+    ),
+    _Fingerprint(
+        revision="a7b8c9d0e1f2",
+        table=None,
+        column=None,
+        description=(
+            "rename folder-run 'review' step to 'edit' — JSON data-only "
+            "UPDATE, no schema-level signal to fingerprint"
+        ),
+    ),
 )
 
 

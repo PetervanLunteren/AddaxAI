@@ -11,9 +11,8 @@ import { api } from "../lib/api-client";
 import type { ProjectResponse } from "./types";
 
 export type FolderRunStep =
-  | "folder"
   | "model"
-  | "review"
+  | "edit"
   | "overview"
   | "save";
 
@@ -83,8 +82,7 @@ export interface FolderRunLookup {
   verified_detection_count: number;
 }
 
-export type SeparateMode = "copy" | "move";
-export type SeparateGroupBy = "taxonomic" | "flat";
+export type SeparateGroupBy = "taxonomic" | "flat" | "none";
 
 /** Per-module summary from the save-outputs endpoint. */
 export interface SeparateFoldersResult {
@@ -183,22 +181,18 @@ export interface OutputPreview {
 }
 
 export interface OutputPreviewRequest {
-  /** Label identifiers to exclude — LabelTaxonomy UUIDs and / or raw
-   * label strings, matching the leaf IDs the label-tree endpoint
-   * emits. */
-  excluded_label_ids?: string[];
+  /** Copy empty captures (no animal / person / vehicle) too. Off /
+   * omitted = empties are skipped, matching the save request. */
+  include_empty?: boolean;
 }
 
 export interface SaveOutputsRequest {
   output_dir: string;
   separate_folders?: boolean;
-  separate_method?: SeparateMode;
   separate_group_by?: SeparateGroupBy;
-  /** Label identifiers to exclude from every output. Each entry is a
-   * LabelTaxonomy.id UUID or a raw Detection.label string, matching
-   * the heterogeneous output of the label-tree endpoint. Empty /
-   * omitted = no filter. */
-  excluded_label_ids?: string[];
+  /** Copy empty captures (no animal / person / vehicle) too. Off /
+   * omitted = empties are skipped. */
+  include_empty?: boolean;
   /** Draw detection bounding boxes + pill labels on annotated copies. */
   draw_bboxes?: boolean;
   /** Blur person / vehicle detections on annotated copies (privacy
@@ -252,6 +246,11 @@ export const folderRunsApi = {
   /** Persist the current step so a reopened run lands here. */
   updateStep: (runId: string, step: FolderRunStep) =>
     api.patch<FolderRunResponse>(`/api/folder-runs/${runId}/step`, { step }),
+
+  /** Wipe a folder run's analysis output so the queue entry can be
+   * re-processed. Caller surfaces a destructive confirm dialog. */
+  rerun: (runId: string) =>
+    api.post<FolderRunResponse>(`/api/folder-runs/${runId}/rerun`, {}),
 
   /** Run the chosen postprocess outputs synchronously. */
   saveOutputs: (runId: string, payload: SaveOutputsRequest) =>
