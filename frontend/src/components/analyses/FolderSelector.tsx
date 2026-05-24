@@ -66,8 +66,8 @@ const TEST_DEPLOYMENTS: { scope: string; path: string }[] = [
     path: "/Users/peter/Downloads/example-data/test_package",
   },
   {
-    scope: "All",
-    path: "/Users/peter/Downloads/example-data",
+    scope: "ENA24",
+    path: "/Users/peter/Downloads/example-data/ena24",
   },
 ];
 

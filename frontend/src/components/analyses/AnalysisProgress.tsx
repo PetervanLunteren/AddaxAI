@@ -18,6 +18,7 @@
 import { Loader2 } from "lucide-react";
 import { Progress } from "../ui/progress";
 import { Separator } from "../ui/separator";
+import { humanizeTqdmTime } from "../../lib/duration";
 import type {
   DeploymentContext,
   TqdmMetrics,
@@ -149,25 +150,26 @@ function PhaseRow({
           <div className="flex justify-between">
             <span>Processing {unit}:</span>
             <span>
-              {metrics.current} of {metrics.total}
+              {metrics.current?.toLocaleString()} of{" "}
+              {metrics.total?.toLocaleString()}
             </span>
           </div>
           {metrics.elapsed && (
             <div className="flex justify-between">
               <span>Elapsed time:</span>
-              <span>{metrics.elapsed}</span>
+              <span>{humanizeTqdmTime(metrics.elapsed)}</span>
             </div>
           )}
           {metrics.remaining && (
             <div className="flex justify-between">
               <span>Remaining time:</span>
-              <span>{metrics.remaining}</span>
+              <span>{humanizeTqdmTime(metrics.remaining, true)}</span>
             </div>
           )}
           {metrics.rate && (
             <div className="flex justify-between">
               <span>{capitalizedUnit} per second:</span>
-              <span>{metrics.rate.toFixed(2)}</span>
+              <span>{metrics.rate.toFixed(1)}</span>
             </div>
           )}
           <div className="flex justify-between">

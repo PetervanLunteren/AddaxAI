@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
+import { humanizeTqdmTime } from "@/lib/duration";
 
 interface ReEmbedModalProps {
   open: boolean;
@@ -182,24 +183,24 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
                     <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
                       <div className="flex justify-between">
                         <span>Processing {metrics.unit || 'crops'}:</span>
-                        <span>{metrics.current} of {metrics.total}</span>
+                        <span>{metrics.current?.toLocaleString()} of {metrics.total?.toLocaleString()}</span>
                       </div>
                       {metrics.elapsed && (
                         <div className="flex justify-between">
                           <span>Elapsed time:</span>
-                          <span>{metrics.elapsed}</span>
+                          <span>{humanizeTqdmTime(metrics.elapsed)}</span>
                         </div>
                       )}
                       {metrics.remaining && (
                         <div className="flex justify-between">
                           <span>Remaining time:</span>
-                          <span>{metrics.remaining}</span>
+                          <span>{humanizeTqdmTime(metrics.remaining, true)}</span>
                         </div>
                       )}
                       {metrics.rate && metrics.unit && (
                         <div className="flex justify-between">
                           <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
-                          <span>{metrics.rate.toFixed(2)}</span>
+                          <span>{metrics.rate.toFixed(1)}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
