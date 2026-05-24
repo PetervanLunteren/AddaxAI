@@ -2,7 +2,7 @@
 
 The same JSON shape that `app.ml.json_pipeline.merge_json_files`
 produces (and that the Timelapse integration writes to
-`<folder>/timelapse_recognition_file.json`) is the de facto AddaxAI
+`<folder>/recognition.json`) is the de facto AddaxAI
 recognition format. Users have downstream scripts that parse it; the
 Timelapse Analyser imports it directly.
 
@@ -21,10 +21,9 @@ deployment's `folder_path`). This matches how the Timelapse runner
 writes them and keeps the file portable: copy or share the source
 folder along with the JSON and downstream tools still work.
 
-Filename is `timelapse_recognition_file.json`, identical to the
-Timelapse mode output. The user explicitly asked for one canonical
-name across all modes so scripts that look for one filename keep
-working in the folder-run flow.
+Filename is `recognition.json`, identical to the Timelapse mode
+output: one canonical name across all modes so scripts that look for
+one filename keep working in the folder-run flow.
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ _DETECTION_CATEGORIES = {v: k for k, v in _CATEGORY_TO_ID.items()}
 
 # Output filename. Stays the same across folder runs and Timelapse so
 # downstream tools that look for one canonical filename keep working.
-RECOGNITION_JSON_FILENAME = "timelapse_recognition_file.json"
+RECOGNITION_JSON_FILENAME = "recognition.json"
 
 
 @dataclass
@@ -121,7 +120,7 @@ def write_recognition_json(
 ) -> RecognitionJsonResult:
     """Serialise the project's analysis results to the canonical JSON shape.
 
-    The output is written to `target_dir/timelapse_recognition_file.json`.
+    The output is written to `target_dir/recognition.json`.
     The directory is created if it does not exist. An existing file
     at that path is overwritten — the recognition file represents the
     current DB state, so a re-export replaces the previous snapshot.

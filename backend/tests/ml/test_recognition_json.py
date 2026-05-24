@@ -292,8 +292,8 @@ def test_filename_is_canonical(db, tmp_path):
 
     # Same filename as the Timelapse runner uses, so existing
     # downstream scripts find it.
-    assert result.output_path.endswith("timelapse_recognition_file.json")
-    assert (target / "timelapse_recognition_file.json").is_file()
+    assert result.output_path.endswith("recognition.json")
+    assert (target / "recognition.json").is_file()
 
 
 def test_unknown_project_raises(db, tmp_path):

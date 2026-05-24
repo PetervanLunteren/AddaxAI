@@ -16,8 +16,14 @@ import {
 
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
-import { Checkbox } from "../../../components/ui/checkbox";
-import { Label } from "../../../components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -27,7 +33,6 @@ import {
 } from "../../../components/ui/select";
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
-import { isElectron } from "../../../lib/platform";
 import type { SaveOutputsResult } from "../../../api/folder-runs";
 import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
 
@@ -38,46 +43,35 @@ import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
 /** One row inside a body: a label on the left, a control on the
  * right. Two equal-width columns so the dropdowns get half the
  * card and the row layout stays predictable across cards. */
-function Row({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-2 items-center gap-3">
-      <span className="text-sm">{label}</span>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-/** Compact checkbox toggle: checkbox on the left, label after.
- * Conventional shape for "pick which of these to do" lists, and
- * matches the top-of-card enable checkbox. */
-function CheckboxRow({
-  id,
+/** A settings row: title + muted caption on the left, control on the
+ * right, vertically centred against the two-line text. Shared by the
+ * export and media cards so every option lines up the same way. The
+ * parent wraps these in a ``divide-y`` list for the hairline rules. */
+function CaptionedCheckbox({
   checked,
   onChange,
   label,
+  caption,
 }: {
-  id: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
+  caption: string;
 }) {
   return (
-    <label
-      htmlFor={id}
-      className="flex cursor-pointer items-center gap-2"
-    >
-      <Checkbox
-        id={id}
+    <label className="flex cursor-pointer items-center justify-between gap-3 py-3 text-sm">
+      <span>
+        {label}
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          {caption}
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        className="h-4 w-4 shrink-0 accent-primary"
         checked={checked}
-        onCheckedChange={(v) => onChange(Boolean(v))}
+        onChange={(e) => onChange(e.target.checked)}
       />
-      <span className="text-sm">{label}</span>
     </label>
   );
 }
@@ -93,8 +87,13 @@ export function OutputFolderField({
 }) {
   return (
     <Card>
-      <CardContent className="space-y-2 p-6">
-        <Label>Output folder</Label>
+      <CardContent className="space-y-3 p-6">
+        <div>
+          <span className="block text-sm font-semibold">Output folder</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Where everything gets written
+          </span>
+        </div>
         <FolderSelector
           value={form.outputDir || null}
           onChange={form.setOutputDir}
@@ -131,8 +130,14 @@ export function MediaBody({
     setAnonymise,
   } = form;
   return (
-    <div className="space-y-3">
-      <Row label="Folder structure">
+    <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+      <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+        <span>
+          Folder structure
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            How the copies are organised
+          </span>
+        </span>
         <Select
           value={separate.groupBy}
           onValueChange={(v) =>
@@ -148,44 +153,26 @@ export function MediaBody({
             <SelectItem value="taxonomic">Nested by taxonomy</SelectItem>
           </SelectContent>
         </Select>
-      </Row>
+      </div>
 
-      <label className="flex cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-primary"
-          checked={visualise.enabled}
-          onChange={(e) => setVisualise({ enabled: e.target.checked })}
-        />
-        Draw detection boxes
-      </label>
-
-      <label className="flex cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-primary"
-          checked={anonymise.enabled}
-          onChange={(e) => setAnonymise({ enabled: e.target.checked })}
-        />
-        Blur people and vehicles
-      </label>
-
-      <label className="flex cursor-pointer items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5 h-4 w-4 accent-primary"
-          checked={separate.copyEmpties}
-          onChange={(e) =>
-            setSeparate({ ...separate, copyEmpties: e.target.checked })
-          }
-        />
-        <span>
-          Also copy empty captures
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            Images and videos with no animals, people, or vehicles.
-          </span>
-        </span>
-      </label>
+      <CaptionedCheckbox
+        checked={visualise.enabled}
+        onChange={(v) => setVisualise({ enabled: v })}
+        label="Draw detection boxes"
+        caption="Copies with boxes and labels drawn on"
+      />
+      <CaptionedCheckbox
+        checked={anonymise.enabled}
+        onChange={(v) => setAnonymise({ enabled: v })}
+        label="Blur people and vehicles"
+        caption="Each copy has people and vehicles blurred out"
+      />
+      <CaptionedCheckbox
+        checked={separate.copyEmpties}
+        onChange={(v) => setSeparate({ ...separate, copyEmpties: v })}
+        label="Also copy empty captures"
+        caption="Images and videos with no animals, people, or vehicles"
+      />
     </div>
   );
 }
@@ -197,26 +184,24 @@ export function ExportBody({
 }) {
   const { exportOpts, setExportOpts } = form;
   return (
-    <div className="space-y-2">
-      <CheckboxRow
-        id="export-csv"
+    <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+      <CaptionedCheckbox
         checked={exportOpts.csv}
         onChange={(v) => setExportOpts({ ...exportOpts, csv: v })}
         label="CSV"
+        caption="One row per observation"
       />
-      <CheckboxRow
-        id="export-xlsx"
+      <CaptionedCheckbox
         checked={exportOpts.xlsx}
         onChange={(v) => setExportOpts({ ...exportOpts, xlsx: v })}
         label="XLSX"
+        caption="The same table, as an Excel file"
       />
-      <CheckboxRow
-        id="export-json"
+      <CaptionedCheckbox
         checked={exportOpts.recognitionJson}
-        onChange={(v) =>
-          setExportOpts({ ...exportOpts, recognitionJson: v })
-        }
+        onChange={(v) => setExportOpts({ ...exportOpts, recognitionJson: v })}
         label="JSON"
+        caption="Recognition file you can load into Timelapse"
       />
     </div>
   );
@@ -236,10 +221,14 @@ export function SaveErrorLine({ error }: { error: Error | null }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Completion screen
+// Completion dialog
 // ─────────────────────────────────────────────────────────────────
 
-export function CompletionScreen({
+/** Success dialog shown over the still-mounted form once a save
+ * finishes. Saving is repeatable, so closing the dialog (the X) just
+ * clears the result and returns to the form with the settings intact —
+ * ready to tweak and save again. */
+export function CompletionDialog({
   runId,
   runName,
   form,
@@ -253,89 +242,85 @@ export function CompletionScreen({
   if (!result) return null;
 
   const issues = collectIssues(result);
+  const sourceCount = result.source_file_count;
 
   // Promote-to-research path is intentionally hidden from the folder-run
-  // completion screen — beta testers found the supporting jargon
-  // (Camtrap-DP, GeoJSON, Shapefile, dashboards) intimidating, and any
-  // extra control at the moment of success reads as upsell. The
-  // PromoteDialog + form state + backend promote endpoint stay wired
-  // so re-enabling is a one-block uncomment if we add an entry point
-  // elsewhere (e.g. the Step 1 "you analysed this folder before"
-  // notice card).
+  // completion — beta testers found the supporting jargon (Camtrap-DP,
+  // GeoJSON, Shapefile, dashboards) intimidating, and any extra control
+  // at the moment of success reads as upsell. The PromoteDialog + form
+  // state + backend promote endpoint stay wired so re-enabling is a
+  // one-block uncomment if we add an entry point elsewhere (e.g. the
+  // Step 1 "you analysed this folder before" notice card).
   //
-  // Known tradeoff: users who later decide they want dashboards on
-  // this folder must spin up a fresh research project and re-run
-  // analysis on the same media. The redo cost is real but rare.
+  // Known tradeoff: users who later decide they want dashboards on this
+  // folder must spin up a fresh research project and re-run analysis on
+  // the same media. The redo cost is real but rare.
   //
-  // To re-enable, drop this block back inside the Card above the
-  // bottom nav (also re-import Sparkles from lucide-react):
+  // To re-enable, drop this block into the dialog above the footer (also
+  // re-import Sparkles from lucide-react):
   //
-  // <div className="border-t pt-4">
-  //   <div className="flex items-start gap-3">
-  //     <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-  //     <div className="flex-1">
-  //       <p className="text-xs text-muted-foreground">
-  //         Want dashboards, insights, and full exports? Turn
-  //         this into a research project.
-  //       </p>
-  //       <Button
-  //         onClick={() => setPromoteOpen(true)}
-  //         variant="outline"
-  //         size="sm"
-  //         className="mt-2"
-  //       >
-  //         Promote to research project
-  //       </Button>
-  //     </div>
+  // <div className="flex items-start gap-3 rounded-md border p-3">
+  //   <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+  //   <div className="flex-1">
+  //     <p className="text-xs text-muted-foreground">
+  //       Want dashboards, insights, and full exports? Turn this
+  //       into a research project.
+  //     </p>
+  //     <Button
+  //       onClick={() => setPromoteOpen(true)}
+  //       variant="outline"
+  //       size="sm"
+  //       className="mt-2"
+  //     >
+  //       Promote to research project
+  //     </Button>
   //   </div>
   // </div>
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="space-y-4 p-6">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div className="flex-1 space-y-1">
-              <p className="text-sm font-semibold">
-                Folder analysis complete
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Saved to{" "}
-                <code className="font-mono">{result.output_dir}</code>
-              </p>
-              {result.source_file_count > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {result.source_file_count.toLocaleString()} source
-                  file{result.source_file_count === 1 ? "" : "s"}{" "}
-                  processed
-                </p>
-              )}
-            </div>
+    <>
+      <Dialog
+        open
+        onOpenChange={(v) => {
+          if (!v) form.clearResult();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Outputs saved
+            </DialogTitle>
+            <DialogDescription>
+              {sourceCount > 0
+                ? `${sourceCount.toLocaleString()} source ${
+                    sourceCount === 1 ? "file" : "files"
+                  } processed`
+                : "Your outputs were written to disk"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-md border bg-muted/30 p-3 text-xs">
+            <p className="mb-1 text-muted-foreground">Saved to</p>
+            <code className="break-all font-mono">{result.output_dir}</code>
           </div>
 
           {issues.length > 0 && <IssuesPanel issues={issues} />}
 
-          {isElectron() && (
-            <Button onClick={handleOpenResults} className="gap-2" size="lg">
-              <FolderOpen className="h-4 w-4" />
-              Open results folder
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => navigate("/folder-runs/new")}
+            >
+              Analyse another folder
             </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => navigate("/")}>
-          Back to home
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => navigate("/folder-runs/new")}
-        >
-          Analyse another folder
-        </Button>
-      </div>
+            <Button onClick={handleOpenResults} className="gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Open output folder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PromoteDialog
         open={promoteOpen}
@@ -343,7 +328,7 @@ export function CompletionScreen({
         runId={runId}
         defaultName={runName}
       />
-    </div>
+    </>
   );
 }
 

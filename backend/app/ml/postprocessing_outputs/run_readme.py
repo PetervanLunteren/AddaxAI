@@ -325,7 +325,7 @@ def _build_readme_text(
         "                                      (when separation was off)\n"
         "  observations.csv                    flat observation rows\n"
         "  observations.xlsx                   same rows, Excel format\n"
-        "  timelapse_recognition_file.json     canonical recognition JSON\n"
+        "  recognition.json                    canonical recognition JSON\n"
         "\n"
         "  (subfolders / files only appear when the matching output\n"
         "  option was selected for this run; EXIF detection tags are\n"

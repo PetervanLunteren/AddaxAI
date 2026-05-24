@@ -16,6 +16,8 @@
  * that needs setup, rather than silently swapping the user's choice.
  */
 
+import type { SeparateGroupBy } from "../api/folder-runs";
+
 const KEY = "addaxai.folderRun.lastSettings";
 
 export interface PersistedFolderRunSettings {
@@ -53,6 +55,52 @@ export function loadLastUsedSettings(): PersistedFolderRunSettings | null {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
       return parsed as PersistedFolderRunSettings;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Save outputs step ───────────────────────────────────────────────
+//
+// Same idea as above: remember the last-used output choices so the next
+// run's Save step starts where the user left off. Saved on Save (the
+// moment the user commits the outputs), not on every toggle. The output
+// folder is deliberately not stored — it's derived per run from the
+// source folder, not a sticky preference.
+
+const SAVE_OUTPUTS_KEY = "addaxai.folderRun.lastSaveOutputs";
+
+export interface PersistedSaveOutputsSettings {
+  exportEnabled: boolean;
+  csv: boolean;
+  xlsx: boolean;
+  recognitionJson: boolean;
+  mediaEnabled: boolean;
+  groupBy: SeparateGroupBy;
+  copyEmpties: boolean;
+  drawBoxes: boolean;
+  blur: boolean;
+}
+
+export function saveLastUsedSaveOutputs(
+  settings: PersistedSaveOutputsSettings,
+): void {
+  try {
+    localStorage.setItem(SAVE_OUTPUTS_KEY, JSON.stringify(settings));
+  } catch {
+    // Convenience only; ignore storage failures.
+  }
+}
+
+export function loadLastUsedSaveOutputs(): PersistedSaveOutputsSettings | null {
+  try {
+    const raw = localStorage.getItem(SAVE_OUTPUTS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as PersistedSaveOutputsSettings;
     }
     return null;
   } catch {

@@ -23,6 +23,10 @@ import {
   type SeparateGroupBy,
 } from "../../../api/folder-runs";
 import { isElectron } from "../../../lib/platform";
+import {
+  loadLastUsedSaveOutputs,
+  saveLastUsedSaveOutputs,
+} from "../../../lib/folderRunSettings";
 
 export interface SeparateState {
   enabled: boolean;
@@ -164,23 +168,27 @@ export function useSaveOutputsForm({
     setOutputDir((cur) => (cur ? cur : `${sourceFolder}/AddaxAI-output`));
   }, [sourceFolder]);
 
-  const [separate, setSeparate] = useState<SeparateState>({
-    enabled: false,
-    groupBy: "flat",
-    copyEmpties: false,
-  });
-  const [visualise, setVisualise] = useState<VisualiseState>({
-    enabled: false,
-  });
-  const [anonymise, setAnonymise] = useState<AnonymiseState>({
-    enabled: false,
-  });
-  const [exportOpts, setExportOpts] = useState<ExportState>({
-    enabled: true,
-    csv: true,
-    xlsx: false,
-    recognitionJson: true,
-  });
+  // Seed the option state from the last-used choices (persisted on
+  // Save), falling back to the defaults. Loaded once on mount.
+  const [persisted] = useState(loadLastUsedSaveOutputs);
+
+  const [separate, setSeparate] = useState<SeparateState>(() => ({
+    enabled: persisted?.mediaEnabled ?? false,
+    groupBy: persisted?.groupBy ?? "flat",
+    copyEmpties: persisted?.copyEmpties ?? false,
+  }));
+  const [visualise, setVisualise] = useState<VisualiseState>(() => ({
+    enabled: persisted?.drawBoxes ?? false,
+  }));
+  const [anonymise, setAnonymise] = useState<AnonymiseState>(() => ({
+    enabled: persisted?.blur ?? false,
+  }));
+  const [exportOpts, setExportOpts] = useState<ExportState>(() => ({
+    enabled: persisted?.exportEnabled ?? true,
+    csv: persisted?.csv ?? true,
+    xlsx: persisted?.xlsx ?? false,
+    recognitionJson: persisted?.recognitionJson ?? true,
+  }));
 
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -196,6 +204,19 @@ export function useSaveOutputsForm({
   });
 
   const runSpawn = () => {
+    // Remember these choices for the next run's Save step (not the
+    // output folder, which is derived per run from the source).
+    saveLastUsedSaveOutputs({
+      exportEnabled: exportOpts.enabled,
+      csv: exportOpts.csv,
+      xlsx: exportOpts.xlsx,
+      recognitionJson: exportOpts.recognitionJson,
+      mediaEnabled: separate.enabled,
+      groupBy: separate.groupBy,
+      copyEmpties: separate.copyEmpties,
+      drawBoxes: visualise.enabled,
+      blur: anonymise.enabled,
+    });
     spawn.mutate(
       buildRequest(
         effectiveOutputDir,

@@ -66,46 +66,70 @@ export function OutputPreviewPanel({
     (exportOpts.enabled &&
       (exportOpts.csv || exportOpts.xlsx || exportOpts.recognitionJson));
 
-  const safeRunName = runName || RUN_NAME_FALLBACK;
+  // Tree root is the folder the user is writing to (the last segment of
+  // the output path), not the project name — that's the folder these
+  // files actually land in. Falls back to the run name, then a literal.
+  const outputBasename = form.effectiveOutputDir
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .pop();
+  const treeRoot = outputBasename || runName || RUN_NAME_FALLBACK;
 
   return (
     <Card className="sticky top-6">
       <CardContent className="space-y-4 p-6">
         <div>
           <h3 className="text-sm font-semibold">Output preview</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            What the run will write into your output folder.
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            What the run will write into your output folder
           </p>
         </div>
 
         {isLoading && !preview ? (
-          <p className="text-xs text-muted-foreground">
-            Loading file counts...
-          </p>
+          <Placeholder>Loading file counts...</Placeholder>
         ) : !preview ? (
-          <p className="text-xs text-destructive">
+          <Placeholder tone="error">
             Could not load the run's file counts.
-          </p>
+          </Placeholder>
         ) : !anyPicked ? (
-          <p className="text-xs text-muted-foreground">
-            Pick at least one output on the left to see the preview.
-          </p>
+          <Placeholder>
+            Pick at least one output on the left to see the preview
+          </Placeholder>
         ) : (
-          <>
+          <div className="overflow-hidden rounded-md border bg-muted/30">
             <TreeView
-              runName={safeRunName}
+              runName={treeRoot}
               folders={tree.folders}
               files={tree.files}
             />
             <SummaryFooter
               preview={preview}
               form={form}
-              folderCount={tree.folders.length}
             />
-          </>
+          </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Centred message in the same framed box the populated preview uses,
+ * so the card keeps one consistent framed area in every state. */
+function Placeholder({
+  children,
+  tone = "muted",
+}: {
+  children: React.ReactNode;
+  tone?: "muted" | "error";
+}) {
+  return (
+    <div
+      className={`rounded-md border bg-muted/30 p-6 text-center text-xs ${
+        tone === "error" ? "text-destructive" : "text-muted-foreground"
+      }`}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -154,7 +178,7 @@ function buildTree({
     if (exportOpts.csv) files.push({ name: "observations.csv" });
     if (exportOpts.xlsx) files.push({ name: "observations.xlsx" });
     if (exportOpts.recognitionJson)
-      files.push({ name: "timelapse_recognition_file.json" });
+      files.push({ name: "recognition.json" });
   }
 
   // README is always written.
@@ -334,7 +358,7 @@ function TreeView({
   });
 
   return (
-    <pre className="overflow-x-auto rounded-md border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed text-foreground">
+    <pre className="overflow-x-auto p-3 font-mono text-[11px] leading-relaxed text-foreground">
       {entries.map((entry, idx) => (
         <TreeRow key={idx} {...entry} />
       ))}
@@ -392,11 +416,9 @@ function TreeRow({
 function SummaryFooter({
   preview,
   form,
-  folderCount,
 }: {
   preview: OutputPreview;
   form: UseSaveOutputsFormResult;
-  folderCount: number;
 }) {
   const { separate, visualise, anonymise } = form;
   const annotateOn = visualise.enabled || anonymise.enabled;
@@ -447,7 +469,7 @@ function SummaryFooter({
   const estimatedBytes = avgBytesPerFile * writtenTotal;
 
   return (
-    <div className="space-y-1.5 rounded-md border bg-card-background p-3 text-xs">
+    <div className="space-y-1.5 border-t p-3 text-xs">
       <p className="font-medium text-foreground">
         {preview.total_files.toLocaleString()} source{" "}
         {preview.total_files === 1 ? "file" : "files"}
@@ -464,7 +486,7 @@ function SummaryFooter({
           {preview.dropped_by_filter.toLocaleString()}{" "}
           {preview.dropped_by_filter === 1 ? "file" : "files"} skipped
           by the species filter,{" "}
-          {preview.in_scope_files.toLocaleString()} in scope.
+          {preview.in_scope_files.toLocaleString()} in scope
         </p>
       )}
       {writtenTotal > 0 && (
@@ -478,20 +500,13 @@ function SummaryFooter({
               {placementsPerSourceFile}× per source file)
             </>
           )}
-          {folderCount > 0 && (
-            <>
-              {" into "}
-              {folderCount} subfolder{folderCount === 1 ? "" : "s"}
-            </>
-          )}
-          .
         </p>
       )}
       {separate.enabled && preview.multi_species_files > 0 && (
         <p className="text-muted-foreground">
           {preview.multi_species_files.toLocaleString()}{" "}
           {preview.multi_species_files === 1 ? "file" : "files"} appear
-          in more than one leaf folder (multi-species shots).
+          in more than one folder (multi-species shots)
         </p>
       )}
       {avgBytesPerFile > 0 && writtenTotal > 0 && (
@@ -522,10 +537,15 @@ function countCopiesPerFile({
   return 0;
 }
 
+// Binary units (1024-based) with SI-style labels. Each unit rolls over
+// to the next at ~1000 rather than 1024, so the user never sees an
+// awkward "1024 KB" / "1024 MB"; it becomes "1.0 MB" / "1.0 GB". B and
+// KB are whole; MB and GB carry one decimal.
 function formatBytes(n: number): string {
   if (n < 1024) return `${Math.round(n)} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024)
-    return `${(n / (1024 * 1024)).toFixed(0)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  const kb = n / 1024;
+  if (kb < 999.5) return `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  if (mb < 999.95) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
 }

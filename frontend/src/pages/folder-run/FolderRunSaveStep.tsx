@@ -22,7 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "../../components/ui/card";
 import {
   BackSaveBar,
-  CompletionScreen,
+  CompletionDialog,
   ExportBody,
   MediaBody,
   OutputFolderField,
@@ -118,21 +118,11 @@ export function FolderRunSaveStep() {
     );
   }
 
-  if (form.result) {
-    return (
-      <CompletionScreen
-        runId={runId}
-        runName={run.project.name}
-        form={form}
-      />
-    );
-  }
-
   return (
     <>
       <StepHeader
         title="Save outputs"
-        caption="Pick what to write to disk and where to save it."
+        caption="Pick what to write to disk and where to save it"
       />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="space-y-6">
@@ -141,7 +131,7 @@ export function FolderRunSaveStep() {
         {/* Data exports: lightweight, non-destructive, on by default. */}
         <GroupCard
           title="Export results"
-          caption="Observation tables (CSV, XLSX) and the recognition JSON. Doesn't touch your media."
+          caption="Tables and the recognition file, your media is left untouched"
           enabled={form.exportOpts.enabled}
           onEnabledChange={(v) =>
             form.setExportOpts({ ...form.exportOpts, enabled: v })
@@ -155,7 +145,7 @@ export function FolderRunSaveStep() {
             data exports. */}
         <GroupCard
           title="Save copies of your media"
-          caption="Copy your images and videos to the output folder — optionally into subfolders, with boxes drawn or people blurred."
+          caption="Make copies of your media, with optional folders, boxes, or blur"
           enabled={form.separate.enabled}
           onEnabledChange={(v) =>
             form.setSeparate({ ...form.separate, enabled: v })
@@ -193,6 +183,12 @@ export function FolderRunSaveStep() {
           progress={progress.progress}
         />
       </JobProgressModal>
+
+      <CompletionDialog
+        runId={runId}
+        runName={run.project.name}
+        form={form}
+      />
       </div>
     </>
   );
@@ -230,7 +226,15 @@ function GroupCard({
             </span>
           </span>
         </label>
-        {enabled && children && <div className="pl-6">{children}</div>}
+        {enabled && children && (
+          <>
+            {/* Full-bleed rule separating the master toggle from its
+                options. Only shown when open, so a collapsed card stays
+                a single clean row. */}
+            <div className="-mx-6 border-t" />
+            <div className="pl-6">{children}</div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
