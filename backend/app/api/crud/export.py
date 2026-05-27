@@ -747,10 +747,11 @@ def build_camtrap_dp_tables(
     for file_obj, deployment, _site, detections in _group_rows_by_file(scoped_rows):
         if deployment.id in skipped_dep_set:
             continue
-        if first_captured is None or file_obj.captured_at_local < first_captured:
-            first_captured = file_obj.captured_at_local
-        if last_captured is None or file_obj.captured_at_local > last_captured:
-            last_captured = file_obj.captured_at_local
+        if file_obj.captured_at_local is not None:
+            if first_captured is None or file_obj.captured_at_local < first_captured:
+                first_captured = file_obj.captured_at_local
+            if last_captured is None or file_obj.captured_at_local > last_captured:
+                last_captured = file_obj.captured_at_local
 
         # Row order must match _CAMTRAP_MEDIA_HEADERS exactly.
         media_rows.append(

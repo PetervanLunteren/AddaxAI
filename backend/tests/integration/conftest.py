@@ -75,8 +75,8 @@ def _with_default_exif(img: dict) -> dict:
     Add a default EXIF DateTimeOriginal if the test didn't set one at all.
 
     If the test explicitly sets `exif_metadata` to any dict (even `{}`),
-    respect it verbatim: that's how the MissingTimestampError failure-path
-    tests simulate "no extractable timestamp".
+    respect it verbatim: that's how the missing-timestamp tests simulate
+    "no extractable timestamp".
     """
     if "exif_metadata" in img:
         return img

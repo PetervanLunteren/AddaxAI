@@ -38,7 +38,7 @@
 Open a project with completed deployments → should land on Dashboard. - DOES NOT LAND ON DASHBOARD. LANDS ON PROCESS. 
 
 ## Priority 3 
-- [ ] 
+- [ ] Make a tutorial on how to move data between computers. "The difficulty is that AddaxAI uses three data sources, and all are required. The raw images and videos (to show you while doing verification)The internal JSON files hidden in the processed folders (to reprocess after settings are changed)The internal AddaxAI database (stores all detections, verification statuses, etc)If we want to move everything to a new computer, we must move all three of these components. Luckily, components 1 and 2 are together, so if you have the images on an external drive, you can just plug it into a new computer. Then, you also need to move the DB, which means you must back it up manually, move the DB file to the new computer, and then restore from the there. "
 
 ## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
@@ -54,7 +54,7 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
 - [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR
-- [ ] DOCUMENTATION - in text and in video tutorials
+- [ ] DOCUMENTATION - in text and in video tutorials - also all the models avaiulable with species etc. 
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
 

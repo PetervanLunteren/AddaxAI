@@ -50,8 +50,8 @@ class Event(Base):
     deployment_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("deployments.id", ondelete="CASCADE"), nullable=False
     )
-    event_start_local: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    event_end_local: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    event_start_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    event_end_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

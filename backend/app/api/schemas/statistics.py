@@ -6,6 +6,14 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class CaptureDateCoverage(BaseModel):
+    """How many of a project's media files have a capture date. Drives
+    the "N images have no capture date" warning banner."""
+
+    total: int
+    without_date: int
+
+
 class DashboardOverview(BaseModel):
     total_files: int
     total_observations: int

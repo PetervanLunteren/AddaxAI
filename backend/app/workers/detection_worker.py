@@ -609,45 +609,27 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info("Phase 6: Loading results to database")
                 await deployment_progress_callback("Loading to database...", 0.0, "saving", 0.75)
 
-                from app.ml.json_pipeline import (
-                    MissingTimestampError,
-                    load_json_to_database,
-                )
+                from app.ml.json_pipeline import load_json_to_database
 
-                try:
-                    result = load_json_to_database(
-                        json_path=final_json_path,
-                        deployment_id=deployment.id,
-                        deployment_folder=folder_path,
-                        job_id=job_id,
-                        db=db,
-                        artifacts_folder=artifacts_folder,
-                        taxonomy_name_to_id=taxonomy_name_to_id,
-                        builtin_taxonomy_ids=builtin_taxonomy_ids,
-                        datetime_offset_seconds=datetime_offset_seconds,
-                    )
-                except MissingTimestampError:
-                    # Phase 6 pre-flighted timestamps and aborted before any
-                    # File / Detection rows were written. The placeholder
-                    # Deployment row was created earlier in this iteration
-                    # (with today's date as a stand-in) and would otherwise
-                    # leak into the Deployments page as a 0-file orphan.
-                    # Drop it so the user only sees what successfully loaded.
-                    logger.info(
-                        f"Rolling back placeholder deployment {deployment.id} "
-                        f"after MissingTimestampError"
-                    )
-                    db.delete(deployment)
-                    db.commit()
-                    raise
+                result = load_json_to_database(
+                    json_path=final_json_path,
+                    deployment_id=deployment.id,
+                    deployment_folder=folder_path,
+                    job_id=job_id,
+                    db=db,
+                    artifacts_folder=artifacts_folder,
+                    taxonomy_name_to_id=taxonomy_name_to_id,
+                    builtin_taxonomy_ids=builtin_taxonomy_ids,
+                    datetime_offset_seconds=datetime_offset_seconds,
+                )
 
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
-                # Soft-fail: files without a capture timestamp get skipped
-                # rather than blocking the whole deployment. Persist a
-                # typed log so the UI can render warnings alongside any
-                # future categories in one unified table.
+                # Files without a capture timestamp are now ingested
+                # (data-agnostic) with captured_at_local=NULL rather than
+                # dropped. We still record them so the UI can surface how
+                # many lack a date and exclude them from time-based stats.
                 #
                 # Failed-video entries from MegaDetector's process_video
                 # (corrupt file, unsupported codec, etc.) share the same
@@ -656,9 +638,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # process_video so the cause is visible.
                 warning_entries: list[dict] = []
                 if result.skipped_missing_timestamp:
-                    logger.warning(
-                        f"Skipped {len(result.skipped_missing_timestamp)} "
-                        "file(s) with no extractable capture timestamp"
+                    logger.info(
+                        f"{len(result.skipped_missing_timestamp)} file(s) "
+                        "have no capture timestamp; ingested with no date"
                     )
                     warning_entries.extend(
                         {"type": "missing_timestamp", "path": p}
@@ -927,7 +909,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         job_crud.update_job_status(db, job_id, "failed")
 
         # Roll back the in-flight placeholder deployment, mirroring the
-        # JobCancelledError and MissingTimestampError handlers. Without
+        # JobCancelledError handler. Without
         # this, a model crash or any other phase-1-7 exception leaks an
         # orphan Deployment row (today's date, the failed folder path,
         # 0 files) into the Deployments page. `deployment` is reset to

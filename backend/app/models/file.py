@@ -58,8 +58,8 @@ class File(Base):
     # Naive wall-clock time at the camera, in Project.timezone. From EXIF
     # `DateTimeOriginal` (images) or exiftool `QuickTime:CreateDate` and
     # friends (videos). Never converted; see DEVELOPERS.md.
-    captured_at_local: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False
+    captured_at_local: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
     )
     exif_data: Mapped[dict[str, object] | None] = mapped_column(
         JSON, nullable=True

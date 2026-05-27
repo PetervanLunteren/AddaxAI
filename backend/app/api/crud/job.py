@@ -131,6 +131,52 @@ def update_job_status(db: Session, job_id: str, status: str) -> Job | None:
     return update_job(db, job_id, JobUpdate(status=status))
 
 
+def reconcile_interrupted_jobs(db: Session) -> int:
+    """
+    Fail jobs left `running` by a previous process. Call once on startup.
+
+    Analysis runs in an in-memory worker. A backend restart or crash
+    kills that worker but leaves the job row `running` forever, so it
+    shows as perpetually in progress and its queue entries stay
+    `processing`. At startup no job can legitimately be running yet, so
+    every `running` job is marked `failed` and every still-`processing`
+    queue entry is reset to `failed` too.
+
+    Returns the number of jobs reconciled.
+    """
+    from app.models.deployment_queue import DeploymentQueue
+
+    interrupted = list(
+        db.execute(select(Job).where(Job.status == "running")).scalars().all()
+    )
+    stuck = list(
+        db.execute(
+            select(DeploymentQueue).where(DeploymentQueue.status == "processing")
+        )
+        .scalars()
+        .all()
+    )
+    if not interrupted and not stuck:
+        return 0
+
+    now = datetime.now(UTC)
+    reason = "Interrupted by a server restart before completion"
+
+    for job in interrupted:
+        job.status = "failed"
+        job.error = reason
+        job.completed_at_utc = now
+
+    for entry in stuck:
+        entry.status = "failed"
+        if not entry.error:
+            entry.error = reason
+        entry.processed_at_utc = now
+
+    db.commit()
+    return len(interrupted)
+
+
 def get_pending_jobs(db: Session, job_type: str | None = None) -> list[Job]:
     """
     Get all pending jobs, optionally filtered by type.

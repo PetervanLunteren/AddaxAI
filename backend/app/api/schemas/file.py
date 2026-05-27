@@ -47,7 +47,7 @@ class FileResponse(BaseModel):
     size_bytes: int | None
     width_px: int | None
     height_px: int | None
-    captured_at_local: datetime
+    captured_at_local: datetime | None
     created_at_utc: datetime
     best_frame_number: int | None = None
     best_frame_path: str | None = None
@@ -67,8 +67,8 @@ class FileResponse(BaseModel):
     # the active project timezone in the request context. See
     # DEVELOPERS.md "Datetime conventions".
     @field_serializer("captured_at_local")
-    def _serialize_captured_at_local(self, value: datetime) -> str:
-        return serialize_local_datetime(value)  # type: ignore[return-value]
+    def _serialize_captured_at_local(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value) if value else None  # type: ignore[return-value]
 
     class Config:
         from_attributes = True
@@ -125,7 +125,7 @@ class FileSummary(BaseModel):
     file_format: str | None
     width_px: int | None
     height_px: int | None
-    captured_at_local: datetime
+    captured_at_local: datetime | None
     site_id: str | None
     site_name: str | None
     observation_type: str
@@ -144,8 +144,8 @@ class FileSummary(BaseModel):
     detections: list[FileSummaryDetection]
 
     @field_serializer("captured_at_local")
-    def _serialize_captured_at_local(self, value: datetime) -> str:
-        return serialize_local_datetime(value)  # type: ignore[return-value]
+    def _serialize_captured_at_local(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value) if value else None  # type: ignore[return-value]
 
 
 class FileVerificationStats(BaseModel):

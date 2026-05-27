@@ -13,6 +13,7 @@ from app.api.schemas.performance import PerformanceResponse
 from app.api.schemas.statistics import (
     ActivityOverlapResponse,
     ActivityPatternResponse,
+    CaptureDateCoverage,
     DashboardOverview,
     DetectionCategories,
     DetectionTrendPoint,
@@ -45,6 +46,15 @@ def overview(
     return stats_crud.get_dashboard_overview(
         db, project_id, _parse_site_ids(site_ids), date_from, date_to
     )
+
+
+@router.get("/capture-date-coverage", response_model=CaptureDateCoverage)
+def capture_date_coverage(
+    project_id: str = Query(...),
+    db: Session = Depends(get_db),
+) -> CaptureDateCoverage:
+    total, without_date = stats_crud.get_capture_date_coverage(db, project_id)
+    return CaptureDateCoverage(total=total, without_date=without_date)
 
 
 @router.get("/species", response_model=list[SpeciesCount])

@@ -63,7 +63,12 @@ export function CompletedRunNotice({
         <span className="font-medium">{message}</span>
       </div>
       <div className="flex items-center gap-2">
+        {/* type="button" is essential: this row lives inside the Setup
+            <form>, so a default-type button would also submit the form
+            (firing the create-or-resume Start path) on top of its own
+            handler. */}
         <Button
+          type="button"
           variant="ghost"
           onClick={onRerun}
           disabled={isBusy || !canRerun}
@@ -73,15 +78,22 @@ export function CompletedRunNotice({
           <RotateCcw className="h-4 w-4" />
           Re-run analysis
         </Button>
-        <Button
-          onClick={onSkipAnalysis}
-          disabled={isBusy}
-          size="lg"
-          className="gap-2"
-        >
-          Skip analysis
-          <ArrowRight className="h-4 w-4" />
-        </Button>
+        {/* Skip is only meaningful when there is a finished analysis to
+            view. A failed / interrupted run has no complete results, so
+            skipping leads to an empty Edit page — drop the option and
+            steer the user to Re-run. */}
+        {!failed && (
+          <Button
+            type="button"
+            onClick={onSkipAnalysis}
+            disabled={isBusy}
+            size="lg"
+            className="gap-2"
+          >
+            Skip analysis
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );

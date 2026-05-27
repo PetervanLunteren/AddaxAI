@@ -216,6 +216,26 @@ def get_trap_nights(
 # ---------------------------------------------------------------------------
 
 
+def get_capture_date_coverage(
+    db: Session, project_id: str
+) -> tuple[int, int]:
+    """Count a project's media files and how many have no capture date.
+
+    Date-less files (no EXIF timestamp) are ingested but excluded from
+    time-based stats; the dashboard surfaces the count in a banner.
+    Returns ``(total_media_files, files_without_date)``.
+    """
+    base = (
+        select(func.count(File.id))
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .where(Deployment.project_id == project_id)
+        .where(File.file_type.in_(("image", "video")))
+    )
+    total = db.scalar(base) or 0
+    without_date = db.scalar(base.where(File.captured_at_local.is_(None))) or 0
+    return total, without_date
+
+
 def get_dashboard_overview(
     db: Session,
     project_id: str,
@@ -545,6 +565,8 @@ def get_activity_pattern(
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        # Date-less events (NULL bounds) have no hour; exclude them.
+        .where(Event.event_start_local.isnot(None))
         .group_by(hour_expr)
         .order_by(hour_expr)
     )
@@ -677,6 +699,9 @@ def _event_decimal_hours_for_species(
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        # Date-less events (NULL bounds) have no hour-of-day; exclude
+        # them so decimal-hour extraction never sees None.
+        .where(Event.event_start_local.isnot(None))
     )
 
     site_clause = site_ids_filter(site_ids)
@@ -999,6 +1024,8 @@ def get_detection_trend(
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        # Date-less events (NULL bounds) have no date; exclude them.
+        .where(Event.event_start_local.isnot(None))
         .group_by(date_expr)
         .order_by(date_expr.asc())
     )

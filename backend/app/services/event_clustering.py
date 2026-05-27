@@ -50,15 +50,17 @@ def cluster_files_into_events(
     consecutive files whose capture-time gap exceeds
     `independence_interval` (seconds).
 
-    Files with `captured_at_local == None` are skipped (defensive;
-    should never happen on healthy data). The caller is expected to
-    filter by deployment first — this function does not check
-    deployment membership and will happily cluster across deployments
-    if given mixed input.
+    Files with `captured_at_local == None` (no EXIF capture date) can't
+    be time-grouped, so each becomes its own single-file event at the
+    end (with NULL event bounds). The caller is expected to filter by
+    deployment first — this function does not check deployment membership
+    and will happily cluster across deployments if given mixed input.
     """
     by_folder: dict[str, list[File]] = defaultdict(list)
+    dateless: list[File] = []
     for f in files:
         if f.captured_at_local is None:
+            dateless.append(f)
             continue
         by_folder[folder_key(f)].append(f)
 
@@ -81,6 +83,12 @@ def cluster_files_into_events(
             else:
                 current.append(folder_files[i])
         clusters.append(current)
+
+    # Date-less files can't be time-grouped, so each is its own
+    # single-file event (NULL event bounds). Keeps them visible in the
+    # observation / taxa views; time-based stats exclude null-bound
+    # events. Path-sorted for stable output.
+    clusters.extend([f] for f in sorted(dateless, key=lambda f: f.file_path))
 
     return clusters
 

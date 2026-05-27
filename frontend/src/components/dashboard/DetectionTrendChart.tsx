@@ -22,6 +22,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
+import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi } from "../../api/statistics";
 import { normalizeLabel } from "../../utils/labels";
 import { getSpeciesColor, getSpeciesColorWithAlpha } from "../../utils/species-colors";
@@ -296,6 +297,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <CardTitle className="text-lg">Observation trend</CardTitle>
+              <MissingDatesIcon projectId={projectId} />
               <DashboardAboutPopover
                 what={
                   <p>

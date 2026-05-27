@@ -72,7 +72,7 @@ def get_engine() -> Engine:
 
     engine = create_engine(
         settings.database_url,
-        echo=settings.debug,  # Log SQL queries in debug mode
+        echo=settings.sql_echo,  # Verbose per-query logging; off by default
         future=True,  # Use SQLAlchemy 2.0 style
     )
 

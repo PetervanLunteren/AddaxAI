@@ -113,6 +113,11 @@ def build_smoother_input(
     for cluster in cluster_files_into_events(files, independence_interval):
         seq_id = str(uuid.uuid4())
         for file_record in cluster:
+            # Date-less files form single-file events and can't be
+            # temporally smoothed; exclude them so the smoother never
+            # sees a null datetime (they keep their raw classification).
+            if file_record.captured_at_local is None:
+                continue
             if deployment_folder:
                 try:
                     rel_path = str(

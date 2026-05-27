@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     app_name: str = "AddaxAI"
     environment: Literal["development", "production", "test"] = "development"
     debug: bool = True
+    # SQL statement echo is separate from `debug`: it logs every query +
+    # params, which floods the log (and stalls the single-process server
+    # on its synchronous writes) during bulk work like an analysis. Off
+    # by default; flip it on only when actually debugging SQL.
+    sql_echo: bool = False
 
     # API
     api_host: str = "127.0.0.1"

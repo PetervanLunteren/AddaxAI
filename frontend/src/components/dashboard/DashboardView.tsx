@@ -49,6 +49,7 @@ import {
   type FilterValues,
 } from "../ui/filter-bar";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
+import { MissingDatesBanner } from "./MissingDatesWarning";
 import { statisticsApi } from "../../api/statistics";
 import { sitesApi } from "../../api/sites";
 import { projectsApi } from "../../api/projects";
@@ -340,6 +341,8 @@ export function DashboardView({ projectId }: { projectId: string }) {
         onChange={handleFilterChange}
         fields={filterFields}
       />
+
+      <MissingDatesBanner projectId={projectId} />
 
       <div
         className={`grid gap-4 grid-cols-2 ${

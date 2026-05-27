@@ -140,6 +140,20 @@ class ConnectionManager:
 
         # Store state and snapshot connections atomically
         async with self._lock:
+            # compute_device is emitted exactly once at the start of a
+            # run, then never repeated. The cached state is what we
+            # replay to reconnecting clients, so without forwarding the
+            # value the UI would slip back to "detecting..." after a
+            # page reload. Carry it across messages.
+            prev = self.current_state.get(job_id)
+            if (
+                prev
+                and prev.get("data", {}).get("compute_device")
+                and not progress_data["data"].get("compute_device")
+            ):
+                progress_data["data"]["compute_device"] = prev["data"][
+                    "compute_device"
+                ]
             self.current_state[job_id] = progress_data
 
             if job_id in self.active_connections:

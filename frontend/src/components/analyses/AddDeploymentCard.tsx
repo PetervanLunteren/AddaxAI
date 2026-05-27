@@ -123,8 +123,11 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       )
     : undefined;
   const isDuplicate = Boolean(blockingDeployment || blockingQueueEntry);
+  // Missing capture dates no longer block adding a deployment: the
+  // backend ingests date-less files (they drop out of time-based stats),
+  // and the folder scan shows a non-blocking note about it.
   const isValid =
-    folderPath && hasFiles && !isDuplicate && !isScanning && !scanResult?.missing_datetime;
+    folderPath && hasFiles && !isDuplicate && !isScanning;
 
   // Validation messages (for button tooltip). Site is optional (users
   // can run deployment-agnostic batches), so a missing site no longer
@@ -144,9 +147,6 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     validationMessages.push(
       `This folder is already in the queue (status: ${blockingQueueEntry.status}). Remove it from the queue first.`,
     );
-  }
-  if (scanResult?.missing_datetime) {
-    validationMessages.push("DateTime metadata is required but not found in files");
   }
 
   const handleSubmit = () => {

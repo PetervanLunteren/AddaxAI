@@ -178,6 +178,23 @@ export function FolderRunModelStep() {
     { jobIds: string[]; queueEntryIds: string[] } | null
   >(null);
 
+  // KISS lifecycle: modal == running run. When the server reports an
+  // active analysis job for this folder run (refresh / navigation back
+  // mid-analysis), re-attach the progress modal so the user lands back
+  // on it instead of a stale Setup form. The effect is keyed on the
+  // job id so closing the modal after the run finishes (which
+  // invalidates the folder-run query and flips active_job_id to null)
+  // does not immediately reopen it.
+  useEffect(() => {
+    const jobId = run?.active_job_id;
+    const queueEntryId = run?.queue_entry?.id;
+    if (!jobId || !queueEntryId) return;
+    setRunState((prev) => {
+      if (prev && prev.jobIds[0] === jobId) return prev;
+      return { jobIds: [jobId], queueEntryIds: [queueEntryId] };
+    });
+  }, [run?.active_job_id, run?.queue_entry?.id]);
+
   const { data: detectionModels = [], isLoading: detectionModelsLoading } =
     useQuery({
       queryKey: ["models", "detection"],
@@ -300,6 +317,9 @@ export function FolderRunModelStep() {
   });
   // Dialog visibility for the destructive Re-run / discard flow.
   const [rerunOpen, setRerunOpen] = useState(false);
+  // Set when a start / re-run finds nothing pending to process, so we
+  // surface it instead of silently fast-forwarding to Edit.
+  const [nothingToRun, setNothingToRun] = useState(false);
 
   const detectionModel = detectionModels.find(
     (m) => m.model_id === detectionModelId,
@@ -421,14 +441,13 @@ export function FolderRunModelStep() {
       const resp = await deploymentQueueApi.process({ project_id: runId });
       return resp;
     },
-    onSuccess: async (resp) => {
+    onSuccess: (resp) => {
       queryClient.invalidateQueries({ queryKey: ["projects", runId] });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
-        if (runId) {
-          const next = await folderRunsApi.updateStep(runId, "edit");
-          queryClient.setQueryData(["folder-run", runId], next);
-        }
-        navigate(`/folder-runs/${runId}/edit`);
+        // Nothing pending to process (e.g. the queue entry was already
+        // consumed or is in a non-pending state). Surface it rather
+        // than silently jumping to Edit with stale results.
+        setNothingToRun(true);
         return;
       }
       setRunState({
@@ -491,7 +510,10 @@ export function FolderRunModelStep() {
     },
     onSuccess: (resp) => {
       queryClient.invalidateQueries({ queryKey: ["projects", runId] });
-      if (resp.jobs_started === 0 || resp.job_ids.length === 0) return;
+      if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
+        setNothingToRun(true);
+        return;
+      }
       setRunState({
         jobIds: resp.job_ids,
         queueEntryIds: resp.queue_entry_ids,
@@ -533,6 +555,7 @@ export function FolderRunModelStep() {
 
   const confirmRerun = () => {
     setRerunOpen(false);
+    setNothingToRun(false);
     if (!lookupRun) return;
     const data = form.getValues();
     persistLastUsed(data);
@@ -559,6 +582,7 @@ export function FolderRunModelStep() {
     const currentFolder = run?.queue_entry?.folder_path;
     const folderChanged = !!runId && currentFolder !== folderPath;
 
+    setNothingToRun(false);
     persistLastUsed(data);
 
     if (!runId || folderChanged) {
@@ -612,12 +636,15 @@ export function FolderRunModelStep() {
   // restored-settings case: a remembered model may no longer be
   // installed, and we never silently swap it.
   const modelsReady = detReady && clsReady && embReady;
+  // Missing capture dates no longer block a run: the backend ingests
+  // date-less files (they just drop out of time-based stats), and the
+  // scan surfaces a non-blocking note. So `folderReady` only needs
+  // files present.
   const folderReady =
     !!folderPath &&
     !isScanning &&
     !!scanResult &&
-    scanResult.total_count > 0 &&
-    !scanResult.missing_datetime;
+    scanResult.total_count > 0;
   const queueStatus = run?.queue_entry?.status;
   const isTerminal =
     queueStatus === "completed" || queueStatus === "failed";
@@ -689,7 +716,6 @@ export function FolderRunModelStep() {
                               value={field.value || null}
                               onChange={(v) => field.onChange(v ?? "")}
                               hideLabel
-                              hideDatetimeWarning
                               compactScanResult
                             />
                           </FormControl>
@@ -1342,6 +1368,26 @@ export function FolderRunModelStep() {
                     </div>
                   )}
 
+                  {nothingToRun && (
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      <span className="flex items-start gap-2">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        Nothing to analyse — this folder looks already
+                        processed.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          navigate(`/folder-runs/${runId}/edit`)
+                        }
+                      >
+                        View results
+                      </Button>
+                    </div>
+                  )}
+
                   {(startAnalysis.isError ||
                     createRun.isError ||
                     rerunAnalysis.isError) && (
@@ -1493,7 +1539,15 @@ export function FolderRunModelStep() {
         <RunQueueModal
           open={runState !== null}
           onOpenChange={(open) => {
-            if (!open) setRunState(null);
+            if (!open) {
+              setRunState(null);
+              // Refresh the folder run so `active_job_id` flips to null
+              // server-side; otherwise the re-attach effect would
+              // immediately reopen the modal we just dismissed.
+              queryClient.invalidateQueries({
+                queryKey: ["folder-run", runId],
+              });
+            }
           }}
           queueCount={1}
           jobIds={runState.jobIds}

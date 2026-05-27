@@ -20,6 +20,7 @@ import {
   SelectTrigger,
 } from "../ui/select";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
+import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi, type SunBands } from "../../api/statistics";
 import { normalizeLabel } from "../../utils/labels";
 import type { DateRange } from "./index";
@@ -323,6 +324,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <CardTitle className="text-lg">Activity pattern</CardTitle>
+              <MissingDatesIcon projectId={projectId} />
               <DashboardAboutPopover
                 what={
                   <p>

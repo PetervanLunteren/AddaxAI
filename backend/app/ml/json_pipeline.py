@@ -36,27 +36,6 @@ from app.utils.media_dates import extract_video_dates
 logger = get_logger(__name__)
 
 
-class MissingTimestampError(RuntimeError):
-    """
-    Raised only when *every* input file has no extractable capture
-    timestamp — i.e. there is nothing to ingest. Partial failures are
-    handled by skipping the offending rows and surfacing them through
-    `PipelineResult.skipped_missing_timestamp`.
-
-    Observational datetimes are never guessed (no mtime fallback, no
-    utcnow substitution). See DEVELOPERS.md "Datetime conventions".
-    """
-
-    def __init__(self, missing_paths: list[str]) -> None:
-        self.missing_paths = missing_paths
-        sample = ", ".join(missing_paths[:5])
-        more = f" (+{len(missing_paths) - 5} more)" if len(missing_paths) > 5 else ""
-        super().__init__(
-            f"No extractable capture timestamp for {len(missing_paths)} file(s): "
-            f"{sample}{more}"
-        )
-
-
 def _resolve_capture_timestamp(
     absolute_path: Path,
     *,
@@ -70,8 +49,9 @@ def _resolve_capture_timestamp(
 
     Videos go through exiftool (`video_dates` pre-populated), images
     through MegaDetector's embedded EXIF `DateTimeOriginal`. We never
-    substitute a fallback — the caller raises MissingTimestampError for
-    any file that returns None here.
+    substitute a fallback — a file that returns None here is ingested
+    with captured_at_local=NULL and surfaced via
+    `PipelineResult.skipped_missing_timestamp`.
     """
     if is_video:
         ts = video_dates.get(absolute_path)
@@ -172,15 +152,13 @@ def load_json_to_database(
         # Pre-flight: resolve every image's capture timestamp so the main
         # insert loop can look them up in O(1). Files whose timestamp
         # can't be resolved (corrupted EXIF, missing DateTimeOriginal on
-        # an image, exiftool couldn't parse a video header) are recorded
-        # in `skipped_missing_timestamp` and skipped during the main
-        # loop — same mechanical shape as the existing non-label skip.
-        # If *every* input file fails we raise below, because there is
-        # nothing left to ingest.
+        # an image, exiftool couldn't parse a video header) are still
+        # ingested with captured_at_local=NULL (data-agnostic) and
+        # recorded in `skipped_missing_timestamp` so the UI can surface
+        # the count.
         loadable_images = [
             img for img in (results.get("images") or []) if not img.get("failure")
         ]
-        total_input_images = len(loadable_images)
         skipped_missing_timestamp: list[str] = []
         resolved_timestamps: dict[str, datetime] = {}
         for img in loadable_images:
@@ -196,13 +174,6 @@ def load_json_to_database(
                 skipped_missing_timestamp.append(str(absolute_path))
             else:
                 resolved_timestamps[str(absolute_path)] = ts
-        if (
-            total_input_images > 0
-            and len(skipped_missing_timestamp) == total_input_images
-        ):
-            # Nothing left to load — surface this as a hard failure so
-            # the worker rolls the placeholder deployment back.
-            raise MissingTimestampError(skipped_missing_timestamp)
 
         # Best-frame JPEGs (one per video) land under this directory.
         # `best_frame_path` on each video File row points into the same
@@ -214,13 +185,12 @@ def load_json_to_database(
             relative_file = img["file"]
             absolute_path = (deployment_folder / relative_file).resolve()
 
-            # Skip files with no extractable capture timestamp. They
-            # were recorded in `skipped_missing_timestamp` above and
-            # the worker will surface them as a warning on the queue
-            # entry. No File row, no detections, no events — same as
-            # the existing non-label skip pattern.
-            if str(absolute_path) not in resolved_timestamps:
-                continue
+            # Files with no extractable capture timestamp are still
+            # ingested (data-agnostic): they get a File row with
+            # captured_at_local=NULL, still recorded in
+            # `skipped_missing_timestamp` so the UI can surface the count.
+            # Time-based stats exclude them; each becomes its own
+            # single-file event downstream.
 
             # Determine file type (video or image)
             file_format = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
@@ -251,13 +221,13 @@ def load_json_to_database(
                     file_id = str(uuid.uuid4())
 
                 # Timestamp already resolved in the pre-flight pass.
-                captured_at_local = resolved_timestamps[str(absolute_path)]
+                captured_at_local = resolved_timestamps.get(str(absolute_path))
                 exif_metadata = img.get("exif_metadata")
 
                 # Apply user-specified datetime offset (from the "Adjust
                 # dates" modal). This corrects camera firmware clock errors
                 # like factory resets to 1970 or AM/PM mistakes.
-                if datetime_offset_seconds:
+                if datetime_offset_seconds and captured_at_local is not None:
                     captured_at_local += timedelta(seconds=datetime_offset_seconds)
 
                 # Best frame fields (video only)
@@ -466,11 +436,6 @@ def load_json_to_database(
             skipped_video_failures=collect_md_failures(results),
         )
 
-    except MissingTimestampError:
-        # Propagate as-is so the worker can surface the file list
-        # directly; don't bury it inside a generic RuntimeError.
-        logger.error("Phase 6 aborted: files missing capture timestamps")
-        raise
     except Exception as e:
         logger.error(f"Failed to load JSON to database: {e}", exc_info=True)
         raise RuntimeError(f"Database load failed: {e}") from e

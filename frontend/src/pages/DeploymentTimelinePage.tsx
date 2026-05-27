@@ -23,6 +23,7 @@ import {
 } from "../components/plots/DeploymentTimelineFilterBar";
 import { DeploymentTimelineMetrics } from "../components/plots/DeploymentTimelineMetrics";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
+import { MissingDatesBanner } from "../components/dashboard/MissingDatesWarning";
 import {
   InsightsFilterChips,
   buildSiteNameMap,
@@ -232,6 +233,7 @@ export function DeploymentTimelinePage() {
           count={noSite?.count ?? 0}
           reason="They appear in a separate row at the bottom of the timeline."
         />
+        <MissingDatesBanner projectId={projectId} />
         <DeploymentTimelineFilterBar
           projectId={projectId}
           filters={filters}

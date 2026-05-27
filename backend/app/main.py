@@ -396,6 +396,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise
 
+    # Fail jobs left `running` by a previous process. Analysis runs in an
+    # in-memory worker, so a restart or crash orphans the job row and its
+    # queue entries as perpetually in-progress. Nothing is processing them
+    # now, so mark them failed before we start serving. Best-effort.
+    try:
+        from app.api.crud.job import reconcile_interrupted_jobs
+        from app.db.base import get_session_factory
+
+        with get_session_factory()() as db:
+            n = reconcile_interrupted_jobs(db)
+        if n:
+            logger.warning(
+                f"Marked {n} interrupted job(s) as failed (left running by a "
+                f"previous process)"
+            )
+    except Exception as e:
+        logger.error(f"Job reconciliation failed: {e}", exc_info=True)
+
     # Daily rolling backup (best-effort). Runs AFTER init_db so a fresh
     # install also produces a snapshot on first launch — at this point
     # the DB exists either way (init_db creates it on fresh installs and

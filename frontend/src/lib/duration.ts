@@ -19,25 +19,26 @@ function tqdmTimeToSeconds(raw: string): number | null {
     : nums[0] * 3600 + nums[1] * 60 + nums[2];
 }
 
-/** Rounded, worded duration: "less than a minute", "13 min",
- * "1 h 10 min". Rounds to the nearest minute. */
+/** Worded duration. Under a minute shows the real seconds ("45 sec");
+ * above, whole minutes / hours ("13 min", "1 h 10 min"). Floors so it
+ * never overstates. Used for the exact elapsed time and, after
+ * bucketing, the remaining estimate. */
 export function humanizeDuration(seconds: number): string {
-  if (seconds < 60) return "less than a minute";
-  const mins = Math.round(seconds / 60);
+  if (seconds < 60) return `${Math.floor(seconds)} sec`;
+  const mins = Math.floor(seconds / 60);
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
-/** Snap an estimate to a stable bucket so a jittery ETA stops
+/** Snap an estimate (>= 1 min) to a stable bucket so a jittery ETA stops
  * flickering. Buckets grow with the value (nearest 1 min under 10 min,
  * 5 min under an hour, 15 min under 3 h, 30 min under 5 h, 1 h beyond):
  * precision should match how rough the guess is, and a big ETA only
  * needs to be roughly right. The displayed value then holds while the
  * true estimate wobbles within its bucket. */
 function bucketEstimate(seconds: number): number {
-  if (seconds < 60) return seconds;
   const mins = seconds / 60;
   const step =
     mins < 10
@@ -52,16 +53,21 @@ function bucketEstimate(seconds: number): number {
   return Math.round(mins / step) * step * 60;
 }
 
-/** Reformat a tqdm time string for display. With ``estimate`` set, the
- * value is snapped to a stable, magnitude-scaled bucket (see
- * ``bucketEstimate``) and prefixed with "about" — a jittery ETA then
- * holds a value instead of churning every second. The sub-minute case
- * stays "less than a minute" (no "about"). Falls back to the raw
- * string if it can't be parsed. */
+/** Reformat a tqdm time string for display.
+ *
+ * Elapsed (``estimate=false``) is an exact fact, so it shows real
+ * seconds under a minute ("45 sec"). The remaining estimate is a guess,
+ * so it stays coarse: a magnitude-scaled bucket prefixed with "about"
+ * ("about 35 min"), and just "less than a minute" in the final stretch
+ * — a second-by-second countdown on a guess churns and overstates its
+ * precision. Falls back to the raw string if it can't be parsed. */
 export function humanizeTqdmTime(raw: string, estimate = false): string {
   const sec = tqdmTimeToSeconds(raw);
   if (sec === null) return raw;
-  const value = estimate ? bucketEstimate(sec) : sec;
-  const human = humanizeDuration(value);
-  return estimate && value >= 60 ? `about ${human}` : human;
+  if (estimate) {
+    return sec < 60
+      ? "less than a minute"
+      : `about ${humanizeDuration(bucketEstimate(sec))}`;
+  }
+  return humanizeDuration(sec);
 }

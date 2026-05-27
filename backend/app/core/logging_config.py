@@ -82,6 +82,22 @@ def setup_logging() -> logging.Logger:
         uvicorn_logger.handlers = []
         uvicorn_logger.propagate = True  # Propagate to root logger
 
+    # SQLAlchemy logs one line per query (plus parameter binds) at INFO.
+    # With the root logger at DEBUG that inheritance turns a single
+    # analysis — tens of thousands of inserts — into a log firehose, and
+    # because the file handler writes synchronously it stalls the
+    # single-process server (request timeouts, sluggish UI). Pin the
+    # SQLAlchemy loggers to WARNING so errors still surface but the
+    # per-query noise is gone. Setting `sql_echo` re-enables the full
+    # trace (create_engine(echo=True) forces these back to INFO).
+    if not settings.sql_echo:
+        for sa_logger_name in (
+            "sqlalchemy.engine",
+            "sqlalchemy.engine.Engine",
+            "sqlalchemy.pool",
+        ):
+            logging.getLogger(sa_logger_name).setLevel(logging.WARNING)
+
     # Set up exception hook to log uncaught exceptions
     import sys
 

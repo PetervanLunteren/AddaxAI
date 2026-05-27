@@ -46,6 +46,7 @@ import {
   siteChips,
 } from "../components/plots/InsightsFilterChips";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
+import { MissingDatesBanner } from "../components/dashboard/MissingDatesWarning";
 import { Badge } from "../components/ui/badge";
 import {
   Tooltip as UITooltip,
@@ -449,6 +450,7 @@ export function ActivityOverlapPage() {
             message="Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time."
           />
         )}
+        <MissingDatesBanner projectId={projectId} />
         <ActivityOverlapFilterBar
           projectId={projectId}
           filters={filters}

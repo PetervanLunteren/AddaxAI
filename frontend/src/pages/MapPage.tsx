@@ -26,6 +26,7 @@ import {
 } from "../components/map/MapFilterBar";
 import { ObservationRateMap } from "../components/map/ObservationRateMap";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
+import { MissingDatesBanner } from "../components/dashboard/MissingDatesWarning";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
 import {
   InsightsFilterChips,
@@ -190,6 +191,7 @@ export function MapPage() {
           count={noSite?.count ?? 0}
           reason="They are not shown on the map."
         />
+        <MissingDatesBanner projectId={projectId} />
         <MapFilterBar
           projectId={projectId}
           filters={filters}

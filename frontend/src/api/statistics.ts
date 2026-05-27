@@ -21,6 +21,11 @@ export interface DashboardOverview {
   last_file_date: string | null;
 }
 
+export interface CaptureDateCoverage {
+  total: number;
+  without_date: number;
+}
+
 export interface SpeciesCount {
   species: string;
   count: number;
@@ -224,6 +229,14 @@ export const statisticsApi = {
   getOverview: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
     return api.get<DashboardOverview>(`/api/statistics/overview?${query}`);
+  },
+
+  /** Media-file count + how many have no capture date (warning banner). */
+  getCaptureDateCoverage: (projectId: string) => {
+    const query = buildParams(projectId, {});
+    return api.get<CaptureDateCoverage>(
+      `/api/statistics/capture-date-coverage?${query}`,
+    );
   },
 
   /**

@@ -38,6 +38,10 @@ export interface FolderRunResponse {
   project: ProjectResponse;
   queue_entry: FolderRunQueueEntry | null;
   step: FolderRunStep;
+  /** Id of an analysis job currently running for this run, or null.
+   * Used by the Setup step to re-attach the progress modal after a
+   * refresh (modal == running run). */
+  active_job_id: string | null;
 }
 
 export interface FolderRunCreate {

@@ -166,7 +166,9 @@ export function useTaskProgress({
               }
             }
 
-            // Extract compute device (persists across messages)
+            // Extract compute device. The server keeps this sticky in
+            // its cached state, so a reconnecting client (page reload
+            // mid-run) gets the value back in the replayed message.
             if (data.data?.compute_device) {
               setComputeDevice(data.data.compute_device as string);
             }

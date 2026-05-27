@@ -107,6 +107,10 @@ class FolderRunResponse(BaseModel):
     project: ProjectResponse
     queue_entry: DeploymentQueueResponse | None
     step: FolderRunStep
+    # Id of the analysis job currently running for this run, if any.
+    # Lets the frontend re-attach to the progress modal after a refresh
+    # without an extra round trip. None when nothing is processing.
+    active_job_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -349,6 +353,21 @@ def _load_run(db: Session, run_id: str) -> FolderRunResponse:
     state: dict = project.folder_run_state or {}
     step: FolderRunStep = state.get("step", "model")
 
+    # Surface the running deployment_analysis job (if any) so the
+    # frontend can re-attach to the progress modal after a refresh.
+    # The KISS lifecycle is "modal == running run" — without this we
+    # could not honour that across reloads.
+    active_job = next(
+        (
+            j
+            for j in job_crud.get_jobs_by_project(
+                db, project.id, "deployment_analysis"
+            )
+            if j.status == "running"
+        ),
+        None,
+    )
+
     return FolderRunResponse(
         project=ProjectResponse.model_validate(project),
         queue_entry=(
@@ -357,6 +376,7 @@ def _load_run(db: Session, run_id: str) -> FolderRunResponse:
             else None
         ),
         step=step,
+        active_job_id=active_job.id if active_job is not None else None,
     )
 
 

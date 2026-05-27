@@ -311,8 +311,13 @@ async def get_event(
     # ISO strings for observational datetimes.
     _set_project_tz_for_event(db, event)
 
-    # Sort files by captured_at_local (sequence order at the camera)
-    sorted_files = sorted(event.files, key=lambda f: f.captured_at_local)
+    # Sort files by captured_at_local (sequence order at the camera).
+    # Date-less files (no EXIF capture date) sort last via the tuple key
+    # so a mixed event never compares None against a datetime.
+    sorted_files = sorted(
+        event.files,
+        key=lambda f: (f.captured_at_local is None, f.captured_at_local),
+    )
 
     site_name = None
     if event.deployment and event.deployment.site:

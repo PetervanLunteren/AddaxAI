@@ -10,8 +10,8 @@
 import { Fragment, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   Calendar,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -364,26 +364,35 @@ export function FolderSelector({
                 )}
               </div>
 
-              {/* DateTime missing error. Suppressed in Timelapse integration
-                  where missing EXIF is not a hard failure (the runner
-                  still detects and classifies; only sequence smoothing
-                  skips those files). */}
+              {/* Some files lack a capture date. Non-blocking: the
+                  backend still detects and classifies them; they just
+                  drop out of time-based stats. Suppressed where a caller
+                  opts out via hideDatetimeWarning. */}
               {scanResult.missing_datetime && !hideDatetimeWarning && (
-                <Alert variant="destructive" className="bg-red-50 border-red-300">
-                  <AlertCircle className="h-4 w-4" />
+                <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-sm">
                     <div className="space-y-2">
-                      <p className="font-semibold">DateTime metadata not found.</p>
+                      <p className="font-medium">
+                        Some files have no capture date.
+                      </p>
 
-                      <p>DateTime information is essential for accurate statistics, graphs, and exports in AddaxAI. This usually means the images have been processed, uploaded/downloaded, copied, or stripped of metadata. Please use the raw data directly from the camera SD card with DateTime metadata intact.</p>
+                      <p>
+                        AddaxAI will still detect and classify them. Files
+                        without a date are left out of time-based stats,
+                        charts, and trap-night effort. This usually means
+                        the files were copied or had their metadata
+                        stripped; raw files from the camera SD card keep
+                        it.
+                      </p>
 
                       {/* Validation log */}
                       {scanResult.datetime_validation_log && scanResult.datetime_validation_log.length > 0 && (
-                        <details className="mt-2 p-3 bg-red-100 rounded border border-red-300">
-                          <summary className="cursor-pointer font-semibold text-sm">
-                            Technical Details
+                        <details className="mt-2 rounded border border-amber-300 bg-amber-100 p-3">
+                          <summary className="cursor-pointer text-sm font-medium">
+                            Technical details
                           </summary>
-                          <div className="mt-2 space-y-1 font-mono text-xs text-red-900">
+                          <div className="mt-2 space-y-1 font-mono text-xs text-amber-900">
                             {scanResult.datetime_validation_log.map((log, idx) => (
                               <div key={idx} className="whitespace-pre-wrap break-words">
                                 {log}
@@ -392,13 +401,6 @@ export function FolderSelector({
                           </div>
                         </details>
                       )}
-
-                      <p className="text-sm">
-                        Using raw data and AddaxAI still can't find the timestamps? Please contact{' '}
-                        <a href="mailto:peter@addaxdatascience.com" className="underline font-semibold">
-                          peter@addaxdatascience.com
-                        </a>
-                      </p>
                     </div>
                   </AlertDescription>
                 </Alert>
