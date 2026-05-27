@@ -174,6 +174,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "UPDATE, no schema-level signal to fingerprint"
         ),
     ),
+    _Fingerprint(
+        revision="b8c9d0e1f2a3",
+        table=None,
+        column=None,
+        description=(
+            "nullable capture dates on files / events — column "
+            "nullability change, not fingerprinted via PRAGMA table_info"
+        ),
+    ),
 )
 
 
@@ -368,6 +377,23 @@ def reconcile_alembic_version(engine: Engine) -> str | None:
 
     if _alembic_version_is_truthful(engine, current):
         return current
+
+    # Hard safety gate: if the stamped revision is not registered in
+    # SCHEMA_FINGERPRINTS at all, refuse to auto-resolve. Silently
+    # re-stamping backward and re-running the migration chain against
+    # an unknown future revision destroyed user data on 2026-05-27
+    # (the missing fingerprint was for b8c9d0e1f2a3). Surface a clear
+    # error so the developer fixes the cause (add the fingerprint)
+    # instead of letting the DB drift through a destructive rebuild.
+    if not any(fp.revision == current for fp in SCHEMA_FINGERPRINTS):
+        raise RuntimeError(
+            f"alembic_version is stamped at {current!r}, which is not "
+            f"registered in SCHEMA_FINGERPRINTS. Refusing to auto-"
+            f"resolve: re-stamping and re-running migrations against "
+            f"an unknown revision risks destroying data. Add a "
+            f"_Fingerprint entry for {current!r} in "
+            f"app/db/migrations.py and restart."
+        )
 
     logger.warning(
         f"alembic_version says {current} but the schema is missing changes "

@@ -245,6 +245,31 @@ def test_reconcile_returns_none_for_fresh_install(isolated_db_settings) -> None:
     assert get_current_revision(engine) is None
 
 
+def test_reconcile_refuses_unknown_stamped_revision(isolated_db_settings) -> None:
+    """A DB stamped at a revision missing from SCHEMA_FINGERPRINTS must fail loud.
+
+    Replays the 2026-05-27 incident: a new migration was added on disk
+    without a corresponding SCHEMA_FINGERPRINTS entry. The old reconcile
+    silently re-stamped backward and re-ran the chain, and the rebuild
+    destroyed user data. The reconciler must now refuse and surface a
+    clear error instead of auto-resolving.
+    """
+    upgrade_to_head()
+    engine = _engine_for(isolated_db_settings)
+
+    # Stamp at a revision string that does NOT appear in SCHEMA_FINGERPRINTS.
+    fake_revision = "ffffffffffff"
+    assert not any(fp.revision == fake_revision for fp in SCHEMA_FINGERPRINTS)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alembic_version SET version_num = :v"), {"v": fake_revision})
+
+    with pytest.raises(RuntimeError, match=r"not registered in SCHEMA_FINGERPRINTS"):
+        reconcile_alembic_version(engine)
+
+    # alembic_version unchanged — the gate refuses without writing.
+    assert get_current_revision(engine) == fake_revision
+
+
 def test_reconcile_stamps_legacy_db_without_alembic_version(
     isolated_db_settings,
 ) -> None:

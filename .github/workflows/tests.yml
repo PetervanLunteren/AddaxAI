@@ -1,0 +1,41 @@
+name: Tests
+
+# Runs on every PR and on pushes to main. Cheap and focused: the goal
+# is to catch the class of bug that destroyed user data on 2026-05-27
+# (a new alembic migration was merged without a matching entry in
+# SCHEMA_FINGERPRINTS, so `reconcile_alembic_version` silently rolled
+# the DB backward and re-ran the chain on startup). The migration
+# tests would have caught that locally; CI makes sure they catch it
+# at PR time too.
+#
+# Scope is intentionally tight (no full backend suite, no frontend) to
+# keep this fast. Expand later if other gates earn their seconds.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend-migrations:
+    name: Backend migration safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run migration safety tests
+        working-directory: backend
+        run: python -m pytest tests/db/test_migrations.py -q --no-cov
