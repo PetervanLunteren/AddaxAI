@@ -1,16 +1,20 @@
 /**
  * CropCard - detection crop thumbnail with bbox overlay and metadata.
  *
- * Shows label pill, label suggestion pill,
- * verified badge, and selection state. The crop is expanded to show
- * context around the detection, with an SVG overlay highlighting the bbox.
+ * Shows the label pill, the verified badge (top-right), and the
+ * selection state. The crop is expanded to show context around the
+ * detection, with an SVG overlay highlighting the bbox. The "neighbours
+ * disagree" signal is workflow-driven, not decorative: it surfaces via
+ * the suggestions sort + cohort divider (bulk-accept descendant
+ * promotions) and the right-click "Relabel to X" context menu in
+ * CropGrid, rather than passively decorating the tile.
  */
 
 import { memo } from "react";
 import { Check } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getDetectionColor, getDetectionDisplayName } from "../../lib/detection-utils";
-import { getSpeciesTextColor } from "../../utils/species-colors";
+import { getContrastTextColor } from "../../utils/species-colors";
 import {
   BBOX_STROKE_WIDTH,
   BBOX_OPACITY,
@@ -34,21 +38,11 @@ interface CropCardProps {
 export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, tileSize = "M" }: CropCardProps) {
   const isFalseDetection =
     detection.label === "false detection" && detection.verified;
-  const isSuspicious =
-    !isFalseDetection &&
-    !detection.verified &&
-    detection.neighbor_agreement != null &&
-    detection.neighbor_agreement < 0.7;
-  const hasSuggestion =
-    !detection.verified &&
-    detection.neighbor_top_label &&
-    detection.neighbor_top_label !== detection.label;
 
   const isSmall = tileSize === "S";
   const pillSize = isSmall
     ? "text-[7px] px-0.5 py-0 rounded-sm"
     : "text-[10px] px-1.5 py-0.5 rounded-sm";
-  const arrowSize = isSmall ? "text-[8px]" : "text-[10px]";
 
   return (
     <div
@@ -116,35 +110,23 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
       <div className="px-2 py-1.5">
         <div className="flex items-center justify-center gap-0.5 min-w-0">
           <Badge
-            variant={isFalseDetection ? "secondary" : isSuspicious ? "outline" : "default"}
+            variant={isFalseDetection ? "secondary" : "default"}
             className={cn(
-              pillSize, "capitalize",
-              hasSuggestion ? "max-w-[50%]" : "max-w-full",
+              pillSize, "capitalize max-w-full",
               isFalseDetection && "bg-muted text-muted-foreground hover:bg-muted",
-              isSuspicious && "border-transparent bg-[#882000] text-white hover:bg-[#882000]"
             )}
-            style={
-              !isFalseDetection && !isSuspicious
-                ? { backgroundColor: getDetectionColor(detection), color: getSpeciesTextColor(detection.label || detection.category) }
-                : undefined
-            }
+            style={(() => {
+              if (isFalseDetection) return undefined;
+              // Derive the foreground from the ACTUAL background so a
+              // bright chip never gets unreadable white text. The bg
+              // here uses (label_taxonomy_id || label || category) via
+              // getDetectionColor; the text now follows that exactly.
+              const bg = getDetectionColor(detection);
+              return { backgroundColor: bg, color: getContrastTextColor(bg) };
+            })()}
           >
             <span className="truncate">{getDetectionDisplayName(detection)}</span>
           </Badge>
-          {hasSuggestion && (
-            <>
-              <span className={cn(arrowSize, "text-muted-foreground shrink-0")}>→</span>
-              <Badge
-                variant="secondary"
-                className={cn(pillSize, "capitalize max-w-[50%]")}
-              >
-                <span className="truncate">
-                  {detection.neighbor_top_display_name ||
-                    detection.neighbor_top_label}
-                </span>
-              </Badge>
-            </>
-          )}
         </div>
       </div>
     </div>

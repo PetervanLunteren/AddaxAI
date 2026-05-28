@@ -12,9 +12,8 @@
  * Tab specifics:
  * - Events / Files: all five slots; `showLikedFlaggedEmpty = true`.
  * - Observations: same slots, but the More popover only contains the
- *   confidence ranges (`showLikedFlaggedEmpty = false`); Verified
- *   options swap to all / unverified / suspicious (suspicious only
- *   listed when neighbor agreement data is present).
+ *   confidence ranges (`showLikedFlaggedEmpty = false`). Verified
+ *   options match the other tabs (all / unverified / verified).
  */
 
 import { useQuery } from "@tanstack/react-query";

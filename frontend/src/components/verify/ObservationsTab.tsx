@@ -17,8 +17,6 @@ import {
   Layers,
   Loader2,
   RefreshCw,
-  Search,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,35 +24,34 @@ import {
   type ObservationsProgressEvent,
 } from "../../api/observations";
 import { detectionsApi } from "../../api/detections";
+import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Progress } from "../ui/progress";
-import { Slider } from "../ui/slider";
-import { API_BASE_URL } from "../../lib/api-client";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { CropGrid } from "./CropGrid";
 import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
-import { VerifyFilterBar, type VerificationOption } from "./VerifyFilterBar";
+import { SuggestionsToolbarPill } from "./SuggestionsToolbarPill";
+import { VerifyFilterBar } from "./VerifyFilterBar";
 import { SortSelector } from "./SortSelector";
 import {
   VerifyProgressPill,
   VerifyToolbar,
   VerifyToolbarIcon,
 } from "./VerifyToolbar";
-import { getDetectionDisplayName } from "../../lib/detection-utils";
 import { ObservationsSettings } from "./ObservationsSettings";
 import { OBSERVATIONS_MAX_DETECTIONS_DEFAULT } from "./observationsViewOptions";
 import { ObservationsKeyboardPopover } from "./ObservationsKeyboardPopover";
-import { ObservationsHelpSheet } from "./ObservationsHelpSheet";
+import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { ObservationsWelcomePopover } from "./ObservationsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import type {
+  CohortItem,
   SortResponse,
-  SearchResponse,
   DetectionSummary,
   ObservationFilters,
   ObservationSort,
@@ -76,11 +73,16 @@ interface ObservationsTabProps {
   classificationModelId: string | null;
   view: VerifyViewMode;
   onViewChange: (view: VerifyViewMode) => void;
+  /** Fires when the size of the active bulk selection changes. The
+   *  folder-run Edit step uses it to hide its sticky Back / Continue
+   *  bar while a selection is live, so the BulkActionBar doesn't sit
+   *  on top of it and the user can't accidentally advance mid-action. */
+  onSelectionChange?: (count: number) => void;
 }
 
 // ── Observations filter state (independent from Events / Files filters) ──
 
-type ObservationsVerification = "all" | "unverified" | "suspicious";
+type ObservationsVerification = "all" | "unverified" | "verified";
 
 interface ObservationsFilterState {
   site_ids?: string[];
@@ -116,7 +118,7 @@ function obsFiltersFromSearchParams(sp: URLSearchParams): ObservationsFilterStat
   const maxLC = sp.get("obs_max_label_confidence");
   if (maxLC !== null) f.max_label_confidence = parseFloat(maxLC);
   const ver = sp.get("obs_verification");
-  if (ver === "all" || ver === "unverified" || ver === "suspicious") {
+  if (ver === "all" || ver === "unverified" || ver === "verified") {
     f.verification = ver;
   }
   return f;
@@ -187,6 +189,11 @@ function toFilterBarFilters(f: ObservationsFilterState): EventFilterParams {
  * indeterminate spinner during the brief window before the first
  * event arrives. Always shows the "narrow by filter" tip so users
  * know the wait is reducible.
+ *
+ * The subprocess emits three phases (load, sort, neighbors), each
+ * with its own 0 → N counter. To avoid the bar resetting to 0%
+ * between phases (which reads like a flicker), each phase is mapped
+ * to one slice of the overall 0 → 100% bar.
  */
 function ObservationsLoadingState({
   progress,
@@ -196,19 +203,15 @@ function ObservationsLoadingState({
   const phaseLabel = progress
     ? PHASE_LABELS[progress.phase] ?? progress.phase
     : null;
-  const pct =
-    progress && progress.total > 0
-      ? Math.min(100, Math.round((progress.done / progress.total) * 100))
-      : 0;
+  const overallPct = progress ? overallProgressPct(progress) : 0;
 
   return (
     <div className="flex flex-col items-center gap-3 w-full max-w-sm mx-auto">
       {progress ? (
         <>
-          <Progress value={pct} className="h-2" />
+          <Progress value={overallPct} className="h-2" />
           <p className="text-xs text-muted-foreground">
-            {phaseLabel}: {progress.done.toLocaleString()} /{" "}
-            {progress.total.toLocaleString()} ({pct}%)
+            {phaseLabel} ({overallPct}%)
           </p>
         </>
       ) : (
@@ -227,11 +230,34 @@ const PHASE_LABELS: Record<ObservationsProgressEvent["phase"], string> = {
   neighbors: "Comparing neighbours",
 };
 
+// Slice each phase into a chunk of the overall 0-100% bar so the
+// per-phase resets don't flicker the bar back to 0%. Order matches
+// the subprocess: load → sort → neighbors. Weights are 1/3 each;
+// not perfectly proportional to wall-clock time but close enough
+// that the bar moves smoothly forward.
+const PHASE_RANGES: Record<
+  ObservationsProgressEvent["phase"],
+  { start: number; end: number }
+> = {
+  load: { start: 0, end: 33 },
+  sort: { start: 33, end: 66 },
+  neighbors: { start: 66, end: 100 },
+};
+
+function overallProgressPct(progress: ObservationsProgressEvent): number {
+  const range = PHASE_RANGES[progress.phase];
+  if (!range) return 0;
+  const phaseFrac =
+    progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0;
+  return Math.round(range.start + (range.end - range.start) * phaseFrac);
+}
+
 export function ObservationsTab({
   projectId,
   classificationModelId,
   view,
   onViewChange,
+  onSelectionChange,
 }: ObservationsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -263,7 +289,7 @@ export function ObservationsTab({
     (fp: EventFilterParams) => {
       const v = fp.verification;
       const verification: ObservationsVerification =
-        v === "unverified" || v === "suspicious" ? v : "all";
+        v === "unverified" || v === "verified" ? v : "all";
       setObsFilters({
         ...obsFilters,
         site_ids: fp.site_ids,
@@ -299,7 +325,8 @@ export function ObservationsTab({
     v === "similarity_reverse" ||
     v === "newest" ||
     v === "oldest" ||
-    v === "cls_low";
+    v === "cls_low" ||
+    v === "suggestions";
 
   const initialSort: ObservationSort = isObservationSort(savedSettings.sort)
     ? savedSettings.sort
@@ -360,18 +387,15 @@ export function ObservationsTab({
   // Re-embed state
   const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
 
-  const urlAnchor = searchParams.get("anchor");
-  const [anchorId, setAnchorId] = useState<string | null>(urlAnchor);
-  const [threshold, setThreshold] = useState(0.7);
-
-  // Explicit view mode — defaults to "search" when URL has anchor
-  const [viewMode, setViewMode] = useState<"sort" | "search">(
-    urlAnchor ? "search" : "sort"
-  );
-
   // Results
   const [sortResult, setSortResult] = useState<SortResponse | null>(null);
-  const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
+  // Sort mode that produced the current sortResult. The dividers prop
+  // tracks this rather than obsSort so the brief window after a sort
+  // switch — where the old result lingers until the new sort lands —
+  // does not paint cohort dividers over similarity data (which would
+  // collapse everything that shares (label, "", category) into a
+  // single "(no label)" cohort).
+  const [resultSort, setResultSort] = useState<ObservationSort | null>(null);
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -381,6 +405,15 @@ export function ObservationsTab({
     setSelectedIds(new Set());
     selectionAnchorRef.current = null;
   }, []);
+
+  // Notify the parent when the selection size changes (and once on
+  // unmount, so it can restore a hidden step nav).
+  useEffect(() => {
+    onSelectionChange?.(selectedIds.size);
+    return () => {
+      onSelectionChange?.(0);
+    };
+  }, [selectedIds.size, onSelectionChange]);
 
   // Detail sheet
   const [detailDetection, setDetailDetection] = useState<DetectionSummary | null>(null);
@@ -418,34 +451,42 @@ export function ObservationsTab({
     [projectId]
   );
 
-  // Stats query
+  // Stats query — embedded-detection counts for the missing-embeddings
+  // banner and the "no embeddings yet" empty state.
   const { data: stats } = useQuery({
     queryKey: ["observations-stats", projectId],
     queryFn: () => observationsApi.stats(projectId),
     enabled: !!projectId,
   });
 
-  // Auto-trigger search when anchor is set from URL on mount
-  useEffect(() => {
-    if (urlAnchor) {
-      setAnchorId(urlAnchor);
-    }
-  }, [urlAnchor]);
+  // Separate stats query for the progress pill, so it reports the same
+  // "percent observations verified" number as the Events and Media
+  // pills (both read from this endpoint too). Sourced from the events
+  // stats endpoint, which counts all reviewable detections, not only
+  // the embedded ones, so the pill matches across views.
+  const { data: verificationStats } = useQuery({
+    queryKey: ["events", "verification-stats", projectId],
+    queryFn: () => eventsApi.verificationStats(projectId),
+    enabled: !!projectId,
+  });
 
   // Streaming progress reported by the subprocess (load → sort → neighbors).
-  // Cleared whenever a new sort/search starts and when results land.
+  // Cleared whenever a new sort starts and when results land.
   const [progress, setProgress] = useState<ObservationsProgressEvent | null>(
     null,
   );
 
-  // Sort mutation — passes the chosen sort enum.
+  // Sort mutation — takes the sort mode as the mutation argument so
+  // `onSuccess` can pin the resulting data to it. Otherwise a rapid
+  // sort-mode flip would race the in-flight result against the latest
+  // `obsSort` state and paint the wrong dividers on the response.
   const sortMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (sort: ObservationSort) =>
       observationsApi.sortStream(
         projectId,
         {
           filters: toObservationFilters(obsFilters),
-          sort: obsSort,
+          sort,
           max_detections: maxDetections,
         },
         setProgress,
@@ -454,8 +495,9 @@ export function ObservationsTab({
       setIsSorting(true);
       setProgress(null);
     },
-    onSuccess: (data) => {
+    onSuccess: (data, sort) => {
       setSortResult(data);
+      setResultSort(sort);
       clearSelection();
       setIsSorting(false);
       setProgress(null);
@@ -477,60 +519,23 @@ export function ObservationsTab({
 
   // Auto-sort on mount and when filters or sort mode change.
   useEffect(() => {
-    if (viewMode === "sort" && stats?.embedded_detections && sortKey !== lastSortKeyRef.current) {
+    if (stats?.embedded_detections && sortKey !== lastSortKeyRef.current) {
       lastSortKeyRef.current = sortKey;
-      sortMutation.mutate();
+      sortMutation.mutate(obsSort);
     }
-  }, [viewMode, sortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Search mutation
-  const searchMutation = useMutation({
-    mutationFn: (anchor: string) =>
-      observationsApi.searchStream(
-        projectId,
-        {
-          anchor_detection_id: anchor,
-          filters: toObservationFilters(obsFilters),
-          limit: 100,
-          threshold,
-          max_detections: maxDetections,
-        },
-        setProgress,
-      ),
-    onMutate: () => setProgress(null),
-    onSuccess: (data) => {
-      setSearchResult(data);
-      clearSelection();
-      setProgress(null);
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-      setProgress(null);
-    },
-  });
-
-  // Trigger search when anchor or threshold changes
-  useEffect(() => {
-    if (anchorId) {
-      searchMutation.mutate(anchorId);
-    }
-  }, [anchorId, threshold, filtersKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flat detection list for selection model
   const allDetections = useMemo((): DetectionSummary[] => {
-    let dets: DetectionSummary[] = [];
-    if (viewMode === "sort" && sortResult) dets = sortResult.detections;
-    else if (viewMode === "search" && searchResult) dets = searchResult.results;
+    let dets: DetectionSummary[] = sortResult?.detections ?? [];
 
     if (verificationFilter === "unverified") {
       dets = dets.filter((d) => !d.verified);
-    } else if (verificationFilter === "suspicious") {
-      dets = dets.filter(
-        (d) => !d.verified && d.neighbor_agreement != null && d.neighbor_agreement < 0.7
-      );
+    } else if (verificationFilter === "verified") {
+      dets = dets.filter((d) => d.verified);
     }
     return dets;
-  }, [viewMode, sortResult, searchResult, verificationFilter]);
+  }, [sortResult, verificationFilter]);
 
   // Pre-computed index lookup for O(1) range selection
   const idIndexMap = useMemo(() => {
@@ -542,11 +547,10 @@ export function ObservationsTab({
   }, [allDetections]);
 
   // Unfiltered count to detect "all hidden by filters" vs "genuinely empty"
-  const totalCount = useMemo(() => {
-    if (viewMode === "sort" && sortResult) return sortResult.detections.length;
-    if (viewMode === "search" && searchResult) return searchResult.results.length;
-    return 0;
-  }, [viewMode, sortResult, searchResult]);
+  const totalCount = useMemo(
+    () => sortResult?.detections.length ?? 0,
+    [sortResult],
+  );
 
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
@@ -590,176 +594,254 @@ export function ObservationsTab({
     setDetailDetection(detection);
   }, []);
 
-  const handleFindSimilar = useCallback(
-    (detectionId: string) => {
-      setAnchorId(detectionId);
-      setViewMode("search");
-      setSearchParams(
-        (prev) => {
-          prev.set("anchor", detectionId);
-          return prev;
-        },
-        { replace: true }
-      );
-    },
-    [setSearchParams]
-  );
-
-  const handleCloseSearch = useCallback(() => {
-    setAnchorId(null);
-    setSearchResult(null);
-    clearSelection();
-    setViewMode("sort");
-    setSearchParams(
-      (prev) => {
-        prev.delete("anchor");
-        return prev;
-      },
-      { replace: true }
-    );
-  }, [setSearchParams]);
-
   const handleActionComplete = useCallback(() => {
-    // Re-run the current query to refresh data
-    if (viewMode === "sort") {
-      sortMutation.mutate();
-    } else if (anchorId) {
-      searchMutation.mutate(anchorId);
-    }
+    // Re-run the current sort to refresh data
+    sortMutation.mutate(obsSort);
     queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-  }, [viewMode, anchorId, queryClient]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Cohort counts feed the toolbar pill; any relabel / verify path
+    // can change which detections still belong in a cohort. Invalidate
+    // here so the pill catches up after every bulk action, not just
+    // the divider's Accept button.
+    queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+  }, [obsSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
   const patchLocalDetections = useCallback(
     (patchFn: (d: DetectionSummary) => DetectionSummary) => {
-      if (viewMode === "sort" && sortResult) {
+      if (sortResult) {
         setSortResult({
           ...sortResult,
           detections: sortResult.detections.map(patchFn),
-        });
-      } else if (viewMode === "search" && searchResult) {
-        setSearchResult({
-          ...searchResult,
-          results: searchResult.results.map(patchFn),
         });
       }
       // Keep the detail modal in sync
       setDetailDetection((prev) => (prev ? patchFn(prev) : prev));
     },
-    [viewMode, sortResult, searchResult]
+    [sortResult]
   );
 
-  const handleRelabel = useCallback(
-    (detectionId: string, label: string, category: string) => {
-      detectionsApi
-        .bulkRelabel([detectionId], label, category)
-        .then(() => {
-          patchLocalDetections((d) =>
-            d.detection_id === detectionId
-              ? { ...d, label, category, display_name: null, verified: true }
-              : d
-          );
-        })
-        .catch((err: Error) => toast.error(err.message));
+  /** Apply a single-card or bulk action to local state.
+   *
+   *  In similarity / metadata sorts, the affected detections stay
+   *  visible with their new fields (patch in place).
+   *
+   *  In suggestions mode, the affected detections have been reviewed
+   *  and leave the grid. Mutating in place would change CropGrid's
+   *  cohortKey (label + neighbor_top_label + category) for that
+   *  detection, tear it out of its cohort row, and leave a phantom
+   *  singleton inside an otherwise-intact cohort. Strip the ids
+   *  instead, matching what the cohort divider's Accept button does.
+   *
+   *  Also invalidates the cohorts query so the toolbar pill catches up
+   *  regardless of which action path triggered the change.
+   */
+  const applyDetectionAction = useCallback(
+    (ids: string[], patch: (d: DetectionSummary) => DetectionSummary) => {
+      const idSet = new Set(ids);
+      if (obsSort === "suggestions") {
+        setSortResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                detections: prev.detections.filter(
+                  (d) => !idSet.has(d.detection_id),
+                ),
+              }
+            : prev,
+        );
+        setDetailDetection((prev) =>
+          prev && idSet.has(prev.detection_id) ? null : prev,
+        );
+      } else {
+        patchLocalDetections((d) =>
+          idSet.has(d.detection_id) ? patch(d) : d,
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
     },
-    [patchLocalDetections]
+    [obsSort, patchLocalDetections, projectId, queryClient],
   );
 
   const handleBulkRelabel = useCallback(
     (ids: string[], label: string | null, category: string, displayName: string) => {
-      const idSet = new Set(ids);
-      patchLocalDetections((d) =>
-        idSet.has(d.detection_id)
-          ? { ...d, label, category, display_name: displayName, verified: true }
-          : d
-      );
+      applyDetectionAction(ids, (d) => ({
+        ...d,
+        label,
+        category,
+        display_name: displayName,
+        label_taxonomy_id: null,
+        neighbor_top_label: null,
+        neighbor_top_display_name: null,
+        verified: true,
+      }));
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     },
-    [patchLocalDetections, queryClient]
+    [applyDetectionAction, queryClient]
+  );
+
+  // Bulk-relabel a cohort straight from the divider button — no
+  // confirm modal. The cohort header already shows the count, the
+  // current label, the suggested label, and a tooltip spells out the
+  // "+ verify" consequence on hover; a second prompt was just
+  // restating the same information.
+  //
+  // Optimistically strips the relabelled detections from the local
+  // sortResult (so the cohort card vanishes immediately) and
+  // invalidates the cohort + label-tree caches so the toolbar pill's
+  // count catches up.
+  const relabelCohort = useCallback(
+    async (cohort: CohortItem) => {
+      try {
+        await detectionsApi.bulkRelabel(
+          cohort.detection_ids,
+          cohort.suggested_label,
+          cohort.category ?? undefined,
+        );
+        const idSet = new Set(cohort.detection_ids);
+        setSortResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                detections: prev.detections.filter(
+                  (d) => !idSet.has(d.detection_id),
+                ),
+              }
+            : prev,
+        );
+        queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+        queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+        toast.success(
+          `Relabelled ${cohort.count} observation${
+            cohort.count === 1 ? "" : "s"
+          } to ${cohort.suggested_display_name || cohort.suggested_label}.`,
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Relabel failed");
+      }
+    },
+    [projectId, queryClient],
+  );
+
+  // Convenience used by SuggestionsToolbarPill.
+  const exitSuggestionsMode = useCallback(
+    () => setObsSort("similarity"),
+    [setObsSort],
   );
 
   const handleMarkFalse = useCallback(
     (ids: string[]) => {
-      const idSet = new Set(ids);
       detectionsApi
         .bulkRelabel(ids, "false detection", undefined)
         .then(() => {
-          patchLocalDetections((d) =>
-            idSet.has(d.detection_id)
-              ? { ...d, label: "false detection", display_name: "False detection", verified: true }
-              : d
-          );
+          applyDetectionAction(ids, (d) => ({
+            ...d,
+            label: "false detection",
+            display_name: "False detection",
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_display_name: null,
+            verified: true,
+          }));
           clearSelection();
           queryClient.invalidateQueries({ queryKey: ["label-tree"] });
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [patchLocalDetections, clearSelection, queryClient]
+    [applyDetectionAction, clearSelection, queryClient]
   );
 
   const handleBulkMarkFalse = useCallback(
     (ids: string[]) => {
-      const idSet = new Set(ids);
-      patchLocalDetections((d) =>
-        idSet.has(d.detection_id)
-          ? { ...d, label: "false detection", verified: true }
-          : d
-      );
+      applyDetectionAction(ids, (d) => ({
+        ...d,
+        label: "false detection",
+        display_name: "False detection",
+        label_taxonomy_id: null,
+        neighbor_top_label: null,
+        neighbor_top_display_name: null,
+        verified: true,
+      }));
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     },
-    [patchLocalDetections, queryClient]
+    [applyDetectionAction, queryClient]
   );
 
   const handleBulkVerify = useCallback(
     (ids: string[]) => {
-      const idSet = new Set(ids);
-      patchLocalDetections((d) =>
-        idSet.has(d.detection_id) ? { ...d, verified: true } : d
-      );
+      applyDetectionAction(ids, (d) => ({ ...d, verified: true }));
     },
-    [patchLocalDetections]
+    [applyDetectionAction]
   );
 
-  /** Relabel detections to their neighbor_top_label suggestions, grouped by (label, category). */
-  const relabelToSuggestions = useCallback(
-    async (dets: DetectionSummary[]) => {
-      const withSuggestion = dets.filter(
-        (d) => d.neighbor_top_label && d.neighbor_top_label !== d.label
-      );
-      if (withSuggestion.length === 0) {
-        toast.info("No suggestions to accept");
+  /** Relabel the selection to its most common label and verify.
+   *
+   *  Useful pattern in similarity-sorted grids: a long run of one
+   *  species (e.g. 200 turkeys) is interrupted by a few stragglers
+   *  predicted at the broader rank (e.g. "Aves"). Plain Verify keeps
+   *  the stragglers wrong; the relabel picker is one tap too many for
+   *  a self-evident majority. This snaps everyone to the mode in one
+   *  click / keystroke and verifies.
+   *
+   *  Ties: first label encountered wins (deterministic given grid
+   *  iteration order). No-ops with a toast if nothing in the selection
+   *  carries a label.
+   */
+  const handleMatchMajority = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      const selected = allDetections.filter((d) => idSet.has(d.detection_id));
+      const counts = new Map<
+        string,
+        { count: number; label: string; category: string; displayName: string | null }
+      >();
+      for (const d of selected) {
+        if (!d.label) continue;
+        const entry = counts.get(d.label);
+        if (entry) {
+          entry.count += 1;
+        } else {
+          counts.set(d.label, {
+            count: 1,
+            label: d.label,
+            category: d.category,
+            displayName: d.display_name,
+          });
+        }
+      }
+      if (counts.size === 0) {
+        toast.info("No labels in selection to apply");
         return;
       }
-      // Group by (neighbor_top_label, category)
-      const groups = new Map<string, { ids: string[]; label: string; category: string }>();
-      for (const d of withSuggestion) {
-        const key = `${d.neighbor_top_label}|${d.category}`;
-        if (!groups.has(key)) {
-          groups.set(key, { ids: [], label: d.neighbor_top_label!, category: d.category });
-        }
-        groups.get(key)!.ids.push(d.detection_id);
+      let mode = null as null | {
+        count: number; label: string; category: string; displayName: string | null;
+      };
+      for (const entry of counts.values()) {
+        if (!mode || entry.count > mode.count) mode = entry;
       }
-      let totalUpdated = 0;
-      for (const { ids, label, category } of groups.values()) {
-        try {
-          const data = await detectionsApi.bulkRelabel(ids, label, category);
-          totalUpdated += data.updated_count;
-        } catch (err: unknown) {
-          toast.error(err instanceof Error ? err.message : "Relabel failed");
-        }
-      }
-      // Patch local state
-      const suggestionMap = new Map(
-        withSuggestion.map((d) => [d.detection_id, d.neighbor_top_label!])
-      );
-      patchLocalDetections((d) =>
-        suggestionMap.has(d.detection_id)
-          ? { ...d, label: suggestionMap.get(d.detection_id)!, verified: true }
-          : d
-      );
-      clearSelection();
+      if (!mode) return;
+      const { label: modeLabel, category: modeCategory, displayName: modeDisplayName } = mode;
+      detectionsApi
+        .bulkRelabel(ids, modeLabel, modeCategory)
+        .then(() => {
+          applyDetectionAction(ids, (d) => ({
+            ...d,
+            label: modeLabel,
+            category: modeCategory,
+            display_name: modeDisplayName,
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_display_name: null,
+            verified: true,
+          }));
+          clearSelection();
+          toast.success(
+            `Relabelled ${ids.length} to ${modeDisplayName || modeLabel}`,
+          );
+        })
+        .catch((err: Error) => toast.error(err.message));
     },
-    [patchLocalDetections]
+    [allDetections, applyDetectionAction, clearSelection],
   );
 
   // Keyboard shortcuts
@@ -772,8 +854,6 @@ export function ObservationsTab({
           setDetailDetection(null);
         } else if (selectedIds.size > 0) {
           clearSelection();
-        } else if (viewMode === "search") {
-          handleCloseSearch();
         }
         return;
       }
@@ -802,23 +882,15 @@ export function ObservationsTab({
         return;
       }
 
-      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
-        e.preventDefault();
-        const first = selectedIds.values().next().value;
-        if (first) handleFindSimilar(first);
-        return;
-      }
-
-      if ((e.key === "a" || e.key === "A") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
-        e.preventDefault();
-        const selectedDets = allDetections.filter((d) => selectedIds.has(d.detection_id));
-        relabelToSuggestions(selectedDets);
-        return;
-      }
-
       if ((e.key === "x" || e.key === "X") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
         e.preventDefault();
         handleMarkFalse(Array.from(selectedIds));
+        return;
+      }
+
+      if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+        e.preventDefault();
+        handleMatchMajority(Array.from(selectedIds));
         return;
       }
 
@@ -837,12 +909,16 @@ export function ObservationsTab({
         e.preventDefault();
         const ids = Array.from(selectedIds);
         detectionsApi.bulkRelabel(ids, label.label, label.category).then(() => {
-          const idSet = new Set(ids);
-          patchLocalDetections((d) =>
-            idSet.has(d.detection_id)
-              ? { ...d, label: label.label ?? label.category, category: label.category, verified: true }
-              : d
-          );
+          applyDetectionAction(ids, (d) => ({
+            ...d,
+            label: label.label ?? label.category,
+            category: label.category,
+            display_name: label.displayName,
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_display_name: null,
+            verified: true,
+          }));
           clearSelection();
         });
       }
@@ -850,7 +926,7 @@ export function ObservationsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, viewMode, handleCloseSearch, relabelToSuggestions, shortcutLabels, patchLocalDetections, handleFindSimilar, handleMarkFalse]);
+  }, [selectedIds, detailDetection, allDetections, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMatchMajority]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -864,24 +940,15 @@ export function ObservationsTab({
     return () => document.removeEventListener("click", handleClick);
   }, [selectedIds.size > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Verified select options. "Suspicious" is only meaningful when at
-  // least one detection in the current sort result has neighbor
-  // agreement data (i.e. the result was produced by the similarity
-  // pipeline). Hooks need to run before any early return below.
-  const hasAgreementData = useMemo(() => {
-    const dets = sortResult?.detections ?? [];
-    return dets.some((d) => d.neighbor_agreement != null);
-  }, [sortResult]);
-
   // Verified-detections progress for the toolbar pill.
   // Progress over the whole dataset (unfiltered project stats), not the
-  // currently-loaded / filtered detections — otherwise a user filtering
-  // to "unverified" would see a misleading 0%, or a narrowed view could
-  // read 100% while most of the project is unverified.
+  // currently-loaded / filtered detections, so a narrowed view does
+  // not read as 100% verified. Same source as the Events and Media
+  // pills, so all three views report the same number.
   const verifiedPct = useMemo(() => {
-    if (!stats || stats.reviewable_detections === 0) return 0;
-    return (stats.verified_detections / stats.reviewable_detections) * 100;
-  }, [stats]);
+    if (!verificationStats || verificationStats.total_detections === 0) return 0;
+    return (verificationStats.verified_detections / verificationStats.total_detections) * 100;
+  }, [verificationStats]);
 
   // No embeddings state
   if (stats && stats.embedded_detections === 0) {
@@ -901,12 +968,9 @@ export function ObservationsTab({
     );
   }
 
-  const hasResults =
-    (viewMode === "sort" && sortResult !== null) ||
-    (viewMode === "search" && searchResult !== null);
+  const hasResults = sortResult !== null;
   // Show spinner only when actively loading AND no results yet.
-  const isLoading =
-    (isSorting || searchMutation.isPending) && !hasResults;
+  const isLoading = isSorting && !hasResults;
 
   const handleEmbedNow = async () => {
     try {
@@ -917,17 +981,6 @@ export function ObservationsTab({
     }
   };
 
-  // "Suspicious" only makes sense when the result has neighbour
-  // agreement data (i.e. came from the similarity pipeline). Hide it
-  // otherwise so users don't pick a filter that selects nothing.
-  const verificationOptions: VerificationOption[] = [
-    { value: "all", label: "All" },
-    { value: "unverified", label: "Unverified" },
-    ...(hasAgreementData
-      ? [{ value: "suspicious" as const, label: "Suspicious" }]
-      : []),
-  ];
-
   return (
     <div className="space-y-4">
       <VerifyFilterBar
@@ -937,7 +990,6 @@ export function ObservationsTab({
         classificationModelId={classificationModelId}
         detectionFloor={project?.detection_threshold ?? 0}
         countBy="detection"
-        verificationOptions={verificationOptions}
         showLikedFlaggedEmpty={false}
         view={view}
         onViewChange={onViewChange}
@@ -995,99 +1047,60 @@ export function ObservationsTab({
         <VerifyToolbarIcon
           icon={RefreshCw}
           title="Refresh"
-          onClick={() => sortMutation.mutate()}
+          onClick={() => sortMutation.mutate(obsSort)}
           spinning={isSorting}
           disabled={!stats?.embedded_detections || isSorting}
         />
-        <SortSelector
-          sort={obsSort}
-          seed={null}
-          availableSorts={OBSERVATIONS_SORT_MODES}
-          onChange={(next) => {
-            if (isObservationSort(next)) setObsSort(next);
-          }}
+        {/* Hide the dropdown in suggestions mode: it's a focused review
+            workflow with its own entry / exit via the pill below. The
+            pill itself is rendered in any sort mode because the count
+            signal is still useful when the user is browsing normally. */}
+        {obsSort !== "suggestions" && (
+          <SortSelector
+            sort={obsSort}
+            seed={null}
+            availableSorts={OBSERVATIONS_SORT_MODES}
+            onChange={(next) => {
+              if (isObservationSort(next)) setObsSort(next);
+            }}
+          />
+        )}
+        <SuggestionsToolbarPill
+          projectId={projectId}
+          isActive={obsSort === "suggestions"}
+          onEnter={() => setObsSort("suggestions")}
+          onExit={exitSuggestionsMode}
         />
         {sortResult && (
-          <VerifyProgressPill pct={verifiedPct} label="observations verified" />
+          <VerifyProgressPill pct={verifiedPct} label="verified" />
         )}
       </VerifyToolbar>
 
-      {viewMode === "search" && anchorId && searchResult && (
-        <div className="flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm">
-          <span className="text-xs font-medium text-muted-foreground">Searching</span>
-          <div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-0.5">
-            <img
-              src={`${API_BASE_URL}${searchResult.anchor.crop_url}`}
-              alt="anchor"
-              className="h-5 w-5 rounded object-cover"
-            />
-            <span className="text-xs capitalize">
-              {getDetectionDisplayName(searchResult.anchor)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Threshold</span>
-            <Slider
-              value={[threshold]}
-              onValueChange={([v]) => setThreshold(v)}
-              min={0}
-              max={1}
-              step={0.05}
-              className="w-[120px]"
-            />
-            <span className="text-xs font-mono w-[36px]">
-              {threshold.toFixed(2)}
-            </span>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {searchResult.total_results} result
-            {searchResult.total_results !== 1 ? "s" : ""}
-          </span>
-          <button
-            type="button"
-            onClick={handleCloseSearch}
-            className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
-            title="Exit search"
-            aria-label="Exit search"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {isLoading ? (
+      {isLoading || !hasResults ? (
+        // Sort auto-runs, so !hasResults means the mutation has not
+        // fired yet (e.g. stats still loading). Either way, show the
+        // loading state.
         <div className="flex items-center justify-center h-64">
           <ObservationsLoadingState progress={progress} />
         </div>
-      ) : !hasResults ? (
-        viewMode === "search" ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <p className="text-lg font-medium text-muted-foreground">
-                No search active
-              </p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Select a detection and press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">F</code>,
-                or click <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Find similar</code> in
-                the selection bar or the detail window, to search for
-                visually similar observations.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          // Sort mode auto-runs, so !hasResults here means the mutation
-          // has not fired yet (e.g. stats still loading). Show a spinner
-          // rather than the misleading "No search active" card.
-          <div className="flex items-center justify-center h-64">
-            <ObservationsLoadingState progress={progress} />
-          </div>
-        )
-      ) : allDetections.length === 0 && totalCount > 0 && verificationFilter === "suspicious" ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
-          <p className="text-sm">No suspicious labels in the current selection.</p>
-          <p className="text-xs mt-1">All observations have been verified or have high neighbor agreement.</p>
-        </div>
+      ) : obsSort === "suggestions" && allDetections.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Check className="h-8 w-8 mb-3 text-primary" />
+            <p className="text-lg font-medium">All cohorts reviewed</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              Nothing left to promote at the current min count. Switch
+              back to the regular sort to keep verifying.
+            </p>
+            <Button
+              type="button"
+              className="mt-4"
+              onClick={exitSuggestionsMode}
+            >
+              Back to similarity sort
+            </Button>
+          </CardContent>
+        </Card>
       ) : allDetections.length === 0 && totalCount > 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
@@ -1113,12 +1126,25 @@ export function ObservationsTab({
             selectedIds={selectedIds}
             onSelect={handleSelect}
             onDoubleClick={handleCardClick}
-            onFindSimilar={handleFindSimilar}
-            onRelabel={handleRelabel}
-            onMarkFalse={(detectionId) => handleMarkFalse([detectionId])}
             onBackgroundClick={clearSelection}
+            onRelabelCohort={relabelCohort}
             tileSize={tileSize}
-            showLabelDividers={viewMode === "sort" && showLabelDividers}
+            dividers={
+              // Tie cohort dividers to the sort that PRODUCED the
+              // current result, not the user's dropdown selection.
+              // Otherwise the brief window after switching modes,
+              // where the old result lingers until the new sort lands,
+              // paints cohort dividers over similarity data, which
+              // groups everything that shares (label, "", category)
+              // into a giant "(no label)" cohort and produces
+              // sub-min_count phantom cohorts from the few items that
+              // do carry a suggestion.
+              resultSort === "suggestions"
+                ? "cohort"
+                : showLabelDividers
+                  ? "label"
+                  : "none"
+            }
           />
         </div>
       )}
@@ -1126,29 +1152,20 @@ export function ObservationsTab({
       <BulkActionBar
         selectedIds={selectedIds}
         onDeselectAll={clearSelection}
-        onFindSimilar={handleFindSimilar}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
         onActionComplete={handleActionComplete}
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
         onMarkFalse={handleBulkMarkFalse}
+        onMatchMajority={handleMatchMajority}
         projectId={projectId}
         relabelOpen={relabelOpen}
         onRelabelOpenChange={setRelabelOpen}
-        suggestionCount={
-          allDetections.filter(
-            (d) => selectedIds.has(d.detection_id) && !d.verified && d.neighbor_top_label && d.neighbor_top_label !== d.label
-          ).length
-        }
-        onAcceptSuggestions={() => {
-          const selectedDets = allDetections.filter((d) => selectedIds.has(d.detection_id));
-          relabelToSuggestions(selectedDets);
-        }}
       />
 
       <ObservationsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
-      <ObservationsHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <DetectionDetailModal
         detection={detailDetection}
@@ -1156,29 +1173,35 @@ export function ObservationsTab({
         onOpenChange={(open) => {
           if (!open) setDetailDetection(null);
         }}
-        onFindSimilar={handleFindSimilar}
         onActionComplete={handleActionComplete}
         projectId={projectId}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
         onRelabel={(detectionId, label, category) => {
-          patchLocalDetections((d) =>
-            d.detection_id === detectionId
-              ? { ...d, label, category, verified: true }
-              : d
-          );
+          applyDetectionAction([detectionId], (d) => ({
+            ...d,
+            label,
+            category,
+            display_name: null,
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_display_name: null,
+            verified: true,
+          }));
         }}
         onMarkFalse={(detectionId) => {
-          patchLocalDetections((d) =>
-            d.detection_id === detectionId
-              ? { ...d, label: "false detection", verified: true }
-              : d
-          );
+          applyDetectionAction([detectionId], (d) => ({
+            ...d,
+            label: "false detection",
+            display_name: "False detection",
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_display_name: null,
+            verified: true,
+          }));
         }}
         onVerify={(detectionId, verified = true) => {
-          patchLocalDetections((d) =>
-            d.detection_id === detectionId ? { ...d, verified } : d
-          );
+          applyDetectionAction([detectionId], (d) => ({ ...d, verified }));
         }}
         position={
           detailDetection

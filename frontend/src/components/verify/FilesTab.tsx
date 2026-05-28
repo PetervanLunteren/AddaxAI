@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CircleHelp, Layers, Loader2 } from "lucide-react";
+import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
@@ -27,7 +28,7 @@ import { FileCard } from "./FileCard";
 import { FileDetailModal } from "./FileDetailModal";
 import { hasAnyActiveFilter } from "./FilterChips";
 import { VerifyFilterBar } from "./VerifyFilterBar";
-import { MediaHelpSheet } from "./MediaHelpSheet";
+import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { MediaWelcomePopover } from "./MediaWelcomePopover";
 import { SortSelector } from "./SortSelector";
 import {
@@ -117,9 +118,12 @@ export function FilesTab({
   // Verified/total for the progress pill. UNFILTERED on purpose: the
   // bar measures progress against the whole project, not the current
   // filter view (a narrowed view must not read as fully verified).
+  // Sourced from the events stats endpoint because every view (Events,
+  // Media, Observations) shows the same metric "percent observations
+  // verified".
   const { data: verificationStats } = useQuery({
-    queryKey: ["files-verification-stats", projectId],
-    queryFn: () => filesApi.verificationStats(projectId),
+    queryKey: ["events", "verification-stats", projectId],
+    queryFn: () => eventsApi.verificationStats(projectId),
     enabled: !!projectId,
   });
 
@@ -174,8 +178,8 @@ export function FilesTab({
   const hasMore = files && files.length === PAGE_SIZE;
 
   const pct =
-    verificationStats && verificationStats.total_files > 0
-      ? (verificationStats.verified_files / verificationStats.total_files) * 100
+    verificationStats && verificationStats.total_detections > 0
+      ? (verificationStats.verified_detections / verificationStats.total_detections) * 100
       : 0;
 
   const handleClearFilters = useCallback(() => {
@@ -215,7 +219,7 @@ export function FilesTab({
               onFiltersChange(updated);
             }}
           />
-          <VerifyProgressPill pct={pct} label="files verified" />
+          <VerifyProgressPill pct={pct} label="verified" />
         </VerifyToolbar>
       )}
 
@@ -301,7 +305,7 @@ export function FilesTab({
         filters={debouncedFilters}
       />
 
-      <MediaHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <MediaWelcomePopover
         open={showWelcome}

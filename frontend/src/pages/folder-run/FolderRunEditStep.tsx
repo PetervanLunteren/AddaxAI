@@ -37,6 +37,12 @@ export function FolderRunEditStep() {
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
   const [editorOpen, setEditorOpen] = useState(false);
+  // Track bulk-selection size from the embedded VerifyView. While a
+  // selection is live, the sticky Back / Continue bar is hidden so the
+  // floating BulkActionBar has the bottom of the viewport to itself
+  // (no visual overlap, no accidental Continue mid-action). The bar
+  // returns when the user clears the selection.
+  const [selectionCount, setSelectionCount] = useState(0);
 
   const advance = useMutation({
     mutationFn: () => folderRunsApi.updateStep(runId!, "overview"),
@@ -127,10 +133,12 @@ export function FolderRunEditStep() {
         title="Edit predictions"
         caption="Correct the AI's predictions if you want, or skip ahead."
       />
-      <VerifyView projectId={runId} />
-      <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="mx-auto max-w-7xl">{actionRow}</div>
-      </div>
+      <VerifyView projectId={runId} onSelectionChange={setSelectionCount} />
+      {selectionCount === 0 && (
+        <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="mx-auto max-w-7xl">{actionRow}</div>
+        </div>
+      )}
     </div>
   );
 }

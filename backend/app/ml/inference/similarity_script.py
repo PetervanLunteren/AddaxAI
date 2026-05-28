@@ -46,6 +46,12 @@ MAX_DETECTIONS = 20_000
 PROGRESS_LOAD_EVERY = 500
 PROGRESS_LOOP_EVERY = 200
 
+# Minimum share of usable neighbours that must carry the candidate
+# label before we surface it as a suggestion. Without this, a plurality
+# of 3/10 wins and produces noisy suggestions; 0.6 means a clear
+# majority is required. Tunable, start point set from beta feedback.
+NEIGHBOR_MAJORITY_FRACTION = 0.6
+
 
 def _emit_event(event: dict[str, Any]) -> None:
     """Write one NDJSON line to stdout. Flushed so the parent sees it live."""
@@ -60,7 +66,8 @@ def _emit_progress(phase: str, done: int, total: int) -> None:
 
 BASE_SQL = """
 SELECT de.detection_id, de.vector, de.l2_norm,
-       d.label, d.label_confidence, d.display_name, d.confidence, d.category,
+       d.label, d.label_taxonomy_id, d.label_confidence, d.display_name,
+       d.confidence, d.category,
        d.verified, d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
@@ -205,6 +212,7 @@ def _load_embeddings(
 
             metadata_list.append({
                 "label": row["label"],
+                "label_taxonomy_id": row["label_taxonomy_id"],
                 "label_confidence": row["label_confidence"],
                 "display_name": row["display_name"],
                 "confidence": row["confidence"],
@@ -232,6 +240,95 @@ def _load_embeddings(
 
     vectors_f32 = np.stack(vectors)
     return vectors_f32, detection_ids, metadata_list
+
+
+# Ordering of Linnaean ranks used by the descendant filter. A row with
+# `level == "class"` sits at index 0 (broadest); `species` at 4.
+# label_taxonomy currently stores levels exactly as these keys.
+_TAXON_RANK_INDEX: dict[str, int] = {
+    "class": 0,
+    "order": 1,
+    "family": 2,
+    "genus": 3,
+    "species": 4,
+}
+
+
+def _load_label_taxonomy(
+    db_path: str, project_id: str, label_list: list[str | None]
+) -> dict[str, dict]:
+    """Return {label_name: {level, taxon_class, ...}} for the labels in use.
+
+    Scopes the lookup to the project's classification model so two
+    models that share a label name cannot collide. Custom labels
+    (per-project rows) are picked up alongside the model's taxonomy.
+    """
+    unique_labels = sorted({lab for lab in label_list if lab})
+    if not unique_labels:
+        return {}
+
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        # Match the model the project uses, plus this project's own
+        # custom labels (which carry project_id and a NULL or matching
+        # classification_model_id). A row with the same name but a
+        # different model is ignored.
+        cls_model_row = conn.execute(
+            "SELECT classification_model_id FROM projects WHERE id = ?",
+            (project_id,),
+        ).fetchone()
+        cls_model = cls_model_row[0] if cls_model_row else None
+
+        placeholders = ",".join("?" for _ in unique_labels)
+        params: list = list(unique_labels)
+        where = f"name IN ({placeholders})"
+        if cls_model is not None:
+            where += " AND (classification_model_id = ? OR project_id = ?)"
+            params.extend([cls_model, project_id])
+
+        rows = conn.execute(
+            f"""
+            SELECT name, level, taxon_class, taxon_order, taxon_family,
+                   taxon_genus, taxon_species
+            FROM label_taxonomy
+            WHERE {where}
+            """,
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return {r["name"]: dict(r) for r in rows}
+
+
+def _is_useful_suggestion(
+    suggested: dict | None, current: dict | None
+) -> bool:
+    """Decide whether to surface a neighbour-majority label as a suggestion.
+
+    Keeps:
+    - More specific (descendant) suggestions: e.g. canis → domestic dog.
+    - Same-rank (lateral) suggestions: e.g. grey fox → coyote, mule deer
+      → white-tailed deer. This is the dominant model-error mode for
+      visually similar sibling species and is the case the user most
+      often needs to fix.
+
+    Drops:
+    - Broader-rank (ancestor) suggestions: e.g. grey fox → mammals,
+      domestic dog → canis. Going to a broader rank loses information
+      and is almost never the right correction in a verification flow.
+    - Anything where either side has no usable Linnaean rank
+      (labels like "false detection" or custom labels without a
+      taxonomy row). Without a rank we cannot compare safely.
+    """
+    if not suggested or not current:
+        return False
+    s_rank = _TAXON_RANK_INDEX.get(suggested.get("level") or "")
+    c_rank = _TAXON_RANK_INDEX.get(current.get("level") or "")
+    if s_rank is None or c_rank is None:
+        return False
+    return s_rank >= c_rank
 
 
 def _compute_crop_bbox(meta: dict) -> dict | None:
@@ -280,6 +377,7 @@ def _build_summary(
         "detection_id": detection_id,
         "file_id": meta["file_id"],
         "label": meta["label"],
+        "label_taxonomy_id": meta.get("label_taxonomy_id"),
         "label_confidence": meta["label_confidence"],
         "display_name": meta.get("display_name"),
         "confidence": meta["confidence"],
@@ -300,106 +398,68 @@ def _build_summary(
     }
 
 
-# ── Similarity sort ──────────────────────────────────────────────────────
+# ── Neighbour signals (shared by sort and cohorts) ───────────────────────
 
-def do_sort(db_path: str, project_id: str, params: dict) -> dict:
-    """Sort detections for the Observations grid.
+def _pick_dense_seed(index, vectors: np.ndarray) -> int:
+    """Pick the greedy walk's starting vector.
 
-    Always loads embeddings and computes neighbor agreement / top label
-    via FAISS, since the suspicious filter depends on those fields
-    regardless of the visible order. The final ordering is then chosen
-    by `_sort_index` according to `params["sort"]`:
+    Previous behaviour seeded at the embedding closest to the centroid
+    (`vectors.mean(axis=0)`). On a dataset that spans several distinct
+    label clusters the centroid sits in low-density space *between*
+    clusters, and the vector closest to it is a between-cluster oddity
+    — not a representative sample. The greedy walk then opens with
+    visually mixed crops, which read as noise.
 
-    - `similarity` (default): greedy nearest-neighbor walk so adjacent
-      tiles look alike.
-    - `similarity_reverse`: same chain, reversed.
-    - `newest` / `oldest`: by `captured_at_local`, NULL last.
-    - `cls_low`: by `label_confidence` ascending, NULL last (verify
-      hardest cases first).
+    Picking the densest vector instead (highest sum of cosine
+    similarities to its k nearest neighbours) seeds inside the largest
+    coherent region, so the walk's first row looks like a real cluster.
+
+    Extra cost: one O(n·k) FAISS scan. At the 20k-detection cap that's
+    well under a second on the existing flat index.
     """
-    import faiss
-
-    # `observation_sort` is a sibling file. Python prepends the running
-    # script's dir to sys.path[0], so this resolves without the full
-    # `app.ml.inference.*` package import (which would require pydantic
-    # and other main-backend deps the conda ML env does not have).
-    from observation_sort import VALID_SORTS, order_indices
-
-    filters = params.get("filters", {})
-    sort_mode = params.get("sort", "similarity")
-    max_detections = int(params.get("max_detections", MAX_DETECTIONS))
-    if sort_mode not in VALID_SORTS:
-        raise ValueError(f"Unknown sort mode: {sort_mode}")
-
-    vectors, det_ids, metas = _load_embeddings(
-        db_path, project_id, filters, max_detections=max_detections
-    )
-
-    n = len(det_ids)
+    n = len(vectors)
     if n == 0:
-        return {"detections": [], "total_detections": 0}
+        return 0
+    k_neighbors = 10
+    # +1 because the first neighbour is the vector itself (cosine sim = 1).
+    k_query = min(k_neighbors + 1, n)
+    similarities, _ = index.search(vectors, k_query)
+    # Drop the self-similarity column and sum the rest. The vector with
+    # the highest score has the densest immediate neighbourhood.
+    density = similarities[:, 1:].sum(axis=1)
+    return int(density.argmax())
 
-    # Single detection — no sorting needed
-    if n == 1:
-        return {
-            "detections": [_build_summary(det_ids[0], metas[0])],
-            "total_detections": 1,
-        }
 
-    # Build FAISS index for fast nearest-neighbor lookup
-    dim = vectors.shape[1]
-    index = faiss.IndexFlatIP(dim)
-    index.add(vectors)
+def _compute_neighbor_signals(
+    index,
+    vectors: np.ndarray,
+    label_list: list[str | None],
+    db_path: str,
+    project_id: str,
+) -> tuple[np.ndarray, list[str | None]]:
+    """Compute neighbour agreement + a per-detection label suggestion.
 
-    # Start from the most typical detection (closest to the centroid)
-    centroid = vectors.mean(axis=0, keepdims=True)
-    _, centroid_idx = index.search(centroid, 1)
-    current = int(centroid_idx[0][0])
+    For each detection, queries the 10 nearest embedding neighbours
+    (via the caller-supplied FAISS `index`), scores how many share its
+    label (agreement, in [0, 1]) and picks the most common neighbour
+    label as a candidate suggestion. The candidate is kept only when
+    `_is_useful_suggestion` says so: descendant or same-rank lateral.
+    Broader-rank suggestions, no-op suggestions, and suggestions
+    without taxonomy info collapse to `None`. Verified detections are
+    not special-cased here, callers decide what to do with the signals.
 
-    _emit_progress("sort", 0, n)
+    Shared by `do_sort` (drives the suggestions sort) and `do_cohorts`
+    (drives the cohort review panel).
+    """
+    n = len(vectors)
+    if n == 0:
+        return np.zeros(0, dtype=np.float32), []
 
-    # Greedy walk: always jump to nearest unvisited neighbor
-    visited = np.zeros(n, dtype=bool)
-    order = np.empty(n, dtype=np.int64)
-    for step in range(n):
-        order[step] = current
-        visited[current] = True
-
-        if (step + 1) % PROGRESS_LOOP_EVERY == 0:
-            _emit_progress("sort", step + 1, n)
-
-        if step == n - 1:
-            break
-
-        # Search for k nearest neighbors (enough to find an unvisited one)
-        k = min(64, n)
-        while True:
-            sims, idxs = index.search(vectors[current].reshape(1, -1), k)
-            for idx in idxs[0]:
-                if idx >= 0 and not visited[idx]:
-                    current = int(idx)
-                    break
-            else:
-                # All k neighbors visited — widen search
-                if k >= n:
-                    # All visited (shouldn't happen), pick first unvisited
-                    remaining = np.where(~visited)[0]
-                    current = int(remaining[0])
-                    break
-                k = min(k * 2, n)
-                continue
-            break
-
-    _emit_progress("sort", n, n)
-
-    # Compute neighbor agreement: for each detection, what fraction of its
-    # k nearest embedding neighbors share the same label?
     k_neighbors = 10
     k_query = min(k_neighbors + 1, n)  # +1 because first result is self
     _, neighbor_idxs = index.search(vectors, k_query)
 
     _emit_progress("neighbors", 0, n)
-    label_list = [metas[i]["label"] for i in range(n)]
     agreement_scores = np.zeros(n, dtype=np.float32)
     top_labels: list[str | None] = [None] * n
     for i in range(n):
@@ -417,12 +477,167 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
                 matches += 1
         agreement_scores[i] = matches / count if count > 0 else 1.0
         if neighbor_labels:
-            top_labels[i] = Counter(neighbor_labels).most_common(1)[0][0]
+            top_label, top_count = Counter(neighbor_labels).most_common(1)[0]
+            # Plurality is too weak: a 3/10 winner produces noisy
+            # suggestions. Require a clear majority share before
+            # surfacing the candidate.
+            if top_count / len(neighbor_labels) >= NEIGHBOR_MAJORITY_FRACTION:
+                top_labels[i] = top_label
         if (i + 1) % PROGRESS_LOOP_EVERY == 0:
             _emit_progress("neighbors", i + 1, n)
 
     _emit_progress("neighbors", n, n)
-    final_order = order_indices(sort_mode, order.tolist(), metas)
+
+    # Taxonomy filter: keep descendant promotions (canis → domestic dog)
+    # and same-rank swaps (grey fox → coyote, which is the most common
+    # model-error pattern), drop broader-rank suggestions (grey fox →
+    # mammals). The agreement score is left untouched.
+    label_to_taxonomy = _load_label_taxonomy(db_path, project_id, label_list)
+    for i in range(n):
+        suggested = top_labels[i]
+        current = label_list[i]
+        if not suggested or suggested == current:
+            top_labels[i] = None
+            continue
+        if not _is_useful_suggestion(
+            label_to_taxonomy.get(suggested),
+            label_to_taxonomy.get(current),
+        ):
+            top_labels[i] = None
+
+    return agreement_scores, top_labels
+
+
+# ── Similarity sort ──────────────────────────────────────────────────────
+
+def do_sort(db_path: str, project_id: str, params: dict) -> dict:
+    """Sort detections for the Observations grid.
+
+    Always loads embeddings and computes neighbor agreement / top label
+    via FAISS, since the suspicious filter depends on those fields
+    regardless of the visible order. The final ordering is then chosen
+    by ``params["sort"]``:
+
+    - `similarity` (default): greedy nearest-neighbor walk so adjacent
+      tiles look alike.
+    - `similarity_reverse`: same chain, reversed.
+    - `newest` / `oldest`: by `captured_at_local`, NULL last.
+    - `cls_low`: by `label_confidence` ascending, NULL last (verify
+      hardest cases first).
+    - `suggestions`: cohort-grouped review mode. Filters to unverified
+      detections that carry a descendant-promotion suggestion, groups
+      them by `(label, suggested_label, category)`, and orders cohorts
+      by descending count. Skips the greedy walk because the embedding
+      chain is irrelevant here.
+    """
+    import faiss
+
+    # `observation_sort` is a sibling file. Python prepends the running
+    # script's dir to sys.path[0], so this resolves without the full
+    # `app.ml.inference.*` package import (which would require pydantic
+    # and other main-backend deps the conda ML env does not have).
+    from observation_sort import VALID_SORTS, order_indices, suggestions_order
+
+    filters = params.get("filters", {})
+    sort_mode = params.get("sort", "similarity")
+    max_detections = int(params.get("max_detections", MAX_DETECTIONS))
+    if sort_mode not in VALID_SORTS:
+        raise ValueError(f"Unknown sort mode: {sort_mode}")
+
+    vectors, det_ids, metas = _load_embeddings(
+        db_path, project_id, filters, max_detections=max_detections
+    )
+
+    n = len(det_ids)
+    if n == 0:
+        return {"detections": [], "total_detections": 0}
+
+    # Single detection — no sorting needed. Suggestions mode also
+    # falls through here because a lone detection has no neighbours to
+    # disagree with, so there's nothing to review.
+    if n == 1:
+        if sort_mode == "suggestions":
+            return {"detections": [], "total_detections": 0}
+        return {
+            "detections": [_build_summary(det_ids[0], metas[0])],
+            "total_detections": 1,
+        }
+
+    # Build FAISS index for fast nearest-neighbor lookup
+    dim = vectors.shape[1]
+    index = faiss.IndexFlatIP(dim)
+    index.add(vectors)
+
+    # Greedy walk only matters for the `similarity` chain orders. Skip
+    # it for suggestions and the metadata-based sorts so we don't pay
+    # for an order we throw away.
+    needs_chain = sort_mode in ("similarity", "similarity_reverse")
+    similarity_order: list[int] = []
+    if needs_chain:
+        current = _pick_dense_seed(index, vectors)
+
+        _emit_progress("sort", 0, n)
+
+        # Greedy walk: always jump to nearest unvisited neighbor
+        visited = np.zeros(n, dtype=bool)
+        order = np.empty(n, dtype=np.int64)
+        for step in range(n):
+            order[step] = current
+            visited[current] = True
+
+            if (step + 1) % PROGRESS_LOOP_EVERY == 0:
+                _emit_progress("sort", step + 1, n)
+
+            if step == n - 1:
+                break
+
+            # Search for k nearest neighbors (enough to find an unvisited one)
+            k = min(64, n)
+            while True:
+                sims, idxs = index.search(vectors[current].reshape(1, -1), k)
+                for idx in idxs[0]:
+                    if idx >= 0 and not visited[idx]:
+                        current = int(idx)
+                        break
+                else:
+                    # All k neighbors visited — widen search
+                    if k >= n:
+                        # All visited (shouldn't happen), pick first unvisited
+                        remaining = np.where(~visited)[0]
+                        current = int(remaining[0])
+                        break
+                    k = min(k * 2, n)
+                    continue
+                break
+
+        _emit_progress("sort", n, n)
+        similarity_order = order.tolist()
+
+    # Per-detection neighbour signals (agreement + descendant-filtered
+    # suggestion). Shared with do_cohorts so the two paths can never
+    # drift in how the suspicious flag and the promotion suggestion
+    # are computed.
+    label_list = [metas[i]["label"] for i in range(n)]
+    agreement_scores, top_labels = _compute_neighbor_signals(
+        index, vectors, label_list, db_path, project_id
+    )
+
+    if sort_mode == "suggestions":
+        # Cohort-grouped review order. Filters the result set to the
+        # cohort members in passing, so `total_detections` reflects the
+        # filtered view rather than the project-wide population. The
+        # `min_count` / `max_cohorts` defaults mirror the cohorts
+        # endpoint so the toolbar's count signal matches what the grid
+        # actually shows.
+        final_order = suggestions_order(
+            metas,
+            top_labels,
+            agreement_scores.tolist(),
+            min_count=int(params.get("min_count", 8)),
+            max_cohorts=int(params.get("max_cohorts", 200)),
+        )
+    else:
+        final_order = order_indices(sort_mode, similarity_order, metas)
 
     # Map raw label string → display_name from the same project's
     # taxonomy. Used to render the suggested neighbor label as the same
@@ -447,7 +662,144 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
         for i in final_order
     ]
 
-    return {"detections": detections, "total_detections": n}
+    return {"detections": detections, "total_detections": len(final_order)}
+
+
+# ── Cohorts ──────────────────────────────────────────────────────────────
+
+def do_cohorts(db_path: str, project_id: str, params: dict) -> dict:
+    """Group descendant-promotion suggestions for the cohort review panel.
+
+    Loads every embedded detection in the project that passes the
+    caller-supplied filters (typically just the project's
+    `(confidence >= threshold OR verified)` floor, set by the service
+    layer so the pill counts the same population the suggestions grid
+    will actually load). Runs the same neighbour-agreement + strict-
+    descendant pass as do_sort, and buckets unverified detections with
+    a surviving suggestion by `(current_label, suggested_label,
+    category)`. Returns the top `max_cohorts` cohorts (default 200)
+    with at least `min_count` members each (default 8), ordered by
+    descending count.
+
+    Each cohort's `detection_ids` list is sorted by ascending neighbour
+    agreement, so the frontend's thumbnail strip leads with the crops
+    whose neighbours disagree most strongly, which are the clearest
+    candidates for a one-click promotion.
+    """
+    import faiss
+
+    min_count = int(params.get("min_count", 8))
+    max_cohorts = int(params.get("max_cohorts", 200))
+    if min_count < 1:
+        raise ValueError(f"min_count must be >= 1, got {min_count}")
+    if max_cohorts < 1:
+        raise ValueError(f"max_cohorts must be >= 1, got {max_cohorts}")
+
+    filters = params.get("filters", {})
+    vectors, det_ids, metas = _load_embeddings(
+        db_path, project_id, filters, max_detections=MAX_DETECTIONS
+    )
+
+    n = len(det_ids)
+    if n < 2:
+        # Fewer than two embeddings: no neighbour structure to learn from.
+        return {"cohorts": []}
+
+    dim = vectors.shape[1]
+    index = faiss.IndexFlatIP(dim)
+    index.add(vectors)
+
+    label_list = [metas[i]["label"] for i in range(n)]
+    agreement_scores, top_labels = _compute_neighbor_signals(
+        index, vectors, label_list, db_path, project_id
+    )
+
+    return {
+        "cohorts": _group_cohorts(
+            det_ids,
+            metas,
+            agreement_scores,
+            top_labels,
+            min_count,
+            max_cohorts,
+        )
+    }
+
+
+def _group_cohorts(
+    det_ids: list[str],
+    metas: list[dict],
+    agreement_scores: np.ndarray,
+    top_labels: list[str | None],
+    min_count: int,
+    max_cohorts: int,
+) -> list[dict]:
+    """Pure grouping pass for do_cohorts. Unit-testable without FAISS.
+
+    Walks per-detection signals, buckets unverified detections with a
+    surviving descendant suggestion by `(current_label, suggested_label,
+    category)`, drops cohorts under `min_count`, sorts by descending
+    count, and returns the first `max_cohorts`. Members inside each
+    cohort are sorted by ascending neighbour agreement.
+
+    The key normalises `None` to the empty string so dict hashing is
+    well-defined; each cohort row preserves the original (possibly
+    None) `current_label` and `category` for the relabel call.
+    """
+    label_to_display: dict[str, str] = {}
+    for m in metas:
+        label = m.get("label")
+        display = m.get("display_name")
+        if label and display and label not in label_to_display:
+            label_to_display[label] = display
+
+    cohorts: dict[tuple[str, str, str], dict] = {}
+    for i, det_id in enumerate(det_ids):
+        if metas[i].get("verified"):
+            continue
+        suggested = top_labels[i]
+        if not suggested:
+            continue
+        current_label = metas[i].get("label")
+        category = metas[i].get("category")
+        key = (current_label or "", suggested, category or "")
+        bucket = cohorts.get(key)
+        if bucket is None:
+            bucket = {
+                "current_label": current_label,
+                # Carry the taxonomy id so the panel's "Review crops"
+                # navigation can drop the user into the existing
+                # Observations label filter (which takes taxonomy ids).
+                "current_label_taxonomy_id": metas[i].get("label_taxonomy_id"),
+                "current_display_name": label_to_display.get(current_label or ""),
+                "suggested_label": suggested,
+                "suggested_display_name": label_to_display.get(suggested),
+                "category": category,
+                "members": [],
+            }
+            cohorts[key] = bucket
+        bucket["members"].append((float(agreement_scores[i]), det_id))
+
+    output: list[dict] = []
+    for bucket in cohorts.values():
+        if len(bucket["members"]) < min_count:
+            continue
+        bucket["members"].sort(key=lambda pair: pair[0])
+        output.append(
+            {
+                "current_label": bucket["current_label"],
+                "current_label_taxonomy_id": bucket["current_label_taxonomy_id"],
+                "current_display_name": bucket["current_display_name"],
+                "suggested_label": bucket["suggested_label"],
+                "suggested_display_name": bucket["suggested_display_name"],
+                "category": bucket["category"],
+                "count": len(bucket["members"]),
+                "detection_ids": [det_id for _, det_id in bucket["members"]],
+            }
+        )
+
+    output.sort(key=lambda c: -c["count"])
+    return output[:max_cohorts]
 
 
 # ── Search ───────────────────────────────────────────────────────────────
@@ -596,7 +948,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Similarity computation (FAISS)")
     parser.add_argument("--db-path", required=True, help="Path to SQLite database")
     parser.add_argument("--project-id", required=True, help="Project UUID")
-    parser.add_argument("--operation", required=True, choices=["sort", "search"])
+    parser.add_argument(
+        "--operation", required=True, choices=["sort", "search", "cohorts"]
+    )
     parser.add_argument("--params", required=True, help="JSON string with operation parameters")
     return parser.parse_args()
 
@@ -609,6 +963,8 @@ def main() -> None:
         result = do_sort(args.db_path, args.project_id, params)
     elif args.operation == "search":
         result = do_search(args.db_path, args.project_id, params)
+    elif args.operation == "cohorts":
+        result = do_cohorts(args.db_path, args.project_id, params)
     else:
         _emit_event({"type": "error", "message": f"Unknown operation: {args.operation}"})
         sys.exit(1)

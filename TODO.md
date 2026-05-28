@@ -48,7 +48,9 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. Also add a Check for updates option. Make it look like a mature app. What else would you recommend in the menu items, and in which order, groupings? How do other mature apps do it? And what do you recommend for this app? You can web query if you want. 
 - [ ] Would it be a good idea to add a extra level for the smoothing "Very aggresive" (or something similar), that does not run the MD utils smoothing script at all, but just flattens out the entire event to a single label. We'll need to think about which label of course (the max cls conf label for all? or some kind of average label for all?). If we decide to do this, we might also want to add captions in the dropdown that try to explain the tiers off / mild / aggresive / etc. Make it a tall dropdown just like the models dropdown with captions, use the same format. What do you think? 
 
+- [ ] Is this something we want? "It only proposes promotions that are strict taxonomic descendants of the current label (e.g. phasianidae → domestic chicken, never grey fox → coyote)." -> perhaps we also want grey fox -> coyote right? As long as it wont suggest parents like "these 10 grey foxes are probabaly mammals". And I dont want any noise, but perhaps that is already taken care of with the thresholds (min = 8, top200), what do you think? Perhaps just block strict taxonomic parents? 
 
+- [ ] explain again how the 20K limit affects the search and the pbar., What happens if there are to many above the limit? Does it just take the first N observations, or does it block? 
 
 ## Future stuff
 - [ ] MULTI LANGUAGE SUPPORT

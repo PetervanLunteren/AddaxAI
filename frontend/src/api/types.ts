@@ -545,18 +545,14 @@ export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
 }
 
-// Shared verify-tab filter type. Most tabs use a simple binary (plus
-// "all"): an event is verified when all its MaxN frames are verified
-// (blank events fall back to "any file verified"); a file is verified
-// when File.verified is true. The Observations tab adds "suspicious"
-// — unverified detections whose nearest-neighbour label disagrees with
-// the assigned label (post-filtered client-side from neighbor_agreement).
-// Other tabs ignore "suspicious"; their dropdown never offers it.
+// Shared verify-tab filter type. Binary (plus "all"): an event is
+// verified when all its MaxN frames are verified (blank events fall
+// back to "any file verified"); a file is verified when File.verified
+// is true; an observation is verified when Detection.verified is true.
 export type VerificationFilter =
   | "all"
   | "verified"
-  | "unverified"
-  | "suspicious";
+  | "unverified";
 
 /** Which grouping the verify/edit canvas shows the same dataset under.
  * Driven by the "View as" dropdown in the filter bar (no tabs). */
@@ -872,13 +868,19 @@ export interface ObservationFilters {
   verified?: boolean;
 }
 
-/** Subset of VerifySort that is valid for Observations. */
+/** Subset of VerifySort that is valid for Observations.
+ *
+ * `suggestions` is a cohort-grouped review mode that filters the grid
+ * to unverified detections with a descendant-promotion candidate and
+ * orders them by cohort size desc, agreement asc. It's reachable only
+ * via the toolbar's review pill, never the sort dropdown. */
 export type ObservationSort =
   | "similarity"
   | "similarity_reverse"
   | "newest"
   | "oldest"
-  | "cls_low";
+  | "cls_low"
+  | "suggestions";
 
 export interface SortRequest {
   filters?: ObservationFilters;
@@ -910,6 +912,10 @@ export interface DetectionSummary {
   detection_id: string;
   file_id: string;
   label: string | null;
+  /** Taxonomy row id matching `label`. Carried so cohort dividers in
+   * the suggestions sort mode can navigate to the existing label
+   * filter (keyed on taxonomy id). */
+  label_taxonomy_id: string | null;
   label_confidence: number | null;
   display_name: string | null;
   confidence: number;
@@ -941,6 +947,32 @@ export interface SearchResponse {
   results: DetectionSummary[];
   total_results: number;
   threshold_applied: number;
+}
+
+export interface CohortItem {
+  /** Current label on the detections in this cohort (may be null for
+   * uncategorised animal detections). */
+  current_label: string | null;
+  /** Taxonomy row id for `current_label`. Used by the panel's "Review
+   * crops" navigation, which targets the existing Observations label
+   * filter (keyed on taxonomy id). */
+  current_label_taxonomy_id: string | null;
+  current_display_name: string | null;
+  /** Always a strict taxonomic descendant of `current_label`. */
+  suggested_label: string;
+  suggested_display_name: string | null;
+  /** Detection category ("animal", "person", "vehicle"). Carried so
+   * the relabel call can keep the category fixed. */
+  category: string | null;
+  count: number;
+  /** All detection IDs in the cohort, sorted by ascending neighbour
+   * agreement so the thumbnail strip leads with the strongest
+   * promotion candidates. */
+  detection_ids: string[];
+}
+
+export interface CohortsResponse {
+  cohorts: CohortItem[];
 }
 
 export interface ObservationStatsResponse {

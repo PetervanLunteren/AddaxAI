@@ -86,8 +86,24 @@ export function getSpeciesChartColors(species: string, backgroundAlpha: number =
   };
 }
 
+/** Pick a foreground color (white or near-black) that meets WCAG AA
+ * contrast against the given background.
+ *
+ * Pass the ACTUAL rendered background colour (hex string) rather than a
+ * species key: there were chips where the background was derived from
+ * `label_taxonomy_id` while the text was derived from `label`, the two
+ * keys hashed to different positions on the scale, and white-on-yellow
+ * slipped through unreadable. Sourcing the bg directly makes the
+ * mismatch impossible. Threshold is 4.5 (AA, normal text); chips below
+ * that get dark text.
+ */
+export function getContrastTextColor(bgHex: string): string {
+  return chroma.contrast(bgHex, "white") >= 4.5 ? "white" : "#1f2937";
+}
+
+/** @deprecated use `getContrastTextColor(getSpeciesColor(key))` so the
+ * bg and the text are computed from the same key. Retained briefly so
+ * older call sites compile while they migrate. */
 export function getSpeciesTextColor(species: string): string {
-  const position = hashToPosition(canonicalKey(species));
-  const bgColor = speciesScale(position);
-  return chroma.contrast(bgColor, 'white') >= 3 ? 'white' : '#1f2937';
+  return getContrastTextColor(getSpeciesColor(species));
 }

@@ -21,6 +21,9 @@ ObservationSort = Literal[
     "newest",
     "oldest",
     "cls_low",
+    # Cohort-grouped review mode. Reachable only via the toolbar's
+    # review pill, never selectable from the sort dropdown.
+    "suggestions",
 ]
 
 
@@ -95,6 +98,10 @@ class DetectionSummary(BaseModel):
     detection_id: str
     file_id: str
     label: str | None
+    # Taxonomy row id matching `label`. Carried so cohort dividers in
+    # the suggestions sort mode can navigate to the existing label
+    # filter (keyed on taxonomy id).
+    label_taxonomy_id: str | None = None
     label_confidence: float | None
     display_name: str | None = None
     confidence: float
@@ -134,6 +141,42 @@ class SearchResponse(BaseModel):
     results: list[DetectionSummary]
     total_results: int
     threshold_applied: float
+
+
+class CohortItem(BaseModel):
+    """One row of the promotion review panel.
+
+    A cohort groups unverified detections that currently carry
+    `current_label` but whose 10 nearest embedding neighbours mostly
+    look like `suggested_label` (which must be a strict taxonomic
+    descendant of `current_label`, e.g. genus → species). One click on
+    "Relabel all" promotes the whole group.
+    """
+
+    current_label: str | None
+    # Taxonomy row id for `current_label`. Used by the panel's
+    # "Review crops" navigation, which targets the existing label
+    # filter (keyed on taxonomy id). May be null when the current label
+    # has no taxonomy row.
+    current_label_taxonomy_id: str | None
+    current_display_name: str | None
+    suggested_label: str
+    suggested_display_name: str | None
+    # Detection category ("animal", "person", "vehicle"). Carried so
+    # the relabel call can keep the category fixed even when the model
+    # category-output column drifts from the label-taxonomy category.
+    category: str | None
+    count: int
+    # Sorted by ascending neighbour agreement so the thumbnail strip
+    # leads with the crops that disagree most strongly with their
+    # current label.
+    detection_ids: list[str]
+
+
+class CohortsResponse(BaseModel):
+    """Response payload for the cohorts endpoint."""
+
+    cohorts: list[CohortItem]
 
 
 class ObservationStatsResponse(BaseModel):

@@ -2,12 +2,12 @@
  * BulkActionBar - floating bar for bulk operations on selected detections.
  *
  * Appears when one or more detections are selected.
- * Actions: Verify, Relabel, Find similar, Deselect all.
+ * Actions: Verify, Mark false, Match majority, Relabel, Deselect.
  */
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban, Check, Tag, Search, X } from "lucide-react";
+import { Ban, Check, CheckCheck, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { detectionsApi } from "../../api/detections";
@@ -17,17 +17,16 @@ import type { LabelOption } from "../../hooks/useLabelOptions";
 interface BulkActionBarProps {
   selectedIds: Set<string>;
   onDeselectAll: () => void;
-  onFindSimilar: (detectionId: string) => void;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
   onActionComplete: () => void;
   onRelabel?: (ids: string[], label: string | null, category: string, displayName: string) => void;
   onVerify?: (ids: string[]) => void;
   onMarkFalse?: (ids: string[]) => void;
-  /** Number of selected detections that have a neighbor label suggestion. */
-  suggestionCount?: number;
-  /** Accept neighbor suggestions for selected detections. */
-  onAcceptSuggestions?: () => void;
+  /** Relabel the selection to its most common label and verify. The
+   *  parent owns the mode-finding + API call because it has the full
+   *  detection metadata; this prop just wires the button. */
+  onMatchMajority?: (ids: string[]) => void;
   projectId?: string;
   /** Controlled state for the relabel picker (keyboard shortcut). */
   relabelOpen?: boolean;
@@ -37,15 +36,13 @@ interface BulkActionBarProps {
 export function BulkActionBar({
   selectedIds,
   onDeselectAll,
-  onFindSimilar,
   labelOptions,
   labelOptionsLoading,
   onActionComplete,
   onRelabel,
   onVerify,
   onMarkFalse,
-  suggestionCount = 0,
-  onAcceptSuggestions,
+  onMatchMajority,
   projectId,
   relabelOpen: relabelOpenProp,
   onRelabelOpenChange,
@@ -127,6 +124,18 @@ export function BulkActionBar({
         <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">X</kbd>
       </Button>
 
+      {onMatchMajority && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onMatchMajority(ids)}
+        >
+          <CheckCheck className="h-4 w-4 mr-1" />
+          Match majority
+          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">M</kbd>
+        </Button>
+      )}
+
       <div className="relative">
         <Button
           variant="outline"
@@ -150,34 +159,10 @@ export function BulkActionBar({
               if (!open) setRelabelOpen(false);
             }}
             projectId={projectId}
+            headless
           />
         </div>
       </div>
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          const first = selectedIds.values().next().value;
-          if (first) onFindSimilar(first);
-        }}
-      >
-        <Search className="h-4 w-4 mr-1" />
-        Find similar
-        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">F</kbd>
-      </Button>
-
-      {suggestionCount > 0 && onAcceptSuggestions && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onAcceptSuggestions}
-        >
-          <Tag className="h-4 w-4 mr-1" />
-          Accept {suggestionCount} suggestion{suggestionCount !== 1 ? "s" : ""}
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">A</kbd>
-        </Button>
-      )}
 
       <Button variant="outline" size="sm" onClick={onDeselectAll}>
         <X className="h-4 w-4 mr-1" />

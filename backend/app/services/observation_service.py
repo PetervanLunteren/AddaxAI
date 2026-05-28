@@ -1,7 +1,8 @@
 """
 Observations service — subprocess dispatcher for the Observations verify tab.
 
-Delegates sort (greedy nearest-neighbor chain) and search (FAISS k-NN) to
+Delegates sort (greedy nearest-neighbor chain), search (FAISS k-NN), and
+cohort grouping (descendant-promotion review panel) to
 ml/inference/similarity_script.py running in the addaxai-base conda
 environment. The main backend process never imports numpy or faiss.
 
@@ -21,13 +22,17 @@ Observations tab).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import select
 import subprocess
-from collections.abc import Iterator
+import time
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.api.schemas.observation import (
@@ -172,6 +177,23 @@ def stream_observations_subprocess(
         logger.error(msg)
         yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
         return
+    except GeneratorExit:
+        # The client disconnected mid-stream (browser navigated away,
+        # tab closed, user hit refresh). FastAPI cancels the generator;
+        # without an explicit kill the subprocess keeps running until
+        # the timeout, holding one of the browser's per-host connection
+        # slots and the cohort's compute. Kill it so subsequent
+        # requests aren't queued behind a zombie.
+        if process.poll() is None:
+            process.kill()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            logger.info(
+                "Observations subprocess killed on client disconnect"
+            )
+        raise
     finally:
         if process.stderr is not None:
             stderr = process.stderr.read()
@@ -261,6 +283,31 @@ def stream_search(
     return stream_observations_subprocess("search", project_id, params)
 
 
+def stream_cohorts(
+    project_id: str, min_count: int, max_cohorts: int, db: Session
+) -> Iterator[bytes]:
+    """NDJSON event stream for the cohorts endpoint.
+
+    Applies the project's `(confidence >= threshold OR verified)` floor
+    so the pill counts the same population the suggestions grid will
+    actually load. Without this, below-threshold detections form cohorts
+    that the grid silently filters out, and the pill drifts above what
+    "Review" can ever show.
+
+    Still no user filters (sites / labels / dates): the pill is a global
+    quality signal, independent of the filter bar.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    params: dict[str, Any] = {
+        "min_count": min_count,
+        "max_cohorts": max_cohorts,
+        "filters": {
+            "project_floor": project.detection_threshold if project else 0.0,
+        },
+    }
+    return stream_observations_subprocess("cohorts", project_id, params)
+
+
 def sort_detections(
     project_id: str, body: SortRequest, db: Session
 ) -> SortResponse:
@@ -277,3 +324,159 @@ def search_similar(
 ) -> SearchResponse:
     """Drain the search stream into a single SearchResponse."""
     return SearchResponse(**_drain_to_result(stream_search(project_id, body, db)))
+
+
+# ── Async streaming with client-disconnect handling ─────────────────────
+
+
+async def stream_observations_subprocess_async(
+    request: Request,
+    operation: str,
+    project_id: str,
+    params: dict[str, Any],
+) -> AsyncIterator[bytes]:
+    """Async variant that polls ``request.is_disconnected()`` and kills
+    the subprocess when the client navigates away mid-stream.
+
+    The sync version above can't react to client disconnect while it is
+    blocked on ``process.stdout.readline()``: Starlette can only deliver
+    a ``GeneratorExit`` at a yield point, and the subprocess holds the
+    generator off the yield point indefinitely. In the wild that meant a
+    refreshed tab left a similarity subprocess running until its 180 s
+    timeout, holding one of the browser's six per-host connection slots
+    so the next page load queued behind it. This generator does
+    non-blocking reads with a 0.5 s select tick and rechecks
+    ``is_disconnected`` between ticks, so a refresh frees the slot
+    within half a second.
+    """
+    python_path = _get_env_python()
+    db_path = _get_db_path()
+
+    cmd = [
+        str(python_path),
+        str(_SCRIPT_PATH),
+        "--db-path", db_path,
+        "--project-id", project_id,
+        "--operation", operation,
+        "--params", json.dumps(params, default=str),
+    ]
+    logger.info(
+        f"Streaming observations subprocess (async): {operation} for project {project_id}"
+    )
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        bufsize=1,
+    )
+
+    cap = int(params.get("max_detections", 20000))
+    timeout_s = 60 + (cap // 1000) * 6
+    deadline = time.monotonic() + timeout_s
+    loop = asyncio.get_running_loop()
+    saw_terminal_event = False
+
+    def read_next() -> str | None:
+        """Return one line, or '' if no data yet (caller should retry),
+        or None on EOF. 0.5 s timeout so the caller can re-check
+        disconnect between ticks even when the subprocess is silent."""
+        assert process.stdout is not None
+        rlist, _, _ = select.select([process.stdout], [], [], 0.5)
+        if not rlist:
+            return ""
+        line = process.stdout.readline()
+        if line == "" and process.poll() is not None:
+            return None
+        return line
+
+    try:
+        while True:
+            if await request.is_disconnected():
+                logger.info(
+                    f"Client disconnected; killing {operation} subprocess for {project_id}"
+                )
+                break
+            if time.monotonic() > deadline:
+                msg = f"Observations subprocess timed out after {timeout_s}s"
+                logger.error(msg)
+                yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
+                break
+
+            chunk = await loop.run_in_executor(None, read_next)
+            if chunk is None:
+                break  # EOF
+            if chunk == "":
+                continue  # silent tick, re-check disconnect
+
+            line = chunk.rstrip("\n")
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                logger.debug(f"similarity_script non-JSON stdout: {line!r}")
+                continue
+            if event.get("type") in ("result", "error"):
+                saw_terminal_event = True
+            yield (line + "\n").encode("utf-8")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            try:
+                await loop.run_in_executor(None, lambda: process.wait(timeout=2))
+            except subprocess.TimeoutExpired:
+                pass
+        if process.stderr is not None:
+            stderr = await loop.run_in_executor(None, process.stderr.read)
+            if stderr:
+                for line in stderr.strip().splitlines():
+                    logger.debug(f"similarity_script: {line}")
+
+    if process.returncode is not None and process.returncode != 0 and not saw_terminal_event:
+        msg = f"Observations subprocess failed (exit {process.returncode})"
+        logger.error(msg)
+        yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
+
+
+async def stream_sort_async(
+    request: Request, project_id: str, body: SortRequest, db: Session
+) -> AsyncIterator[bytes]:
+    params = _build_sort_params(project_id, body, db)
+    async for chunk in stream_observations_subprocess_async(
+        request, "sort", project_id, params
+    ):
+        yield chunk
+
+
+async def stream_search_async(
+    request: Request, project_id: str, body: SearchRequest, db: Session
+) -> AsyncIterator[bytes]:
+    params = _build_search_params(project_id, body, db)
+    async for chunk in stream_observations_subprocess_async(
+        request, "search", project_id, params
+    ):
+        yield chunk
+
+
+async def stream_cohorts_async(
+    request: Request,
+    project_id: str,
+    min_count: int,
+    max_cohorts: int,
+    db: Session,
+) -> AsyncIterator[bytes]:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    params: dict[str, Any] = {
+        "min_count": min_count,
+        "max_cohorts": max_cohorts,
+        "filters": {
+            "project_floor": project.detection_threshold if project else 0.0,
+        },
+    }
+    async for chunk in stream_observations_subprocess_async(
+        request, "cohorts", project_id, params
+    ):
+        yield chunk

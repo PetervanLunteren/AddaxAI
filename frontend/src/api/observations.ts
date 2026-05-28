@@ -13,6 +13,7 @@
 
 import { api } from "../lib/api-client";
 import type {
+  CohortsResponse,
   ObservationStatsResponse,
   SearchRequest,
   SearchResponse,
@@ -47,8 +48,12 @@ type StreamEvent<T> =
   | ErrorEvent;
 
 /**
- * Stream NDJSON from a POST endpoint, calling `onProgress` for each
+ * Stream NDJSON from a backend endpoint, calling `onProgress` for each
  * progress event and resolving with the final result payload.
+ *
+ * Pass `body=undefined` to make the request a GET (used by the cohorts
+ * endpoint which has no body). Otherwise the body is JSON-encoded and
+ * the request method is POST.
  *
  * Uses fetch + getReader rather than the shared `api` helper because
  * `api.post` parses the whole response body as JSON; here we need
@@ -60,12 +65,16 @@ async function streamNdjson<T>(
   onProgress: (e: ObservationsProgressEvent) => void,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  const isPost = body !== undefined;
+  const init: RequestInit = {
+    method: isPost ? "POST" : "GET",
     signal,
-  });
+  };
+  if (isPost) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     // Drain the body so the connection is reusable.
@@ -165,6 +174,31 @@ export const observationsApi = {
   stats: async (projectId: string): Promise<ObservationStatsResponse> => {
     return api.get<ObservationStatsResponse>(
       `/api/projects/${projectId}/observations/stats`,
+    );
+  },
+
+  /**
+   * Cohort grouping for the promotion review panel. Drains the NDJSON
+   * stream and returns only the final result. Use `cohortsStream` to
+   * surface progress.
+   */
+  cohorts: async (projectId: string): Promise<CohortsResponse> => {
+    return observationsApi.cohortsStream(projectId, () => {});
+  },
+
+  cohortsStream: async (
+    projectId: string,
+    onProgress: (e: ObservationsProgressEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<CohortsResponse> => {
+    // GET request — no body. The endpoint reads `min_count` and
+    // `max_cohorts` from query params; defaults (5 / 20) are baked into
+    // the panel's expected workload, so callers don't override them.
+    return streamNdjson<CohortsResponse>(
+      `/api/projects/${projectId}/observations/cohorts`,
+      undefined,
+      onProgress,
+      signal,
     );
   },
 };

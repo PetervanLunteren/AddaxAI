@@ -8,7 +8,7 @@ The "similarity" name on internal modules reflects the underlying technique;
 user-facing surfaces are named after the unit of work, the observation.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -20,7 +20,11 @@ from app.api.schemas.observation import (
 )
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
-from app.services.observation_service import stream_search, stream_sort
+from app.services.observation_service import (
+    stream_cohorts_async,
+    stream_search_async,
+    stream_sort_async,
+)
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/projects", tags=["observations"])
@@ -37,6 +41,7 @@ def _set_project_tz(db: Session, project_id: str) -> None:
 async def sort_detections(
     project_id: str,
     body: SortRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Sort detections by visual similarity (greedy nearest-neighbor chain).
@@ -45,11 +50,14 @@ async def sort_detections(
     subprocess: progress lines while loading and computing, then a
     final `{"type":"result", ...}` line whose payload matches the
     legacy SortResponse shape. The frontend renders a progress bar
-    from progress events and uses the result for the grid.
+    from progress events and uses the result for the grid. When the
+    client disconnects mid-stream (refresh, tab close, navigation)
+    the subprocess is killed promptly, so the browser's per-host
+    connection slot is freed and the next page load isn't queued.
     """
     _set_project_tz(db, project_id)
     try:
-        stream = stream_sort(project_id, body, db)
+        stream = stream_sort_async(request, project_id, body, db)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None
     return StreamingResponse(stream, media_type="application/x-ndjson")
@@ -59,6 +67,7 @@ async def sort_detections(
 async def search_similar(
     project_id: str,
     body: SearchRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Find detections visually similar to an anchor detection.
@@ -68,7 +77,34 @@ async def search_similar(
     """
     _set_project_tz(db, project_id)
     try:
-        stream = stream_search(project_id, body, db)
+        stream = stream_search_async(request, project_id, body, db)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from None
+    return StreamingResponse(stream, media_type="application/x-ndjson")
+
+
+@router.get("/{project_id}/observations/cohorts")
+async def cohorts(
+    project_id: str,
+    request: Request,
+    min_count: int = Query(8, ge=1, le=1000),
+    max_cohorts: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """Group descendant-promotion suggestions for the Edit-step review panel.
+
+    Returns an `application/x-ndjson` event stream identical in shape to
+    the sort endpoint: progress lines during the FAISS + neighbour walk,
+    then a final `{"type":"result", "cohorts":[...]}` line whose payload
+    matches CohortsResponse. The panel renders a skeleton from progress
+    events and uses the result to render its cards. Cohorts span the
+    whole project, no filters apply.
+    """
+    _set_project_tz(db, project_id)
+    try:
+        stream = stream_cohorts_async(
+            request, project_id, min_count, max_cohorts, db
+        )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None
     return StreamingResponse(stream, media_type="application/x-ndjson")

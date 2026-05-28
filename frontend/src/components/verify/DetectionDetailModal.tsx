@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Check, Search, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
+import { Ban, Check, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
 import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -36,7 +36,6 @@ interface DetectionDetailModalProps {
   detection: DetectionSummary | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onFindSimilar: (detectionId: string) => void;
   onActionComplete: () => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** Optimistic mark-false callback so parent can patch local state before navigating. */
@@ -58,7 +57,6 @@ export function DetectionDetailModal({
   detection,
   open,
   onOpenChange,
-  onFindSimilar,
   onActionComplete,
   onRelabel,
   onMarkFalse,
@@ -177,12 +175,6 @@ export function DetectionDetailModal({
       } else if (key === "r") {
         e.preventDefault();
         setForceOpenPicker(true);
-      } else if (key === "f") {
-        e.preventDefault();
-        if (detection) {
-          onFindSimilar(detection.detection_id);
-          onOpenChange(false);
-        }
       } else if (key === "a") {
         e.preventDefault();
         if (
@@ -207,7 +199,6 @@ export function DetectionDetailModal({
     markFalseMutation,
     relabelMutation,
     detection,
-    onFindSimilar,
     onOpenChange,
   ]);
 
@@ -593,22 +584,6 @@ export function DetectionDetailModal({
                 Mark false
                 <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
                   X
-                </kbd>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => {
-                  onFindSimilar(detection.detection_id);
-                  onOpenChange(false);
-                }}
-              >
-                <Search className="h-4 w-4 mr-1" />
-                Find similar
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
-                  F
                 </kbd>
               </Button>
 

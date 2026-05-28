@@ -3,21 +3,28 @@
  *
  * Uses @tanstack/react-virtual for efficient rendering of large detection sets.
  * Responsive columns: 4 (sm), 6 (md), 8 (lg), 10 (xl).
- * Supports optional label divider rows between label groups.
+ * Optional divider rows: `label` groups by current label, `cohort`
+ * groups by `(current_label, neighbor_top_label, category)` and
+ * surfaces a "Relabel all (N)" button so the suggestions sort mode can
+ * promote a whole cohort in one click.
  */
 
-import { memo, useCallback, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { memo, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Ban, Search, Tag } from "lucide-react";
+import { Button } from "../ui/button";
 import { CropCard } from "./CropCard";
 import {
-  ContextMenu,
-  ContextMenuTrigger,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-} from "../ui/context-menu";
-import type { DetectionSummary } from "../../api/types";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
+import {
+  getContrastTextColor,
+  getSpeciesColor,
+} from "../../utils/species-colors";
+import { cn } from "../../lib/utils";
+import type { CohortItem, DetectionSummary } from "../../api/types";
 
 /**
  * Lightweight pub/sub store that lets individual GridCells subscribe to
@@ -48,21 +55,36 @@ class SelectionStore {
 
 export type TileSize = "S" | "M" | "L";
 
+export type GridDividerMode = "none" | "label" | "cohort";
+
+type CohortRowPos = "first" | "middle" | "last" | "only";
+
 type GridRow =
-  | { type: "cards"; detections: DetectionSummary[] }
-  | { type: "divider"; label: string; count: number };
+  | {
+      type: "cards";
+      detections: DetectionSummary[];
+      /** Position within a cohort card when `dividers === "cohort"`.
+       * Drives the row's card-border styling (sides only mid-card,
+       * adds the bottom-rounded border on the last row). Undefined
+       * for non-cohort modes. */
+      cohortPos?: CohortRowPos;
+    }
+  | { type: "divider"; label: string; count: number }
+  | { type: "cohort_divider"; cohort: CohortItem }
+  | { type: "cohort_gap" };
 
 interface CropGridProps {
   detections: DetectionSummary[];
   selectedIds: Set<string>;
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
   onDoubleClick?: (detection: DetectionSummary) => void;
-  onFindSimilar?: (detectionId: string) => void;
-  onRelabel?: (detectionId: string, label: string, category: string) => void;
-  onMarkFalse?: (detectionId: string) => void;
   onBackgroundClick?: () => void;
+  /** Fires when the user clicks "Relabel all (N)" on a cohort divider.
+   * Parent owns the destructive confirm flow and the bulk-relabel
+   * mutation; the divider is presentational. */
+  onRelabelCohort?: (cohort: CohortItem) => void;
   tileSize?: TileSize;
-  showLabelDividers?: boolean;
+  dividers?: GridDividerMode;
 }
 
 const COLUMN_PRESETS: Record<TileSize, [number, number, number, number]> = {
@@ -78,6 +100,13 @@ const ESTIMATE_SIZE: Record<TileSize, number> = {
 };
 
 const DIVIDER_HEIGHT = 32;
+// Cohort dividers carry a header line + chips + a Relabel-all button so
+// they need more vertical real estate than a plain label divider. The
+// header uses `text-base` and symmetric vertical padding (`py-3`) so
+// the button isn't crowded against the top border.
+const COHORT_DIVIDER_HEIGHT = 84;
+// Breathing room between cohort cards.
+const COHORT_GAP_HEIGHT = 16;
 
 function useColumns(tileSize: TileSize = "M"): number {
   const [cols, setCols] = useState(COLUMN_PRESETS[tileSize][1]);
@@ -109,9 +138,6 @@ interface GridCellProps {
   tileSize: TileSize;
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
   onDoubleClick?: (detection: DetectionSummary) => void;
-  onFindSimilar?: (detectionId: string) => void;
-  onRelabel?: (detectionId: string, label: string, category: string) => void;
-  onMarkFalse?: (detectionId: string) => void;
 }
 
 const GridCell = memo(function GridCell({
@@ -120,71 +146,22 @@ const GridCell = memo(function GridCell({
   tileSize,
   onSelect,
   onDoubleClick,
-  onFindSimilar,
-  onRelabel,
-  onMarkFalse,
 }: GridCellProps) {
   const selected = useSyncExternalStore(
     selectionStore.subscribe,
     () => selectionStore.getSnapshot().has(detection.detection_id),
   );
-  const showRelabel =
-    onRelabel &&
-    detection.neighbor_top_label &&
-    detection.neighbor_top_label !== detection.label;
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div data-crop-card>
-          <CropCard
-            detection={detection}
-            selected={selected}
-            tileSize={tileSize}
-            onSelect={onSelect}
-            onDoubleClick={onDoubleClick}
-          />
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        {onFindSimilar && (
-          <ContextMenuItem
-            onClick={() => onFindSimilar(detection.detection_id)}
-          >
-            <Search className="h-4 w-4" />
-            Find similar
-          </ContextMenuItem>
-        )}
-        {showRelabel && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={() =>
-                onRelabel(
-                  detection.detection_id,
-                  detection.neighbor_top_label!,
-                  detection.category
-                )
-              }
-            >
-              <Tag className="h-4 w-4" />
-              Relabel to {detection.neighbor_top_label}
-            </ContextMenuItem>
-          </>
-        )}
-        {onMarkFalse && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={() => onMarkFalse(detection.detection_id)}
-            >
-              <Ban className="h-4 w-4" />
-              Mark as false detection
-            </ContextMenuItem>
-          </>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
+    <div data-crop-card>
+      <CropCard
+        detection={detection}
+        selected={selected}
+        tileSize={tileSize}
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+      />
+    </div>
   );
 });
 
@@ -193,12 +170,10 @@ export function CropGrid({
   selectedIds,
   onSelect,
   onDoubleClick,
-  onFindSimilar,
-  onRelabel,
-  onMarkFalse,
   onBackgroundClick,
+  onRelabelCohort,
   tileSize = "M",
-  showLabelDividers = false,
+  dividers = "none",
 }: CropGridProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const columns = useColumns(tileSize);
@@ -210,9 +185,9 @@ export function CropGrid({
   // so cells see updated selection before the browser paints the frame.
   useLayoutEffect(() => { selectionStore.update(selectedIds); }, [selectedIds, selectionStore]);
 
-  // Build rows: optionally insert divider rows at label transitions
+  // Build rows: optionally insert divider rows between groups.
   const rows = useMemo((): GridRow[] => {
-    if (!showLabelDividers) {
+    if (dividers === "none") {
       const result: GridRow[] = [];
       for (let i = 0; i < detections.length; i += columns) {
         result.push({ type: "cards", detections: detections.slice(i, i + columns) });
@@ -220,36 +195,66 @@ export function CropGrid({
       return result;
     }
 
-    // Walk detections, group by label, insert dividers
     const result: GridRow[] = [];
     let i = 0;
     while (i < detections.length) {
-      const currentLabel = detections[i].label || detections[i].category;
-      // Count how many consecutive detections share this label
+      // Group key changes with dividers mode: label groups by current
+      // label / category, cohort groups by the (label, suggested
+      // descendant, category) triple that defines a cohort.
+      const groupKey = dividers === "cohort" ? cohortKey(detections[i]) : labelKey(detections[i]);
       let j = i;
       while (
         j < detections.length &&
-        (detections[j].label || detections[j].category) === currentLabel
+        (dividers === "cohort" ? cohortKey(detections[j]) : labelKey(detections[j])) === groupKey
       ) {
         j++;
       }
-      const count = j - i;
-      result.push({ type: "divider", label: currentLabel, count });
-      // Chunk this label group into card rows
-      for (let k = i; k < j; k += columns) {
-        result.push({ type: "cards", detections: detections.slice(k, Math.min(k + columns, j)) });
+      const slice = detections.slice(i, j);
+      if (dividers === "cohort") {
+        result.push({ type: "cohort_divider", cohort: cohortFromSlice(slice) });
+        // Tag each card row inside the cohort with its position so the
+        // renderer can paint card-side borders on every row and round
+        // the bottom of the final row only.
+        const cardRowStarts: number[] = [];
+        for (let k = 0; k < slice.length; k += columns) cardRowStarts.push(k);
+        for (let idx = 0; idx < cardRowStarts.length; idx++) {
+          const k = cardRowStarts[idx];
+          const isLast = idx === cardRowStarts.length - 1;
+          const pos: CohortRowPos =
+            cardRowStarts.length === 1 ? "only" : isLast ? "last" : idx === 0 ? "first" : "middle";
+          result.push({
+            type: "cards",
+            detections: slice.slice(k, k + columns),
+            cohortPos: pos,
+          });
+        }
+        // Spacer between this cohort and the next so cards don't run
+        // together vertically.
+        if (j < detections.length) {
+          result.push({ type: "cohort_gap" });
+        }
+      } else {
+        result.push({ type: "divider", label: labelKey(slice[0]), count: slice.length });
+        for (let k = 0; k < slice.length; k += columns) {
+          result.push({ type: "cards", detections: slice.slice(k, k + columns) });
+        }
       }
       i = j;
     }
     return result;
-  }, [detections, columns, showLabelDividers]);
+  }, [detections, columns, dividers]);
 
   const cardHeight = ESTIMATE_SIZE[tileSize];
 
   const virtualizer = useWindowVirtualizer({
     count: rows.length,
-    estimateSize: (index) =>
-      rows[index].type === "divider" ? DIVIDER_HEIGHT : cardHeight,
+    estimateSize: (index) => {
+      const row = rows[index];
+      if (row.type === "divider") return DIVIDER_HEIGHT;
+      if (row.type === "cohort_divider") return COHORT_DIVIDER_HEIGHT;
+      if (row.type === "cohort_gap") return COHORT_GAP_HEIGHT;
+      return cardHeight;
+    },
     overscan: 5,
     scrollMargin: listRef.current?.offsetTop ?? 0,
     measureElement: (el) => el.getBoundingClientRect().height,
@@ -300,6 +305,99 @@ export function CropGrid({
           );
         }
 
+        if (row.type === "cohort_divider") {
+          const c = row.cohort;
+          return (
+            <div
+              key={`cohort-${virtualRow.index}`}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+              }}
+            >
+              {/* Top of the cohort card: borders on three sides + rounded
+                  top corners, tinted bg so it stands out from the page,
+                  a bottom border under the header to mark the seam
+                  between the title and the crop grid. Symmetric `py-3`
+                  keeps the button away from the top + bottom borders.
+                  The card-side borders continue on every `cards` row
+                  below until the cohort's final row, which adds the
+                  rounded bottom. */}
+              <div className="flex items-center justify-between gap-3 px-4 py-3 h-full rounded-t-lg border-x border-t border-b bg-card">
+                <div className="text-base flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{c.count}</span>
+                  <span className="text-muted-foreground">
+                    observation{c.count === 1 ? "" : "s"} labelled
+                  </span>
+                  <LabelChip
+                    label={c.current_label}
+                    displayName={c.current_display_name}
+                    category={c.category}
+                  />
+                  <span className="text-muted-foreground">look like</span>
+                  <LabelChip
+                    label={c.suggested_label}
+                    displayName={c.suggested_display_name}
+                    category={c.category}
+                  />
+                </div>
+                {onRelabelCohort && (
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => onRelabelCohort(c)}
+                        >
+                          Accept suggestion ({c.count})
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Relabels {c.count} observation
+                        {c.count === 1 ? "" : "s"} to{" "}
+                        {c.suggested_display_name || c.suggested_label} and
+                        marks {c.count === 1 ? "it" : "them"} verified.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        if (row.type === "cohort_gap") {
+          // Empty spacer between cohort cards. No content, just height
+          // — the virtualizer reserves the space and the visual break
+          // lets each cohort read as a distinct card.
+          return (
+            <div
+              key={`gap-${virtualRow.index}`}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: `${COHORT_GAP_HEIGHT}px`,
+                transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+              }}
+            />
+          );
+        }
+
+        // cohortPos is set only when dividers === "cohort". It paints
+        // the card-side borders on every row of a cohort and rounds
+        // the bottom of the last (or only) row.
+        const inCohort = row.cohortPos !== undefined;
+        const isLast = row.cohortPos === "last" || row.cohortPos === "only";
         return (
           <div
             key={virtualRow.index}
@@ -314,7 +412,19 @@ export function CropGrid({
             }}
           >
               <div
-                className={`grid px-1 ${GAP_CLASS[tileSize]}`}
+                className={cn(
+                  `grid ${GAP_CLASS[tileSize]}`,
+                  inCohort
+                    ? cn(
+                        "px-4 border-x bg-card",
+                        // First row of a cohort body: breathing room
+                        // under the header's border-b before the crops
+                        // start.
+                        (row.cohortPos === "first" || row.cohortPos === "only") && "pt-2",
+                        isLast && "border-b rounded-b-lg pb-3",
+                      )
+                    : "px-1",
+                )}
                 style={{
                   gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                 }}
@@ -327,9 +437,6 @@ export function CropGrid({
                     tileSize={tileSize}
                     onSelect={onSelect}
                     onDoubleClick={onDoubleClick}
-                    onFindSimilar={onFindSimilar}
-                    onRelabel={onRelabel}
-                    onMarkFalse={onMarkFalse}
                   />
                 ))}
               </div>
@@ -338,4 +445,73 @@ export function CropGrid({
         })}
     </div>
   );
+}
+
+
+// ── Grouping helpers (used by the dividers union above) ─────────────────
+
+
+function labelKey(d: DetectionSummary): string {
+  return d.label || d.category;
+}
+
+
+function cohortKey(d: DetectionSummary): string {
+  // Three parts on a separator unlikely to appear in a label.
+  return `${d.label ?? ""}${d.neighbor_top_label ?? ""}${d.category ?? ""}`;
+}
+
+
+/** Inline label pill rendered inside the cohort divider header.
+ * Mirrors the CropCard label badge: species colour as background,
+ * contrast-aware text colour. Falls back to the muted-foreground style
+ * when no label is present (uncategorised animal detections). */
+function LabelChip({
+  label,
+  displayName,
+  category,
+}: {
+  label: string | null;
+  displayName: string | null;
+  category: string | null;
+}) {
+  const text = displayName || label || "(no label)";
+  // Key matches getDetectionColor's preference order: taxonomy id is
+  // not on a cohort, so fall back to the label string. Cohort dividers
+  // group identical labels, so the colour is stable across the chip.
+  const colorKey = label || category || "";
+  if (!colorKey) {
+    return (
+      <span className="rounded-sm px-2 py-0.5 text-xs capitalize bg-muted text-muted-foreground">
+        {text}
+      </span>
+    );
+  }
+  const bg = getSpeciesColor(colorKey);
+  return (
+    <span
+      className="rounded-sm px-2 py-0.5 text-xs capitalize"
+      style={{ backgroundColor: bg, color: getContrastTextColor(bg) }}
+    >
+      {text}
+    </span>
+  );
+}
+
+
+function cohortFromSlice(slice: DetectionSummary[]): CohortItem {
+  // Every detection in the slice already shares the cohort key
+  // (current label, suggested label, category) by construction, so the
+  // first one is authoritative for the divider's display fields.
+  const head = slice[0];
+  return {
+    current_label: head.label,
+    current_label_taxonomy_id: head.label_taxonomy_id ?? null,
+    current_display_name: head.display_name ?? null,
+    suggested_label: head.neighbor_top_label ?? "",
+    suggested_display_name: head.neighbor_top_display_name ?? null,
+    category: head.category,
+    count: slice.length,
+    detection_ids: slice.map((d) => d.detection_id),
+  };
 }

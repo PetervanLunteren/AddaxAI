@@ -55,7 +55,7 @@ import { EventCollage } from "./EventCollage";
 import { EventDetailModal } from "./EventDetailModal";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import { hasAnyActiveFilter } from "./FilterChips";
-import { HelpSheet } from "./HelpSheet";
+import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { WelcomePopover } from "./WelcomePopover";
 import { FilesTab } from "./FilesTab";
 import { ObservationsTab } from "./ObservationsTab";
@@ -155,9 +155,12 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
 
 export interface VerifyViewProps {
   projectId: string;
+  /** Forwarded to the Observations tab so a host page (folder-run Edit
+   *  step) can hide its sticky nav while a bulk selection is live. */
+  onSelectionChange?: (count: number) => void;
 }
 
-export function VerifyView({ projectId }: VerifyViewProps) {
+export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
@@ -393,13 +396,13 @@ export function VerifyView({ projectId }: VerifyViewProps) {
               />
               <VerifyProgressPill
                 pct={
-                  verificationStats.events_total > 0
-                    ? (verificationStats.events_fully_verified /
-                        verificationStats.events_total) *
+                  verificationStats.total_detections > 0
+                    ? (verificationStats.verified_detections /
+                        verificationStats.total_detections) *
                       100
                     : 0
                 }
-                label="events verified"
+                label="verified"
               />
             </VerifyToolbar>
           )}
@@ -495,10 +498,11 @@ export function VerifyView({ projectId }: VerifyViewProps) {
           classificationModelId={project?.classification_model_id ?? null}
           view={activeView}
           onViewChange={setActiveView}
+          onSelectionChange={onSelectionChange}
         />
       )}
 
-      <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <WelcomePopover
         open={activeView === "events" && showEventsWelcome && totalEvents > 0}

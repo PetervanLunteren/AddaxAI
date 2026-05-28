@@ -104,6 +104,12 @@ interface LabelPickerProps {
    *  display label; pass a sentence-style hint for the always-visible
    *  sidebar control. */
   triggerTitle?: string;
+  /** Suppress the trigger button. The picker becomes just the dialog,
+   *  driven entirely by `forceOpen` from a sibling button. Used by
+   *  the BulkActionBar, where the Relabel button next to the picker
+   *  is the trigger and a second "Select label..." button would be
+   *  redundant. */
+  headless?: boolean;
 }
 
 export function LabelPicker({
@@ -120,6 +126,7 @@ export function LabelPicker({
   projectId,
   triggerIcon: TriggerIcon = ChevronsUpDown,
   triggerTitle,
+  headless,
 }: LabelPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -263,27 +270,29 @@ export function LabelPicker({
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 px-1.5 gap-1 text-xs font-medium justify-start"
-        title={triggerTitle ?? displayLabel}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(true);
-        }}
-      >
-        {dotColor && !hideDot && (
-          <div
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: dotColor }}
-          />
-        )}
-        {!hideLabel && (
-          <span className="truncate max-w-[180px]">{displayLabel}</span>
-        )}
-        <TriggerIcon className="h-3 w-3 opacity-50 shrink-0" />
-      </Button>
+      {!headless && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-1.5 gap-1 text-xs font-medium justify-start"
+          title={triggerTitle ?? displayLabel}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+        >
+          {dotColor && !hideDot && (
+            <div
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: dotColor }}
+            />
+          )}
+          {!hideLabel && (
+            <span className="truncate max-w-[180px]">{displayLabel}</span>
+          )}
+          <TriggerIcon className="h-3 w-3 opacity-50 shrink-0" />
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent

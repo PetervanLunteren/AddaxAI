@@ -49,7 +49,7 @@ import { EventFilmstrip } from "./EventFilmstrip";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
-import { HelpSheet } from "./HelpSheet";
+import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
@@ -1517,7 +1517,7 @@ export function EventDetailModal({
           </div>
         </div>
       </DialogContent>
-      <HelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
     </Dialog>
   );
 }

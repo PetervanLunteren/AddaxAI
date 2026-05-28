@@ -42,7 +42,7 @@ def test_sort_observations_success(client, db):
         {"type": "result", **mock_result},
     )
     with patch(
-        "app.api.routers.observations.stream_sort",
+        "app.api.routers.observations.stream_sort_async",
         return_value=iter(events),
     ):
         resp = client.post(
@@ -61,7 +61,7 @@ def test_sort_observations_default_sort(client, db):
     mock_result = SortResponse(detections=[], total_detections=0).model_dump()
     events = _ndjson_stream({"type": "result", **mock_result})
     with patch(
-        "app.api.routers.observations.stream_sort",
+        "app.api.routers.observations.stream_sort_async",
         return_value=iter(events),
     ) as mock_sort:
         resp = client.post(
@@ -71,7 +71,8 @@ def test_sort_observations_default_sort(client, db):
         # Force the streaming response to be consumed so the mock is invoked.
         list(resp.iter_lines())
     assert resp.status_code == 200
-    body = mock_sort.call_args.args[1]
+    # New signature: stream_sort_async(request, project_id, body, db).
+    body = mock_sort.call_args.args[2]
     assert body.sort == "similarity"
 
 
@@ -87,7 +88,7 @@ def test_sort_observations_rejects_unknown_mode(client, db):
 def test_sort_observations_error(client, db):
     p = make_project(db)
     with patch(
-        "app.api.routers.observations.stream_sort",
+        "app.api.routers.observations.stream_sort_async",
         side_effect=FileNotFoundError("script not found"),
     ):
         resp = client.post(
@@ -115,7 +116,7 @@ def test_search_observations_success(client, db):
     ).model_dump()
     events = _ndjson_stream({"type": "result", **mock_result})
     with patch(
-        "app.api.routers.observations.stream_search",
+        "app.api.routers.observations.stream_search_async",
         return_value=iter(events),
     ):
         resp = client.post(
@@ -130,7 +131,7 @@ def test_search_observations_success(client, db):
 def test_search_observations_error(client, db):
     p = make_project(db)
     with patch(
-        "app.api.routers.observations.stream_search",
+        "app.api.routers.observations.stream_search_async",
         side_effect=FileNotFoundError("script not found"),
     ):
         resp = client.post(
