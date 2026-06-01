@@ -129,6 +129,7 @@ def test_export_observations_csv_happy_path(client, db):
         "latitude", "longitude", "species", "scientific_name",
         "count", "sex", "life_stage", "behavior", "max_confidence",
         "classification_method", "observation_comments", "is_verified",
+        "image_verified",
     ]
     data = rows[1:]
     # Expect deer (count=2) + person (count=1) on June file; blank on December file.

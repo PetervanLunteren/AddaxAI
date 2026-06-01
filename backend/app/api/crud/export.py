@@ -68,6 +68,12 @@ OBSERVATIONS_SCHEMA = (
 # Classifier names lumped into this code only for reporting in CamTrap DP
 # ``classifiedBy`` and ``observation_comments`` fields. Sourced from the
 # project's configured model ids so the text is always accurate.
+# Two distinct verified columns:
+#   is_verified    — instance level: every detection in this species
+#                    group on this file is human-verified.
+#   image_verified — image level: a human reviewed the whole frame
+#                    (File.verified), confirming nothing was missed.
+# Appended last so existing column indices stay stable for readers.
 _FLAT_OBS_HEADERS = [
     "image_uuid",
     "filename",
@@ -85,6 +91,7 @@ _FLAT_OBS_HEADERS = [
     "classification_method",
     "observation_comments",
     "is_verified",
+    "image_verified",
 ]
 
 # CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
@@ -414,6 +421,7 @@ def build_observation_rows(
             if not detection.verified:
                 bucket["all_verified"] = False
 
+        image_verified = "TRUE" if file_obj.verified else "FALSE"
         for _, data in groups.items():
             method = "human" if data["all_verified"] else "machine"
             comments = "Human identification" if data["all_verified"] else not_reviewed
@@ -437,6 +445,7 @@ def build_observation_rows(
                     method,
                     comments,
                     is_verified,
+                    image_verified,
                 ]
             )
 
@@ -460,6 +469,9 @@ def _blank_flat_row(
         method = "machine"
         comments = not_reviewed
         is_verified = "FALSE"
+    # For a blank file there are no real detections, so instance and
+    # image verification coincide (both are File.verified).
+    image_verified = is_verified
     return [
         file_obj.id,
         filename,
@@ -477,6 +489,7 @@ def _blank_flat_row(
         method,
         comments,
         is_verified,
+        image_verified,
     ]
 
 
@@ -589,6 +602,7 @@ def build_spatial_layers(
                     "classification_method": row[13],
                     "observation_comments": row[14],
                     "is_verified": row[15],
+                    "image_verified": row[16],
                 },
             }
         )

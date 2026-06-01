@@ -35,6 +35,19 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
     shouldDrawBbox(d, file, detectionThreshold),
   );
 
+  // Observation-level "verified" for the badge: the file reads as
+  // verified when every reviewable detection on it is verified, so the
+  // badge agrees with the project-wide "% observations verified" metric.
+  // Empty files have no observations to verify, so they fall back to the
+  // file's own verified flag (set by a whole-frame review).
+  const reviewable = file.detections.filter(
+    (d) => d.confidence >= detectionThreshold || d.verified,
+  );
+  const observationsVerified =
+    reviewable.length > 0
+      ? reviewable.every((d) => d.verified)
+      : file.verified;
+
   // Chips mirror the boxes drawn above (`dets`), so what's labelled
   // matches what's outlined — including unclassified animals and the
   // person / vehicle boxes that never carry a species label. A box with
@@ -53,7 +66,7 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
       onClick={onClick}
     >
       <StatusBadgeCluster
-        verified={file.verified}
+        verified={observationsVerified}
         favorited={file.favorited}
         flagged={file.flagged}
       />

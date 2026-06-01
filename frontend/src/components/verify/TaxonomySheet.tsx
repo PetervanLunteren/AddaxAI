@@ -215,7 +215,18 @@ export function TaxonomySheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
+      <SheetContent
+        side="right"
+        className="sm:max-w-xl overflow-y-auto"
+        // Don't dismiss on outside interaction. This sheet opens out of
+        // the relabel command dialog; the two modal layers briefly
+        // overlap during the transition, and the first click inside the
+        // sheet (e.g. focusing the GBIF input) was being misread as an
+        // outside interaction, closing the sheet immediately. Keeping it
+        // open on outside-click also avoids losing a half-typed label.
+        // Escape and the X / Cancel buttons still close it.
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle>
             {isCreateMode ? "Add new label" : isEditing ? "Edit custom label" : "Add custom label"}

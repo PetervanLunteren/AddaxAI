@@ -74,6 +74,51 @@ export function DetectionDetailModal({
   });
   const [forceOpenPicker, setForceOpenPicker] = useState(false);
 
+  // Source-image zoom (scroll wheel) + pan (drag while zoomed). The
+  // image-detail modals zoom via a Konva stage, but this modal shows a
+  // plain <img> + SVG overlay, so we scale their shared wrapper with a
+  // CSS transform instead. Same scroll-to-zoom interaction, lighter
+  // mechanism. The SVG sits exactly over the image, so scaling the
+  // wrapper keeps the bbox aligned for free.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const imagePanelRef = useRef<HTMLDivElement | null>(null);
+  const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const wheelTeardownRef = useRef<(() => void) | null>(null);
+
+  // Callback ref: attach the wheel listener the instant the panel DOM
+  // node mounts (and detach on unmount). A native listener is required
+  // because React makes its synthetic onWheel passive, so e.preventDefault
+  // there is a no-op and the page would scroll instead of zooming. Doing
+  // this via useEffect+ref proved racy with the dialog portal, so the
+  // callback ref guarantees the node exists when we bind.
+  const attachImagePanel = useCallback((node: HTMLDivElement | null) => {
+    wheelTeardownRef.current?.();
+    wheelTeardownRef.current = null;
+    imagePanelRef.current = node;
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = node.getBoundingClientRect();
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      setZoom((z0) => {
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        const z1 = Math.min(5, Math.max(1, z0 * factor));
+        if (z1 === z0) return z0;
+        setPan((p0) => {
+          if (z1 === 1) return { x: 0, y: 0 };
+          const ratio = z1 / z0;
+          return { x: cx - (cx - p0.x) * ratio, y: cy - (cy - p0.y) * ratio };
+        });
+        return z1;
+      });
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    wheelTeardownRef.current = () => node.removeEventListener("wheel", onWheel);
+  }, []);
+
   // Track viewport size for responsive modal sizing
   useEffect(() => {
     const handleResize = () => {
@@ -82,6 +127,43 @@ export function DetectionDetailModal({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Reset zoom/pan when the detection changes or the modal closes.
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [detection?.detection_id, open]);
+
+  // Drag to pan while zoomed in. Global listeners so the drag survives
+  // the cursor leaving the panel. Pan is clamped to the scaled overflow
+  // so the image can't be dragged out of its frame.
+  useEffect(() => {
+    if (!isPanning) return;
+    const onMove = (e: PointerEvent) => {
+      const start = panStartRef.current;
+      if (!start) return;
+      let nx = start.panX + (e.clientX - start.x);
+      let ny = start.panY + (e.clientY - start.y);
+      const rect = imagePanelRef.current?.getBoundingClientRect();
+      if (rect) {
+        const maxX = (rect.width / 2) * (zoom - 1);
+        const maxY = (rect.height / 2) * (zoom - 1);
+        nx = Math.max(-maxX, Math.min(maxX, nx));
+        ny = Math.max(-maxY, Math.min(maxY, ny));
+      }
+      setPan({ x: nx, y: ny });
+    };
+    const onUp = () => {
+      setIsPanning(false);
+      panStartRef.current = null;
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [isPanning, zoom]);
 
   // Load full file data to get image dimensions and detection bbox
   const { data: fileData } = useQuery({
@@ -262,12 +344,44 @@ export function DetectionDetailModal({
         </DialogTitle>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Left panel — source image with bbox */}
-          <div className="flex-1 flex items-center justify-center bg-black/95 min-h-0 p-2 rounded-lg">
-            <div className="relative inline-flex">
+          {/* Left panel — source image with bbox. Scroll to zoom, drag
+              to pan when zoomed, double-click to reset. */}
+          <div
+            ref={attachImagePanel}
+            className="flex-1 flex select-none items-center justify-center overflow-hidden bg-black/95 min-h-0 p-2 rounded-lg"
+            style={{
+              cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
+            }}
+            onPointerDown={(e) => {
+              if (zoom <= 1) return;
+              // Stop the browser's native image drag-and-drop, which
+              // otherwise swallows the pointerup and leaves the pan
+              // stuck "held" after release.
+              e.preventDefault();
+              panStartRef.current = {
+                x: e.clientX,
+                y: e.clientY,
+                panX: pan.x,
+                panY: pan.y,
+              };
+              setIsPanning(true);
+            }}
+            onDoubleClick={() => {
+              setZoom(1);
+              setPan({ x: 0, y: 0 });
+            }}
+          >
+            <div
+              className="relative inline-flex"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: "center center",
+              }}
+            >
               <img
                 src={`${API_BASE_URL}/api/files/${detection.file_id}/image`}
                 alt="Source image"
+                draggable={false}
                 className="max-w-full max-h-full object-contain"
               />
               {fullDetection && fullDetection.bbox_x !== null && (() => {

@@ -4,7 +4,7 @@ CRUD operations for files.
 
 from datetime import UTC, datetime, time
 
-from sqlalchemy import Integer, exists, func, or_, select
+from sqlalchemy import Integer, and_, exists, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.crud.event import (
@@ -379,10 +379,34 @@ def _apply_file_verify_filters(
         else:
             query = query.filter(exists(conf_subq))
 
-    if verification == "verified":
-        query = query.filter(File.verified == True)  # noqa: E712
-    elif verification == "unverified":
-        query = query.filter(File.verified == False)  # noqa: E712
+    if verification in ("verified", "unverified"):
+        # Observation-level verification, matching the file-card badge and
+        # the project-wide "% observations verified" metric. A file is
+        # verified when every reviewable detection on it is verified.
+        # "Reviewable" = passes the project floor (confidence >= floor OR
+        # already verified). A file with an unverified above-floor
+        # detection is unverified. Empty files (no reviewable detection)
+        # fall back to File.verified, so an unreviewed blank doesn't read
+        # as verified just because it has nothing to check.
+        floor = project_floor if project_floor is not None else 0.0
+        has_reviewable = exists(
+            select(Detection.id)
+            .where(Detection.file_id == File.id)
+            .where(or_(Detection.confidence >= floor, Detection.verified == True))  # noqa: E712
+        )
+        has_unverified_reviewable = exists(
+            select(Detection.id)
+            .where(Detection.file_id == File.id)
+            .where(Detection.confidence >= floor)
+            .where(Detection.verified == False)  # noqa: E712
+        )
+        obs_verified = or_(
+            and_(has_reviewable, ~has_unverified_reviewable),
+            and_(~has_reviewable, File.verified == True),  # noqa: E712
+        )
+        query = query.filter(
+            obs_verified if verification == "verified" else ~obs_verified
+        )
 
     if flagged == "flagged":
         query = query.filter(File.flagged == True)  # noqa: E712
@@ -527,6 +551,7 @@ def get_files_for_verify(
                         "label": d.label,
                         "label_taxonomy_id": d.label_taxonomy_id,
                         "frame_number": d.frame_number,
+                        "verified": d.verified,
                     }
                     for d in dets
                 ],

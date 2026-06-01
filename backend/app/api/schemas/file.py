@@ -111,6 +111,10 @@ class FileSummaryDetection(BaseModel):
     # Used by the verify grid / filmstrip to filter to the best-frame
     # detections and to enumerate distinct frames per video.
     frame_number: int | None = None
+    # Human-verified status. Lets the grid show a file as "verified" when
+    # all its reviewable detections are verified, keeping the file badge
+    # consistent with the observation-level progress metric.
+    verified: bool = False
 
     class Config:
         from_attributes = True

@@ -166,6 +166,46 @@ function toObservationFilters(f: ObservationsFilterState): ObservationFilters {
   };
 }
 
+interface SelectionMajority {
+  count: number;
+  label: string;
+  category: string;
+  displayName: string | null;
+}
+
+/** Most common label among the selected detections.
+ *
+ *  Returns null when nothing in the selection carries a label.
+ *  Ties resolve to the first label encountered, which is deterministic
+ *  given the grid's iteration order. Drives both the Match-majority
+ *  action and the label shown on its button, so the two never diverge.
+ */
+function selectionMajority(
+  detections: DetectionSummary[],
+  idSet: Set<string>,
+): SelectionMajority | null {
+  const counts = new Map<string, SelectionMajority>();
+  for (const d of detections) {
+    if (!idSet.has(d.detection_id) || !d.label) continue;
+    const entry = counts.get(d.label);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      counts.set(d.label, {
+        count: 1,
+        label: d.label,
+        category: d.category,
+        displayName: d.display_name,
+      });
+    }
+  }
+  let mode: SelectionMajority | null = null;
+  for (const entry of counts.values()) {
+    if (!mode || entry.count > mode.count) mode = entry;
+  }
+  return mode;
+}
+
 /** Adapt ObservationsFilterState to the EventFilterParams shape that
  *  VerifyFilterBar reads. The verified select lives on the bar and
  *  emits its value into `filters.verification`. */
@@ -183,12 +223,20 @@ function toFilterBarFilters(f: ObservationsFilterState): EventFilterParams {
   };
 }
 
+// Only suggest narrowing once the dataset is big enough that the wait
+// is real and narrowing is genuinely the fix. Below this the tip is
+// noise, and it gives bad advice: similarity ordering and suggestions
+// both get better with more crops, so we don't want to nudge users on
+// small sets toward a smaller, worse-quality view. Site is left out of
+// the wording on purpose: a folder run is effectively one site, so
+// only species and date narrow it there.
+const NARROW_TIP_MIN_TOTAL = 5000;
+
 /**
  * Loading state for the Observations grid. Shows a real progress bar
  * while the subprocess streams `progress` events; falls back to an
  * indeterminate spinner during the brief window before the first
- * event arrives. Always shows the "narrow by filter" tip so users
- * know the wait is reducible.
+ * event arrives.
  *
  * The subprocess emits three phases (load, sort, neighbors), each
  * with its own 0 → N counter. To avoid the bar resetting to 0%
@@ -204,6 +252,7 @@ function ObservationsLoadingState({
     ? PHASE_LABELS[progress.phase] ?? progress.phase
     : null;
   const overallPct = progress ? overallProgressPct(progress) : 0;
+  const showNarrowTip = (progress?.total ?? 0) >= NARROW_TIP_MIN_TOTAL;
 
   return (
     <div className="flex flex-col items-center gap-3 w-full max-w-sm mx-auto">
@@ -217,9 +266,11 @@ function ObservationsLoadingState({
       ) : (
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       )}
-      <p className="text-xs text-muted-foreground">
-        Narrow by species, site, or date to speed this up.
-      </p>
+      {showNarrowTip && (
+        <p className="text-xs text-muted-foreground">
+          Narrow by species or date to speed this up.
+        </p>
+      )}
     </div>
   );
 }
@@ -383,6 +434,10 @@ export function ObservationsTab({
 
   // Explicit sorting flag — avoids isPending getting stuck in Strict Mode
   const [isSorting, setIsSorting] = useState(false);
+  // Last sort error (e.g. the max-detections cap). Held so the grid
+  // body can show an explicit, persistent error card instead of a
+  // toast that fades and leaves a spinner spinning forever.
+  const [sortError, setSortError] = useState<string | null>(null);
 
   // Re-embed state
   const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
@@ -494,6 +549,7 @@ export function ObservationsTab({
     onMutate: () => {
       setIsSorting(true);
       setProgress(null);
+      setSortError(null);
     },
     onSuccess: (data, sort) => {
       setSortResult(data);
@@ -501,9 +557,10 @@ export function ObservationsTab({
       clearSelection();
       setIsSorting(false);
       setProgress(null);
+      setSortError(null);
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      setSortError(err.message);
       setIsSorting(false);
       setProgress(null);
     },
@@ -603,6 +660,11 @@ export function ObservationsTab({
     // here so the pill catches up after every bulk action, not just
     // the divider's Accept button.
     queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+    // The verified-progress pill reads server-side stats, not the
+    // optimistic local patch, so it stays stale until this refetch.
+    queryClient.invalidateQueries({
+      queryKey: ["events", "verification-stats", projectId],
+    });
   }, [obsSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
@@ -658,6 +720,11 @@ export function ObservationsTab({
         );
       }
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+      // Refresh the verified-progress pill (server-side stats, not the
+      // optimistic patch above).
+      queryClient.invalidateQueries({
+        queryKey: ["events", "verification-stats", projectId],
+      });
     },
     [obsSort, patchLocalDetections, projectId, queryClient],
   );
@@ -710,6 +777,9 @@ export function ObservationsTab({
         );
         queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
         queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+        queryClient.invalidateQueries({
+          queryKey: ["events", "verification-stats", projectId],
+        });
         toast.success(
           `Relabelled ${cohort.count} observation${
             cohort.count === 1 ? "" : "s"
@@ -790,36 +860,11 @@ export function ObservationsTab({
     (ids: string[]) => {
       if (ids.length === 0) return;
       const idSet = new Set(ids);
-      const selected = allDetections.filter((d) => idSet.has(d.detection_id));
-      const counts = new Map<
-        string,
-        { count: number; label: string; category: string; displayName: string | null }
-      >();
-      for (const d of selected) {
-        if (!d.label) continue;
-        const entry = counts.get(d.label);
-        if (entry) {
-          entry.count += 1;
-        } else {
-          counts.set(d.label, {
-            count: 1,
-            label: d.label,
-            category: d.category,
-            displayName: d.display_name,
-          });
-        }
-      }
-      if (counts.size === 0) {
+      const mode = selectionMajority(allDetections, idSet);
+      if (!mode) {
         toast.info("No labels in selection to apply");
         return;
       }
-      let mode = null as null | {
-        count: number; label: string; category: string; displayName: string | null;
-      };
-      for (const entry of counts.values()) {
-        if (!mode || entry.count > mode.count) mode = entry;
-      }
-      if (!mode) return;
       const { label: modeLabel, category: modeCategory, displayName: modeDisplayName } = mode;
       detectionsApi
         .bulkRelabel(ids, modeLabel, modeCategory)
@@ -950,6 +995,16 @@ export function ObservationsTab({
     return (verificationStats.verified_detections / verificationStats.total_detections) * 100;
   }, [verificationStats]);
 
+  // Majority label of the current selection, shown on the Match-majority
+  // button so the action is previewable ("Set all to Corvus") instead
+  // of a blind relabel. Null when the selection carries no labels — the
+  // button hides in that case.
+  const majorityLabel = useMemo(() => {
+    if (selectedIds.size === 0) return null;
+    const mode = selectionMajority(allDetections, selectedIds);
+    return mode ? mode.displayName || mode.label : null;
+  }, [selectedIds, allDetections]);
+
   // No embeddings state
   if (stats && stats.embedded_detections === 0) {
     return (
@@ -969,8 +1024,17 @@ export function ObservationsTab({
   }
 
   const hasResults = sortResult !== null;
-  // Show spinner only when actively loading AND no results yet.
-  const isLoading = isSorting && !hasResults;
+  // Show the loading view when a sort is running AND we have nothing
+  // useful to show in the meantime: either no result yet (first
+  // entry), or the lingering result came from a DIFFERENT sort mode
+  // (e.g. switching suggestions → similarity). In the latter case the
+  // stale result would otherwise render frozen — wrong dividers, wrong
+  // population — until the new sort lands, which reads as "stuck".
+  // Showing the same progress view as first entry keeps the two
+  // consistent. A same-mode re-sort (refresh, bulk action, filter
+  // tweak) keeps the current grid in place, no flash.
+  const isLoading =
+    isSorting && (!hasResults || resultSort !== obsSort);
 
   const handleEmbedNow = async () => {
     try {
@@ -1076,7 +1140,31 @@ export function ObservationsTab({
         )}
       </VerifyToolbar>
 
-      {isLoading || !hasResults ? (
+      {sortError ? (
+        // Persistent error card. The common case is the max-detections
+        // cap: the subprocess refuses to load a result set larger than
+        // the user's limit. Without this the body would fall through to
+        // the loading branch and spin forever after the error.
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <AlertTriangle className="h-10 w-10 text-amber-500 mb-4" />
+            <p className="text-lg font-medium text-muted-foreground">
+              Could not load this view
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              {sortError}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => sortMutation.mutate(obsSort)}
+            >
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
+      ) : isLoading || !hasResults ? (
         // Sort auto-runs, so !hasResults means the mutation has not
         // fired yet (e.g. stats still loading). Either way, show the
         // loading state.
@@ -1159,6 +1247,7 @@ export function ObservationsTab({
         onVerify={handleBulkVerify}
         onMarkFalse={handleBulkMarkFalse}
         onMatchMajority={handleMatchMajority}
+        majorityLabel={majorityLabel}
         projectId={projectId}
         relabelOpen={relabelOpen}
         onRelabelOpenChange={setRelabelOpen}

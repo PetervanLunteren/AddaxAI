@@ -220,9 +220,13 @@ export function LabelPicker({
     setCreateName(search.trim());
     setOpen(false);
     setSearch("");
+    // Tell the parent the picker closed. Without this a CONTROLLED
+    // parent (BulkActionBar via relabelOpen) keeps thinking the picker
+    // is open, and re-opens it the next time the user selects a crop.
+    onOpenChange?.(false);
     setTaxonomyLabel(null);
     setTaxonomySheetOpen(true);
-  }, [projectId, search]);
+  }, [projectId, search, onOpenChange]);
 
   const handleTaxonomySheetCreated = useCallback(
     (created: CustomLabelResponse) => {

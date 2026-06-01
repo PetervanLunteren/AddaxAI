@@ -19,10 +19,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import {
-  getContrastTextColor,
-  getSpeciesColor,
-} from "../../utils/species-colors";
 import { cn } from "../../lib/utils";
 import type { CohortItem, DetectionSummary } from "../../api/types";
 
@@ -337,13 +333,11 @@ export function CropGrid({
                   <LabelChip
                     label={c.current_label}
                     displayName={c.current_display_name}
-                    category={c.category}
                   />
                   <span className="text-muted-foreground">look like</span>
                   <LabelChip
                     label={c.suggested_label}
                     displayName={c.suggested_display_name}
-                    category={c.category}
                   />
                 </div>
                 {onRelabelCohort && (
@@ -462,37 +456,22 @@ function cohortKey(d: DetectionSummary): string {
 }
 
 
-/** Inline label pill rendered inside the cohort divider header.
- * Mirrors the CropCard label badge: species colour as background,
- * contrast-aware text colour. Falls back to the muted-foreground style
- * when no label is present (uncategorised animal detections). */
+/** Inline label token rendered inside the cohort divider header.
+ * Deliberately uncoloured: the header is an explanatory sentence
+ * ("46 observations labelled X look like Y"), so the labels read as
+ * plain values, not as colour-coded data. Colour lives in the crop
+ * grid below, where it carries meaning. A muted code-style chip keeps
+ * the two from competing and avoids fragile colour-key matching. */
 function LabelChip({
   label,
   displayName,
-  category,
 }: {
   label: string | null;
   displayName: string | null;
-  category: string | null;
 }) {
   const text = displayName || label || "(no label)";
-  // Key matches getDetectionColor's preference order: taxonomy id is
-  // not on a cohort, so fall back to the label string. Cohort dividers
-  // group identical labels, so the colour is stable across the chip.
-  const colorKey = label || category || "";
-  if (!colorKey) {
-    return (
-      <span className="rounded-sm px-2 py-0.5 text-xs capitalize bg-muted text-muted-foreground">
-        {text}
-      </span>
-    );
-  }
-  const bg = getSpeciesColor(colorKey);
   return (
-    <span
-      className="rounded-sm px-2 py-0.5 text-xs capitalize"
-      style={{ backgroundColor: bg, color: getContrastTextColor(bg) }}
-    >
+    <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs capitalize text-foreground">
       {text}
     </span>
   );

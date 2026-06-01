@@ -201,6 +201,8 @@ def write_recognition_json(
                 "category": category_id,
                 "conf": round(float(det.confidence), 4),
                 "bbox": [round(v, 6) for v in bbox],
+                # Whether a human has verified this specific detection.
+                "verified": bool(det.verified),
             }
 
             label_excluded = bool(excluded) and (
@@ -232,6 +234,10 @@ def write_recognition_json(
         images_out.append(
             {
                 "file": _relative_path(file.file_path, base_folder),
+                # File-level verified means a human reviewed the whole
+                # frame (not just the individual detections). Distinct
+                # from per-detection "verified" above.
+                "verified": bool(file.verified),
                 "detections": det_objs,
             }
         )

@@ -27,6 +27,10 @@ interface BulkActionBarProps {
    *  parent owns the mode-finding + API call because it has the full
    *  detection metadata; this prop just wires the button. */
   onMatchMajority?: (ids: string[]) => void;
+  /** Display label of the selection's majority, shown on the
+   *  Match-majority button ("Set all to Corvus"). Null when the
+   *  selection carries no labels, in which case the button hides. */
+  majorityLabel?: string | null;
   projectId?: string;
   /** Controlled state for the relabel picker (keyboard shortcut). */
   relabelOpen?: boolean;
@@ -43,6 +47,7 @@ export function BulkActionBar({
   onVerify,
   onMarkFalse,
   onMatchMajority,
+  majorityLabel,
   projectId,
   relabelOpen: relabelOpenProp,
   onRelabelOpenChange,
@@ -124,14 +129,17 @@ export function BulkActionBar({
         <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">X</kbd>
       </Button>
 
-      {onMatchMajority && (
+      {onMatchMajority && majorityLabel && (
         <Button
           variant="outline"
           size="sm"
           onClick={() => onMatchMajority(ids)}
+          title={`Relabel all ${count} to ${majorityLabel} and verify`}
         >
-          <CheckCheck className="h-4 w-4 mr-1" />
-          Match majority
+          <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
+          <span className="truncate max-w-[180px] capitalize">
+            Set all to {majorityLabel}
+          </span>
           <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">M</kbd>
         </Button>
       )}
