@@ -2,9 +2,10 @@
 CRUD operations for files.
 """
 
+from collections.abc import Iterable
 from datetime import UTC, datetime, time
 
-from sqlalchemy import Integer, and_, exists, func, or_, select
+from sqlalchemy import Integer, exists, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.crud.event import (
@@ -154,6 +155,76 @@ def get_file_with_detections(db: Session, file_id: str) -> File | None:
     )
 
 
+def recompute_file_verified(db: Session, file_ids: Iterable[str]) -> None:
+    """Maintain `File.verified` as the observation-level rollup.
+
+    A file is verified when every reviewable detection on it is verified.
+    "Reviewable" = confidence >= the project's detection threshold OR
+    already verified (the standard threshold-or-verified rule).
+
+    Files with no reviewable detections (empty / blank) are left
+    untouched: there are no observations to roll up, so `File.verified`
+    is owned directly by the file-verify action (a human reviewing the
+    empty frame).
+
+    Call this after any change to a detection's verified status. Every
+    user-facing surface (file badge, file filter, "next unverified"
+    navigation, the event MaxN rollup) reads `File.verified`, so keeping
+    it in sync here is the single point where the upward cascade lives.
+    No commit — the caller owns the transaction.
+    """
+    ids = [fid for fid in dict.fromkeys(file_ids)]
+    if not ids:
+        return
+    files = db.query(File).filter(File.id.in_(ids)).all()
+    if not files:
+        return
+
+    # One threshold lookup per deployment, shared across its files.
+    threshold_cache: dict[str, float] = {}
+    now = datetime.now(UTC)
+    for f in files:
+        dep_id = f.deployment_id
+        if dep_id not in threshold_cache:
+            threshold_cache[dep_id] = _get_detection_threshold(db, f)
+        floor = threshold_cache[dep_id]
+
+        rows = (
+            db.query(Detection.verified)
+            .filter(Detection.file_id == f.id)
+            .filter(
+                or_(Detection.confidence >= floor, Detection.verified == True)  # noqa: E712
+            )
+            .all()
+        )
+        if not rows:
+            # No reviewable detections: leave File.verified as-is (owned
+            # by the file-verify action for empty frames).
+            continue
+
+        new_verified = all(r[0] for r in rows)
+        if new_verified != f.verified:
+            f.verified = new_verified
+            f.verified_at_utc = now if new_verified else None
+
+
+def recompute_file_verified_for_detections(
+    db: Session, detection_ids: Iterable[str]
+) -> None:
+    """Recompute `File.verified` for the files owning the given detections."""
+    ids = list(dict.fromkeys(detection_ids))
+    if not ids:
+        return
+    file_ids = [
+        fid
+        for (fid,) in db.query(Detection.file_id)
+        .filter(Detection.id.in_(ids))
+        .distinct()
+        .all()
+    ]
+    recompute_file_verified(db, file_ids)
+
+
 def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
     """
     Update a file's verification status and/or notes.
@@ -166,6 +237,10 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
         return None
 
     if update.verified is not None:
+        # The file-verify action (modal Enter). Sets File.verified and
+        # cascades down to the detections. recompute keeps File.verified
+        # consistent for files that have detections; for empty frames it
+        # is a no-op, so the flag we set here stands.
         if update.verified and not file.verified:
             now = datetime.now(UTC)
             file.verified = True
@@ -181,12 +256,14 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
             db.query(Detection).filter(*det_filter).update(
                 {"verified": True, "verified_at_utc": now}
             )
+            recompute_file_verified(db, [file_id])
         elif not update.verified and file.verified:
             file.verified = False
             file.verified_at_utc = None
             db.query(Detection).filter(
                 Detection.file_id == file_id,
             ).update({"verified": False, "verified_at_utc": None})
+            recompute_file_verified(db, [file_id])
 
     if update.notes is not None:
         file.notes = update.notes
@@ -379,34 +456,12 @@ def _apply_file_verify_filters(
         else:
             query = query.filter(exists(conf_subq))
 
-    if verification in ("verified", "unverified"):
-        # Observation-level verification, matching the file-card badge and
-        # the project-wide "% observations verified" metric. A file is
-        # verified when every reviewable detection on it is verified.
-        # "Reviewable" = passes the project floor (confidence >= floor OR
-        # already verified). A file with an unverified above-floor
-        # detection is unverified. Empty files (no reviewable detection)
-        # fall back to File.verified, so an unreviewed blank doesn't read
-        # as verified just because it has nothing to check.
-        floor = project_floor if project_floor is not None else 0.0
-        has_reviewable = exists(
-            select(Detection.id)
-            .where(Detection.file_id == File.id)
-            .where(or_(Detection.confidence >= floor, Detection.verified == True))  # noqa: E712
-        )
-        has_unverified_reviewable = exists(
-            select(Detection.id)
-            .where(Detection.file_id == File.id)
-            .where(Detection.confidence >= floor)
-            .where(Detection.verified == False)  # noqa: E712
-        )
-        obs_verified = or_(
-            and_(has_reviewable, ~has_unverified_reviewable),
-            and_(~has_reviewable, File.verified == True),  # noqa: E712
-        )
-        query = query.filter(
-            obs_verified if verification == "verified" else ~obs_verified
-        )
+    if verification == "verified":
+        # File.verified is the maintained observation-level rollup, so a
+        # plain flag check is the cascade-aware filter.
+        query = query.filter(File.verified == True)  # noqa: E712
+    elif verification == "unverified":
+        query = query.filter(File.verified == False)  # noqa: E712
 
     if flagged == "flagged":
         query = query.filter(File.flagged == True)  # noqa: E712
@@ -551,7 +606,6 @@ def get_files_for_verify(
                         "label": d.label,
                         "label_taxonomy_id": d.label_taxonomy_id,
                         "frame_number": d.frame_number,
-                        "verified": d.verified,
                     }
                     for d in dets
                 ],

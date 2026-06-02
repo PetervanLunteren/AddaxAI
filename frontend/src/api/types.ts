@@ -615,9 +615,6 @@ export interface FileSummaryDetection {
   label_taxonomy_id: string | null;
   /** Video detections carry their frame index; image detections are null. */
   frame_number: number | null;
-  /** Human-verified status, used to derive the file's observation-level
-   * verified badge. */
-  verified: boolean;
 }
 
 export interface FileSummary {

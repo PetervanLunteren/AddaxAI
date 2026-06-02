@@ -54,6 +54,7 @@ def create_detection(
     """
     detection = detection_crud.create_human_detection(db, data)
     file_crud.recalculate_observation_type(db, data.file_id)
+    file_crud.recompute_file_verified(db, [data.file_id])
     _recalculate_max_n(db, [detection.id])
     return detection
 
@@ -74,6 +75,7 @@ def create_observation(
     """
     detection = detection_crud.create_observation(db, data)
     file_crud.recalculate_observation_type(db, data.file_id)
+    file_crud.recompute_file_verified(db, [data.file_id])
     _recalculate_max_n(db, [detection.id])
     return detection
 
@@ -124,6 +126,7 @@ def delete_detections_by_file(
     affected_event_ids = get_event_ids_for_detections(db, det_ids) if det_ids else []
     threshold = get_project_threshold_for_detections(db, det_ids) if det_ids else 0.0
     count = detection_crud.delete_detections_by_file(db, file_id)
+    file_crud.recompute_file_verified(db, [file_id])
     file_crud.recalculate_observation_type(db, file_id)
     if affected_event_ids:
         recalculate_max_n_for_events(db, affected_event_ids, threshold)
@@ -147,6 +150,7 @@ def delete_detection(
     affected_event_ids = get_event_ids_for_detections(db, [detection_id])
     threshold = get_project_threshold_for_detections(db, [detection_id])
     detection_crud.delete_detection(db, detection_id)
+    file_crud.recompute_file_verified(db, [file_id])
     file_crud.recalculate_observation_type(db, file_id)
     if affected_event_ids:
         recalculate_max_n_for_events(db, affected_event_ids, threshold)
@@ -210,6 +214,7 @@ def verify_detection(
 
     detection.verified = body.verified
     detection.verified_at_utc = datetime.now(UTC) if body.verified else None
+    file_crud.recompute_file_verified(db, [detection.file_id])
     db.commit()
     db.refresh(detection)
     _recalculate_max_n(db, [detection_id])
@@ -231,6 +236,7 @@ def bulk_verify_detections(
             synchronize_session="fetch",
         )
     )
+    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
     _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": updated}
@@ -307,6 +313,7 @@ def bulk_relabel_detections(
         det.classification_method = "human"
         det.verified = True
 
+    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
 
     # Recalculate observation types for affected files

@@ -189,7 +189,7 @@ export function ExportBody({
         checked={exportOpts.csv}
         onChange={(v) => setExportOpts({ ...exportOpts, csv: v })}
         label="CSV"
-        caption="One row per observation"
+        caption="One row per detection"
       />
       <CaptionedCheckbox
         checked={exportOpts.xlsx}

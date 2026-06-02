@@ -85,7 +85,15 @@ class File(Base):
     )
     source_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Verification fields
+    # Verification.
+    #
+    # `verified` is the observation-level rollup: True when every
+    # reviewable detection on the file is verified. Maintained
+    # automatically by `recompute_file_verified` whenever a detection's
+    # verified status changes; for empty frames (no detections) the
+    # file-verify action sets it directly. This is the single
+    # user-facing verification flag — badges, filters, nav, and the
+    # event MaxN rollup all read it.
     verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
     )

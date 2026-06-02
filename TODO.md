@@ -12,6 +12,8 @@
 - [ ] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
 - [ ] look at the JSON and CSVB outputs more closely. Are there any flags, or information we should add? What is helpful? Probabaly the taxonomic infomartaion, right? SO the user can sort and use that ins EXCEL or R. anoy other information? DO we ant a observations.csv, files.csv, and events.csv? Or just one and let the user extract it for himself? Because all the info is in observations.csv, right? Or are there also infomrations we cannot sotre in observations.csv and need their own csv? Lets rethink the other exports too, like the geospatial ones etc. Leave Captrap DP as is, as it is a fixed standard. 
 
+you say "One row per observation" in the UI for this export, but there is also a count. Why? It seems to me that it is more of a one row per file CSV... ? 
+
 - [ ] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 
 

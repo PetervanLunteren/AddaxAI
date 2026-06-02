@@ -259,7 +259,7 @@ export default function ExportPage() {
           <CardHeader>
             <CardTitle>Observations</CardTitle>
             <CardDescription>
-              Species observations spreadsheet, one row per species per image.
+              Detections spreadsheet, one row per detection.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

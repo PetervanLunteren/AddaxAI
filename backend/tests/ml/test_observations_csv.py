@@ -2,9 +2,8 @@
 
 The row schema lives in ``export_crud.build_observation_rows`` and has
 its own coverage there. Here we pin that this wrapper writes the file
-at the right path, includes the ``relative_path`` column populated
-from ``OutputContext.resolved_paths``, and falls back to a blank
-column when separation did not run.
+at the right path and that ``relative_path`` is the file's path under
+its deployment's source folder (falling back to the bare filename).
 """
 
 from pathlib import Path
@@ -92,27 +91,22 @@ def test_row_count_matches_observation_rows(db, tmp_path):
     assert result.row_count == 2
 
 
-def test_relative_path_column_blank_without_separation(db, tmp_path):
-    """When the context has no resolved paths, the new relative_path
-    column sits empty for every row."""
-    project = make_project(db, name="csv-relpath-empty")
-    dep = make_deployment(db, project_id=project.id)
+def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):
+    """relative_path is the file's path under its deployment's source
+    folder, always (independent of separation)."""
+    project = make_project(db, name="csv-relpath")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "CameraA"),
+    )
     file = make_file(
         db,
         deployment_id=dep.id,
-        file_path=_write_placeholder(tmp_path / "src" / "IMG.jpg"),
+        file_path=str(tmp_path / "CameraA" / "sub" / "IMG.jpg"),
         observation_type="animal",
     )
     make_detection(
-        db,
-        file_id=file.id,
-        category="animal",
-        confidence=0.9,
-        label="dog",
-        bbox_x=0.1,
-        bbox_y=0.1,
-        bbox_width=0.2,
-        bbox_height=0.2,
+        db, file_id=file.id, category="animal", confidence=0.9, label="dog",
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
     )
 
     target = tmp_path / "out"
@@ -121,49 +115,36 @@ def test_relative_path_column_blank_without_separation(db, tmp_path):
     csv = (target / CSV_FILENAME).read_text()
     header_line, *data_lines = csv.splitlines()
     headers = header_line.split(",")
-    assert "relative_path" in headers
     rel_idx = headers.index("relative_path")
-    for row in data_lines:
-        # CSV cells are comma-separated; the relative_path column is
-        # blank when separation did not run, so a strict empty cell.
-        assert row.split(",")[rel_idx] == ""
+    rel_values = {row.split(",")[rel_idx] for row in data_lines}
+    assert rel_values == {"sub/IMG.jpg"}
 
 
-def test_relative_path_column_reflects_resolved_paths(db, tmp_path):
-    """When ``ctx.resolved_paths`` is populated (separation ran), the
-    new column holds a forward-slash path relative to output_root."""
-    project = make_project(db, name="csv-relpath-set")
-    dep = make_deployment(db, project_id=project.id)
+def test_relative_path_falls_back_to_filename(db, tmp_path):
+    """When the deployment has no source folder, relative_path is the
+    bare filename."""
+    project = make_project(db, name="csv-relpath-fallback")
+    dep = make_deployment(db, project_id=project.id, folder_path=None)
     file = make_file(
         db,
         deployment_id=dep.id,
-        file_path=_write_placeholder(tmp_path / "src" / "IMG.jpg"),
+        file_path=str(tmp_path / "anywhere" / "IMG.jpg"),
         observation_type="animal",
     )
     make_detection(
-        db,
-        file_id=file.id,
-        category="animal",
-        confidence=0.9,
-        label="dog",
-        bbox_x=0.1,
-        bbox_y=0.1,
-        bbox_width=0.2,
-        bbox_height=0.2,
+        db, file_id=file.id, category="animal", confidence=0.9, label="dog",
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
     )
 
     target = tmp_path / "out"
-    ctx = _ctx(target)
-    # Simulate the separation having placed the file at out/dog/IMG.jpg.
-    ctx.record(file.id, target / "dog" / "IMG.jpg")
-    write_observations_csv(db, project.id, ctx)
+    write_observations_csv(db, project.id, _ctx(target))
 
     csv = (target / CSV_FILENAME).read_text()
     header_line, *data_lines = csv.splitlines()
     headers = header_line.split(",")
     rel_idx = headers.index("relative_path")
     rel_values = {row.split(",")[rel_idx] for row in data_lines}
-    assert rel_values == {"dog/IMG.jpg"}
+    assert rel_values == {"IMG.jpg"}
 
 
 def test_unknown_project_raises(db, tmp_path):

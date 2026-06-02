@@ -125,29 +125,43 @@ def test_export_observations_csv_happy_path(client, db):
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
     assert headers == [
-        "image_uuid", "filename", "datetime", "camera_name",
-        "latitude", "longitude", "species", "scientific_name",
-        "count", "sex", "life_stage", "behavior", "max_confidence",
-        "classification_method", "observation_comments", "is_verified",
-        "image_verified",
+        "detection_id", "file_id", "event_id", "relative_path",
+        "datetime", "site_name", "latitude", "longitude",
+        "detection_category", "detection_confidence", "bbox_x", "bbox_y",
+        "bbox_width", "bbox_height", "frame_number", "classification_label",
+        "classification_confidence", "taxon_class", "taxon_order",
+        "taxon_family", "taxon_genus", "taxon_species", "is_verified",
     ]
-    data = rows[1:]
-    # Expect deer (count=2) + person (count=1) on June file; blank on December file.
-    assert len(data) == 3
-    species = sorted(r[6] for r in data)
-    assert species == ["blank", "deer", "person"]
+    cls_i = headers.index("classification_label")
+    cat_i = headers.index("detection_category")
+    conf_i = headers.index("detection_confidence")
+    dt_i = headers.index("datetime")
+    fid_i = headers.index("file_id")
+    did_i = headers.index("detection_id")
 
-    deer = next(r for r in data if r[6] == "deer")
-    assert deer[8] == "2"
-    assert float(deer[12]) == pytest.approx(0.9, abs=1e-4)
+    data = rows[1:]
+    # One row per detection: 2 deer + 1 person on June; 1 blank row for December.
+    assert len(data) == 4
+
+    # Each deer detection keeps its own confidence (no max-aggregation).
+    deer = [r for r in data if r[cls_i] == "deer"]
+    assert len(deer) == 2
+    assert sorted(float(r[conf_i]) for r in deer) == pytest.approx([0.7, 0.9], abs=1e-4)
+
+    # Person: detected but not species-classified, so classification is empty.
+    person = next(r for r in data if r[cat_i] == "person")
+    assert float(person[conf_i]) == pytest.approx(0.95, abs=1e-4)
+    assert person[cls_i] == ""
+
+    # December file is an empty/blank sentinel row.
+    blank = next(r for r in data if r[cat_i] == "blank")
+    assert blank[did_i] == ""
+    assert blank[fid_i] == f_dec.id
 
     # DST-correct offsets.
-    june = next(r for r in data if "2024-06-15" in r[2])
-    assert june[2].endswith("+02:00")
-    # For December the file is a blank row.
-    dec = next(r for r in data if "2024-12-15" in r[2])
-    assert dec[2].endswith("+01:00")
-    assert f_dec.id == dec[0]
+    june = next(r for r in data if "2024-06-15" in r[dt_i])
+    assert june[dt_i].endswith("+02:00")
+    assert blank[dt_i].endswith("+01:00")
 
 
 def test_export_observations_tsv_and_xlsx(client, db):
@@ -160,7 +174,7 @@ def test_export_observations_tsv_and_xlsx(client, db):
     assert resp_tsv.status_code == 200
     assert resp_tsv.headers["content-type"].startswith("text/tab-separated-values")
     tsv_rows = list(csv.reader(io.StringIO(resp_tsv.content.decode("utf-8")), delimiter="\t"))
-    assert tsv_rows[0][0] == "image_uuid"
+    assert tsv_rows[0][0] == "detection_id"
     assert any("fox" in r for r in tsv_rows[1:])
 
     resp_xlsx = client.get(f"/api/projects/{project.id}/export/observations?format=xlsx")
@@ -172,7 +186,7 @@ def test_export_observations_tsv_and_xlsx(client, db):
     ws = wb.active
     assert ws.title == "Observations"
     sheet_rows = list(ws.iter_rows(values_only=True))
-    assert sheet_rows[0][0] == "image_uuid"
+    assert sheet_rows[0][0] == "detection_id"
     assert any(
         isinstance(v, str) and "fox" in v
         for row in sheet_rows[1:]

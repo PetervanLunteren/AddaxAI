@@ -355,8 +355,11 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
             detection.display_name = update.label[0].upper() + update.label[1:]
         else:
             detection.display_name = None
-        if update.label is None:
-            detection.label_confidence = None
+        # A human-assigned label has no model softmax score, so stamp 1.0
+        # (matches bulk relabel) rather than leaving the replaced label's
+        # stale score. Cleared label -> no confidence. An explicit
+        # label_confidence in the payload still overrides below.
+        detection.label_confidence = 1.0 if update.label else None
     # When category changes to a builtin (person/vehicle/animal) without a
     # label, resolve taxonomy from the category so display_name and the FK
     # are set correctly.

@@ -660,11 +660,10 @@ export function ObservationsTab({
     // here so the pill catches up after every bulk action, not just
     // the divider's Accept button.
     queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-    // The verified-progress pill reads server-side stats, not the
-    // optimistic local patch, so it stays stale until this refetch.
-    queryClient.invalidateQueries({
-      queryKey: ["events", "verification-stats", projectId],
-    });
+    // Cascade to the Media / Events views (File.verified rollup) and the
+    // verified-progress pill — see applyDetectionAction.
+    queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
   }, [obsSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
@@ -720,11 +719,15 @@ export function ObservationsTab({
         );
       }
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-      // Refresh the verified-progress pill (server-side stats, not the
-      // optimistic patch above).
-      queryClient.invalidateQueries({
-        queryKey: ["events", "verification-stats", projectId],
-      });
+      // Verifying observations cascades up to File.verified (and thus
+      // event verification). Invalidate the Media and Events queries so
+      // those views show the updated badges/filters when the user
+      // switches to them, instead of stale cached state. Inactive
+      // queries just get marked stale and refetch on next mount.
+      // The ["events"] prefix also covers the verified-progress pill's
+      // verification-stats query.
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
     },
     [obsSort, patchLocalDetections, projectId, queryClient],
   );
@@ -777,9 +780,8 @@ export function ObservationsTab({
         );
         queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
         queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-        queryClient.invalidateQueries({
-          queryKey: ["events", "verification-stats", projectId],
-        });
+        queryClient.invalidateQueries({ queryKey: ["events"] });
+        queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
         toast.success(
           `Relabelled ${cohort.count} observation${
             cohort.count === 1 ? "" : "s"

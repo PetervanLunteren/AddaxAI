@@ -3,13 +3,9 @@
 Same shape the Research projects Export page produces: one row per
 species per image (or per event-level observation). Wraps the existing
 ``export_crud`` and ``export_formats`` modules so the canonical
-observation row schema stays single-sourced.
-
-The folder-run variant adds one extra column right after ``filename``:
-``relative_path`` is the file's path under the user's chosen
-``output_root``, populated from ``OutputContext.resolved_paths`` when
-separation ran. With separation off, the column is blank — every file
-sits at the root and ``filename`` already identifies it.
+observation row schema stays single-sourced — including the
+``relative_path`` column (relative to the deployment's source folder),
+which is part of the canonical schema, not a folder-run-only add-on.
 
 Output goes to ``<output_root>/observations.csv``, mirroring how the
 recognition JSON writes its single file at the root.
@@ -18,8 +14,6 @@ recognition JSON writes its single file at the root.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -75,7 +69,6 @@ def write_observations_csv(
         db, project, extra_excluded=excluded_species
     )
     headers, rows = export_crud.build_observation_rows(db, project, scoped)
-    headers, rows = _enrich_with_relative_path(headers, rows, ctx)
     payload = export_formats.serialize_csv(headers, rows)
 
     output_path = ctx.output_root / CSV_FILENAME
@@ -91,43 +84,3 @@ def write_observations_csv(
         output_path=str(output_path),
         row_count=len(rows),
     )
-
-
-def _enrich_with_relative_path(
-    headers: list[str],
-    rows: list[list[Any]],
-    ctx: OutputContext,
-) -> tuple[list[str], list[list[Any]]]:
-    """Insert a ``relative_path`` column after ``filename``.
-
-    Each row's ``image_uuid`` (column 0) is the ``File.id`` the row
-    describes; we look up the first resolved placement on the context
-    and emit a forward-slash path relative to ``ctx.output_root``.
-    For multi-species files (multiple placements), the primary label
-    folder is what shows up here — the user can still discover the
-    extras by browsing the tree.
-    """
-    filename_idx = headers.index("filename")
-    insert_idx = filename_idx + 1
-    new_headers = list(headers)
-    new_headers.insert(insert_idx, "relative_path")
-
-    new_rows: list[list[Any]] = []
-    for row in rows:
-        file_id = row[0]
-        resolved = ctx.resolved_paths.get(file_id)
-        if resolved:
-            try:
-                rel = resolved[0].relative_to(ctx.output_root).as_posix()
-            except ValueError:
-                # A path outside output_root would only happen if the
-                # caller constructed the context weirdly; fall back to
-                # the absolute path so the CSV still points somewhere.
-                rel = Path(resolved[0]).as_posix()
-        else:
-            rel = ""
-        new_row = list(row)
-        new_row.insert(insert_idx, rel)
-        new_rows.append(new_row)
-
-    return new_headers, new_rows

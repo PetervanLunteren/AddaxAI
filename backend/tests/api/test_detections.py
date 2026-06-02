@@ -48,6 +48,30 @@ def test_update_detection_not_found(client):
     assert resp.status_code == 404
 
 
+def test_patch_relabel_stamps_human_confidence(client, db):
+    """A human relabel via PATCH replaces the model's stale score with 1.0,
+    matching bulk relabel (the replaced label's score must not linger)."""
+    f = _setup_file(db)
+    det = make_detection(db, file_id=f.id, label="deer", label_confidence=0.6)
+    resp = client.patch(f"/api/detections/{det.id}", json={"label": "elk"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["label"] == "elk"
+    assert data["label_confidence"] == 1.0
+
+
+def test_patch_relabel_honours_explicit_confidence(client, db):
+    """An explicit label_confidence in the payload still wins over the 1.0 default."""
+    f = _setup_file(db)
+    det = make_detection(db, file_id=f.id, label="deer", label_confidence=0.6)
+    resp = client.patch(
+        f"/api/detections/{det.id}",
+        json={"label": "elk", "label_confidence": 0.42},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["label_confidence"] == 0.42
+
+
 def test_delete_detection(client, db):
     f = _setup_file(db)
     det = make_detection(db, file_id=f.id)

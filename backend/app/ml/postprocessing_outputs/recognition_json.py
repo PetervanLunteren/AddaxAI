@@ -234,10 +234,6 @@ def write_recognition_json(
         images_out.append(
             {
                 "file": _relative_path(file.file_path, base_folder),
-                # File-level verified means a human reviewed the whole
-                # frame (not just the individual detections). Distinct
-                # from per-detection "verified" above.
-                "verified": bool(file.verified),
                 "detections": det_objs,
             }
         )

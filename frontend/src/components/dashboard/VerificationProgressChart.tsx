@@ -76,7 +76,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
 
   const overallRow: BarRow | null = eventStats
     ? {
-        label: "Observations",
+        label: "Total observations",
         verified: eventStats.verified_detections,
         total: eventStats.total_detections,
       }

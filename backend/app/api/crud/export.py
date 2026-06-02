@@ -65,33 +65,63 @@ OBSERVATIONS_SCHEMA = (
     "/observations-table-schema.json"
 )
 
-# Classifier names lumped into this code only for reporting in CamTrap DP
-# ``classifiedBy`` and ``observation_comments`` fields. Sourced from the
-# project's configured model ids so the text is always accurate.
-# Two distinct verified columns:
-#   is_verified    — instance level: every detection in this species
-#                    group on this file is human-verified.
-#   image_verified — image level: a human reviewed the whole frame
-#                    (File.verified), confirming nothing was missed.
-# Appended last so existing column indices stay stable for readers.
+# Flat observations CSV. One row per detection (the fine-grained grain:
+# nothing is aggregated away — a user can re-aggregate by groupby, but
+# can't un-aggregate a summary). Columns left-to-right: ids, where/when,
+# the detector stage, the classifier stage, checked.
+#
+#   detection_id    — the detection row id; empty on a blank-file row.
+#   file_id, event_id — foreign keys for joining back to files / events.
+#                     A file with no event falls back to its own id, so
+#                     event_id is never empty. Event bounds aren't stored;
+#                     they're min/max of `datetime` per event_id.
+#   relative_path   — the file's path relative to its deployment's source
+#                     folder (forward slashes). Disambiguates duplicate
+#                     filenames across cameras and stays portable. Falls
+#                     back to the bare filename when the deployment folder
+#                     is unknown or the file sits outside it.
+#   detection_category    — detector class: animal / person / vehicle (or
+#                     "blank" for an empty file).
+#   detection_confidence  — detector (MegaDetector) score for the box.
+#   bbox_*          — normalized [0,1] box; empty for event-level / blank.
+#   frame_number    — video frame index; empty for images.
+#   classification_label — the assigned species identification, by model
+#                     or human (provenance-neutral; see is_verified).
+#                     Empty when nothing was classified (person, vehicle,
+#                     unclassified animal, blank).
+#   classification_confidence — score for that label: the classifier's
+#                     score, or 1.0 when a human assigned it.
+#   taxon_*         — formal ranks from label_taxonomy; empty where the
+#                     label has no (or partial) taxonomy. The full Latin
+#                     name is `taxon_genus + taxon_species`.
+#   is_verified     — this detection is human-verified.
+#
+# Empty files get one sentinel row (detection_category="blank") so survey
+# visits / empty cameras stay visible for effort accounting.
 _FLAT_OBS_HEADERS = [
-    "image_uuid",
-    "filename",
+    "detection_id",
+    "file_id",
+    "event_id",
+    "relative_path",
     "datetime",
-    "camera_name",
+    "site_name",
     "latitude",
     "longitude",
-    "species",
-    "scientific_name",
-    "count",
-    "sex",
-    "life_stage",
-    "behavior",
-    "max_confidence",
-    "classification_method",
-    "observation_comments",
+    "detection_category",
+    "detection_confidence",
+    "bbox_x",
+    "bbox_y",
+    "bbox_width",
+    "bbox_height",
+    "frame_number",
+    "classification_label",
+    "classification_confidence",
+    "taxon_class",
+    "taxon_order",
+    "taxon_family",
+    "taxon_genus",
+    "taxon_species",
     "is_verified",
-    "image_verified",
 ]
 
 # CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
@@ -288,6 +318,19 @@ def _species_label(detection: Detection, taxonomy: LabelTaxonomy | None) -> str:
     return detection.category
 
 
+def _taxon_ranks(taxonomy: LabelTaxonomy | None) -> list[str]:
+    """The five formal ranks, empty string where unknown."""
+    if taxonomy is None:
+        return ["", "", "", "", ""]
+    return [
+        taxonomy.taxon_class or "",
+        taxonomy.taxon_order or "",
+        taxonomy.taxon_family or "",
+        taxonomy.taxon_genus or "",
+        taxonomy.taxon_species or "",
+    ]
+
+
 def _scientific_name(
     detection: Detection, taxonomy: LabelTaxonomy | None
 ) -> str:
@@ -300,15 +343,6 @@ def _scientific_name(
     if taxonomy and taxonomy.display_name:
         return taxonomy.display_name
     return ""
-
-
-def _group_key(detection: Detection, taxonomy: LabelTaxonomy | None) -> str:
-    """Stable grouping key for 'one row per species per image'."""
-    if detection.label_taxonomy_id:
-        return f"tax:{detection.label_taxonomy_id}"
-    if detection.label:
-        return f"lbl:{detection.label.lower().strip()}"
-    return f"cat:{detection.category}"
 
 
 def _file_event(
@@ -324,6 +358,20 @@ def _file_event(
     return db.execute(stmt).scalars().first()
 
 
+def _events_by_file(
+    db: Session, file_ids: Sequence[str]
+) -> dict[str, Event]:
+    """Map each file id to its event in one query (avoids N+1)."""
+    if not file_ids:
+        return {}
+    stmt = (
+        select(event_files.c.file_id, Event)
+        .join(event_files, event_files.c.event_id == Event.id)
+        .where(event_files.c.file_id.in_(list(file_ids)))
+    )
+    return {fid: event for fid, event in db.execute(stmt).all()}
+
+
 def _classifier_label(project: Project) -> str:
     """What to put in CamTrap DP ``classifiedBy``."""
     if project.classification_model_id:
@@ -331,8 +379,21 @@ def _classifier_label(project: Project) -> str:
     return project.detection_model_id
 
 
-def _filename_from_path(file_path: str) -> str:
-    return Path(file_path).name
+def _relative_path(file_obj: File, deployment: Deployment | None) -> str:
+    """File path relative to its deployment's source folder, forward slashes.
+
+    Disambiguates duplicate filenames across cameras and stays portable
+    (no machine-specific absolute prefix). Falls back to the bare
+    filename when the deployment folder is unknown or the file sits
+    outside it.
+    """
+    folder = deployment.folder_path if deployment else None
+    if folder:
+        try:
+            return Path(file_obj.file_path).relative_to(folder).as_posix()
+        except ValueError:
+            pass
+    return Path(file_obj.file_path).name
 
 
 def _media_type_for(file_format: str | None) -> str:
@@ -375,121 +436,91 @@ def build_observation_rows(
     """
     Build `(headers, rows)` for the flat Observations export.
 
-    Grain: one row per (file, species group). Files with no in-scope
-    detections or ``observation_type == "blank"`` get a single blank row.
+    Grain: one row per detection. Files with no in-scope detections get
+    a single sentinel ``category="blank"`` row so empty cameras stay
+    visible for effort accounting.
     """
     tz_name = project.timezone
-    not_reviewed = f"{_classifier_label(project)}, not reviewed"
+
+    grouped = list(_group_rows_by_file(scoped_rows))
+    event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
 
     rows: list[list[Any]] = []
-    for file_obj, _deployment, site, detections in _group_rows_by_file(scoped_rows):
+    for file_obj, deployment, site, detections in grouped:
         captured = _iso_datetime(file_obj.captured_at_local, tz_name)
-        camera_name = site.name if site is not None else ""
+        site_name = site.name if site is not None else ""
         latitude = site.latitude if site is not None else ""
         longitude = site.longitude if site is not None else ""
-        filename = _filename_from_path(file_obj.file_path)
+        relative_path = _relative_path(file_obj, deployment)
 
-        if not detections or file_obj.observation_type == "blank":
-            rows.append(
-                _blank_flat_row(
-                    file_obj,
-                    filename,
-                    captured,
-                    camera_name,
-                    latitude,
-                    longitude,
-                    not_reviewed,
-                )
-            )
+        # Event grouping. A file with no event falls back to its own id
+        # so the column is never empty.
+        event = event_map.get(file_obj.id)
+        event_id = event.id if event else file_obj.id
+
+        # Shared file/where/when block for every row on this file. The
+        # row's own id (detection_id) leads; this is everything after it.
+        where_when = [
+            file_obj.id,
+            event_id,
+            relative_path,
+            captured,
+            site_name,
+            latitude,
+            longitude,
+        ]
+
+        if not detections:
+            rows.append([""] + where_when + _blank_detection_cells(file_obj))
             continue
 
-        groups: dict[str, dict[str, Any]] = {}
         for detection, taxonomy in detections:
-            key = _group_key(detection, taxonomy)
-            if key not in groups:
-                groups[key] = {
-                    "species": _species_label(detection, taxonomy),
-                    "scientific_name": _scientific_name(detection, taxonomy),
-                    "count": 0,
-                    "max_confidence": 0.0,
-                    "all_verified": True,
-                }
-            bucket = groups[key]
-            bucket["count"] += 1
-            if detection.confidence > bucket["max_confidence"]:
-                bucket["max_confidence"] = detection.confidence
-            if not detection.verified:
-                bucket["all_verified"] = False
-
-        image_verified = "TRUE" if file_obj.verified else "FALSE"
-        for _, data in groups.items():
-            method = "human" if data["all_verified"] else "machine"
-            comments = "Human identification" if data["all_verified"] else not_reviewed
-            is_verified = "TRUE" if data["all_verified"] else "FALSE"
-
             rows.append(
-                [
-                    file_obj.id,
-                    filename,
-                    captured,
-                    camera_name,
-                    latitude,
-                    longitude,
-                    data["species"],
-                    data["scientific_name"],
-                    data["count"],
-                    "",
-                    "",
-                    "",
-                    round(data["max_confidence"], 6),
-                    method,
-                    comments,
-                    is_verified,
-                    image_verified,
-                ]
+                [detection.id] + where_when + _detection_cells(detection, taxonomy)
             )
 
     return _FLAT_OBS_HEADERS, rows
 
 
-def _blank_flat_row(
-    file_obj: File,
-    filename: str,
-    captured: str,
-    camera_name: str,
-    lat: float | str,
-    lon: float | str,
-    not_reviewed: str,
+def _round_or_blank(value: float | None, ndigits: int) -> float | str:
+    return round(value, ndigits) if value is not None else ""
+
+
+def _detection_cells(
+    detection: Detection, taxonomy: LabelTaxonomy | None
 ) -> list[Any]:
-    if file_obj.verified:
-        method = "human"
-        comments = "Human identification"
-        is_verified = "TRUE"
-    else:
-        method = "machine"
-        comments = not_reviewed
-        is_verified = "FALSE"
-    # For a blank file there are no real detections, so instance and
-    # image verification coincide (both are File.verified).
-    image_verified = is_verified
+    """The detector + classifier tail of a flat observations row.
+
+    ``classification_label`` is the species label only — empty for
+    person, vehicle, or an unclassified animal, so the detector and
+    classifier stages stay cleanly separated.
+    """
     return [
-        file_obj.id,
-        filename,
-        captured,
-        camera_name,
-        lat,
-        lon,
-        "blank",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        method,
-        comments,
-        is_verified,
-        image_verified,
+        detection.category,
+        round(detection.confidence, 6),
+        _round_or_blank(detection.bbox_x, 6),
+        _round_or_blank(detection.bbox_y, 6),
+        _round_or_blank(detection.bbox_width, 6),
+        _round_or_blank(detection.bbox_height, 6),
+        detection.frame_number if detection.frame_number is not None else "",
+        detection.label or "",
+        _round_or_blank(detection.label_confidence, 6),
+        *_taxon_ranks(taxonomy),
+        "TRUE" if detection.verified else "FALSE",
+    ]
+
+
+def _blank_detection_cells(file_obj: File) -> list[Any]:
+    """Sentinel tail for an empty file (no in-scope detections)."""
+    return [
+        "blank",      # detection_category
+        "",           # detection_confidence
+        "", "", "", "",  # bbox
+        "",           # frame_number
+        "",           # classification
+        "",           # classification_confidence
+        "", "", "", "", "",  # taxon ranks
+        "TRUE" if file_obj.verified else "FALSE",
     ]
 
 
@@ -507,7 +538,7 @@ def build_spatial_layers(
     contains deployments that were excluded from the GeoJSON /
     Shapefile / GeoPackage because they have no site coordinates.
     """
-    _headers, flat_rows = build_observation_rows(db, project, scoped_rows)
+    headers, flat_rows = build_observation_rows(db, project, scoped_rows)
 
     # Build a deployment-level detection count map from the scoped rows so
     # we don't re-query. Also build trap-days per deployment.
@@ -553,7 +584,7 @@ def build_spatial_layers(
                 "lon": site.longitude,
                 "lat": site.latitude,
                 "properties": {
-                    "camera_name": site.name,
+                    "site_name": site.name,
                     "deployment_id": deployment.id,
                     "start_date": (
                         deployment.start_date_local.isoformat()
@@ -582,8 +613,10 @@ def build_spatial_layers(
 
     observations_features: list[dict[str, Any]] = []
     for row in flat_rows:
-        file_id = row[0]
-        site = site_by_file.get(file_id)
+        # Read by header name, not position, so column reorders here don't
+        # silently shift the spatial properties.
+        rec = dict(zip(headers, row, strict=True))
+        site = site_by_file.get(rec["file_id"])
         if site is None:
             continue
         observations_features.append(
@@ -591,23 +624,23 @@ def build_spatial_layers(
                 "lon": site.longitude,
                 "lat": site.latitude,
                 "properties": {
-                    "image_uuid": row[0],
-                    "filename": row[1],
-                    "datetime": row[2],
-                    "camera_name": row[3],
-                    "species": row[6],
-                    "scientific_name": row[7],
-                    "count": row[8],
-                    "max_confidence": row[12],
-                    "classification_method": row[13],
-                    "observation_comments": row[14],
-                    "is_verified": row[15],
-                    "image_verified": row[16],
+                    "file_id": rec["file_id"],
+                    "relative_path": rec["relative_path"],
+                    "datetime": rec["datetime"],
+                    "site_name": rec["site_name"],
+                    "event_id": rec["event_id"],
+                    "detection_category": rec["detection_category"],
+                    "detection_confidence": rec["detection_confidence"],
+                    "classification_label": rec["classification_label"],
+                    "classification_confidence": rec["classification_confidence"],
+                    "is_verified": rec["is_verified"],
                 },
             }
         )
 
-    # Species summary: aggregate observations per (site, species) excluding blanks.
+    # Species summary: aggregate observations per (site, species). Only
+    # rows with a species classification count; person, vehicle,
+    # unclassified animal, and blank rows have an empty classification.
     summary_bucket: dict[tuple[str, str], dict[str, Any]] = {}
     trap_days_by_site: dict[str, int] = defaultdict(int)
     site_coords: dict[str, tuple[float, float]] = {}
@@ -619,26 +652,23 @@ def build_spatial_layers(
 
     for feat in observations_features:
         props = feat["properties"]
-        species = props["species"]
-        if species == "blank":
+        species = props["classification_label"]
+        if not species:
             continue
-        site = site_by_file.get(props["image_uuid"])
+        site = site_by_file.get(props["file_id"])
         if site is None:
             continue
         key = (site.id, species)
         bucket = summary_bucket.setdefault(
             key,
             {
-                "camera_name": site.name,
+                "site_name": site.name,
                 "species": species,
-                "scientific_name": props["scientific_name"],
                 "total_count": 0,
             },
         )
-        try:
-            bucket["total_count"] += int(props["count"])
-        except (TypeError, ValueError):
-            pass
+        # One flat row per detection now, so each row is one count.
+        bucket["total_count"] += 1
 
     species_summary_features: list[dict[str, Any]] = []
     for (site_id, _species), data in summary_bucket.items():
@@ -650,9 +680,8 @@ def build_spatial_layers(
                 "lon": lon,
                 "lat": lat,
                 "properties": {
-                    "camera_name": data["camera_name"],
+                    "site_name": data["site_name"],
                     "species": data["species"],
-                    "scientific_name": data["scientific_name"],
                     "total_count": data["total_count"],
                     "detection_rate_per_100": round(rate, 2),
                 },

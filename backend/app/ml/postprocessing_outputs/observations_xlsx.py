@@ -1,9 +1,8 @@
 """Observations XLSX — Excel-native flat observation table.
 
-Same row schema as ``observations_csv.py``, including the folder-run
-``relative_path`` column inserted after ``filename`` (populated from
-``OutputContext.resolved_paths`` when separation ran). Wraps the
-existing ``export_crud.build_observation_rows`` +
+Same row schema as ``observations_csv.py`` (including the canonical
+``relative_path`` column). Wraps the existing
+``export_crud.build_observation_rows`` +
 ``export_formats.serialize_xlsx`` pipeline.
 
 Writes ``<output_root>/observations.xlsx``.
@@ -21,7 +20,6 @@ from app.core.logging_config import get_logger
 from app.models import Project
 
 from ._output_context import OutputContext
-from .observations_csv import _enrich_with_relative_path
 
 logger = get_logger(__name__)
 
@@ -67,7 +65,6 @@ def write_observations_xlsx(
         db, project, extra_excluded=excluded_species
     )
     headers, rows = export_crud.build_observation_rows(db, project, scoped)
-    headers, rows = _enrich_with_relative_path(headers, rows, ctx)
     payload = export_formats.serialize_xlsx(
         headers, rows, sheet_title="Observations"
     )
