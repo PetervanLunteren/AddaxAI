@@ -6,17 +6,15 @@
 - [x] make the edit / verify step not have tabs, but do this (observation / media / events) in a dropdown in the filter bar under View as or something like that. So that its clear that the user is seeing the same dataset under the different groupings. 
 - [x] add view options to the events and media views too. So S / M / L to increase the number of columns one can scroll through. 
 - [x] on the save stap, default to only outputting CSV and JSON. Leave the rest non selected. 
-- [ ] Nest blurring and visualisations under separation. Or better yet, rethink the all the options. Now we have 3 options (separate, blur, visualise) that kind of are dependent on each other. They all do something with the source data, they should somehow be grouped together. Agree? And then we have the export results option, with options to CSV, XLSX, and JSON, which are doing stuff with the results and not the source data. 
+- [x] Nest blurring and visualisations under separation. Or better yet, rethink the all the options. Now we have 3 options (separate, blur, visualise) that kind of are dependent on each other. They all do something with the source data, they should somehow be grouped together. Agree? And then we have the export results option, with options to CSV, XLSX, and JSON, which are doing stuff with the results and not the source data. 
 - [ ] make sure the JSON takes all the relevant info form the folder run DB and puts it into the JSON, following the format of MegaDetector. See how the projects page writes its JSONs, follow that format exactly. Including the classification_descxriptions with the taxonomy information (just like results mode does it). 
 - [ ] Save outpout settings to localStorage on buttoin click too. Next time the user has the same settings for saving as last time. 
 - [ ] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
-- [ ] look at the JSON and CSVB outputs more closely. Are there any flags, or information we should add? What is helpful? Probabaly the taxonomic infomartaion, right? SO the user can sort and use that ins EXCEL or R. anoy other information? DO we ant a observations.csv, files.csv, and events.csv? Or just one and let the user extract it for himself? Because all the info is in observations.csv, right? Or are there also infomrations we cannot sotre in observations.csv and need their own csv? Lets rethink the other exports too, like the geospatial ones etc. Leave Captrap DP as is, as it is a fixed standard. 
-
-you say "One row per observation" in the UI for this export, but there is also a count. Why? It seems to me that it is more of a one row per file CSV... ? 
-
 - [ ] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 
-
+ are there now cls we built for the CSV that are not in the JSON? As long as we keep to the megadetector format fields, we can add custom fields. I believe its good to stpore at
+  least the verified flags in the JSON too, agree? It should also refelct the folder run DB at that point, so all veriofied changed, relabeled etc predictions so be in there, just
+  like the CSV. It should basically be hte CSV but then in MegaDetector format with curtom fields.  
 
 ## Priority 1
 - [ ] Add different modes at the home screen.

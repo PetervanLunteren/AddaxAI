@@ -12,9 +12,12 @@ copy. To produce a recognition file for the user we serialise the
 current DB state back into the same shape. This is slightly lossy
 on the classifications list — the DB only stores the top-1
 classification per detection — but the shape is identical:
-`detection_categories`, `classification_categories`, the
-`info.addaxai` block, per-image detections with `category`, `conf`,
-`bbox`, and optional `classifications` and `frame_number` keys.
+`detection_categories`, `classification_categories`,
+`classification_category_descriptions` (the 7-token taxonomy strings,
+rebuilt from `label_taxonomy` exactly as results mode emits them),
+the `info.addaxai` block, and per-image detections with `category`,
+`conf`, `bbox`, and optional `classifications` and `frame_number`
+keys.
 
 File paths in the output are relative to the source folder (the
 deployment's `folder_path`). This matches how the Timelapse runner
@@ -37,7 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.models import Deployment, Detection, File, Project
+from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 
 logger = get_logger(__name__)
 
@@ -111,6 +114,36 @@ def _bbox_for_detection(det: Detection) -> list[float] | None:
     ]
 
 
+def _taxonomy_description(label: str, tax: LabelTaxonomy | None) -> str | None:
+    """Build the 7-token classification description for a label.
+
+    Matches results mode exactly (see
+    ``json_utils.build_classification_category_descriptions``):
+    ``name;class;order;family;genus;species;name`` (all lowercase, with an
+    empty token for any missing rank). MegaDetector's smoothing reads token
+    0 as an identifier, tokens 1-5 as the taxonomy, and token 6 as the
+    display name.
+
+    Returns ``None`` when there's no taxonomy to describe (a custom or
+    unknown label with no ranks), so that category id is omitted entirely
+    -- exactly as results mode omits labels absent from the model taxonomy.
+    """
+    if tax is None:
+        return None
+    ranks = [
+        tax.taxon_class,
+        tax.taxon_order,
+        tax.taxon_family,
+        tax.taxon_genus,
+        tax.taxon_species,
+    ]
+    if not any(r for r in ranks):
+        return None
+    name = label.strip().lower()
+    tokens = [name, *[(r or "").strip().lower() for r in ranks], name]
+    return ";".join(tokens)
+
+
 def write_recognition_json(
     db: Session,
     project_id: str,
@@ -163,9 +196,12 @@ def write_recognition_json(
     ).scalars().all()
 
     # Build a stable label -> id map as we walk detections, mirroring
-    # the unified mapping merge_json_files produces.
+    # the unified mapping merge_json_files produces. Alongside it, remember
+    # each label's taxonomy row so we can rebuild the canonical
+    # classification_category_descriptions (the 7-token taxonomy strings).
     label_to_id: dict[str, str] = {}
     next_label_id = 1
+    taxonomy_id_by_label: dict[str, str] = {}
 
     images_out: list[dict] = []
     detection_total = 0
@@ -217,6 +253,8 @@ def write_recognition_json(
                 if det.label not in label_to_id:
                     label_to_id[det.label] = str(next_label_id)
                     next_label_id += 1
+                if det.label_taxonomy_id and det.label not in taxonomy_id_by_label:
+                    taxonomy_id_by_label[det.label] = det.label_taxonomy_id
                 det_entry["classifications"] = [
                     [
                         label_to_id[det.label],
@@ -242,25 +280,50 @@ def write_recognition_json(
         cid: name for name, cid in label_to_id.items()
     }
 
+    # Rebuild classification_category_descriptions from label_taxonomy, the
+    # same 7-token taxonomy strings results mode emits. Custom / unknown
+    # labels with no ranks get no entry, exactly as results mode omits
+    # labels missing from the model taxonomy.
+    tax_ids = set(taxonomy_id_by_label.values())
+    tax_by_id: dict[str, LabelTaxonomy] = {}
+    if tax_ids:
+        tax_by_id = {
+            t.id: t
+            for t in db.execute(
+                select(LabelTaxonomy).where(LabelTaxonomy.id.in_(tax_ids))
+            ).scalars().all()
+        }
+    classification_category_descriptions: dict[str, str] = {}
+    for label, cid in label_to_id.items():
+        tax = tax_by_id.get(taxonomy_id_by_label.get(label, ""))
+        desc = _taxonomy_description(label, tax)
+        if desc is not None:
+            classification_category_descriptions[cid] = desc
+
     output_payload: dict = {
         "images": images_out,
         "detection_categories": dict(_DETECTION_CATEGORIES),
         "classification_categories": classification_categories,
-        "info": {
-            "addaxai": {
-                "version": "folder-run-export",
-                "deployment_id": deployment_id,
-                "classification_completion_time": (
-                    datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-                ),
-                "detection_model": project.detection_model_id,
-                **(
-                    {"classification_model": project.classification_model_id}
-                    if project.classification_model_id
-                    else {}
-                ),
-            }
-        },
+    }
+    # Mirror results mode: only present when there's taxonomy to describe.
+    if classification_category_descriptions:
+        output_payload["classification_category_descriptions"] = (
+            classification_category_descriptions
+        )
+    output_payload["info"] = {
+        "addaxai": {
+            "version": "folder-run-export",
+            "deployment_id": deployment_id,
+            "classification_completion_time": (
+                datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+            ),
+            "detection_model": project.detection_model_id,
+            **(
+                {"classification_model": project.classification_model_id}
+                if project.classification_model_id
+                else {}
+            ),
+        }
     }
 
     output_path = target_dir / RECOGNITION_JSON_FILENAME

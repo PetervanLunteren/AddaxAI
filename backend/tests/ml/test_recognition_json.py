@@ -6,6 +6,7 @@ what existing downstream tooling expects.
 """
 
 import json
+import uuid
 from pathlib import Path
 
 import pytest
@@ -14,12 +15,28 @@ from app.ml.postprocessing_outputs.recognition_json import (
     RECOGNITION_JSON_FILENAME,
     write_recognition_json,
 )
+from app.models import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
     make_file,
     make_project,
 )
+
+
+def _make_taxonomy(db, **kw) -> LabelTaxonomy:
+    defaults = dict(
+        id=str(uuid.uuid4()),
+        classification_model_id="TEST-MODEL",
+        name="fox",
+        display_name="Vulpes vulpes",
+        level="species",
+    )
+    defaults.update(kw)
+    tax = LabelTaxonomy(**defaults)
+    db.add(tax)
+    db.flush()
+    return tax
 
 
 def _load_json(target_dir: Path) -> dict:
@@ -181,6 +198,85 @@ def test_classification_categories_map_built_from_labels(db, tmp_path):
     assert set(classes.keys()) == {"1", "2"}
 
 
+def test_classification_category_descriptions_carry_taxonomy(db, tmp_path):
+    """The 7-token taxonomy strings are rebuilt from label_taxonomy, keyed
+    by the same classification category id, matching results mode."""
+    project = make_project(db, name="rj-tax")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src"),
+    )
+    tax = _make_taxonomy(
+        db,
+        name="fox",
+        taxon_class="Mammalia",
+        taxon_order="Carnivora",
+        taxon_family="Canidae",
+        taxon_genus="Vulpes",
+        taxon_species="vulpes",
+    )
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=file.id,
+        category="animal",
+        confidence=0.9,
+        label="fox",
+        label_confidence=0.8,
+        label_taxonomy_id=tax.id,
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.3, bbox_height=0.3,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    classes = payload["classification_categories"]
+    fox_id = next(cid for cid, name in classes.items() if name == "fox")
+    descriptions = payload["classification_category_descriptions"]
+    # 7-token, all lowercase: name;class;order;family;genus;species;name
+    assert descriptions[fox_id] == (
+        "fox;mammalia;carnivora;canidae;vulpes;vulpes;fox"
+    )
+
+
+def test_custom_label_without_ranks_has_no_description(db, tmp_path):
+    """A label whose taxonomy carries no ranks (a user-invented label) gets
+    no description entry, and the key is omitted when nothing has taxonomy."""
+    project = make_project(db, name="rj-custom")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src"),
+    )
+    tax = _make_taxonomy(db, name="fake-bird", level="unknown", is_custom=True)
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=file.id,
+        category="animal",
+        confidence=0.9,
+        label="fake-bird",
+        label_confidence=1.0,
+        label_taxonomy_id=tax.id,
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.3, bbox_height=0.3,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    assert "fake-bird" in payload["classification_categories"].values()
+    assert "classification_category_descriptions" not in payload
+
+
 def test_detection_without_label_omits_classifications(db, tmp_path):
     project = make_project(db, name="rj-no-cls")
     dep = make_deployment(
@@ -212,6 +308,38 @@ def test_detection_without_label_omits_classifications(db, tmp_path):
 
     det = payload["images"][0]["detections"][0]
     assert "classifications" not in det
+
+
+def test_verified_flag_per_detection(db, tmp_path):
+    """Each detection carries its human-verified state, so the folder JSON
+    captures review status from the DB (not present in raw results-mode
+    output, but a deliberate addaxai extension)."""
+    project = make_project(db, name="rj-verified")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src"),
+    )
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.95,
+        verified=True, bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.90,
+        verified=False, bbox_x=0.5, bbox_y=0.5, bbox_width=0.2, bbox_height=0.2,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    dets = payload["images"][0]["detections"]
+    # Ordered by confidence desc: the 0.95 (verified) detection comes first.
+    assert [d["verified"] for d in dets] == [True, False]
 
 
 def test_video_frame_number_preserved(db, tmp_path):

@@ -241,8 +241,25 @@ def test_export_observations_project_not_found(client):
 
 def test_export_spatial_geojson(client, db):
     project, site, deployment = _build_simple_project(db)
+    taxonomy = LabelTaxonomy(
+        id=str(uuid.uuid4()),
+        classification_model_id="TEST-MODEL",
+        name="fox",
+        display_name="Vulpes vulpes",
+        level="species",
+        taxon_class="mammalia",
+        taxon_order="carnivora",
+        taxon_family="canidae",
+        taxon_genus="vulpes",
+        taxon_species="vulpes",
+    )
+    db.add(taxonomy)
+    db.flush()
     f = make_file(db, deployment_id=deployment.id)
-    make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="fox")
+    make_detection(
+        db, file_id=f.id, category="animal", confidence=0.9,
+        label="fox", label_taxonomy_id=taxonomy.id,
+    )
     db.commit()
 
     resp = client.get(f"/api/projects/{project.id}/export/spatial?format=geojson")
@@ -251,8 +268,20 @@ def test_export_spatial_geojson(client, db):
     payload = json.loads(resp.content)
     assert payload["type"] == "FeatureCollection"
 
+    # Two genuinely spatial layers only; the per-detection points are gone.
     layers = {feat["properties"]["layer"] for feat in payload["features"]}
-    assert layers == {"deployments", "observations", "species_summary"}
+    assert layers == {"deployments", "species_summary"}
+
+    summary = next(
+        feat for feat in payload["features"]
+        if feat["properties"]["layer"] == "species_summary"
+    )
+    props = summary["properties"]
+    assert props["classification_label"] == "fox"
+    assert props["scientific_name"] == "Vulpes vulpes"
+    assert props["taxon_genus"] == "vulpes"
+    assert props["taxon_species"] == "vulpes"
+    assert props["total_count"] == 1
 
     for feat in payload["features"]:
         assert feat["geometry"]["type"] == "Point"
@@ -275,23 +304,38 @@ def test_export_spatial_shapefile_zip(client, db):
         names = set(zf.namelist())
     expected = {
         "deployments.shp", "deployments.shx", "deployments.dbf", "deployments.prj",
-        "observations.shp", "observations.shx", "observations.dbf", "observations.prj",
         "species_summary.shp", "species_summary.shx", "species_summary.dbf",
         "species_summary.prj",
     }
     assert expected.issubset(names)
+    assert not any(n.startswith("observations.") for n in names)
 
 
 def test_export_spatial_gpkg(client, db):
     project, _site, deployment = _build_simple_project(db)
+    taxonomy = LabelTaxonomy(
+        id=str(uuid.uuid4()),
+        classification_model_id="TEST-MODEL",
+        name="fox",
+        display_name="Vulpes vulpes",
+        level="species",
+        taxon_genus="vulpes",
+        taxon_species="vulpes",
+    )
+    db.add(taxonomy)
+    db.flush()
     f = make_file(db, deployment_id=deployment.id)
-    make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="fox")
+    make_detection(
+        db, file_id=f.id, category="animal", confidence=0.9,
+        label="fox", label_taxonomy_id=taxonomy.id,
+    )
     db.commit()
 
     resp = client.get(f"/api/projects/{project.id}/export/spatial?format=gpkg")
     assert resp.status_code == 200
 
-    # Round-trip through sqlite3 to confirm the three feature tables exist.
+    # Round-trip through sqlite3 to confirm the feature tables and that the
+    # species_summary attributes are actually populated (not silently blank).
     with tempfile.NamedTemporaryFile(suffix=".gpkg", delete=False) as tmp:
         tmp.write(resp.content)
         tmp_path = tmp.name
@@ -303,12 +347,17 @@ def test_export_spatial_gpkg(client, db):
                 "SELECT table_name FROM gpkg_contents ORDER BY table_name"
             )
         }
+        row = conn.execute(
+            "SELECT classification_label, scientific_name, taxon_species, "
+            "total_count FROM species_summary"
+        ).fetchone()
         conn.close()
     finally:
         import os
 
         os.unlink(tmp_path)
-    assert tables == {"deployments", "observations", "species_summary"}
+    assert tables == {"deployments", "species_summary"}
+    assert row == ("fox", "Vulpes vulpes", "vulpes", 1)
 
 
 # ---------------------------------------------------------------------------

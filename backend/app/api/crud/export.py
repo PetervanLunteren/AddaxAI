@@ -532,14 +532,18 @@ def _blank_detection_cells(file_obj: File) -> list[Any]:
 def build_spatial_layers(
     db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
-    """Build the three spatial layers: deployments, observations, species_summary.
+    """Build the two spatial layers: deployments and species_summary.
+
+    Both are genuinely spatial: one point per camera, and one point per
+    camera x species. A per-detection "observations" layer was dropped on
+    purpose -- every detection sits on its camera's exact coordinate, so
+    it carried no spatial resolution beyond the camera, and the flat CSV
+    already exposes latitude/longitude per row for direct GIS import.
 
     Returns ``(layers, skipped_deployment_ids)``. The skipped list
     contains deployments that were excluded from the GeoJSON /
     Shapefile / GeoPackage because they have no site coordinates.
     """
-    headers, flat_rows = build_observation_rows(db, project, scoped_rows)
-
     # Build a deployment-level detection count map from the scoped rows so
     # we don't re-query. Also build trap-days per deployment.
     det_count_by_dep: dict[str, int] = defaultdict(int)
@@ -603,45 +607,11 @@ def build_spatial_layers(
             }
         )
 
-    # Observations layer: one feature per flat row (blank rows included so
-    # downstream consumers know "this camera had a survey visit").
-    # Site coordinates come from the first scoped row touching that file.
-    site_by_file: dict[str, Site] = {}
-    for row in scoped_rows:
-        file_obj, _detection, _deployment, site, _taxonomy = row
-        site_by_file.setdefault(file_obj.id, site)
-
-    observations_features: list[dict[str, Any]] = []
-    for row in flat_rows:
-        # Read by header name, not position, so column reorders here don't
-        # silently shift the spatial properties.
-        rec = dict(zip(headers, row, strict=True))
-        site = site_by_file.get(rec["file_id"])
-        if site is None:
-            continue
-        observations_features.append(
-            {
-                "lon": site.longitude,
-                "lat": site.latitude,
-                "properties": {
-                    "file_id": rec["file_id"],
-                    "relative_path": rec["relative_path"],
-                    "datetime": rec["datetime"],
-                    "site_name": rec["site_name"],
-                    "event_id": rec["event_id"],
-                    "detection_category": rec["detection_category"],
-                    "detection_confidence": rec["detection_confidence"],
-                    "classification_label": rec["classification_label"],
-                    "classification_confidence": rec["classification_confidence"],
-                    "is_verified": rec["is_verified"],
-                },
-            }
-        )
-
-    # Species summary: aggregate observations per (site, species). Only
-    # rows with a species classification count; person, vehicle,
-    # unclassified animal, and blank rows have an empty classification.
-    summary_bucket: dict[tuple[str, str], dict[str, Any]] = {}
+    # Species summary: one point per (site, species). Aggregates classified
+    # detections only -- person, vehicle, unclassified, and blank rows have
+    # no label and don't belong on a species map. Carries the common label,
+    # the latin name, and the taxon ranks for readable map labelling and
+    # taxonomic filtering in GIS.
     trap_days_by_site: dict[str, int] = defaultdict(int)
     site_coords: dict[str, tuple[float, float]] = {}
     for deployment, site in all_deployments:
@@ -650,38 +620,48 @@ def build_spatial_layers(
         trap_days_by_site[site.id] += trap_days_by_dep.get(deployment.id, 0)
         site_coords[site.id] = (site.longitude, site.latitude)
 
-    for feat in observations_features:
-        props = feat["properties"]
-        species = props["classification_label"]
-        if not species:
+    summary_bucket: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in scoped_rows:
+        _file_obj, detection, _deployment, site, taxonomy = row
+        if detection is None or site is None:
             continue
-        site = site_by_file.get(props["file_id"])
-        if site is None:
+        label = detection.label
+        if not label:
             continue
-        key = (site.id, species)
-        bucket = summary_bucket.setdefault(
-            key,
-            {
+        key = (site.id, label)
+        bucket = summary_bucket.get(key)
+        if bucket is None:
+            bucket = {
                 "site_name": site.name,
-                "species": species,
+                "classification_label": label,
+                "scientific_name": _scientific_name(detection, taxonomy),
+                "taxon_ranks": _taxon_ranks(taxonomy),
                 "total_count": 0,
-            },
-        )
-        # One flat row per detection now, so each row is one count.
+            }
+            summary_bucket[key] = bucket
         bucket["total_count"] += 1
 
     species_summary_features: list[dict[str, Any]] = []
-    for (site_id, _species), data in summary_bucket.items():
+    for (site_id, _label), data in summary_bucket.items():
+        if site_id not in site_coords:
+            continue
         trap_days = trap_days_by_site.get(site_id, 0)
         rate = (data["total_count"] / trap_days * 100) if trap_days > 0 else 0.0
         lon, lat = site_coords[site_id]
+        ranks = data["taxon_ranks"]
         species_summary_features.append(
             {
                 "lon": lon,
                 "lat": lat,
                 "properties": {
                     "site_name": data["site_name"],
-                    "species": data["species"],
+                    "classification_label": data["classification_label"],
+                    "scientific_name": data["scientific_name"],
+                    "taxon_class": ranks[0],
+                    "taxon_order": ranks[1],
+                    "taxon_family": ranks[2],
+                    "taxon_genus": ranks[3],
+                    "taxon_species": ranks[4],
                     "total_count": data["total_count"],
                     "detection_rate_per_100": round(rate, 2),
                 },
@@ -691,7 +671,6 @@ def build_spatial_layers(
     return (
         {
             "deployments": deployments_features,
-            "observations": observations_features,
             "species_summary": species_summary_features,
         },
         skipped_deployment_ids,
