@@ -19,6 +19,11 @@ the `info.addaxai` block, and per-image detections with `category`,
 `conf`, `bbox`, and optional `classifications` and `frame_number`
 keys.
 
+The `info.addaxai` block additionally carries the app version and a
+`settings` sub-dict (detection threshold, smoothing, rollup, geofence,
+independence interval, video fps) so the run is reproducible from the
+JSON alone.
+
 File paths in the output are relative to the source folder (the
 deployment's `folder_path`). This matches how the Timelapse runner
 writes them and keeps the file portable: copy or share the source
@@ -39,6 +44,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 
@@ -186,7 +192,6 @@ def write_recognition_json(
     base_folder = (
         deployment_row.folder_path if deployment_row is not None else None
     )
-    deployment_id = deployment_row.id if deployment_row is not None else ""
 
     files = db.execute(
         select(File)
@@ -312,8 +317,8 @@ def write_recognition_json(
         )
     output_payload["info"] = {
         "addaxai": {
-            "version": "folder-run-export",
-            "deployment_id": deployment_id,
+            "version": APP_VERSION,
+            "export_source": "folder-run",
             "classification_completion_time": (
                 datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
             ),
@@ -323,6 +328,25 @@ def write_recognition_json(
                 if project.classification_model_id
                 else {}
             ),
+            **(
+                {"embedding_model": project.embedding_model_id}
+                if project.embedding_model_id
+                else {}
+            ),
+            # The result-affecting settings that produced this export, so a
+            # run is reproducible from the JSON alone. These are the
+            # project's current settings, which for a folder run are the
+            # settings that produced the outputs.
+            "settings": {
+                "detection_threshold": project.detection_threshold,
+                "country_code": project.country_code,
+                "state_code": project.state_code,
+                "event_smoothing": project.event_smoothing,
+                "smoothing_strength": project.smoothing_strength,
+                "taxonomic_rollup": project.taxonomic_rollup,
+                "independence_interval_seconds": project.independence_interval,
+                "video_fps": project.video_fps,
+            },
         }
     }
 

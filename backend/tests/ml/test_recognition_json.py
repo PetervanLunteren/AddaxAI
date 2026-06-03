@@ -91,8 +91,39 @@ def test_output_has_canonical_top_level_keys(db, tmp_path):
     assert "addaxai" in payload["info"]
     info = payload["info"]["addaxai"]
     assert info["detection_model"] == project.detection_model_id
-    assert info["deployment_id"] == dep.id
     assert "classification_completion_time" in info
+
+
+def test_info_block_carries_reproducibility_settings(db, tmp_path):
+    """info.addaxai records the app version and the result-affecting run
+    settings, so the run is reproducible from the JSON alone."""
+    project = make_project(
+        db,
+        name="rj-repro",
+        detection_threshold=0.31,
+        taxonomic_rollup=True,
+        country_code="NLD",
+    )
+    make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "src"))
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    addaxai = payload["info"]["addaxai"]
+    from app import __version__ as APP_VERSION
+
+    assert addaxai["version"] == APP_VERSION
+    assert addaxai["export_source"] == "folder-run"
+    # deployment_id and the trimmed settings are intentionally absent.
+    assert "deployment_id" not in addaxai
+    settings = addaxai["settings"]
+    assert settings["detection_threshold"] == pytest.approx(0.31)
+    assert settings["taxonomic_rollup"] is True
+    assert settings["country_code"] == "NLD"
+    assert "taxonomic_rollup_threshold" not in settings
+    assert "timezone" not in settings
+    assert "excluded_classes" not in settings
 
 
 def test_detection_serialisation_matches_canonical_shape(db, tmp_path):
