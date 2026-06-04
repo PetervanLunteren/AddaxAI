@@ -83,21 +83,9 @@ interface FolderSelectorProps {
   hideLabel?: boolean;
   /** Hide the scan result panel (file counts, GPS, dates, adjust-dates link). */
   hideScanResult?: boolean;
-  /** Hide the GPS pin in the scan result. Used in Timelapse integration where
-   *  there is no Site / Map context that would consume it. */
-  hideGps?: boolean;
-  /** Hide the "DateTime metadata not found" red alert. Used in
-   *  Timelapse integration where the runner does not require EXIF
-   *  DateTimeOriginal — files without timestamps are simply absent
-   *  from the sequence-level smoother, but detection and
-   *  classification still run on them. The main app needs the warning
-   *  because its DB load step (`json_pipeline.load_json_to_database`)
-   *  raises MissingTimestampError on missing timestamps. */
-  hideDatetimeWarning?: boolean;
   /** Render scan results as a single muted dot-separated line instead
-   *  of the tall teal card. Used in the Timelapse window where vertical
-   *  space is at a premium and GPS / adjust-dates / missing-datetime are
-   *  all hidden anyway. */
+   *  of the tall teal card, for places where vertical space is at a
+   *  premium. */
   compactScanResult?: boolean;
   /** Skip the folder scan entirely. For picking a *destination* folder,
    *  which may not exist yet and whose contents are irrelevant. Pair
@@ -113,8 +101,6 @@ export function FolderSelector({
   onAdjustDates,
   hideLabel = false,
   hideScanResult = false,
-  hideGps = false,
-  hideDatetimeWarning = false,
   compactScanResult = false,
   noScan = false,
 }: FolderSelectorProps) {
@@ -288,33 +274,29 @@ export function FolderSelector({
                   </div>
                 )}
 
-                {/* GPS — show "found" with coordinates in tooltip, or "not found".
-                    Suppressed in Timelapse integration where the app has no Site
-                    or Map context that would consume the coordinates. */}
-                {!hideGps && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-1.5 text-sm text-[#0f6064] cursor-default">
-                        {scanResult.gps_location ? (
-                          <>
-                            <MapPin className="h-4 w-4" />
-                            <span>GPS found</span>
-                          </>
-                        ) : (
-                          <>
-                            <MapPinOff className="h-4 w-4" />
-                            <span>No GPS metadata</span>
-                          </>
-                        )}
-                      </div>
-                    </TooltipTrigger>
-                    {scanResult.gps_location && (
-                      <TooltipContent>
-                        {scanResult.gps_location.latitude.toFixed(6)}, {scanResult.gps_location.longitude.toFixed(6)}
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                )}
+                {/* GPS — show "found" with coordinates in tooltip, or "not found". */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 text-sm text-[#0f6064] cursor-default">
+                      {scanResult.gps_location ? (
+                        <>
+                          <MapPin className="h-4 w-4" />
+                          <span>GPS found</span>
+                        </>
+                      ) : (
+                        <>
+                          <MapPinOff className="h-4 w-4" />
+                          <span>No GPS metadata</span>
+                        </>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  {scanResult.gps_location && (
+                    <TooltipContent>
+                      {scanResult.gps_location.latitude.toFixed(6)}, {scanResult.gps_location.longitude.toFixed(6)}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
 
                 {/* Date range — unambiguous format (e.g. "7 Feb 2016") */}
                 <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
@@ -366,9 +348,8 @@ export function FolderSelector({
 
               {/* Some files lack a capture date. Non-blocking: the
                   backend still detects and classifies them; they just
-                  drop out of time-based stats. Suppressed where a caller
-                  opts out via hideDatetimeWarning. */}
-              {scanResult.missing_datetime && !hideDatetimeWarning && (
+                  drop out of time-based stats. */}
+              {scanResult.missing_datetime && (
                 <Alert className="border-amber-300 bg-amber-50 text-amber-900">
                   <AlertTriangle className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-sm">
@@ -420,11 +401,10 @@ export function FolderSelector({
 }
 
 /**
- * Single-row teal scan summary for the Timelapse window: same palette as
- * the full main-app panel, but compressed into one horizontal pill so it
- * costs much less vertical space. Skips counts that are zero. Falls back
- * to a "no datetime metadata" cell when EXIF timestamps are absent
- * (Timelapse mode allows this).
+ * Single-row teal scan summary (the `compactScanResult` mode): same
+ * palette as the full panel, but compressed into one horizontal pill so
+ * it costs much less vertical space. Skips counts that are zero. Falls
+ * back to a "no datetime metadata" cell when EXIF timestamps are absent.
  */
 function CompactScanLine({
   imageCount,

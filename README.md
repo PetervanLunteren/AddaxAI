@@ -141,13 +141,15 @@ tail -f ~/AddaxAI/logs/backend.log
 
 ## Timelapse Analyser integration (Windows only)
 
-AddaxAI exposes a Timelapse integration that writes a `recognition.json`
-next to a chosen folder for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
+AddaxAI produces a `recognition.json` for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
+Run a folder analysis ("Analyse a folder") and keep the recognition file
+enabled in the save step; it is written to the run's output folder.
 
-Launch options:
+Timelapse launches AddaxAI on a folder with:
 
-- Inside AddaxAI: hamburger menu > Timelapse integration.
-- From a shell or Timelapse Analyser: `AddaxAI.exe --timelapse "C:\path\to\folder"`.
+- `AddaxAI.exe --timelapse "C:\path\to\folder"`
+
+This opens "Analyse a folder" with the folder pre-filled, ready to run.
 
 The Windows installer drops a compatibility shim at
 `%ProgramFiles%\AddaxAI_files\AddaxAI\open.bat`. The legacy invocation

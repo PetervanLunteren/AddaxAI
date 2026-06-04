@@ -11,8 +11,8 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * Synchronous OS identifier ('win32', 'darwin', 'linux'). Used by the
-   * renderer to gate Windows-only features (e.g. Timelapse integration) without
-   * an IPC round-trip on every render. Set at preload time, never changes.
+   * renderer to gate platform-specific behavior without an IPC round-trip
+   * on every render. Set at preload time, never changes.
    */
   platform: process.platform,
 
@@ -76,15 +76,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   getVersion: async (): Promise<string> => {
     return await ipcRenderer.invoke('app:getVersion');
-  },
-
-  /**
-   * Open the Timelapse Analyser integration in a separate BrowserWindow.
-   * `prefilledPath` is optional; when present the form starts with that
-   * folder selected (used by the `--timelapse <folder>` CLI launcher).
-   */
-  openTimelapseWindow: async (prefilledPath?: string): Promise<void> => {
-    return await ipcRenderer.invoke('window:openTimelapse', prefilledPath);
   },
 
   /**

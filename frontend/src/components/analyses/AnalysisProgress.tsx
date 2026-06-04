@@ -4,14 +4,14 @@
  * Single source of truth for the visual breakdown of a running ML
  * pipeline (video detection, video classification, image detection,
  * image classification, embedding). Driven by the live data the
- * `useTaskProgress` hook returns; agnostic about whether the run is a
- * main-app deployment queue (RunQueueModal) or a one-shot Timelapse
- * run (TimelapseModePage).
+ * `useTaskProgress` hook returns; agnostic about which run drives it
+ * (research-projects deployment queue or a folder run), both via
+ * RunQueueModal.
  *
  * Why this exists as a shared file: prior versions had RunQueueModal's
- * detailed PhaseRow / phase-order logic copied or simplified for the
- * Timelapse running screen. That meant a tweak to the detection-progress
- * row had to be made in two places. Both call sites now render the same
+ * detailed PhaseRow / phase-order logic copied or simplified for other
+ * running screens. That meant a tweak to the detection-progress row had
+ * to be made in two places. Call sites now render the same
  * <AnalysisProgress /> and inherit fixes for free.
  */
 
@@ -218,7 +218,7 @@ interface AnalysisProgressProps {
   message?: string;
   /**
    * Hide the "Deployment X of N" badge. Set this for one-shot runs
-   * (Timelapse integration) where there is no concept of multiple deployments.
+   * where there is no concept of multiple deployments.
    */
   hideDeploymentHeader?: boolean;
 }

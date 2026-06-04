@@ -8,7 +8,7 @@
  *
  * Single source of truth used by:
  * - SettingsPage (project's persistent batch size override)
- * - TimelapseModePage (one-shot batch size override)
+ * - FolderRunModelStep (one-shot batch size override)
  *
  * The form data type is generic so the same component fits any form
  * that has a `number | null` field at the bound name.

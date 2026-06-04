@@ -50,9 +50,9 @@ def select_best_frames_streaming(
 ) -> None:
     """
     Pick the best frame for every video listed in the detection JSON and
-    write its JPEG, by reading the source videos directly. Used by both
-    the deployment worker and the Timelapse runner when no classifier is
-    configured (or when classification was skipped).
+    write its JPEG, by reading the source videos directly. Used by the
+    deployment worker when no classifier is configured (or when
+    classification was skipped).
 
     Updates the JSON file in-place with `best_frame_number` on each
     non-failed video entry. Writes one JPEG per video at

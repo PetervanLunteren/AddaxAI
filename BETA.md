@@ -21,12 +21,9 @@ Run the setup `.exe` and follow the installer.
 
 ## Timelapse integration
 
-Windows only, because Timelapse itself is also Windows only. Install AddaxAI first using the steps above, then open the AddaxAI-Timelapse integration window:
+Windows only, because Timelapse itself is also Windows only. Install AddaxAI first using the steps above. In Timelapse, choose AddaxAI from the menu `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder...`. AddaxAI opens "Analyse a folder" with that folder filled in; run it and keep the recognition file enabled in the save step.
 
-- From AddaxAI: hamburger menu in home page > `Timelapse integration`.
-- From Timelapse: choose AddaxAI from the menu `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder...`.
-
-When the run finishes, AddaxAI writes `recognition.json` next to the chosen folder. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
+When the run finishes, AddaxAI writes `recognition.json` to the run's output folder. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
 
 ## What I would like to learn from you
 
@@ -67,7 +64,6 @@ Click the bug icon in the top-right page header (tooltip says "Export diagnostic
 Also share these if they exist next to `logs/`:
 
 - `crash-dumps/` (zip the full folder)
-- `timelapse-runs/<timestamp>__<job_id>/` (Timelapse bugs only, share every `.json` file inside the run subfolder, skip the `video_frames/` subfolder, it can be many GB)
 
 ## What is not built yet
 

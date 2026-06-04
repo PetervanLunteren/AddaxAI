@@ -133,8 +133,8 @@ function timestampSuffix(): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-// PhaseRow + per-phase computation moved to ./AnalysisProgress.tsx and
-// shared with TimelapseModePage's running stage.
+// PhaseRow + per-phase computation moved to ./AnalysisProgress.tsx,
+// shared across every run-progress screen.
 
 interface LogTableProps {
   rows: LogRow[];

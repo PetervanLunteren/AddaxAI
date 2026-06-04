@@ -5,8 +5,8 @@
 export interface ElectronAPI {
   /**
    * Host OS as reported by Node's `process.platform`. Synchronous —
-   * set at preload time. Renderer-side gates for Windows-only features
-   * (e.g. Timelapse integration) read this without an IPC round-trip.
+   * set at preload time. Renderer-side platform gates read this without
+   * an IPC round-trip.
    */
   platform: NodeJS.Platform;
   selectFolder: () => Promise<string | null>;
@@ -42,12 +42,6 @@ export interface ElectronAPI {
    * by the release workflow.
    */
   getVersion: () => Promise<string>;
-  /**
-   * Open the Timelapse Analyser integration window. When `prefilledPath`
-   * is supplied, the form starts with that folder selected (used by the
-   * `--timelapse <folder>` CLI invocation).
-   */
-  openTimelapseWindow: (prefilledPath?: string) => Promise<void>;
   isElectron: () => boolean;
   /**
    * Resolve the absolute filesystem path of a `File` produced by a

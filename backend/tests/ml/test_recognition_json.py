@@ -1,8 +1,8 @@
 """Tests for the recognition_json postprocess output module.
 
-Pins the canonical AddaxAI / Timelapse JSON shape so a folder run's
-output is interchangeable with what the Timelapse runner writes and
-what existing downstream tooling expects.
+Pins the canonical AddaxAI / Timelapse recognition JSON shape so a
+folder run's output stays interchangeable with what the Timelapse
+Analyser and existing downstream tooling expect.
 """
 
 import json
@@ -513,8 +513,8 @@ def test_filename_is_canonical(db, tmp_path):
     target = tmp_path / "out"
     result = write_recognition_json(db, project.id, target)
 
-    # Same filename as the Timelapse runner uses, so existing
-    # downstream scripts find it.
+    # One canonical filename, so existing downstream scripts (and the
+    # Timelapse Analyser) find it.
     assert result.output_path.endswith("recognition.json")
     assert (target / "recognition.json").is_file()
 

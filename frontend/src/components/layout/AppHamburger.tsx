@@ -21,7 +21,6 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BookOpen,
-  Camera,
   Database,
   Download,
   FolderOpen,
@@ -37,7 +36,6 @@ import { setupApi } from "../../api/setup";
 import { backupApi } from "../../api/backup";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { cn } from "../../lib/utils";
-import { isWindowsOrDev } from "../../lib/platform";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
 import { BackupNowDialog } from "../diagnostics/BackupNowDialog";
 import { RestoreBackupDialog } from "../diagnostics/RestoreBackupDialog";
@@ -151,18 +149,6 @@ export function AppHamburger() {
     }
   };
 
-  const openTimelapseMode = async () => {
-    close();
-    // Electron spawns a separate BrowserWindow so users do not confuse
-    // it with the main projects-based app. In the dev browser, fall back
-    // to a regular new tab.
-    if (window.electronAPI?.openTimelapseWindow) {
-      await window.electronAPI.openTimelapseWindow();
-    } else {
-      window.open("/timelapse", "_blank");
-    }
-  };
-
   return (
     <>
       <div ref={menuRef} className="relative">
@@ -202,18 +188,6 @@ export function AppHamburger() {
             <Separator />
 
             <Section>
-              {/* Timelapse Analyser is Windows-only; the entry stays
-                  hidden on macOS / Linux production builds to avoid
-                  offering a feature that does not lead anywhere. The
-                  dev browser shows it so we can keep iterating on
-                  non-Windows machines. */}
-              {isWindowsOrDev() && (
-                <Item
-                  icon={Camera}
-                  label="Timelapse integration"
-                  onClick={openTimelapseMode}
-                />
-              )}
               <Item
                 icon={FolderOpen}
                 label="Open user data folder"

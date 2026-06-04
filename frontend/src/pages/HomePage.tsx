@@ -13,11 +13,10 @@
  * the other by layout alone. New-project creation lives inside the
  * projects page itself, not on this chooser.
  *
- * The Timelapse integration used to live here as a third card; it has
- * been pulled out of the home page (beta-tester feedback: too much
- * choice). The page itself stays mounted at /timelapse so the
- * Windows .exe entry point and the Timelapse Analyser launcher
- * continue to work.
+ * Timelapse Analyser is no longer a separate mode: its launcher
+ * (`AddaxAI.exe --timelapse <folder>`) now opens "Analyse a folder"
+ * with the folder pre-filled, and the folder run's recognition.json
+ * is what Timelapse imports.
  */
 
 import { useNavigate } from "react-router-dom";

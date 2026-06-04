@@ -1,11 +1,9 @@
 /**
  * Step 2: Configure analysis.
  *
- * Mirrors the Timelapse integration form (TimelapseModePage) layout
- * widget-for-widget so users moving between the two paths see the
- * same titles, captions, and controls. The folder picker stays on
- * Step 1; this step is the single place where every run-time knob
- * lives AND where the analysis actually kicks off — the dedicated
+ * The folder picker stays on Step 1; this step is the single place
+ * where every run-time knob lives AND where the analysis actually
+ * kicks off — the dedicated
  * "Analysis" step was merged in (it was a dead page hosting a single
  * Play button before the modal opened).
  *
@@ -30,8 +28,8 @@
  * is overridden so the user gets a "Continue" button that bumps the
  * folder-run step to "overview" and navigates forward.
  *
- * Model preparation lives on this step (same as Timelapse): each
- * picker has a status badge that opens an inline prep overlay.
+ * Model preparation lives on this step: each picker has a status
+ * badge that opens an inline prep overlay.
  * ``Start analysis`` is disabled until every selected model reports
  * ready, so download / env-build failures surface here and never
  * reach the worker.
@@ -154,12 +152,22 @@ type SettingsFormData = z.infer<typeof settingsSchema>;
 
 type PrepStage = "form" | "preparing" | "error";
 
+/**
+ * Read a `?path=<folder>` query param. The desktop launcher
+ * (`AddaxAI.exe --timelapse <folder>`, used by Timelapse Analyser) opens
+ * a brand-new folder run with this set so the folder picker starts
+ * pre-filled. Returns "" when absent.
+ */
+function readQueryFolder(): string {
+  return new URLSearchParams(window.location.search).get("path") ?? "";
+}
+
 export function FolderRunModelStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
 
-  // Model preparation state — mirrors TimelapseModePage / CreateProjectDialog.
+  // Model preparation state — mirrors CreateProjectDialog.
   const [prepStage, setPrepStage] = useState<PrepStage>("form");
   const [preparingModelId, setPreparingModelId] = useState<string | null>(null);
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
@@ -287,8 +295,15 @@ export function FolderRunModelStep() {
     if (runId || hasRestoredRef.current) return;
     hasRestoredRef.current = true;
     const saved = loadLastUsedSettings();
-    if (saved) {
-      form.reset({ ...form.getValues(), ...saved, folder_path: "" });
+    // A `?path=` query (set by the desktop --timelapse launcher) pre-fills
+    // the folder for a brand-new run; it wins over the empty default.
+    const queryFolder = readQueryFolder();
+    if (saved || queryFolder) {
+      form.reset({
+        ...form.getValues(),
+        ...(saved ?? {}),
+        folder_path: queryFolder,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
@@ -1353,10 +1368,10 @@ export function FolderRunModelStep() {
                 </div>
 
                 {/* Action area floats below the form rows (no divider —
-                    the buttons are self-evidently the action, matching
-                    the Timelapse page). Light top padding because the
-                    content above already carries its own bottom
-                    padding (row py-6, or the collapsed trigger py-3). */}
+                    the buttons are self-evidently the action). Light top
+                    padding because the content above already carries its
+                    own bottom padding (row py-6, or the collapsed
+                    trigger py-3). */}
                 <div className="space-y-3 pt-2">
                   {folderReady && !modelsReady && !statusLoading && (
                     <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">

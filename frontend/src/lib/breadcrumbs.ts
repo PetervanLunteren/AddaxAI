@@ -147,10 +147,6 @@ const ROUTES: BreadcrumbRoute[] = [
     pattern: "/folder-runs/:runId",
     resolve: () => [HOME, { label: "Analyse a folder" }],
   },
-  {
-    pattern: "/timelapse",
-    resolve: () => [HOME, { label: "Timelapse integration" }],
-  },
 ];
 
 /**

@@ -1,7 +1,7 @@
 """
 JSON pipeline: loads detection/classification results from JSON to database,
-and shared JSON-level helpers (classification-on-JSON, merge) used by both
-the deployment worker and the Timelapse runner.
+and shared JSON-level helpers (classification-on-JSON, merge) used by the
+deployment worker.
 
 Following DEVELOPERS.MD principles:
 - Crash early if setup fails
@@ -462,8 +462,7 @@ async def run_classification_on_json(
     a `best_frame_number` for every video in the JSON during the same
     streaming pass (the classifier worker scores sharpness while it has
     the frames in memory) and stamps it onto the per-image entry. Pure
-    JSON operation, no database access. Reused by both the deployment
-    worker and the Timelapse runner.
+    JSON operation, no database access. Used by the deployment worker.
 
     Args:
         json_path: Path to detection JSON file

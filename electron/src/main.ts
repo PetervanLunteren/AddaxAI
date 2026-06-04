@@ -22,20 +22,34 @@ const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 /**
  * Parse `--timelapse <folder>` out of process.argv.
  *
- * Used by Saul Greenberg's Timelapse Analyser to spawn AddaxAI in
- * Timelapse-only mode (no main projects window). The shim installer
- * drops an open.bat that translates the legacy `open.bat timelapse <dir>`
- * command into `AddaxAI.exe --timelapse "<dir>"`, so this flag is the
- * single integration point for both the new and legacy invocation paths.
+ * Used by Saul Greenberg's Timelapse Analyser to spawn AddaxAI on a
+ * given folder. The shim installer drops an open.bat that translates the
+ * legacy `open.bat timelapse <dir>` command into
+ * `AddaxAI.exe --timelapse "<dir>"`, so this flag is the single
+ * integration point for both the new and legacy invocation paths.
+ *
+ * The flag now opens a folder analysis with the folder pre-filled (see
+ * folderRunRouteForPath); the old dedicated timelapse window is gone.
  *
  * Returns null when the flag is absent. Returns "" (empty string) when
  * the flag is present without an argument — still a valid signal to
- * open the Timelapse integration window, just without a pre-filled folder.
+ * open a folder run, just without a pre-filled folder.
  */
 function parseTimelapseArg(argv: string[]): string | null {
   const idx = argv.findIndex((a) => a === '--timelapse');
   if (idx === -1) return null;
   return argv[idx + 1] || '';
+}
+
+/**
+ * In-app route a `--timelapse <folder>` launch should open: a new folder
+ * run with the folder pre-filled via the `?path=` query the folder-run
+ * setup step reads on first paint.
+ */
+function folderRunRouteForPath(folder: string): string {
+  return folder
+    ? `/folder-runs/new?path=${encodeURIComponent(folder)}`
+    : '/folder-runs/new';
 }
 
 // Native Chromium / V8 crashes (renderer segfault, OOM, GPU process
@@ -69,8 +83,9 @@ try {
 // The `second-instance` handler forwards a `--timelapse <folder>`
 // invocation (Saul's Timelapse Analyser shim, or the user double-
 // clicking AddaxAI.exe while it is already open) to the already-
-// running instance: it opens a Timelapse window in place. Without an
-// argument we just surface the existing main window.
+// running instance: it navigates the existing window to a new folder
+// run with the folder pre-filled. Without an argument we just surface
+// the existing main window.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
@@ -79,7 +94,15 @@ if (!app.requestSingleInstanceLock()) {
 app.on('second-instance', (_event, argv) => {
   const tlPath = parseTimelapseArg(argv);
   if (tlPath !== null && process.platform === 'win32') {
-    void createTimelapseWindow(tlPath || undefined);
+    const route = folderRunRouteForPath(tlPath);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      void mainWindow.loadURL(`${BACKEND_URL}${route}`);
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      void createWindow(route);
+    }
     return;
   }
   if (mainWindow) {
@@ -312,7 +335,7 @@ function stopBackend(): void {
 /**
  * Create the main application window
  */
-async function createWindow(): Promise<void> {
+async function createWindow(initialPath?: string): Promise<void> {
   console.log('[Electron] Creating main window...');
 
   const appTitle = `AddaxAI v${app.getVersion()}`;
@@ -368,8 +391,10 @@ async function createWindow(): Promise<void> {
   // re-download from localhost on each launch, which is negligible.
   await session.defaultSession.clearCache();
 
-  // Load the frontend from backend
-  await mainWindow.loadURL(BACKEND_URL);
+  // Load the frontend from backend. An optional initial in-app route
+  // (e.g. /folder-runs/new?path=... from the --timelapse launcher) is
+  // appended so the SPA router lands on it directly on first paint.
+  await mainWindow.loadURL(`${BACKEND_URL}${initialPath ?? ''}`);
 
   // Belt-and-suspenders: if ready-to-show somehow didn't fire (Electron
   // bug, OS quirk, race we didn't anticipate), force the window visible
@@ -399,67 +424,14 @@ async function createWindow(): Promise<void> {
 }
 
 /**
- * Create the Timelapse Analyser integration window.
- *
- * Smaller than the main window because the form is a single-pane
- * focused workflow. The URL query carries the optional pre-filled
- * folder path so the renderer can populate the folder picker on first
- * paint when launched via `AddaxAI.exe --timelapse <folder>`.
- */
-async function createTimelapseWindow(prefilledPath?: string): Promise<void> {
-  // Narrower than the main app window: Timelapse is a single-column
-  // focused form (folder, classifier, label selection, advanced
-  // disclosure), not a dashboard or grid. The page content itself is
-  // capped at max-w-5xl, so a wider window just gives empty side
-  // margins. Users can still resize wider if they want.
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
-    title: 'AddaxAI - Timelapse integration',
-    autoHideMenuBar: false,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      webSecurity: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
-    show: false,
-  });
-
-  win.once('ready-to-show', () => win.show());
-  win.on('page-title-updated', (e) => e.preventDefault());
-
-  const query = prefilledPath
-    ? `?path=${encodeURIComponent(prefilledPath)}`
-    : '';
-  await win.loadURL(`${BACKEND_URL}/timelapse${query}`);
-
-  if (!win.isVisible()) {
-    win.show();
-    win.focus();
-  }
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
-
-  if (!app.isPackaged) {
-    win.webContents.openDevTools({ mode: 'detach' });
-  }
-}
-
-/**
  * IPC handlers
  */
 
 // Handle folder selection dialog. The dialog is made window-modal to the
 // calling window so users cannot click around the form while the picker
 // is open, nor open two pickers in parallel by double-clicking the
-// drop zone. Resolves the sender's window via event.sender so the same
-// handler also attaches correctly when called from the Timelapse window.
+// drop zone. Resolves the sender's window via event.sender so the
+// handler attaches to whichever window made the call.
 ipcMain.handle('dialog:selectFolder', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
@@ -530,17 +502,6 @@ ipcMain.handle('app:relaunch', () => {
   app.exit(0);
 });
 
-// Open the Timelapse Analyser integration in a separate BrowserWindow.
-// Called from the main app's hamburger menu and from the --timelapse
-// CLI launcher. The window is intentionally a sibling of the main one
-// (not modal) so users can keep the projects app open in the background.
-ipcMain.handle(
-  'window:openTimelapse',
-  async (_event, prefilledPath?: string) => {
-    await createTimelapseWindow(prefilledPath);
-  },
-);
-
 // Return the runtime app version (e.g. "0.2.0-beta.1"). The version is
 // written into electron/package.json by the release workflow's
 // "Sync version from release tag" step, so this is always the actual
@@ -557,9 +518,8 @@ app.on('ready', async () => {
   try {
     await startBackend();
     // When launched via `AddaxAI.exe --timelapse <folder>` (Saul's
-    // Timelapse integration / shim), open ONLY the Timelapse window.
-    // The main projects window stays out of sight so the user is not
-    // confused about which app they are working in.
+    // Timelapse integration / shim), open the main window straight on a
+    // new folder run with the folder pre-filled.
     //
     // Timelapse Analyser is Windows-only, so the flag is only meaningful
     // on Windows. On macOS/Linux we ignore it and open the main window;
@@ -567,7 +527,7 @@ app.on('ready', async () => {
     // flag is itself Windows-only.
     const timelapsePath = parseTimelapseArg(process.argv);
     if (timelapsePath !== null && process.platform === 'win32') {
-      await createTimelapseWindow(timelapsePath || undefined);
+      await createWindow(folderRunRouteForPath(timelapsePath));
     } else {
       await createWindow();
     }
