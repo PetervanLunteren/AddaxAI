@@ -203,6 +203,11 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
         conn.execute(text("DROP INDEX IF EXISTS ix_projects_mode"))
         conn.execute(text("ALTER TABLE projects DROP COLUMN mode"))
         conn.execute(text("ALTER TABLE projects DROP COLUMN folder_run_state"))
+        # common_name (detections) was added by c9d0e1f2a3b4, the current
+        # head and the newest detectable fingerprint. Drop it so the
+        # schema truly looks initial and the fingerprint walk does not
+        # stop at head.
+        conn.execute(text("ALTER TABLE detections DROP COLUMN common_name"))
 
     # alembic_version row stays at head — that is exactly the bug.
     assert get_current_revision(engine) == head

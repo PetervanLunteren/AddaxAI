@@ -97,6 +97,50 @@ def test_populate_from_csv(db, taxonomy_csv):
     assert bird.taxon_order is None
 
 
+def test_populate_sets_both_names(db, taxonomy_csv):
+    """Each row gets a common_name and a scientific_name."""
+    populate_taxonomy_from_csv(MODEL_ID, taxonomy_csv, db)
+    rows = {
+        r.name: r
+        for r in db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.classification_model_id == MODEL_ID)
+        .all()
+    }
+    # Species: common = cleaned label, scientific = abbreviated binomial.
+    leopard = rows["leopard"]
+    assert leopard.common_name == "Leopard"
+    assert leopard.scientific_name == "P. pardus"
+
+
+def test_rollup_genus_common_equals_scientific(db, taxonomy_lookup):
+    """A genus rollup has no common name, so both names are the Latin taxon."""
+    add_rollup_taxonomy_entry(MODEL_ID, "panthera", "genus", taxonomy_lookup, db)
+    row = (
+        db.query(LabelTaxonomy)
+        .filter(
+            LabelTaxonomy.classification_model_id == MODEL_ID,
+            LabelTaxonomy.name == "panthera",
+        )
+        .one()
+    )
+    assert row.common_name == "Panthera"
+    assert row.scientific_name == "Panthera"
+
+
+def test_builtin_labels_set_both_names(db):
+    """Builtin labels carry both names (identical, capitalised category)."""
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    ensure_builtin_labels(db)
+    animal = (
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.name == "animal")
+        .one()
+    )
+    assert animal.common_name == "Animal"
+    assert animal.scientific_name == "Animal"
+
+
 def test_populate_idempotent(db, taxonomy_csv):
     """Calling twice doesn't duplicate rows."""
     count1 = populate_taxonomy_from_csv(MODEL_ID, taxonomy_csv, db)

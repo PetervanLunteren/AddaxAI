@@ -22,7 +22,7 @@ import {
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi, type SunBands } from "../../api/statistics";
-import { normalizeLabel } from "../../utils/labels";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import type { DateRange } from "./index";
 
 // Time-of-day color bands. Fed by project-specific sunrise/sunset
@@ -352,7 +352,12 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
             <p className="text-sm text-muted-foreground">
               {selectedSpecies === "all"
                 ? "Observations by hour of day"
-                : `Observations by hour of day · ${normalizeLabel(selectedSpecies)}`}
+                : `Observations by hour of day · ${resolveSpeciesName({
+                    scientific_name: selectedSpecies,
+                    common_name: speciesList?.find(
+                      (s) => s.species === selectedSpecies,
+                    )?.common_name,
+                  })}`}
             </p>
           </div>
           <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
@@ -369,7 +374,10 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
               <SelectItem value="all">All</SelectItem>
               {speciesList?.map((s) => (
                 <SelectItem key={s.species} value={s.species}>
-                  {normalizeLabel(s.species)}
+                  {resolveSpeciesName({
+                    scientific_name: s.species,
+                    common_name: s.common_name,
+                  })}
                 </SelectItem>
               ))}
             </SelectContent>

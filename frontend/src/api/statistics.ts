@@ -27,7 +27,9 @@ export interface CaptureDateCoverage {
 }
 
 export interface SpeciesCount {
+  /** Stable scientific-preferring key (used for colour and selection). */
   species: string;
+  common_name: string | null;
   count: number;
 }
 
@@ -77,7 +79,8 @@ export interface VerificationProgress {
 
 export interface LabelProgressRow {
   label_taxonomy_id: string | null;
-  display_name: string;
+  common_name: string;
+  scientific_name: string;
   verified: number;
   total: number;
 }
@@ -88,6 +91,8 @@ export interface VerificationProgressByLabel {
 
 export interface SpeciesObservationCount {
   label: string;
+  common_name: string;
+  scientific_name: string;
   label_taxonomy_id: string | null;
   count: number;
 }

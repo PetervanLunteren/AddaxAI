@@ -112,26 +112,39 @@ def build_tag_set(
     if not rows:
         return None
 
-    # Short summary: "Dog 95%, Wolf 80%" — capped at the top 5 so
-    # ImageDescription stays readable in a thumbnail viewer.
+    # Short summary, capped at the top 5 so ImageDescription stays
+    # readable in a thumbnail viewer. Both names are written for
+    # consistency (independent of any UI display preference): when a
+    # detection has distinct common + scientific names they read as
+    # "Eastern gray squirrel (S. carolinensis) 95%"; when they coincide
+    # (rollups, builtins) the single name is shown once.
     summary_parts: list[str] = []
+    # XMP:Subject tags — searchable in Lightroom / digiKam. Include both
+    # the common and scientific name so the image is findable by either.
     species_seen: list[str] = []
     species_set: set[str] = set()
+
+    def _add_tag(value: str | None) -> None:
+        if not value:
+            return
+        cleaned = value.strip()
+        if cleaned and cleaned.lower() not in {s.lower() for s in species_set}:
+            species_set.add(cleaned)
+            species_seen.append(cleaned)
+
     for det in rows[:5]:
         name = det.label or det.category or "unknown"
+        fallback = name[0].upper() + name[1:] if name else "Unknown"
         pct = int(round(det.confidence * 100))
-        display_name = (
-            det.display_name
-            or (name[0].upper() + name[1:] if name else "Unknown")
-        )
-        summary_parts.append(f"{display_name} {pct}%")
+        common = det.common_name or fallback
+        scientific = det.scientific_name or fallback
+        if common.lower() == scientific.lower():
+            summary_parts.append(f"{common} {pct}%")
+        else:
+            summary_parts.append(f"{common} ({scientific}) {pct}%")
         if det.label:
-            label_clean = det.label.strip()
-            if label_clean and label_clean.lower() not in {
-                s.lower() for s in species_set
-            }:
-                species_set.add(label_clean)
-                species_seen.append(label_clean)
+            _add_tag(det.common_name)
+            _add_tag(det.scientific_name)
     if len(rows) > 5:
         summary_parts.append(f"+ {len(rows) - 5} more")
     image_description = ", ".join(summary_parts)
@@ -149,6 +162,8 @@ def build_tag_set(
         {
             "category": det.category,
             "label": det.label,
+            "common_name": det.common_name,
+            "scientific_name": det.scientific_name,
             "confidence": round(float(det.confidence), 4),
             "label_confidence": (
                 round(float(det.label_confidence), 4)

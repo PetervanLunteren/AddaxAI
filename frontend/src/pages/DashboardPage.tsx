@@ -13,6 +13,7 @@ import { useParams } from "react-router-dom";
 
 import { DashboardView } from "../components/dashboard/DashboardView";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
+import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 
 export default function DashboardPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -31,7 +32,10 @@ export default function DashboardPage() {
                 Project overview with statistics and trends
               </p>
             </div>
-            <DiagnosticReportButton />
+            <div className="flex items-center gap-2">
+              <SpeciesNameToggle />
+              <DiagnosticReportButton />
+            </div>
           </div>
         </div>
       </header>

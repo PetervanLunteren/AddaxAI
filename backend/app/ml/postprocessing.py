@@ -443,14 +443,14 @@ def update_database_from_smoothed_results(
         smoothed_results: Smoothed MegaDetector-format dict
         deployment_folder: Path to deployment folder
         db: Database session
-        taxonomy_lookup: Optional taxonomy for display_name lookup
+        taxonomy_lookup: Optional taxonomy for scientific_name lookup
         excluded_classes: Optional list of excluded label names
             (legacy, used as fallback when excluded_taxonomy_ids
             is not provided).
         excluded_taxonomy_ids: Set of excluded taxonomy UUIDs.
             Preferred over excluded_classes for the final sweep.
         taxonomy_name_to_id: Pre-resolved {lowercase_name:
-            (taxonomy_id, display_name)} mapping for setting
+            (taxonomy_id, scientific_name)} mapping for setting
             label_taxonomy_id on updated detections.
 
     Returns:
@@ -537,39 +537,46 @@ def update_database_from_smoothed_results(
                     new_label = None
                     new_confidence = None
 
-                # Resolve taxonomy ID and display_name
+                # Resolve taxonomy ID + both display names
                 new_taxonomy_id = None
-                new_display = None
+                new_scientific = None
+                new_common = None
                 if new_label and taxonomy_name_to_id:
                     resolved = taxonomy_name_to_id.get(
                         new_label.lower()
                     )
                     if resolved:
                         new_taxonomy_id = resolved[0]
-                        new_display = resolved[1]
-                if new_label and not new_display:
+                        new_scientific = resolved[1]
+                        new_common = resolved[2]
+                if new_label and not new_scientific:
+                    from app.ml.taxonomic_rollup import format_common_name
                     from app.models.label_taxonomy import LabelTaxonomy
 
                     tax_row = (
                         db.query(
                             LabelTaxonomy.id,
-                            LabelTaxonomy.display_name,
+                            LabelTaxonomy.scientific_name,
+                            LabelTaxonomy.common_name,
                         )
                         .filter(LabelTaxonomy.name == new_label)
                         .first()
                     )
                     if tax_row:
                         new_taxonomy_id = tax_row[0]
-                        new_display = tax_row[1]
+                        new_scientific = tax_row[1]
+                        new_common = tax_row[2]
                     else:
-                        new_display = (
+                        new_scientific = (
                             new_label[0].upper() + new_label[1:]
                         )
+                        new_common = format_common_name(new_label)
 
                 if db_det.label != new_label or db_det.label_confidence != new_confidence:
                     db_det.label = new_label
                     db_det.label_confidence = new_confidence
-                    db_det.display_name = new_display
+                    db_det.scientific_name = new_scientific
+                    db_det.common_name = new_common
                     db_det.label_taxonomy_id = new_taxonomy_id
                     updated += 1
                     changed_file_ids.add(db_det.file_id)
@@ -593,7 +600,8 @@ def update_database_from_smoothed_results(
             ):
                 det.label = None
                 det.label_confidence = None
-                det.display_name = None
+                det.scientific_name = None
+                det.common_name = None
                 det.label_taxonomy_id = None
                 changed_file_ids.add(det.file_id)
                 updated += 1
@@ -605,7 +613,8 @@ def update_database_from_smoothed_results(
             if det.label and det.label.lower() in excluded_lower:
                 det.label = None
                 det.label_confidence = None
-                det.display_name = None
+                det.scientific_name = None
+                det.common_name = None
                 det.label_taxonomy_id = None
                 changed_file_ids.add(det.file_id)
                 updated += 1

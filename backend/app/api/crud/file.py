@@ -550,8 +550,11 @@ def get_files_for_verify(
         dets = list(f.detections)
 
         # Collect unique labels for this file's visible detections.
+        # Both name maps are keyed by taxonomy_id so the client can switch
+        # between common and scientific without a refetch.
         label_set: set[str] = set()
-        label_to_display: dict[str, str] = {}
+        label_to_scientific: dict[str, str] = {}
+        label_to_common: dict[str, str] = {}
         for d in dets:
             meets_floor = (
                 project_floor is None
@@ -567,9 +570,14 @@ def get_files_for_verify(
             tid = d.label_taxonomy_id
             if tid:
                 label_set.add(tid)
-                display = d.display_name or d.label or d.category
-                if display and tid not in label_to_display:
-                    label_to_display[tid] = display
+                if tid not in label_to_scientific:
+                    sci = d.scientific_name or d.label or d.category
+                    if sci:
+                        label_to_scientific[tid] = sci
+                if tid not in label_to_common:
+                    common = d.common_name or d.label or d.category
+                    if common:
+                        label_to_common[tid] = common
 
         site = f.deployment.site if f.deployment else None
         observation_types = [f.observation_type] if f.observation_type else []
@@ -588,7 +596,8 @@ def get_files_for_verify(
                 "observation_type": f.observation_type,
                 "observation_types": observation_types,
                 "labels": sorted(label_set),
-                "display_labels": label_to_display,
+                "scientific_labels": label_to_scientific,
+                "common_labels": label_to_common,
                 "verified": f.verified,
                 "favorited": f.favorited,
                 "flagged": f.flagged,

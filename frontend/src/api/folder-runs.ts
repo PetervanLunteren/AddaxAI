@@ -205,6 +205,9 @@ export interface SaveOutputsRequest {
   recognition_json?: boolean;
   csv?: boolean;
   xlsx?: boolean;
+  /** Which species name to burn into the visualised images. Mirrors the
+   * UI display preference. EXIF metadata always carries both names. */
+  name_mode?: "common" | "scientific";
 }
 
 /** Response from POST /save-outputs — just the spawned job's id.

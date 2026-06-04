@@ -332,12 +332,12 @@ export function CropGrid({
                   </span>
                   <LabelChip
                     label={c.current_label}
-                    displayName={c.current_display_name}
+                    displayName={c.current_scientific_name}
                   />
                   <span className="text-muted-foreground">look like</span>
                   <LabelChip
                     label={c.suggested_label}
-                    displayName={c.suggested_display_name}
+                    displayName={c.suggested_scientific_name}
                   />
                 </div>
                 {onRelabelCohort && (
@@ -355,7 +355,7 @@ export function CropGrid({
                       <TooltipContent>
                         Relabels {c.count} observation
                         {c.count === 1 ? "" : "s"} to{" "}
-                        {c.suggested_display_name || c.suggested_label} and
+                        {c.suggested_scientific_name || c.suggested_label} and
                         marks {c.count === 1 ? "it" : "them"} verified.
                       </TooltipContent>
                     </Tooltip>
@@ -486,9 +486,11 @@ function cohortFromSlice(slice: DetectionSummary[]): CohortItem {
   return {
     current_label: head.label,
     current_label_taxonomy_id: head.label_taxonomy_id ?? null,
-    current_display_name: head.display_name ?? null,
+    current_common_name: head.common_name ?? null,
+    current_scientific_name: head.scientific_name ?? null,
     suggested_label: head.neighbor_top_label ?? "",
-    suggested_display_name: head.neighbor_top_display_name ?? null,
+    suggested_common_name: head.neighbor_top_common_name ?? null,
+    suggested_scientific_name: head.neighbor_top_scientific_name ?? null,
     category: head.category,
     count: slice.length,
     detection_ids: slice.map((d) => d.detection_id),

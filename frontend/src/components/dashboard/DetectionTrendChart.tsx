@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi } from "../../api/statistics";
-import { normalizeLabel } from "../../utils/labels";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { getSpeciesColor, getSpeciesColorWithAlpha } from "../../utils/species-colors";
 import type { DateRange } from "./index";
 import type { DetectionTrendPoint } from "../../api/statistics";
@@ -342,7 +342,10 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
                 <SelectItem value="all">All</SelectItem>
                 {speciesList?.map((s) => (
                   <SelectItem key={s.species} value={s.species}>
-                    {normalizeLabel(s.species)}
+                    {resolveSpeciesName({
+                      scientific_name: s.species,
+                      common_name: s.common_name,
+                    })}
                   </SelectItem>
                 ))}
               </SelectContent>

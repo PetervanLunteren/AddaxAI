@@ -306,7 +306,7 @@ def test_deployment_info_happy_path(client, db):
     assert data["detection_categories"]["empty"] == 0
     # Top species block: single lion entry with count=3.
     assert data["top_species"] == [
-        {"label": "lion", "display_name": None, "count": 3}
+        {"label": "lion", "common_name": None, "scientific_name": None, "count": 3}
     ]
     # Trap nights is folder-aware: sum of (max - min + 1) per folder over
     # files. Here all 5 files live under /fake/ and span June 15

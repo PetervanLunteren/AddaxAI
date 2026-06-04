@@ -303,11 +303,28 @@ class _PillLayout:
     color: tuple[int, int, int]
 
 
+def _pill_name(detection: Detection, name_mode: str) -> str:
+    """Resolve the species name for the burned-in pill under the active
+    display preference (common vs scientific). Mirrors the frontend
+    ``resolveSpeciesName`` fallback order so the saved image matches what
+    the UI shows."""
+    common = detection.common_name or None
+    scientific = detection.scientific_name or None
+    label = detection.label or None
+    ordered = (
+        [scientific, common, label]
+        if name_mode == "scientific"
+        else [common, scientific, label]
+    )
+    return next((v for v in ordered if v), detection.label or "")
+
+
 def _compute_pill_layout(
     draw: ImageDraw.ImageDraw,
     detection: Detection,
     font_sm,
     font_lg,
+    name_mode: str,
 ) -> _PillLayout:
     """Pill geometry for one detection. Mirrors the frontend's
     ``computePillLayout`` (detection-overlay.ts): two-line when a
@@ -319,9 +336,9 @@ def _compute_pill_layout(
         f"{int(round(detection.confidence * 100))}%"
     )
     if has_label:
-        display_name = detection.display_name or detection.label
+        species_name = _pill_name(detection, name_mode)
         label_text = (
-            f"{display_name[:1].upper()}{display_name[1:]} "
+            f"{species_name[:1].upper()}{species_name[1:]} "
             f"{int(round((detection.label_confidence or detection.confidence) * 100))}%"
         )
         pill_height = (
@@ -351,6 +368,7 @@ def _draw_one(
     image_size: tuple[int, int],
     font_sm,
     font_lg,
+    name_mode: str,
 ) -> None:
     """Draw one bbox + pill onto the RGBA overlay."""
     if (
@@ -378,7 +396,7 @@ def _draw_one(
         width=BBOX_STROKE_WIDTH,
     )
 
-    pill = _compute_pill_layout(draw, detection, font_sm, font_lg)
+    pill = _compute_pill_layout(draw, detection, font_sm, font_lg, name_mode)
     pill_x = max(0, min(x0, img_w - pill.pill_width))
     pill_y = (
         y0 - pill.pill_height if y0 - pill.pill_height >= 0 else y0
@@ -475,6 +493,7 @@ def write_annotated_copies(
     draw_bboxes: bool,
     anonymise: bool,
     excluded_label_ids: frozenset[str] | None = None,
+    name_mode: str = "common",
 ) -> AnnotatedCopiesResult:
     """Apply the requested per-file effects and write the result to
     every destination the file lives at under ``ctx``.
@@ -561,7 +580,7 @@ def write_annotated_copies(
                 overlay = Image.new("RGBA", rgba.size, (0, 0, 0, 0))
                 draw = ImageDraw.Draw(overlay, "RGBA")
                 for det in bbox_dets:
-                    _draw_one(draw, det, rgba.size, font_sm, font_lg)
+                    _draw_one(draw, det, rgba.size, font_sm, font_lg, name_mode)
                     result.bbox_count += 1
                 image = Image.alpha_composite(rgba, overlay).convert("RGB")
 

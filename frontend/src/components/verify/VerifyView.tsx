@@ -38,6 +38,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { getObservationBadge } from "../../lib/detection-utils";
+import { speciesLabelMap } from "../../lib/species-name-mode";
 import {
   setSpeciesContext,
   getSpeciesColor,
@@ -324,19 +325,17 @@ export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
   });
 
   // Set species color context from current events.
-  // Labels are taxonomy UUIDs; register display_labels as aliases
+  // Labels are taxonomy UUIDs; register the active-mode name map as aliases
   // so name-string lookups (in LabelPicker, overlay, etc.) get
   // the same color.
   useMemo(() => {
     if (events?.length) {
       const allLabels = [...new Set(events.flatMap((e) => e.labels))];
-      // Collect UUID -> name aliases from all events' display_labels
+      // Collect UUID -> name aliases from all events (active name mode).
       const aliases: Record<string, string> = {};
       for (const e of events) {
-        if (e.display_labels) {
-          for (const [uuid, name] of Object.entries(e.display_labels)) {
-            aliases[uuid] = name;
-          }
+        for (const [uuid, name] of Object.entries(speciesLabelMap(e))) {
+          aliases[uuid] = name;
         }
       }
       if (allLabels.length > 0) setSpeciesContext(allLabels, aliases);
@@ -544,13 +543,13 @@ function EventCard({
 
   // Drop species chips whose display name duplicates an observation
   // badge ("Vehicle" / "Person") that's already on this card.
-  const observationBadgeNames = new Set(
+  const observationBadgeNames = new Set<string>(
     event.observation_types
       .filter((t) => t === "human" || t === "vehicle")
       .map((t) => (t === "human" ? "person" : t)),
   );
   const speciesLabels = event.labels.filter((sp) => {
-    const display = (event.display_labels?.[sp] || sp).toLowerCase();
+    const display = (speciesLabelMap(event)[sp] || sp).toLowerCase();
     return !observationBadgeNames.has(display);
   });
 
@@ -602,7 +601,7 @@ function EventCard({
                   }}
                 >
                   <span className="truncate">
-                    {event.display_labels?.[sp] ||
+                    {speciesLabelMap(event)[sp] ||
                       sp.charAt(0).toUpperCase() + sp.slice(1)}
                   </span>
                 </Badge>

@@ -18,11 +18,11 @@ MODEL_ID = "EUR-DF-v1-3"
 
 def _add_taxonomy(db, name, level, **kw):
     """Helper to insert a LabelTaxonomy row."""
-    from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
+    from app.ml.taxonomic_rollup import format_scientific_name_from_taxonomy_row
 
-    display_name = kw.pop("display_name", None)
-    if display_name is None:
-        display_name = format_display_name_from_taxonomy_row(
+    scientific_name = kw.pop("scientific_name", None)
+    if scientific_name is None:
+        scientific_name = format_scientific_name_from_taxonomy_row(
             name,
             kw.get("taxon_genus"),
             kw.get("taxon_species"),
@@ -34,7 +34,7 @@ def _add_taxonomy(db, name, level, **kw):
         classification_model_id=MODEL_ID,
         name=name,
         level=level,
-        display_name=display_name,
+        scientific_name=scientific_name,
         **kw,
     )
     db.add(row)
@@ -365,16 +365,16 @@ def test_rollup_leaf_annotation_disambiguates_collisions(db):
     p = _setup_project_with_detections(db, ["micromammal", "mammalia"])
 
     # Both rows are class-level under Mammalia but represent distinct
-    # classifier outputs. Their display_names collide ("Mammalia").
+    # classifier outputs. Their scientific_names collide ("Mammalia").
     micromammal_tax = _add_taxonomy(
         db, "micromammal", "class",
         taxon_class="mammalia",
-        display_name="Mammalia",
+        scientific_name="Mammalia",
     )
     mammalia_tax = _add_taxonomy(
         db, "mammalia", "class",
         taxon_class="mammalia",
-        display_name="Mammalia",
+        scientific_name="Mammalia",
     )
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()

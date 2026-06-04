@@ -23,6 +23,7 @@ import {
   type SeparateGroupBy,
 } from "../../../api/folder-runs";
 import { isElectron } from "../../../lib/platform";
+import { getSpeciesNameMode } from "../../../lib/species-name-mode";
 import {
   loadLastUsedSaveOutputs,
   saveLastUsedSaveOutputs,
@@ -69,6 +70,9 @@ function buildRequest(
     csv: exportOpts.enabled && exportOpts.csv,
     xlsx: exportOpts.enabled && exportOpts.xlsx,
     recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
+    // Burn the user's current name preference into the visualised images
+    // (EXIF still carries both names regardless).
+    name_mode: getSpeciesNameMode(),
   };
 }
 

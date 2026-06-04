@@ -197,7 +197,8 @@ export interface SiteFileCounts {
 
 export interface SiteTopSpecies {
   label: string;
-  display_name: string | null;
+  common_name: string | null;
+  scientific_name: string | null;
   count: number;
 }
 
@@ -348,7 +349,8 @@ export interface DeploymentFileCounts {
 
 export interface DeploymentTopSpecies {
   label: string;
-  display_name: string | null;
+  common_name: string | null;
+  scientific_name: string | null;
   count: number;
 }
 
@@ -507,7 +509,8 @@ export interface DetectionResponse {
   bbox_height: number | null;
   label: string | null;
   label_confidence: number | null;
-  display_name: string | null;
+  common_name: string | null;
+  scientific_name: string | null;
   label_taxonomy_id: string | null;
   classification_method: string | null;
   frame_number: number | null;
@@ -631,7 +634,8 @@ export interface FileSummary {
   observation_type: string;
   observation_types: string[];
   labels: string[];
-  display_labels: Record<string, string>;
+  scientific_labels: Record<string, string>;
+  common_labels: Record<string, string>;
   verified: boolean;
   favorited: boolean;
   flagged: boolean;
@@ -659,7 +663,8 @@ export interface EventFilterOptions {
   labels: string[];
   date_range: { min: string; max: string } | null;
   label_event_counts: Record<string, number>;
-  display_labels?: Record<string, string>;
+  scientific_labels?: Record<string, string>;
+  common_labels?: Record<string, string>;
 }
 
 // MaxN frame reference
@@ -686,7 +691,8 @@ export interface EventSummary {
   max_n_frames: MaxNFrame[];
   site_name: string | null;
   labels: string[];
-  display_labels?: Record<string, string>;
+  scientific_labels?: Record<string, string>;
+  common_labels?: Record<string, string>;
   observation_type: string;
   observation_types: string[];
   image_count: number;
@@ -917,7 +923,8 @@ export interface DetectionSummary {
    * filter (keyed on taxonomy id). */
   label_taxonomy_id: string | null;
   label_confidence: number | null;
-  display_name: string | null;
+  common_name: string | null;
+  scientific_name: string | null;
   confidence: number;
   category: string;
   verified: boolean;
@@ -926,7 +933,8 @@ export interface DetectionSummary {
   similarity: number | null;
   neighbor_agreement: number | null;
   neighbor_top_label: string | null;
-  neighbor_top_display_name: string | null;
+  neighbor_top_common_name: string | null;
+  neighbor_top_scientific_name: string | null;
   site_name: string | null;
   deployment_id: string | null;
   /** ISO 8601 with the project's local UTC offset. */
@@ -957,10 +965,12 @@ export interface CohortItem {
    * crops" navigation, which targets the existing Observations label
    * filter (keyed on taxonomy id). */
   current_label_taxonomy_id: string | null;
-  current_display_name: string | null;
+  current_common_name: string | null;
+  current_scientific_name: string | null;
   /** Always a strict taxonomic descendant of `current_label`. */
   suggested_label: string;
-  suggested_display_name: string | null;
+  suggested_common_name: string | null;
+  suggested_scientific_name: string | null;
   /** Detection category ("animal", "person", "vehicle"). Carried so
    * the relabel call can keep the category fixed. */
   category: string | null;

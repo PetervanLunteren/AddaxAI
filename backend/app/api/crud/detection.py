@@ -182,7 +182,7 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     Create a human-drawn detection.
 
     Sets job_id=None, classification_method="human", confidence=1.0.
-    Resolves label_taxonomy_id + display_name so the new detection
+    Resolves label_taxonomy_id + scientific_name so the new detection
     shares the same taxonomy row (and therefore the same display color)
     as other detections with the same label / builtin category.
     """
@@ -207,15 +207,18 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
         db_detection.label_taxonomy_id = _resolve_detection_taxonomy(
             db, db_detection, data.label
         )
-        if db_detection.label_taxonomy_id:
-            from app.models.label_taxonomy import LabelTaxonomy
+        from app.ml.taxonomic_rollup import resolve_label_names
+        from app.models.label_taxonomy import LabelTaxonomy
 
-            tax = db.query(LabelTaxonomy).get(db_detection.label_taxonomy_id)
-            db_detection.display_name = (
-                tax.display_name if tax else data.label[0].upper() + data.label[1:]
-            )
-        else:
-            db_detection.display_name = data.label[0].upper() + data.label[1:]
+        tax = (
+            db.query(LabelTaxonomy).get(db_detection.label_taxonomy_id)
+            if db_detection.label_taxonomy_id
+            else None
+        )
+        (
+            db_detection.common_name,
+            db_detection.scientific_name,
+        ) = resolve_label_names(data.label, tax, data.category)
     else:
         # Unclassified (MD-only) — share the builtin taxonomy row so
         # this detection gets the same color as the MD-produced ones.
@@ -232,7 +235,8 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
         )
         if builtin:
             db_detection.label_taxonomy_id = builtin.id
-            db_detection.display_name = builtin.display_name
+            db_detection.common_name = builtin.common_name
+            db_detection.scientific_name = builtin.scientific_name
 
     db.commit()
     db.refresh(db_detection)
@@ -247,7 +251,7 @@ def create_observation(
 
     Sets bbox_* = NULL, classification_method="human", confidence=1.0,
     verified=True. Taxonomy resolution mirrors `create_human_detection`
-    so the new row picks up the same colour and display_name as AI-
+    so the new row picks up the same colour and scientific_name as AI-
     produced rows with the same label.
 
     `frame_number` is set to the parent video's `best_frame_number`
@@ -287,15 +291,18 @@ def create_observation(
         db_detection.label_taxonomy_id = _resolve_detection_taxonomy(
             db, db_detection, data.label
         )
-        if db_detection.label_taxonomy_id:
-            from app.models.label_taxonomy import LabelTaxonomy
+        from app.ml.taxonomic_rollup import resolve_label_names
+        from app.models.label_taxonomy import LabelTaxonomy
 
-            tax = db.query(LabelTaxonomy).get(db_detection.label_taxonomy_id)
-            db_detection.display_name = (
-                tax.display_name if tax else data.label[0].upper() + data.label[1:]
-            )
-        else:
-            db_detection.display_name = data.label[0].upper() + data.label[1:]
+        tax = (
+            db.query(LabelTaxonomy).get(db_detection.label_taxonomy_id)
+            if db_detection.label_taxonomy_id
+            else None
+        )
+        (
+            db_detection.common_name,
+            db_detection.scientific_name,
+        ) = resolve_label_names(data.label, tax, data.category)
     else:
         from app.ml.taxonomy_db import BUILTIN_MODEL_ID
         from app.models.label_taxonomy import LabelTaxonomy
@@ -310,7 +317,8 @@ def create_observation(
         )
         if builtin:
             db_detection.label_taxonomy_id = builtin.id
-            db_detection.display_name = builtin.display_name
+            db_detection.common_name = builtin.common_name
+            db_detection.scientific_name = builtin.scientific_name
 
     db.commit()
     db.refresh(db_detection)
@@ -343,25 +351,30 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
             db, detection, update.label
         )
         detection.classification_method = "human"
-        # Read display_name from the taxonomy row (single source of truth)
-        if update.label and detection.label_taxonomy_id:
+        # Resolve both names from the taxonomy row (single source of truth).
+        if update.label:
+            from app.ml.taxonomic_rollup import resolve_label_names
             from app.models.label_taxonomy import LabelTaxonomy
 
-            tax = db.query(LabelTaxonomy).get(detection.label_taxonomy_id)
-            detection.display_name = (
-                tax.display_name if tax else update.label[0].upper() + update.label[1:]
+            tax = (
+                db.query(LabelTaxonomy).get(detection.label_taxonomy_id)
+                if detection.label_taxonomy_id
+                else None
             )
-        elif update.label:
-            detection.display_name = update.label[0].upper() + update.label[1:]
+            (
+                detection.common_name,
+                detection.scientific_name,
+            ) = resolve_label_names(update.label, tax, detection.category)
         else:
-            detection.display_name = None
+            detection.scientific_name = None
+            detection.common_name = None
         # A human-assigned label has no model softmax score, so stamp 1.0
         # (matches bulk relabel) rather than leaving the replaced label's
         # stale score. Cleared label -> no confidence. An explicit
         # label_confidence in the payload still overrides below.
         detection.label_confidence = 1.0 if update.label else None
     # When category changes to a builtin (person/vehicle/animal) without a
-    # label, resolve taxonomy from the category so display_name and the FK
+    # label, resolve taxonomy from the category so scientific_name and the FK
     # are set correctly.
     if update.category and not detection.label:
         from app.ml.taxonomy_db import BUILTIN_MODEL_ID
@@ -377,7 +390,8 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
         )
         if builtin:
             detection.label_taxonomy_id = builtin.id
-            detection.display_name = builtin.display_name
+            detection.common_name = builtin.common_name
+            detection.scientific_name = builtin.scientific_name
     if update.label_confidence is not None:
         detection.label_confidence = update.label_confidence
 
@@ -450,6 +464,7 @@ def _resolve_detection_taxonomy(
         return taxonomy_id
 
     # Auto-create a custom taxonomy entry for this label
+    from app.ml.taxonomic_rollup import format_common_name
     from app.models.label_taxonomy import LabelTaxonomy
 
     new_entry = LabelTaxonomy(
@@ -458,7 +473,8 @@ def _resolve_detection_taxonomy(
         level="unknown",
         name=label_name,
         classification_model_id="",
-        display_name=label_name[0].upper() + label_name[1:]
+        common_name=format_common_name(label_name) if label_name else label_name,
+        scientific_name=label_name[0].upper() + label_name[1:]
         if label_name
         else label_name,
     )

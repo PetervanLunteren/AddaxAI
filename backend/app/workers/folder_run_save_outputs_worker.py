@@ -213,6 +213,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         draw_bboxes=draw_bboxes,
                         anonymise=anonymise,
                         excluded_label_ids=excluded_frozen,
+                        name_mode=payload.get("name_mode", "common"),
                     ).to_dict()
                 if m == "recognition_json":
                     return write_recognition_json(

@@ -542,9 +542,11 @@ def get_events_by_project(
             key=lambda f: f.captured_at_local,
         )
 
-        # Collect unique taxonomy IDs across all files
+        # Collect unique taxonomy IDs across all files. Both name maps are
+        # keyed the same way so the client can switch without a refetch.
         label_set: set[str] = set()
-        label_to_display: dict[str, str] = {}
+        label_to_scientific: dict[str, str] = {}
+        label_to_common: dict[str, str] = {}
         for f in sorted_files:
             for d in f.detections:
                 meets_floor = (
@@ -562,14 +564,21 @@ def get_events_by_project(
                     tid = d.label_taxonomy_id
                     if tid:
                         label_set.add(tid)
-                        display = d.display_name or d.label or d.category
-                        if display and tid not in label_to_display:
-                            label_to_display[tid] = display
+                        if tid not in label_to_scientific:
+                            sci = d.scientific_name or d.label or d.category
+                            if sci:
+                                label_to_scientific[tid] = sci
+                        if tid not in label_to_common:
+                            common = d.common_name or d.label or d.category
+                            if common:
+                                label_to_common[tid] = common
                     else:
                         raw = d.label if d.label is not None else d.category
                         label_set.add(raw)
-                        if d.display_name and raw not in label_to_display:
-                            label_to_display[raw] = d.display_name
+                        if d.scientific_name and raw not in label_to_scientific:
+                            label_to_scientific[raw] = d.scientific_name
+                        if d.common_name and raw not in label_to_common:
+                            label_to_common[raw] = d.common_name
 
         # Determine dominant observation type (animal > human > vehicle > blank)
         obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
@@ -643,9 +652,8 @@ def get_events_by_project(
                 if event.deployment and event.deployment.site
                 else None,
                 "labels": sorted(label_set),
-                "display_labels": {
-                    k: v for k, v in label_to_display.items()
-                },
+                "scientific_labels": dict(label_to_scientific),
+                "common_labels": dict(label_to_common),
                 "observation_type": dominant_type,
                 "observation_types": sorted(observation_types_set),
                 "image_count": image_count,
@@ -1042,7 +1050,10 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         db.query(
             Detection.label_taxonomy_id,
             func.coalesce(
-                Detection.display_name, Detection.label, Detection.category
+                Detection.scientific_name, Detection.label, Detection.category
+            ),
+            func.coalesce(
+                Detection.common_name, Detection.label, Detection.category
             ),
         )
         .join(File, File.id == Detection.file_id)
@@ -1055,11 +1066,16 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     )
     label_list = sorted([row[0] for row in label_rows if row[0]])
 
-    # Build display_labels mapping (taxonomy_id -> display name)
-    display_labels: dict[str, str] = {}
-    for tid, display in label_rows:
-        if tid and display and tid not in display_labels:
-            display_labels[tid] = display
+    # Build name maps (taxonomy_id -> name), one per display preference.
+    scientific_labels: dict[str, str] = {}
+    common_labels: dict[str, str] = {}
+    for tid, sci, common in label_rows:
+        if not tid:
+            continue
+        if sci and tid not in scientific_labels:
+            scientific_labels[tid] = sci
+        if common and tid not in common_labels:
+            common_labels[tid] = common
 
     # Count distinct events per taxonomy ID (threshold-filtered)
     label_count_rows = (
@@ -1100,5 +1116,6 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         "labels": label_list,
         "date_range": date_range,
         "label_event_counts": label_event_counts,
-        "display_labels": display_labels,
+        "scientific_labels": scientific_labels,
+        "common_labels": common_labels,
     }

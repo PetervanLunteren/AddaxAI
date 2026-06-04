@@ -185,13 +185,13 @@ def build_label_filter_tree(
         count = label_event_counts.get(row.name, 0)
 
         if row.level == "species":
-            display_label = row.display_name or row.name
-            display_name = row.name.replace("_", " ")
+            display_label = row.scientific_name or row.name
+            scientific_name = row.name.replace("_", " ")
             leaf_id = row.id
             leaf_node = {
                 "id": leaf_id,
                 "name": display_label,
-                "annotation": display_name,
+                "annotation": scientific_name,
                 "count": count,
                 "children": {},
                 "is_leaf": True,
@@ -200,7 +200,7 @@ def build_label_filter_tree(
         else:
             leaf_id = row.id
             display = (
-                row.display_name
+                row.scientific_name
                 or row.name.replace("_", " ").capitalize()
             )
             # Annotation: show the underlying model label when it differs

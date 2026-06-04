@@ -103,7 +103,8 @@ class DetectionSummary(BaseModel):
     # filter (keyed on taxonomy id).
     label_taxonomy_id: str | None = None
     label_confidence: float | None
-    display_name: str | None = None
+    common_name: str | None = None
+    scientific_name: str | None = None
     confidence: float
     category: str
     verified: bool
@@ -112,7 +113,8 @@ class DetectionSummary(BaseModel):
     similarity: float | None = None
     neighbor_agreement: float | None = None
     neighbor_top_label: str | None = None
-    neighbor_top_display_name: str | None = None
+    neighbor_top_common_name: str | None = None
+    neighbor_top_scientific_name: str | None = None
     site_name: str | None = None
     deployment_id: str | None = None
     captured_at_local: datetime | None = None
@@ -159,9 +161,11 @@ class CohortItem(BaseModel):
     # filter (keyed on taxonomy id). May be null when the current label
     # has no taxonomy row.
     current_label_taxonomy_id: str | None
-    current_display_name: str | None
+    current_common_name: str | None
+    current_scientific_name: str | None
     suggested_label: str
-    suggested_display_name: str | None
+    suggested_common_name: str | None
+    suggested_scientific_name: str | None
     # Detection category ("animal", "person", "vehicle"). Carried so
     # the relabel call can keep the category fixed even when the model
     # category-output column drifts from the label-taxonomy category.

@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import { Info, Loader2 } from "lucide-react";
 
 import { matrixCellColor } from "../../lib/metric-colors";
+import { getSpeciesNameMode } from "../../lib/species-name-mode";
 import type { PerformanceResponse } from "../../api/performance";
 import type { MatrixMode } from "./PerformanceFilterBar";
 
@@ -94,7 +95,10 @@ export function ConfusionMatrix({
   }
 
   const classes = data.classes;
-  const displays = data.class_display_names;
+  const displays =
+    getSpeciesNameMode() === "scientific"
+      ? data.class_scientific_names
+      : data.class_common_names;
 
   return (
     <div className="rounded-lg border bg-card">

@@ -66,7 +66,8 @@ def _emit_progress(phase: str, done: int, total: int) -> None:
 
 BASE_SQL = """
 SELECT de.detection_id, de.vector, de.l2_norm,
-       d.label, d.label_taxonomy_id, d.label_confidence, d.display_name,
+       d.label, d.label_taxonomy_id, d.label_confidence, d.scientific_name,
+       d.common_name,
        d.confidence, d.category,
        d.verified, d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
@@ -214,7 +215,8 @@ def _load_embeddings(
                 "label": row["label"],
                 "label_taxonomy_id": row["label_taxonomy_id"],
                 "label_confidence": row["label_confidence"],
-                "display_name": row["display_name"],
+                "scientific_name": row["scientific_name"],
+                "common_name": row["common_name"],
                 "confidence": row["confidence"],
                 "category": row["category"],
                 "verified": bool(row["verified"]),
@@ -370,7 +372,8 @@ def _build_summary(
     similarity: float | None = None,
     neighbor_agreement: float | None = None,
     neighbor_top_label: str | None = None,
-    neighbor_top_display_name: str | None = None,
+    neighbor_top_scientific_name: str | None = None,
+    neighbor_top_common_name: str | None = None,
 ) -> dict:
     """Build detection summary dict (matches DetectionSummary schema)."""
     return {
@@ -379,7 +382,8 @@ def _build_summary(
         "label": meta["label"],
         "label_taxonomy_id": meta.get("label_taxonomy_id"),
         "label_confidence": meta["label_confidence"],
-        "display_name": meta.get("display_name"),
+        "scientific_name": meta.get("scientific_name"),
+        "common_name": meta.get("common_name"),
         "confidence": meta["confidence"],
         "category": meta["category"],
         "verified": meta["verified"],
@@ -388,7 +392,8 @@ def _build_summary(
         "similarity": similarity,
         "neighbor_agreement": neighbor_agreement,
         "neighbor_top_label": neighbor_top_label,
-        "neighbor_top_display_name": neighbor_top_display_name,
+        "neighbor_top_scientific_name": neighbor_top_scientific_name,
+        "neighbor_top_common_name": neighbor_top_common_name,
         "site_name": meta.get("site_name"),
         "deployment_id": meta.get("deployment_id"),
         "captured_at_local": meta.get("captured_at_local"),
@@ -639,24 +644,33 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     else:
         final_order = order_indices(sort_mode, similarity_order, metas)
 
-    # Map raw label string → display_name from the same project's
-    # taxonomy. Used to render the suggested neighbor label as the same
-    # Latin display name shown elsewhere in the UI, instead of the raw
+    # Map raw label string → scientific / common name from the same
+    # project's taxonomy. Used to render the suggested neighbor label with
+    # the same display names shown elsewhere in the UI, instead of the raw
     # model class name (e.g. "M. meles" instead of "badger").
-    label_to_display: dict[str, str] = {}
+    label_to_scientific: dict[str, str] = {}
+    label_to_common: dict[str, str] = {}
     for m in metas:
         label = m.get("label")
-        display = m.get("display_name")
-        if label and display and label not in label_to_display:
-            label_to_display[label] = display
+        if not label:
+            continue
+        sci = m.get("scientific_name")
+        if sci and label not in label_to_scientific:
+            label_to_scientific[label] = sci
+        common = m.get("common_name")
+        if common and label not in label_to_common:
+            label_to_common[label] = common
 
     detections = [
         _build_summary(
             det_ids[i], metas[i],
             neighbor_agreement=float(agreement_scores[i]),
             neighbor_top_label=top_labels[i],
-            neighbor_top_display_name=(
-                label_to_display.get(top_labels[i]) if top_labels[i] else None
+            neighbor_top_scientific_name=(
+                label_to_scientific.get(top_labels[i]) if top_labels[i] else None
+            ),
+            neighbor_top_common_name=(
+                label_to_common.get(top_labels[i]) if top_labels[i] else None
             ),
         )
         for i in final_order
@@ -746,12 +760,18 @@ def _group_cohorts(
     well-defined; each cohort row preserves the original (possibly
     None) `current_label` and `category` for the relabel call.
     """
-    label_to_display: dict[str, str] = {}
+    label_to_scientific: dict[str, str] = {}
+    label_to_common: dict[str, str] = {}
     for m in metas:
         label = m.get("label")
-        display = m.get("display_name")
-        if label and display and label not in label_to_display:
-            label_to_display[label] = display
+        if not label:
+            continue
+        sci = m.get("scientific_name")
+        if sci and label not in label_to_scientific:
+            label_to_scientific[label] = sci
+        common = m.get("common_name")
+        if common and label not in label_to_common:
+            label_to_common[label] = common
 
     cohorts: dict[tuple[str, str, str], dict] = {}
     for i, det_id in enumerate(det_ids):
@@ -771,9 +791,11 @@ def _group_cohorts(
                 # navigation can drop the user into the existing
                 # Observations label filter (which takes taxonomy ids).
                 "current_label_taxonomy_id": metas[i].get("label_taxonomy_id"),
-                "current_display_name": label_to_display.get(current_label or ""),
+                "current_scientific_name": label_to_scientific.get(current_label or ""),
+                "current_common_name": label_to_common.get(current_label or ""),
                 "suggested_label": suggested,
-                "suggested_display_name": label_to_display.get(suggested),
+                "suggested_scientific_name": label_to_scientific.get(suggested),
+                "suggested_common_name": label_to_common.get(suggested),
                 "category": category,
                 "members": [],
             }
@@ -789,9 +811,11 @@ def _group_cohorts(
             {
                 "current_label": bucket["current_label"],
                 "current_label_taxonomy_id": bucket["current_label_taxonomy_id"],
-                "current_display_name": bucket["current_display_name"],
+                "current_scientific_name": bucket["current_scientific_name"],
+                "current_common_name": bucket["current_common_name"],
                 "suggested_label": bucket["suggested_label"],
-                "suggested_display_name": bucket["suggested_display_name"],
+                "suggested_scientific_name": bucket["suggested_scientific_name"],
+                "suggested_common_name": bucket["suggested_common_name"],
                 "category": bucket["category"],
                 "count": len(bucket["members"]),
                 "detection_ids": [det_id for _, det_id in bucket["members"]],
@@ -833,7 +857,8 @@ def _load_anchor_embedding(
     """Load a single detection's embedding and metadata."""
     sql = """
     SELECT de.vector, de.l2_norm,
-           d.label, d.label_confidence, d.display_name, d.confidence, d.category,
+           d.label, d.label_confidence, d.scientific_name, d.common_name,
+           d.confidence, d.category,
            d.verified, d.classification_method, d.file_id,
            d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
            f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
@@ -870,7 +895,8 @@ def _load_anchor_embedding(
     meta = {
         "label": row["label"],
         "label_confidence": row["label_confidence"],
-        "display_name": row["display_name"],
+        "scientific_name": row["scientific_name"],
+        "common_name": row["common_name"],
         "confidence": row["confidence"],
         "category": row["category"],
         "verified": bool(row["verified"]),

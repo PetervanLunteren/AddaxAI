@@ -24,6 +24,7 @@ import { projectsApi } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
+import { speciesLabelMap } from "../../lib/species-name-mode";
 import type {
   EventFilterParams,
   VerificationFilter,
@@ -133,10 +134,11 @@ export function VerifyFilterBar({
     noSite?.count ?? 0,
   );
 
+  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
   const labelFilterOptions: MultiSelectOption[] =
     filterOptions?.labels.map((lbl) => ({
       value: lbl,
-      label: filterOptions?.display_labels?.[lbl] ?? lbl,
+      label: labelNames[lbl] ?? lbl,
     })) ?? [];
 
   // Five controls without Sites (folder runs), six with it (projects).
@@ -291,7 +293,7 @@ export function VerifyFilterBar({
         filters={filters}
         onChange={onChange}
         siteNames={siteNames}
-        displayLabels={filterOptions?.display_labels}
+        displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}
       />
     </div>

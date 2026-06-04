@@ -60,7 +60,13 @@ class Detection(Base):
     # Classification results (filled by classification models)
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
     label_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Two precomputed display names, both filled by resolve_label_names at
+    # write time. common_name is the SpeciesNet common name (or the cleaned
+    # class label); scientific_name is the Latin form ("P. pardus"). The UI
+    # picks one via a per-user preference; both degrade to the capitalised
+    # category for unclassified detections.
+    common_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    scientific_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Raw top-1 classifier output captured at JSON load time.
     # Never mutated by postprocessing, rollup, or user relabels.

@@ -26,6 +26,7 @@ import {
 
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
+import { speciesLabelMap } from "../../lib/species-name-mode";
 import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
@@ -85,10 +86,11 @@ export function MapFilterBar({
   const siteOptions: MultiSelectOption[] =
     sites?.map((s) => ({ value: s.id, label: s.name })) ?? [];
 
+  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
   const labelFlatOptions: MultiSelectOption[] =
     filterOptions?.labels.map((lbl) => ({
       value: lbl,
-      label: filterOptions?.display_labels?.[lbl] ?? lbl,
+      label: labelNames[lbl] ?? lbl,
     })) ?? [];
 
   return (

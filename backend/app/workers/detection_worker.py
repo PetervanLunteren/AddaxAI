@@ -696,7 +696,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     deployment.id, final_json_path, folder_path, project, db,
                     job_id=job_id,
                 )
-                # Load taxonomy for display_name formatting
+                # Load taxonomy for scientific_name formatting
                 taxonomy_csv = None
                 if classification_model_id and cls_model_dir:
                     _tax = cls_model_dir / "taxonomy.csv"

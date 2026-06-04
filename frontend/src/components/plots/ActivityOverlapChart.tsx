@@ -147,6 +147,10 @@ ChartJS.register(twilightBandsPlugin, rugTicksPlugin);
 
 interface ActivityOverlapChartProps {
   data: ActivityOverlapResponse;
+  /** Pre-resolved dataset labels (common or scientific per the active
+   *  display preference). Fall back to the response's scientific key. */
+  speciesAName?: string;
+  speciesBName?: string;
 }
 
 const SAMPLES = 240;
@@ -159,6 +163,8 @@ const GRID_HOURS: number[] = Array.from(
 
 export function ActivityOverlapChart({
   data,
+  speciesAName,
+  speciesBName,
 }: ActivityOverlapChartProps) {
   // Use the effective axis the backend actually delivered, not the
   // user's toggle. Sun mode can silently downgrade to clock when a
@@ -208,7 +214,7 @@ export function ActivityOverlapChart({
     }
 
     datasets.push({
-      label: data.species_a.label,
+      label: speciesAName ?? data.species_a.label,
       data: data.species_a.kde_density,
       borderColor: SPECIES_A_COLOR,
       backgroundColor: "transparent",
@@ -221,7 +227,7 @@ export function ActivityOverlapChart({
 
     if (data.species_b) {
       datasets.push({
-        label: data.species_b.label,
+        label: speciesBName ?? data.species_b.label,
         data: data.species_b.kde_density,
         borderColor: SPECIES_B_COLOR,
         backgroundColor: "transparent",

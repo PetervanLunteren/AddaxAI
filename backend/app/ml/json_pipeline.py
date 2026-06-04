@@ -96,7 +96,7 @@ def load_json_to_database(
         artifacts_folder: Project-scoped artifacts folder. If provided,
             video_frames are read from artifacts_folder/video_frames/.
         taxonomy_name_to_id: Pre-resolved mapping of
-            {lowercase_label: (taxonomy_id, display_name)}.
+            {lowercase_label: (taxonomy_id, scientific_name)}.
         builtin_taxonomy_ids: Mapping of builtin category names
             to taxonomy UUIDs, e.g. {"animal": "uuid", ...}.
 
@@ -366,7 +366,7 @@ def load_json_to_database(
                     detection_record.original_label = label
                     detection_record.original_label_confidence = label_confidence
                     detection_record.classification_method = "machine"
-                    # Resolve taxonomy ID and display_name inline
+                    # Resolve taxonomy ID + both names inline
                     if taxonomy_name_to_id:
                         resolved = taxonomy_name_to_id.get(
                             label.lower()
@@ -375,14 +375,18 @@ def load_json_to_database(
                             detection_record.label_taxonomy_id = (
                                 resolved[0]
                             )
-                            detection_record.display_name = resolved[1]
+                            detection_record.scientific_name = resolved[1]
+                            detection_record.common_name = resolved[2]
 
                 # Set builtin taxonomy ID for unclassified detections
                 if not label and builtin_taxonomy_ids:
                     builtin_tid = builtin_taxonomy_ids.get(category)
                     if builtin_tid:
                         detection_record.label_taxonomy_id = builtin_tid
-                        detection_record.display_name = (
+                        detection_record.scientific_name = (
+                            category.capitalize()
+                        )
+                        detection_record.common_name = (
                             category.capitalize()
                         )
 

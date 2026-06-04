@@ -12,7 +12,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
+from app.ml.taxonomic_rollup import (
+    format_common_name,
+    format_scientific_name_from_taxonomy_row,
+)
 from app.models.detection import Detection
 from app.models.label_taxonomy import LabelTaxonomy
 
@@ -81,7 +84,8 @@ def populate_taxonomy_from_csv(
             taxon_genus=taxon.get("genus"),
             taxon_species=taxon.get("species"),
             level=_determine_level(taxon),
-            display_name=format_display_name_from_taxonomy_row(
+            common_name=format_common_name(name),
+            scientific_name=format_scientific_name_from_taxonomy_row(
                 name,
                 taxon.get("genus"),
                 taxon.get("species"),
@@ -168,9 +172,9 @@ def add_rollup_taxonomy_entry(
         # scientifically correct kingdom name is "Animalia". Matches the
         # Latin naming we use for other rollup rows (Bovidae, Felidae, ...)
         # and makes the matrix cell stand apart from the detector category.
-        display_name = "Animalia"
+        scientific_name = "Animalia"
     elif level == "species":
-        display_name = format_display_name_from_taxonomy_row(
+        scientific_name = format_scientific_name_from_taxonomy_row(
             name,
             genus_val,
             species_val,
@@ -179,7 +183,7 @@ def add_rollup_taxonomy_entry(
             ancestor_at("class"),
         )
     else:
-        display_name = name.capitalize()
+        scientific_name = name.capitalize()
 
     taxonomy_entry = LabelTaxonomy(
         classification_model_id=model_id,
@@ -190,7 +194,8 @@ def add_rollup_taxonomy_entry(
         taxon_genus=genus_val,
         taxon_species=species_val,
         level=level,
-        display_name=display_name,
+        common_name=format_common_name(name),
+        scientific_name=scientific_name,
         is_custom=False,
     )
     db.add(taxonomy_entry)
@@ -236,7 +241,8 @@ def ensure_builtin_labels(db: Session) -> dict[str, str]:
             classification_model_id=BUILTIN_MODEL_ID,
             name=label_def["name"],
             level="none",
-            display_name=label_def["name"].capitalize(),
+            common_name=label_def["name"].capitalize(),
+            scientific_name=label_def["name"].capitalize(),
             is_custom=False,
         )
         db.add(taxonomy_entry)
@@ -256,20 +262,22 @@ def batch_resolve_taxonomy_ids(
     model_id: str | None,
     project_id: str,
     db: Session,
-) -> dict[str, tuple[str, str | None]]:
+) -> dict[str, tuple[str, str | None, str | None]]:
     """
-    Resolve a batch of label names to (taxonomy_id, display_name) tuples.
+    Resolve a batch of label names to
+    (taxonomy_id, scientific_name, common_name) tuples.
 
     Priority: model-level > custom > builtin.
     Single query per priority level instead of N+1.
 
     Returns:
-        {lowercase_name: (taxonomy_id, display_name)} for all matched names.
+        {lowercase_name: (taxonomy_id, scientific_name, common_name)}
+        for all matched names.
     """
     if not label_names:
         return {}
 
-    result: dict[str, tuple[str, str | None]] = {}
+    result: dict[str, tuple[str, str | None, str | None]] = {}
 
     # 1. Model-level taxonomy
     if model_id:
@@ -277,7 +285,8 @@ def batch_resolve_taxonomy_ids(
             db.query(
                 LabelTaxonomy.id,
                 LabelTaxonomy.name,
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
             )
             .filter(
                 LabelTaxonomy.classification_model_id == model_id,
@@ -286,15 +295,16 @@ def batch_resolve_taxonomy_ids(
             )
             .all()
         )
-        for tid, name, dname in model_rows:
-            result[name.lower()] = (tid, dname)
+        for tid, name, sci, common in model_rows:
+            result[name.lower()] = (tid, sci, common)
 
     # 2. Custom labels for this project
     custom_rows = (
         db.query(
             LabelTaxonomy.id,
             LabelTaxonomy.name,
-            LabelTaxonomy.display_name,
+            LabelTaxonomy.scientific_name,
+            LabelTaxonomy.common_name,
         )
         .filter(
             LabelTaxonomy.project_id == project_id,
@@ -303,17 +313,18 @@ def batch_resolve_taxonomy_ids(
         )
         .all()
     )
-    for tid, name, dname in custom_rows:
+    for tid, name, sci, common in custom_rows:
         key = name.lower()
         if key not in result:
-            result[key] = (tid, dname)
+            result[key] = (tid, sci, common)
 
     # 3. Builtin labels (animal, person, vehicle)
     builtin_rows = (
         db.query(
             LabelTaxonomy.id,
             LabelTaxonomy.name,
-            LabelTaxonomy.display_name,
+            LabelTaxonomy.scientific_name,
+            LabelTaxonomy.common_name,
         )
         .filter(
             LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
@@ -321,10 +332,10 @@ def batch_resolve_taxonomy_ids(
         )
         .all()
     )
-    for tid, name, dname in builtin_rows:
+    for tid, name, sci, common in builtin_rows:
         key = name.lower()
         if key not in result:
-            result[key] = (tid, dname)
+            result[key] = (tid, sci, common)
 
     return result
 
@@ -374,9 +385,9 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     label_names = [row[0] for row in unlinked_labels]
 
     if label_names:
-        # Build lookup: label name -> (taxonomy_id, display_name)
+        # Build lookup: label name -> (taxonomy_id, scientific_name, common_name)
         # Priority: model-level > custom > builtin
-        name_to_taxonomy: dict[str, tuple[str, str | None]] = {}
+        name_to_taxonomy: dict[str, tuple[str, str | None, str | None]] = {}
 
         # 1. Model-level taxonomy (if model exists)
         if model_id:
@@ -384,7 +395,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 db.query(
                     LabelTaxonomy.id,
                     LabelTaxonomy.name,
-                    LabelTaxonomy.display_name,
+                    LabelTaxonomy.scientific_name,
+                    LabelTaxonomy.common_name,
                 )
                 .filter(
                     LabelTaxonomy.classification_model_id == model_id,
@@ -393,15 +405,16 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 )
                 .all()
             )
-            for tid, name, dname in model_rows:
-                name_to_taxonomy[name] = (tid, dname)
+            for tid, name, sci, common in model_rows:
+                name_to_taxonomy[name] = (tid, sci, common)
 
         # 2. Custom labels for this project
         custom_rows = (
             db.query(
                 LabelTaxonomy.id,
                 LabelTaxonomy.name,
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
             )
             .filter(
                 LabelTaxonomy.project_id == project_id,
@@ -410,16 +423,17 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             )
             .all()
         )
-        for tid, name, dname in custom_rows:
+        for tid, name, sci, common in custom_rows:
             if name not in name_to_taxonomy:
-                name_to_taxonomy[name] = (tid, dname)
+                name_to_taxonomy[name] = (tid, sci, common)
 
         # 3. Builtin labels (animal, person, vehicle)
         builtin_rows = (
             db.query(
                 LabelTaxonomy.id,
                 LabelTaxonomy.name,
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
             )
             .filter(
                 LabelTaxonomy.classification_model_id
@@ -428,12 +442,12 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             )
             .all()
         )
-        for tid, name, dname in builtin_rows:
+        for tid, name, sci, common in builtin_rows:
             if name not in name_to_taxonomy:
-                name_to_taxonomy[name] = (tid, dname)
+                name_to_taxonomy[name] = (tid, sci, common)
 
-        # Bulk-update: one UPDATE per label (set FK + display_name)
-        for label_name, (taxonomy_id, dname) in name_to_taxonomy.items():
+        # Bulk-update: one UPDATE per label (set FK + both names)
+        for label_name, (taxonomy_id, sci, common) in name_to_taxonomy.items():
             count = (
                 db.query(Detection)
                 .filter(
@@ -446,7 +460,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 .update(
                     {
                         Detection.label_taxonomy_id: taxonomy_id,
-                        Detection.display_name: dname,
+                        Detection.scientific_name: sci,
+                        Detection.common_name: common,
                     },
                     synchronize_session=False,
                 )
@@ -471,7 +486,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             db.query(
                 LabelTaxonomy.id,
                 LabelTaxonomy.name,
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
             )
             .filter(
                 LabelTaxonomy.classification_model_id
@@ -480,7 +496,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             )
             .all()
         )
-        for tid, cat_name, dname in builtin_cat_rows:
+        for tid, cat_name, sci, common in builtin_cat_rows:
             count = (
                 db.query(Detection)
                 .filter(
@@ -494,7 +510,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 .update(
                     {
                         Detection.label_taxonomy_id: tid,
-                        Detection.display_name: dname,
+                        Detection.scientific_name: sci,
+                        Detection.common_name: common,
                     },
                     synchronize_session=False,
                 )

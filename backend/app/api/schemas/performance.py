@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 class ClassMetrics(BaseModel):
     class_name: str
-    display_name: str
+    common_name: str
+    scientific_name: str
     support: int
     precision: float | None
     recall: float | None
@@ -21,9 +22,13 @@ class PerformanceResponse(BaseModel):
         description="Aggregation rank used (all / class / order / family / genus / species)",
     )
     classes: list[str] = Field(..., description="Class identifiers in matrix order")
-    class_display_names: list[str] = Field(
+    class_scientific_names: list[str] = Field(
         ...,
-        description="Human-friendly labels, aligned with `classes` by index",
+        description="Scientific labels, aligned with `classes` by index",
+    )
+    class_common_names: list[str] = Field(
+        ...,
+        description="Common labels, aligned with `classes` by index",
     )
     class_taxonomy_ids: list[str | None] = Field(
         ...,

@@ -237,7 +237,8 @@ class CustomLabelResponse(BaseModel):
     taxon_family: str | None = None
     taxon_genus: str | None = None
     taxon_species: str | None = None
-    display_name: str | None = None
+    common_name: str | None = None
+    scientific_name: str | None = None
 
     model_config = {"from_attributes": True}
 

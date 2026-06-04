@@ -249,7 +249,8 @@ def get_site_info(db: Session, site_id: str):
         top_species_rows = db.execute(
             select(
                 EventObservation.label,
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
                 func.sum(EventObservation.max_n),
             )
             .select_from(EventObservation)
@@ -260,13 +261,20 @@ def get_site_info(db: Session, site_id: str):
             .where(Event.deployment_id.in_(deployment_ids))
             .where(EventObservation.category == "animal")
             .where(EventObservation.label.isnot(None))
-            .group_by(EventObservation.label, LabelTaxonomy.display_name)
+            .group_by(
+                EventObservation.label,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
+            )
             .order_by(func.sum(EventObservation.max_n).desc())
             .limit(5)
         ).all()
         top_species = [
             SiteTopSpecies(
-                label=row[0], display_name=row[1], count=int(row[2])
+                label=row[0],
+                scientific_name=row[1],
+                common_name=row[2],
+                count=int(row[3]),
             )
             for row in top_species_rows
         ]

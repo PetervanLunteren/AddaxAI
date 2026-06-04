@@ -36,7 +36,8 @@ class EventSummary(BaseModel):
     max_n_frames: list[MaxNFrame]
     site_name: str | None
     labels: list[str]
-    display_labels: dict[str, str] | None = None
+    scientific_labels: dict[str, str] | None = None
+    common_labels: dict[str, str] | None = None
     observation_type: str
     observation_types: list[str]
     image_count: int
@@ -139,7 +140,8 @@ class EventFilterOptions(BaseModel):
     labels: list[str]
     date_range: DateRange | None
     label_event_counts: dict[str, int]
-    display_labels: dict[str, str] | None = None
+    scientific_labels: dict[str, str] | None = None
+    common_labels: dict[str, str] | None = None
 
 
 class LabelTreeNode(BaseModel):

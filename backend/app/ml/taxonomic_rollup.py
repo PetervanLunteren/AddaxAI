@@ -27,7 +27,7 @@ TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]  # broadest â
 ROLLUP_THRESHOLD = 0.65
 
 
-def format_display_name_from_taxonomy_row(
+def format_scientific_name_from_taxonomy_row(
     label: str,
     taxon_genus: str | None,
     taxon_species: str | None,
@@ -52,6 +52,50 @@ def format_display_name_from_taxonomy_row(
     if taxon_class:
         return taxon_class.capitalize()
     return label[0].upper() + label[1:] if label else label
+
+
+def format_common_name(label: str) -> str:
+    """
+    Clean a class label into a common name: underscores to spaces and
+    capitalise the first letter. Mirrors the frontend ``normalizeLabel``
+    so common-mode names match across the UI and stored data.
+
+    ``label`` already degrades to the Latin taxon where SpeciesNet had no
+    common name (e.g. rollups), so this also yields the right value there.
+    """
+    if not label:
+        return label
+    cleaned = label.replace("_", " ")
+    return cleaned[0].upper() + cleaned[1:]
+
+
+def resolve_label_names(
+    label: str | None,
+    taxonomy: object | None,
+    category: str,
+) -> tuple[str | None, str | None]:
+    """
+    Single source of truth for a detection's two display names.
+
+    Returns ``(common_name, scientific_name)``:
+    - With a LabelTaxonomy row, copy its precomputed names (the row is
+      where the formatting actually happens, in ``taxonomy_db``).
+    - With a label but no taxonomy row (e.g. human relabel to a custom
+      label), clean the label for common and capitalise it for scientific.
+    - Unclassified (no label): both fall back to the capitalised category.
+
+    Never reads model output; safe to run over verified detections because
+    it only derives display strings from the existing label / taxonomy.
+    """
+    if taxonomy is not None and (
+        getattr(taxonomy, "scientific_name", None)
+        or getattr(taxonomy, "common_name", None)
+    ):
+        return taxonomy.common_name, taxonomy.scientific_name
+    if label:
+        return format_common_name(label), label[0].upper() + label[1:]
+    cap = category.capitalize() if category else category
+    return cap, cap
 
 
 @dataclass

@@ -223,7 +223,7 @@ def test_site_info_happy_path(client, db):
     assert data["detection_categories"]["animal"] == 2
     assert data["detection_categories"]["person"] == 0
     assert data["top_species"] == [
-        {"label": "lion", "display_name": None, "count": 2}
+        {"label": "lion", "common_name": None, "scientific_name": None, "count": 2}
     ]
     # Trap nights is folder-aware (sum per deployment of per-folder
     # (max - min + 1) over actual files). dep1's 4 files all fall on

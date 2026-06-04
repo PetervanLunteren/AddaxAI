@@ -9,6 +9,7 @@
 
 import type { ObservationRateMapFeature } from "../../api/statistics";
 import { formatCameraDate } from "../../lib/datetime";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import {
   getSpeciesColor,
   getSpeciesTextColor,
@@ -78,7 +79,7 @@ export function SitePopup({ feature }: SitePopupProps) {
                   className="rounded px-1.5 py-0.5 text-[10px] font-medium"
                   style={{ backgroundColor: bg, color: fg }}
                 >
-                  {sp.label}
+                  {resolveSpeciesName(sp)}
                 </span>
               );
             })}

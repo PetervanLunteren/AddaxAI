@@ -195,7 +195,7 @@ function selectionMajority(
         count: 1,
         label: d.label,
         category: d.category,
-        displayName: d.display_name,
+        displayName: d.scientific_name,
       });
     }
   }
@@ -738,10 +738,10 @@ export function ObservationsTab({
         ...d,
         label,
         category,
-        display_name: displayName,
+        scientific_name: displayName,
         label_taxonomy_id: null,
         neighbor_top_label: null,
-        neighbor_top_display_name: null,
+        neighbor_top_scientific_name: null,
         verified: true,
       }));
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
@@ -785,7 +785,7 @@ export function ObservationsTab({
         toast.success(
           `Relabelled ${cohort.count} observation${
             cohort.count === 1 ? "" : "s"
-          } to ${cohort.suggested_display_name || cohort.suggested_label}.`,
+          } to ${cohort.suggested_scientific_name || cohort.suggested_label}.`,
         );
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Relabel failed");
@@ -808,10 +808,10 @@ export function ObservationsTab({
           applyDetectionAction(ids, (d) => ({
             ...d,
             label: "false detection",
-            display_name: "False detection",
+            scientific_name: "False detection",
             label_taxonomy_id: null,
             neighbor_top_label: null,
-            neighbor_top_display_name: null,
+            neighbor_top_scientific_name: null,
             verified: true,
           }));
           clearSelection();
@@ -827,10 +827,10 @@ export function ObservationsTab({
       applyDetectionAction(ids, (d) => ({
         ...d,
         label: "false detection",
-        display_name: "False detection",
+        scientific_name: "False detection",
         label_taxonomy_id: null,
         neighbor_top_label: null,
-        neighbor_top_display_name: null,
+        neighbor_top_scientific_name: null,
         verified: true,
       }));
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
@@ -875,10 +875,10 @@ export function ObservationsTab({
             ...d,
             label: modeLabel,
             category: modeCategory,
-            display_name: modeDisplayName,
+            scientific_name: modeDisplayName,
             label_taxonomy_id: null,
             neighbor_top_label: null,
-            neighbor_top_display_name: null,
+            neighbor_top_scientific_name: null,
             verified: true,
           }));
           clearSelection();
@@ -960,10 +960,10 @@ export function ObservationsTab({
             ...d,
             label: label.label ?? label.category,
             category: label.category,
-            display_name: label.displayName,
+            scientific_name: label.displayName,
             label_taxonomy_id: null,
             neighbor_top_label: null,
-            neighbor_top_display_name: null,
+            neighbor_top_scientific_name: null,
             verified: true,
           }));
           clearSelection();
@@ -1273,10 +1273,10 @@ export function ObservationsTab({
             ...d,
             label,
             category,
-            display_name: null,
+            scientific_name: null,
             label_taxonomy_id: null,
             neighbor_top_label: null,
-            neighbor_top_display_name: null,
+            neighbor_top_scientific_name: null,
             verified: true,
           }));
         }}
@@ -1284,10 +1284,10 @@ export function ObservationsTab({
           applyDetectionAction([detectionId], (d) => ({
             ...d,
             label: "false detection",
-            display_name: "False detection",
+            scientific_name: "False detection",
             label_taxonomy_id: null,
             neighbor_top_label: null,
-            neighbor_top_display_name: null,
+            neighbor_top_scientific_name: null,
             verified: true,
           }));
         }}

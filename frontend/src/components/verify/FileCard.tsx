@@ -11,6 +11,7 @@ import { Image as ImageIcon, Video as VideoIcon } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getCategoryColor, getCategoryTextColor, getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
+import { speciesLabelMap } from "../../lib/species-name-mode";
 import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
 import { Badge } from "../ui/badge";
 import { Card, CardContent } from "../ui/card";
@@ -40,9 +41,26 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
   // person / vehicle boxes that never carry a species label. A box with
   // a species label becomes a species chip; a box without one becomes an
   // observation badge for its category (Animal / Person / Vehicle).
-  const drawnSpecies = [
-    ...new Set(dets.filter((d) => d.label).map((d) => d.label as string)),
-  ];
+  //
+  // Species chips are keyed by taxonomy id — the same key the name map
+  // (`scientific_labels` / `common_labels`) uses — so the chip text
+  // follows the common/scientific display preference. The color key and
+  // the raw-label fallback also come off that key.
+  const speciesNameMap = speciesLabelMap(file);
+  const drawnSpecies: { key: string; name: string }[] = [];
+  const seenSpeciesKeys = new Set<string>();
+  for (const d of dets) {
+    if (!d.label) continue;
+    const key = d.label_taxonomy_id ?? d.label;
+    if (seenSpeciesKeys.has(key)) continue;
+    seenSpeciesKeys.add(key);
+    drawnSpecies.push({
+      key,
+      name:
+        speciesNameMap[key] ||
+        d.label.charAt(0).toUpperCase() + d.label.slice(1),
+    });
+  }
   const drawnCategories = [
     ...new Set(dets.filter((d) => !d.label).map((d) => d.category)),
   ];
@@ -145,18 +163,15 @@ export function FileCard({ file, detectionThreshold, onClick }: FileCardProps) {
           ))}
           {drawnSpecies.slice(0, 2).map((sp) => (
             <Badge
-              key={sp}
+              key={sp.key}
               variant="default"
               className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
               style={{
-                backgroundColor: getSpeciesColor(sp),
-                color: getSpeciesTextColor(sp),
+                backgroundColor: getSpeciesColor(sp.key),
+                color: getSpeciesTextColor(sp.key),
               }}
             >
-              <span className="truncate">
-                {file.display_labels?.[sp] ||
-                  sp.charAt(0).toUpperCase() + sp.slice(1)}
-              </span>
+              <span className="truncate">{sp.name}</span>
             </Badge>
           ))}
           {drawnSpecies.length > 2 && (

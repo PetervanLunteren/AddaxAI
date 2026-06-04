@@ -154,6 +154,11 @@ class SaveOutputsRequest(BaseModel):
     recognition_json: bool = False
     csv: bool = False
     xlsx: bool = False
+    # Which species name to burn into the visualised images: the common
+    # name or the scientific name. Mirrors the UI display preference so
+    # the saved images match what the user sees. EXIF metadata always
+    # carries both names regardless of this choice.
+    name_mode: Literal["common", "scientific"] = "common"
 
 
 class OutputPreviewRequest(BaseModel):
@@ -708,6 +713,7 @@ async def save_outputs(
                 "csv": payload.csv,
                 "xlsx": payload.xlsx,
                 "excluded_label_ids": list(payload.excluded_label_ids),
+                "name_mode": payload.name_mode,
             },
         ),
     )

@@ -579,7 +579,7 @@ export function DetectionDetailModal({
                         <p className="text-sm text-amber-600 dark:text-amber-400">
                           Neighbors suggest:{" "}
                           <span className="font-semibold capitalize">
-                            {detection.neighbor_top_display_name ||
+                            {detection.neighbor_top_scientific_name ||
                               detection.neighbor_top_label}
                           </span>
                         </p>
@@ -638,7 +638,7 @@ export function DetectionDetailModal({
                   >
                     <Tag className="h-4 w-4 mr-1" />
                     Accept &ldquo;
-                    {detection.neighbor_top_display_name ||
+                    {detection.neighbor_top_scientific_name ||
                       detection.neighbor_top_label}
                     &rdquo;
                     <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
@@ -670,7 +670,7 @@ export function DetectionDetailModal({
               >
                 <LabelPicker
                   value={detection.label}
-                  displayName={detection.display_name}
+                  displayName={detection.scientific_name}
                   onSelect={(option) => {
                     relabelMutation.mutate({
                       label: option.label,

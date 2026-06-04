@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { modelsApi } from "../api/models";
 import { projectsApi } from "../api/projects";
+import { resolveSpeciesName } from "../lib/species-name-mode";
 
 export interface LabelOption {
   value: string;
@@ -29,12 +30,21 @@ const GENERAL_OPTIONS: LabelOption[] = [
   { value: "vehicle", displayName: "Vehicle", category: "vehicle", label: null },
 ];
 
-/** Read display_name from the backend taxonomy map, with capitalize fallback. */
+/** Resolve a label's display name from the taxonomy map under the active
+ *  species-name mode (common vs scientific), with capitalize fallback. */
 function getDisplayName(
   rawLabel: string,
-  entry: { display_name?: string | null } | undefined,
+  entry:
+    | { common_name?: string | null; scientific_name?: string | null }
+    | undefined,
 ): string {
-  return entry?.display_name || rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+  return (
+    resolveSpeciesName({
+      common_name: entry?.common_name,
+      scientific_name: entry?.scientific_name,
+      label: rawLabel,
+    }) || rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1)
+  );
 }
 
 /** Build a display string from taxonomy fields, joining non-empty ranks with " > ". */

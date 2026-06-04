@@ -27,7 +27,8 @@ class DetectionResponse(BaseModel):
     bbox_height: float | None
     label: str | None
     label_confidence: float | None
-    display_name: str | None = None
+    common_name: str | None = None
+    scientific_name: str | None = None
     label_taxonomy_id: str | None = None
     classification_method: str | None = None
     frame_number: int | None = None
@@ -131,7 +132,9 @@ class FileSummary(BaseModel):
     observation_type: str
     observation_types: list[str]
     labels: list[str]
-    display_labels: dict[str, str]
+    # Both keyed by taxonomy_id; the client picks one by display preference.
+    scientific_labels: dict[str, str]
+    common_labels: dict[str, str]
     verified: bool
     favorited: bool
     flagged: bool

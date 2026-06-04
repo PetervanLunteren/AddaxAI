@@ -85,7 +85,8 @@ class SiteTopSpecies(BaseModel):
     """One row in the top-species leaderboard for a site."""
 
     label: str
-    display_name: str | None
+    common_name: str | None
+    scientific_name: str | None
     count: int
 
 

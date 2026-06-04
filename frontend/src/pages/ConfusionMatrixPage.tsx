@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { performanceApi } from "../api/performance";
 import { sitesApi } from "../api/sites";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
+import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { ConfusionMatrix } from "../components/plots/ConfusionMatrix";
 import {
   InsightsFilterChips,
@@ -131,7 +132,10 @@ export function ConfusionMatrixPage() {
                 Agreement between AI and human labels
               </p>
             </div>
-            <DiagnosticReportButton />
+            <div className="flex items-center gap-2">
+              <SpeciesNameToggle />
+              <DiagnosticReportButton />
+            </div>
           </div>
         </div>
       </header>

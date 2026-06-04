@@ -108,9 +108,9 @@ def _rank_display_label(taxonomic_rank: str | None):
         needs_join  = True
     """
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-        # "Most specific": show display_name (Latin) with fallback to raw label
+        # "Most specific": show scientific_name (Latin) with fallback to raw label
         return (
-            func.coalesce(Detection.display_name, Detection.label, Detection.category),
+            func.coalesce(Detection.scientific_name, Detection.label, Detection.category),
             False,
         )
 
@@ -127,14 +127,14 @@ def _rank_display_label(taxonomic_rank: str | None):
     # are treated as having no taxonomy.
     has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
 
-    # For species rank, use the pre-computed display_name from
+    # For species rank, use the pre-computed scientific_name from
     # label_taxonomy (e.g. "G. camelopardalis") instead of building
     # the binomial in SQL.
     if taxonomic_rank == "species":
         rank_display = case(
             (
                 LabelTaxonomy.taxon_species.isnot(None),
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
             ),
             else_=None,
         )
@@ -348,14 +348,23 @@ def get_species_distribution(
     Taxonomic rank modes: aggregates by the requested rank using
     the label_taxonomy join on EventObservation.label.
     """
-    # Build label expression for taxonomic aggregation
+    # Build label expressions for taxonomic aggregation. `label_expr` is the
+    # scientific-preferring key; `common_expr` mirrors it but prefers the
+    # common name. They differ only at the species rank and the raw/all mode
+    # (higher taxa have no common name, so the two coincide there).
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-        # "Most specific": use pre-computed display_name from label_taxonomy.
+        # "Most specific": use pre-computed names from label_taxonomy.
         # Falls back to raw label for non-animal or no-taxonomy entries.
         label_expr = case(
             (EventObservation.category != "animal", EventObservation.category),
             else_=func.coalesce(
-                LabelTaxonomy.display_name, EventObservation.label
+                LabelTaxonomy.scientific_name, EventObservation.label
+            ),
+        )
+        common_expr = case(
+            (EventObservation.category != "animal", EventObservation.category),
+            else_=func.coalesce(
+                LabelTaxonomy.common_name, EventObservation.label
             ),
         )
         needs_join = True
@@ -363,26 +372,41 @@ def get_species_distribution(
         col_name = _RANK_COLUMNS.get(taxonomic_rank)
         if not col_name:
             label_expr = EventObservation.label
+            common_expr = EventObservation.label
             needs_join = False
         else:
             rank_col = getattr(LabelTaxonomy, col_name)
             has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
 
-            # For species rank, use pre-computed display_name
+            # For species rank, use pre-computed names
             if taxonomic_rank == "species":
                 rank_display = case(
                     (
                         LabelTaxonomy.taxon_species.isnot(None),
-                        LabelTaxonomy.display_name,
+                        LabelTaxonomy.scientific_name,
+                    ),
+                    else_=None,
+                )
+                rank_common = case(
+                    (
+                        LabelTaxonomy.taxon_species.isnot(None),
+                        LabelTaxonomy.common_name,
                     ),
                     else_=None,
                 )
             else:
                 rank_display = rank_col
+                rank_common = rank_col
 
             label_expr = case(
                 (EventObservation.category != "animal", EventObservation.category),
                 (rank_display.isnot(None), rank_display),
+                (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
+                else_=literal(NO_TAXONOMY),
+            )
+            common_expr = case(
+                (EventObservation.category != "animal", EventObservation.category),
+                (rank_common.isnot(None), rank_common),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
             )
@@ -398,6 +422,7 @@ def get_species_distribution(
     query = (
         select(
             label_expr.label("species"),
+            func.max(common_expr).label("common_name"),
             count_expr.label("count"),
         )
         .select_from(EventObservation)
@@ -421,7 +446,11 @@ def get_species_distribution(
 
     rows = db.execute(query).all()
     return [
-        SpeciesCount(species=row.species, count=row.count)
+        SpeciesCount(
+            species=row.species,
+            common_name=row.common_name,
+            count=row.count,
+        )
         for row in rows
     ]
 
@@ -577,7 +606,7 @@ def get_activity_pattern(
             display_label = case(
                 (EventObservation.category != "animal", EventObservation.category),
                 else_=func.coalesce(
-                    LabelTaxonomy.display_name, EventObservation.label
+                    LabelTaxonomy.scientific_name, EventObservation.label
                 ),
             )
             query = query.outerjoin(
@@ -590,13 +619,13 @@ def get_activity_pattern(
             if col_name:
                 rank_col = getattr(LabelTaxonomy, col_name)
                 has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-                # For species rank, use display_name to match
+                # For species rank, use scientific_name to match
                 # the abbreviated binomial shown in the dropdown
                 if taxonomic_rank == "species":
                     rank_display = case(
                         (
                             LabelTaxonomy.taxon_species.isnot(None),
-                            LabelTaxonomy.display_name,
+                            LabelTaxonomy.scientific_name,
                         ),
                         else_=None,
                     )
@@ -721,7 +750,7 @@ def _event_decimal_hours_for_species(
         display_label = case(
             (EventObservation.category != "animal", EventObservation.category),
             else_=func.coalesce(
-                LabelTaxonomy.display_name, EventObservation.label
+                LabelTaxonomy.scientific_name, EventObservation.label
             ),
         )
         query = query.outerjoin(
@@ -737,7 +766,7 @@ def _event_decimal_hours_for_species(
                 rank_display = case(
                     (
                         LabelTaxonomy.taxon_species.isnot(None),
-                        LabelTaxonomy.display_name,
+                        LabelTaxonomy.scientific_name,
                     ),
                     else_=None,
                 )
@@ -1036,7 +1065,7 @@ def get_detection_trend(
             display_label = case(
                 (EventObservation.category != "animal", EventObservation.category),
                 else_=func.coalesce(
-                    LabelTaxonomy.display_name, EventObservation.label
+                    LabelTaxonomy.scientific_name, EventObservation.label
                 ),
             )
             query = query.outerjoin(
@@ -1049,13 +1078,13 @@ def get_detection_trend(
             if col_name:
                 rank_col = getattr(LabelTaxonomy, col_name)
                 has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-                # For species rank, use display_name to match
+                # For species rank, use scientific_name to match
                 # the abbreviated binomial shown in the dropdown
                 if taxonomic_rank == "species":
                     rank_display = case(
                         (
                             LabelTaxonomy.taxon_species.isnot(None),
-                            LabelTaxonomy.display_name,
+                            LabelTaxonomy.scientific_name,
                         ),
                         else_=None,
                     )
@@ -1186,7 +1215,8 @@ def get_verification_progress_by_label(
         select(
             Detection.label_taxonomy_id.label("label_taxonomy_id"),
             Detection.category.label("category"),
-            LabelTaxonomy.display_name.label("display_name"),
+            LabelTaxonomy.scientific_name.label("scientific_name"),
+            LabelTaxonomy.common_name.label("common_name"),
             func.count(Detection.id).label("total"),
             func.sum(
                 case((Detection.verified == True, 1), else_=0)  # noqa: E712
@@ -1205,7 +1235,8 @@ def get_verification_progress_by_label(
         .group_by(
             Detection.label_taxonomy_id,
             Detection.category,
-            LabelTaxonomy.display_name,
+            LabelTaxonomy.scientific_name,
+            LabelTaxonomy.common_name,
         )
         .order_by(func.count(Detection.id).desc())
     )
@@ -1214,11 +1245,12 @@ def get_verification_progress_by_label(
 
     rows: list[LabelProgressRow] = []
     for row in db.execute(query).all():
-        display = row.display_name or (row.category or "unknown").capitalize()
+        fallback = (row.category or "unknown").capitalize()
         rows.append(
             LabelProgressRow(
                 label_taxonomy_id=row.label_taxonomy_id,
-                display_name=display,
+                common_name=row.common_name or fallback,
+                scientific_name=row.scientific_name or fallback,
                 verified=int(row.verified or 0),
                 total=int(row.total or 0),
             )
@@ -1349,7 +1381,8 @@ def get_observation_rate_map(
                 Deployment.site_id.label("site_id"),
                 EventObservation.label.label("label"),
                 EventObservation.label_taxonomy_id.label("label_taxonomy_id"),
-                LabelTaxonomy.display_name.label("display_name"),
+                LabelTaxonomy.scientific_name.label("scientific_name"),
+                LabelTaxonomy.common_name.label("common_name"),
                 func.sum(EventObservation.max_n).label("count"),
             )
             .select_from(EventObservation)
@@ -1365,7 +1398,8 @@ def get_observation_rate_map(
                 Deployment.site_id,
                 EventObservation.label,
                 EventObservation.label_taxonomy_id,
-                LabelTaxonomy.display_name,
+                LabelTaxonomy.scientific_name,
+                LabelTaxonomy.common_name,
             )
             .order_by(func.sum(EventObservation.max_n).desc())
         )
@@ -1381,10 +1415,12 @@ def get_observation_rate_map(
             )
 
         for row in db.execute(breakdown_query).all():
-            label_display = row.display_name or row.label or "unknown"
+            raw = row.label or "unknown"
             breakdown_by_site.setdefault(row.site_id, []).append(
                 SpeciesObservationCount(
-                    label=label_display,
+                    label=raw,
+                    common_name=row.common_name or raw,
+                    scientific_name=row.scientific_name or raw,
                     label_taxonomy_id=row.label_taxonomy_id,
                     count=int(row.count or 0),
                 )

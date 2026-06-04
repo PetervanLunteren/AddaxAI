@@ -29,7 +29,7 @@ def _make_taxonomy(db, **kw) -> LabelTaxonomy:
         id=str(uuid.uuid4()),
         classification_model_id="TEST-MODEL",
         name="fox",
-        display_name="Vulpes vulpes",
+        scientific_name="Vulpes vulpes",
         level="species",
     )
     defaults.update(kw)

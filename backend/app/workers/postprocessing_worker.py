@@ -201,7 +201,7 @@ async def process_postprocessing_job(job_id: str) -> None:
                         project,
                         db,
                     )
-                    # Load taxonomy for display_name formatting
+                    # Load taxonomy for scientific_name formatting
                     pp_taxonomy = None
                     if taxonomy_csv and taxonomy_csv.exists():
                         from app.ml.taxonomic_rollup import load_taxonomy_lookup

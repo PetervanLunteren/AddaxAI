@@ -7,7 +7,8 @@ import type { TaxonomicRank } from "../lib/taxonomic-rank";
 
 export interface ClassMetrics {
   class_name: string;
-  display_name: string;
+  common_name: string;
+  scientific_name: string;
   support: number;
   precision: number | null;
   recall: number | null;
@@ -17,7 +18,8 @@ export interface ClassMetrics {
 export interface PerformanceResponse {
   taxonomic_rank: TaxonomicRank;
   classes: string[];
-  class_display_names: string[];
+  class_scientific_names: string[];
+  class_common_names: string[];
   class_taxonomy_ids: (string | null)[];
   matrix: number[][];
   row_totals: number[];

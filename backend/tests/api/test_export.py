@@ -130,7 +130,8 @@ def test_export_observations_csv_happy_path(client, db):
         "detection_category", "detection_confidence", "bbox_x", "bbox_y",
         "bbox_width", "bbox_height", "frame_number", "classification_label",
         "classification_confidence", "taxon_class", "taxon_order",
-        "taxon_family", "taxon_genus", "taxon_species", "is_verified",
+        "taxon_family", "taxon_genus", "taxon_species",
+        "scientific_name", "common_name", "is_verified",
     ]
     cls_i = headers.index("classification_label")
     cat_i = headers.index("detection_category")
@@ -245,7 +246,7 @@ def test_export_spatial_geojson(client, db):
         id=str(uuid.uuid4()),
         classification_model_id="TEST-MODEL",
         name="fox",
-        display_name="Vulpes vulpes",
+        scientific_name="Vulpes vulpes",
         level="species",
         taxon_class="mammalia",
         taxon_order="carnivora",
@@ -317,7 +318,7 @@ def test_export_spatial_gpkg(client, db):
         id=str(uuid.uuid4()),
         classification_model_id="TEST-MODEL",
         name="fox",
-        display_name="Vulpes vulpes",
+        scientific_name="Vulpes vulpes",
         level="species",
         taxon_genus="vulpes",
         taxon_species="vulpes",
@@ -372,7 +373,7 @@ def test_export_camtrap_dp_happy_path(client, db):
         id=str(uuid.uuid4()),
         classification_model_id="TEST-MODEL",
         name="fox",
-        display_name="Vulpes vulpes",
+        scientific_name="Vulpes vulpes",
         level="species",
     )
     db.add(taxonomy)
@@ -389,7 +390,7 @@ def test_export_camtrap_dp_happy_path(client, db):
         category="animal",
         confidence=0.9,
         label="fox",
-        display_name="fox",
+        scientific_name="fox",
         label_confidence=0.88,
         label_taxonomy_id=taxonomy.id,
     )

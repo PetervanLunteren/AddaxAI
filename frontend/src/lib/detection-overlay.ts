@@ -6,6 +6,7 @@
  */
 
 import { getCategoryColor } from "./detection-utils";
+import { resolveSpeciesName } from "./species-name-mode";
 import { getSpeciesColor } from "../utils/species-colors";
 import type { DetectionResponse } from "../api/types";
 
@@ -98,7 +99,7 @@ export function computePillLayout(detection: DetectionResponse): PillLayout {
   const hasLabel = !!detection.label;
 
   const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;
-  const displayName = detection.display_name || detection.label!;
+  const displayName = resolveSpeciesName(detection) || detection.label!;
   const labelText = hasLabel
     ? `${displayName.charAt(0).toUpperCase() + displayName.slice(1)} ${((detection.label_confidence ?? detection.confidence) * 100).toFixed(0)}%`
     : "";

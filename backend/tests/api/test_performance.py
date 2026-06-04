@@ -31,7 +31,7 @@ def _mk_taxonomy_row(
     taxon_genus: str | None = None,
     taxon_species: str | None = None,
     level: str = "species",
-    display_name: str | None = None,
+    scientific_name: str | None = None,
 ) -> LabelTaxonomy:
     row = LabelTaxonomy(
         id=str(uuid.uuid4()),
@@ -43,7 +43,7 @@ def _mk_taxonomy_row(
         taxon_genus=taxon_genus,
         taxon_species=taxon_species,
         level=level,
-        display_name=display_name,
+        scientific_name=scientific_name,
     )
     db.add(row)
     db.flush()
@@ -66,7 +66,7 @@ def _bootstrap_classified_project(db: Session, model_id: str = "CLS-TEST-v1"):
         taxon_genus="panthera",
         taxon_species="pardus",
         level="species",
-        display_name="P. pardus",
+        scientific_name="P. pardus",
     )
     _mk_taxonomy_row(
         db,
@@ -78,7 +78,7 @@ def _bootstrap_classified_project(db: Session, model_id: str = "CLS-TEST-v1"):
         taxon_genus="lynx",
         taxon_species="lynx",
         level="species",
-        display_name="Lynx lynx",
+        scientific_name="Lynx lynx",
     )
     _mk_taxonomy_row(
         db,
@@ -90,7 +90,7 @@ def _bootstrap_classified_project(db: Session, model_id: str = "CLS-TEST-v1"):
         taxon_genus="capreolus",
         taxon_species="capreolus",
         level="species",
-        display_name="C. capreolus",
+        scientific_name="C. capreolus",
     )
     return project, site, deployment, f
 
@@ -119,7 +119,7 @@ def test_species_matrix_counts_verified_pairs(db: Session) -> None:
         db, project.id, taxonomic_rank="species", top_n=None,
     )
     assert resp.has_classifier is True
-    # Species rank uses display_name when present.
+    # Species rank uses scientific_name when present.
     assert set(resp.classes) == {"P. pardus", "Lynx lynx"}
     i_leo = resp.classes.index("P. pardus")
     i_lynx = resp.classes.index("Lynx lynx")
@@ -135,13 +135,13 @@ def test_most_specific_default_uses_raw_labels(db: Session) -> None:
     project, _site, _dep, f = _bootstrap_classified_project(db)
     make_detection(
         db, file_id=f.id,
-        label="leopard", display_name="P. pardus",
+        label="leopard", scientific_name="P. pardus",
         original_label="leopard", verified=True,
     )
 
     # Default taxonomic_rank is "all"
     resp = performance_crud.get_classification_performance(db, project.id, top_n=None)
-    # display_name wins in "all" mode, so the class is the pretty label
+    # scientific_name wins in "all" mode, so the class is the pretty label
     assert resp.classes == ["P. pardus"]
     assert resp.grand_total == 1
 
@@ -181,7 +181,7 @@ def test_rollup_row_at_species_buckets_into_higher_level_taxa(db: Session) -> No
         taxon_order="carnivora",
         taxon_family="Felidae",
         level="family",
-        display_name="Felidae",
+        scientific_name="Felidae",
     )
     # Current label is a family-level rollup; original is a species.
     make_detection(
@@ -456,7 +456,7 @@ def test_performance_endpoint_default_rank_is_most_specific(db: Session, client)
     project, _site, _dep, f = _bootstrap_classified_project(db)
     make_detection(
         db, file_id=f.id,
-        label="leopard", display_name="P. pardus",
+        label="leopard", scientific_name="P. pardus",
         original_label="leopard", verified=True,
     )
     db.commit()

@@ -149,7 +149,7 @@ export function FileVerificationPanel({
         const opt = labelOptionsByValue.get(label);
         groups.set(label, {
           count: 1,
-          displayName: d.display_name || opt?.displayName || getDetectionDisplayName(d),
+          displayName: d.scientific_name || opt?.displayName || getDetectionDisplayName(d),
           commonName: opt?.commonName ?? null,
           caption: opt?.caption ?? null,
         });

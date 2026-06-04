@@ -158,6 +158,8 @@ export const projectsApi = {
       taxon_family: string | null;
       taxon_genus: string | null;
       taxon_species: string | null;
+      common_name: string | null;
+      scientific_name: string | null;
     }>>(`/api/projects/${projectId}/label-taxonomy-map`),
 
   /**

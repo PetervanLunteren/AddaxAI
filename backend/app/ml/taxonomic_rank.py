@@ -39,7 +39,7 @@ class _TaxonRow(Protocol):
     """Minimal shape a taxonomy row must satisfy for resolve_rank."""
 
     name: str
-    display_name: str | None
+    scientific_name: str | None
     taxon_class: str | None
     taxon_order: str | None
     taxon_family: str | None
@@ -51,7 +51,7 @@ def resolve_rank(
     *,
     category: str,
     label: str | None,
-    display_name: str | None,
+    scientific_name: str | None,
     taxonomy_row: _TaxonRow | None,
     rank: TaxonomicRank | None,
 ) -> str:
@@ -59,7 +59,7 @@ def resolve_rank(
     Python-side mirror of statistics._rank_display_label.
 
     Non-animal categories return the category. "Most specific" (None or
-    "all") falls back `display_name -> label -> category`. A specific
+    "all") falls back `scientific_name -> label -> category`. A specific
     rank returns the rank value when the row has it, or buckets to
     "Higher-level taxa" / "No taxonomy" using the same rules as the
     dashboard's SQL CASE.
@@ -67,7 +67,7 @@ def resolve_rank(
     if category in ("person", "vehicle"):
         return category
     if rank is None or rank == "all":
-        return display_name or label or category
+        return scientific_name or label or category
     if rank not in RANK_COLUMNS:
         # Unknown rank string: do the safest fallback rather than crashing.
         return label or category
@@ -83,11 +83,11 @@ def resolve_rank(
 
 def _rank_value(taxonomy_row: _TaxonRow, rank: TaxonomicRank) -> str | None:
     if rank == "species":
-        # Species rank uses display_name to avoid species-epithet
+        # Species rank uses scientific_name to avoid species-epithet
         # collisions across genera (e.g. two "pardus" species).
         if taxonomy_row.taxon_species is None:
             return None
-        return taxonomy_row.display_name or taxonomy_row.name
+        return taxonomy_row.scientific_name or taxonomy_row.name
     raw = getattr(taxonomy_row, RANK_COLUMNS[rank], None)
     return to_display_case(raw)
 

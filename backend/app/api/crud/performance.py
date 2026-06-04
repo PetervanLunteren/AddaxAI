@@ -44,7 +44,7 @@ def _display_for(name: str, row: LabelTaxonomy | None) -> str:
     Human-friendly label for the matrix axis.
 
     Detector categories and the semantic buckets pass through as-is;
-    species fall back to the taxonomy row's display_name when present.
+    species fall back to the taxonomy row's scientific_name when present.
     Non-species names (family / genus / order / class) are already
     capitalised by resolve_rank, so they reach here display-ready.
     """
@@ -54,8 +54,21 @@ def _display_for(name: str, row: LabelTaxonomy | None) -> str:
         return name
     if name in SEMANTIC_BUCKETS:
         return name
-    if row is not None and row.display_name:
-        return row.display_name
+    if row is not None and row.scientific_name:
+        return row.scientific_name
+    return name.replace("_", " ")
+
+
+def _common_for(name: str, row: LabelTaxonomy | None) -> str:
+    """Common-name counterpart of `_display_for` for the matrix axis."""
+    if name == OTHER_BUCKET:
+        return "Other"
+    if name in DETECTOR_CATEGORIES:
+        return name
+    if name in SEMANTIC_BUCKETS:
+        return name
+    if row is not None and row.common_name:
+        return row.common_name
     return name.replace("_", " ")
 
 
@@ -98,7 +111,7 @@ def _class_for_current(
     return resolve_rank(
         category=det.category,
         label=det.label,
-        display_name=det.display_name,
+        scientific_name=det.scientific_name,
         taxonomy_row=row,
         rank=rank,
     )
@@ -129,7 +142,7 @@ def _class_for_original(
         return resolve_rank(
             category=det.category,
             label=None,
-            display_name=None,
+            scientific_name=None,
             taxonomy_row=None,
             rank=rank,
         )
@@ -137,7 +150,7 @@ def _class_for_original(
     return resolve_rank(
         category=det.category,
         label=det.original_label,
-        display_name=row.display_name if row is not None else None,
+        scientific_name=row.scientific_name if row is not None else None,
         taxonomy_row=row,
         rank=rank,
     )
@@ -321,20 +334,31 @@ def get_classification_performance(
     ]
     grand_total = sum(row_totals_list)
 
+    # At the "all" / "species" rank, resolve_rank returns the
+    # scientific_name as the class identifier (e.g. "S. carolinensis"),
+    # which is NOT a LabelTaxonomy.name, so the by-name lookup below
+    # misses and the common name can't be found. This reverse map lets
+    # us recover the row (and its common_name) from that scientific
+    # string. At family / order / class ranks the class is a taxon name
+    # that already matches LabelTaxonomy.name, so the by-name lookup hits.
+    by_scientific = {
+        r.scientific_name.lower(): r
+        for r in taxonomy_lookup.values()
+        if r.scientific_name
+    }
+
     display_lookup: dict[str, str] = {}
+    common_lookup: dict[str, str] = {}
     taxonomy_id_lookup: dict[str, str | None] = {}
     for c in ordered:
         # Semantic buckets and detector categories have no taxonomy row.
-        # For species/taxa classes we look up by lowercased name, which
-        # works for the dashboard-style values returned by resolve_rank
-        # at family / order / class ranks (those are taxon names that
-        # also exist as LabelTaxonomy.name rows for rollup entries).
         row = (
             None
             if c in DETECTOR_CATEGORIES or c == OTHER_BUCKET or c in SEMANTIC_BUCKETS
-            else taxonomy_lookup.get(c.lower())
+            else taxonomy_lookup.get(c.lower()) or by_scientific.get(c.lower())
         )
         display_lookup[c] = _display_for(c, row)
+        common_lookup[c] = _common_for(c, row)
         taxonomy_id_lookup[c] = row.id if row is not None else None
 
     per_class: list[ClassMetrics] = []
@@ -348,7 +372,8 @@ def get_classification_performance(
         per_class.append(
             ClassMetrics(
                 class_name=c,
-                display_name=display_lookup[c],
+                common_name=common_lookup[c],
+                scientific_name=display_lookup[c],
                 support=support,
                 precision=precision,
                 recall=recall,
@@ -376,7 +401,8 @@ def get_classification_performance(
     return PerformanceResponse(
         taxonomic_rank=taxonomic_rank,
         classes=ordered,
-        class_display_names=[display_lookup[c] for c in ordered],
+        class_scientific_names=[display_lookup[c] for c in ordered],
+        class_common_names=[common_lookup[c] for c in ordered],
         class_taxonomy_ids=[taxonomy_id_lookup[c] for c in ordered],
         matrix=matrix,
         row_totals=row_totals_list,

@@ -114,6 +114,9 @@ _FLAT_OBS_HEADERS = [
     "bbox_width",
     "bbox_height",
     "frame_number",
+    # The model's prediction (label + its score), then everything that
+    # describes that label: taxonomy broad -> specific, then the two
+    # human-readable display names.
     "classification_label",
     "classification_confidence",
     "taxon_class",
@@ -121,6 +124,8 @@ _FLAT_OBS_HEADERS = [
     "taxon_family",
     "taxon_genus",
     "taxon_species",
+    "scientific_name",
+    "common_name",
     "is_verified",
 ]
 
@@ -311,8 +316,8 @@ def _species_label(detection: Detection, taxonomy: LabelTaxonomy | None) -> str:
     """Human-readable species name for a detection. Empty for non-animals without a label."""
     if detection.category != "animal":
         return detection.category
-    if detection.display_name:
-        return detection.display_name
+    if detection.scientific_name:
+        return detection.scientific_name
     if detection.label:
         return detection.label
     return detection.category
@@ -335,13 +340,13 @@ def _scientific_name(
     detection: Detection, taxonomy: LabelTaxonomy | None
 ) -> str:
     """
-    Latin / scientific name. ``label_taxonomy.display_name`` is the single
-    source of truth (see MEMORY.md project_taxonomy_display_name).
+    Latin / scientific name. ``label_taxonomy.scientific_name`` is the single
+    source of truth (see MEMORY.md project_taxonomy_scientific_name).
     """
     if detection.category != "animal":
         return ""
-    if taxonomy and taxonomy.display_name:
-        return taxonomy.display_name
+    if taxonomy and taxonomy.scientific_name:
+        return taxonomy.scientific_name
     return ""
 
 
@@ -506,6 +511,8 @@ def _detection_cells(
         detection.label or "",
         _round_or_blank(detection.label_confidence, 6),
         *_taxon_ranks(taxonomy),
+        detection.scientific_name or "",
+        detection.common_name or "",
         "TRUE" if detection.verified else "FALSE",
     ]
 
@@ -517,9 +524,11 @@ def _blank_detection_cells(file_obj: File) -> list[Any]:
         "",           # detection_confidence
         "", "", "", "",  # bbox
         "",           # frame_number
-        "",           # classification
+        "",           # classification_label
         "",           # classification_confidence
         "", "", "", "", "",  # taxon ranks
+        "",           # scientific_name
+        "",           # common_name
         "TRUE" if file_obj.verified else "FALSE",
     ]
 
@@ -982,8 +991,8 @@ def _build_datapackage(
     for species_name in sorted(observed_taxa):
         taxonomy, _ = observed_taxa[species_name]
         entry: dict[str, Any] = {}
-        if taxonomy and taxonomy.display_name:
-            entry["scientificName"] = taxonomy.display_name
+        if taxonomy and taxonomy.scientific_name:
+            entry["scientificName"] = taxonomy.scientific_name
         else:
             entry["scientificName"] = species_name
         if taxonomy and taxonomy.level:

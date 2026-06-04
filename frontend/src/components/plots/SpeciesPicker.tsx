@@ -19,6 +19,7 @@ import { Check, ChevronsUpDown, X } from "lucide-react";
 import { statisticsApi } from "../../api/statistics";
 import { cn } from "../../lib/utils";
 import { normalizeLabel } from "../../utils/labels";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { Button } from "../ui/button";
 import {
   Command,
@@ -105,7 +106,10 @@ export function SpeciesPicker({
       .filter((s) => s.species !== excludeValue)
       .map((s) => ({
         value: s.species,
-        label: normalizeLabel(s.species),
+        label: resolveSpeciesName({
+          scientific_name: s.species,
+          common_name: s.common_name,
+        }),
         count: s.count,
       }));
   }, [speciesList, excludeValue]);

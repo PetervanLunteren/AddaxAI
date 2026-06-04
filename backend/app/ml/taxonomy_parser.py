@@ -86,7 +86,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
         if not model_class:
             continue
 
-        display_name = model_class.replace("_", " ")
+        scientific_name = model_class.replace("_", " ")
 
         class_name = row.get("class", "").strip()
         order_name = row.get("order", "").strip()
@@ -99,7 +99,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             other_children = ensure_other_group()
             if model_class not in other_children:
                 other_children[model_class] = {
-                    "_label": display_name.capitalize(),
+                    "_label": scientific_name.capitalize(),
                     "_annotation": "unknown taxonomy",
                     "_value": model_class,
                     "_children": {},
@@ -113,7 +113,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             if model_class not in root:
                 root[model_class] = {
                     "_label": taxonomic_value.capitalize(),
-                    "_annotation": f"{display_name}, unknown taxonomy",
+                    "_annotation": f"{scientific_name}, unknown taxonomy",
                     "_value": model_class,
                     "_children": {},
                     "_level": "unknown",
@@ -163,7 +163,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 # Add model_class as leaf with "unspecified" marker
                 if model_class not in current_level:
                     current_level[model_class] = {
-                        "_label": display_name.capitalize(),
+                        "_label": scientific_name.capitalize(),
                         "_annotation": "unspecified",
                         "_value": model_class,
                         "_children": {},
@@ -183,10 +183,10 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                         g = genus_name.strip()
                         leaf_label = f"{g[0].upper()}. {species_name}"
                     else:
-                        leaf_label = species_name or display_name
-                    leaf_annotation = display_name
+                        leaf_label = species_name or scientific_name
+                    leaf_annotation = scientific_name
                 else:
-                    leaf_label = display_name.capitalize()
+                    leaf_label = scientific_name.capitalize()
                     leaf_annotation = "unspecified"
 
                 if model_class not in current_level:

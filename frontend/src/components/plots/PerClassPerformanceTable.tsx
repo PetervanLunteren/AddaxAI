@@ -10,6 +10,7 @@
 import { Info, Loader2 } from "lucide-react";
 
 import { f1DivergingColor } from "../../lib/metric-colors";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import type { PerformanceResponse } from "../../api/performance";
 
 interface PerClassPerformanceTableProps {
@@ -109,7 +110,7 @@ export function PerClassPerformanceTable({
                   }}
                 >
                   <td className="py-1.5 pl-4 pr-6 truncate max-w-[280px]">
-                    {m.display_name}
+                    {resolveSpeciesName(m)}
                   </td>
                   <td className="py-1.5 px-6 text-right tabular-nums">
                     {m.support.toLocaleString()}

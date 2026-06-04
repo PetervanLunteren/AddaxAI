@@ -55,7 +55,7 @@ import { sitesApi } from "../../api/sites";
 import { projectsApi } from "../../api/projects";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
-import { normalizeLabel } from "../../utils/labels";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import {
   getSpeciesColor,
   getSpeciesColorWithAlpha,
@@ -241,7 +241,13 @@ export function DashboardView({ projectId }: { projectId: string }) {
       : "Observations per 100 trap nights";
 
   const speciesData = {
-    labels: species?.map((s) => normalizeLabel(s.species)) ?? [],
+    labels:
+      species?.map((s) =>
+        resolveSpeciesName({
+          scientific_name: s.species,
+          common_name: s.common_name,
+        }),
+      ) ?? [],
     datasets: [
       {
         label: speciesAxisLabel,

@@ -12,6 +12,7 @@ import { Separator } from "../ui/separator";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { eventsApi } from "../../api/events";
 import { statisticsApi } from "../../api/statistics";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 
 interface VerificationProgressChartProps {
   projectId: string;
@@ -139,8 +140,8 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                   <Separator className="my-1" />
                   {labelStats.rows.map((row) => (
                     <SlimProgressRow
-                      key={row.label_taxonomy_id ?? row.display_name}
-                      label={row.display_name}
+                      key={row.label_taxonomy_id ?? row.scientific_name}
+                      label={resolveSpeciesName(row)}
                       verified={row.verified}
                       total={row.total}
                     />

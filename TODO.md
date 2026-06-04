@@ -9,33 +9,16 @@
 - [x] Nest blurring and visualisations under separation. Or better yet, rethink the all the options. Now we have 3 options (separate, blur, visualise) that kind of are dependent on each other. They all do something with the source data, they should somehow be grouped together. Agree? And then we have the export results option, with options to CSV, XLSX, and JSON, which are doing stuff with the results and not the source data. 
 - [x] make sure the JSON takes all the relevant info form the folder run DB and puts it into the JSON, following the format of MegaDetector. See how the projects page writes its JSONs, follow that format exactly. Including the classification_descxriptions with the taxonomy information (just like results mode does it). 
 - [x] Save outpout settings to localStorage on buttoin click too. Next time the user has the same settings for saving as last time. 
-- [ ] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
+- [ ] Investigate how it works when we get a command from Timelapse to open AddaxAI in timelpase mode with the given directory path. How does it work? Well, the timelapse mode is now depreciated (now its integrated into the folder run mode), so I want you to do two things: 1) make sure the command given from TimeLapse that previously opened addaxai-timelpase-mode with the dir filled in, now open folder run with the dir filled in. Then 2) remove the addaxai-timelpase-mode all together. We will not use it anymore. No dead code. Rmove all the code and all the links to it. It should look like it never existed. 
+- [x] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
+
+
+
+
+
 - [ ] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 - [ ] Does a screen sleep reset the localStorage of the browser? Does that mean that if the screen sleeps or the computer gets turned off, it loses all the stuff stored in localStorage?
 - [ ] We should probabaly have a "Decline suggestion" button that ignores the cohort of suggestions. It doesnt do anything to the cohort crops, it just removes them from the suggestions. This is good for the workflow "yes, these are indeed crows -> accept. No, these are actually a bunch of different animals. I dont want to fix them all here, and I also dont want to click and relabel here. Just ignore the suggestion and send them back to the main sort so I can relabel them there-> ignore.". 
-
-
-
-  SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps   
-  then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should   
-  we just default to common-if-present?
-  
-  
-
-  Instructions:                                                                                                                                                         
-  * Conduct a complete audit before making any changes. Assess the impact on the entire application.                                                                    
-  * Codex will review your output once you are done, so make sure you exceed his expectations                                                                           
-  * Do not sugar coat, be honest and clear                                                                                                                              
-  * Read all MD file in root to get a understanding of the project.                                                                                                     
-  * If something is unclear at any point, stop and ask before continuing.                                                                                               
-  * I'm not in a rush. Please be precise and do the task thoroughly.                                                                                                    
-  * Follow the KISS principle. Keep things as simple as possible.                                                                                                       
-  * Use a clear mental model that makes the feature easy for users to understand. Good UX should feel simple.                                                           
-  * Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
-  *   Another Claude session already did an audit, which you can fiund here:   SPECIES_NAME_DISPLAY_AUDIT.md (repo root) This does not mean you should not do the audit, this is just extra information. 
-
-
-
 
 
 

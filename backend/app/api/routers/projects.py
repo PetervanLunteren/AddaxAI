@@ -980,7 +980,8 @@ def get_label_taxonomy_map(
             "taxon_family": row.taxon_family,
             "taxon_genus": row.taxon_genus,
             "taxon_species": row.taxon_species,
-            "display_name": row.display_name,
+            "common_name": row.common_name,
+            "scientific_name": row.scientific_name,
         }
     return result
 
@@ -1031,6 +1032,8 @@ def create_custom_label(
     name = body.name.strip()
     model_id = db_project.classification_model_id
 
+    from app.ml.taxonomic_rollup import format_common_name
+
     # Check if already exists (case-insensitive) in current model taxonomy
     # or among this project's custom labels
     existing = (
@@ -1054,7 +1057,8 @@ def create_custom_label(
         level="unknown",
         name=name,
         classification_model_id="",
-        display_name=name.capitalize(),
+        common_name=format_common_name(name),
+        scientific_name=name.capitalize(),
     )
     db.add(new_label)
     db.commit()
@@ -1155,10 +1159,14 @@ def update_custom_label(
     row.taxon_species = body.taxon_species
     row.level = _derive_taxonomy_level(body)
 
-    # Recompute display_name from updated taxonomy fields
-    from app.ml.taxonomic_rollup import format_display_name_from_taxonomy_row
+    # Recompute both names from updated taxonomy fields
+    from app.ml.taxonomic_rollup import (
+        format_common_name,
+        format_scientific_name_from_taxonomy_row,
+    )
 
-    row.display_name = format_display_name_from_taxonomy_row(
+    row.common_name = format_common_name(row.name)
+    row.scientific_name = format_scientific_name_from_taxonomy_row(
         row.name,
         body.taxon_genus,
         body.taxon_species,
@@ -1168,7 +1176,7 @@ def update_custom_label(
     )
 
     # Ensure all detections with this label name point to this taxonomy
-    # row and have the updated display_name
+    # row and carry the updated names
     project_file_ids = (
         db.query(File.id)
         .join(Deployment)
@@ -1183,7 +1191,8 @@ def update_custom_label(
         .update(
             {
                 Detection.label_taxonomy_id: label_id,
-                Detection.display_name: row.display_name,
+                Detection.scientific_name: row.scientific_name,
+                Detection.common_name: row.common_name,
             },
             synchronize_session=False,
         )

@@ -26,7 +26,11 @@ class DashboardOverview(BaseModel):
 
 
 class SpeciesCount(BaseModel):
+    # `species` is the stable scientific-preferring key (used for colour and
+    # selection). `common_name` is the parallel common label; the client
+    # renders one or the other per the display preference.
     species: str
+    common_name: str | None = None
     count: int
 
 
@@ -81,14 +85,15 @@ class LabelProgressRow(BaseModel):
     """Per-class verification progress for the dashboard's scrollable list.
 
     Counts are at the detection level: each detection has exactly one
-    label, so rows partition cleanly. `display_name` is read from
-    `label_taxonomy.display_name` when present, otherwise it falls back
+    label, so rows partition cleanly. `scientific_name` is read from
+    `label_taxonomy.scientific_name` when present, otherwise it falls back
     to the capitalised category for built-in (Person / Vehicle) and
     unclassified (Animal) detections.
     """
 
     label_taxonomy_id: str | None
-    display_name: str
+    common_name: str
+    scientific_name: str
     verified: int
     total: int
 
@@ -98,9 +103,15 @@ class VerificationProgressByLabel(BaseModel):
 
 
 class SpeciesObservationCount(BaseModel):
-    """One species (or category) and its MaxN sum within a single site."""
+    """One species (or category) and its MaxN sum within a single site.
+
+    `common_name` / `scientific_name` are the two display strings; the
+    client renders one per the display preference. `label` is the raw key.
+    """
 
     label: str
+    common_name: str
+    scientific_name: str
     label_taxonomy_id: str | None
     count: int
 

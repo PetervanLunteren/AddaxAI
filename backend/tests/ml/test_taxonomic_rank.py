@@ -23,7 +23,7 @@ class Row:
     """Minimal stand-in for a LabelTaxonomy row."""
 
     name: str = ""
-    display_name: str | None = None
+    scientific_name: str | None = None
     taxon_class: str | None = None
     taxon_order: str | None = None
     taxon_family: str | None = None
@@ -39,14 +39,14 @@ class Row:
 @pytest.mark.parametrize("rank", ["all", "class", "order", "family", "genus", "species"])
 def test_person_returns_category_at_every_rank(rank):
     assert resolve_rank(
-        category="person", label=None, display_name=None, taxonomy_row=None, rank=rank,
+        category="person", label=None, scientific_name=None, taxonomy_row=None, rank=rank,
     ) == "person"
 
 
 @pytest.mark.parametrize("rank", ["all", "class", "order", "family", "genus", "species"])
 def test_vehicle_returns_category_at_every_rank(rank):
     assert resolve_rank(
-        category="vehicle", label=None, display_name=None, taxonomy_row=None, rank=rank,
+        category="vehicle", label=None, scientific_name=None, taxonomy_row=None, rank=rank,
     ) == "vehicle"
 
 
@@ -55,30 +55,30 @@ def test_vehicle_returns_category_at_every_rank(rank):
 # ---------------------------------------------------------------------------
 
 
-def test_all_mode_prefers_display_name():
+def test_all_mode_prefers_scientific_name():
     assert resolve_rank(
         category="animal",
         label="leopard",
-        display_name="P. pardus",
-        taxonomy_row=Row(name="leopard", display_name="P. pardus", taxon_species="pardus"),
+        scientific_name="P. pardus",
+        taxonomy_row=Row(name="leopard", scientific_name="P. pardus", taxon_species="pardus"),
         rank="all",
     ) == "P. pardus"
 
 
 def test_all_mode_falls_back_to_label_then_category():
-    # No display_name, has label
+    # No scientific_name, has label
     assert resolve_rank(
-        category="animal", label="deer", display_name=None, taxonomy_row=None, rank="all",
+        category="animal", label="deer", scientific_name=None, taxonomy_row=None, rank="all",
     ) == "deer"
     # No label at all: animal detector-only detection
     assert resolve_rank(
-        category="animal", label=None, display_name=None, taxonomy_row=None, rank="all",
+        category="animal", label=None, scientific_name=None, taxonomy_row=None, rank="all",
     ) == "animal"
 
 
 def test_none_rank_behaves_as_all():
     assert resolve_rank(
-        category="animal", label="deer", display_name=None, taxonomy_row=None, rank=None,
+        category="animal", label="deer", scientific_name=None, taxonomy_row=None, rank=None,
     ) == "deer"
 
 
@@ -87,10 +87,10 @@ def test_none_rank_behaves_as_all():
 # ---------------------------------------------------------------------------
 
 
-def test_species_rank_uses_display_name():
+def test_species_rank_uses_scientific_name():
     row = Row(
         name="leopard",
-        display_name="P. pardus",
+        scientific_name="P. pardus",
         taxon_class="mammalia",
         taxon_order="carnivora",
         taxon_family="felidae",
@@ -98,15 +98,15 @@ def test_species_rank_uses_display_name():
         taxon_species="pardus",
     )
     assert resolve_rank(
-        category="animal", label="leopard", display_name="P. pardus",
+        category="animal", label="leopard", scientific_name="P. pardus",
         taxonomy_row=row, rank="species",
     ) == "P. pardus"
 
 
-def test_species_rank_falls_back_to_name_when_no_display_name():
+def test_species_rank_falls_back_to_name_when_no_scientific_name():
     row = Row(name="leopard", taxon_species="pardus")
     assert resolve_rank(
-        category="animal", label="leopard", display_name=None,
+        category="animal", label="leopard", scientific_name=None,
         taxonomy_row=row, rank="species",
     ) == "leopard"
 
@@ -122,7 +122,7 @@ def test_family_rank_returns_capitalised_taxon_family():
     # Family / genus / order / class are stored lowercase by the CSV
     # importer; resolve_rank capitalises for display.
     assert resolve_rank(
-        category="animal", label="leopard", display_name=None,
+        category="animal", label="leopard", scientific_name=None,
         taxonomy_row=row, rank="family",
     ) == "Felidae"
 
@@ -130,7 +130,7 @@ def test_family_rank_returns_capitalised_taxon_family():
 def test_class_rank_returns_capitalised_taxon_class():
     row = Row(name="leopard", taxon_class="mammalia", taxon_family="felidae")
     assert resolve_rank(
-        category="animal", label="leopard", display_name=None,
+        category="animal", label="leopard", scientific_name=None,
         taxonomy_row=row, rank="class",
     ) == "Mammalia"
 
@@ -150,7 +150,7 @@ def test_rollup_row_at_species_becomes_higher_level_taxa():
         taxon_family="Equidae",
     )
     assert resolve_rank(
-        category="animal", label="Equidae", display_name=None,
+        category="animal", label="Equidae", scientific_name=None,
         taxonomy_row=row, rank="species",
     ) == HIGHER_LEVEL_TAXA
 
@@ -158,14 +158,14 @@ def test_rollup_row_at_species_becomes_higher_level_taxa():
 def test_class_only_row_at_family_becomes_higher_level_taxa():
     row = Row(name="bird", taxon_class="aves")
     assert resolve_rank(
-        category="animal", label="bird", display_name=None,
+        category="animal", label="bird", scientific_name=None,
         taxonomy_row=row, rank="family",
     ) == HIGHER_LEVEL_TAXA
 
 
 def test_no_taxonomy_row_at_specific_rank_becomes_no_taxonomy():
     assert resolve_rank(
-        category="animal", label="bait", display_name=None,
+        category="animal", label="bait", scientific_name=None,
         taxonomy_row=None, rank="species",
     ) == NO_TAXONOMY
 
@@ -175,7 +175,7 @@ def test_all_null_taxonomy_row_becomes_no_taxonomy():
     # with no taxonomy info). taxon_class is None → bucket.
     row = Row(name="custom_label")
     assert resolve_rank(
-        category="animal", label="custom_label", display_name=None,
+        category="animal", label="custom_label", scientific_name=None,
         taxonomy_row=row, rank="genus",
     ) == NO_TAXONOMY
 

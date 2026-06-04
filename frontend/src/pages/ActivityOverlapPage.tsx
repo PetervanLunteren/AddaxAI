@@ -18,6 +18,7 @@ import { Info, Loader2 } from "lucide-react";
 
 import { sitesApi } from "../api/sites";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
+import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { statisticsApi } from "../api/statistics";
 import type {
   ActivityOverlapResponse,
@@ -60,7 +61,7 @@ import {
   filtersToSearchParams,
   type FilterSchema,
 } from "../lib/filter-url";
-import { normalizeLabel } from "../utils/labels";
+import { resolveSpeciesName } from "../lib/species-name-mode";
 
 const FILTER_SCHEMA: FilterSchema = {
   species_a: "string",
@@ -141,9 +142,12 @@ function dominantPhase(
 interface SpeciesLegendProps {
   species: SpeciesActivity;
   swatchColor: string;
+  /** Common name for this species' key, when known (the overlap response
+   *  only carries the scientific-preferring key). */
+  commonName?: string | null;
 }
 
-function SpeciesLegend({ species, swatchColor }: SpeciesLegendProps) {
+function SpeciesLegend({ species, swatchColor, commonName }: SpeciesLegendProps) {
   const warning = species.sample_size_warning;
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -152,7 +156,12 @@ function SpeciesLegend({ species, swatchColor }: SpeciesLegendProps) {
         className="inline-block h-3 w-3 rounded-full"
         style={{ backgroundColor: swatchColor }}
       />
-      <span className="font-medium">{normalizeLabel(species.label)}</span>
+      <span className="font-medium">
+        {resolveSpeciesName({
+          scientific_name: species.label,
+          common_name: commonName,
+        })}
+      </span>
       <span className="tabular-nums text-muted-foreground">
         n = {species.n}
       </span>
@@ -347,6 +356,40 @@ export function ActivityOverlapPage() {
     enabled: shouldAutoPickA || shouldAutoPickB,
   });
 
+  // Species distribution again, but always on, purely to map the
+  // scientific-preferring key (what the overlap response and pickers use)
+  // to its common name so the legend + chart can follow the display
+  // preference. Same query key as SpeciesPicker, so this is a cache hit
+  // (no extra request).
+  const { data: speciesNameList } = useQuery({
+    queryKey: [
+      "statistics",
+      "species",
+      "picker",
+      projectId,
+      siteIdsCsv,
+      filters.dateFrom ?? undefined,
+      filters.dateTo ?? undefined,
+      undefined,
+    ],
+    queryFn: () =>
+      statisticsApi.getSpeciesDistribution(
+        projectId!,
+        siteIdsCsv,
+        filters.dateFrom ?? undefined,
+        filters.dateTo ?? undefined,
+      ),
+    enabled: !!projectId,
+  });
+
+  const commonNameByKey = useMemo(
+    () =>
+      new Map(
+        (speciesNameList ?? []).map((s) => [s.species, s.common_name]),
+      ),
+    [speciesNameList],
+  );
+
   // Restore-from-session: URL empty but session remembers a species →
   // write it back to the URL. URL-only update so we do not overwrite
   // the "never decided" sentinel for any slot we did not just restore.
@@ -438,7 +481,10 @@ export function ActivityOverlapPage() {
                 Compare daily activity patterns between species
               </p>
             </div>
-            <DiagnosticReportButton />
+            <div className="flex items-center gap-2">
+              <SpeciesNameToggle />
+              <DiagnosticReportButton />
+            </div>
           </div>
         </div>
       </header>
@@ -483,7 +529,21 @@ export function ActivityOverlapPage() {
         {enabled && data && (
           <div className="flex h-[600px] flex-col space-y-4 rounded-lg border bg-card p-4">
             <div className="min-h-0 flex-1">
-              <ActivityOverlapChart data={data} />
+              <ActivityOverlapChart
+                data={data}
+                speciesAName={resolveSpeciesName({
+                  scientific_name: data.species_a.label,
+                  common_name: commonNameByKey.get(data.species_a.label),
+                })}
+                speciesBName={
+                  data.species_b
+                    ? resolveSpeciesName({
+                        scientific_name: data.species_b.label,
+                        common_name: commonNameByKey.get(data.species_b.label),
+                      })
+                    : undefined
+                }
+              />
             </div>
 
             {data.overlap && <OverlapReadout data={data} />}
@@ -492,11 +552,13 @@ export function ActivityOverlapPage() {
               <SpeciesLegend
                 species={data.species_a}
                 swatchColor={SPECIES_A_COLOR}
+                commonName={commonNameByKey.get(data.species_a.label)}
               />
               {data.species_b && (
                 <SpeciesLegend
                   species={data.species_b}
                   swatchColor={SPECIES_B_COLOR}
+                  commonName={commonNameByKey.get(data.species_b.label)}
                 />
               )}
             </div>

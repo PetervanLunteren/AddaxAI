@@ -6,6 +6,7 @@
 import type React from "react";
 import chroma from "chroma-js";
 import { getSpeciesColor } from "../utils/species-colors";
+import { resolveSpeciesName } from "./species-name-mode";
 
 /** Get color for a detection: species color if labeled, category color otherwise.
  *  Uses label_taxonomy_id as the color key when available (matches event label chips). */
@@ -60,15 +61,15 @@ export function shouldDrawBbox<
   return true;
 }
 
-/** Get display name for a detection, with capitalized fallback. */
+/** Get display name for a detection under the active species-name mode
+ *  (common vs scientific), with graceful fallbacks. */
 export function getDetectionDisplayName(detection: {
-  display_name?: string | null;
+  common_name?: string | null;
+  scientific_name?: string | null;
   label?: string | null;
   category: string;
 }): string {
-  if (detection.display_name) return detection.display_name;
-  if (detection.label) return detection.label;
-  return detection.category.charAt(0).toUpperCase() + detection.category.slice(1);
+  return resolveSpeciesName(detection);
 }
 
 /** Get color for a detection category. */

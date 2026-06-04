@@ -15,6 +15,7 @@ import { CircleHelp, Layers, Loader2 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
+import { speciesLabelMap } from "../../lib/species-name-mode";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import {
@@ -153,7 +154,7 @@ export function FilesTab({
       const allLabels = [...new Set(files.flatMap((f) => f.labels))];
       const aliases: Record<string, string> = {};
       for (const f of files) {
-        for (const [uuid, name] of Object.entries(f.display_labels)) {
+        for (const [uuid, name] of Object.entries(speciesLabelMap(f))) {
           aliases[uuid] = name;
         }
       }

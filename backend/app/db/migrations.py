@@ -183,6 +183,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "nullability change, not fingerprinted via PRAGMA table_info"
         ),
     ),
+    _Fingerprint(
+        revision="c9d0e1f2a3b4",
+        table="detections",
+        column="common_name",
+        description=(
+            "rename display_name -> scientific_name and add common_name "
+            "on detections / label_taxonomy"
+        ),
+    ),
 )
 
 

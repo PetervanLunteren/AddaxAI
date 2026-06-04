@@ -16,7 +16,7 @@ import { FolderOpen, Pencil, Scissors, Trash2 } from "lucide-react";
 import { deploymentsApi, type DeploymentInfo } from "../../api/deployments";
 import { formatCameraDateTime } from "../../lib/datetime";
 import { isElectron } from "../../lib/platform";
-import { normalizeLabel } from "../../utils/labels";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { Button } from "../ui/button";
 import {
   IdWithCopy,
@@ -264,7 +264,7 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
                   <span className="tabular-nums text-muted-foreground">
                     {i + 1}.
                   </span>{" "}
-                  {normalizeLabel(s.display_name ?? s.label)}
+                  {resolveSpeciesName(s)}
                 </span>
                 <span className="tabular-nums">
                   {s.count.toLocaleString()}

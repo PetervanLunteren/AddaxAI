@@ -167,7 +167,7 @@ async def _warm_up_query_caches() -> None:
         "SELECT COUNT(*) FROM label_taxonomy WHERE is_custom = 1",
         # Deployment / site info slideouts: top species panel joins
         # event observations to events, then left-joins label_taxonomy
-        # for display_name. Same path the dashboard's species charts
+        # for scientific_name. Same path the dashboard's species charts
         # use too.
         "SELECT COUNT(*) FROM event_observations o "
         "JOIN events e ON o.event_id = e.id "

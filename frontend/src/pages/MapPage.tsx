@@ -16,7 +16,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
+import { speciesLabelMap } from "../lib/species-name-mode";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
+import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import type { ObservationRateMapFilters } from "../api/statistics";
 import {
   MapFilterBar,
@@ -145,7 +147,7 @@ export function MapPage() {
         () => handleFiltersChange({ ...filters, date_from: undefined }),
         () => handleFiltersChange({ ...filters, date_to: undefined }),
       ),
-      ...labelChips(filters.labels, filterOptions?.display_labels, (next) =>
+      ...labelChips(filters.labels, filterOptions ? speciesLabelMap(filterOptions) : undefined, (next) =>
         handleFiltersChange({
           ...filters,
           labels: next.length ? next : undefined,
@@ -180,7 +182,10 @@ export function MapPage() {
                 Observation rate per 100 trap nights
               </p>
             </div>
-            <DiagnosticReportButton />
+            <div className="flex items-center gap-2">
+              <SpeciesNameToggle />
+              <DiagnosticReportButton />
+            </div>
           </div>
         </div>
       </header>

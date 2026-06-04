@@ -136,8 +136,9 @@ class DeploymentTopSpecies(BaseModel):
     """One row in the top-species leaderboard for a deployment."""
 
     label: str
-    # Optional display-name override from label_taxonomy (e.g. "B. taurus").
-    display_name: str | None
+    # Optional name overrides from label_taxonomy (e.g. "B. taurus").
+    common_name: str | None
+    scientific_name: str | None
     count: int
 
 

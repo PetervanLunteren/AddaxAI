@@ -21,13 +21,13 @@ from app.ml.inference.similarity_script import (
 def _meta(
     label: str | None,
     *,
-    display_name: str | None = None,
+    scientific_name: str | None = None,
     category: str | None = "animal",
     verified: bool = False,
 ) -> dict:
     return {
         "label": label,
-        "display_name": display_name,
+        "scientific_name": scientific_name,
         "category": category,
         "verified": verified,
     }
@@ -232,20 +232,20 @@ def test_group_cohorts_max_cohorts_cap():
     assert len(result) == 2
 
 
-def test_group_cohorts_carries_display_names():
+def test_group_cohorts_carries_scientific_names():
     det_ids = ["a", "b"]
     metas = [
-        _meta("aves", display_name="Aves"),
+        _meta("aves", scientific_name="Aves"),
         # b is in the dataset so 'american crow' has a known display
         # name; b itself does not contribute a cohort (top_labels[1] is
         # None) so it cannot pollute the output.
-        _meta("american crow", display_name="C. brachyrhynchos"),
+        _meta("american crow", scientific_name="C. brachyrhynchos"),
     ]
     top_labels = ["american crow", None]
     agreement = np.array([0.1, 1.0], dtype=np.float32)
     result = _group_cohorts(det_ids, metas, agreement, top_labels, 1, 10)
-    assert result[0]["current_display_name"] == "Aves"
-    assert result[0]["suggested_display_name"] == "C. brachyrhynchos"
+    assert result[0]["current_scientific_name"] == "Aves"
+    assert result[0]["suggested_scientific_name"] == "C. brachyrhynchos"
 
 
 def test_group_cohorts_handles_none_current_label():

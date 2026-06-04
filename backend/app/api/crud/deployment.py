@@ -502,12 +502,13 @@ def get_deployment_info(db: Session, deployment_id: str):
 
     # Top 5 species by MaxN sum. Only counts animal observations; people
     # / vehicles have their own row in the categories block already. Uses
-    # LabelTaxonomy.display_name when available (matches the label
+    # LabelTaxonomy.scientific_name when available (matches the label
     # coalesce pattern in the activity-overlap CRUD).
     top_species_rows = db.execute(
         select(
             EventObservation.label,
-            LabelTaxonomy.display_name,
+            LabelTaxonomy.scientific_name,
+            LabelTaxonomy.common_name,
             func.sum(EventObservation.max_n),
         )
         .select_from(EventObservation)
@@ -518,7 +519,11 @@ def get_deployment_info(db: Session, deployment_id: str):
         .where(Event.deployment_id == deployment_id)
         .where(EventObservation.category == "animal")
         .where(EventObservation.label.isnot(None))
-        .group_by(EventObservation.label, LabelTaxonomy.display_name)
+        .group_by(
+            EventObservation.label,
+            LabelTaxonomy.scientific_name,
+            LabelTaxonomy.common_name,
+        )
         .order_by(func.sum(EventObservation.max_n).desc())
         .limit(5)
     ).all()
@@ -526,8 +531,9 @@ def get_deployment_info(db: Session, deployment_id: str):
     top_species = [
         DeploymentTopSpecies(
             label=row[0],
-            display_name=row[1],
-            count=int(row[2]),
+            scientific_name=row[1],
+            common_name=row[2],
+            count=int(row[3]),
         )
         for row in top_species_rows
     ]

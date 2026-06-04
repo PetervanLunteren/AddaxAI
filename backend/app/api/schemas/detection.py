@@ -46,7 +46,10 @@ class DetectionBase(BaseModel):
     label_confidence: float | None = Field(
         None, ge=0.0, le=1.0, description="Label classification confidence"
     )
-    display_name: str | None = Field(
+    common_name: str | None = Field(
+        None, max_length=100, description="Common name (or cleaned class label)"
+    )
+    scientific_name: str | None = Field(
         None, max_length=100, description="Latin taxonomy display name"
     )
     label_taxonomy_id: str | None = Field(

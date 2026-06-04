@@ -19,6 +19,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
+import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { VerifyView } from "../components/verify/VerifyView";
 
 export default function EditPage() {
@@ -47,7 +48,10 @@ export default function EditPage() {
                   : "Run a deployment analysis to get started"}
               </p>
             </div>
-            <DiagnosticReportButton />
+            <div className="flex items-center gap-2">
+              <SpeciesNameToggle />
+              <DiagnosticReportButton />
+            </div>
           </div>
         </div>
       </header>
