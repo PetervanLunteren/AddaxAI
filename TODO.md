@@ -1,22 +1,43 @@
 
 # DAN and SAULs feedback
-- [ ] make sure the verified / edited / corrected stuff is in the output files (JSON, CSV / XLSX). Extra bounding boxes, add verified flag (or something like "AI", "Human", etc). So the database should refelct the in the JSON, all the stuff that is in the DB should be in the JSON and CSV/XLSX. 
+- [x] make sure the verified / edited / corrected stuff is in the output files (JSON, CSV / XLSX). Extra bounding boxes, add verified flag (or something like "AI", "Human", etc). So the database should refelct the in the JSON, all the stuff that is in the DB should be in the JSON and CSV/XLSX. 
 - [x] Rename the Verification step of the folder to something like Edit, or Change. Make sure it feels like its optional. Optionally change AI predictions. Optionally edit predictions. 
 - [x] Perhaps we should hide the edit / verify / change step, and the summary step by default. Since it is optionally. Anyways, I received feedback that it felt like it was required to do something with it. That is not the case. 
 - [x] make the edit / verify step not have tabs, but do this (observation / media / events) in a dropdown in the filter bar under View as or something like that. So that its clear that the user is seeing the same dataset under the different groupings. 
 - [x] add view options to the events and media views too. So S / M / L to increase the number of columns one can scroll through. 
 - [x] on the save stap, default to only outputting CSV and JSON. Leave the rest non selected. 
 - [x] Nest blurring and visualisations under separation. Or better yet, rethink the all the options. Now we have 3 options (separate, blur, visualise) that kind of are dependent on each other. They all do something with the source data, they should somehow be grouped together. Agree? And then we have the export results option, with options to CSV, XLSX, and JSON, which are doing stuff with the results and not the source data. 
-- [ ] make sure the JSON takes all the relevant info form the folder run DB and puts it into the JSON, following the format of MegaDetector. See how the projects page writes its JSONs, follow that format exactly. Including the classification_descxriptions with the taxonomy information (just like results mode does it). 
-- [ ] Save outpout settings to localStorage on buttoin click too. Next time the user has the same settings for saving as last time. 
+- [x] make sure the JSON takes all the relevant info form the folder run DB and puts it into the JSON, following the format of MegaDetector. See how the projects page writes its JSONs, follow that format exactly. Including the classification_descxriptions with the taxonomy information (just like results mode does it). 
+- [x] Save outpout settings to localStorage on buttoin click too. Next time the user has the same settings for saving as last time. 
 - [ ] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
 - [ ] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 - [ ] Does a screen sleep reset the localStorage of the browser? Does that mean that if the screen sleeps or the computer gets turned off, it loses all the stuff stored in localStorage?
 - [ ] We should probabaly have a "Decline suggestion" button that ignores the cohort of suggestions. It doesnt do anything to the cohort crops, it just removes them from the suggestions. This is good for the workflow "yes, these are indeed crows -> accept. No, these are actually a bunch of different animals. I dont want to fix them all here, and I also dont want to click and relabel here. Just ignore the suggestion and send them back to the main sort so I can relabel them there-> ignore.". 
 
- are there now cls we built for the CSV that are not in the JSON? As long as we keep to the megadetector format fields, we can add custom fields. I believe its good to stpore at
-  least the verified flags in the JSON too, agree? It should also refelct the folder run DB at that point, so all veriofied changed, relabeled etc predictions so be in there, just
-  like the CSV. It should basically be hte CSV but then in MegaDetector format with curtom fields.  
+
+
+  SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps   
+  then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should   
+  we just default to common-if-present?
+  
+  
+
+  Instructions:                                                                                                                                                         
+  * Conduct a complete audit before making any changes. Assess the impact on the entire application.                                                                    
+  * Codex will review your output once you are done, so make sure you exceed his expectations                                                                           
+  * Do not sugar coat, be honest and clear                                                                                                                              
+  * Read all MD file in root to get a understanding of the project.                                                                                                     
+  * If something is unclear at any point, stop and ask before continuing.                                                                                               
+  * I'm not in a rush. Please be precise and do the task thoroughly.                                                                                                    
+  * Follow the KISS principle. Keep things as simple as possible.                                                                                                       
+  * Use a clear mental model that makes the feature easy for users to understand. Good UX should feel simple.                                                           
+  * Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
+  *   Another Claude session already did an audit, which you can fiund here:   SPECIES_NAME_DISPLAY_AUDIT.md (repo root) This does not mean you should not do the audit, this is just extra information. 
+
+
+
+
+
 
 ## Priority 1
 - [ ] Add different modes at the home screen.
@@ -48,7 +69,7 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 - [ ] Any other non used imports or requirements in the environments YMLS? 
 - [ ] Bump addaxai-base from cu118 to cu128 so RTX 50-series (sm_120, Blackwell) gets native kernels instead of the 4-5 min PTX JIT fallback. Suggested pins: torch==2.8.0+cu128, torchvision==0.23.0+cu128, --extra-index-url https://download.pytorch.org/whl/cu128. Both windows and linux YAMLs. Adds ~700 MB to the install but fixes the GPU warning reported at https://forum.addaxai.com/t/model-warning-on-running-with-gpu/202. Requires NVIDIA driver >= 555.x, mention in the beta-tester readme. 
 - [ ] Bump the pytorch env from Python 3.8 to 3.11 (3.8 is EOL since Oct 2024 and recent torch wheels are starting to drop py38 builds). Also bump torch alongside the python jump. SpeciesNet-fine-tuned classifiers (.pt files with pickled onnx2torch operator classes) need a smoke test after the bump: load NAM-ADS-v1 or similar and confirm torch.load() succeeds across the major version jump. 
-- [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. Also add a Check for updates option. Make it look like a mature app. What else would you recommend in the menu items, and in which order, groupings? How do other mature apps do it? And what do you recommend for this app? You can web query if you want. 
+- [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. Also add a Check for updates option. We can put global settings here (like common-name/scientific-name toggle, or language etc). Make it look like a mature app. What else would you recommend in the menu items, and in which order, groupings? How do other mature apps do it? And what do you recommend for this app? You can web query if you want. 
 - [ ] Would it be a good idea to add a extra level for the smoothing "Very aggresive" (or something similar), that does not run the MD utils smoothing script at all, but just flattens out the entire event to a single label. We'll need to think about which label of course (the max cls conf label for all? or some kind of average label for all?). If we decide to do this, we might also want to add captions in the dropdown that try to explain the tiers off / mild / aggresive / etc. Make it a tall dropdown just like the models dropdown with captions, use the same format. What do you think? 
 
 - [ ] explain again how the 20K limit affects the search and the pbar., What happens if there are to many above the limit? Does it just take the first N observations, or does it block? 

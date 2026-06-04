@@ -308,6 +308,70 @@ def test_custom_label_without_ranks_has_no_description(db, tmp_path):
     assert "classification_category_descriptions" not in payload
 
 
+def test_image_carries_exif_and_dimensions(db, tmp_path):
+    """Per-image exif_metadata (DateTimeOriginal + GPSInfo) and width/height
+    are restored from the File row, matching what MegaDetector writes and
+    merge_json_files passes through."""
+    project = make_project(db, name="rj-exif")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src"),
+    )
+    exif = {
+        "DateTimeOriginal": "2024:06:15 08:30:00",
+        "GPSInfo": {"GPSLatitude": 52.1, "GPSLongitude": 5.2},
+    }
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+        width_px=4000,
+        height_px=3000,
+        exif_data=exif,
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.9,
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.3, bbox_height=0.3,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    img = payload["images"][0]
+    assert img["width"] == 4000
+    assert img["height"] == 3000
+    assert img["exif_metadata"] == exif
+
+
+def test_image_without_exif_omits_the_keys(db, tmp_path):
+    """When the File has no EXIF / dimensions, the optional keys are absent
+    rather than emitted as null."""
+    project = make_project(db, name="rj-no-exif")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src"),
+    )
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.9,
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.3, bbox_height=0.3,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    img = payload["images"][0]
+    assert "exif_metadata" not in img
+    assert "width" not in img
+    assert "height" not in img
+
+
 def test_detection_without_label_omits_classifications(db, tmp_path):
     project = make_project(db, name="rj-no-cls")
     dep = make_deployment(

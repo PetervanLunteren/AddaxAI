@@ -15,9 +15,10 @@ classification per detection — but the shape is identical:
 `detection_categories`, `classification_categories`,
 `classification_category_descriptions` (the 7-token taxonomy strings,
 rebuilt from `label_taxonomy` exactly as results mode emits them),
-the `info.addaxai` block, and per-image detections with `category`,
-`conf`, `bbox`, and optional `classifications` and `frame_number`
-keys.
+the `info.addaxai` block, per-image `exif_metadata` (DateTimeOriginal
+and GPSInfo, as MegaDetector writes them) and `width`/`height`, and
+per-image detections with `category`, `conf`, `bbox`, and optional
+`classifications` and `frame_number` keys.
 
 The `info.addaxai` block additionally carries the app version and a
 `settings` sub-dict (detection threshold, smoothing, rollup, geofence,
@@ -274,12 +275,21 @@ def write_recognition_json(
             det_objs.append(det_entry)
             detection_total += 1
 
-        images_out.append(
-            {
-                "file": _relative_path(file.file_path, base_folder),
-                "detections": det_objs,
-            }
-        )
+        # Restore the per-image metadata MegaDetector writes (it runs with
+        # --include_exif_tags datetimeoriginal,gpsinfo) and merge_json_files
+        # passes through verbatim: image dimensions and the EXIF block
+        # (DateTimeOriginal, GPSInfo). Stored on the File row at ingestion.
+        image_entry: dict = {
+            "file": _relative_path(file.file_path, base_folder),
+            "detections": det_objs,
+        }
+        if file.width_px is not None:
+            image_entry["width"] = file.width_px
+        if file.height_px is not None:
+            image_entry["height"] = file.height_px
+        if file.exif_data:
+            image_entry["exif_metadata"] = file.exif_data
+        images_out.append(image_entry)
 
     classification_categories = {
         cid: name for name, cid in label_to_id.items()
