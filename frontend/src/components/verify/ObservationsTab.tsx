@@ -794,6 +794,60 @@ export function ObservationsTab({
     [projectId, queryClient],
   );
 
+  // Dismiss a whole cohort straight from the divider button — no confirm
+  // modal, mirroring relabelCohort. Dismiss is non-destructive: it sets
+  // `suggestion_dismissed` so the cohort stops appearing in suggestions,
+  // but leaves every crop's label and verified state untouched. The crops
+  // remain in the normal sorts for later relabelling.
+  //
+  // Optimistically strips the dismissed detections from the local
+  // sortResult (so the cohort card vanishes immediately) and invalidates
+  // the cohorts query so the toolbar pill's count catches up. Only the
+  // cohorts cache is touched — nothing about labels or verification
+  // changed. A toast offers Undo, which clears the flag again.
+  const dismissCohort = useCallback(
+    async (cohort: CohortItem) => {
+      try {
+        await detectionsApi.bulkDismiss(cohort.detection_ids, true);
+        const idSet = new Set(cohort.detection_ids);
+        setSortResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                detections: prev.detections.filter(
+                  (d) => !idSet.has(d.detection_id),
+                ),
+              }
+            : prev,
+        );
+        queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+        toast.success(
+          `Dismissed ${cohort.count} suggestion${
+            cohort.count === 1 ? "" : "s"
+          }.`,
+          {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                detectionsApi
+                  .bulkDismiss(cohort.detection_ids, false)
+                  .then(() => {
+                    queryClient.invalidateQueries({
+                      queryKey: ["cohorts", projectId],
+                    });
+                  })
+                  .catch((err: Error) => toast.error(err.message));
+              },
+            },
+          },
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Dismiss failed");
+      }
+    },
+    [projectId, queryClient],
+  );
+
   // Convenience used by SuggestionsToolbarPill.
   const exitSuggestionsMode = useCallback(
     () => setObsSort("similarity"),
@@ -1218,6 +1272,7 @@ export function ObservationsTab({
             onDoubleClick={handleCardClick}
             onBackgroundClick={clearSelection}
             onRelabelCohort={relabelCohort}
+            onDismissCohort={dismissCohort}
             tileSize={tileSize}
             dividers={
               // Tie cohort dividers to the sort that PRODUCED the

@@ -79,6 +79,10 @@ interface CropGridProps {
    * Parent owns the destructive confirm flow and the bulk-relabel
    * mutation; the divider is presentational. */
   onRelabelCohort?: (cohort: CohortItem) => void;
+  /** Fires when the user clicks "Dismiss (N)" on a cohort divider.
+   * Hides the suggestion without touching the crops; parent owns the
+   * mutation and the Undo toast. The divider is presentational. */
+  onDismissCohort?: (cohort: CohortItem) => void;
   tileSize?: TileSize;
   dividers?: GridDividerMode;
 }
@@ -168,6 +172,7 @@ export function CropGrid({
   onDoubleClick,
   onBackgroundClick,
   onRelabelCohort,
+  onDismissCohort,
   tileSize = "M",
   dividers = "none",
 }: CropGridProps) {
@@ -340,27 +345,51 @@ export function CropGrid({
                     displayName={c.suggested_scientific_name}
                   />
                 </div>
-                {onRelabelCohort && (
-                  <TooltipProvider delayDuration={300}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => onRelabelCohort(c)}
-                        >
-                          Accept suggestion ({c.count})
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Relabels {c.count} observation
-                        {c.count === 1 ? "" : "s"} to{" "}
-                        {c.suggested_scientific_name || c.suggested_label} and
-                        marks {c.count === 1 ? "it" : "them"} verified.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {onDismissCohort && (
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onDismissCohort(c)}
+                          >
+                            Dismiss ({c.count})
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Hides this suggestion. The {c.count} observation
+                          {c.count === 1 ? "" : "s"} keep their current label
+                          and stay unverified, so you can relabel{" "}
+                          {c.count === 1 ? "it" : "them"} in the normal sort.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {onRelabelCohort && (
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => onRelabelCohort(c)}
+                          >
+                            Accept suggestion ({c.count})
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Relabels {c.count} observation
+                          {c.count === 1 ? "" : "s"} to{" "}
+                          {c.suggested_scientific_name || c.suggested_label} and
+                          marks {c.count === 1 ? "it" : "them"} verified.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
               </div>
             </div>
           );

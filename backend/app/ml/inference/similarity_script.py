@@ -69,7 +69,8 @@ SELECT de.detection_id, de.vector, de.l2_norm,
        d.label, d.label_taxonomy_id, d.label_confidence, d.scientific_name,
        d.common_name,
        d.confidence, d.category,
-       d.verified, d.classification_method, d.file_id, d.frame_number,
+       d.verified, d.suggestion_dismissed,
+       d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
        s.name AS site_name
@@ -220,6 +221,7 @@ def _load_embeddings(
                 "confidence": row["confidence"],
                 "category": row["category"],
                 "verified": bool(row["verified"]),
+                "suggestion_dismissed": bool(row["suggestion_dismissed"]),
                 "classification_method": row["classification_method"],
                 "file_id": row["file_id"],
                 "deployment_id": row["deployment_id"],
@@ -776,6 +778,10 @@ def _group_cohorts(
     cohorts: dict[tuple[str, str, str], dict] = {}
     for i, det_id in enumerate(det_ids):
         if metas[i].get("verified"):
+            continue
+        # User dismissed this crop's suggestion: keep it as a neighbour
+        # vote (it's still in metas) but never make it a cohort member.
+        if metas[i].get("suggestion_dismissed"):
             continue
         suggested = top_labels[i]
         if not suggested:

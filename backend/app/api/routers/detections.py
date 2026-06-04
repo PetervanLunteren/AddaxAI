@@ -201,6 +201,12 @@ class BulkRelabelRequest(BaseModel):
     category: str | None = None
 
 
+class BulkDismissRequest(BaseModel):
+    detection_ids: list[str] = Field(..., max_length=500)
+    # True hides the cohort from suggestions; False undoes a dismiss.
+    dismissed: bool = True
+
+
 @router.patch("/{detection_id}/verify", response_model=DetectionResponse)
 def verify_detection(
     detection_id: str,
@@ -239,6 +245,30 @@ def bulk_verify_detections(
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
     _recalculate_max_n(db, body.detection_ids)
+    return {"updated_count": updated}
+
+
+@router.post("/bulk-dismiss")
+def bulk_dismiss_detections(
+    body: BulkDismissRequest,
+    db: Session = Depends(get_db),
+):
+    """Dismiss/undismiss a cohort of suggestions (max 500).
+
+    Sets `suggestion_dismissed`, which hides the detections from the
+    suggestions review (toolbar pill, cohort dividers, suggestions-sort
+    grid). It touches neither `label` nor `verified`, so there is no
+    max_n or file-verified recompute to do.
+    """
+    updated = (
+        db.query(Detection)
+        .filter(Detection.id.in_(body.detection_ids))
+        .update(
+            {"suggestion_dismissed": body.dismissed},
+            synchronize_session="fetch",
+        )
+    )
+    db.commit()
     return {"updated_count": updated}
 
 

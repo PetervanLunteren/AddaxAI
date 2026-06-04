@@ -96,4 +96,23 @@ export const detectionsApi = {
     );
     return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
   },
+
+  /** Dismiss/undismiss a cohort of suggestions (auto-batches in chunks of 500).
+   *  Hides the detections from the suggestions review without changing
+   *  their label or verified state. Pass dismissed=false to undo. */
+  bulkDismiss: async (
+    ids: string[],
+    dismissed: boolean
+  ): Promise<{ updated_count: number }> => {
+    const chunks = chunkArray(ids, 500);
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        api.post<{ updated_count: number }>("/api/detections/bulk-dismiss", {
+          detection_ids: chunk,
+          dismissed,
+        })
+      )
+    );
+    return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
+  },
 };

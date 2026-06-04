@@ -24,12 +24,14 @@ def _meta(
     scientific_name: str | None = None,
     category: str | None = "animal",
     verified: bool = False,
+    suggestion_dismissed: bool = False,
 ) -> dict:
     return {
         "label": label,
         "scientific_name": scientific_name,
         "category": category,
         "verified": verified,
+        "suggestion_dismissed": suggestion_dismissed,
     }
 
 
@@ -191,6 +193,22 @@ def test_group_cohorts_min_count_drops_small():
 def test_group_cohorts_excludes_verified():
     det_ids = ["a", "b"]
     metas = [_meta("aves", verified=True), _meta("aves", verified=False)]
+    top_labels = ["american crow", "american crow"]
+    agreement = np.zeros(2, dtype=np.float32)
+    result = _group_cohorts(det_ids, metas, agreement, top_labels, 1, 10)
+    assert len(result) == 1
+    assert result[0]["count"] == 1
+    assert result[0]["detection_ids"] == ["b"]
+
+
+def test_group_cohorts_excludes_dismissed():
+    # A dismissed crop is skipped as a cohort member, exactly like a
+    # verified one. The remaining members still form the cohort.
+    det_ids = ["a", "b"]
+    metas = [
+        _meta("aves", suggestion_dismissed=True),
+        _meta("aves", suggestion_dismissed=False),
+    ]
     top_labels = ["american crow", "american crow"]
     agreement = np.zeros(2, dtype=np.float32)
     result = _group_cohorts(det_ids, metas, agreement, top_labels, 1, 10)

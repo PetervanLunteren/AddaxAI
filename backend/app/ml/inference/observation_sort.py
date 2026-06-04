@@ -108,6 +108,10 @@ def suggestions_order(
     for i, meta in enumerate(metas):
         if meta.get("verified"):
             continue
+        # User dismissed this crop's suggestion: keep it as a neighbour
+        # vote (it's still in metas) but never make it a cohort member.
+        if meta.get("suggestion_dismissed"):
+            continue
         suggested = top_labels[i]
         if not suggested:
             continue

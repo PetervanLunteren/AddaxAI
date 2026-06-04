@@ -94,6 +94,18 @@ class Detection(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Suggestions review: when True the user clicked "Dismiss" on the
+    # cohort this detection belonged to. Dismissed detections are skipped
+    # when grouping suggestion cohorts (the toolbar pill, the cohort
+    # divider, and the suggestions-sort grid order) but are otherwise
+    # untouched — their label and verified state are unchanged, and they
+    # still participate as embedding neighbours for other detections'
+    # suggestions. A human decision: never reset by reprocessing,
+    # smoothing, rollup, or re-embedding.
+    suggestion_dismissed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

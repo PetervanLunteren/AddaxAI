@@ -127,8 +127,13 @@ def test_empty_input_returns_empty():
 # ── suggestions_order ────────────────────────────────────────────────────
 
 
-def _sug_meta(label, *, category="animal", verified=False):
-    return {"label": label, "category": category, "verified": verified}
+def _sug_meta(label, *, category="animal", verified=False, suggestion_dismissed=False):
+    return {
+        "label": label,
+        "category": category,
+        "verified": verified,
+        "suggestion_dismissed": suggestion_dismissed,
+    }
 
 
 def test_suggestions_order_groups_by_triple_and_sorts_by_count_desc():
@@ -189,6 +194,20 @@ def test_suggestions_order_excludes_verified_and_unsuggested():
     agreement = [0.0, 0.0, 0.0]
     result = suggestions_order(metas, top_labels, agreement, min_count=1)
     assert result == [1]
+
+
+def test_suggestions_order_excludes_dismissed():
+    # A dismissed crop is skipped as a cohort member, exactly like a
+    # verified one. The remaining members still form the cohort.
+    metas = [
+        _sug_meta("aves", suggestion_dismissed=True),  # dismissed → out
+        _sug_meta("aves"),                              # in
+        _sug_meta("aves"),                              # in
+    ]
+    top_labels = ["american crow", "american crow", "american crow"]
+    agreement = [0.0, 0.1, 0.2]
+    result = suggestions_order(metas, top_labels, agreement, min_count=1)
+    assert result == [1, 2]
 
 
 def test_suggestions_order_within_cohort_ascending_agreement():

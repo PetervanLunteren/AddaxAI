@@ -160,6 +160,35 @@ def test_bulk_relabel(client, db):
     assert resp.json()["updated_count"] == 2
 
 
+def test_bulk_dismiss_sets_and_clears_flag(client, db):
+    f = _setup_file(db)
+    d1 = make_detection(db, file_id=f.id, label="crow")
+    d2 = make_detection(db, file_id=f.id, label="crow")
+
+    # Dismiss: sets the flag, leaves label and verified untouched.
+    resp = client.post("/api/detections/bulk-dismiss", json={
+        "detection_ids": [d1.id, d2.id],
+        "dismissed": True,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 2
+    db.refresh(d1)
+    db.refresh(d2)
+    assert d1.suggestion_dismissed is True
+    assert d2.suggestion_dismissed is True
+    assert d1.label == "crow"
+    assert d1.verified is False
+
+    # Undo: clears the flag again.
+    resp = client.post("/api/detections/bulk-dismiss", json={
+        "detection_ids": [d1.id, d2.id],
+        "dismissed": False,
+    })
+    assert resp.status_code == 200
+    db.refresh(d1)
+    assert d1.suggestion_dismissed is False
+
+
 # ── Event-level observations (no bbox) ─────────────────────────────
 
 

@@ -192,6 +192,12 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "on detections / label_taxonomy"
         ),
     ),
+    _Fingerprint(
+        revision="d0e1f2a3b4c5",
+        table="detections",
+        column="suggestion_dismissed",
+        description="add suggestion_dismissed flag on detections",
+    ),
 )
 
 

@@ -138,6 +138,13 @@ export function VerifyHelpSheet({ open, onOpenChange }: VerifyHelpSheetProps) {
                 suggestions are filtered out, so the suggestion never
                 walks back up the taxonomy.
               </p>
+              <p>
+                If a cohort is wrong, for example a mix of different
+                animals rather than one species, click Dismiss. That
+                hides the suggestion without changing any labels and
+                leaves the crops unverified, so you can relabel them in
+                the normal sort whenever you like.
+              </p>
             </div>
           </section>
 
