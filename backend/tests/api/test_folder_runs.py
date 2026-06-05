@@ -210,9 +210,9 @@ def test_output_preview_endpoint_returns_counts(client, db):
     assert data["files_with_known_size"] == 1
     assert data["dropped_by_filter"] == 0
     assert data["in_scope_files"] == 1
-    # Unmapped label → falls back to Other/<label> in the tree, and
-    # to a single-segment "dog" entry in the flat bucket.
-    assert data["by_taxonomic_tree"] == {"Other/dog": 1}
+    # Unmapped label → falls back to other/<label> in the tree, and
+    # to a single-segment "dog" entry in the flat bucket (slugged).
+    assert data["by_taxonomic_tree"] == {"other/dog": 1}
     assert data["by_flat"] == {"dog": 1}
     assert data["multi_species_files"] == 0
 

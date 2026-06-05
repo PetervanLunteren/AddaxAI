@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Binoculars, SquareDashed, SquarePlus, Trash2 } from "lucide-react";
+import { Check, Binoculars, SquareDashed, Trash2 } from "lucide-react";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { Button } from "../ui/button";
@@ -35,8 +35,15 @@ interface FileVerificationPanelProps {
   openLabelPickerFor?: string | null;
   onLabelPickerOpenChange?: (open: boolean) => void;
   pinnedOptions?: PinnedOption[];
-  onAddBox?: () => void;
-  canAddBox?: boolean;
+  /**
+   * Verify the current file and advance to the next unverified one. Same
+   * action as pressing Enter — the parent owns it so the button and the
+   * keyboard shortcut stay in lockstep (and the parent handles bulk verify
+   * when several files are selected).
+   */
+  onVerify: () => void;
+  /** True while a verify is in flight, to disable the button. */
+  verifyPending?: boolean;
   /**
    * Called after a successful verify / notes / delete / relabel mutation.
    * The parent owns its query keys (events vs files vs grid lists) and
@@ -56,17 +63,20 @@ export function FileVerificationPanel({
   openLabelPickerFor,
   onLabelPickerOpenChange,
   pinnedOptions,
-  onAddBox,
-  canAddBox,
+  onVerify,
+  verifyPending,
   onMutated,
 }: FileVerificationPanelProps) {
   const [notes, setNotes] = useState(file.notes ?? "");
   const [showNotes, setShowNotes] = useState(false);
 
-  // Verify mutation
-  const verifyMutation = useMutation({
-    mutationFn: () =>
-      filesApi.update(file.id, { verified: !file.verified }),
+  // Un-verify mutation. Powers the "Edit" button shown on an
+  // already-verified file: it clears the verified flag so the user can
+  // edit observations again, staying on the same file (no advance).
+  // Verifying + advancing is the parent's `onVerify`; this is the
+  // opposite, local action.
+  const unverifyMutation = useMutation({
+    mutationFn: () => filesApi.update(file.id, { verified: false }),
     onSuccess: () => onMutated?.(),
   });
 
@@ -216,8 +226,8 @@ export function FileVerificationPanel({
                 </p>
               )}
               <Button
-                onClick={() => verifyMutation.mutate()}
-                disabled={verifyMutation.isPending}
+                onClick={() => unverifyMutation.mutate()}
+                disabled={unverifyMutation.isPending}
                 variant="outline"
                 className="w-full"
                 size="sm"
@@ -268,41 +278,34 @@ export function FileVerificationPanel({
               ))}
 
               {filteredDetections.length === 0 && (
-                <div className="text-center py-4 space-y-2">
+                <div className="text-center py-4">
                   <p className="text-xs text-muted-foreground">
                     No observations found.
                   </p>
-                  {canAddBox && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onAddBox}
-                      title="Promote highest below-threshold AI box"
-                    >
-                      <SquarePlus className="h-3.5 w-3.5 mr-1.5" />
-                      Promote hidden box
-                    </Button>
-                  )}
                 </div>
               )}
             </div>
 
             {/* "Draw box" / "Add observation" create-actions live in
-                the modal toolbar (Pencil / Binoculars icons) with
-                tooltips and keyboard shortcuts (D / N). The
-                AddObservationPopover that listens for N is wired
-                there too — see FileDetailModal / EventDetailModal. */}
+                the modal toolbar (SquareDashed / Binoculars icons) with
+                tooltips and keyboard shortcuts (D / N) — see
+                FileDetailModal / EventDetailModal. */}
 
-            {/* Verify button */}
+            {/* Verify button. Mirrors the Enter shortcut exactly: verify
+                this file and advance to the next unverified one. The
+                keycap makes that discoverable. */}
             <div className="px-3 py-3">
               <Button
-                onClick={() => verifyMutation.mutate()}
-                disabled={verifyMutation.isPending}
-                className="w-full"
+                onClick={onVerify}
+                disabled={verifyPending}
+                className="w-full justify-center"
                 size="sm"
               >
                 <Check className="h-4 w-4 mr-2" />
                 Mark verified
+                <kbd className="ml-2 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none">
+                  Enter
+                </kbd>
               </Button>
             </div>
           </>

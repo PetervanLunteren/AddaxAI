@@ -55,6 +55,7 @@ from app.ml.postprocessing_outputs.run_readme import write_run_readme
 from app.ml.postprocessing_outputs.separate_folders import (
     separate_into_folders,
 )
+from app.services.folder_scanner import OUTPUT_DIR_MARKER
 
 logger = get_logger(__name__)
 
@@ -111,6 +112,16 @@ async def process_save_outputs_job(job_id: str) -> None:
 
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
+        # Mark the output folder so future scans (preview + the analysis
+        # worker's input enumeration) skip it — its separated / annotated
+        # copies must never be re-ingested as input media. The save
+        # endpoint also writes this, but doing it here too guarantees the
+        # marker is co-located with the output tree this worker creates,
+        # regardless of how the save was triggered. Best-effort.
+        try:
+            (output_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
+        except OSError as e:
+            logger.warning(f"Could not write output marker in {output_root}: {e}")
         ctx = OutputContext(output_root=output_root)
 
         draw_bboxes = bool(payload.get("draw_bboxes"))
@@ -204,6 +215,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                             payload.get("include_empty", False)
                         ),
                         excluded_label_ids=excluded_frozen,
+                        name_mode=payload.get("name_mode", "common"),
                     ).to_dict()
                 if m == "annotated_copies":
                     return write_annotated_copies(

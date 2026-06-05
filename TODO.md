@@ -13,8 +13,26 @@
 - [x] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
 - [x] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 - [x] We should probabaly have a "Decline suggestion" button that ignores the cohort of suggestions. It doesnt do anything to the cohort crops, it just removes them from the suggestions. This is good for the workflow "yes, these are indeed crows -> accept. No, these are actually a bunch of different animals. I dont want to fix them all here, and I also dont want to click and relabel here. Just ignore the suggestion and send them back to the main sort so I can relabel them there-> ignore.". 
-- [ ] Run a folder of edge cases
 - [ ] run a folder of videos
+- [ ] Run a folder of edge cases
+
+
+
+
+
+
+
+
+- [ ] 
+    - you just added the _slug() funxction to sluggify the folder names. Dod you also update the output preview window? 
+    - In the CSV, aparently we removed the absolute path again. There should be a way to show the full path of the original source file. Should we add a obsolute path column? Or a root path column? What do you think? 
+    -  sghould we output the best frame or the entire video visualised? If users select visualisation, they probabaly want the video visualised, right? that would take a long time for every video, right? How can we improve the speed here? Or just ship it with we what we have now, and only think about improving video writing boxes speed when the questions arises from a user? what are our options? You mentioed ffmpeg before. But we already use ffmpeg for metadata reading of videos, right? 
+    - Since we have videos that end up in 6 folders, should we have a toggle or dropdown that contrrols this behaviour? What do you think? Or is it too specific? Be honest. What is good UX UI? is it really needed? 
+
+
+- [ ] no need for the README.txt. redundant. Or perhaps just a lot less information. What do you think? 
+
+- [ ] The 73 tsc -b errors should be fixed. Investigate. 
 
 
 

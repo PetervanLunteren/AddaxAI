@@ -175,6 +175,9 @@ class OutputPreviewRequest(BaseModel):
     # Copy empty captures too; off by default. Mirrors the save
     # request so the preview matches what will be written.
     include_empty: bool = False
+    # Common vs scientific species-name leaf, mirroring the save request
+    # so the previewed tree matches the folders that will be written.
+    name_mode: Literal["common", "scientific"] = "common"
 
 
 class OutputPreviewResponse(BaseModel):
@@ -655,6 +658,7 @@ def get_output_preview(
         run_id,
         excluded_label_ids=excluded,
         include_empty=bool(payload.include_empty) if payload else False,
+        name_mode=payload.name_mode if payload else "common",
     )
     return OutputPreviewResponse(**preview.to_dict())
 

@@ -19,8 +19,7 @@ import {
   Scale,
   Sun,
   Contrast,
-  Pencil,
-  SquarePlus,
+  SquareDashed,
   Download,
   Flag,
   Heart,
@@ -28,7 +27,6 @@ import {
   ZoomOut,
   RotateCcw,
   FolderOpen,
-  CircleHelp,
   Play,
   Binoculars,
   Tag,
@@ -49,7 +47,6 @@ import type { EventFilterParams } from "../../api/types";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
-import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 
@@ -83,6 +80,9 @@ export function FileDetailModal({
     label: string | undefined;
   } | null>(null);
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
+  // One-shot flag: set when Download is clicked on a video while in frame
+  // view, so the VideoPlayer runs the annotated-video export once it mounts.
+  const [pendingVideoExport, setPendingVideoExport] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutLabels, setShortcutLabels] = useState<
@@ -91,7 +91,6 @@ export function FileDetailModal({
   const [openLabelPickerFor, setOpenLabelPickerFor] = useState<string | null>(
     null,
   );
-  const [helpOpen, setHelpOpen] = useState(false);
   const [localThreshold, setLocalThreshold] = useState<number | null>(null);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
@@ -170,6 +169,7 @@ export function FileDetailModal({
   useEffect(() => {
     setSelectedDetectionId(null);
     setViewMode("frame");
+    setPendingVideoExport(false);
   }, [fileId]);
 
   const projectThreshold = project?.detection_threshold ?? 0;
@@ -283,54 +283,6 @@ export function FileDetailModal({
     onSuccess: invalidateAfterMutation,
   });
 
-  // Hidden detections for "add box" — anything below the project
-  // threshold but still in the DB. The detection worker already filters
-  // at ingest (≥ 0.1 per detection_worker.py), so a floor of 0.05 here
-  // is effectively "everything the model kept": surfacing every real
-  // candidate without re-filtering arbitrary low-conf hits a second time.
-  const hiddenDetections = useMemo(() => {
-    if (!file) return [];
-    return file.detections
-      .filter(
-        (d) => d.confidence < detectionThreshold && d.confidence >= 0.05,
-      )
-      .sort((a, b) => b.confidence - a.confidence);
-  }, [file, detectionThreshold]);
-
-  const addBoxMutation = useMutation({
-    mutationFn: async () => {
-      if (!file || hiddenDetections.length === 0) return;
-      const best = hiddenDetections[0];
-      if (best.bbox_x === null) return;
-      await detectionsApi.create({
-        file_id: file.id,
-        category: best.category,
-        bbox_x: best.bbox_x,
-        bbox_y: best.bbox_y ?? 0,
-        bbox_width: best.bbox_width ?? 0,
-        bbox_height: best.bbox_height ?? 0,
-        label: best.label,
-        // Preserve the hidden detection's anchor frame; otherwise the
-        // promoted row drops out of the canvas overlay for videos.
-        frame_number: best.frame_number,
-      });
-      await detectionsApi.delete(best.id);
-    },
-    onSuccess: invalidateAfterMutation,
-  });
-
-  const handlePromoteHiddenBox = useCallback(() => {
-    if (addBoxMutation.isPending) return;
-    if (hiddenDetections.length === 0) {
-      toast.info("Nothing to promote", {
-        description:
-          "This shortcut promotes the highest-confidence below-threshold AI box into a confirmed observation. The AI has no box below the project threshold for this image, so there is nothing to promote.",
-      });
-      return;
-    }
-    addBoxMutation.mutate();
-  }, [addBoxMutation, hiddenDetections.length]);
-
   // Direct-action observation create. Mirrors the draw-box flow:
   // uses the currently-active species (auto-default or Tag-picker
   // override) and submits immediately, no confirmation popover.
@@ -406,6 +358,30 @@ export function FileDetailModal({
     if (adjacent?.next_unverified_id) navigateFile(adjacent.next_unverified_id);
   }, [adjacent, navigateFile]);
 
+  // Download button. For a video, always produce the annotated VIDEO:
+  // switch to video view (mounting the player) and flag a one-shot export
+  // that runs once the clip is playable — even if the click came from the
+  // frame view. For an image, export the annotated still PNG.
+  const handleDownload = useCallback(() => {
+    if (file && isPlayableVideo(file)) {
+      setViewMode("video");
+      setPendingVideoExport(true);
+    } else {
+      exportFnRef.current?.();
+    }
+  }, [file]);
+
+  // Verify the current file (if not already) and advance to the next
+  // unverified one. Shared by the Enter shortcut and the "Mark verified"
+  // button so the two never drift apart.
+  const handleVerifyAndNext = useCallback(() => {
+    if (file && !file.verified) {
+      verifyMutation.mutateAsync().then(() => handleNextUnverified());
+    } else {
+      handleNextUnverified();
+    }
+  }, [file, verifyMutation, handleNextUnverified]);
+
   // Keyboard shortcuts
   useEffect(() => {
     if (!isOpen) return;
@@ -415,7 +391,6 @@ export function FileDetailModal({
         e.target instanceof HTMLTextAreaElement
       )
         return;
-      if (helpOpen) return;
 
       switch (e.key) {
         case "ArrowUp":
@@ -452,11 +427,7 @@ export function FileDetailModal({
           break;
         case "Enter":
           e.preventDefault();
-          if (file && !file.verified) {
-            verifyMutation.mutateAsync().then(() => handleNextUnverified());
-          } else {
-            handleNextUnverified();
-          }
+          handleVerifyAndNext();
           break;
         case "e":
         case "E":
@@ -507,12 +478,6 @@ export function FileDetailModal({
           e.preventDefault();
           flagMutation.mutate();
           break;
-        case "a":
-        case "A":
-          if (e.metaKey || e.ctrlKey) break;
-          e.preventDefault();
-          handlePromoteHiddenBox();
-          break;
         case "n":
         case "N":
           if (e.metaKey || e.ctrlKey) break;
@@ -544,19 +509,18 @@ export function FileDetailModal({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     isOpen,
-    helpOpen,
     file,
     drawMode,
     filteredDetections,
     handlePrev,
     handleNext,
     handleNextUnverified,
+    handleVerifyAndNext,
     onClose,
     selectedDetectionId,
     verifyMutation,
     flagMutation,
     markBlankMutation,
-    handlePromoteHiddenBox,
     deleteDetectionMutation,
     shortcutLabels,
     invalidateAfterMutation,
@@ -571,7 +535,6 @@ export function FileDetailModal({
         e.target instanceof HTMLTextAreaElement
       )
         return;
-      if (helpOpen) return;
       if ((e.key === "b" || e.key === "B") && !e.repeat) setBoxesHidden(true);
     };
     const up = (e: KeyboardEvent) => {
@@ -583,7 +546,7 @@ export function FileDetailModal({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [isOpen, helpOpen]);
+  }, [isOpen]);
 
   const prevDisabled = !adjacent?.previous_id;
   const nextDisabled = !adjacent?.next_id;
@@ -611,37 +574,13 @@ export function FileDetailModal({
           {file && (
             <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white shrink-0">
               <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setHelpOpen(true)}
-                title="Help"
-              >
-                <CircleHelp className="h-4 w-4" />
-              </Button>
-              <div className="w-6 border-t my-0.5" />
-              <Button
                 variant={drawMode ? "default" : "ghost"}
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => setDrawMode(!drawMode)}
                 title="Draw new box (D)"
               >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handlePromoteHiddenBox}
-                disabled={addBoxMutation.isPending}
-                title={
-                  hiddenDetections.length > 0
-                    ? `Promote highest below-threshold AI box (${hiddenDetections.length} candidate${hiddenDetections.length === 1 ? "" : "s"})`
-                    : "No hidden observations to promote"
-                }
-              >
-                <SquarePlus className="h-4 w-4" />
+                <SquareDashed className="h-4 w-4" />
               </Button>
               {/* Add observation (N). Direct action: creates a row
                   with the current active species (auto-default or
@@ -903,8 +842,12 @@ export function FileDetailModal({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => exportFnRef.current?.()}
-                title="Download image with annotations"
+                onClick={handleDownload}
+                title={
+                  file && isPlayableVideo(file)
+                    ? "Download annotated video"
+                    : "Download annotated image"
+                }
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -931,6 +874,8 @@ export function FileDetailModal({
                     sourceVideoId={file.id}
                     allDetections={file.detections}
                     exportFnRef={exportFnRef}
+                    autoExport={pendingVideoExport}
+                    onAutoExportConsumed={() => setPendingVideoExport(false)}
                   />
                 ) : (
                   <AnnotationCanvas
@@ -1056,8 +1001,8 @@ export function FileDetailModal({
                   key: Number(k),
                   option: v,
                 }))}
-                onAddBox={handlePromoteHiddenBox}
-                canAddBox={!addBoxMutation.isPending}
+                onVerify={handleVerifyAndNext}
+                verifyPending={verifyMutation.isPending}
                 onMutated={invalidateAfterMutation}
               />
             )}
@@ -1096,10 +1041,12 @@ export function FileDetailModal({
                       <div>
                         {[
                           ["Enter", "Verify + next unverified"],
+                          ["V", "Verify (stay on file)"],
                           ["E", "Empty + next unverified"],
+                          ["F", "Flag / unflag file"],
                           ["Tab", "Change label"],
-                          ["A", "Promote highest below-threshold box"],
-                          ["D", "Toggle draw mode"],
+                          ["N", "Add observation"],
+                          ["D", "Draw a box"],
                           ["Del", "Delete observation"],
                         ].map(([key, action]) => (
                           <div
@@ -1153,7 +1100,6 @@ export function FileDetailModal({
           </div>
         </div>
       </DialogContent>
-      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
     </Dialog>
   );
 }

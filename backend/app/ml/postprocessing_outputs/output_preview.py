@@ -43,6 +43,8 @@ from app.models import (
 from .separate_folders import (
     _FALLBACK_FOLDER,
     _OBSERVATION_TYPE_FOLDER,
+    NameMode,
+    _leaf_name,
     _taxonomic_path_for_label,
 )
 
@@ -115,6 +117,7 @@ def build_output_preview(
     *,
     excluded_label_ids: frozenset[str] | None = None,
     include_empty: bool = True,
+    name_mode: NameMode = "common",
 ) -> OutputPreviewResult:
     """Aggregate the counts the Save step needs for its live preview.
 
@@ -246,7 +249,7 @@ def build_output_preview(
                 result.by_flat[_FALLBACK_FOLDER] += 1
             else:
                 _bucket_animal_labels(
-                    result, labels, taxonomy_by_name
+                    result, labels, taxonomy_by_name, name_mode
                 )
         else:
             non_animal_folder = _OBSERVATION_TYPE_FOLDER.get(
@@ -278,6 +281,7 @@ def _bucket_animal_labels(
     result: OutputPreviewResult,
     labels: set[str],
     taxonomy_by_name: dict[str, LabelTaxonomy],
+    name_mode: NameMode = "common",
 ) -> None:
     """Bucket an animal file into both the taxonomic-tree counter
     and the flat counter, deduping placements per-mode so
@@ -295,10 +299,10 @@ def _bucket_animal_labels(
     tree_paths: set[str] = set()
     for label in labels:
         tree_paths.add(
-            _taxonomic_path_for_label(label, taxonomy_by_name)
+            _taxonomic_path_for_label(label, taxonomy_by_name, name_mode)
         )
     for path in tree_paths:
         result.by_taxonomic_tree[path] += 1
 
     for label in labels:
-        result.by_flat[label] += 1
+        result.by_flat[_leaf_name(label, taxonomy_by_name.get(label), name_mode)] += 1

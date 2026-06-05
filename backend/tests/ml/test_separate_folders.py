@@ -57,10 +57,10 @@ def test_separate_routes_animal_to_other_when_no_taxonomy(db, tmp_path):
     result = separate_into_folders(db, project.id, ctx)
 
     assert result.copied_count == 1
-    assert (target / "Other" / "dog" / "IMG_001.jpg").is_file()
+    assert (target / "other" / "dog" / "IMG_001.jpg").is_file()
     # Context records the placement so downstream modules can find it.
     assert ctx.resolved_for(file.id) == [
-        target / "Other" / "dog" / "IMG_001.jpg"
+        target / "other" / "dog" / "IMG_001.jpg"
     ]
 
 
@@ -293,17 +293,17 @@ def test_multi_species_lands_in_each_leaf_folder(db, tmp_path):
     ctx = _ctx(target)
     result = separate_into_folders(db, project.id, ctx)
 
-    assert (target / "Other" / "dog" / "IMG_M01.jpg").is_file()
-    assert (target / "Other" / "wolf" / "IMG_M01.jpg").is_file()
+    assert (target / "other" / "dog" / "IMG_M01.jpg").is_file()
+    assert (target / "other" / "wolf" / "IMG_M01.jpg").is_file()
     assert result.copied_count == 2
     assert result.written_count == 2
     assert result.multi_placement_count == 1
-    assert (target / "Other" / "dog" / "IMG_M01.jpg").read_bytes() == b"multi-species"
-    assert (target / "Other" / "wolf" / "IMG_M01.jpg").read_bytes() == b"multi-species"
+    assert (target / "other" / "dog" / "IMG_M01.jpg").read_bytes() == b"multi-species"
+    assert (target / "other" / "wolf" / "IMG_M01.jpg").read_bytes() == b"multi-species"
     # Context lists both placements in order (primary first).
     assert ctx.resolved_for(file.id) == [
-        target / "Other" / "dog" / "IMG_M01.jpg",
-        target / "Other" / "wolf" / "IMG_M01.jpg",
+        target / "other" / "dog" / "IMG_M01.jpg",
+        target / "other" / "wolf" / "IMG_M01.jpg",
     ]
 
 
@@ -330,7 +330,7 @@ def test_multi_species_repeated_labels_dedupe(db, tmp_path):
 
     assert result.copied_count == 1
     assert result.multi_placement_count == 0
-    assert (target / "Other" / "dog" / "IMG_M02.jpg").is_file()
+    assert (target / "other" / "dog" / "IMG_M02.jpg").is_file()
 
 
 def test_multi_species_threshold_filters(db, tmp_path):
@@ -357,8 +357,8 @@ def test_multi_species_threshold_filters(db, tmp_path):
     target = tmp_path / "out"
     result = separate_into_folders(db, project.id, _ctx(target))
 
-    assert (target / "Other" / "dog" / "IMG_M03.jpg").is_file()
-    assert not (target / "Other" / "wolf").exists()
+    assert (target / "other" / "dog" / "IMG_M03.jpg").is_file()
+    assert not (target / "other" / "wolf").exists()
     assert result.multi_placement_count == 0
 
 
@@ -386,8 +386,8 @@ def test_multi_species_verified_below_threshold_still_placed(db, tmp_path):
     target = tmp_path / "out"
     result = separate_into_folders(db, project.id, _ctx(target))
 
-    assert (target / "Other" / "dog" / "IMG_M04.jpg").is_file()
-    assert (target / "Other" / "wolf" / "IMG_M04.jpg").is_file()
+    assert (target / "other" / "dog" / "IMG_M04.jpg").is_file()
+    assert (target / "other" / "wolf" / "IMG_M04.jpg").is_file()
     assert result.multi_placement_count == 1
 
 
@@ -415,8 +415,8 @@ def test_multi_species_move_moves_primary_copies_others(db, tmp_path):
     # Source is gone.
     assert not Path(src).exists()
     # Primary (dog) has the moved file; secondary (wolf) has a copy.
-    dog_path = target / "Other" / "dog" / "IMG_M05.jpg"
-    wolf_path = target / "Other" / "wolf" / "IMG_M05.jpg"
+    dog_path = target / "other" / "dog" / "IMG_M05.jpg"
+    wolf_path = target / "other" / "wolf" / "IMG_M05.jpg"
     assert dog_path.is_file()
     assert wolf_path.is_file()
     assert dog_path.read_bytes() == b"mover"

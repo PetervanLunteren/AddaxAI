@@ -36,6 +36,24 @@ logger = get_logger(__name__)
 OUTPUT_DIR_MARKER = ".addaxai-output"
 
 
+def prune_unscannable_dirs(root: str, dirnames: list[str]) -> list[str]:
+    """Filter an ``os.walk`` dir list down to the ones worth descending into.
+
+    Drops dot-folders (``.addaxai`` etc.) and AddaxAI output folders (those
+    carrying ``OUTPUT_DIR_MARKER``), so a previous run's separated /
+    visualised copies are never re-ingested as input media. Shared by the
+    preview scan here and the worker's input enumeration
+    (``detection_worker.scan_folder_for_*``) so the two cannot drift —
+    that drift is what let output folders get reprocessed.
+    """
+    return [
+        d
+        for d in dirnames
+        if not d.startswith(".")
+        and not os.path.exists(os.path.join(root, d, OUTPUT_DIR_MARKER))
+    ]
+
+
 class GPSCoordinates(TypedDict):
     """GPS coordinates extracted from EXIF."""
 
@@ -95,12 +113,7 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
         # Skip dot-folders (.addaxai etc.) and any folder carrying the
         # output marker — that's an AddaxAI results folder whose copies
         # must not be scanned back in as input media.
-        dirs[:] = [
-            d
-            for d in dirs
-            if not d.startswith(".")
-            and not os.path.exists(os.path.join(root, d, OUTPUT_DIR_MARKER))
-        ]
+        dirs[:] = prune_unscannable_dirs(root, dirs)
         for filename in files:
             file_path = Path(root) / filename
             ext = file_path.suffix.lower()

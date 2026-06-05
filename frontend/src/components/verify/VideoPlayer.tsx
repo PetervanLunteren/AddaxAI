@@ -38,6 +38,13 @@ interface VideoPlayerProps {
   /** For frame files: aggregated detections from all sibling frames. */
   allDetections?: DetectionResponse[];
   exportFnRef?: React.MutableRefObject<(() => void) | null>;
+  /** When set true, run the annotated-video export once the video is
+   *  playable. Lets the modal's Download button produce the boxed video
+   *  even when it was clicked from frame view (it switches here first). */
+  autoExport?: boolean;
+  /** Called as soon as an autoExport request has been picked up, so the
+   *  parent can clear the one-shot flag. */
+  onAutoExportConsumed?: () => void;
 }
 
 /** Browser-playable video formats. */
@@ -174,6 +181,8 @@ export function VideoPlayer({
   sourceVideoId,
   allDetections,
   exportFnRef,
+  autoExport,
+  onAutoExportConsumed,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -418,6 +427,26 @@ export function VideoPlayer({
     if (!exportFnRef) return;
     exportFnRef.current = startExport;
   }, [exportFnRef, startExport]);
+
+  // Auto-run the export when the parent requests it (Download clicked from
+  // frame view, which switches here just to record). Wait for the video to
+  // be playable so the first recorded frames aren't blank. Consume the
+  // one-shot request immediately so it can't fire twice.
+  useEffect(() => {
+    if (!autoExport) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const run = () => {
+      onAutoExportConsumed?.();
+      startExport();
+    };
+    if (video.readyState >= 2) {
+      run();
+      return;
+    }
+    video.addEventListener("canplay", run, { once: true });
+    return () => video.removeEventListener("canplay", run);
+  }, [autoExport, startExport, onAutoExportConsumed]);
 
   // Build spotlight SVG path: outer rect with rounded-rect holes for each detection
   const spotlightPath = useMemo(() => {

@@ -188,6 +188,9 @@ export interface OutputPreviewRequest {
   /** Copy empty captures (no animal / person / vehicle) too. Off /
    * omitted = empties are skipped, matching the save request. */
   include_empty?: boolean;
+  /** Common vs scientific species-name leaf, mirroring the save request
+   * so the previewed tree matches what will be written. */
+  name_mode?: "common" | "scientific";
 }
 
 export interface SaveOutputsRequest {

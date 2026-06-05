@@ -42,6 +42,7 @@ def _add_taxonomy(
     model_id: str,
     name: str,
     level: str = "species",
+    scientific_name: str | None = None,
     taxon_class: str | None = None,
     taxon_order: str | None = None,
     taxon_family: str | None = None,
@@ -52,6 +53,7 @@ def _add_taxonomy(
         classification_model_id=model_id,
         name=name,
         level=level,
+        scientific_name=scientific_name,
         taxon_class=taxon_class,
         taxon_order=taxon_order,
         taxon_family=taxon_family,
@@ -96,14 +98,93 @@ def test_writes_full_five_level_nested_path(db, tmp_path):
     assert result.copied_count == 1
     expected = (
         target
-        / "Mammalia"
-        / "Carnivora"
-        / "Canidae"
-        / "Canis"
+        / "mammalia"
+        / "carnivora"
+        / "canidae"
+        / "canis"
         / "dog"
         / "IMG_001.jpg"
     )
     assert expected.is_file()
+
+
+def test_scientific_mode_uses_scientific_name_leaf(db, tmp_path):
+    """With name_mode="scientific" the leaf folder is the scientific name
+    (the abbreviated binomial), while the ancestor ranks stay Latin. The
+    common-name leaf is not used."""
+    project = make_project(
+        db,
+        name="sep-tree-sci",
+        detection_threshold=0.5,
+        classification_model_id="test-model",
+    )
+    _add_taxonomy(
+        db,
+        model_id="test-model",
+        name="grey wolf",
+        level="species",
+        scientific_name="C. lupus",
+        taxon_class="Mammalia",
+        taxon_order="Carnivora",
+        taxon_family="Canidae",
+        taxon_genus="Canis",
+        taxon_species="Canis lupus",
+    )
+    dep = make_deployment(db, project_id=project.id)
+    src = _make_source(tmp_path, "IMG_001.jpg")
+    f = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="animal"
+    )
+    make_detection(db, file_id=f.id, confidence=0.9, label="grey wolf")
+
+    target = tmp_path / "out"
+    separate_into_folders(db, project.id, _ctx(target), name_mode="scientific")
+
+    assert (
+        target / "mammalia" / "carnivora" / "canidae" / "canis" / "c_lupus"
+        / "IMG_001.jpg"
+    ).is_file()
+    # The common-name leaf must NOT be used in scientific mode.
+    assert not (
+        target / "mammalia" / "carnivora" / "canidae" / "canis" / "grey_wolf"
+    ).exists()
+
+
+def test_scientific_mode_falls_back_to_label_without_scientific_name(db, tmp_path):
+    """Scientific mode with no scientific_name on the row falls back to
+    the common-name label leaf."""
+    project = make_project(
+        db,
+        name="sep-tree-sci-fallback",
+        detection_threshold=0.5,
+        classification_model_id="test-model",
+    )
+    _add_taxonomy(
+        db,
+        model_id="test-model",
+        name="dog",
+        level="species",
+        scientific_name=None,
+        taxon_class="Mammalia",
+        taxon_order="Carnivora",
+        taxon_family="Canidae",
+        taxon_genus="Canis",
+        taxon_species="Canis lupus familiaris",
+    )
+    dep = make_deployment(db, project_id=project.id)
+    src = _make_source(tmp_path, "IMG_001.jpg")
+    f = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="animal"
+    )
+    make_detection(db, file_id=f.id, confidence=0.9, label="dog")
+
+    target = tmp_path / "out"
+    separate_into_folders(db, project.id, _ctx(target), name_mode="scientific")
+
+    assert (
+        target / "mammalia" / "carnivora" / "canidae" / "canis" / "dog"
+        / "IMG_001.jpg"
+    ).is_file()
 
 
 def test_truncates_at_deepest_known_rank(db, tmp_path):
@@ -135,9 +216,9 @@ def test_truncates_at_deepest_known_rank(db, tmp_path):
     separate_into_folders(db, project.id, _ctx(target))
 
     assert (
-        target / "Mammalia" / "Carnivora" / "Canidae" / "IMG_001.jpg"
+        target / "mammalia" / "carnivora" / "canidae" / "IMG_001.jpg"
     ).is_file()
-    assert not (target / "Mammalia" / "Carnivora" / "Canidae" / "Canis").exists()
+    assert not (target / "mammalia" / "carnivora" / "canidae" / "canis").exists()
 
 
 def test_multi_species_two_leaves(db, tmp_path):
@@ -183,10 +264,10 @@ def test_multi_species_two_leaves(db, tmp_path):
     assert result.copied_count == 2
     assert result.multi_placement_count == 1
     assert (
-        target / "Mammalia" / "Carnivora" / "Canidae" / "Canis" / "dog" / "IMG_001.jpg"
+        target / "mammalia" / "carnivora" / "canidae" / "canis" / "dog" / "IMG_001.jpg"
     ).is_file()
     assert (
-        target / "Mammalia" / "Carnivora" / "Felidae" / "Panthera" / "lion" / "IMG_001.jpg"
+        target / "mammalia" / "carnivora" / "felidae" / "panthera" / "lion" / "IMG_001.jpg"
     ).is_file()
 
 
@@ -236,7 +317,7 @@ def test_excluded_label_ids_drops_animal_file(db, tmp_path):
 
     assert result.skipped_excluded == 1
     assert result.copied_count == 0
-    assert not (target / "Other").exists()
+    assert not (target / "other").exists()
 
 
 def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(
@@ -265,8 +346,8 @@ def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(
 
     assert result.copied_count == 1
     assert result.multi_placement_count == 0
-    assert (target / "Other" / "dog" / "IMG_001.jpg").is_file()
-    assert not (target / "Other" / "wolf").exists()
+    assert (target / "other" / "dog" / "IMG_001.jpg").is_file()
+    assert not (target / "other" / "wolf").exists()
 
 
 def test_flat_mode_places_single_segment_per_species(db, tmp_path):
@@ -298,7 +379,7 @@ def test_flat_mode_places_single_segment_per_species(db, tmp_path):
     separate_into_folders(db, project.id, _ctx(target), group_by="flat")
 
     assert (target / "dog" / "IMG_001.jpg").is_file()
-    assert not (target / "Mammalia").exists()
+    assert not (target / "mammalia").exists()
 
 
 def test_flat_mode_multi_species_two_leaves(db, tmp_path):

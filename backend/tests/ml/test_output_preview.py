@@ -107,7 +107,7 @@ def test_unmapped_label_falls_back_to_other(db):
 
     preview = build_output_preview(db, project.id)
 
-    assert preview.by_taxonomic_tree == {"Other/mystery": 1}
+    assert preview.by_taxonomic_tree == {"other/mystery": 1}
 
 
 def test_full_taxonomy_yields_full_nested_path(db):
@@ -133,7 +133,7 @@ def test_full_taxonomy_yields_full_nested_path(db):
     preview = build_output_preview(db, project.id)
 
     assert preview.by_taxonomic_tree == {
-        "Mammalia/Carnivora/Canidae/Canis/dog": 1
+        "mammalia/carnivora/canidae/canis/dog": 1
     }
 
 
@@ -152,8 +152,8 @@ def test_multi_species_inflates_tree_placements(db):
 
     # Both unmapped → land at Other/<label>; two distinct leaves.
     assert preview.by_taxonomic_tree == {
-        "Other/dog": 1,
-        "Other/wolf": 1,
+        "other/dog": 1,
+        "other/wolf": 1,
     }
     assert preview.multi_species_files == 1
 
@@ -170,7 +170,7 @@ def test_low_confidence_detection_is_ignored(db):
     preview = build_output_preview(db, project.id)
 
     # Wolf is below threshold and unverified — should not place.
-    assert preview.by_taxonomic_tree == {"Other/dog": 1}
+    assert preview.by_taxonomic_tree == {"other/dog": 1}
     assert preview.multi_species_files == 0
 
 
@@ -186,7 +186,7 @@ def test_verified_below_threshold_still_placed(db):
 
     preview = build_output_preview(db, project.id)
 
-    assert preview.by_taxonomic_tree == {"Other/dog": 1}
+    assert preview.by_taxonomic_tree == {"other/dog": 1}
 
 
 def test_animal_without_passing_label_falls_back(db):
@@ -261,7 +261,7 @@ def test_excluded_label_ids_partial_inclusion(db):
 
     assert preview.dropped_by_filter == 0
     assert preview.in_scope_files == 1
-    assert preview.by_taxonomic_tree == {"Other/dog": 1}
+    assert preview.by_taxonomic_tree == {"other/dog": 1}
     assert preview.multi_species_files == 0
 
 

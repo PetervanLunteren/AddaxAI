@@ -475,6 +475,12 @@ export function AnnotationCanvas({
     // Minimum size check (at least 10px in stage coords)
     if (box.width > 10 && box.height > 10) {
       createMutation.mutate(box);
+      // One-shot: a committed box returns the canvas to normal so the
+      // common "add one box" case costs no extra exit click. Consistent
+      // with the other one-shot create-actions (Add observation). Draw
+      // several by re-pressing D / the toolbar button. A stray sub-minimum
+      // click below is NOT a commit, so it leaves draw mode armed.
+      onDrawModeChange(false);
     }
 
     setDrawingBox(null);

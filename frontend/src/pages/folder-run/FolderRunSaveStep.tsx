@@ -31,6 +31,7 @@ import {
 import { OutputPreviewPanel } from "./save/OutputPreviewPanel";
 import { useSaveOutputsForm } from "./save/useSaveOutputsForm";
 import { useFolderRun } from "./FolderRunLayout";
+import { getSpeciesNameMode } from "../../lib/species-name-mode";
 import { JobProgressModal } from "../../components/folder-run/JobProgressModal";
 import { SaveOutputsProgress } from "../../components/folder-run/SaveOutputsProgress";
 import { StepHeader } from "../../components/folder-run/StepHeader";
@@ -93,11 +94,16 @@ export function FolderRunSaveStep() {
   // The empties toggle is part of the query key so the preview
   // refetches when it changes (it adds / drops the blank captures).
   const includeEmpty = form.separate.copyEmpties;
+  // Mirror the species-name toggle so the previewed leaf folders match
+  // what the save will actually write. Part of the query key so the
+  // preview refetches if the mode differs.
+  const nameMode = getSpeciesNameMode();
   const { data: preview, isLoading: previewLoading } = useQuery({
-    queryKey: ["folder-run-output-preview", runId, includeEmpty],
+    queryKey: ["folder-run-output-preview", runId, includeEmpty, nameMode],
     queryFn: () =>
       folderRunsApi.getOutputPreview(runId!, {
         include_empty: includeEmpty,
+        name_mode: nameMode,
       }),
     enabled: !!runId,
     staleTime: 30_000,

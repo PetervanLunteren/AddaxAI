@@ -54,7 +54,9 @@ write into / reference the same path the separated file landed at.
 
 from __future__ import annotations
 
+import re
 import shutil
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -82,6 +84,10 @@ SeparateMode = Literal["copy", "move"]
 # with no taxonomy mapping fall to ``Other/<label>/``. ``flat`` collapses
 # to one folder per species label at the root.
 SeparateGroupBy = Literal["taxonomic", "flat", "none"]
+# Common vs scientific naming for the species leaf folder, mirroring the
+# UI's global species-name toggle. Only the leaf segment follows it; the
+# Class/Order/Family/Genus ancestors are always the Latin taxon ranks.
+NameMode = Literal["common", "scientific"]
 # Bucket name for labels with no taxonomy mapping under ``taxonomic``.
 UNRANKED_FOLDER = "Other"
 # Order of taxonomic ranks. Path construction walks these in order and
@@ -192,35 +198,74 @@ def _build_taxonomy_map(
     return {row.name: row for row in rows}
 
 
+def _slug(name: str) -> str:
+    """Filesystem-safe folder segment for a taxon / species name.
+
+    Lowercases, ASCII-folds accents, and collapses every run of
+    non-alphanumeric characters to a single underscore (so spaces, dots,
+    and punctuation all go): "grey wolf" -> "grey_wolf", "C. lupus" ->
+    "c_lupus", "Cervidae" -> "cervidae", "reeves' muntjac" ->
+    "reeves_muntjac". Applied to every path segment so the output tree is
+    consistent and survives case-insensitive filesystems (macOS, Windows)
+    where "Cervidae" and "cervidae" would otherwise be the same directory.
+    """
+    ascii_name = (
+        unicodedata.normalize("NFKD", name)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    slug = re.sub(r"[^a-z0-9]+", "_", ascii_name.lower()).strip("_")
+    return slug or "unknown"
+
+
+def _leaf_name(
+    label: str, taxon: LabelTaxonomy | None, name_mode: NameMode
+) -> str:
+    """The leaf folder name for a label, following the species-name toggle.
+
+    Common mode (default) uses ``label`` (the common name for SpeciesNet,
+    e.g. "grey wolf"). Scientific mode uses the precomputed
+    ``scientific_name`` (the abbreviated binomial, e.g. "C. lupus"),
+    falling back to ``label`` when there's no taxonomy row or no scientific
+    name. Slugged to a filesystem-safe segment either way.
+    """
+    if name_mode == "scientific" and taxon is not None and taxon.scientific_name:
+        return _slug(taxon.scientific_name)
+    return _slug(label)
+
+
 def _taxonomic_path_for_label(
     label: str,
     taxonomy_map: dict[str, LabelTaxonomy],
+    name_mode: NameMode = "common",
 ) -> str:
     """Build the nested taxonomic path for one label.
 
-    Returns a slash-separated path of the form ``<ancestors>/<label>``.
+    Returns a slash-separated path of the form ``<ancestors>/<leaf>``.
     Ancestors are the ``LabelTaxonomy`` columns above the label's own
-    rank; missing intermediate ranks are padded with
-    ``UNRANKED_FOLDER`` so the on-disk depth is consistent across
-    siblings. The label itself is always the leaf segment (what the
-    classifier emitted, not ``taxon_species``). Labels with no
-    taxonomy row fall back to ``Other/<label>``.
+    rank; missing intermediate ranks are padded with ``UNRANKED_FOLDER``
+    so the on-disk depth is consistent across siblings. The leaf segment
+    is the label rendered per the species-name toggle (see ``_leaf_name``),
+    not ``taxon_species``. Labels with no taxonomy row fall back to
+    ``Other/<leaf>``.
     """
     taxon = taxonomy_map.get(label)
+    leaf = _leaf_name(label, taxon, name_mode)
+    unranked = _slug(UNRANKED_FOLDER)
     if taxon is None:
-        return f"{UNRANKED_FOLDER}/{label}"
+        return f"{unranked}/{leaf}"
 
     label_level = (taxon.level or "").lower()
     if label_level not in _TAXONOMIC_RANK_ORDER:
-        return label or UNRANKED_FOLDER
+        return leaf or unranked
 
     label_level_idx = _TAXONOMIC_RANK_ORDER.index(label_level)
 
     parts: list[str] = []
     for rank in _TAXONOMIC_RANK_ORDER[:label_level_idx]:
         value = getattr(taxon, f"taxon_{rank}", None)
-        parts.append(value if value else UNRANKED_FOLDER)
-    parts.append(label)
+        parts.append(_slug(value) if value else unranked)
+    parts.append(leaf)
     return "/".join(parts)
 
 
@@ -231,6 +276,7 @@ def _label_plan_for_file(
     taxonomy_map: dict[str, LabelTaxonomy],
     group_by: SeparateGroupBy = "taxonomic",
     excluded_label_ids: frozenset[str] | None = None,
+    name_mode: NameMode = "common",
 ) -> _LabelPlan:
     """Compute the set of destination paths for a single file.
 
@@ -270,9 +316,9 @@ def _label_plan_for_file(
     seen: set[str] = set()
     for label in labels:
         path = (
-            _taxonomic_path_for_label(label, taxonomy_map)
+            _taxonomic_path_for_label(label, taxonomy_map, name_mode)
             if group_by == "taxonomic"
-            else label
+            else _leaf_name(label, taxonomy_map.get(label), name_mode)
         )
         if path not in seen:
             folder_names.append(path)
@@ -348,6 +394,7 @@ def separate_into_folders(
     group_by: SeparateGroupBy = "taxonomic",
     include_empty: bool = True,
     excluded_label_ids: frozenset[str] | None = None,
+    name_mode: NameMode = "common",
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
     ``ctx.output_root``.
@@ -420,6 +467,7 @@ def separate_into_folders(
                 taxonomy_map,
                 group_by,
                 excluded_label_ids,
+                name_mode,
             )
 
             # Primary placement.
