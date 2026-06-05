@@ -843,11 +843,14 @@ export default function SettingsPage() {
                         <FormLabel>Camera timezone</FormLabel>
                         <FormDescription className="text-sm">
                           Whatever your cameras were set to. Used for
-                          exports and activity charts. Doesn't change any
-                          stored timestamps. Leave on "Auto" to derive it
-                          from the first site's location. If the camera
-                          follows a regional timezone with daylight saving,
-                          pick the city name.
+                          exports and activity charts. Doesn't shift the
+                          capture times on your photos or videos. Leave on
+                          "Auto" to derive it from the first site's
+                          location. If the cameras
+                          follow a regional timezone with daylight saving,
+                          pick the city name. If they use a fixed offset all
+                          year (no daylight saving), pick a UTC±N entry
+                          instead.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">

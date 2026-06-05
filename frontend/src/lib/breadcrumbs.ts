@@ -15,7 +15,9 @@
  * destinations where a "Home > Home" crumb adds nothing.
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { matchPath, useLocation } from "react-router-dom";
+import { projectsApi } from "../api/projects";
 import { queryClient } from "./query-client";
 import type { ProjectResponse } from "../api/types";
 
@@ -158,11 +160,37 @@ const ROUTES: BreadcrumbRoute[] = [
  */
 export function useBreadcrumbs(): BreadcrumbItem[] {
   const location = useLocation();
+
+  // Find the matching route (matchPath is not a hook, so this loop is safe).
+  let matched: {
+    route: BreadcrumbRoute;
+    params: Record<string, string | undefined>;
+  } | null = null;
   for (const route of ROUTES) {
     const match = matchPath({ path: route.pattern, end: true }, location.pathname);
     if (match) {
-      return route.resolve(match.params as Record<string, string | undefined>);
+      matched = {
+        route,
+        params: match.params as Record<string, string | undefined>,
+      };
+      break;
     }
   }
-  return [];
+
+  // Subscribe to the project query so the crumb re-renders once the name
+  // loads. Without this the resolver reads a cold cache on a direct
+  // navigation (e.g. opening /projects/:id/settings in a fresh tab) and
+  // shows the raw project id forever. The fetch dedupes with the page's
+  // own identical ["projects", projectId] query. Only project routes carry
+  // a projectId param (folder-run routes use runId and show a static label).
+  const projectId = matched?.params?.projectId;
+  useQuery({
+    queryKey: ["projects", projectId],
+    queryFn: () => projectsApi.get(projectId!),
+    enabled: !!projectId,
+    staleTime: 5 * 60_000,
+  });
+
+  if (!matched) return [];
+  return matched.route.resolve(matched.params);
 }
