@@ -102,7 +102,8 @@ const settingsSchema = z.object({
   excluded_classes: z.array(z.string()),
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
-  timezone: z.string().min(1, "Timezone is required"),
+  // Empty string means "Auto (derive from site location)".
+  timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
   detection_threshold: z.number().min(0).max(1),
   event_smoothing: z.boolean(),
@@ -320,7 +321,7 @@ export default function SettingsPage() {
       excluded_classes: [],
       country_code: null,
       state_code: null,
-      timezone: "UTC",
+      timezone: "",
       video_fps: 1.0,
       detection_threshold: 0.5,
       event_smoothing: true,
@@ -344,7 +345,7 @@ export default function SettingsPage() {
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
-        timezone: project.timezone || "UTC",
+        timezone: project.timezone ?? "",
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
@@ -666,8 +667,12 @@ export default function SettingsPage() {
         currentValues.independence_interval,
       );
 
-      // 2. Save settings
-      await updateMutation.mutateAsync(data);
+      // 2. Save settings. Empty timezone means "Auto" — send null so the
+      // backend leaves it unset and keeps deriving it from site coords.
+      await updateMutation.mutateAsync({
+        ...data,
+        timezone: data.timezone || null,
+      });
 
       // 3. If smoothing settings changed, trigger reprocess
       if (willReprocess) {
@@ -764,7 +769,7 @@ export default function SettingsPage() {
         excluded_classes: project.excluded_classes || [],
         country_code: project.country_code || null,
         state_code: project.state_code || null,
-        timezone: project.timezone || "UTC",
+        timezone: project.timezone ?? "",
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
         event_smoothing: project.event_smoothing,
@@ -839,9 +844,10 @@ export default function SettingsPage() {
                         <FormDescription className="text-sm">
                           Whatever your cameras were set to. Used for
                           exports and activity charts. Doesn't change any
-                          stored timestamps. If the camera follows a
-                          regional timezone with daylight saving, pick the
-                          city name.
+                          stored timestamps. Leave on "Auto" to derive it
+                          from the first site's location. If the camera
+                          follows a regional timezone with daylight saving,
+                          pick the city name.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -849,6 +855,7 @@ export default function SettingsPage() {
                           <TimezoneSelect
                             value={field.value}
                             onChange={field.onChange}
+                            autoLabel="Auto (from site location)"
                           />
                         </FormControl>
                         <FormMessage />

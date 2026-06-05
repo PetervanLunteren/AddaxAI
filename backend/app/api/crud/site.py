@@ -12,7 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.site import SiteCreate, SiteUpdate
-from app.models import Deployment, Site
+from app.models import Deployment, Project, Site
+from app.utils.timezone_from_coords import tz_from_coords
 
 
 def get_sites(db: Session, project_id: str | None = None) -> list[Site]:
@@ -61,6 +62,19 @@ def create_site(db: Session, site: SiteCreate) -> Site:
     db.add(db_site)
     db.commit()
     db.refresh(db_site)
+
+    # Auto-derive the project's camera timezone from this site's
+    # coordinates, but only if the project has none yet (KISS: the first
+    # sited site wins; later sites never change it). Coordinates are the
+    # authoritative source for the sun-based insights, replacing the old
+    # browser-timezone guess. A failed lookup leaves the timezone unset.
+    project = db.get(Project, db_site.project_id)
+    if project is not None and project.timezone is None:
+        derived = tz_from_coords(db_site.latitude, db_site.longitude)
+        if derived is not None:
+            project.timezone = derived
+            db.commit()
+
     return db_site
 
 

@@ -38,7 +38,8 @@ def _resolve_project(project_id: str, db: Session) -> Project:
     project = db.query(Project).filter(Project.id == project_id).first()
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    set_active_project_timezone(project.timezone)
+    if project.timezone:
+        set_active_project_timezone(project.timezone)
     return project
 
 

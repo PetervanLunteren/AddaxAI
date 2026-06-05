@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { cn } from "../../lib/utils";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import type { CohortItem, DetectionSummary } from "../../api/types";
 
 /**
@@ -337,12 +338,20 @@ export function CropGrid({
                   </span>
                   <LabelChip
                     label={c.current_label}
-                    displayName={c.current_scientific_name}
+                    displayName={resolveSpeciesName({
+                      common_name: c.current_common_name,
+                      scientific_name: c.current_scientific_name,
+                      label: c.current_label,
+                    })}
                   />
                   <span className="text-muted-foreground">look like</span>
                   <LabelChip
                     label={c.suggested_label}
-                    displayName={c.suggested_scientific_name}
+                    displayName={resolveSpeciesName({
+                      common_name: c.suggested_common_name,
+                      scientific_name: c.suggested_scientific_name,
+                      label: c.suggested_label,
+                    })}
                   />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -383,7 +392,12 @@ export function CropGrid({
                         <TooltipContent>
                           Relabels {c.count} observation
                           {c.count === 1 ? "" : "s"} to{" "}
-                          {c.suggested_scientific_name || c.suggested_label} and
+                          {resolveSpeciesName({
+                            common_name: c.suggested_common_name,
+                            scientific_name: c.suggested_scientific_name,
+                            label: c.suggested_label,
+                          })}{" "}
+                          and
                           marks {c.count === 1 ? "it" : "them"} verified.
                         </TooltipContent>
                       </Tooltip>

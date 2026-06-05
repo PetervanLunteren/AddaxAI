@@ -209,13 +209,12 @@ export function CreateProjectDialog({
   };
 
   const onSubmit = (data: ProjectCreate) => {
-    // Silently fill in the project timezone using the browser's IANA
-    // zone. Electron's Chromium engine honors the OS setting. No UI
-    // field here — users can change it later in Project settings if
-    // the data was recorded in a different timezone.
-    const detectedTimezone =
-      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    createMutation.mutate({ ...data, timezone: detectedTimezone });
+    // No timezone is sent: a new project starts with none and the backend
+    // auto-derives the camera timezone from the first site's coordinates
+    // (the authoritative source for the sun-based insights). The browser's
+    // zone is the wrong guess for remote cameras, so we no longer use it.
+    // Users can still set it explicitly in Project settings.
+    createMutation.mutate(data);
   };
 
   // Get selected model info for preparation view

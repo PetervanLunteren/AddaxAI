@@ -18,6 +18,12 @@ pydantic-settings==2.7.0
 # Astronomy (sunrise/sunset computation for activity pattern chart)
 astral>=3.2
 
+# Offline lat/lon -> IANA timezone, used to derive a project's camera
+# timezone from its first site's coordinates. We use the lightweight
+# TimezoneFinderL class; the 62 MB full-polygon data file is pruned from
+# the PyInstaller bundle in backend.spec.
+timezonefinder>=8.2,<9
+
 # Image Processing
 Pillow==11.0.0
 

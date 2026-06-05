@@ -44,10 +44,12 @@ def test_create_project_duplicate_name(client, db):
     assert resp.status_code == 409
 
 
-def test_create_project_requires_timezone(client):
-    """Omitting timezone yields 422 (required field)."""
+def test_create_project_without_timezone_starts_unset(client):
+    """Timezone is optional: a new project starts with none and later
+    auto-derives one from its first site's coordinates."""
     resp = client.post("/api/projects", json={"name": "no-tz"})
-    assert resp.status_code == 422
+    assert resp.status_code == 201
+    assert resp.json()["timezone"] is None
 
 
 def test_create_project_rejects_invalid_timezone(client):

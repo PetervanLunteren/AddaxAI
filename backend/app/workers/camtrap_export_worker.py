@@ -41,7 +41,8 @@ async def process_camtrap_export_job(job_id: str) -> None:
         project = db.query(Project).filter(Project.id == project_id).first()
         if project is None:
             raise ValueError(f"Project not found: {project_id}")
-        set_active_project_timezone(project.timezone)
+        if project.timezone:
+            set_active_project_timezone(project.timezone)
 
         job_crud.update_job_status(db, job_id, "running")
         await ws_manager.send_progress(job_id, "Building tables...", 0.0)

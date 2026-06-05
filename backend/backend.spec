@@ -41,6 +41,18 @@ datas += collect_data_files('fastapi')
 datas += collect_data_files('astral')   # astral ships timezone resources
 datas += collect_data_files('openpyxl') # openpyxl ships schema XSDs
 
+# timezonefinder: we only use the lightweight TimezoneFinderL, which needs the
+# shortcut files (~4 MB), NOT the 62 MB full-polygon boundary data that the
+# full TimezoneFinder uses for point-in-polygon lookups. Ship everything except
+# that one big file to keep the installer lean. Verified: TimezoneFinderL
+# resolves correctly with this file absent.
+_tzf_datas = collect_data_files('timezonefinder')
+_tzf_datas = [
+    (src, dest) for (src, dest) in _tzf_datas
+    if not src.replace('\\', '/').endswith('data/boundaries/coordinates.fbs')
+]
+datas += _tzf_datas
+
 # Comprehensive hidden imports - collect ALL submodules
 hiddenimports = []
 hiddenimports += collect_submodules('fastapi')
@@ -60,6 +72,7 @@ hiddenimports += collect_submodules('redis')
 hiddenimports += collect_submodules('requests')  # Required by huggingface_hub
 hiddenimports += collect_submodules('cv2')       # opencv-python-headless
 hiddenimports += collect_submodules('astral')    # sunrise/sunset for activity overlap
+hiddenimports += collect_submodules('timezonefinder')  # lat/lon -> IANA tz
 hiddenimports += collect_submodules('openpyxl')  # XLSX export
 hiddenimports += ['exiftool']                    # PyExifTool: video metadata
 hiddenimports += ['shapefile']                   # pyshp: shapefile export

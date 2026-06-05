@@ -49,18 +49,22 @@ class ProjectBase(BaseModel):
         None, description="US state code for geofenced models (e.g., 'CA', 'TX')"
     )
 
-    # IANA timezone name — metadata for future suncalc overlay. Not
-    # used to convert any stored timestamps.
-    timezone: str = Field(
-        ...,
+    # IANA timezone name, consumed by the sun-based insights. Optional /
+    # nullable: a new project starts with no timezone and auto-derives one
+    # from its first site's coordinates (crud.site.create_site). NULL means
+    # "auto / not set yet". Not used to convert any stored timestamps.
+    timezone: str | None = Field(
+        None,
         min_length=1,
         max_length=64,
-        description="IANA timezone name (e.g., 'Europe/Amsterdam', 'UTC')",
+        description="IANA timezone name (e.g., 'Europe/Amsterdam'), or null for auto",
     )
 
     @field_validator("timezone")
     @classmethod
-    def _check_timezone(cls, v: str) -> str:
+    def _check_timezone(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         return _validate_iana_timezone(v)
 
     # Verification shortcut labels (keys 1-5 → label options)

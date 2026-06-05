@@ -57,12 +57,17 @@ interface TimezoneGroup {
 }
 
 interface TimezoneSelectProps {
-  /** Current IANA timezone string (e.g. "Europe/Amsterdam" or "Etc/GMT-3"). */
+  /** Current IANA timezone string (e.g. "Europe/Amsterdam" or "Etc/GMT-3").
+   *  An empty string selects the "Auto" entry when `autoLabel` is set. */
   value: string;
-  /** Called with the newly selected IANA timezone. */
+  /** Called with the newly selected IANA timezone, or "" for Auto. */
   onChange: (value: string) => void;
   /** Disable the control. */
   disabled?: boolean;
+  /** When set, render an "Auto" entry at the top whose value is "".
+   *  Used to let a project leave its timezone unset (auto-derived from
+   *  site coordinates). */
+  autoLabel?: string;
 }
 
 // Module-scoped instances so they build once per page load, not per option.
@@ -198,6 +203,7 @@ export function TimezoneSelect({
   value,
   onChange,
   disabled,
+  autoLabel,
 }: TimezoneSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -212,14 +218,14 @@ export function TimezoneSelect({
   // its full label. Resolve aliases first so a saved value like
   // Asia/Saigon still matches its canonical entry (Asia/Ho_Chi_Minh).
   const currentLabel = useMemo(() => {
-    if (!value) return "";
+    if (!value) return autoLabel ?? "";
     const resolved = resolveTimezone(value);
     for (const group of groups) {
       const found = group.options.find((opt) => opt.value === resolved);
       if (found) return found.label;
     }
     return value;
-  }, [groups, value]);
+  }, [groups, value, autoLabel]);
 
   // Filter on country, city, IANA value. Skipping the offset suffix
   // keeps "UTC" from matching every zone in the world.
@@ -272,6 +278,25 @@ export function TimezoneSelect({
           />
           <CommandList>
             <CommandEmpty>No timezones found.</CommandEmpty>
+            {autoLabel && !search.trim() && (
+              <CommandGroup>
+                <CommandItem
+                  value="__auto__"
+                  onSelect={() => {
+                    onChange("");
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      !value ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="truncate">{autoLabel}</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
             {filteredGroups.map((group) => (
               <CommandGroup key={group.heading} heading={group.heading}>
                 {group.options.map((opt) => {

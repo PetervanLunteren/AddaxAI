@@ -51,7 +51,11 @@ def _set_project_tz_for_event(db: Session, event) -> None:
     Goes through Deployment.project directly so null-site deployments
     still resolve a timezone.
     """
-    if event.deployment and event.deployment.project:
+    if (
+        event.deployment
+        and event.deployment.project
+        and event.deployment.project.timezone
+    ):
         set_active_project_timezone(event.deployment.project.timezone)
 
 

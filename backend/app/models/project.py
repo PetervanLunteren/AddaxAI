@@ -70,12 +70,18 @@ class Project(Base):
         String(2), nullable=True
     )
 
-    # IANA timezone name (e.g. "Europe/Amsterdam"). Stored as metadata
-    # and consumed by the future suncalc overlay on the activity
-    # pattern chart. Not used to convert any stored datetimes — camera
+    # IANA timezone name (e.g. "Europe/Amsterdam"). Consumed by the
+    # sun-based insights (sun-band overlay, sun-time transform, diel
+    # classification). NOT used to convert any stored datetimes — camera
     # clocks are already in their local timezone.
-    timezone: Mapped[str] = mapped_column(
-        String(64), nullable=False
+    #
+    # Nullable: a new project starts with NO timezone and auto-derives one
+    # from its first site's coordinates (see crud.site.create_site +
+    # utils.timezone_from_coords). NULL means "auto / not set yet"; the
+    # serialization layer falls back to UTC, and sun features show the
+    # existing "needs a site with GPS" banner until coordinates exist.
+    timezone: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
     )
 
     # Detection and processing settings

@@ -198,6 +198,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
         column="suggestion_dismissed",
         description="add suggestion_dismissed flag on detections",
     ),
+    _Fingerprint(
+        revision="e1f2a3b4c5d6",
+        table=None,
+        column=None,
+        description=(
+            "make projects.timezone nullable — column nullability change, "
+            "not fingerprinted via PRAGMA table_info"
+        ),
+    ),
 )
 
 

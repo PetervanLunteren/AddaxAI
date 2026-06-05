@@ -30,8 +30,9 @@ export interface ProjectCreate {
   shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code?: string | null;
   state_code?: string | null;
-  /** IANA timezone name, e.g. "Europe/Amsterdam". Required. */
-  timezone: string;
+  /** IANA timezone name, e.g. "Europe/Amsterdam". Optional: omit/null to
+   *  let the backend auto-derive it from the first site's coordinates. */
+  timezone?: string | null;
   video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
@@ -88,7 +89,8 @@ export interface ProjectResponse {
   shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code: string | null;
   state_code: string | null;
-  timezone: string;
+  /** IANA timezone name, or null when unset (auto-derives from site coords). */
+  timezone: string | null;
   video_fps: number;
   detection_threshold: number;
   event_smoothing: boolean;
