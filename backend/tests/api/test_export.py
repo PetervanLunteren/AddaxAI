@@ -126,6 +126,7 @@ def test_export_observations_csv_happy_path(client, db):
     headers = rows[0]
     assert headers == [
         "detection_id", "file_id", "event_id", "relative_path",
+        "absolute_path",
         "datetime", "site_name", "latitude", "longitude",
         "detection_category", "detection_confidence", "bbox_x", "bbox_y",
         "bbox_width", "bbox_height", "frame_number", "classification_label",

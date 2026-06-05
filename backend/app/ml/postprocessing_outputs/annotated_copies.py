@@ -45,6 +45,7 @@ Source-vs-destination semantics:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -59,20 +60,14 @@ from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import file_is_dropped_by_filter
 from ._output_context import OutputContext
 from ._visualisation_style import (
-    BBOX_CORNER_RADIUS,
-    BBOX_OPACITY,
-    BBOX_STROKE_WIDTH,
-    DOT_R,
-    FONT_LG,
-    FONT_SM,
-    LINE_GAP,
+    CASING_RGBA,
     PILL_BG_RGBA,
-    PILL_PAD_X,
-    PILL_PAD_Y,
-    TEXT_START_X,
+    STROKE_ALPHA,
     WHITE,
     WHITE_DIM,
+    RenderMetrics,
     detection_color,
+    render_metrics,
 )
 
 logger = get_logger(__name__)
@@ -273,16 +268,17 @@ def _blur_region(
 # ─────────────────────────────────────────────────────────────────
 
 
-def _load_fonts() -> tuple[ImageFont.ImageFont, ImageFont.ImageFont]:
-    """Return ``(small, large)`` fonts for the pill layout."""
+@lru_cache(maxsize=64)
+def _font(size: int) -> ImageFont.ImageFont:
+    """Scalable default font at ``size`` px, cached per size.
+
+    Pillow 10+ ``load_default(size=...)`` returns a TrueType-backed
+    font that scales cleanly; older Pillow ignores the argument and
+    returns the small bitmap font (acceptable fallback)."""
     try:
-        small = ImageFont.load_default(size=FONT_SM)
-        large = ImageFont.load_default(size=FONT_LG)
-    except (TypeError, AttributeError):  # Pillow < 10 fallback
-        default = ImageFont.load_default()
-        small = default
-        large = default
-    return small, large
+        return ImageFont.load_default(size=size)
+    except (TypeError, AttributeError):  # Pillow < 10
+        return ImageFont.load_default()
 
 
 def _text_width(draw: ImageDraw.ImageDraw, text: str, font) -> int:
@@ -322,12 +318,12 @@ def _pill_name(detection: Detection, name_mode: str) -> str:
 def _compute_pill_layout(
     draw: ImageDraw.ImageDraw,
     detection: Detection,
+    m: RenderMetrics,
     font_sm,
     font_lg,
     name_mode: str,
 ) -> _PillLayout:
-    """Pill geometry for one detection. Mirrors the frontend's
-    ``computePillLayout`` (detection-overlay.ts): two-line when a
+    """Pill geometry for one detection, sized by ``m``. Two-line when a
     species label is present, single-line otherwise."""
     color = detection_color(detection.label, detection.category)
     has_label = bool(detection.label)
@@ -342,16 +338,16 @@ def _compute_pill_layout(
             f"{int(round((detection.label_confidence or detection.confidence) * 100))}%"
         )
         pill_height = (
-            PILL_PAD_Y + FONT_SM + LINE_GAP + FONT_LG + PILL_PAD_Y
+            m.pad_y + m.font_sm + m.line_gap + m.font_lg + m.pad_y
         )
         w1 = _text_width(draw, category_text, font_sm)
         w2 = _text_width(draw, label_text, font_lg)
-        pill_width = TEXT_START_X + max(w1, w2) + PILL_PAD_X
+        pill_width = m.text_start_x + max(w1, w2) + m.pad_x
     else:
         label_text = ""
-        pill_height = PILL_PAD_Y + FONT_LG + PILL_PAD_Y
+        pill_height = m.pad_y + m.font_lg + m.pad_y
         tw = _text_width(draw, category_text, font_lg)
-        pill_width = TEXT_START_X + tw + PILL_PAD_X
+        pill_width = m.text_start_x + tw + m.pad_x
     return _PillLayout(
         category_text=category_text,
         label_text=label_text,
@@ -366,11 +362,12 @@ def _draw_one(
     draw: ImageDraw.ImageDraw,
     detection: Detection,
     image_size: tuple[int, int],
+    m: RenderMetrics,
     font_sm,
     font_lg,
     name_mode: str,
 ) -> None:
-    """Draw one bbox + pill onto the RGBA overlay."""
+    """Draw one bbox + pill onto the RGBA overlay, sized by ``m``."""
     if (
         detection.bbox_x is None
         or detection.bbox_y is None
@@ -387,16 +384,23 @@ def _draw_one(
         return
 
     color = detection_color(detection.label, detection.category)
-    stroke_rgba = (color[0], color[1], color[2], int(round(BBOX_OPACITY * 255)))
 
+    # Dark casing first so the coloured stroke reads on both bright and
+    # dark scenes, then the near-solid coloured outline over it.
     draw.rounded_rectangle(
         (x0, y0, x1, y1),
-        radius=BBOX_CORNER_RADIUS,
-        outline=stroke_rgba,
-        width=BBOX_STROKE_WIDTH,
+        radius=m.radius + m.stroke,
+        outline=CASING_RGBA,
+        width=m.stroke + m.casing,
+    )
+    draw.rounded_rectangle(
+        (x0, y0, x1, y1),
+        radius=m.radius,
+        outline=(*color, STROKE_ALPHA),
+        width=m.stroke,
     )
 
-    pill = _compute_pill_layout(draw, detection, font_sm, font_lg, name_mode)
+    pill = _compute_pill_layout(draw, detection, m, font_sm, font_lg, name_mode)
     pill_x = max(0, min(x0, img_w - pill.pill_width))
     pill_y = (
         y0 - pill.pill_height if y0 - pill.pill_height >= 0 else y0
@@ -404,34 +408,34 @@ def _draw_one(
 
     draw.rounded_rectangle(
         (pill_x, pill_y, pill_x + pill.pill_width, pill_y + pill.pill_height),
-        radius=BBOX_CORNER_RADIUS,
+        radius=round(m.radius * 0.9),
         fill=PILL_BG_RGBA,
     )
 
-    dot_cx = pill_x + PILL_PAD_X + DOT_R
+    dot_cx = pill_x + m.pad_x + m.dot_r
     dot_cy = pill_y + pill.pill_height // 2
     draw.ellipse(
-        (dot_cx - DOT_R, dot_cy - DOT_R, dot_cx + DOT_R, dot_cy + DOT_R),
+        (dot_cx - m.dot_r, dot_cy - m.dot_r, dot_cx + m.dot_r, dot_cy + m.dot_r),
         fill=(*color, 255),
     )
 
-    text_x = pill_x + TEXT_START_X
+    text_x = pill_x + m.text_start_x
     if pill.has_label:
         draw.text(
-            (text_x, pill_y + PILL_PAD_Y),
+            (text_x, pill_y + m.pad_y),
             pill.category_text,
             fill=WHITE_DIM,
             font=font_sm,
         )
         draw.text(
-            (text_x, pill_y + PILL_PAD_Y + FONT_SM + LINE_GAP),
+            (text_x, pill_y + m.pad_y + m.font_sm + m.line_gap),
             pill.label_text,
             fill=(*WHITE, 255),
             font=font_lg,
         )
     else:
         draw.text(
-            (text_x, pill_y + PILL_PAD_Y),
+            (text_x, pill_y + m.pad_y),
             pill.category_text,
             fill=(*WHITE, 255),
             font=font_lg,
@@ -523,7 +527,6 @@ def write_annotated_copies(
     ).scalars().all()
 
     result = AnnotatedCopiesResult()
-    font_sm, font_lg = _load_fonts()
 
     with ExifBatch() as exif_batch:
         for file in files:
@@ -579,8 +582,12 @@ def write_annotated_copies(
                 rgba = image.convert("RGBA")
                 overlay = Image.new("RGBA", rgba.size, (0, 0, 0, 0))
                 draw = ImageDraw.Draw(overlay, "RGBA")
+                # Sizes scale with this image's resolution.
+                m = render_metrics(*rgba.size)
+                font_sm = _font(m.font_sm)
+                font_lg = _font(m.font_lg)
                 for det in bbox_dets:
-                    _draw_one(draw, det, rgba.size, font_sm, font_lg, name_mode)
+                    _draw_one(draw, det, rgba.size, m, font_sm, font_lg, name_mode)
                     result.bbox_count += 1
                 image = Image.alpha_composite(rgba, overlay).convert("RGB")
 

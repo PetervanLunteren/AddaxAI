@@ -2,14 +2,14 @@
 
 This module is the Python-side mirror of the canvas rendering used by
 the verify page in the frontend. The visualised-images postprocess
-output reads its constants and helpers from here so a labelled JPEG
-written to disk looks the same as what the user sees in the verify
-grid: rounded bounding box outlines at 50% opacity, rounded label
-pills with a coloured species dot, white text on a dim background.
+output reads its colours and layout from here so a labelled JPEG
+written to disk looks like what the user sees in the verify grid:
+rounded bounding box outlines, rounded label pills with a coloured
+species dot, white text on a dim background.
 
-Canonical references (keep in sync — single spec, two implementations):
+Canonical references (keep the COLOUR algorithm in sync — single spec,
+two implementations):
 
-- frontend/src/lib/detection-overlay.ts  (layout + style constants)
 - frontend/src/lib/detection-utils.ts    (category colours)
 - frontend/src/utils/species-colors.ts   (species colour algorithm)
 
@@ -19,9 +19,22 @@ label string mapped onto an RGB-interpolated gradient between
 default RGB interpolation in the frontend, so a label that looks
 "teal-green" in the verify grid also looks "teal-green" in the
 exported JPEG.
+
+Layout is NOT a fixed-pixel mirror of the frontend. The frontend
+rescales its fixed 10/12px constants to screen pixels at render time
+(`s = imgW / displayWidth`), so a label is always ~the same fraction
+of the displayed image. A saved JPEG has no such render-time scaling,
+so fixed pixels there are illegible on a multi-megapixel photo. Instead
+`render_metrics(width, height)` derives every size as a fraction of the
+image, tuned to roughly match the on-screen overlay's relative size.
+The export also uses stronger contrast than the live grid (more opaque
+box stroke + pill, plus a dark casing behind the stroke) because the
+JPEG is viewed full-size without the grid's spotlight-dim backdrop.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 # ─────────────────────────────────────────────────────────────────
 # Category colours — canonical map mirrors getCategoryColor() in
@@ -110,23 +123,72 @@ def detection_color(
 
 
 # ─────────────────────────────────────────────────────────────────
-# Layout constants. Mirror frontend/src/lib/detection-overlay.ts.
-# Keep tuples / numbers literally equal so the rendered pills look
-# the same width regardless of where they are drawn.
+# Contrast / fill constants (resolution-independent).
 # ─────────────────────────────────────────────────────────────────
-PILL_PAD_X = 6
-PILL_PAD_Y = 4
-DOT_R = 4
-DOT_GAP = 5
-LINE_GAP = 2
-FONT_SM = 10
-FONT_LG = 12
-TEXT_START_X = PILL_PAD_X + DOT_R * 2 + DOT_GAP  # 19
-
-BBOX_STROKE_WIDTH = 2
-BBOX_CORNER_RADIUS = 4
-BBOX_OPACITY = 0.5  # 0..1 alpha, blended over the source image
-PILL_BG_RGBA = (0, 0, 0, 128)  # rgba(0,0,0,0.5) — 128/255 ≈ 0.5
+STROKE_ALPHA = 235  # box outline alpha — near-solid so it reads on busy scenes
+CASING_RGBA = (0, 0, 0, 90)  # dark casing drawn behind the coloured stroke
+PILL_BG_RGBA = (0, 0, 0, 175)  # pill background, more solid than the live grid
 
 WHITE = (255, 255, 255)
-WHITE_DIM = (255, 255, 255, 179)  # rgba(255,255,255,0.7) for small text
+WHITE_DIM = (255, 255, 255, 190)  # category line — slightly dimmed
+
+
+# ─────────────────────────────────────────────────────────────────
+# Image-proportional layout. Every size is a fraction of the image so
+# the result looks the same on a 1 MP or a 24 MP photo. Floors keep
+# small images legible. Ratios are tuned to sit close to the frontend
+# overlay's on-screen relative size.
+# ─────────────────────────────────────────────────────────────────
+_FONT_LG_FRACTION = 0.026  # large (species) line height as a fraction of image height
+_FONT_LG_MIN = 15
+_FONT_SM_RATIO = 0.80  # category line relative to the species line
+_FONT_SM_MIN = 12
+_STROKE_FRACTION = 0.0040  # box stroke as a fraction of the long side
+_STROKE_MIN = 3
+_RADIUS_RATIO = 2.2  # corner radius relative to stroke width
+_PAD_X_RATIO = 0.55  # pill horizontal padding relative to the species font
+_PAD_Y_RATIO = 0.45  # pill vertical padding relative to the species font
+_DOT_R_RATIO = 0.33  # species dot radius relative to the species font
+_DOT_GAP_RATIO = 0.45  # gap after the dot relative to the species font
+_LINE_GAP_RATIO = 0.18  # gap between the two text lines
+
+
+@dataclass(frozen=True)
+class RenderMetrics:
+    """Pixel sizes for one image, derived from its dimensions."""
+
+    font_sm: int
+    font_lg: int
+    stroke: int
+    casing: int  # extra width added under the coloured stroke for the dark casing
+    radius: int
+    pad_x: int
+    pad_y: int
+    dot_r: int
+    dot_gap: int
+    line_gap: int
+    text_start_x: int
+
+
+def render_metrics(width: int, height: int) -> RenderMetrics:
+    """Resolution-aware layout sizes for an image of ``width`` x ``height``."""
+    long_side = max(width, height)
+    font_lg = max(_FONT_LG_MIN, round(height * _FONT_LG_FRACTION))
+    font_sm = max(_FONT_SM_MIN, round(font_lg * _FONT_SM_RATIO))
+    stroke = max(_STROKE_MIN, round(long_side * _STROKE_FRACTION))
+    dot_r = round(font_lg * _DOT_R_RATIO)
+    dot_gap = round(font_lg * _DOT_GAP_RATIO)
+    pad_x = round(font_lg * _PAD_X_RATIO)
+    return RenderMetrics(
+        font_sm=font_sm,
+        font_lg=font_lg,
+        stroke=stroke,
+        casing=max(2, stroke // 2),
+        radius=round(stroke * _RADIUS_RATIO),
+        pad_x=pad_x,
+        pad_y=round(font_lg * _PAD_Y_RATIO),
+        dot_r=dot_r,
+        dot_gap=dot_gap,
+        line_gap=round(font_lg * _LINE_GAP_RATIO),
+        text_start_x=pad_x + dot_r * 2 + dot_gap,
+    )

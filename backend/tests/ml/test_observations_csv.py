@@ -120,6 +120,33 @@ def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):
     assert rel_values == {"sub/IMG.jpg"}
 
 
+def test_absolute_path_is_the_full_source_path(db, tmp_path):
+    """absolute_path is the original source file's full path on disk,
+    alongside the portable relative_path."""
+    project = make_project(db, name="csv-abspath")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "CameraA"),
+    )
+    abs_src = str(tmp_path / "CameraA" / "sub" / "IMG.jpg")
+    file = make_file(
+        db, deployment_id=dep.id, file_path=abs_src, observation_type="animal",
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.9, label="dog",
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+    )
+
+    target = tmp_path / "out"
+    write_observations_csv(db, project.id, _ctx(target))
+
+    csv = (target / CSV_FILENAME).read_text()
+    header_line, *data_lines = csv.splitlines()
+    headers = header_line.split(",")
+    abs_idx = headers.index("absolute_path")
+    abs_values = {row.split(",")[abs_idx] for row in data_lines}
+    assert abs_values == {abs_src}
+
+
 def test_relative_path_falls_back_to_filename(db, tmp_path):
     """When the deployment has no source folder, relative_path is the
     bare filename."""

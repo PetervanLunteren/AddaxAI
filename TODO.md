@@ -23,16 +23,15 @@
 
 
 
-- [ ] 
-    - you just added the _slug() funxction to sluggify the folder names. Dod you also update the output preview window? 
-    - In the CSV, aparently we removed the absolute path again. There should be a way to show the full path of the original source file. Should we add a obsolute path column? Or a root path column? What do you think? 
-    -  sghould we output the best frame or the entire video visualised? If users select visualisation, they probabaly want the video visualised, right? that would take a long time for every video, right? How can we improve the speed here? Or just ship it with we what we have now, and only think about improving video writing boxes speed when the questions arises from a user? what are our options? You mentioed ffmpeg before. But we already use ffmpeg for metadata reading of videos, right? 
-    - Since we have videos that end up in 6 folders, should we have a toggle or dropdown that contrrols this behaviour? What do you think? Or is it too specific? Be honest. What is good UX UI? is it really needed? 
+    - Since we have videos that end up in 6 folders, should we have a toggle or dropdown that contrrols this behaviour? What do you think? Or is it too specific? Be honest. What is good UX UI? is it really needed? Or does iut only confuse users more?
+    - The common/scientific name toggle is not used in the detections list of a verified modal. If you verify an image with two red deer, you see "C. elaphus x2" in the verified list of that imagedetailModal. Update to follow the common/scientific name toggle. 
 
 
-- [ ] no need for the README.txt. redundant. Or perhaps just a lot less information. What do you think? 
+- [ ] no need for the README.txt. redundant. Or perhaps just a lot less information. What do you think? we need to at least cuit it to a minimal amount of information. 
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
+
+- [ ] Investigate how it currently works to add an observation without a box in the verification of images and events. This is done so you can add a hidden individual in a video for example (3 deer walking by, only two in a single frame, so one can be added without a box). Makes sense? Or perhaps a bit confusing? Should we do a box less observation or simply something custom field for videos like “distinct number of individuals”? What would be less confusing? Now it writes fake detections to a frame number which is also not true. How would that then work in the CSV output? And should we add that to the events view too? As you can have an event of 5 elephants walking past while you only see 3 max at every given image. How should we make this feel logical for users. How do other platforms do it? Do a full audit. 
 
 
 

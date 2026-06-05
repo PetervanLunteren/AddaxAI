@@ -159,13 +159,13 @@ export function MediaBody({
         checked={visualise.enabled}
         onChange={(v) => setVisualise({ enabled: v })}
         label="Draw detection boxes"
-        caption="Copies with boxes and labels drawn on"
+        caption="Boxes and labels on each photo, or a video's best frame saved as a JPEG"
       />
       <CaptionedCheckbox
         checked={anonymise.enabled}
         onChange={(v) => setAnonymise({ enabled: v })}
         label="Blur people and vehicles"
-        caption="Each copy has people and vehicles blurred out"
+        caption="People and vehicles blurred on each photo, or a video's best frame saved as a JPEG"
       />
       <CaptionedCheckbox
         checked={separate.copyEmpties}

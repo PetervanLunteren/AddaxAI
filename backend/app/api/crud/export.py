@@ -80,6 +80,11 @@ OBSERVATIONS_SCHEMA = (
 #                     filenames across cameras and stays portable. Falls
 #                     back to the bare filename when the deployment folder
 #                     is unknown or the file sits outside it.
+#   absolute_path   — the original source file's full path on disk. Directly
+#                     openable, but machine-specific: valid only where the
+#                     deployment is currently linked (re-export after moving
+#                     data to refresh it). relative_path is the portable
+#                     identity; this is the convenient-here companion.
 #   detection_category    — detector class: animal / person / vehicle (or
 #                     "blank" for an empty file).
 #   detection_confidence  — detector (MegaDetector) score for the box.
@@ -103,6 +108,7 @@ _FLAT_OBS_HEADERS = [
     "file_id",
     "event_id",
     "relative_path",
+    "absolute_path",
     "datetime",
     "site_name",
     "latitude",
@@ -457,6 +463,9 @@ def build_observation_rows(
         latitude = site.latitude if site is not None else ""
         longitude = site.longitude if site is not None else ""
         relative_path = _relative_path(file_obj, deployment)
+        # The full source path as stored (already absolute). Native OS
+        # separators so it opens directly; machine-specific by design.
+        absolute_path = file_obj.file_path
 
         # Event grouping. A file with no event falls back to its own id
         # so the column is never empty.
@@ -469,6 +478,7 @@ def build_observation_rows(
             file_obj.id,
             event_id,
             relative_path,
+            absolute_path,
             captured,
             site_name,
             latitude,
