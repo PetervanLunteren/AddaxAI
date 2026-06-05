@@ -298,17 +298,24 @@ export function FolderSelector({
                   )}
                 </Tooltip>
 
-                {/* Date range — unambiguous format (e.g. "7 Feb 2016") */}
+                {/* Date range — date-only, rough estimate. The backend
+                    reads dates from a sample of files (first/last + 100
+                    random), not every file, so this is an approximate span,
+                    not an exact min/max. Exact per-file times live in the
+                    Adjust-dates modal. Format e.g. "7 Feb 2016". */}
                 <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
                   <Calendar className="h-4 w-4" />
                   <span>
                     {scanResult.start_date && scanResult.end_date ? (
                       (() => {
-                        const fmt = (d: Date) => d.toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                        const fmt = (d: Date) => d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
                         const offsetMs = datetimeOffsetSeconds * 1000;
                         const start = new Date(new Date(scanResult.start_date).getTime() + offsetMs);
                         const end = new Date(new Date(scanResult.end_date).getTime() + offsetMs);
-                        return `${fmt(start)} – ${fmt(end)}`;
+                        const range = start.toDateString() === end.toDateString()
+                          ? fmt(start)
+                          : `${fmt(start)} – ${fmt(end)}`;
+                        return `Dates span roughly ${range}`;
                       })()
                     ) : (
                       "No datetime metadata"
@@ -419,20 +426,24 @@ function CompactScanLine({
   endDate: string | null;
   offsetSeconds: number;
 }) {
+  // Date-only, rough estimate: the scan reads a sample of files, not every
+  // one, so this is an approximate span. Exact per-file times are in the
+  // Adjust-dates modal.
   const fmt = (d: Date) =>
-    d.toLocaleString([], {
+    d.toLocaleDateString([], {
       day: "numeric",
       month: "short",
       year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   let dateRange: string;
   if (startDate && endDate) {
     const offsetMs = offsetSeconds * 1000;
     const s = new Date(new Date(startDate).getTime() + offsetMs);
     const e = new Date(new Date(endDate).getTime() + offsetMs);
-    dateRange = `${fmt(s)} – ${fmt(e)}`;
+    const range = s.toDateString() === e.toDateString()
+      ? fmt(s)
+      : `${fmt(s)} – ${fmt(e)}`;
+    dateRange = `Dates span roughly ${range}`;
   } else {
     dateRange = "No datetime metadata";
   }

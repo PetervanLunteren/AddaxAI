@@ -14,6 +14,7 @@ Following DEVELOPERS.md principles:
 
 import os
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
@@ -268,7 +269,8 @@ def _extract_date_range(
     """
     Extract date range from image and video EXIF datetime metadata with validation.
 
-    For images, tries EXIF date tags in order of preference:
+    For images, tries EXIF date tags in order of preference (the first two
+    read from the Exif sub-IFD where they actually live):
     1. DateTimeOriginal (36867) - camera capture time
     2. DateTimeDigitized (36868) - when digitized
     3. DateTime (306) - file modification time in camera
@@ -277,11 +279,12 @@ def _extract_date_range(
     app.utils.media_dates._DATE_FIELDS (CreateDate first, then EXIF / MP4 /
     RIFF fallbacks).
 
-    Validates that date range is at least 3 hours (filters out invalid/corrupt timestamps).
-
-    Checks first 5 and last 5 files (sorted by filename) for date range.
-    Camera traps use sequential filenames (IMG_0001.jpg, VID_0001.mp4, etc.)
-    so first and last files give accurate min/max dates.
+    Samples the first 5 and last 5 files (sorted by filename) plus 100
+    random files across the folder. Camera traps use sequential filenames
+    (IMG_0001.jpg, VID_0001.mp4, etc.) so first / last give the extremes for
+    a clean single-camera folder; the random draw covers stripped-EXIF
+    extremes and multi-subfolder folders. The resulting range is a rough,
+    sample-based estimate, surfaced date-only in the UI.
 
     Returns:
         Tuple of (start_date, end_date, validation_log)
@@ -291,10 +294,6 @@ def _extract_date_range(
         return None, None, ["No image or video files found"]
 
     validation_log: list[str] = []
-
-    # Minimum valid timespan: 3 hours
-    # Catches file modification/creation times which cluster together
-    MIN_TIMESPAN_HOURS = 3
 
     # Sort by filename and sample first/last
     # Camera traps use sequential filenames, so this gives us chronological order
@@ -333,6 +332,30 @@ def _extract_date_range(
             f"out of {len(video_files)} total..."
         )
 
+    # Add a random sample across all media on top of the first/last picks.
+    # First/last-by-filename is ideal for a clean sequential single-camera
+    # folder, but it misses two cases: (a) a handful of stripped-EXIF files
+    # happening to sit at the filename extremes would make the whole folder
+    # read as "no dates", and (b) a folder holding several camera subfolders
+    # has no single meaningful filename order, so the extremes aren't
+    # representative. A random draw covers both for ~100 extra EXIF reads
+    # (well under a second). The date range this produces is a rough,
+    # sample-based estimate, surfaced as date-only in the UI.
+    random_sample_size = 100
+    already_sampled = set(image_sample) | set(video_sample)
+    pool = [f for f in (sorted_images + sorted_videos) if f not in already_sampled]
+    if pool:
+        extra = random.sample(pool, min(random_sample_size, len(pool)))
+        image_sample = image_sample + [
+            f for f in extra if f.suffix.lower() in IMAGE_EXTENSIONS
+        ]
+        video_sample = video_sample + [
+            f for f in extra if f.suffix.lower() in VIDEO_EXTENSIONS
+        ]
+        validation_log.append(
+            f"Plus {len(extra)} randomly sampled file(s) across the folder."
+        )
+
     # Extract dates from images
     validation_log.append("Images: Trying DateTimeOriginal → DateTimeDigitized → DateTime")
     image_dates = _extract_exif_dates(image_sample)
@@ -346,82 +369,146 @@ def _extract_date_range(
     else:
         video_dates = []
 
-    # Combine all dates
+    # Combine all dates. Any timestamp found is used; the min/max give the
+    # rough range the UI shows as a date-only estimate. There is no
+    # minimum-span gate: the dates come from EXIF DateTimeOriginal (read
+    # from the Exif sub-IFD), never from file mtime, so a narrow span is a
+    # real narrow span, not the corrupt-mtime-cluster case the old 3-hour
+    # rule guarded against.
     all_dates = image_dates + video_dates
 
     if all_dates:
         start_date, end_date = min(all_dates), max(all_dates)
         timespan_hours = (end_date - start_date).total_seconds() / 3600
+        validation_log.append(
+            f"✓ Found timestamps: {len(image_dates)} images + {len(video_dates)} videos "
+            f"spanning {timespan_hours:.1f} hours ({start_date.strftime('%Y-%m-%d %H:%M')} to "
+            f"{end_date.strftime('%Y-%m-%d %H:%M')})"
+        )
+        return start_date, end_date, validation_log
 
-        if timespan_hours >= MIN_TIMESPAN_HOURS:
-            validation_log.append(
-                f"✓ Found valid timestamps: {len(image_dates)} images + {len(video_dates)} videos "
-                f"spanning {timespan_hours:.1f} hours ({start_date.strftime('%Y-%m-%d %H:%M')} to "
-                f"{end_date.strftime('%Y-%m-%d %H:%M')})"
-            )
-            return start_date, end_date, validation_log
-        else:
-            validation_log.append(
-                f"✗ Timestamps rejected: Only {timespan_hours:.1f} hours span "
-                f"(minimum {MIN_TIMESPAN_HOURS} hours required). "
-                f"This likely indicates corrupt timestamps or all files taken at the same time."
-            )
-    else:
-        validation_log.append("✗ No datetime metadata found in any images or videos")
-
-    validation_log.append("✗ DateTime extraction failed - no valid timestamps found")
+    validation_log.append("✗ No datetime metadata found in any images or videos")
     return None, None, validation_log
+
+
+# DateTimeOriginal (36867) and DateTimeDigitized (36868) live in the Exif
+# sub-IFD, reached via the pointer tag 0x8769 in the base IFD. They are NOT
+# in the base IFD that Image.getexif() returns directly; reading them off
+# the base IFD always yields None. DateTime (306) does live in the base IFD.
+# Reading 36867/36868 off the base IFD was the bug that made camera-trap
+# images with perfectly good capture times report "no datetime metadata".
+# (The GPS reader above already does the equivalent get_ifd(0x8825) dance.)
+_EXIF_IFD_POINTER = 0x8769
+_TAG_DATETIME_ORIGINAL = 36867
+_TAG_DATETIME_DIGITIZED = 36868
+_TAG_DATETIME = 306
+
+# Trailing timezone designator: "Z", "+02:00", "-0500", etc. Observational
+# datetimes are stored naive in camera-local wall-clock time (see
+# DEVELOPERS.md "Datetime conventions"), so any offset is dropped, never
+# applied.
+_TZ_SUFFIX_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+
+# strptime patterns tried in order. EXIF standard is colon-separated
+# ("YYYY:MM:DD HH:MM:SS"); real cameras and re-encoders also emit dash or
+# slash date separators, ISO "T", and date-only stamps.
+_DATETIME_FORMATS = (
+    "%Y:%m:%d %H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y:%m:%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y:%m:%d %H:%M",
+    "%Y-%m-%d %H:%M",
+    "%Y:%m:%d",
+    "%Y-%m-%d",
+)
+
+
+def _parse_exif_datetime(raw: object) -> datetime | None:
+    """Parse an EXIF date value into a naive datetime, tolerant of formats.
+
+    Handles bytes or str, trailing NULs / whitespace, sub-second fractions,
+    timezone suffixes (dropped — stored values are camera-local wall clock),
+    and colon / dash / slash / ISO-"T" separators. The all-zero placeholder
+    ("0000:00:00 ...") that re-encoders leave behind is rejected. Returns
+    None when nothing parseable is found.
+    """
+    if isinstance(raw, bytes):
+        raw = raw.decode("ascii", "ignore")
+    if not isinstance(raw, str):
+        return None
+    s = raw.replace("\x00", "").strip()
+    if not s or s.startswith("0000:00:00") or s.startswith("0000-00-00"):
+        return None
+    # Drop a timezone suffix, then a sub-second fraction, leaving the bare
+    # wall-clock components for the format table below.
+    s = _TZ_SUFFIX_RE.sub("", s).strip()
+    s = re.sub(r"\.\d+$", "", s)
+    for fmt in _DATETIME_FORMATS:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    # Last resort: normalise an EXIF "YYYY:MM:DD" date head to dashes and let
+    # fromisoformat handle whatever time part remains.
+    iso = re.sub(r"^(\d{4}):(\d{2}):(\d{2})", r"\1-\2-\3", s).replace(" ", "T", 1)
+    try:
+        return datetime.fromisoformat(iso).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _read_exif_datetime(img: Image.Image) -> datetime | None:
+    """Best capture datetime for an open image, or None.
+
+    Reads DateTimeOriginal then DateTimeDigitized from the Exif sub-IFD
+    (where they actually live), then DateTime from the base IFD. Also checks
+    the base IFD for the first two in case a non-standard writer put them
+    there. First parseable value wins.
+    """
+    exif = img.getexif()
+    if not exif:
+        return None
+    sub = exif.get_ifd(_EXIF_IFD_POINTER) or {}
+    for raw in (
+        sub.get(_TAG_DATETIME_ORIGINAL),
+        sub.get(_TAG_DATETIME_DIGITIZED),
+        exif.get(_TAG_DATETIME_ORIGINAL),  # non-standard: in base IFD
+        exif.get(_TAG_DATETIME_DIGITIZED),
+        exif.get(_TAG_DATETIME),
+    ):
+        dt = _parse_exif_datetime(raw)
+        if dt is not None:
+            return dt
+    return None
 
 
 def _extract_exif_date_single(img_path: Path) -> datetime | None:
     """Extract the EXIF datetime from a single image. Returns None on failure."""
     try:
         with Image.open(img_path) as img:
-            exif_data = img.getexif()
-            if not exif_data:
-                return None
-            date_str = exif_data.get(36867) or exif_data.get(36868) or exif_data.get(306)
-            if date_str:
-                return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+            return _read_exif_datetime(img)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _extract_exif_dates(sample: list[Path]) -> list[datetime]:
     """
-    Extract dates from EXIF metadata.
+    Extract capture datetimes from a sample of images.
 
-    Tries EXIF tags in order of preference:
-    1. DateTimeOriginal (36867) - camera capture time, most accurate
-    2. DateTimeDigitized (36868) - when digitized
-    3. DateTime (306) - file modification time in camera
+    Reads DateTimeOriginal / DateTimeDigitized from the Exif sub-IFD and
+    DateTime from the base IFD (see ``_read_exif_datetime``), tolerant of
+    the date formats real cameras emit (see ``_parse_exif_datetime``).
     """
     dates: list[datetime] = []
 
     for img_path in sample:
         try:
             with Image.open(img_path) as img:
-                exif_data = img.getexif()
-                if not exif_data:
-                    continue
-
-                # Try date tags in order of preference
-                date_str = exif_data.get(36867)  # DateTimeOriginal
-                if not date_str:
-                    date_str = exif_data.get(36868)  # DateTimeDigitized
-                if not date_str:
-                    date_str = exif_data.get(306)  # DateTime
-
-                if date_str:
-                    # Parse EXIF datetime format: "YYYY:MM:DD HH:MM:SS"
-                    try:
-                        date_obj = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-                        dates.append(date_obj)
-                    except ValueError:
-                        logger.debug(f"Invalid date format in {img_path.name}: {date_str}")
-                        continue
-
+                dt = _read_exif_datetime(img)
+            if dt is not None:
+                dates.append(dt)
         except Exception as e:
             logger.debug(f"Cannot read EXIF from {img_path.name}: {type(e).__name__}: {e}")
             continue

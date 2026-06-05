@@ -177,23 +177,26 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               </>
             )}
 
-            {/* Date range (from folder scan, includes any datetime offset) */}
+            {/* Date range from the folder scan (includes any datetime
+                offset). Date-only, rough: the scan reads a sample of files,
+                not every one, so this is an approximate span. */}
             {!isScanning && scanResult?.start_date && scanResult?.end_date && (() => {
               const fmt = (d: Date) =>
-                d.toLocaleString([], {
+                d.toLocaleDateString([], {
                   day: "numeric",
                   month: "short",
                   year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
                 });
               const offsetMs = (entry.datetime_offset_seconds ?? 0) * 1000;
               const start = new Date(new Date(scanResult.start_date).getTime() + offsetMs);
               const end = new Date(new Date(scanResult.end_date).getTime() + offsetMs);
+              const range = start.toDateString() === end.toDateString()
+                ? fmt(start)
+                : `${fmt(start)} – ${fmt(end)}`;
               return (
                 <>
                   <dt className="text-gray-500 font-medium">Date range:</dt>
-                  <dd className="text-gray-900">{`${fmt(start)} – ${fmt(end)}`}</dd>
+                  <dd className="text-gray-900">{`roughly ${range}`}</dd>
                 </>
               );
             })()}
