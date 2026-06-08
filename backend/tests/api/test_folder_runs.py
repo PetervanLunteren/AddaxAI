@@ -214,7 +214,6 @@ def test_output_preview_endpoint_returns_counts(client, db):
     # to a single-segment "dog" entry in the flat bucket (slugged).
     assert data["by_taxonomic_tree"] == {"other/dog": 1}
     assert data["by_flat"] == {"dog": 1}
-    assert data["multi_species_files"] == 0
 
 
 def test_output_preview_honours_excluded_label_ids(client, db):

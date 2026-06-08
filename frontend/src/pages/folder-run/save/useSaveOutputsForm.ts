@@ -15,13 +15,15 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   folderRunsApi,
   type SaveOutputsRequest,
   type SaveOutputsResult,
   type SeparateGroupBy,
 } from "../../../api/folder-runs";
+import { eventsApi } from "../../../api/events";
+import type { LabelTreeResponse } from "../../../api/types";
 import { isElectron } from "../../../lib/platform";
 import { getSpeciesNameMode } from "../../../lib/species-name-mode";
 import {
@@ -32,8 +34,15 @@ import {
 export interface SeparateState {
   enabled: boolean;
   groupBy: SeparateGroupBy;
+  /** Keep a burst together: every file in an event shares one folder
+   * (the event's main species). */
+  groupEvents: boolean;
   /** Copy empty captures (no detections) too. Off = skip them. */
   copyEmpties: boolean;
+  /** Leaf ids the user chose to include (empty = all species). The
+   * request sends the complement as ``excluded_label_ids``; the data
+   * exports ignore it. */
+  includedLabelIds: string[];
 }
 
 export interface VisualiseState {
@@ -57,16 +66,21 @@ function buildRequest(
   visualise: VisualiseState,
   anonymise: AnonymiseState,
   exportOpts: ExportState,
+  allLabelIds: string[],
 ): SaveOutputsRequest {
   return {
     output_dir: outputDir,
     separate_folders: separate.enabled,
     separate_group_by: separate.groupBy,
-    // Visualise / anonymise / copy-empties are facets of the media
-    // copy: only emit them when the media output itself is on.
+    group_events: separate.groupEvents,
+    // Visualise / anonymise / copy-empties / species-filter are facets
+    // of the media copy: only emit them when the media output is on.
     draw_bboxes: separate.enabled && visualise.enabled,
     anonymise: separate.enabled && anonymise.enabled,
     include_empty: separate.enabled && separate.copyEmpties,
+    excluded_label_ids: separate.enabled
+      ? excludedLabelIds(separate, allLabelIds)
+      : [],
     csv: exportOpts.enabled && exportOpts.csv,
     xlsx: exportOpts.enabled && exportOpts.xlsx,
     recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
@@ -74,6 +88,24 @@ function buildRequest(
     // (EXIF still carries both names regardless).
     name_mode: getSpeciesNameMode(),
   };
+}
+
+/** The label exclusion set sent to the backend: every leaf NOT included
+ * by the user. Empty when all species are included (no filter) or the
+ * tree hasn't loaded yet. The data exports ignore this entirely. */
+export function excludedLabelIds(
+  separate: SeparateState,
+  allLabelIds: string[],
+): string[] {
+  const { includedLabelIds } = separate;
+  if (
+    includedLabelIds.length === 0 ||
+    includedLabelIds.length >= allLabelIds.length
+  ) {
+    return [];
+  }
+  const included = new Set(includedLabelIds);
+  return allLabelIds.filter((id) => !included.has(id));
 }
 
 /** True only when ``output`` *is* ``source``. The flat-copy mode writes
@@ -110,6 +142,9 @@ export interface UseSaveOutputsFormResult {
 
   separate: SeparateState;
   setSeparate: (s: SeparateState) => void;
+  /** The run's label tree for the species filter modal, or null when the
+   * run has no taxonomy (filter row hidden). */
+  labelTree: LabelTreeResponse | null;
   visualise: VisualiseState;
   setVisualise: (s: VisualiseState) => void;
   anonymise: AnonymiseState;
@@ -179,7 +214,9 @@ export function useSaveOutputsForm({
   const [separate, setSeparate] = useState<SeparateState>(() => ({
     enabled: persisted?.mediaEnabled ?? false,
     groupBy: persisted?.groupBy ?? "flat",
+    groupEvents: persisted?.groupEvents ?? true,
     copyEmpties: persisted?.copyEmpties ?? false,
+    includedLabelIds: [],
   }));
   const [visualise, setVisualise] = useState<VisualiseState>(() => ({
     enabled: persisted?.drawBoxes ?? false,
@@ -193,6 +230,15 @@ export function useSaveOutputsForm({
     xlsx: persisted?.xlsx ?? false,
     recognitionJson: persisted?.recognitionJson ?? true,
   }));
+
+  // Label tree for the species filter. Counts by file so the modal
+  // shows "N files" per species. null when the run has no taxonomy.
+  const { data: labelTree } = useQuery({
+    queryKey: ["label-tree", runId, "file"],
+    queryFn: () => eventsApi.getLabelTree(runId, "file"),
+    enabled: !!runId,
+  });
+  const allLabelIds = labelTree?.all_leaf_ids ?? [];
 
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -217,6 +263,7 @@ export function useSaveOutputsForm({
       recognitionJson: exportOpts.recognitionJson,
       mediaEnabled: separate.enabled,
       groupBy: separate.groupBy,
+      groupEvents: separate.groupEvents,
       copyEmpties: separate.copyEmpties,
       drawBoxes: visualise.enabled,
       blur: anonymise.enabled,
@@ -228,6 +275,7 @@ export function useSaveOutputsForm({
         visualise,
         anonymise,
         exportOpts,
+        allLabelIds,
       ),
     );
   };
@@ -282,6 +330,7 @@ export function useSaveOutputsForm({
     sourceFolderConflict,
     separate,
     setSeparate,
+    labelTree: labelTree ?? null,
     visualise,
     setVisualise,
     anonymise,

@@ -2,7 +2,7 @@
 
 The preview surfaces what the postprocess run will produce as a
 nested taxonomic tree. These tests pin file counts, byte
-aggregation, the multi-species inflation in ``by_taxonomic_tree``,
+aggregation, single main-species placement in ``by_taxonomic_tree``,
 the in-scope counters under the species exclusion filter, and the
 non-animal observation-type fallback.
 """
@@ -62,7 +62,6 @@ def test_empty_project_returns_zero_counts(db):
     assert preview.total_bytes == 0
     assert preview.files_with_known_size == 0
     assert dict(preview.by_taxonomic_tree) == {}
-    assert preview.multi_species_files == 0
 
 
 def test_image_video_split(db):
@@ -137,9 +136,9 @@ def test_full_taxonomy_yields_full_nested_path(db):
     }
 
 
-def test_multi_species_inflates_tree_placements(db):
-    """A file with dog + wolf produces two distinct leaves and
-    increments multi_species_files."""
+def test_multi_species_counts_main_species_only(db):
+    """A dog + wolf file is one placement, in its main species' (dog)
+    leaf — never both."""
     project = make_project(
         db, name="prev-multi", detection_threshold=0.5
     )
@@ -150,12 +149,7 @@ def test_multi_species_inflates_tree_placements(db):
 
     preview = build_output_preview(db, project.id)
 
-    # Both unmapped → land at Other/<label>; two distinct leaves.
-    assert preview.by_taxonomic_tree == {
-        "other/dog": 1,
-        "other/wolf": 1,
-    }
-    assert preview.multi_species_files == 1
+    assert preview.by_taxonomic_tree == {"other/dog": 1}
 
 
 def test_low_confidence_detection_is_ignored(db):
@@ -171,7 +165,6 @@ def test_low_confidence_detection_is_ignored(db):
 
     # Wolf is below threshold and unverified — should not place.
     assert preview.by_taxonomic_tree == {"other/dog": 1}
-    assert preview.multi_species_files == 0
 
 
 def test_verified_below_threshold_still_placed(db):
@@ -219,7 +212,6 @@ def test_non_animal_observation_types_bucket_to_fixed_folders(db):
         "vehicle": 1,
         "blank": 2,
     }
-    assert preview.multi_species_files == 0
 
 
 # ---------------------------------------------------------------------
@@ -262,7 +254,6 @@ def test_excluded_label_ids_partial_inclusion(db):
     assert preview.dropped_by_filter == 0
     assert preview.in_scope_files == 1
     assert preview.by_taxonomic_tree == {"other/dog": 1}
-    assert preview.multi_species_files == 0
 
 
 def test_excluded_label_ids_does_not_affect_non_animal_files(db):

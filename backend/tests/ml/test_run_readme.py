@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from app.ml.postprocessing_outputs.run_readme import (
-    README_FILENAME,
+    SUMMARY_FILENAME,
     write_run_readme,
 )
 from tests.conftest import (
@@ -37,10 +37,31 @@ def test_readme_lands_at_canonical_path(db, tmp_path):
     target = tmp_path / "out"
     result = write_run_readme(db, project.id, target)
 
-    assert result.output_path.endswith(README_FILENAME)
-    path = target / README_FILENAME
+    assert result.output_path.endswith(SUMMARY_FILENAME)
+    path = target / SUMMARY_FILENAME
     assert path.is_file()
     assert result.bytes_written == path.stat().st_size
+
+
+def test_readme_summarises_geofence_without_dumping_the_list(db, tmp_path):
+    """A big geofence exclusion list is summarised to a count, not dumped
+    in full — the line that used to make the README ~40 KB."""
+    excluded = [f"species_{i}" for i in range(1500)]
+    project = make_project(
+        db, name="readme-geo", timezone="UTC", excluded_classes=excluded
+    )
+    make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target)
+    text = (target / SUMMARY_FILENAME).read_text()
+
+    assert "1,500 excluded" in text
+    # The full list is NOT dumped.
+    assert "species_999" not in text
+    assert (target / SUMMARY_FILENAME).stat().st_size < 5000
 
 
 def test_readme_carries_run_metadata(db, tmp_path):
@@ -60,7 +81,7 @@ def test_readme_carries_run_metadata(db, tmp_path):
     target = tmp_path / "out"
     write_run_readme(db, project.id, target)
 
-    text = (target / README_FILENAME).read_text("utf-8")
+    text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
     # Header carries the project name.
     assert "readme-meta" in text
@@ -101,7 +122,7 @@ def test_readme_lists_top_species(db, tmp_path):
 
     target = tmp_path / "out"
     write_run_readme(db, project.id, target)
-    text = (target / README_FILENAME).read_text("utf-8")
+    text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
     # Slice out the Top species section so the substring search
     # doesn't false-match "cat" inside "Classification".
@@ -132,7 +153,7 @@ def test_readme_includes_settings_block(db, tmp_path):
 
     target = tmp_path / "out"
     write_run_readme(db, project.id, target)
-    text = (target / README_FILENAME).read_text("utf-8")
+    text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
     assert "0.42" in text
     assert "aggressive" in text

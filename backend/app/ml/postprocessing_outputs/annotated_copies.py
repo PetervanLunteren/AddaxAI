@@ -143,11 +143,12 @@ def _source_for(file: File) -> Path | None:
 
 def _fallback_destination_name(file: File) -> str:
     """Filename for the no-separation case. Image keeps its name;
-    video's annotated best frame uses ``<stem>.jpg``."""
-    source = Path(file.file_path)
+    video's annotated best frame uses ``<stem>_still.jpg``."""
     if file.file_type == "video":
-        return source.stem + ".jpg"
-    return source.name
+        from .separate_folders import video_still_name
+
+        return video_still_name(file.file_path)
+    return Path(file.file_path).name
 
 
 def _unique_destination(target_dir: Path, name: str) -> tuple[Path, bool]:

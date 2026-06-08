@@ -15,7 +15,7 @@
  *
  * Timelapse Analyser is no longer a separate mode: its launcher
  * (`AddaxAI.exe --timelapse <folder>`) now opens "Analyse a folder"
- * with the folder pre-filled, and the folder run's recognition.json
+ * with the folder pre-filled, and the folder run's recognitions.json
  * is what Timelapse imports.
  */
 

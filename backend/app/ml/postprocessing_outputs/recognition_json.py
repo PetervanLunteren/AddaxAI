@@ -29,8 +29,9 @@ deployment's `folder_path`), which keeps the file portable: copy or
 share the source folder along with the JSON and downstream tools still
 work.
 
-Filename is `recognition.json`: one canonical name so scripts (and
+Filename is `recognitions.json`: one canonical name so scripts (and
 the Timelapse Analyser) that look for a single filename keep working.
+Kept consistent with `observations.csv` / `observations.xlsx`.
 """
 
 from __future__ import annotations
@@ -57,8 +58,9 @@ _CATEGORY_TO_ID = {"animal": "1", "person": "2", "vehicle": "3"}
 _DETECTION_CATEGORIES = {v: k for k, v in _CATEGORY_TO_ID.items()}
 
 # Output filename. Stays the same across runs so downstream tools that
-# look for one canonical filename keep working.
-RECOGNITION_JSON_FILENAME = "recognition.json"
+# look for one canonical filename keep working. Plural to match
+# observations.csv / observations.xlsx.
+RECOGNITION_JSON_FILENAME = "recognitions.json"
 
 
 @dataclass
@@ -158,7 +160,7 @@ def write_recognition_json(
 ) -> RecognitionJsonResult:
     """Serialise the project's analysis results to the canonical JSON shape.
 
-    The output is written to `target_dir/recognition.json`.
+    The output is written to `target_dir/recognitions.json`.
     The directory is created if it does not exist. An existing file
     at that path is overwritten — the recognition file represents the
     current DB state, so a re-export replaces the previous snapshot.

@@ -11,13 +11,19 @@ picked an exclusion set in the Save step's filter card:
   leaves, raw names for the "Other" branch.
 - A detection is excluded when its ``label_taxonomy_id`` is in the
   set OR its ``label`` string is in the set.
-- For animal files: a file with ALL its passing labelled
-  detections excluded is dropped entirely. A file with some
-  excluded and some included labels survives, but only the
-  included labels contribute to placements / EXIF tags / rows.
-- Non-animal files (observation_type human/vehicle/blank/...) are
-  never affected by the filter. They are detector-level, not
-  classifier-level, and the filter operates on classifier labels.
+- A file with ALL its passing *identified* detections excluded is
+  dropped entirely. A file with some excluded and some included
+  identified detections survives, but only the included labels
+  contribute to placements / EXIF tags / rows.
+- "Identified" means the detection carries a label or a
+  ``label_taxonomy_id``. Person and vehicle detections carry the
+  builtin person / vehicle taxonomy id (see ``ensure_builtin_labels``),
+  so they ARE filterable: deselecting Person in the Save-step filter
+  drops person files from the media copies. Unclassified-animal
+  detections carry the builtin "animal" id and are filterable the
+  same way.
+- True blanks (no identified detection at all) are never dropped by
+  the filter; the Save step's "copy empties" toggle governs those.
 
 Centralising the logic here keeps the seven postprocess modules
 (separate, visualise, blur, exif, csv, xlsx, recognition_json) in
@@ -114,22 +120,27 @@ def file_is_dropped_by_filter(
     threshold: float,
     excluded_label_ids: frozenset[str] | None,
 ) -> bool:
-    """True when an animal file's labelled detections are all excluded.
+    """True when ALL of a file's passing, identified detections are excluded.
 
-    Non-animal files are never dropped by the filter. Animal files
-    with no labelled detections (those that fall back to the
-    ``animal/`` folder) are NOT dropped either — they have no
-    species label to match against the exclusion set.
+    Identified = the detection carries a ``label`` or a
+    ``label_taxonomy_id``, which covers species labels and the builtin
+    animal / person / vehicle ids alike. A file whose every identified
+    detection is excluded is dropped from the media outputs. A file with
+    no identified detection (a true blank) is never dropped here — the
+    "copy empties" toggle owns those.
     """
     if not excluded_label_ids:
-        return False
-    if file.observation_type != "animal":
         return False
 
     rows = db.execute(
         select(Detection)
         .where(Detection.file_id == file.id)
-        .where(Detection.label.isnot(None))
+        .where(
+            or_(
+                Detection.label.isnot(None),
+                Detection.label_taxonomy_id.isnot(None),
+            )
+        )
         .where(
             or_(
                 Detection.confidence >= threshold,
@@ -139,8 +150,8 @@ def file_is_dropped_by_filter(
     ).scalars().all()
 
     if not rows:
-        # No species labels at all → fall-back animal/ file. Filter
-        # doesn't apply.
+        # No identified detection → true blank / unidentified. Filter
+        # doesn't apply; copy-empties governs these.
         return False
     return all(
         detection_is_excluded(det, excluded_label_ids) for det in rows

@@ -135,6 +135,9 @@ class SaveOutputsRequest(BaseModel):
     # nests Class/Order/Family/Genus/species; ``flat`` is one folder
     # per species label; ``none`` copies everything flat at the root.
     separate_group_by: SeparateGroupBy = "flat"
+    # Keep a burst together: every file in an event lands in one folder
+    # (the event's main species) instead of being filed per file.
+    group_events: bool = True
     # Copy empty captures (no animal / person / vehicle) too. Off by
     # default so the media copies aren't padded with blank captures.
     include_empty: bool = False
@@ -178,6 +181,9 @@ class OutputPreviewRequest(BaseModel):
     # Common vs scientific species-name leaf, mirroring the save request
     # so the previewed tree matches the folders that will be written.
     name_mode: Literal["common", "scientific"] = "common"
+    # Event grouping, mirroring the save request so the previewed counts
+    # match exactly what the save will write.
+    group_events: bool = True
 
 
 class OutputPreviewResponse(BaseModel):
@@ -199,7 +205,8 @@ class OutputPreviewResponse(BaseModel):
     in_scope_bytes: int
     by_taxonomic_tree: dict[str, int]
     by_flat: dict[str, int]
-    multi_species_files: int
+    by_source_tree: dict[str, int]
+    root_files: list[str]
 
 
 class FolderRunLookupResponse(BaseModel):
@@ -659,6 +666,7 @@ def get_output_preview(
         excluded_label_ids=excluded,
         include_empty=bool(payload.include_empty) if payload else False,
         name_mode=payload.name_mode if payload else "common",
+        group_events=payload.group_events if payload else True,
     )
     return OutputPreviewResponse(**preview.to_dict())
 
@@ -710,6 +718,7 @@ async def save_outputs(
                 "output_dir": str(output_root),
                 "separate_folders": payload.separate_folders,
                 "separate_group_by": payload.separate_group_by,
+                "group_events": payload.group_events,
                 "include_empty": payload.include_empty,
                 "draw_bboxes": payload.draw_bboxes,
                 "anonymise": payload.anonymise,

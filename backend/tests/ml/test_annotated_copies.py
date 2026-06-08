@@ -198,9 +198,10 @@ def test_multi_placement_writes_to_every_destination(db, tmp_path):
     assert wolf_dst.is_file()
 
 
-def test_video_writes_to_jpg_sibling_of_each_destination(db, tmp_path):
-    """For a video, the annotated best frame goes to a ``.jpg``
-    sibling of every separated video destination."""
+def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
+    """For a video, separation records the best-frame JPEG
+    (``clip_still.jpg``); annotation overwrites that same file with the
+    boxed version. The video container is never written."""
     project = make_project(db, name="video-anno", detection_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     # The video file itself doesn't need to exist on disk — we read the
@@ -226,9 +227,9 @@ def test_video_writes_to_jpg_sibling_of_each_destination(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    placed_video = target / "dog" / "clip.mp4"
-    placed_video.parent.mkdir(parents=True, exist_ok=True)
-    ctx = _ctx(target, {file.id: [placed_video]})
+    placed = target / "dog" / "clip_still.jpg"
+    placed.parent.mkdir(parents=True, exist_ok=True)
+    ctx = _ctx(target, {file.id: [placed]})
     result = write_annotated_copies(
         db,
         project.id,
@@ -238,9 +239,8 @@ def test_video_writes_to_jpg_sibling_of_each_destination(db, tmp_path):
     )
 
     assert result.written_count == 1
-    annotated = target / "dog" / "clip.jpg"
-    assert annotated.is_file()
-    assert not placed_video.exists()  # video container untouched
+    assert placed.is_file()
+    assert not (target / "dog" / "clip.mp4").exists()  # container untouched
 
 
 def test_no_change_skip_when_only_anonymise_and_no_targets(db, tmp_path):

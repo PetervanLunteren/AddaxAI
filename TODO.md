@@ -20,14 +20,13 @@
 
 
 
+- The common/scientific name toggle is not used in the detections list of a verified modal. If you verify an image with two red deer, you see "C. elaphus x2" in the verified list of that imagedetailModal. Update to follow the common/scientific name toggle. 
 
 
 
-    - Since we have videos that end up in 6 folders, should we have a toggle or dropdown that contrrols this behaviour? What do you think? Or is it too specific? Be honest. What is good UX UI? is it really needed? Or does iut only confuse users more?
-    - The common/scientific name toggle is not used in the detections list of a verified modal. If you verify an image with two red deer, you see "C. elaphus x2" in the verified list of that imagedetailModal. Update to follow the common/scientific name toggle. 
+- If I run the edge cases folder in the folder run mode, it gives me these warnings: .,... Why does it block missing timestamps? It shouldnt do that. If there are no timestamps, it should just continue with a warning. Same behaviour in the project mode. Investigate. 
 
-
-- [ ] no need for the README.txt. redundant. Or perhaps just a lot less information. What do you think? we need to at least cuit it to a minimal amount of information. 
+- If I run a folder on folder mode and it finisghed processing, and I click outside the modal, it returns to the step 1 of course (which it should of course), but it seems like the settings are then forgotten (it shows no cls model selected, which can be confusing for the user). If I hard reload, it comes back. Investigate. 
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
 

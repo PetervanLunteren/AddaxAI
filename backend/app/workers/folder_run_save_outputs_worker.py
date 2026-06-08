@@ -216,6 +216,9 @@ async def process_save_outputs_job(job_id: str) -> None:
                         ),
                         excluded_label_ids=excluded_frozen,
                         name_mode=payload.get("name_mode", "common"),
+                        group_events=bool(
+                            payload.get("group_events", True)
+                        ),
                     ).to_dict()
                 if m == "annotated_copies":
                     return write_annotated_copies(

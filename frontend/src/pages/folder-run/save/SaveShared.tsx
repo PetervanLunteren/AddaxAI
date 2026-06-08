@@ -5,6 +5,7 @@
  * container chrome (tabs vs accordion vs flat list).
  */
 
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -32,6 +33,7 @@ import {
   SelectValue,
 } from "../../../components/ui/select";
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
+import { LabelFilterModal } from "../../../components/verify/LabelFilterModal";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
 import type { SaveOutputsResult } from "../../../api/folder-runs";
 import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
@@ -124,11 +126,15 @@ export function MediaBody({
   const {
     separate,
     setSeparate,
+    labelTree,
     visualise,
     setVisualise,
     anonymise,
     setAnonymise,
   } = form;
+  // Grouping only makes sense once there are species subfolders; with
+  // "No subfolders" every file lands flat at the root.
+  const showGrouping = separate.groupBy !== "none";
   return (
     <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
       <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
@@ -155,23 +161,89 @@ export function MediaBody({
         </Select>
       </div>
 
+      {showGrouping && (
+        <CaptionedCheckbox
+          checked={separate.groupEvents}
+          onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
+          label="Keep events together"
+          caption="All photos and videos from one event go to the same folder"
+        />
+      )}
+
+      {labelTree && labelTree.tree.length > 0 && (
+        <LabelFilterRow form={form} labelTree={labelTree} />
+      )}
+
       <CaptionedCheckbox
         checked={visualise.enabled}
         onChange={(v) => setVisualise({ enabled: v })}
         label="Draw detection boxes"
-        caption="Boxes and labels on each photo, or a video's best frame saved as a JPEG"
+        caption="Boxes and labels on each file"
       />
       <CaptionedCheckbox
         checked={anonymise.enabled}
         onChange={(v) => setAnonymise({ enabled: v })}
         label="Blur people and vehicles"
-        caption="People and vehicles blurred on each photo, or a video's best frame saved as a JPEG"
+        caption="People and vehicles blurred on each file"
       />
       <CaptionedCheckbox
         checked={separate.copyEmpties}
         onChange={(v) => setSeparate({ ...separate, copyEmpties: v })}
-        label="Also copy empty captures"
+        label="Also copy empty files"
         caption="Images and videos with no animals, people, or vehicles"
+      />
+    </div>
+  );
+}
+
+/** Row that opens the shared label-tree modal to limit which labels
+ * (species, higher taxa, person, vehicle) get copied and visualised.
+ * Inclusion model: an empty selection means "all", so the request only
+ * sends a filter when the user picks a real subset. The data exports
+ * are never filtered. */
+function LabelFilterRow({
+  form,
+  labelTree,
+}: {
+  form: UseSaveOutputsFormResult;
+  labelTree: NonNullable<UseSaveOutputsFormResult["labelTree"]>;
+}) {
+  const { separate, setSeparate } = form;
+  const [open, setOpen] = useState(false);
+
+  const allCount = labelTree.all_leaf_ids.length;
+  const includedCount = separate.includedLabelIds.length;
+  const isAll = includedCount === 0 || includedCount >= allCount;
+
+  return (
+    <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+      <span>
+        Labels
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          Which labels to copy and visualise
+        </span>
+      </span>
+      <Button
+        variant="outline"
+        className="w-full justify-start font-normal"
+        onClick={() => setOpen(true)}
+      >
+        <span className="truncate">
+          {isAll ? "All labels" : `${includedCount} of ${allCount} labels`}
+        </span>
+      </Button>
+      <LabelFilterModal
+        preBuiltTree={labelTree.tree}
+        allLeafIds={labelTree.all_leaf_ids}
+        selectedLabels={separate.includedLabelIds}
+        onApply={(labels) => {
+          // Treat "all selected" as no filter so the request stays empty.
+          const next = labels.length >= allCount ? [] : labels;
+          setSeparate({ ...separate, includedLabelIds: next });
+        }}
+        open={open}
+        onOpenChange={setOpen}
+        countUnit={labelTree.count_unit}
       />
     </div>
   );

@@ -5,7 +5,7 @@ The base routing tests (animal-no-label fallback, person / vehicle /
 blank routing, copy / move modes, collisions) live in
 ``test_separate_folders.py``. This file pins the behaviour that
 depends on the project's LabelTaxonomy chain: full nested paths,
-truncation at the deepest known rank, multi-species placement, and
+truncation at the deepest known rank, main-species placement, and
 how the exclusion filter interacts with both.
 """
 
@@ -221,9 +221,9 @@ def test_truncates_at_deepest_known_rank(db, tmp_path):
     assert not (target / "mammalia" / "carnivora" / "canidae" / "canis").exists()
 
 
-def test_multi_species_two_leaves(db, tmp_path):
-    """A file with dog + lion lands in two distinct leaf folders
-    under different family branches."""
+def test_multi_species_lands_in_main_species_leaf(db, tmp_path):
+    """A dog + lion file lands once, in its main species' (dog) leaf,
+    not lion's branch."""
     project = make_project(
         db,
         name="sep-tree-multi",
@@ -261,14 +261,11 @@ def test_multi_species_two_leaves(db, tmp_path):
     target = tmp_path / "out"
     result = separate_into_folders(db, project.id, _ctx(target))
 
-    assert result.copied_count == 2
-    assert result.multi_placement_count == 1
+    assert result.copied_count == 1
     assert (
         target / "mammalia" / "carnivora" / "canidae" / "canis" / "dog" / "IMG_001.jpg"
     ).is_file()
-    assert (
-        target / "mammalia" / "carnivora" / "felidae" / "panthera" / "lion" / "IMG_001.jpg"
-    ).is_file()
+    assert not (target / "mammalia" / "carnivora" / "felidae").exists()
 
 
 def test_unmapped_label_falls_back_to_other(db, tmp_path):
@@ -345,7 +342,6 @@ def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(
     )
 
     assert result.copied_count == 1
-    assert result.multi_placement_count == 0
     assert (target / "other" / "dog" / "IMG_001.jpg").is_file()
     assert not (target / "other" / "wolf").exists()
 
@@ -382,7 +378,7 @@ def test_flat_mode_places_single_segment_per_species(db, tmp_path):
     assert not (target / "mammalia").exists()
 
 
-def test_flat_mode_multi_species_two_leaves(db, tmp_path):
+def test_flat_mode_multi_species_main_only(db, tmp_path):
     project = make_project(db, name="sep-flat-multi", detection_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_001.jpg")
@@ -397,10 +393,9 @@ def test_flat_mode_multi_species_two_leaves(db, tmp_path):
         db, project.id, _ctx(target), group_by="flat"
     )
 
-    assert result.copied_count == 2
-    assert result.multi_placement_count == 1
+    assert result.copied_count == 1
     assert (target / "dog" / "IMG_001.jpg").is_file()
-    assert (target / "wolf" / "IMG_001.jpg").is_file()
+    assert not (target / "wolf").exists()
 
 
 def test_excluded_label_ids_does_not_affect_non_animal_files(db, tmp_path):

@@ -266,21 +266,18 @@ def test_move_relocates_file_and_rewrites_db(db, tmp_path):
 
 
 # ---------------------------------------------------------------------
-# Multi-species placement
+# Single-destination placement
 # ---------------------------------------------------------------------
 
 
-def test_multi_species_lands_in_each_leaf_folder(db, tmp_path):
-    """A file with `dog` and `wolf` detections (neither mapped to
-    taxonomy) lands in BOTH Other/dog/ and Other/wolf/."""
-    project = make_project(db, name="multi-copy", detection_threshold=0.5)
+def test_multi_species_lands_in_main_species_folder(db, tmp_path):
+    """A dog + wolf file lands once, in its most confident species'
+    folder (dog) — never in both."""
+    project = make_project(db, name="multi-main", detection_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_M01.jpg", b"multi-species")
     file = make_file(
-        db,
-        deployment_id=dep.id,
-        file_path=src,
-        observation_type="animal",
+        db, deployment_id=dep.id, file_path=src, observation_type="animal"
     )
     make_detection(
         db, file_id=file.id, category="animal", confidence=0.95, label="dog"
@@ -293,23 +290,17 @@ def test_multi_species_lands_in_each_leaf_folder(db, tmp_path):
     ctx = _ctx(target)
     result = separate_into_folders(db, project.id, ctx)
 
+    assert result.copied_count == 1
+    assert result.written_count == 1
     assert (target / "other" / "dog" / "IMG_M01.jpg").is_file()
-    assert (target / "other" / "wolf" / "IMG_M01.jpg").is_file()
-    assert result.copied_count == 2
-    assert result.written_count == 2
-    assert result.multi_placement_count == 1
-    assert (target / "other" / "dog" / "IMG_M01.jpg").read_bytes() == b"multi-species"
-    assert (target / "other" / "wolf" / "IMG_M01.jpg").read_bytes() == b"multi-species"
-    # Context lists both placements in order (primary first).
+    assert not (target / "other" / "wolf").exists()
     assert ctx.resolved_for(file.id) == [
-        target / "other" / "dog" / "IMG_M01.jpg",
-        target / "other" / "wolf" / "IMG_M01.jpg",
+        target / "other" / "dog" / "IMG_M01.jpg"
     ]
 
 
 def test_multi_species_repeated_labels_dedupe(db, tmp_path):
-    """A file with three `dog` detections places once in Other/dog/,
-    not three times."""
+    """A file with three `dog` detections places once in Other/dog/."""
     project = make_project(db, name="multi-dedupe", detection_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_M02.jpg")
@@ -329,13 +320,12 @@ def test_multi_species_repeated_labels_dedupe(db, tmp_path):
     result = separate_into_folders(db, project.id, _ctx(target))
 
     assert result.copied_count == 1
-    assert result.multi_placement_count == 0
     assert (target / "other" / "dog" / "IMG_M02.jpg").is_file()
 
 
-def test_multi_species_threshold_filters(db, tmp_path):
-    """A low-confidence wolf detection below threshold does NOT
-    add a wolf leaf; the file only lands in Other/dog/."""
+def test_main_species_is_highest_confidence(db, tmp_path):
+    """A low-confidence wolf doesn't change the folder; the file lands
+    in its main species (dog)."""
     project = make_project(db, name="multi-thresh", detection_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_M03.jpg")
@@ -357,80 +347,6 @@ def test_multi_species_threshold_filters(db, tmp_path):
     target = tmp_path / "out"
     result = separate_into_folders(db, project.id, _ctx(target))
 
+    assert result.copied_count == 1
     assert (target / "other" / "dog" / "IMG_M03.jpg").is_file()
     assert not (target / "other" / "wolf").exists()
-    assert result.multi_placement_count == 0
-
-
-def test_multi_species_verified_below_threshold_still_placed(db, tmp_path):
-    """A verified low-confidence wolf detection still contributes a
-    wolf leaf (verified-override rule applies)."""
-    project = make_project(db, name="multi-verified", detection_threshold=0.5)
-    dep = make_deployment(db, project_id=project.id)
-    src = _make_source(tmp_path, "IMG_M04.jpg")
-    file = make_file(
-        db, deployment_id=dep.id, file_path=src, observation_type="animal"
-    )
-    make_detection(
-        db, file_id=file.id, category="animal", confidence=0.9, label="dog"
-    )
-    make_detection(
-        db,
-        file_id=file.id,
-        category="animal",
-        confidence=0.2,
-        label="wolf",
-        verified=True,
-    )
-
-    target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
-
-    assert (target / "other" / "dog" / "IMG_M04.jpg").is_file()
-    assert (target / "other" / "wolf" / "IMG_M04.jpg").is_file()
-    assert result.multi_placement_count == 1
-
-
-def test_multi_species_move_moves_primary_copies_others(db, tmp_path):
-    """Move mode places the source at the primary (top-confidence)
-    leaf and copies into the others. DB rewrites to the primary
-    path."""
-    project = make_project(db, name="multi-move", detection_threshold=0.5)
-    dep = make_deployment(db, project_id=project.id)
-    src = _make_source(tmp_path, "IMG_M05.jpg", b"mover")
-    file = make_file(
-        db, deployment_id=dep.id, file_path=src, observation_type="animal"
-    )
-    file_id = file.id
-    make_detection(
-        db, file_id=file.id, category="animal", confidence=0.95, label="dog"
-    )
-    make_detection(
-        db, file_id=file.id, category="animal", confidence=0.80, label="wolf"
-    )
-
-    target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target), mode="move")
-
-    # Source is gone.
-    assert not Path(src).exists()
-    # Primary (dog) has the moved file; secondary (wolf) has a copy.
-    dog_path = target / "other" / "dog" / "IMG_M05.jpg"
-    wolf_path = target / "other" / "wolf" / "IMG_M05.jpg"
-    assert dog_path.is_file()
-    assert wolf_path.is_file()
-    assert dog_path.read_bytes() == b"mover"
-    assert wolf_path.read_bytes() == b"mover"
-
-    # Counters: one move (primary), one copy (extra).
-    assert result.moved_count == 1
-    assert result.copied_count == 1
-    assert result.written_count == 2
-    assert result.multi_placement_count == 1
-
-    # DB rewrites to the primary (moved) destination.
-    db.expire_all()
-    from app.models import File as FileModel
-
-    refreshed = db.get(FileModel, file_id)
-    assert refreshed.file_path == str(dog_path)

@@ -96,9 +96,6 @@ export interface SeparateFoldersResult {
   skipped_missing_source: number;
   skipped_excluded: number;
   renamed_count: number;
-  /** Distinct source files that ended up in more than one folder
-   * because their detections covered multiple species. */
-  multi_placement_count: number;
   by_label: Record<string, number>;
   errors: string[];
 }
@@ -160,8 +157,8 @@ export interface OutputPreview {
   /** Sum of size_bytes across files with the column populated. */
   total_bytes: number;
   files_with_known_size: number;
-  /** Animal files dropped because every passing label was in the
-   * user's exclusion set. */
+  /** Files dropped because every passing identified detection (species,
+   * or builtin person / vehicle) was in the user's exclusion set. */
   dropped_by_filter: number;
   /** Files surviving the exclusion filter — what every output module
    * will iterate over. */
@@ -180,8 +177,12 @@ export interface OutputPreview {
   /** Flat single-segment placements: one folder per species label
    * (or per non-animal observation type, or animal/ fallback). */
   by_flat: Record<string, number>;
-  /** Distinct source files appearing in more than one leaf folder. */
-  multi_species_files: number;
+  /** "No subfolders" mode: source subfolder path → file count, rendered
+   * with the same builder as the species tree. */
+  by_source_tree: Record<string, number>;
+  /** "No subfolders" mode: a capped sample of loose root-file names.
+   * Root total = in_scope_files − sum(by_source_tree). */
+  root_files: string[];
 }
 
 export interface OutputPreviewRequest {
@@ -191,12 +192,26 @@ export interface OutputPreviewRequest {
   /** Common vs scientific species-name leaf, mirroring the save request
    * so the previewed tree matches what will be written. */
   name_mode?: "common" | "scientific";
+  /** Label identifiers to exclude (LabelTaxonomy.id UUIDs or raw label
+   * strings). Mirrors the save request so the preview reflects the
+   * species filter. */
+  excluded_label_ids?: string[];
+  /** Event grouping, mirroring the save request so the previewed counts
+   * match what the save will write. */
+  group_events?: boolean;
 }
 
 export interface SaveOutputsRequest {
   output_dir: string;
   separate_folders?: boolean;
   separate_group_by?: SeparateGroupBy;
+  /** Keep a burst together: every file in an event goes to one folder
+   * (the event's main species). */
+  group_events?: boolean;
+  /** Label identifiers to exclude from the media copies / visualisations
+   * (LabelTaxonomy.id UUIDs or raw label strings). The data exports are
+   * never filtered. */
+  excluded_label_ids?: string[];
   /** Copy empty captures (no animal / person / vehicle) too. Off /
    * omitted = empties are skipped. */
   include_empty?: boolean;

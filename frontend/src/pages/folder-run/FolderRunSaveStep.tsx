@@ -29,7 +29,10 @@ import {
   SaveErrorLine,
 } from "./save/SaveShared";
 import { OutputPreviewPanel } from "./save/OutputPreviewPanel";
-import { useSaveOutputsForm } from "./save/useSaveOutputsForm";
+import {
+  excludedLabelIds,
+  useSaveOutputsForm,
+} from "./save/useSaveOutputsForm";
 import { useFolderRun } from "./FolderRunLayout";
 import { getSpeciesNameMode } from "../../lib/species-name-mode";
 import { JobProgressModal } from "../../components/folder-run/JobProgressModal";
@@ -91,19 +94,32 @@ export function FolderRunSaveStep() {
     },
   });
 
-  // The empties toggle is part of the query key so the preview
-  // refetches when it changes (it adds / drops the blank captures).
+  // Every media control that changes what lands on disk is part of the
+  // query key so the preview refetches and stays exact.
   const includeEmpty = form.separate.copyEmpties;
   // Mirror the species-name toggle so the previewed leaf folders match
-  // what the save will actually write. Part of the query key so the
-  // preview refetches if the mode differs.
+  // what the save will actually write.
   const nameMode = getSpeciesNameMode();
+  const groupEvents = form.separate.groupEvents;
+  const excluded = excludedLabelIds(
+    form.separate,
+    form.labelTree?.all_leaf_ids ?? [],
+  );
   const { data: preview, isLoading: previewLoading } = useQuery({
-    queryKey: ["folder-run-output-preview", runId, includeEmpty, nameMode],
+    queryKey: [
+      "folder-run-output-preview",
+      runId,
+      includeEmpty,
+      nameMode,
+      groupEvents,
+      excluded,
+    ],
     queryFn: () =>
       folderRunsApi.getOutputPreview(runId!, {
         include_empty: includeEmpty,
         name_mode: nameMode,
+        group_events: groupEvents,
+        excluded_label_ids: excluded,
       }),
     enabled: !!runId,
     staleTime: 30_000,
@@ -151,7 +167,7 @@ export function FolderRunSaveStep() {
             data exports. */}
         <GroupCard
           title="Save copies of your media"
-          caption="Make copies of your media, with optional folders, boxes, or blur"
+          caption="Your media sorted into folders, videos as a best-frame image"
           enabled={form.separate.enabled}
           onEnabledChange={(v) =>
             form.setSeparate({ ...form.separate, enabled: v })

@@ -18,6 +18,7 @@
  */
 
 import { useMemo } from "react";
+import { FileText, Folder } from "lucide-react";
 
 import { Card, CardContent } from "../../../components/ui/card";
 import type { OutputPreview } from "../../../api/folder-runs";
@@ -31,14 +32,10 @@ interface SubFolder {
   count?: number;
   /** Children rendered indented under this folder. */
   children?: SubFolder[];
-  /** Files vs photos copies vs raw count - controls the trailing
-   * unit on the count. */
-  unit?: "files" | "images" | "items";
 }
 
 interface FileEntry {
   name: string;
-  hint?: string;
 }
 
 export function OutputPreviewPanel({
@@ -55,8 +52,8 @@ export function OutputPreviewPanel({
   const { separate, visualise, anonymise, exportOpts } = form;
 
   const tree = useMemo<{ folders: SubFolder[]; files: FileEntry[] }>(
-    () => buildTree({ preview, separate, visualise, anonymise, exportOpts }),
-    [preview, separate, visualise, anonymise, exportOpts],
+    () => buildTree({ preview, separate, exportOpts }),
+    [preview, separate, exportOpts],
   );
 
   const anyPicked =
@@ -136,41 +133,43 @@ function Placeholder({
 function buildTree({
   preview,
   separate,
-  visualise,
-  anonymise,
   exportOpts,
 }: {
   preview: OutputPreview | undefined;
   separate: UseSaveOutputsFormResult["separate"];
-  visualise: UseSaveOutputsFormResult["visualise"];
-  anonymise: UseSaveOutputsFormResult["anonymise"];
   exportOpts: UseSaveOutputsFormResult["exportOpts"];
 }): { folders: SubFolder[]; files: FileEntry[] } {
   const folders: SubFolder[] = [];
   const files: FileEntry[] = [];
 
   // Media copies. "taxonomic" / "flat" lay them out in per-label
-  // subfolders at the output root (counts from the preview); "none"
-  // drops them flat at the root, surfaced as a single line. Boxes /
-  // blur render onto these same copies, so they add no separate tree.
+  // subfolders (counts from the preview); "none" flattens them to the
+  // output root, so we list the actual filenames there instead.
   if (separate.enabled && preview) {
     if (separate.groupBy === "taxonomic") {
       folders.push(...nestedFoldersFromPaths(preview.by_taxonomic_tree));
     } else if (separate.groupBy === "flat") {
       folders.push(...flatFoldersFromMap(preview.by_flat));
     } else {
-      // Flat copy: one file each. in_scope_files already reflects the
-      // empties skip, so this line tracks the "copy empties" toggle.
-      const count = preview.in_scope_files;
-      const annotated = visualise.enabled || anonymise.enabled;
-      files.push({
-        name: `${count.toLocaleString()} media file${
-          count === 1 ? "" : "s"
-        }`,
-        hint: annotated
-          ? annotatedHint(visualise.enabled, anonymise.enabled)
-          : "copied",
-      });
+      // "No subfolders" mirrors the source tree. Source subfolders render
+      // as folders-with-counts via the SAME builder the species tree
+      // uses; loose root files fall back to a capped filename list.
+      folders.push(...nestedFoldersFromPaths(preview.by_source_tree));
+      const inFolders = Object.values(preview.by_source_tree).reduce(
+        (a, n) => a + n,
+        0,
+      );
+      const rootTotal = preview.in_scope_files - inFolders;
+      const shown =
+        rootTotal <= MAX_CHILDREN_PER_LEVEL
+          ? preview.root_files
+          : preview.root_files.slice(0, MAX_CHILDREN_PER_LEVEL - 1);
+      for (const name of shown) files.push({ name });
+      if (rootTotal > shown.length) {
+        files.push({
+          name: `… ${(rootTotal - shown.length).toLocaleString()} more`,
+        });
+      }
     }
   }
 
@@ -178,19 +177,13 @@ function buildTree({
     if (exportOpts.csv) files.push({ name: "observations.csv" });
     if (exportOpts.xlsx) files.push({ name: "observations.xlsx" });
     if (exportOpts.recognitionJson)
-      files.push({ name: "recognition.json" });
+      files.push({ name: "recognitions.json" });
   }
 
-  // README is always written.
-  files.push({ name: "README.txt" });
+  // The run summary is always written.
+  files.push({ name: "summary.txt" });
 
   return { folders, files };
-}
-
-function annotatedHint(visualise: boolean, anonymise: boolean): string {
-  if (visualise && anonymise) return "boxes drawn + people blurred";
-  if (visualise) return "boxes drawn";
-  return "people blurred";
 }
 
 /** Turn a flat map of slash-paths into a nested SubFolder tree.
@@ -211,7 +204,7 @@ function nestedFoldersFromPaths(
       const part = parts[i];
       let node = level.find((n) => n.name === `${part}/`);
       if (!node) {
-        node = { name: `${part}/`, count: 0, unit: "items", children: [] };
+        node = { name: `${part}/`, count: 0, children: [] };
         level.push(node);
       }
       if (i === parts.length - 1) {
@@ -259,7 +252,6 @@ function flatFoldersFromMap(
     .map(([name, count]) => ({
       name: `${name}/`,
       count,
-      unit: "items" as const,
     }));
 }
 
@@ -288,8 +280,6 @@ function TreeView({
     prefix: string;
     name: string;
     count?: number;
-    unit?: SubFolder["unit"];
-    hint?: string;
   }
 
   const entries: Entry[] = [];
@@ -321,7 +311,6 @@ function TreeView({
         prefix: ancestorPrefix + branch,
         name: child.name,
         count: child.count,
-        unit: child.unit,
       });
       if (child.children && child.children.length > 0) {
         walkFolder(child, ancestorPrefix + descend);
@@ -345,20 +334,18 @@ function TreeView({
         prefix: branch,
         name: item.folder.name,
         count: item.folder.count,
-        unit: item.folder.unit,
       });
       walkFolder(item.folder, descend);
     } else {
       entries.push({
         prefix: branch,
         name: item.file.name,
-        hint: item.file.hint,
       });
     }
   });
 
   return (
-    <pre className="overflow-x-auto p-3 font-mono text-[11px] leading-relaxed text-foreground">
+    <pre className="overflow-hidden p-3 font-mono text-[11px] leading-relaxed text-foreground">
       {entries.map((entry, idx) => (
         <TreeRow key={idx} {...entry} />
       ))}
@@ -370,44 +357,36 @@ function TreeRow({
   prefix,
   name,
   count,
-  unit,
-  hint,
 }: {
   prefix: string;
   name: string;
   count?: number;
-  unit?: SubFolder["unit"];
-  hint?: string;
 }) {
-  const trailingUnit =
-    unit === "files"
-      ? count === 1
-        ? "file"
-        : "files"
-      : unit === "images"
-        ? count === 1
-          ? "image"
-          : "images"
-        : "";
-
-  const countLabel =
-    count !== undefined
-      ? trailingUnit
-        ? `${count.toLocaleString()} ${trailingUnit}`
-        : count.toLocaleString()
-      : "";
+  const countLabel = count !== undefined ? count.toLocaleString() : "";
+  // The "… N more" placeholder is neither a folder nor a file.
+  const isMarker = name.startsWith("…");
+  const isFolder = name.endsWith("/");
+  // The icon conveys folder-ness, so drop the trailing slash from display.
+  const display = isFolder ? name.replace(/\/$/, "") : name;
 
   return (
-    <div className="flex items-baseline justify-between gap-4">
-      <span className="whitespace-pre">
-        {prefix}
-        {name}
-        {hint && (
-          <span className="ml-2 text-muted-foreground">— {hint}</span>
-        )}
+    <div className="flex items-center gap-3">
+      <span className="flex min-w-0 flex-1 items-center">
+        <span className="shrink-0 whitespace-pre">{prefix}</span>
+        {/* Fixed-width icon slot (empty for markers) so names stay aligned. */}
+        <span className="mr-1.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+          {!isMarker &&
+            (isFolder ? (
+              <Folder className="h-3.5 w-3.5 text-primary/70" />
+            ) : (
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            ))}
+        </span>
+        {/* Long names are cut off with an ellipsis rather than overflowing. */}
+        <span className="min-w-0 truncate">{display}</span>
       </span>
       {countLabel && (
-        <span className="text-muted-foreground">{countLabel}</span>
+        <span className="shrink-0 text-muted-foreground">{countLabel}</span>
       )}
     </div>
   );
@@ -420,96 +399,51 @@ function SummaryFooter({
   preview: OutputPreview;
   form: UseSaveOutputsFormResult;
 }) {
-  const { separate, visualise, anonymise } = form;
-  const annotateOn = visualise.enabled || anonymise.enabled;
-  const placementsPerSourceFile = countCopiesPerFile({
-    separate,
-    annotateOn,
-  });
+  const { separate } = form;
 
-  // Total files written. Separation produces one placement per source
-  // file × number of label folders it landed in (multi-species
-  // inflates the bucket sum). When separation is also on, annotated
-  // copies are written INTO the separated folders (same files,
-  // overwritten with effects) — so they don't add to the placement
-  // count. When separation is off, annotated copies write one image
-  // per in-scope file at the root.
-  const separatedSource =
-    separate.groupBy === "taxonomic"
-      ? preview.by_taxonomic_tree
-      : preview.by_flat;
-  const separatedPlacements = separate.enabled
-    ? Object.values(separatedSource).reduce((a, n) => a + n, 0)
-    : 0;
-
-  const scopedImageCount =
-    preview.dropped_by_filter > 0
-      ? preview.in_scope_image_count
-      : preview.image_count;
-  const annotatedWritten =
-    annotateOn && !separate.enabled ? scopedImageCount : 0;
-
-  const writtenTotal = separatedPlacements + annotatedWritten;
-
-  // Byte estimate uses in-scope average so exclusion-affected runs
-  // give a number that matches what'll actually land on disk.
-  const sizeReferenceFiles =
-    preview.in_scope_files > 0
-      ? preview.in_scope_files
-      : preview.total_files;
-  const sizeReferenceBytes =
-    preview.in_scope_files > 0
-      ? preview.in_scope_bytes
-      : preview.total_bytes;
+  // Each in-scope file lands in exactly one folder, so the number
+  // written equals the in-scope count. Boxes / blur overwrite those
+  // same copies in place (and only run when separation is on), so they
+  // never add files. Exports + README are small data files, not counted.
+  const writtenTotal = separate.enabled ? preview.in_scope_files : 0;
+  // Videos are written as their best-frame JPEG, which in_scope_bytes
+  // already reflects, so this is the real media footprint on disk.
+  const estimatedBytes = separate.enabled ? preview.in_scope_bytes : 0;
   const partialSize =
     preview.files_with_known_size > 0 &&
     preview.files_with_known_size < preview.total_files;
-  const avgBytesPerFile =
-    sizeReferenceFiles > 0 ? sizeReferenceBytes / sizeReferenceFiles : 0;
-  const estimatedBytes = avgBytesPerFile * writtenTotal;
+
+  // Account for the whole source → written gap so the numbers add up:
+  // species-filtered files, plus empty captures skipped when "copy
+  // empties" is off (everything not filtered and not written is empty).
+  const filtered = preview.dropped_by_filter;
+  const emptySkipped =
+    preview.total_files - filtered - preview.in_scope_files;
+  const reasons: string[] = [];
+  if (filtered > 0) reasons.push(`${filtered.toLocaleString()} filtered`);
+  if (emptySkipped > 0) {
+    reasons.push(`${emptySkipped.toLocaleString()} empty`);
+  }
 
   return (
-    <div className="space-y-1.5 border-t p-3 text-xs">
+    <div className="space-y-1 border-t p-3 text-xs">
       <p className="font-medium text-foreground">
         {preview.total_files.toLocaleString()} source{" "}
         {preview.total_files === 1 ? "file" : "files"}
-        {preview.image_count > 0 && preview.video_count > 0 && (
-          <span className="text-muted-foreground">
-            {" "}
-            ({preview.image_count.toLocaleString()} images,{" "}
-            {preview.video_count.toLocaleString()} videos)
-          </span>
+        {separate.enabled && (
+          <>
+            {" → "}
+            {writtenTotal.toLocaleString()} written
+            {reasons.length > 0 && (
+              <span className="font-normal text-muted-foreground">
+                {" "}
+                ({reasons.join(", ")})
+              </span>
+            )}
+          </>
         )}
       </p>
-      {preview.dropped_by_filter > 0 && (
-        <p className="text-muted-foreground">
-          {preview.dropped_by_filter.toLocaleString()}{" "}
-          {preview.dropped_by_filter === 1 ? "file" : "files"} skipped
-          by the species filter,{" "}
-          {preview.in_scope_files.toLocaleString()} in scope
-        </p>
-      )}
-      {writtenTotal > 0 && (
-        <p className="text-muted-foreground">
-          {writtenTotal.toLocaleString()}{" "}
-          {writtenTotal === 1 ? "file" : "files"} will be written
-          {placementsPerSourceFile > 1 && (
-            <>
-              {" "}
-              ({"~"}
-              {placementsPerSourceFile}× per source file)
-            </>
-          )}
-        </p>
-      )}
-      {separate.enabled && preview.multi_species_files > 0 && (
-        <p className="text-muted-foreground">
-          {preview.multi_species_files.toLocaleString()}{" "}
-          {preview.multi_species_files === 1 ? "file" : "files"} appear
-          in more than one folder (multi-species shots)
-        </p>
-      )}
-      {avgBytesPerFile > 0 && writtenTotal > 0 && (
+      {estimatedBytes > 0 && (
         <p className="text-muted-foreground">
           {"~"}
           {formatBytes(estimatedBytes)}
@@ -520,21 +454,6 @@ function SummaryFooter({
       )}
     </div>
   );
-}
-
-function countCopiesPerFile({
-  separate,
-  annotateOn,
-}: {
-  separate: UseSaveOutputsFormResult["separate"];
-  annotateOn: boolean;
-}): number {
-  // Separation and annotation share the same on-disk file when both
-  // are on (annotation mutates the separated copy in place), so they
-  // do not multiply with each other.
-  if (separate.enabled) return 1;
-  if (annotateOn) return 1;
-  return 0;
 }
 
 // Binary units (1024-based) with SI-style labels. Each unit rolls over

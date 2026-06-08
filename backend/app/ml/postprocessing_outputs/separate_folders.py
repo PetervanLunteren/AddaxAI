@@ -5,17 +5,32 @@ output as ``output_root/dog/``, ``output_root/leopard/``,
 ``output_root/blank/``, …, in the file manager. This module re-creates
 that experience on top of the modern DB pipeline.
 
-Multi-species behaviour (hardcoded, no opt-out):
+Single-destination rule:
 
-A file with detections of multiple distinct species lands in every
-matching folder. So an image with ``dog`` + ``wolf`` appears in both
-``output_root/dog/`` and ``output_root/wolf/``. This is the convention
-the wider camera-trap ecosystem uses (camtrapR's ``getSpeciesImages``,
-the Data Carpentry guide) — the alternative of a single "top label
-wins" placement is the headline UX complaint from beta testers because
-information gets dropped at the file system level. We pay the disk
-cost; the user finds their image when they look for any of its
-species.
+Every file lands in exactly one folder, its **main species** (the most
+confident species detection). An image with ``dog`` + ``wolf`` goes to
+``output_root/dog/`` only, never both. The output stays a clean,
+predictable mirror of the run with no duplication, images and videos
+alike. Multi-species findability is intentionally out of scope here:
+every species is in the CSV / recognition JSON, and projects mode is
+the place for richer querying.
+
+Original folder structure (suffix placement):
+
+The user's source subfolders are preserved *under* the species folder,
+so ``<source>/cam01/img.jpg`` of a dog lands at
+``output_root/dog/cam01/img.jpg``. Species stays the top browsing axis
+(the point of the feature) while the original structure, and the reason
+the user organised it, is kept and collisions are avoided. Under
+``group_by="none"`` there is no species folder, so the output simply
+mirrors the source tree (``output_root/cam01/img.jpg``).
+
+Event grouping (``group_events``):
+
+With ``group_events`` on, every file in an event (a burst / sequence)
+is placed in one shared folder, the species of the event's most
+confident detection, instead of deciding per file. This keeps a
+sequence together even when a stray frame's own top species differs.
 
 Modes:
 
@@ -41,11 +56,16 @@ Collision handling: ``output_root/<label>/IMG_001.jpg`` already
 exists → append ``_2``, ``_3``, … per destination folder until the
 name is unique. Original files are never overwritten.
 
-Videos: the source video file is reorganised. The per-video best
-frame JPEG (under ``.addaxai/projects/<pid>/video_frames/``) is NOT
-moved here; it stays in the project cache and is consumed by
-``annotated_copies`` if the user asked for visualised / anonymised
-output.
+Videos: a video is represented by its best-frame JPEG
+(``File.best_frame_path``), never the original container. The JPEG is
+copied to ``<dir>/<video_stem>_still.jpg`` so a 200 MB clip becomes a
+~150 KB still (the ``_still`` suffix marks it as a video frame). This
+keeps the output lightweight, lets ``annotated_copies`` draw
+boxes / blur onto that frame, and means a privacy blur is never
+undermined by a full unblurred video sitting next to it. The original
+videos are never touched; the CSV / recognition JSON link back to them
+by path. Videos are always copied (never moved): the best frame is a
+shared cache artefact.
 
 Each successful placement is recorded on the shared ``OutputContext``
 so downstream modules (``annotated_copies``, the CSV / XLSX writers)
@@ -62,12 +82,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
-from app.models import Deployment, File, LabelTaxonomy, Project
+from app.models import Deployment, Detection, File, LabelTaxonomy, Project
+from app.models.event import event_files
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import (
@@ -106,15 +127,10 @@ _TAXONOMIC_RANK_ORDER: tuple[str, ...] = (
 class SeparateFoldersResult:
     """Summary of a separate-into-folders run.
 
-    Counters reflect placements, not source files: a file that ends up
-    in three folders counts three times. ``multi_placement_count`` is
-    the count of distinct source files that appeared in more than one
-    folder, so the UI can call that out when ``copy`` mode inflates
-    the placement total beyond the file total.
-
-    ``skipped_excluded`` counts animal files whose every passing
-    species label was in the exclusion set — the user asked for the
-    species to disappear from outputs, so the file is skipped entirely.
+    Every file lands in exactly one folder, so placement counts equal
+    source-file counts. ``skipped_excluded`` counts files whose every
+    passing identified detection was in the exclusion set, so the file
+    disappears from the outputs entirely.
     """
 
     copied_count: int = 0
@@ -122,7 +138,6 @@ class SeparateFoldersResult:
     skipped_missing_source: int = 0
     skipped_excluded: int = 0
     renamed_count: int = 0
-    multi_placement_count: int = 0
     by_label: Counter = field(default_factory=Counter)
     errors: list[str] = field(default_factory=list)
 
@@ -139,7 +154,6 @@ class SeparateFoldersResult:
             "skipped_missing_source": self.skipped_missing_source,
             "skipped_excluded": self.skipped_excluded,
             "renamed_count": self.renamed_count,
-            "multi_placement_count": self.multi_placement_count,
             "by_label": dict(self.by_label),
             "errors": list(self.errors),
         }
@@ -161,24 +175,6 @@ _OBSERVATION_TYPE_FOLDER: dict[str, str] = {
 _FALLBACK_FOLDER = "animal"
 
 
-@dataclass(frozen=True)
-class _LabelPlan:
-    """Destination folders for one file: a primary plus zero or more
-    additional folders the file should also appear in.
-
-    ``move`` mode places the file at the primary destination and copies
-    to the others (the file can only move once). ``copy`` mode treats
-    primary and others identically — N placements of the same source.
-    """
-
-    primary: str
-    others: tuple[str, ...]
-
-    @property
-    def all(self) -> tuple[str, ...]:
-        return (self.primary, *self.others)
-
-
 def _build_taxonomy_map(
     db: Session, project: Project
 ) -> dict[str, LabelTaxonomy]:
@@ -196,6 +192,81 @@ def _build_taxonomy_map(
         )
     ).scalars().all()
     return {row.name: row for row in rows}
+
+
+def build_event_primary_labels(
+    db: Session,
+    project_id: str,
+    threshold: float,
+    excluded_label_ids: frozenset[str] | None = None,
+) -> dict[str, str]:
+    """Map each animal file in an event to that event's primary species.
+
+    The event's primary species is the label of the highest-confidence
+    passing, non-excluded animal detection across all the event's files.
+    Only animal files that belong to an event with at least one surviving
+    species label appear in the map. A file in multiple events is assigned
+    to the event of its own most confident detection (deterministic via
+    the confidence / event_id / file_id ordering).
+
+    Used by primary-only placement with ``group_events`` on to keep a whole
+    burst in one folder. Mirrored by the Save-step preview so the two agree.
+    """
+    rows = db.execute(
+        select(
+            event_files.c.event_id,
+            Detection.file_id,
+            Detection.label,
+            Detection.label_taxonomy_id,
+        )
+        .join(File, File.id == Detection.file_id)
+        .join(event_files, event_files.c.file_id == File.id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .where(Deployment.project_id == project_id)
+        .where(File.observation_type == "animal")
+        .where(Detection.label.isnot(None))
+        .where(
+            or_(
+                Detection.confidence >= threshold,
+                Detection.verified == True,  # noqa: E712
+            )
+        )
+        .order_by(
+            Detection.confidence.desc(),
+            event_files.c.event_id,
+            Detection.file_id,
+        )
+    ).all()
+
+    excluded = excluded_label_ids or frozenset()
+
+    def _is_excluded(row) -> bool:
+        if not excluded:
+            return False
+        if row.label_taxonomy_id and row.label_taxonomy_id in excluded:
+            return True
+        if row.label and row.label in excluded:
+            return True
+        return False
+
+    # Walk rows in confidence-descending order. The first time we see an
+    # event, that row's label is the event's primary species; the first
+    # time we see a file, that row's event is the file's chosen event.
+    event_top_label: dict[str, str] = {}
+    file_event: dict[str, str] = {}
+    for row in rows:
+        if _is_excluded(row):
+            continue
+        if row.event_id not in event_top_label:
+            event_top_label[row.event_id] = row.label
+        if row.file_id not in file_event:
+            file_event[row.file_id] = row.event_id
+
+    return {
+        file_id: event_top_label[event_id]
+        for file_id, event_id in file_event.items()
+        if event_id in event_top_label
+    }
 
 
 def _slug(name: str) -> str:
@@ -269,7 +340,7 @@ def _taxonomic_path_for_label(
     return "/".join(parts)
 
 
-def _label_plan_for_file(
+def _folder_for_file(
     db: Session,
     file: File,
     threshold: float,
@@ -277,56 +348,45 @@ def _label_plan_for_file(
     group_by: SeparateGroupBy = "taxonomic",
     excluded_label_ids: frozenset[str] | None = None,
     name_mode: NameMode = "common",
-) -> _LabelPlan:
-    """Compute the set of destination paths for a single file.
+    grouped_label: str | None = None,
+) -> str:
+    """The single destination folder for one file.
 
-    Non-animal files route to their fixed observation-type folder
-    under both grouping modes. Animal files build a slash-path per
-    passing label (``taxonomic``) or a single-segment folder per
-    label (``flat``). Multi-species files end up in multiple distinct
-    destinations either way. Animal files with no surviving labels
-    fall back to ``animal/``.
+    Non-animal files route to their fixed observation-type folder. Animal
+    files go to their **main species** (the most confident passing,
+    non-excluded label), as a nested taxonomic path (``taxonomic``) or a
+    single segment (``flat``). ``grouped_label``, when set, overrides the
+    per-file choice with the event's main species (``group_events``).
+    Animal files with no surviving label fall back to ``animal/``. The
+    empty string means the output root (``group_by="none"``).
     """
-    # "none": no subfolders. Every file lands flat in the output root
-    # (a single copy each, regardless of species). Primary "" joins to
-    # the output root unchanged.
     if group_by == "none":
-        return _LabelPlan(primary="", others=())
+        return ""
 
     obs_type = file.observation_type
-    fixed_folder = _OBSERVATION_TYPE_FOLDER.get(obs_type)
-
     if obs_type != "animal":
-        return _LabelPlan(
-            primary=fixed_folder or _FALLBACK_FOLDER, others=()
-        )
+        return _OBSERVATION_TYPE_FOLDER.get(obs_type) or _FALLBACK_FOLDER
 
-    labels = passing_labels_for_file(
-        db, file, threshold, excluded_label_ids
-    )
-
-    if not labels:
-        # Animal file with no species-labelled detections. Caller
-        # already skipped files where every label was excluded, so
-        # this is the "we know it's an animal but not what kind"
-        # case — lands in the top-level animal/ folder.
-        return _LabelPlan(primary=_FALLBACK_FOLDER, others=())
-
-    folder_names: list[str] = []
-    seen: set[str] = set()
-    for label in labels:
-        path = (
+    def _folder_for(label: str) -> str:
+        return (
             _taxonomic_path_for_label(label, taxonomy_map, name_mode)
             if group_by == "taxonomic"
             else _leaf_name(label, taxonomy_map.get(label), name_mode)
         )
-        if path not in seen:
-            folder_names.append(path)
-            seen.add(path)
 
-    primary = folder_names[0]
-    others = tuple(folder_names[1:])
-    return _LabelPlan(primary=primary, others=others)
+    # Event grouping: the whole burst shares the event's main species.
+    if grouped_label is not None:
+        return _folder_for(grouped_label)
+
+    labels = passing_labels_for_file(
+        db, file, threshold, excluded_label_ids
+    )
+    if not labels:
+        # Animal known, species not — top-level animal/ fallback.
+        return _FALLBACK_FOLDER
+
+    # ``labels`` is confidence-descending, so labels[0] is the main species.
+    return _folder_for(labels[0])
 
 
 def _unique_destination(target_dir: Path, source_name: str) -> tuple[Path, bool]:
@@ -368,21 +428,62 @@ def _place_primary(
         raise ValueError(f"unsupported separate_folders mode: {mode!r}")
 
 
-def _place_extra(
-    source: Path,
-    primary_dest: Path,
-    extra_dest: Path,
-    mode: SeparateMode,
-) -> None:
-    """Execute an additional placement for a multi-species file.
+def video_still_name(video_path: str | Path) -> str:
+    """Output filename for a video: its best frame as ``<stem>_still.jpg``.
 
-    ``source`` is the original on-disk file (still present under
-    ``copy``, gone under ``move``). ``primary_dest`` is where the
-    file's primary placement was just written, used as the copy
-    source under ``move`` (which can only move once).
+    The ``_still`` suffix marks the file as a frame pulled from a video
+    rather than an original photo, and keeps it from colliding with a
+    same-named photo (some cameras shoot ``DSCF0100.jpg`` next to
+    ``DSCF0100.mp4``).
     """
-    copy_source = primary_dest if mode == "move" else source
-    shutil.copy2(copy_source, extra_dest)
+    return f"{Path(video_path).stem}_still.jpg"
+
+
+def _media_source(
+    file: File, mode: SeparateMode
+) -> tuple[Path | None, str, SeparateMode]:
+    """Resolve the on-disk source, output filename, and effective mode.
+
+    Images use their own file under their original name and honour the
+    requested copy / move mode. Videos are represented by their
+    best-frame JPEG, named ``<video_stem>.jpg``, and are always copied
+    (the best frame is a shared cache artefact that must not be moved).
+    Returns ``(None, "", mode)`` for a video with no best frame on file.
+    """
+    if file.file_type == "video":
+        if not file.best_frame_path:
+            return None, "", mode
+        out_name = video_still_name(file.file_path)
+        return Path(file.best_frame_path), out_name, "copy"
+    p = Path(file.file_path)
+    return p, p.name, mode
+
+
+def build_deployment_folders(db: Session, project_id: str) -> dict[str, str]:
+    """Map each deployment id to its source ``folder_path``, so a file's
+    original subfolder structure can be derived relative to where it was
+    scanned from. Deployments with no folder_path are omitted."""
+    rows = db.execute(
+        select(Deployment.id, Deployment.folder_path).where(
+            Deployment.project_id == project_id
+        )
+    ).all()
+    return {r.id: r.folder_path for r in rows if r.folder_path}
+
+
+def source_subdir(file_path: str, source_root: str | None) -> str:
+    """The file's directory relative to its source folder, as a posix
+    path, so the user's original structure is preserved *under* the
+    species folder (suffix placement). Empty when the file sits at the
+    source root or its path isn't under it.
+    """
+    if not source_root:
+        return ""
+    try:
+        rel = Path(file_path).parent.relative_to(source_root)
+    except ValueError:
+        return ""
+    return "" if rel == Path(".") else rel.as_posix()
 
 
 def separate_into_folders(
@@ -395,30 +496,29 @@ def separate_into_folders(
     include_empty: bool = True,
     excluded_label_ids: frozenset[str] | None = None,
     name_mode: NameMode = "common",
+    group_events: bool = True,
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
     ``ctx.output_root``.
 
-    Under ``group_by="taxonomic"`` (default) animal files land in a
-    nested chain ``<Class>/<Order>/<Family>/<Genus>/<species>/``;
-    under ``group_by="flat"`` each animal file lands in a
-    single-segment folder named after the species label. Non-animal
-    files always land in their fixed observation-type folder. Files
-    with multiple species labels appear in every matching destination.
+    Each file lands in exactly one folder, its main species. Under
+    ``group_by="taxonomic"`` (default) animal files land in a nested
+    chain ``<Class>/<Order>/<Family>/<Genus>/<species>/``; under
+    ``group_by="flat"`` a single-segment folder named after the species;
+    under ``group_by="none"`` flat at the output root. Non-animal files
+    land in their fixed observation-type folder. ``group_events`` keeps
+    every file of a burst in one folder, the event's main species.
 
-    ``mode`` controls placement at the primary destination
-    (``copy`` / ``move``); extras are always copies (a file can only
-    move once and the primary already holds the moved bytes).
+    ``mode`` is ``copy`` / ``move`` for images; videos are always copied
+    as their best-frame JPEG.
 
-    ``excluded_label_ids`` filters labelled detections: animal files
-    where every passing label is in the set are skipped entirely
-    (counted in ``skipped_excluded``). Files with mixed inclusion
-    still go through but only land in folders for their non-excluded
-    labels.
+    ``excluded_label_ids`` filters detections: a file where every passing
+    identified detection is excluded is skipped entirely (counted in
+    ``skipped_excluded``). A mixed file still goes through, filed under
+    its most confident non-excluded label.
 
-    Each successful placement is recorded on ``ctx`` so downstream
-    modules can find the file on disk without re-reading
-    ``File.file_path``.
+    Each placement is recorded on ``ctx`` so downstream modules can find
+    the file on disk without re-reading ``File.file_path``.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -428,6 +528,17 @@ def separate_into_folders(
     target_dir.mkdir(parents=True, exist_ok=True)
     threshold = project.detection_threshold
     taxonomy_map = _build_taxonomy_map(db, project)
+
+    # Empty map = per-file placement; populated = whole events grouped.
+    event_primary: dict[str, str] = {}
+    if group_events:
+        event_primary = build_event_primary_labels(
+            db, project_id, threshold, excluded_label_ids
+        )
+
+    # Source folders per deployment, to preserve each file's original
+    # subfolder structure under the species folder.
+    dep_folders = build_deployment_folders(db, project_id)
 
     files = db.execute(
         select(File)
@@ -442,11 +553,19 @@ def separate_into_folders(
     # expensive part.
     with ExifBatch() as exif_batch:
         for file in files:
-            source = Path(file.file_path)
+            # Videos copy their best-frame JPEG, not the container; images
+            # copy themselves. file_mode forces copy for videos.
+            source, out_name, file_mode = _media_source(file, mode)
+            if source is None:
+                result.skipped_missing_source += 1
+                result.errors.append(
+                    f"Video has no best frame on disk: {file.file_path}"
+                )
+                continue
             if not source.exists():
                 result.skipped_missing_source += 1
                 result.errors.append(
-                    f"Source file no longer on disk: {file.file_path}"
+                    f"Source file no longer on disk: {source}"
                 )
                 continue
 
@@ -460,7 +579,7 @@ def separate_into_folders(
             if not include_empty and file.observation_type == "blank":
                 continue
 
-            plan = _label_plan_for_file(
+            folder = _folder_for_file(
                 db,
                 file,
                 threshold,
@@ -468,40 +587,44 @@ def separate_into_folders(
                 group_by,
                 excluded_label_ids,
                 name_mode,
+                grouped_label=event_primary.get(file.id),
             )
 
-            # Primary placement.
-            primary_dir = target_dir / plan.primary
-            primary_dir.mkdir(parents=True, exist_ok=True)
-            primary_dest, renamed_primary = _unique_destination(
-                primary_dir, source.name
+            # Preserve the original subfolder structure under the species
+            # folder (suffix). Empty parts collapse, so "none" mode with
+            # no subfolder lands flat at the output root.
+            subdir = source_subdir(
+                file.file_path, dep_folders.get(file.deployment_id)
             )
+            parts = [p for p in (folder, subdir) if p]
+            dest_dir = target_dir.joinpath(*parts) if parts else target_dir
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest, renamed = _unique_destination(dest_dir, out_name)
             try:
-                _place_primary(source, primary_dest, mode)
+                _place_primary(source, dest, file_mode)
             except OSError as e:
-                result.errors.append(f"Failed to {mode} {source}: {e}")
+                result.errors.append(f"Failed to {file_mode} {source}: {e}")
                 logger.exception(
-                    f"separate_folders: {mode} failed for {source}"
+                    f"separate_folders: {file_mode} failed for {source}"
                 )
                 continue
 
-            if mode == "move":
-                file.file_path = str(primary_dest)
+            if file_mode == "move":
+                file.file_path = str(dest)
                 db.commit()
                 result.moved_count += 1
             else:
                 result.copied_count += 1
-            result.by_label[plan.primary] += 1
-            if renamed_primary:
+            result.by_label[folder] += 1
+            if renamed:
                 result.renamed_count += 1
-            ctx.record(file.id, primary_dest)
+            ctx.record(file.id, dest)
 
-            # Silent EXIF on the primary placement when the file is an
-            # image format that carries EXIF. ``annotated_copies`` will
-            # overwrite this if the user also asked for visualised /
-            # anonymised output, which is fine — the tag set is the
-            # same.
-            if is_image_path(primary_dest):
+            # Silent EXIF when the placement is an image format that
+            # carries EXIF (videos write best-frame JPEGs, so they do
+            # too). ``annotated_copies`` overwrites it with the same tag
+            # set if the user also asked for boxes / blur.
+            if is_image_path(dest):
                 tag_set = build_tag_set(
                     db,
                     file,
@@ -511,69 +634,17 @@ def separate_into_folders(
                 )
                 if tag_set is not None:
                     try:
-                        exif_batch.write(primary_dest, tag_set)
+                        exif_batch.write(dest, tag_set)
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
                             f"separate_folders: EXIF write failed for "
-                            f"{primary_dest}: {e}"
+                            f"{dest}: {e}"
                         )
-
-            # Extra placements for multi-species files.
-            extras_written = 0
-            for extra_label in plan.others:
-                extra_dir = target_dir / extra_label
-                extra_dir.mkdir(parents=True, exist_ok=True)
-                extra_dest, renamed_extra = _unique_destination(
-                    extra_dir, source.name
-                )
-                try:
-                    _place_extra(
-                        source, primary_dest, extra_dest, mode
-                    )
-                except OSError as e:
-                    result.errors.append(
-                        f"Failed extra placement {extra_dest}: {e}"
-                    )
-                    logger.exception(
-                        f"separate_folders: extra placement failed for "
-                        f"{extra_dest}"
-                    )
-                    continue
-
-                result.copied_count += 1
-                result.by_label[extra_label] += 1
-                if renamed_extra:
-                    result.renamed_count += 1
-                extras_written += 1
-                ctx.record(file.id, extra_dest)
-
-                if is_image_path(extra_dest):
-                    # Reuse the same tag set; multi-species files
-                    # carry the same detection summary in every folder.
-                    tag_set = build_tag_set(
-                        db,
-                        file,
-                        project,
-                        APP_VERSION,
-                        excluded_label_ids=excluded_label_ids,
-                    )
-                    if tag_set is not None:
-                        try:
-                            exif_batch.write(extra_dest, tag_set)
-                        except Exception as e:  # noqa: BLE001
-                            logger.warning(
-                                f"separate_folders: EXIF write failed "
-                                f"for {extra_dest}: {e}"
-                            )
-
-            if extras_written > 0:
-                result.multi_placement_count += 1
 
     logger.info(
         f"separate_folders: project={project_id} mode={mode} "
-        f"group_by={group_by} written={result.written_count} "
-        f"multi={result.multi_placement_count} "
-        f"renamed={result.renamed_count} "
+        f"group_by={group_by} group_events={group_events} "
+        f"written={result.written_count} renamed={result.renamed_count} "
         f"missing={result.skipped_missing_source} "
         f"excluded={result.skipped_excluded}"
     )

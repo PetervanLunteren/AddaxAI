@@ -79,6 +79,7 @@ export interface PersistedSaveOutputsSettings {
   recognitionJson: boolean;
   mediaEnabled: boolean;
   groupBy: SeparateGroupBy;
+  groupEvents: boolean;
   copyEmpties: boolean;
   drawBoxes: boolean;
   blur: boolean;

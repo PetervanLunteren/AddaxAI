@@ -1,7 +1,7 @@
 """Human-readable run summary written into every folder-run output.
 
-A `README.txt` at the root of the output directory carries the
-complete picture of the run so a user (or a colleague) opening the
+A `summary.txt` at the root of the output directory carries
+the complete picture of the run so a user (or a colleague) opening the
 folder weeks later can see exactly what produced the deliverables:
 
 - App and run metadata (version, run date, source folder)
@@ -10,7 +10,6 @@ folder weeks later can see exactly what produced the deliverables:
   video FPS, etc.)
 - Results summary (by category, top species)
 - Verification state
-- Output manifest (what's in each subfolder / file)
 
 Hardcoded as an always-on output: every save run writes one. The
 file is plain text so any OS file manager renders it as a preview
@@ -34,7 +33,7 @@ from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
 
-README_FILENAME = "README.txt"
+SUMMARY_FILENAME = "summary.txt"
 
 
 @dataclass
@@ -63,6 +62,25 @@ def _model_label(model_id: str | None, mgr: ManifestManager) -> str:
         return f"{m.friendly_name} ({m.model_id})"
     except Exception:
         return model_id
+
+
+def _geofence_summary(project: Project, models_dir: Path) -> str:
+    """One-line species inclusion summary for the geofence, e.g.
+    ``288 included, 1,712 excluded``. Avoids dumping the full exclusion
+    list (which can be ~40 KB for SpeciesNet). Falls back to just the
+    excluded count if the model's full label list can't be read."""
+    excluded = len(project.excluded_classes or [])
+    if excluded == 0:
+        return "all included"
+    try:
+        from app.ml.geofence import get_all_labels
+
+        model_dir = models_dir / "cls" / (project.classification_model_id or "")
+        total = len(get_all_labels(model_dir))
+        included = max(total - excluded, 0)
+        return f"{included:,} included, {excluded:,} excluded"
+    except Exception:
+        return f"{excluded:,} excluded"
 
 
 def _file_counts(db: Session, project_id: str) -> tuple[int, int, str | None, str | None]:
@@ -196,6 +214,7 @@ def _build_readme_text(
     detection_counts: dict[str, int],
     top_species: list[tuple[str, int]],
     verification: tuple[int, int],
+    geofence_summary: str,
     manifest_mgr: ManifestManager,
 ) -> str:
     """Compose the README body. Returns a single newline-delimited
@@ -251,12 +270,7 @@ def _build_readme_text(
     )
     lines.append(_kv("Country (geofence)", project.country_code or "(none)"))
     lines.append(_kv("State (geofence)", project.state_code or "(none)"))
-    if project.excluded_classes:
-        lines.append(
-            _kv("Excluded classes", ", ".join(project.excluded_classes))
-        )
-    else:
-        lines.append(_kv("Excluded classes", "(none)"))
+    lines.append(_kv("Species (geofence)", geofence_summary))
 
     lines.append(_section("Classification & smoothing"))
     lines.append(
@@ -315,23 +329,6 @@ def _build_readme_text(
         lines.append(_section("Top species"))
         lines.append("  (no species labels yet)\n")
 
-    lines.append(_section("Output manifest"))
-    lines.append(
-        "  README.txt                          this file\n"
-        "  <label>/...                         files grouped by species\n"
-        "                                      (when separation was enabled)\n"
-        "  <file>.jpg                          annotated copies with boxes\n"
-        "                                      drawn and / or people blurred\n"
-        "                                      (when separation was off)\n"
-        "  observations.csv                    flat observation rows\n"
-        "  observations.xlsx                   same rows, Excel format\n"
-        "  recognition.json                    canonical recognition JSON\n"
-        "\n"
-        "  (subfolders / files only appear when the matching output\n"
-        "  option was selected for this run; EXIF detection tags are\n"
-        "  embedded silently on every image written)\n"
-    )
-
     return "".join(lines)
 
 
@@ -340,7 +337,7 @@ def write_run_readme(
     project_id: str,
     target_dir: Path,
 ) -> RunReadmeResult:
-    """Write README.txt summarising the run at ``target_dir/README.txt``.
+    """Write the run summary at ``target_dir/summary.txt``.
 
     Always-on output — every save run produces one. Errors during
     composition / write are recorded but never raise; the README is
@@ -371,7 +368,9 @@ def write_run_readme(
     verification = _verification_stats(db, project_id)
 
     settings = get_settings()
-    manifest_mgr = ManifestManager(settings.user_data_dir / "models")
+    models_dir = settings.user_data_dir / "models"
+    manifest_mgr = ManifestManager(models_dir)
+    geofence_summary = _geofence_summary(project, models_dir)
 
     text = _build_readme_text(
         project=project,
@@ -381,10 +380,11 @@ def write_run_readme(
         detection_counts=detection_counts,
         top_species=top_species,
         verification=verification,
+        geofence_summary=geofence_summary,
         manifest_mgr=manifest_mgr,
     )
 
-    output_path = target_dir / README_FILENAME
+    output_path = target_dir / SUMMARY_FILENAME
     payload = text.encode("utf-8")
     with open(output_path, "wb") as f:
         f.write(payload)
