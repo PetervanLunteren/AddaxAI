@@ -1,11 +1,11 @@
 """
-Observations API router.
+Labels API router.
 
-Drives the Observations verify tab: embedding-based sort, nearest-neighbor
+Drives the Labels verify tab: embedding-based sort, nearest-neighbor
 search, and embedding coverage stats. Heavy computation is delegated to
 ml/inference/similarity_script.py via subprocess (no numpy/faiss needed here).
 The "similarity" name on internal modules reflects the underlying technique;
-user-facing surfaces are named after the unit of work, the observation.
+user-facing surfaces are named after the unit of work, the label.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -13,21 +13,21 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.schemas.observation import (
-    ObservationStatsResponse,
+from app.api.schemas.label import (
+    LabelStatsResponse,
     SearchRequest,
     SortRequest,
 )
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
-from app.services.observation_service import (
+from app.services.label_service import (
     stream_cohorts_async,
     stream_search_async,
     stream_sort_async,
 )
 from app.utils.datetime_serialization import set_active_project_timezone
 
-router = APIRouter(prefix="/api/projects", tags=["observations"])
+router = APIRouter(prefix="/api/projects", tags=["labels"])
 
 
 def _set_project_tz(db: Session, project_id: str) -> None:
@@ -37,7 +37,7 @@ def _set_project_tz(db: Session, project_id: str) -> None:
         set_active_project_timezone(tz)
 
 
-@router.post("/{project_id}/observations/sort")
+@router.post("/{project_id}/labels/sort")
 async def sort_detections(
     project_id: str,
     body: SortRequest,
@@ -63,7 +63,7 @@ async def sort_detections(
     return StreamingResponse(stream, media_type="application/x-ndjson")
 
 
-@router.post("/{project_id}/observations/search")
+@router.post("/{project_id}/labels/search")
 async def search_similar(
     project_id: str,
     body: SearchRequest,
@@ -83,7 +83,7 @@ async def search_similar(
     return StreamingResponse(stream, media_type="application/x-ndjson")
 
 
-@router.get("/{project_id}/observations/cohorts")
+@router.get("/{project_id}/labels/cohorts")
 async def cohorts(
     project_id: str,
     request: Request,
@@ -111,10 +111,10 @@ async def cohorts(
 
 
 @router.get(
-    "/{project_id}/observations/stats",
-    response_model=ObservationStatsResponse,
+    "/{project_id}/labels/stats",
+    response_model=LabelStatsResponse,
 )
-def get_observation_stats(
+def get_label_stats(
     project_id: str,
     db: Session = Depends(get_db),
 ):
@@ -124,13 +124,13 @@ def get_observation_stats(
     embedding_model_id = project.embedding_model_id if project else None
 
     # Embeddability gate. A detection is embeddable when:
-    #  - it has a bbox (event-level observations are bbox-less and have
+    #  - it has a bbox (event-level labels are bbox-less and have
     #    no crop to embed), AND
     #  - it sits on a pixel surface the embedding worker can read:
     #    images embed unconditionally; video detections only embed when
     #    they sit on the parent video's best frame (matches
     #    `build_embedding_input` in embedding_utils.py).
-    # Non-embeddable detections are invisible to the Observations grid
+    # Non-embeddable detections are invisible to the Labels grid
     # and similarity search anyway, so we leave them out of the
     # "missing embeddings" count — otherwise the banner would chase a
     # population that `/embed-now` is deliberately designed to skip.
@@ -155,11 +155,11 @@ def get_observation_stats(
     ) or 0
 
     # Verification progress pill. This must count the population the
-    # Observations view actually shows — detections that HAVE an
+    # Labels view actually shows — detections that HAVE an
     # embedding AND pass the project's threshold-or-verified rule —
     # mirroring the similarity-sort query. Counting the raw embeddable
     # population instead (no threshold, embedding not required) would
-    # report e.g. 95% while every on-screen observation is verified,
+    # report e.g. 95% while every on-screen label is verified,
     # because below-threshold / not-yet-embedded detections drag it
     # down even though they never appear here.
     threshold = project.detection_threshold if project else 0.0
@@ -215,7 +215,7 @@ def get_observation_stats(
         .first()
     )
 
-    return ObservationStatsResponse(
+    return LabelStatsResponse(
         total_detections=total,
         reviewable_detections=reviewable,
         verified_detections=verified,

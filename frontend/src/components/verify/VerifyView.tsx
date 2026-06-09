@@ -1,29 +1,24 @@
 /**
- * Verify view — the Edit page body, decoupled from the page chrome.
+ * Verify view — the Observations page body, decoupled from page chrome.
  *
  * Keeps the `Verify*` name because it operates on the `verified` data
- * model; the user-facing page/step it powers is called "Edit". Pure
- * presentational: takes a `projectId` prop and owns the state +
- * queries + render needed to show the same dataset under three
- * groupings (Observations / Media / Events), switched via the "View
- * as" dropdown in the filter bar (no tabs). Mounted in two contexts:
+ * model. It renders the event gallery: a filter bar, a grid of
+ * `EventCard`s, and the `EventDetailModal` (gallery + tools on the
+ * left, panel on the right). The per-detection label-cleanup view lives
+ * separately in `LabelsTab` / the Labels page. Mounted in two contexts:
  *
- * - Research projects: wrapped by `pages/EditPage.tsx`, which adds the
- *   canonical page chrome (min-h-screen, header with h1 "Edit",
- *   subtitle, DiagnosticReportButton) and the `<main>` container.
- * - Folder runs: wrapped by `pages/folder-run/FolderRunEditStep.tsx`,
- *   which mounts this inside the folder-run stepper with no extra
- *   header (the step header is enough) and a sticky Back / Continue
- *   bar below.
+ * - Research projects: wrapped by `pages/ObservationsPage.tsx`, which
+ *   adds the page chrome (header "Observations", DiagnosticReportButton).
+ * - Folder runs: wrapped by `pages/folder-run/FolderRunObservationsStep`,
+ *   which mounts it inside the stepper with a sticky Back / Continue bar.
  *
- * Filter URL state lives in `useSearchParams`, which is path-agnostic
- * — the same filter wiring works on `/projects/<id>/edit` and on
- * `/folder-runs/<id>/edit` without any route-aware code here.
+ * Filter URL state lives in `useSearchParams`, path-agnostic so the same
+ * wiring works on `/projects/<id>/observations` and the folder-run step.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   CircleHelp,
   Image as ImageIcon,
@@ -49,7 +44,6 @@ import type {
   EventFilterParams,
   VerificationFilter,
   VerifySort,
-  VerifyViewMode,
 } from "../../api/types";
 
 import { EventCollage } from "./EventCollage";
@@ -58,8 +52,6 @@ import { VerifyFilterBar } from "./VerifyFilterBar";
 import { hasAnyActiveFilter } from "./FilterChips";
 import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { WelcomePopover } from "./WelcomePopover";
-import { FilesTab } from "./FilesTab";
-import { ObservationsTab } from "./ObservationsTab";
 import { SortSelector } from "./SortSelector";
 import {
   VerifyProgressPill,
@@ -69,7 +61,6 @@ import {
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
 
 const EVENTS_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
-
 
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
@@ -107,7 +98,6 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   // Empty defaults to "hide": most users don't want to scroll blank
   // tiles / all-blank events, and it's one click to "All". Absent
   // param ⇒ "hide"; an explicit "all" / "show_only" is persisted.
-  // (Mirrors the Observations view defaulting to "unverified".)
   const empty = sp.get("empty") as EventFilterParams["empty"] | null;
   filters.empty = empty ?? "hide";
   const minC = sp.get("min_confidence");
@@ -156,14 +146,10 @@ function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
 
 export interface VerifyViewProps {
   projectId: string;
-  /** Forwarded to the Observations tab so a host page (folder-run Edit
-   *  step) can hide its sticky nav while a bulk selection is live. */
-  onSelectionChange?: (count: number) => void;
 }
 
-export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
+export function VerifyView({ projectId }: VerifyViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -174,47 +160,6 @@ export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
     setShowEventsWelcome(false);
     localStorage.setItem("addaxai:verifyWelcomeDismissed", "1");
   }, []);
-
-  // View grouping from URL (the "View as" dropdown in the filter bar).
-  const rawView = searchParams.get("view");
-  const activeView: VerifyViewMode =
-    rawView === "media" || rawView === "events" ? rawView : "observations";
-  const setActiveView = useCallback(
-    (view: VerifyViewMode) => {
-      // Cancel in-flight queries for the view we are leaving so the browser
-      // connection pool isn't tied up loading data that is about to be hidden.
-      if (view !== "events") {
-        queryClient.cancelQueries({ queryKey: ["events"] });
-        queryClient.cancelQueries({ queryKey: ["event-count-filtered"] });
-      }
-      if (view !== "media") {
-        queryClient.cancelQueries({ queryKey: ["files-for-verify"] });
-        queryClient.cancelQueries({ queryKey: ["files-count-for-verify"] });
-        queryClient.cancelQueries({ queryKey: ["files-verification-stats"] });
-      }
-      setSearchParams(
-        (prev) => {
-          // Observations is the default view, so it has no ?view= param.
-          if (view === "observations") {
-            prev.delete("view");
-          } else {
-            prev.set("view", view);
-          }
-          // Observations-only params are stripped when leaving Observations.
-          if (view !== "observations") {
-            prev.delete("mode");
-            prev.delete("anchor");
-            for (const key of [...prev.keys()]) {
-              if (key.startsWith("obs_")) prev.delete(key);
-            }
-          }
-          return prev;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams, queryClient],
-  );
 
   // Parse filters from URL
   const filters = useMemo(
@@ -237,26 +182,9 @@ export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
 
   const setFilters = useCallback(
     (next: EventFilterParams) => {
-      const sp = filtersToSearchParams(next);
-      // Preserve the active view. Observations is the implicit default
-      // and has no view= param; Events and Media keep theirs so a
-      // filter edit doesn't warp the user back to Observations.
-      if (activeView !== "observations") sp.set("view", activeView);
-      const mode = searchParams.get("mode");
-      if (mode) sp.set("mode", mode);
-      const anchor = searchParams.get("anchor");
-      if (anchor) sp.set("anchor", anchor);
-      // Preserve Observations-owned filter params (obs_*). Events and Files
-      // share the unprefixed filter params above; Observations has its own
-      // namespace and must survive a shared-filter edit from another view.
-      for (const key of [...searchParams.keys()]) {
-        if (key.startsWith("obs_")) {
-          sp.set(key, searchParams.get(key)!);
-        }
-      }
-      setSearchParams(sp, { replace: true });
+      setSearchParams(filtersToSearchParams(next), { replace: true });
     },
-    [setSearchParams, activeView, searchParams],
+    [setSearchParams],
   );
 
   // Listen for navigation events from the modal
@@ -298,14 +226,9 @@ export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
   const { data: verificationStats } = useQuery({
     queryKey: ["events", "verification-stats", projectId],
     queryFn: () => eventsApi.verificationStats(projectId),
-    enabled: activeView === "events",
   });
 
-  // Data queries for Events and Files share filters, so Events-only data
-  // fetches below gate on activeView === "events" to avoid busy connections
-  // while sitting on the Files or Observations tab.
-
-  // Get events with debounced filters (only when Events tab is active)
+  // Get events with debounced filters
   const {
     data: events,
     isLoading,
@@ -320,7 +243,6 @@ export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
         limit: PAGE_SIZE,
         filters: debouncedFilters,
       }),
-    enabled: activeView === "events",
     placeholderData: (prev) => prev,
   });
 
@@ -350,161 +272,136 @@ export function VerifyView({ projectId, onSelectionChange }: VerifyViewProps) {
 
   return (
     <div className="space-y-4">
-      {/* No tabs: the "View as" dropdown inside the filter bar switches
-          the grouping, so the user reads one dataset shown three ways. */}
-      {activeView === "media" ? (
-        <FilesTab
-          projectId={projectId}
-          filters={filters}
-          onFiltersChange={setFilters}
-          classificationModelId={project?.classification_model_id ?? null}
-          view={activeView}
-          onViewChange={setActiveView}
-        />
-      ) : activeView === "events" ? (
-        <>
-          <VerifyFilterBar
-            filters={filters}
-            onChange={setFilters}
-            projectId={projectId}
-            classificationModelId={project?.classification_model_id}
-            detectionFloor={detectionThreshold}
-            countBy="event"
-            view={activeView}
-            onViewChange={setActiveView}
+      <VerifyFilterBar
+        filters={filters}
+        onChange={setFilters}
+        projectId={projectId}
+        classificationModelId={project?.classification_model_id}
+        detectionFloor={detectionThreshold}
+        countBy="event"
+      />
+      {totalEvents > 0 && verificationStats && (
+        <VerifyToolbar>
+          <VerifyToolbarIcon
+            icon={CircleHelp}
+            title="Help"
+            onClick={() => setHelpOpen(true)}
           />
-          {totalEvents > 0 && verificationStats && (
-            <VerifyToolbar>
-              <VerifyToolbarIcon
-                icon={CircleHelp}
-                title="Help"
-                onClick={() => setHelpOpen(true)}
-              />
-              <SortSelector
-                sort={filters.sort ?? "newest"}
-                seed={filters.seed ?? null}
-                availableSorts={EVENTS_SORT_MODES}
-                onChange={(next, seed) => {
-                  const updated: EventFilterParams = { ...filters };
-                  if (next === "newest") delete updated.sort;
-                  else updated.sort = next;
-                  if (seed === null) delete updated.seed;
-                  else updated.seed = seed;
-                  setFilters(updated);
-                }}
-              />
-              <VerifyProgressPill
-                pct={
-                  verificationStats.total_detections > 0
-                    ? (verificationStats.verified_detections /
-                        verificationStats.total_detections) *
-                      100
-                    : 0
-                }
-                label="verified"
-              />
-            </VerifyToolbar>
-          )}
-          {/* Event cards */}
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : !events || events.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                <p className="text-lg font-medium text-muted-foreground">
-                  {totalEvents === 0
-                    ? "No events yet"
-                    : "No events match your filters"}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                  {totalEvents === 0
-                    ? "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."
-                    : "Try adjusting or clearing your filters to see more events."}
-                </p>
-                {totalEvents > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => setFilters({})}
-                  >
-                    Clear all filters
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <div
-                className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 transition-opacity ${
-                  isPlaceholderData ? "opacity-60" : ""
-                }`}
-              >
-                {events.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    detectionThreshold={detectionThreshold}
-                    onClick={() => setSelectedEventId(event.id)}
-                  />
-                ))}
-              </div>
-
-              {/* Pagination */}
-              <div className="flex items-center justify-center gap-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Showing {page * PAGE_SIZE + 1}-
-                  {page * PAGE_SIZE + events.length}
-                  {" of "}
-                  {isFiltered ? filteredEvents : totalEvents} events
-                  {isFetching && " (loading...)"}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!hasMore}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </>
-          )}
-
-          {/* Event detail modal */}
-          <EventDetailModal
-            eventId={selectedEventId}
-            projectId={projectId}
-            isOpen={!!selectedEventId}
-            onClose={() => setSelectedEventId(null)}
-            filters={debouncedFilters}
+          <SortSelector
+            sort={filters.sort ?? "newest"}
+            seed={filters.seed ?? null}
+            availableSorts={EVENTS_SORT_MODES}
+            onChange={(next, seed) => {
+              const updated: EventFilterParams = { ...filters };
+              if (next === "newest") delete updated.sort;
+              else updated.sort = next;
+              if (seed === null) delete updated.seed;
+              else updated.seed = seed;
+              setFilters(updated);
+            }}
           />
-        </>
-      ) : (
-        <ObservationsTab
-          projectId={projectId}
-          classificationModelId={project?.classification_model_id ?? null}
-          view={activeView}
-          onViewChange={setActiveView}
-          onSelectionChange={onSelectionChange}
-        />
+          <VerifyProgressPill
+            pct={
+              verificationStats.events_total > 0
+                ? (verificationStats.events_fully_verified /
+                    verificationStats.events_total) *
+                  100
+                : 0
+            }
+            label="verified"
+          />
+        </VerifyToolbar>
       )}
+      {/* Event cards */}
+      {isLoading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : !events || events.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <p className="text-lg font-medium text-muted-foreground">
+              {totalEvents === 0
+                ? "No events yet"
+                : "No events match your filters"}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              {totalEvents === 0
+                ? "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."
+                : "Try adjusting or clearing your filters to see more events."}
+            </p>
+            {totalEvents > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => setFilters({})}
+              >
+                Clear all filters
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div
+            className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 transition-opacity ${
+              isPlaceholderData ? "opacity-60" : ""
+            }`}
+          >
+            {events.map((event) => (
+              <EventCard
+                key={event.id}
+                event={event}
+                detectionThreshold={detectionThreshold}
+                onClick={() => setSelectedEventId(event.id)}
+              />
+            ))}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Showing {page * PAGE_SIZE + 1}-
+              {page * PAGE_SIZE + events.length}
+              {" of "}
+              {isFiltered ? filteredEvents : totalEvents} events
+              {isFetching && " (loading...)"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!hasMore}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* Event detail modal */}
+      <EventDetailModal
+        eventId={selectedEventId}
+        projectId={projectId}
+        isOpen={!!selectedEventId}
+        onClose={() => setSelectedEventId(null)}
+        filters={debouncedFilters}
+      />
 
       <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <WelcomePopover
-        open={activeView === "events" && showEventsWelcome && totalEvents > 0}
+        open={showEventsWelcome && totalEvents > 0}
         onDismiss={handleDismissEventsWelcome}
       />
     </div>

@@ -7,7 +7,6 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.api.schemas.detection import (
     DetectionCreate,
     DetectionCreateHuman,
-    DetectionCreateObservation,
     DetectionUpdate,
 )
 from app.models import Deployment, Detection, File
@@ -222,88 +220,6 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     else:
         # Unclassified (MD-only) — share the builtin taxonomy row so
         # this detection gets the same color as the MD-produced ones.
-        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
-        from app.models.label_taxonomy import LabelTaxonomy
-
-        builtin = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name == data.category,
-            )
-            .first()
-        )
-        if builtin:
-            db_detection.label_taxonomy_id = builtin.id
-            db_detection.common_name = builtin.common_name
-            db_detection.scientific_name = builtin.scientific_name
-
-    db.commit()
-    db.refresh(db_detection)
-    return db_detection
-
-
-def create_observation(
-    db: Session, data: DetectionCreateObservation
-) -> Detection:
-    """
-    Create an event-level observation (no bbox).
-
-    Sets bbox_* = NULL, classification_method="human", confidence=1.0,
-    verified=True. Taxonomy resolution mirrors `create_human_detection`
-    so the new row picks up the same colour and scientific_name as AI-
-    produced rows with the same label.
-
-    `frame_number` is set to the parent video's `best_frame_number`
-    (or NULL for images). This makes observations sit in the same
-    MaxN group as the AI's best-frame bboxes: AI says "3 deer visible
-    in the best frame", user adds 7 observations for the rest of the
-    clip, and the group counts 10. Without this, observations would
-    land in their own NULL-frame_number group and MaxN would take the
-    max of (3, 7) = 7 instead of 10. The "anchor to best frame"
-    convention also matches how the verify UI thinks about a video:
-    the best frame is the canonical moment, observations are
-    additional individuals not visible in that single still.
-    """
-    file = db.query(File).filter(File.id == data.file_id).first()
-    frame_number = file.best_frame_number if file else None
-
-    db_detection = Detection(
-        file_id=data.file_id,
-        job_id=None,
-        category=data.category,
-        confidence=1.0,
-        bbox_x=None,
-        bbox_y=None,
-        bbox_width=None,
-        bbox_height=None,
-        label=data.label,
-        label_confidence=1.0 if data.label else None,
-        classification_method="human",
-        frame_number=frame_number,
-        verified=True,
-        verified_at_utc=datetime.now(UTC),
-    )
-    db.add(db_detection)
-    db.flush()
-
-    if data.label:
-        db_detection.label_taxonomy_id = _resolve_detection_taxonomy(
-            db, db_detection, data.label
-        )
-        from app.ml.taxonomic_rollup import resolve_label_names
-        from app.models.label_taxonomy import LabelTaxonomy
-
-        tax = (
-            db.query(LabelTaxonomy).get(db_detection.label_taxonomy_id)
-            if db_detection.label_taxonomy_id
-            else None
-        )
-        (
-            db_detection.common_name,
-            db_detection.scientific_name,
-        ) = resolve_label_names(data.label, tax, data.category)
-    else:
         from app.ml.taxonomy_db import BUILTIN_MODEL_ID
         from app.models.label_taxonomy import LabelTaxonomy
 

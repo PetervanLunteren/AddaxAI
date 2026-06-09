@@ -28,9 +28,9 @@ from app.api.routers import (
     files_router,
     folder_runs_router,
     jobs_router,
+    labels_router,
     logs_router,
     ml_models_router,
-    observations_router,
     projects_router,
     setup_router,
     sites_router,
@@ -540,7 +540,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(logs_router)
     app.include_router(ml_models_router)
-    app.include_router(observations_router)
+    app.include_router(labels_router)
     app.include_router(statistics_router)
     app.include_router(websocket_router)
 

@@ -413,3 +413,61 @@ def test_event_summary_includes_collage_file_ids(client, db):
     # No EventObservation rows in this fixture, so the only padding source
     # is the file by max detection confidence: one file → one collage tile.
     assert summary["collage_file_ids"] == [ev.files[0].id]
+
+
+def test_event_verify_and_count_endpoints(client, db):
+    """The Observations-page flow: read counts, verify, edit a count
+    (which clears the sign-off), and add a species the AI missed."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    p = make_project(db, detection_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    det = make_detection(
+        db, file_id=ev.files[0].id, category="animal", label="cow",
+        confidence=0.9,
+    )
+    # Link a taxonomy so the count list resolves display names (regression
+    # guard: the row item must read scientific_name / common_name).
+    tax = LabelTaxonomy(
+        name="cow", level="species", classification_model_id="",
+        project_id=p.id, common_name="Cow", scientific_name="Bos taurus",
+    )
+    db.add(tax)
+    db.flush()
+    det.label_taxonomy_id = tax.id
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+
+    data = client.get(f"/api/events/{ev.id}").json()
+    assert data["verified"] is False
+    assert len(data["observations"]) == 1
+    obs = data["observations"][0]
+    assert obs["effective_count"] == 1
+    assert obs["scientific_name"] == "Bos taurus"
+    assert obs["common_name"] == "Cow"
+    obs_id = obs["id"]
+
+    data = client.patch(
+        f"/api/events/{ev.id}/verify", json={"verified": True}
+    ).json()
+    assert data["verified"] is True
+
+    # Bumping a count clears the sign-off.
+    data = client.patch(
+        f"/api/events/{ev.id}/observations/{obs_id}", json={"count": 3}
+    ).json()
+    assert data["observations"][0]["effective_count"] == 3
+    assert data["verified"] is False
+
+    # Add a species the AI never detected.
+    data = client.post(
+        f"/api/events/{ev.id}/observations",
+        json={"category": "animal", "label": "fox", "count": 2},
+    ).json()
+    by_label = {o["label"]: o for o in data["observations"]}
+    assert by_label["fox"]["effective_count"] == 2

@@ -63,7 +63,8 @@ const INSIGHTS_LABELS: Record<string, string> = {
 const PROJECT_PAGE_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   process: "Process",
-  edit: "Edit",
+  labels: "Labels",
+  observations: "Observations",
   sites: "Sites",
   deployments: "Deployments",
   export: "Export",
@@ -74,7 +75,8 @@ const PROJECT_PAGE_LABELS: Record<string, string> = {
 // FolderRunStep type and the URL slugs.
 const FOLDER_RUN_STEP_LABELS: Record<string, string> = {
   model: "Setup",
-  edit: "Edit",
+  labels: "Labels",
+  observations: "Observations",
   overview: "Summary",
   save: "Output",
 };

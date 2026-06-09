@@ -26,10 +26,8 @@ import {
   RotateCcw,
   FolderOpen,
   Play,
-  Binoculars,
   Tag,
 } from "lucide-react";
-import { toast } from "sonner";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -45,6 +43,7 @@ import { Slider } from "../ui/slider";
 import type { EventFilterParams, FileWithDetections } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
 import { AnnotationCanvas } from "./AnnotationCanvas";
+import { EventCountPanel } from "./EventCountPanel";
 import { FileVerificationPanel } from "./FileVerificationPanel";
 import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
@@ -415,30 +414,6 @@ export function EventDetailModal({
   });
 
 
-  // Direct-action observation create. Same flow as Draw-box: uses
-  // the currently-active species (auto-default or Tag-picker override)
-  // and submits immediately, no confirmation popover.
-  const observeMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentFile) return;
-      await detectionsApi.createObservation({
-        file_id: currentFile.id,
-        category: effectiveActiveLabel.category,
-        label: effectiveActiveLabel.label ?? null,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
-      const name =
-        effectiveActiveLabel.label ?? effectiveActiveLabel.category;
-      toast.success(`Added ${name} observation`);
-    },
-    onError: (err: Error) => {
-      toast.error("Could not add observation", { description: err.message });
-    },
-  });
-
   // Favorite mutation
   const favoriteMutation = useMutation({
     mutationFn: () => {
@@ -792,12 +767,6 @@ export function EventDetailModal({
             }
           }
           break;
-        case "n":
-        case "N":
-          if (e.metaKey || e.ctrlKey) break;
-          e.preventDefault();
-          observeMutation.mutate();
-          break;
         case "Delete":
         case "Backspace":
           if (selectedDetectionId) {
@@ -913,21 +882,9 @@ export function EventDetailModal({
               >
                 <SquareDashed className="h-4 w-4" />
               </Button>
-              {/* Add observation (N). Direct action using the active
-                  species; same pattern as Draw-box. */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => observeMutation.mutate()}
-                disabled={observeMutation.isPending}
-                title="Add observation without a bounding box (N)"
-              >
-                <Binoculars className="h-4 w-4" />
-              </Button>
               {/* Active species picker — always visible. Sets the
-                  species both Draw-box and Add-Obs apply. Auto-defaults
-                  to the event's most-common label; click to override. */}
+                  species applied to a newly drawn box. Auto-defaults to
+                  the event's most-common label; click to override. */}
               <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100">
                 <LabelPicker
                   value={effectiveActiveLabel.label || effectiveActiveLabel.category}
@@ -946,11 +903,11 @@ export function EventDetailModal({
                   triggerIcon={Tag}
                   triggerTitle={
                     effectiveActiveLabel.label
-                      ? `Set label for new boxes and observations · current: ${
+                      ? `Set label for new boxes · current: ${
                           effectiveActiveLabel.label.charAt(0).toUpperCase() +
                           effectiveActiveLabel.label.slice(1).replace(/[_-]+/g, " ")
                         }`
-                      : "Set label for new boxes and observations · not set (defaults to animal)"
+                      : "Set label for new boxes · not set (defaults to animal)"
                   }
                 />
               </div>
@@ -1339,6 +1296,18 @@ export function EventDetailModal({
               </Button>
             </div>
 
+            {/* Event-level species + count editor (the ecological record). */}
+            {event && (
+              <EventCountPanel
+                eventId={event.id}
+                projectId={projectId}
+                observations={event.observations}
+                verified={event.verified}
+                labelOptions={labelOptions}
+                labelOptionsLoading={labelOptionsLoading}
+              />
+            )}
+
             {/* File metadata card */}
             {currentFile && (
               <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
@@ -1352,7 +1321,7 @@ export function EventDetailModal({
                       className="text-[10px] leading-none font-medium px-1.5 py-0.5 rounded-sm capitalize"
                       style={{ backgroundColor: getSpeciesColor(frame.label_taxonomy_id || frame.label || ""), color: getSpeciesTextColor(frame.label_taxonomy_id || frame.label || "") }}
                     >
-                      MaxN: {frame.label} ×{frame.max_n}
+                      MaxN: {frame.label} ×{frame.effective_count}
                     </span>
                   ))}
                 </div>
@@ -1411,7 +1380,7 @@ export function EventDetailModal({
                       {[
                         ["← →", "Prev / next MaxN frame"],
                         ["Shift + ← →", "Prev / next frame in event"],
-                        ["↑ ↓", "Select observation"],
+                        ["↑ ↓", "Select detection"],
                         ["Shift + Click", "Select file range"],
                         [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all files"],
                         ["Scroll", "Zoom in / out"],
@@ -1434,9 +1403,8 @@ export function EventDetailModal({
                         ["E", "Empty + next unverified"],
                         ["F", "Flag / unflag file"],
                         ["Tab", "Change label"],
-                        ["N", "Add observation"],
                         ["D", "Draw a box"],
-                        ["Del", "Delete observation"],
+                        ["Del", "Delete detection"],
                       ].map(([key, action]) => (
                         <div key={key} className="flex items-center text-xs gap-3 h-7">
                           <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>

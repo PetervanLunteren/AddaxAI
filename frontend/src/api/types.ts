@@ -559,10 +559,6 @@ export type VerificationFilter =
   | "verified"
   | "unverified";
 
-/** Which grouping the verify/edit canvas shows the same dataset under.
- * Driven by the "View as" dropdown in the filter bar (no tabs). */
-export type VerifyViewMode = "observations" | "media" | "events";
-
 export type FlaggedFilter = "all" | "flagged" | "not_flagged";
 export type FavoritedFilter = "all" | "favorited" | "not_favorited";
 /** "show_only" = empties only, "hide" = no empties, "all" = both. */
@@ -675,6 +671,21 @@ export interface MaxNFrame {
   label: string | null;
   label_taxonomy_id: string | null;
   max_n: number;
+  /** Human-authoritative count (`human_count` if set, else `max_n`). */
+  effective_count: number;
+}
+
+/** One species row of an event's count list (the Observations-page count
+ *  editor). A human-only species the AI missed has `max_n: 0`. */
+export interface EventObservationItem {
+  id: string;
+  category: string;
+  label: string | null;
+  label_taxonomy_id: string | null;
+  common_name: string | null;
+  scientific_name: string | null;
+  max_n: number;
+  effective_count: number;
 }
 
 // Event types
@@ -705,9 +716,9 @@ export interface EventSummary {
   verified_maxn_count: number;
   total_maxn_count: number;
   /**
-   * AddaxAI rule: an event is verified when all its MaxN frames are
-   * verified. Blank events (no MaxN) are verified when any file is
-   * verified. Drives the corner verified badge on event cards.
+   * Explicit human sign-off on the event's species and counts (stored on
+   * Event.verified, set on the Observations page). Drives the corner
+   * verified badge on event cards.
    */
   is_verified: boolean;
   any_file_flagged: boolean;
@@ -722,6 +733,10 @@ export interface EventWithFiles {
   event_end_local: string;
   file_count: number;
   max_n_frames: MaxNFrame[];
+  /** Explicit human sign-off on the species and counts. */
+  verified: boolean;
+  /** Per-species count list (AI + human-only), highest count first. */
+  observations: EventObservationItem[];
   created_at_utc: string;
   site_name: string | null;
   files: FileWithDetections[];
@@ -863,7 +878,7 @@ export interface GeofenceResponse {
 // Observations types (embedding-backed sort + search for the Observations
 // verify tab). Filter shape carries site/date/label predicates; the
 // underlying cosine-similarity algorithm lives in the subprocess script.
-export interface ObservationFilters {
+export interface LabelFilters {
   labels?: string[];
   site_ids?: string[];
   date_from?: string;
@@ -882,7 +897,7 @@ export interface ObservationFilters {
  * to unverified detections with a descendant-promotion candidate and
  * orders them by cohort size desc, agreement asc. It's reachable only
  * via the toolbar's review pill, never the sort dropdown. */
-export type ObservationSort =
+export type LabelSort =
   | "similarity"
   | "similarity_reverse"
   | "newest"
@@ -891,8 +906,8 @@ export type ObservationSort =
   | "suggestions";
 
 export interface SortRequest {
-  filters?: ObservationFilters;
-  sort?: ObservationSort;
+  filters?: LabelFilters;
+  sort?: LabelSort;
   /** Per-user memory budget for one sort, set in the Observations
    * view-options popover (localStorage). Backend defaults to 20000
    * when omitted. */
@@ -901,7 +916,7 @@ export interface SortRequest {
 
 export interface SearchRequest {
   anchor_detection_id: string;
-  filters?: ObservationFilters;
+  filters?: LabelFilters;
   limit?: number;
   threshold?: number;
   /** Same cap the sort endpoint takes; bounds the candidate pool the
@@ -987,7 +1002,7 @@ export interface CohortsResponse {
   cohorts: CohortItem[];
 }
 
-export interface ObservationStatsResponse {
+export interface LabelStatsResponse {
   total_detections: number;
   /** Observations the view can show (embedded + threshold-or-verified).
    * Denominator for the verification pill. */

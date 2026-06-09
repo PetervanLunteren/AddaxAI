@@ -11,11 +11,14 @@ from datetime import datetime
 from sqlalchemy import insert
 
 from app.api.crud.event_observation import (
+    add_human_species,
     calculate_max_n_for_event,
     get_event_ids_for_detections,
     recalculate_max_n_for_project,
+    set_event_verified,
+    set_human_count,
 )
-from app.models.event import event_files
+from app.models.event import Event, event_files
 from app.models.event_observation import EventObservation
 from tests.conftest import (
     make_deployment,
@@ -357,3 +360,116 @@ def test_max_n_groups_per_frame_for_videos(db):
 
     obs_by_label = {o.label: o for o in obs}
     assert obs_by_label["deer"].max_n == 3
+
+
+# ── Human count layer + event sign-off ─────────────────────────────
+
+
+def test_human_count_overrides_and_survives_recompute(db):
+    """A human count overrides the AI MaxN for the effective count and
+    is preserved when MaxN is later recomputed."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert obs[0].max_n == 2
+    assert obs[0].effective_count == 2
+
+    # Saw 3 more the AI missed across other frames: bump to 5.
+    updated = set_human_count(db, obs[0].id, 5)
+    assert updated.human_count == 5
+    assert updated.effective_count == 5
+
+    # A later recompute keeps the human count, not just the AI MaxN.
+    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert len(recalc) == 1
+    assert recalc[0].max_n == 2
+    assert recalc[0].human_count == 5
+    assert recalc[0].effective_count == 5
+
+
+def test_add_human_species_creates_human_only_row_and_survives(db):
+    """A species the AI never detected is stored as a human-only row
+    (max_n=0, no frame) and survives a recompute."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)]}],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    obs = add_human_species(db, ev.id, category="animal", count=1, label="fox")
+    assert obs.max_n == 0
+    assert obs.human_count == 1
+    assert obs.max_n_file_id is None
+
+    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    by_label = {o.label: o for o in recalc}
+    assert "cow" in by_label
+    assert "fox" in by_label
+    assert by_label["fox"].max_n == 0
+    assert by_label["fox"].human_count == 1
+
+
+def test_recompute_clears_event_verified_when_counts_change(db):
+    """The event sign-off survives a no-op recompute but clears when the
+    species/count set actually changes."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, dets = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 3}],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    set_event_verified(db, ev.id, True)
+    assert db.get(Event, ev.id).verified is True
+
+    # No-op recompute (nothing changed) keeps the sign-off.
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert db.get(Event, ev.id).verified is True
+
+    # Removing a detection lowers MaxN 3 -> 2; the sign-off clears.
+    db.delete(dets[0])
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert db.get(Event, ev.id).verified is False
+
+
+def test_dashboard_total_observations_uses_effective_count(db):
+    """The dashboard observation total sums the effective count
+    (human override, else MaxN), not the raw AI MaxN."""
+    from app.api.crud.statistics import get_dashboard_overview
+
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+
+    assert get_dashboard_overview(db, project.id).total_observations == 2
+
+    set_human_count(db, obs[0].id, 5)
+    db.commit()
+    assert get_dashboard_overview(db, project.id).total_observations == 5

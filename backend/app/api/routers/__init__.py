@@ -9,9 +9,9 @@ from .export import router as export_router
 from .files import router as files_router
 from .folder_runs import router as folder_runs_router
 from .jobs import router as jobs_router
+from .labels import router as labels_router
 from .logs import router as logs_router
 from .ml_models import router as ml_models_router
-from .observations import router as observations_router
 from .projects import router as projects_router
 from .setup import router as setup_router
 from .sites import router as sites_router
@@ -30,7 +30,7 @@ __all__ = [
     "jobs_router",
     "logs_router",
     "ml_models_router",
-    "observations_router",
+    "labels_router",
     "projects_router",
     "setup_router",
     "sites_router",

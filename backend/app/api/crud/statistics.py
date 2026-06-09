@@ -263,7 +263,7 @@ def get_dashboard_overview(
 
     # Observation count (sum of MaxN across all events)
     obs_count_query = (
-        select(func.coalesce(func.sum(EventObservation.max_n), 0))
+        select(func.coalesce(func.sum(EventObservation.effective_count), 0))
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
@@ -413,7 +413,7 @@ def get_species_distribution(
             needs_join = True
 
     if count_mode == "max_n":
-        count_expr = func.sum(EventObservation.max_n)
+        count_expr = func.sum(EventObservation.effective_count)
     else:
         count_expr = func.count(distinct(Event.id))
 
@@ -588,7 +588,7 @@ def get_activity_pattern(
     query = (
         select(
             hour_expr.label("hour"),
-            func.sum(EventObservation.max_n).label("count"),
+            func.sum(EventObservation.effective_count).label("count"),
         )
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
@@ -722,7 +722,7 @@ def _event_decimal_hours_for_species(
     query = (
         select(
             Event.event_start_local.label("event_start"),
-            EventObservation.max_n.label("max_n"),
+            EventObservation.effective_count.label("max_n"),
         )
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
@@ -1047,7 +1047,7 @@ def get_detection_trend(
     query = (
         select(
             date_expr.label("date"),
-            func.sum(EventObservation.max_n).label("count"),
+            func.sum(EventObservation.effective_count).label("count"),
         )
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
@@ -1283,7 +1283,7 @@ def get_observation_rate_map(
     deployments that pass the active filters.
 
     Uses the same MaxN-per-event metric as the dashboard so rates are
-    consistent across pages: rate = sum(EventObservation.max_n) /
+    consistent across pages: rate = sum(EventObservation.effective_count) /
     max(1, trap_nights) * 100. Sites with no effort and no observations
     under the active filters are skipped. Sites with effort but zero
     matching observations are kept (hollow markers) so the user can see
@@ -1360,7 +1360,7 @@ def get_observation_rate_map(
             Site.name.label("site_name"),
             Site.latitude.label("latitude"),
             Site.longitude.label("longitude"),
-            func.coalesce(func.sum(EventObservation.max_n), 0).label("obs_count"),
+            func.coalesce(func.sum(EventObservation.effective_count), 0).label("obs_count"),
         )
         .select_from(Deployment)
         .join(Site, Deployment.site_id == Site.id)
@@ -1383,7 +1383,7 @@ def get_observation_rate_map(
                 EventObservation.label_taxonomy_id.label("label_taxonomy_id"),
                 LabelTaxonomy.scientific_name.label("scientific_name"),
                 LabelTaxonomy.common_name.label("common_name"),
-                func.sum(EventObservation.max_n).label("count"),
+                func.sum(EventObservation.effective_count).label("count"),
             )
             .select_from(EventObservation)
             .join(Event, Event.id == EventObservation.event_id)
@@ -1401,7 +1401,7 @@ def get_observation_rate_map(
                 LabelTaxonomy.scientific_name,
                 LabelTaxonomy.common_name,
             )
-            .order_by(func.sum(EventObservation.max_n).desc())
+            .order_by(func.sum(EventObservation.effective_count).desc())
         )
 
         if clip_start:

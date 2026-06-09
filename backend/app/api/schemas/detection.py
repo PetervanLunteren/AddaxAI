@@ -115,27 +115,6 @@ class DetectionCreateHuman(BaseModel):
     frame_number: int | None = Field(None, ge=0)
 
 
-class DetectionCreateObservation(BaseModel):
-    """Schema for creating an event-level observation (no bbox).
-
-    Used when a user spots an animal in a video clip that the AI missed,
-    or that's only visible in a non-best frame. Per Camtrap-DP this maps
-    to observationLevel="event" with no spatial annotation. One row per
-    individual seen; the user adds the button N times for N animals.
-
-    Deliberately has no `frame_number` field. Observations are file-
-    level facts ("this clip contains a deer"), not frame-level
-    annotations — that's what the AI's bboxed detections are for. The
-    backend hardcodes `frame_number=NULL` so all observations on the
-    same file with the same label collapse into one MaxN group and
-    count additively, matching the Camtrap-DP convention.
-    """
-
-    file_id: str = Field(..., description="ID of the file")
-    category: DetectionCategory = Field(..., description="Detection category")
-    label: str | None = Field(None, max_length=100)
-
-
 class DetectionUpdate(BaseModel):
     """Schema for updating a detection (all fields optional)."""
 

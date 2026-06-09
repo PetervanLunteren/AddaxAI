@@ -33,19 +33,23 @@ def calculate_max_n_for_event(
     detection_threshold: float,
 ) -> list[EventObservation]:
     """
-    Calculate and store MaxN per label for a single event.
+    Recalculate the AI-derived MaxN per species for a single event, while
+    preserving the human-authoritative data layered on top.
 
     Algorithm:
-    1. Get all detections in this event's files that pass the threshold
-    2. Group by (file_id, effective_label) to count detections per file,
-       summing detection confidence per group
-    3. For each label, find the file with the maximum count (= MaxN).
-       Ties are broken by the highest summed detection confidence, so the
-       chosen frame is the one where the model is most certain about the
-       animals it sees.
-    4. Replace existing EventObservation rows with new ones
+    1. Count detections per (file, frame, taxonomy) and take the maximum
+       count per species (= MaxN). Ties break on summed confidence.
+    2. Rebuild the event's `event_observations` rows: one per AI species
+       (carrying forward any human_count set for it) plus any human-only
+       species the AI did not detect this round (max_n=0, no frame).
+    3. Clear `Event.verified` when the effective species/count set changed
+       (a Labels-page relabel/add/delete that moves a count un-signs the
+       event); a pure detection-verify that leaves counts unchanged does not.
 
-    Returns the created EventObservation rows.
+    The human layer (`human_count`, human-only rows) is keyed by
+    `label_taxonomy_id or label` so it survives the delete-and-rebuild.
+
+    Returns the rebuilt EventObservation rows.
     """
     # Group by label_taxonomy_id (authoritative), falling back to
     # COALESCE(label, category) for display string.
@@ -80,14 +84,22 @@ def calculate_max_n_for_event(
         .all()
     )
 
-    if not counts:
-        # No detections passing threshold: clear any existing observations
-        db.execute(
-            delete(EventObservation).where(
-                EventObservation.event_id == event_id
-            )
-        )
-        return []
+    # Snapshot the existing rows so the human layer survives the rebuild
+    # and so we can detect whether the effective set changed.
+    existing = (
+        db.query(EventObservation)
+        .filter(EventObservation.event_id == event_id)
+        .all()
+    )
+    prior_human: dict[str, int] = {}
+    prior_effective: dict[str, int] = {}
+    for r in existing:
+        key = r.label_taxonomy_id or r.label
+        if key is None:
+            continue
+        if r.human_count is not None:
+            prior_human[key] = r.human_count
+        prior_effective[key] = r.effective_count
 
     # Find MaxN per taxonomy_id (or label string as fallback key). The
     # winning row's `file_id` is stored as max_n_file_id; for videos
@@ -99,8 +111,8 @@ def calculate_max_n_for_event(
     for file_id, _frame_number, taxonomy_id, label, category, det_count, conf_sum in counts:
         key = taxonomy_id or label
         new_score = (det_count, conf_sum)
-        existing = max_n_per_key.get(key)
-        if existing is None or new_score > (existing["count"], existing["conf_sum"]):
+        prev = max_n_per_key.get(key)
+        if prev is None or new_score > (prev["count"], prev["conf_sum"]):
             max_n_per_key[key] = {
                 "count": det_count,
                 "conf_sum": conf_sum,
@@ -110,15 +122,18 @@ def calculate_max_n_for_event(
                 "taxonomy_id": taxonomy_id,
             }
 
-    # Replace existing observations for this event
+    # Rebuild: delete then recreate the AI rows (carrying human_count) plus
+    # any surviving human-only rows.
     db.execute(
-        delete(EventObservation).where(
-            EventObservation.event_id == event_id
-        )
+        delete(EventObservation).where(EventObservation.event_id == event_id)
     )
 
-    observations = []
-    for data in max_n_per_key.values():
+    ai_keys = set(max_n_per_key.keys())
+    new_effective: dict[str, int] = {}
+    observations: list[EventObservation] = []
+
+    for key, data in max_n_per_key.items():
+        hc = prior_human.get(key)
         obs = EventObservation(
             id=str(uuid.uuid4()),
             event_id=event_id,
@@ -127,9 +142,43 @@ def calculate_max_n_for_event(
             category=data["category"],
             max_n=data["count"],
             max_n_file_id=data["file_id"],
+            human_count=hc,
         )
         db.add(obs)
         observations.append(obs)
+        new_effective[key] = hc if hc is not None else data["count"]
+
+    # Human-only species: recorded by a human, not detected by the AI this
+    # round. Keep them (max_n=0, no frame). Dedupe by key defensively.
+    seen_human_only: set[str] = set()
+    for r in existing:
+        key = r.label_taxonomy_id or r.label
+        if (
+            key is None
+            or key in ai_keys
+            or key in seen_human_only
+            or r.human_count is None
+        ):
+            continue
+        seen_human_only.add(key)
+        obs = EventObservation(
+            id=str(uuid.uuid4()),
+            event_id=event_id,
+            label=r.label,
+            label_taxonomy_id=r.label_taxonomy_id,
+            category=r.category,
+            max_n=0,
+            max_n_file_id=None,
+            human_count=r.human_count,
+        )
+        db.add(obs)
+        observations.append(obs)
+        new_effective[key] = r.human_count
+
+    if prior_effective != new_effective:
+        event = db.get(Event, event_id)
+        if event is not None and event.verified:
+            event.verified = False
 
     return observations
 
@@ -207,12 +256,18 @@ def get_thumbnail_file_id(db: Session, event_id: str) -> str | None:
 
 
 def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
-    """Get all MaxN frames for an event, ordered by max_n descending."""
+    """Get all MaxN frames for an event, ordered by max_n descending.
+
+    Only rows with a frame (`max_n_file_id`) are returned, so human-only
+    species (no AI frame) are excluded here. `effective_count` is the
+    human-authoritative count (`human_count` if set, else `max_n`).
+    """
     rows = (
         db.query(
             EventObservation.max_n_file_id,
             EventObservation.label,
             EventObservation.max_n,
+            EventObservation.human_count,
             EventObservation.label_taxonomy_id,
         )
         .filter(EventObservation.event_id == event_id)
@@ -225,10 +280,157 @@ def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
             "file_id": row[0],
             "label": row[1],
             "max_n": row[2],
-            "label_taxonomy_id": row[3],
+            "effective_count": row[3] if row[3] is not None else row[2],
+            "label_taxonomy_id": row[4],
         }
         for row in rows
     ]
+
+
+def list_event_observations(
+    db: Session, event_id: str
+) -> list[EventObservation]:
+    """All observation rows for an event (AI + human-only), highest
+    effective count first. Drives the Observations-page count editor."""
+    rows = (
+        db.query(EventObservation)
+        .filter(EventObservation.event_id == event_id)
+        .all()
+    )
+    return sorted(rows, key=lambda o: o.effective_count, reverse=True)
+
+
+def set_human_count(
+    db: Session, event_observation_id: str, count: int | None
+) -> EventObservation | None:
+    """Set (or clear, when count is None) the human count on one row.
+
+    Clears the event's sign-off, since the counts just changed. Returns
+    the updated row, or None when the id is unknown.
+    """
+    obs = (
+        db.query(EventObservation)
+        .filter(EventObservation.id == event_observation_id)
+        .first()
+    )
+    if obs is None:
+        return None
+    obs.human_count = count
+    event = db.get(Event, obs.event_id)
+    if event is not None:
+        event.verified = False
+    db.commit()
+    db.refresh(obs)
+    return obs
+
+
+def add_human_species(
+    db: Session,
+    event_id: str,
+    category: str,
+    count: int,
+    label: str | None = None,
+    label_taxonomy_id: str | None = None,
+) -> EventObservation:
+    """Record a species the AI missed entirely (or bump an existing row).
+
+    If a row already matches the species (by taxonomy id, else label) its
+    human_count is set; otherwise a human-only row is created (max_n=0, no
+    frame). Clears the event's sign-off. Returns the row.
+    """
+    # Resolve the taxonomy id from the label when not supplied, so a
+    # human-added species keys to the same row the AI would produce and
+    # doesn't split into a duplicate if the AI later detects it.
+    if label_taxonomy_id is None and label:
+        from app.ml.taxonomy_db import resolve_taxonomy_id
+
+        project_id = (
+            db.query(Deployment.project_id)
+            .join(Event, Event.deployment_id == Deployment.id)
+            .filter(Event.id == event_id)
+            .scalar()
+        )
+        if project_id:
+            label_taxonomy_id = resolve_taxonomy_id(label, project_id, db)
+
+    query = db.query(EventObservation).filter(
+        EventObservation.event_id == event_id
+    )
+    if label_taxonomy_id is not None:
+        existing = query.filter(
+            EventObservation.label_taxonomy_id == label_taxonomy_id
+        ).first()
+    else:
+        existing = query.filter(
+            EventObservation.label_taxonomy_id.is_(None),
+            EventObservation.label == label,
+            EventObservation.category == category,
+        ).first()
+
+    if existing is not None:
+        existing.human_count = count
+        obs = existing
+    else:
+        obs = EventObservation(
+            id=str(uuid.uuid4()),
+            event_id=event_id,
+            label=label,
+            label_taxonomy_id=label_taxonomy_id,
+            category=category,
+            max_n=0,
+            max_n_file_id=None,
+            human_count=count,
+        )
+        db.add(obs)
+
+    event = db.get(Event, event_id)
+    if event is not None:
+        event.verified = False
+    db.commit()
+    db.refresh(obs)
+    return obs
+
+
+def delete_event_observation(
+    db: Session, event_observation_id: str
+) -> str | None:
+    """Remove the human contribution to one observation row.
+
+    A human-only row (the AI detected nothing: max_n=0) is deleted
+    outright; an AI row keeps its box-derived MaxN but drops the human
+    override. Clears the event's sign-off. Returns the event id, or None
+    when the id is unknown.
+    """
+    obs = (
+        db.query(EventObservation)
+        .filter(EventObservation.id == event_observation_id)
+        .first()
+    )
+    if obs is None:
+        return None
+    event_id = obs.event_id
+    if obs.max_n == 0:
+        db.delete(obs)
+    else:
+        obs.human_count = None
+    event = db.get(Event, event_id)
+    if event is not None:
+        event.verified = False
+    db.commit()
+    return event_id
+
+
+def set_event_verified(
+    db: Session, event_id: str, verified: bool
+) -> Event | None:
+    """Set the explicit human sign-off on an event's species and counts."""
+    event = db.get(Event, event_id)
+    if event is None:
+        return None
+    event.verified = verified
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 def get_project_threshold_for_detections(

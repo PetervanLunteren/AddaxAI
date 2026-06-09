@@ -1,18 +1,12 @@
 /**
- * Edit page — thin wrapper around `VerifyView`.
+ * Observations page — thin wrapper around `VerifyView`.
  *
- * Provides the canonical research-projects page chrome (full-viewport
- * background, top header with title + subtitle + DiagnosticReportButton,
- * `<main>` container at `max-w-7xl`) and hands `projectId` from the
- * URL to `VerifyView`, which owns all the page body, state, queries,
- * and modals.
- *
- * The same `VerifyView` is also mounted inline inside the folder-run
- * stepper Edit step (`FolderRunEditStep`). Keeping the body in one
- * component means filter logic, sort modes, modals, and pagination
- * behave identically across the two flows. (The shared component keeps
- * the `Verify*` name because it operates on the `verified` data; only
- * the page/route is renamed to "Edit".)
+ * One of the two verification pages (the other is `LabelsPage`).
+ * Observations is the ecological record: review each event's media in
+ * the gallery and confirm the species and counts. Provides the
+ * canonical research-projects page chrome and hands `projectId` to
+ * `VerifyView`, which owns the event gallery, state, queries, and the
+ * event detail modal.
  */
 
 import { useParams } from "react-router-dom";
@@ -22,7 +16,7 @@ import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticRepo
 import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { VerifyView } from "../components/verify/VerifyView";
 
-export default function EditPage() {
+export default function ObservationsPage() {
   const { projectId } = useParams<{ projectId: string }>();
 
   // Drive the subtitle from the unfiltered event count. Same query key
@@ -41,10 +35,10 @@ export default function EditPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Edit</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Observations</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
-                  ? "Correct the AI's predictions"
+                  ? "Confirm the species and counts per event"
                   : "Run a deployment analysis to get started"}
               </p>
             </div>

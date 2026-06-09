@@ -1,23 +1,13 @@
 /**
- * Edit step (slug `edit`, optional).
+ * Labels step (slug `labels`, optional).
  *
- * Editing is optional, so the heavy editor grid is collapsed behind a
- * toggle. The default page is lightweight — title, caption, an "Open
- * editor" button, and the Back / Continue bar — so the obvious path is
- * to skip ahead. This was a direct response to user feedback that
- * landing on a wall of grid made the step feel required.
+ * First of the two verification steps. Per-detection label cleanup via
+ * the crop grid. Editing is optional, so the heavy grid is collapsed
+ * behind an "Open editor" toggle and the default page is lightweight so
+ * the obvious path is to skip ahead (direct response to feedback that a
+ * wall of grid made the step feel required).
  *
- * Only when the user opens the editor do we mount `VerifyView` (the
- * same grid used by the research-projects Edit page), which also means
- * its data isn't fetched until opted in.
- *
- * Layout above us is provided by `FolderRunLayout`, which switches to
- * `max-w-7xl` for this step so the grid breakpoints match the
- * research-projects verify exactly. The Back / Continue bar at the
- * bottom is `sticky` so the user can advance from anywhere in the
- * (potentially long) scrollable body once the editor is open.
- *
- * Continue PATCHes `step=overview` server-side and navigates onward.
+ * Continue PATCHes `step=observations` server-side and navigates onward.
  */
 
 import { useState } from "react";
@@ -28,27 +18,25 @@ import { ArrowLeft, ArrowRight, ChevronDown, Pencil } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { StepHeader } from "../../components/folder-run/StepHeader";
-import { VerifyView } from "../../components/verify/VerifyView";
+import { LabelsView } from "../../components/verify/LabelsView";
 import { folderRunsApi } from "../../api/folder-runs";
 import { useFolderRun } from "./FolderRunLayout";
 
-export function FolderRunEditStep() {
+export function FolderRunLabelsStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
   const [editorOpen, setEditorOpen] = useState(false);
-  // Track bulk-selection size from the embedded VerifyView. While a
+  // Track bulk-selection size from the embedded LabelsView. While a
   // selection is live, the sticky Back / Continue bar is hidden so the
-  // floating BulkActionBar has the bottom of the viewport to itself
-  // (no visual overlap, no accidental Continue mid-action). The bar
-  // returns when the user clears the selection.
+  // floating BulkActionBar has the bottom of the viewport to itself.
   const [selectionCount, setSelectionCount] = useState(0);
 
   const advance = useMutation({
-    mutationFn: () => folderRunsApi.updateStep(runId!, "overview"),
+    mutationFn: () => folderRunsApi.updateStep(runId!, "observations"),
     onSuccess: (next) => {
       queryClient.setQueryData(["folder-run", runId], next);
-      navigate(`/folder-runs/${runId}/overview`);
+      navigate(`/folder-runs/${runId}/observations`);
     },
   });
 
@@ -67,7 +55,6 @@ export function FolderRunEditStep() {
     );
   }
 
-  // Back / editor toggle / Continue, one row, middle centred.
   const actionRow = (
     <div className="grid grid-cols-3 items-center gap-3">
       <Button
@@ -107,16 +94,12 @@ export function FolderRunEditStep() {
     </div>
   );
 
-  // Collapsed: a lean carded decision point ("open the editor, or move
-  // on"). No grid mounted, no data fetched. It fills the same width as
-  // the open grid below, so opening the editor inserts the grid without
-  // the page width changing.
   if (!editorOpen) {
     return (
       <div className="space-y-6">
         <StepHeader
-          title="Edit predictions"
-          caption="Correct the AI's predictions if you want, or skip ahead."
+          title="Clean up labels"
+          caption="Fix the AI's species labels if you want, or skip ahead."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>
@@ -125,15 +108,13 @@ export function FolderRunEditStep() {
     );
   }
 
-  // Open: full-width grid with the action row pinned to the bottom so
-  // the user can advance from anywhere in the long scrollable body.
   return (
     <div className="space-y-6 pb-24">
       <StepHeader
-        title="Edit predictions"
-        caption="Correct the AI's predictions if you want, or skip ahead."
+        title="Clean up labels"
+        caption="Fix the AI's species labels if you want, or skip ahead."
       />
-      <VerifyView projectId={runId} onSelectionChange={setSelectionCount} />
+      <LabelsView projectId={runId} onSelectionChange={setSelectionCount} />
       {selectionCount === 0 && (
         <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="mx-auto max-w-7xl">{actionRow}</div>

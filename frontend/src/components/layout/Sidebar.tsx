@@ -12,6 +12,7 @@ import {
   GanttChartSquare,
   Grid3x3,
   LayoutDashboard,
+  Layers,
   Lightbulb,
   LineChart,
   Map,
@@ -53,7 +54,8 @@ export function Sidebar() {
   // from queueing an analysis through verifying and exporting results.
   const workItems: NavItem[] = [
     { to: `/projects/${projectId}/process`, icon: Play, label: "Process" },
-    { to: `/projects/${projectId}/edit`, icon: Pencil, label: "Edit" },
+    { to: `/projects/${projectId}/labels`, icon: Pencil, label: "Labels" },
+    { to: `/projects/${projectId}/observations`, icon: Layers, label: "Observations" },
     { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
     {
       to: `/projects/${projectId}/insights`,

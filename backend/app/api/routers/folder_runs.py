@@ -57,7 +57,7 @@ router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
 FolderRunStep = Literal[
-    "model", "edit", "overview", "save"
+    "model", "labels", "observations", "overview", "save"
 ]
 
 

@@ -7,7 +7,7 @@ Events are time-clustered groups of files within a deployment.
 import uuid
 from datetime import datetime, time
 
-from sqlalchemy import Integer, and_, delete, exists, func, insert, or_, select
+from sqlalchemy import Integer, delete, exists, func, insert, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
@@ -296,44 +296,13 @@ def _apply_event_filters(
         query = query.filter(exists(conf_subq))
 
     if verification in ("verified", "unverified"):
-        # AddaxAI rule: an event is verified when all its MaxN frames are
-        # verified; for blank events (no MaxN) the fallback is "any file
-        # verified". Matches the is_verified summary field and the stats
-        # bar, so the three surfaces always agree.
-        UnverifiedMaxNFile = aliased(File)
-        unverified_maxn_exists = exists(
-            select(EventObservation.id)
-            .join(
-                UnverifiedMaxNFile,
-                UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
-            )
-            .where(EventObservation.event_id == Event.id)
-            .where(EventObservation.max_n_file_id.isnot(None))
-            .where(UnverifiedMaxNFile.verified == False)  # noqa: E712
-        )
-        any_maxn_exists = exists(
-            select(EventObservation.id).where(
-                and_(
-                    EventObservation.event_id == Event.id,
-                    EventObservation.max_n_file_id.isnot(None),
-                )
-            )
-        )
-        AnyVerifiedFile = aliased(File)
-        any_verified_file_exists = exists(
-            select(event_files.c.event_id)
-            .join(AnyVerifiedFile, AnyVerifiedFile.id == event_files.c.file_id)
-            .where(event_files.c.event_id == Event.id)
-            .where(AnyVerifiedFile.verified == True)  # noqa: E712
-        )
-        verified_clause = or_(
-            and_(any_maxn_exists, ~unverified_maxn_exists),
-            and_(~any_maxn_exists, any_verified_file_exists),
-        )
+        # Event verification is an explicit human sign-off stored on
+        # Event.verified (set on the Observations page when the species
+        # and counts are confirmed). Distinct from Detection.verified.
         if verification == "verified":
-            query = query.filter(verified_clause)
+            query = query.filter(Event.verified == True)  # noqa: E712
         else:
-            query = query.filter(~verified_clause)
+            query = query.filter(Event.verified == False)  # noqa: E712
 
     if flagged in ("flagged", "not_flagged"):
         flagged_subq = (
@@ -623,13 +592,10 @@ def get_events_by_project(
             if file_verified_map.get(mf["file_id"], False)
         )
 
-        # Event verification (AddaxAI rule): all MaxN frames verified.
-        # Blank events (no MaxN) fall back to "any file verified" so they
-        # require an explicit user confirmation rather than auto-completing.
-        if total_maxn_count > 0:
-            is_verified = verified_maxn_count == total_maxn_count
-        else:
-            is_verified = any(f.verified for f in sorted_files)
+        # Event verification is the explicit human sign-off on species and
+        # counts, stored on Event.verified (set on the Observations page).
+        # The file-level verified_* counts above stay as secondary detail.
+        is_verified = event.verified
 
         # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
         thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
@@ -971,49 +937,17 @@ def get_event_verification_stats(
     total_detections = int(det_total_q.scalar() or 0)
     verified_detections = int(det_verified_q.scalar() or 0)
 
-    # Event-level verification: total and fully-verified counts.
-    # AddaxAI rule: an event is verified when all its MaxN frames are
-    # verified, or (for blank events with no MaxN) when any file in it
-    # is verified.
+    # Event-level verification: total and signed-off counts. Event
+    # verification is the explicit human sign-off stored on Event.verified.
     events_total_q = db.query(func.count(Event.id)).filter(
         Event.id.in_(select(event_ids_subq.c.id))
     )
     events_total = events_total_q.scalar() or 0
 
-    UnverifiedMaxNFile = aliased(File)
-    unverified_maxn_exists = exists(
-        select(EventObservation.id)
-        .join(
-            UnverifiedMaxNFile,
-            UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
-        )
-        .where(EventObservation.event_id == Event.id)
-        .where(EventObservation.max_n_file_id.isnot(None))
-        .where(UnverifiedMaxNFile.verified == False)  # noqa: E712
-    )
-    any_maxn_exists = exists(
-        select(EventObservation.id).where(
-            and_(
-                EventObservation.event_id == Event.id,
-                EventObservation.max_n_file_id.isnot(None),
-            )
-        )
-    )
-    AnyVerifiedFile = aliased(File)
-    any_verified_file_exists = exists(
-        select(event_files.c.event_id)
-        .join(AnyVerifiedFile, AnyVerifiedFile.id == event_files.c.file_id)
-        .where(event_files.c.event_id == Event.id)
-        .where(AnyVerifiedFile.verified == True)  # noqa: E712
-    )
-    events_fully_verified_clause = or_(
-        and_(any_maxn_exists, ~unverified_maxn_exists),
-        and_(~any_maxn_exists, any_verified_file_exists),
-    )
     events_fully_verified_q = (
         db.query(func.count(Event.id))
         .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .filter(events_fully_verified_clause)
+        .filter(Event.verified == True)  # noqa: E712
     )
     events_fully_verified = events_fully_verified_q.scalar() or 0
 

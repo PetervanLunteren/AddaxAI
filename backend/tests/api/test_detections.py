@@ -189,98 +189,10 @@ def test_bulk_dismiss_sets_and_clears_flag(client, db):
     assert d1.suggestion_dismissed is False
 
 
-# ── Event-level observations (no bbox) ─────────────────────────────
-
-
-def test_create_observation_on_image_has_null_frame_number(client, db):
-    """Images have no best frame, so observations land at NULL
-    frame_number — same as the AI's image detections, which keeps
-    them in the same MaxN group."""
-    f = _setup_file(db)
-    resp = client.post(
-        "/api/detections/observation",
-        json={"file_id": f.id, "category": "animal"},
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["bbox_x"] is None
-    assert data["bbox_y"] is None
-    assert data["bbox_width"] is None
-    assert data["bbox_height"] is None
-    assert data["category"] == "animal"
-    assert data["classification_method"] == "human"
-    assert data["confidence"] == 1.0
-    assert data["verified"] is True
-    assert data["verified_at_utc"] is not None
-    assert data["frame_number"] is None
-
-
-def test_create_observation_on_video_inherits_best_frame_number(client, db):
-    """Observations on a video are stamped with the video's
-    `best_frame_number`. This lands them in the same MaxN group as
-    the AI's best-frame detections, so verifying a clip ("I saw 7
-    more deer the AI missed") correctly bumps MaxN by 7."""
-    p = make_project(db)
-    s = make_site(db, project_id=p.id)
-    d = make_deployment(db, site_id=s.id)
-    f = make_file(
-        db,
-        deployment_id=d.id,
-        file_type="video",
-        best_frame_number=42,
-    )
-    resp = client.post(
-        "/api/detections/observation",
-        json={"file_id": f.id, "category": "animal", "label": "red deer"},
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["label"] == "red deer"
-    assert data["frame_number"] == 42
-
-
-def test_create_observation_ignores_frame_number_if_supplied(client, db):
-    """Even if a client sends `frame_number`, the backend overrides it
-    with the file's `best_frame_number` (or NULL for images). The
-    field is not part of the documented schema; this test pins the
-    deliberate override so a regression that honours client-supplied
-    frame numbers gets caught."""
-    f = _setup_file(db)
-    resp = client.post(
-        "/api/detections/observation",
-        json={
-            "file_id": f.id,
-            "category": "animal",
-            "label": "red deer",
-            "frame_number": 320,
-        },
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["label"] == "red deer"
-    assert data["label_confidence"] == 1.0
-    # Image fixture has no best_frame_number → observation stays null.
-    assert data["frame_number"] is None
-
-
-def test_get_crop_404s_for_no_bbox_observation(client, db):
-    """Event-level observations have no bbox to crop; the crop endpoint
-    should 404 cleanly rather than crash."""
-    f = _setup_file(db)
-    resp = client.post(
-        "/api/detections/observation",
-        json={"file_id": f.id, "category": "animal"},
-    )
-    det_id = resp.json()["id"]
-    crop_resp = client.get(f"/api/detections/{det_id}/crop")
-    assert crop_resp.status_code == 404
-
-
-def test_create_observation_schema_rejects_half_set_bbox(client, db):
-    """Pydantic guard: bbox fields must be all-set or all-null. The
-    /observation endpoint doesn't accept bbox at all, so this test
-    targets the bbox-drawn create endpoint with a partial bbox to
-    confirm the validator fires."""
+def test_create_detection_rejects_half_set_bbox(client, db):
+    """Pydantic guard: bbox fields must be all-set or all-null. Targets
+    the bbox-drawn create endpoint with a partial bbox to confirm the
+    validator fires."""
     f = _setup_file(db)
     resp = client.post(
         "/api/detections",

@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Ban, Check, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
 import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
-import { observationsApi } from "../../api/observations";
+import { labelsApi } from "../../api/labels";
 import { API_BASE_URL } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
@@ -67,7 +67,6 @@ export function DetectionDetailModal({
   labelOptions = [],
   labelOptionsLoading = false,
 }: DetectionDetailModalProps) {
-  const queryClient = useQueryClient();
   const [viewport, setViewport] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -176,7 +175,7 @@ export function DetectionDetailModal({
   const { data: neighborsData } = useQuery({
     queryKey: ["detection-neighbors", detection?.detection_id],
     queryFn: () =>
-      observationsApi.search(projectId!, {
+      labelsApi.search(projectId!, {
         anchor_detection_id: detection!.detection_id,
         limit: 11,
       }),

@@ -20,6 +20,7 @@ from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
+    make_event_with_files,
     make_file,
     make_project,
     make_site,
@@ -132,7 +133,7 @@ def test_export_observations_csv_happy_path(client, db):
         "bbox_width", "bbox_height", "frame_number", "classification_label",
         "classification_confidence", "taxon_class", "taxon_order",
         "taxon_family", "taxon_genus", "taxon_species",
-        "scientific_name", "common_name", "is_verified",
+        "scientific_name", "common_name", "is_verified", "count",
     ]
     cls_i = headers.index("classification_label")
     cat_i = headers.index("detection_category")
@@ -464,30 +465,44 @@ def test_export_camtrap_dp_blank_row_for_file_without_detections(client, db):
     assert obs_rows[1][2] == f.id
 
 
-def test_export_camtrap_dp_writes_event_level_for_no_bbox(client, db):
-    """An event-level observation (bbox null) emits observationLevel='event'
-    and blank bbox columns. Aligned with the Camtrap-DP standard, which
-    makes bboxX/Y/W/H optional and supports event-level rows."""
+def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
+    """Camtrap-DP dual model: one media-level row per bounding box, plus
+    one event-level row per species carrying the effective (human) count
+    with no bbox. Replaces the retired box-less observation flow."""
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        set_human_count,
+    )
+
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    f = make_file(
+    ev = make_event_with_files(
         db,
         deployment_id=deployment.id,
-        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
-        observation_type="animal",
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
-    make_detection(
+    det = make_detection(
         db,
-        file_id=f.id,
+        file_id=ev.files[0].id,
         category="animal",
-        confidence=1.0,
+        confidence=0.9,
         label="deer",
-        bbox_x=None,
-        bbox_y=None,
-        bbox_width=None,
-        bbox_height=None,
-        classification_method="human",
-        verified=True,
+        bbox_x=0.1,
+        bbox_y=0.1,
+        bbox_width=0.2,
+        bbox_height=0.2,
     )
+    tax = LabelTaxonomy(
+        name="deer", level="species", classification_model_id="",
+        project_id=project.id, common_name="Deer",
+        scientific_name="Cervidae",
+    )
+    db.add(tax)
+    db.flush()
+    det.label_taxonomy_id = tax.id
+    obs = calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    db.flush()
+    # Human bumps the deer count to 3 (more than any single frame showed).
+    set_human_count(db, obs[0].id, 3)
     db.commit()
 
     resp = _run_camtrap_dp_export(client, db, project.id)
@@ -497,19 +512,23 @@ def test_export_camtrap_dp_writes_event_level_for_no_bbox(client, db):
             io.StringIO(zf.read("observations.csv").decode())
         )
 
-    # Find the column indexes by name so the test survives header reorders.
     level_i = headers.index("observationLevel")
+    count_i = headers.index("count")
     bx_i = headers.index("bboxX")
-    by_i = headers.index("bboxY")
-    bw_i = headers.index("bboxWidth")
-    bh_i = headers.index("bboxHeight")
-    method_i = headers.index("classificationMethod")
+    sci_i = headers.index("scientificName")
 
-    assert len(obs_rows) == 1
-    row = obs_rows[0]
-    assert row[level_i] == "event"
-    assert row[bx_i] == row[by_i] == row[bw_i] == row[bh_i] == ""
-    assert row[method_i] == "human"
+    media = [r for r in obs_rows if r[level_i] == "media"]
+    event = [r for r in obs_rows if r[level_i] == "event"]
+    # One media-level row per box (the deer detection), bbox set, count 1.
+    assert len(media) == 1
+    assert media[0][bx_i] != ""
+    assert media[0][count_i] == "1"
+    # One event-level row per species carrying the effective count (3),
+    # no bbox, with the resolved scientific name.
+    assert len(event) == 1
+    assert event[0][count_i] == "3"
+    assert event[0][bx_i] == ""
+    assert event[0][sci_i] == "Cervidae"
 
 
 # ---------------------------------------------------------------------------

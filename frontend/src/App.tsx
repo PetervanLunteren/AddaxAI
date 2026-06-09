@@ -29,7 +29,8 @@ import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
-import EditPage from "./pages/EditPage";
+import LabelsPage from "./pages/LabelsPage";
+import ObservationsPage from "./pages/ObservationsPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import SetupPage from "./pages/SetupPage";
@@ -39,7 +40,8 @@ import { HomePage } from "./pages/HomePage";
 import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
 import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
 import { FolderRunOverviewStep } from "./pages/folder-run/FolderRunOverviewStep";
-import { FolderRunEditStep } from "./pages/folder-run/FolderRunEditStep";
+import { FolderRunLabelsStep } from "./pages/folder-run/FolderRunLabelsStep";
+import { FolderRunObservationsStep } from "./pages/folder-run/FolderRunObservationsStep";
 import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
@@ -386,7 +388,8 @@ function App() {
               <Route index element={<FolderRunResumeIndex />} />
               <Route path="model" element={<FolderRunModelStep />} />
               <Route path="overview" element={<FolderRunOverviewStep />} />
-              <Route path="edit" element={<FolderRunEditStep />} />
+              <Route path="labels" element={<FolderRunLabelsStep />} />
+              <Route path="observations" element={<FolderRunObservationsStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
             </Route>
 
@@ -396,7 +399,8 @@ function App() {
             <Route path="/projects/:projectId" element={<AppLayout />}>
               <Route index element={<ProjectIndexRoute />} />
               <Route path="process" element={<AnalysesPage />} />
-              <Route path="edit" element={<EditPage />} />
+              <Route path="labels" element={<LabelsPage />} />
+              <Route path="observations" element={<ObservationsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />

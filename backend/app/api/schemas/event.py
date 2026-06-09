@@ -17,6 +17,8 @@ class MaxNFrame(BaseModel):
     label: str | None = None
     label_taxonomy_id: str | None = None
     max_n: int
+    # Human-authoritative count (`human_count` if set, else `max_n`).
+    effective_count: int
 
 
 class EventSummary(BaseModel):
@@ -47,11 +49,9 @@ class EventSummary(BaseModel):
     total_count: int
     verified_maxn_count: int
     total_maxn_count: int
-    # `is_verified` encodes the AddaxAI rule: an event is verified when
-    # all of its MaxN frames are verified. For blank events (no MaxN
-    # frames), the fallback is "any file in the event is verified" so
-    # the user still makes an explicit confirmation for each blank
-    # cluster.
+    # Explicit human sign-off on the event's species and counts, stored
+    # on Event.verified (set on the Observations page). The verified_count
+    # / verified_maxn_count fields above are file-level secondary detail.
     is_verified: bool
     # Aggregated file-level state for the card corner cluster.
     any_file_flagged: bool
@@ -64,6 +64,22 @@ class EventSummary(BaseModel):
         return serialize_local_datetime(value)  # type: ignore[return-value]
 
 
+class EventObservationItem(BaseModel):
+    """One species row of an event's count list (the Observations-page
+    count editor). `effective_count` is the human-authoritative count
+    (`human_count` if set, else the AI-derived `max_n`). A human-only
+    species the AI missed has max_n=0."""
+
+    id: str
+    category: str
+    label: str | None = None
+    label_taxonomy_id: str | None = None
+    common_name: str | None = None
+    scientific_name: str | None = None
+    max_n: int
+    effective_count: int
+
+
 class EventWithFiles(BaseModel):
     """Event with all files and their detections."""
 
@@ -73,6 +89,10 @@ class EventWithFiles(BaseModel):
     event_end_local: datetime
     file_count: int
     max_n_frames: list[MaxNFrame]
+    # Explicit human sign-off on the species and counts.
+    verified: bool = False
+    # Per-species count list (AI + human-only), highest count first.
+    observations: list[EventObservationItem] = []
     created_at_utc: datetime
     site_name: str | None = None
     files: list[FileWithDetections]

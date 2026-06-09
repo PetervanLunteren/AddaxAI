@@ -130,43 +130,24 @@ export function FileVerificationPanel({
     });
   }, [file.detections, detectionThreshold, isVideo, file.best_frame_number]);
 
-  // Build lookup from labelOptions for taxonomy captions
-  const labelOptionsByValue = useMemo(() => {
-    const map = new Map<string, { displayName: string; caption: string | null; commonName: string | null }>();
-    for (const opt of labelOptions) {
-      map.set(opt.value, {
-        displayName: opt.displayName,
-        caption: opt.taxonomyCaption ?? null,
-        commonName: opt.label,
-      });
-    }
-    return map;
-  }, [labelOptions]);
-
+  // Group detections by label, naming each group under the active
+  // common/scientific species-name mode (resolved by getDetectionDisplayName).
   const groupedDetections = useMemo(() => {
-    const groups = new Map<string, {
-      count: number;
-      displayName: string;
-      commonName: string | null;
-      caption: string | null;
-    }>();
+    const groups = new Map<string, { count: number; displayName: string }>();
     for (const d of filteredDetections) {
       const label = d.label || d.category;
       const existing = groups.get(label);
       if (existing) {
         existing.count += 1;
       } else {
-        const opt = labelOptionsByValue.get(label);
         groups.set(label, {
           count: 1,
-          displayName: d.scientific_name || opt?.displayName || getDetectionDisplayName(d),
-          commonName: opt?.commonName ?? null,
-          caption: opt?.caption ?? null,
+          displayName: getDetectionDisplayName(d),
         });
       }
     }
     return groups;
-  }, [filteredDetections, labelOptionsByValue]);
+  }, [filteredDetections]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
@@ -289,7 +270,7 @@ export function FileVerificationPanel({
             {/* "Draw box" / "Add observation" create-actions live in
                 the modal toolbar (SquareDashed / Binoculars icons) with
                 tooltips and keyboard shortcuts (D / N) — see
-                FileDetailModal / EventDetailModal. */}
+                EventDetailModal. */}
 
             {/* Verify button. Mirrors the Enter shortcut exactly: verify
                 this file and advance to the next unverified one. The

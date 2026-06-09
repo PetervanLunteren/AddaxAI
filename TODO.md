@@ -13,24 +13,38 @@
 - [x] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
 - [x] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 - [x] We should probabaly have a "Decline suggestion" button that ignores the cohort of suggestions. It doesnt do anything to the cohort crops, it just removes them from the suggestions. This is good for the workflow "yes, these are indeed crows -> accept. No, these are actually a bunch of different animals. I dont want to fix them all here, and I also dont want to click and relabel here. Just ignore the suggestion and send them back to the main sort so I can relabel them there-> ignore.". 
-- [ ] run a folder of videos
-- [ ] Run a folder of edge cases
+- [x] run a folder of videos
+- [x] Run a folder of edge cases
 
-
-
-
-
-- The common/scientific name toggle is not used in the detections list of a verified modal. If you verify an image with two red deer, you see "C. elaphus x2" in the verified list of that imagedetailModal. Update to follow the common/scientific name toggle. 
-
-
-
-- If I run the edge cases folder in the folder run mode, it gives me these warnings: .,... Why does it block missing timestamps? It shouldnt do that. If there are no timestamps, it should just continue with a warning. Same behaviour in the project mode. Investigate. 
-
-- If I run a folder on folder mode and it finisghed processing, and I click outside the modal, it returns to the step 1 of course (which it should of course), but it seems like the settings are then forgotten (it shows no cls model selected, which can be confusing for the user). If I hard reload, it comes back. Investigate. 
+- [ ] EventCard grid chips still show species names without "×N", and the dashboard's headline verification progress card (separate from the Observations-page pill, which is already event-level) still counts files — I can switch it to event-level if you want.
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
 
 - [ ] Investigate how it currently works to add an observation without a box in the verification of images and events. This is done so you can add a hidden individual in a video for example (3 deer walking by, only two in a single frame, so one can be added without a box). Makes sense? Or perhaps a bit confusing? Should we do a box less observation or simply something custom field for videos like “distinct number of individuals”? What would be less confusing? Now it writes fake detections to a frame number which is also not true. How would that then work in the CSV output? And should we add that to the events view too? As you can have an event of 5 elephants walking past while you only see 3 max at every given image. How should we make this feel logical for users. How do other platforms do it? Do a full audit. 
+
+
+I think this is something we should discuss properly and weigh the pros and cons. I think the source of the confusing sits in the different types of viewing the data and verifying it. We have observations (verify instance), media (verify file), and events (verify certain files). The count_override we discussed targets only events en videos (which are a type of event themselves, but listed under media). Agree?
+
+If we decide to add count_override, where do we list them? At events and videos? Or also with images in media mode? And how to we do it if there are multiple species present in a video? count override deer +3 and count override wolf +1? This does get confusing quick i think.
+
+What if we chnage the way we verify events? What if we make event verification not about boxes at all, but just show a gallery of images (with optional bbox overlay show hide), and some way to quickly see all the images / videos in an event, and then a non boxed version of verification, where the user can set things like "label : number of individuals", so they can say 3 deer and 2 wolves, irrelevant of which file or wich box they were at. Does that make sense? 
+
+But we do have to think about the consequences though. What does that do with the metrics? And also if we do not have bbox info, we cant do the planned things like depth estimation and WildBook integration (or.... maybe I'm thinking wrong. The bboxes are still there, tehy are just not verified, which is not nessisarily a problem for these features...). Anyway, lots of things to talk about. What do you think? Keep in mind what the other platforms do, what the data standards are. Do web queries if needed, I'm not in a rush. 
+
+Give me a recommendation as a path to go for AddaxAI and ways of ve3rifying that suit the app and the standard ways, with an eye on the future. 
+
+Instructions:
+* Conduct a complete audit before making any changes. Assess the impact on the entire application.
+* Codex will review your output once you are done, so make sure you exceed his expectations
+* Do not sugar coat, be honest and clear
+* Read all MD file in root to get a understanding of the project. 
+* If something is unclear at any point, stop and ask before continuing.
+* I'm not in a rush. Please be precise and do the task thoroughly. 
+* Follow the KISS principle. Keep things as simple as possible.
+* Follow the DRY principle (Don't Repeat Yourself). Avoid duplication and maintain a single source of truth.
+* Follow the YAGNI principle (You Aren't Gonna Need It). Do not build functionality until it is actually needed.
+* Use a clear mental model that makes the feature easy for users to understand. Good UX should feel simple.
+* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
 
 
 

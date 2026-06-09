@@ -486,10 +486,16 @@ export function FolderRunModelStep() {
       data: SettingsFormData;
       payload: FolderRunCreate;
     }) => {
-      const run = await folderRunsApi.create(payload);
-      await persistSettings(run.project.id, data);
+      const created = await folderRunsApi.create(payload);
+      // create() returns the project at its default settings, before
+      // persistSettings saves the chosen models. Merge the updated
+      // project back in so the run we cache in onSuccess hydrates the
+      // form with the real selections, not empty defaults. Without this,
+      // closing the run modal reveals an empty model step until reload.
+      const project = await persistSettings(created.project.id, data);
+      const run = { ...created, project };
       const resp = await deploymentQueueApi.process({
-        project_id: run.project.id,
+        project_id: created.project.id,
       });
       return { run, resp };
     },
@@ -499,7 +505,7 @@ export function FolderRunModelStep() {
         queryKey: ["folder-run-lookup", run.queue_entry?.folder_path],
       });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
-        navigate(`/folder-runs/${run.project.id}/edit`);
+        navigate(`/folder-runs/${run.project.id}/labels`);
         return;
       }
       navigate(`/folder-runs/${run.project.id}/model`);
@@ -538,7 +544,7 @@ export function FolderRunModelStep() {
 
   const skipAnalysis = () => {
     if (!lookupRun) return;
-    navigate(`/folder-runs/${lookupRun.id}/edit`);
+    navigate(`/folder-runs/${lookupRun.id}/labels`);
   };
 
   /** Re-run handler. The destructive path depends on whether the
@@ -1395,7 +1401,7 @@ export function FolderRunModelStep() {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          navigate(`/folder-runs/${runId}/edit`)
+                          navigate(`/folder-runs/${runId}/labels`)
                         }
                       >
                         View results
@@ -1581,10 +1587,10 @@ export function FolderRunModelStep() {
               queryClient.invalidateQueries();
               const next = await folderRunsApi.updateStep(
                 runId,
-                "edit",
+                "labels",
               );
               queryClient.setQueryData(["folder-run", runId], next);
-              navigate(`/folder-runs/${runId}/edit`);
+              navigate(`/folder-runs/${runId}/labels`);
             };
             if (kind === "completed") {
               return (

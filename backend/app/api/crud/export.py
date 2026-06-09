@@ -38,6 +38,7 @@ from app.models import (
     Deployment,
     Detection,
     Event,
+    EventObservation,
     File,
     LabelTaxonomy,
     Project,
@@ -133,6 +134,10 @@ _FLAT_OBS_HEADERS = [
     "scientific_name",
     "common_name",
     "is_verified",
+    # Human-authoritative count of this species in the detection's event
+    # (human override if set, else the AI MaxN). Event-level, so it
+    # repeats across every detection row of the same species in the event.
+    "count",
 ]
 
 # CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
@@ -383,6 +388,32 @@ def _events_by_file(
     return {fid: event for fid, event in db.execute(stmt).all()}
 
 
+def _effective_count_map(
+    db: Session, event_ids: Iterable[str]
+) -> dict[tuple[str, str | None], int]:
+    """Map `(event_id, taxonomy_id-or-label)` to the effective count
+    (human override if set, else MaxN) for the flat-CSV count column."""
+    ids = list(event_ids)
+    if not ids:
+        return {}
+    rows = (
+        db.query(
+            EventObservation.event_id,
+            EventObservation.label_taxonomy_id,
+            EventObservation.label,
+            EventObservation.max_n,
+            EventObservation.human_count,
+        )
+        .filter(EventObservation.event_id.in_(ids))
+        .all()
+    )
+    result: dict[tuple[str, str | None], int] = {}
+    for event_id, tax_id, label, max_n, human_count in rows:
+        key = tax_id or label
+        result[(event_id, key)] = human_count if human_count is not None else max_n
+    return result
+
+
 def _classifier_label(project: Project) -> str:
     """What to put in CamTrap DP ``classifiedBy``."""
     if project.classification_model_id:
@@ -455,6 +486,7 @@ def build_observation_rows(
 
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
+    count_map = _effective_count_map(db, {e.id for e in event_map.values()})
 
     rows: list[list[Any]] = []
     for file_obj, deployment, site, detections in grouped:
@@ -490,8 +522,12 @@ def build_observation_rows(
             continue
 
         for detection, taxonomy in detections:
+            key = detection.label_taxonomy_id or detection.label
+            count = count_map.get((event_id, key), "")
             rows.append(
-                [detection.id] + where_when + _detection_cells(detection, taxonomy)
+                [detection.id]
+                + where_when
+                + _detection_cells(detection, taxonomy, count)
             )
 
     return _FLAT_OBS_HEADERS, rows
@@ -502,13 +538,16 @@ def _round_or_blank(value: float | None, ndigits: int) -> float | str:
 
 
 def _detection_cells(
-    detection: Detection, taxonomy: LabelTaxonomy | None
+    detection: Detection,
+    taxonomy: LabelTaxonomy | None,
+    count: int | str = "",
 ) -> list[Any]:
     """The detector + classifier tail of a flat observations row.
 
     ``classification_label`` is the species label only — empty for
     person, vehicle, or an unclassified animal, so the detector and
-    classifier stages stay cleanly separated.
+    classifier stages stay cleanly separated. ``count`` is the event-level
+    effective count for this species (blank when none).
     """
     return [
         detection.category,
@@ -524,6 +563,7 @@ def _detection_cells(
         detection.scientific_name or "",
         detection.common_name or "",
         "TRUE" if detection.verified else "FALSE",
+        count,
     ]
 
 
@@ -540,6 +580,7 @@ def _blank_detection_cells(file_obj: File) -> list[Any]:
         "",           # scientific_name
         "",           # common_name
         "TRUE" if file_obj.verified else "FALSE",
+        "",           # count
     ]
 
 
@@ -726,6 +767,9 @@ def build_camtrap_dp_tables(
     media_rows: list[list[Any]] = []
     observations_rows: list[list[Any]] = []
     observed_taxa: dict[str, tuple[LabelTaxonomy | None, str]] = {}
+    # Events in scope, for the event-level (per-species count) observation
+    # rows emitted after the per-file media rows.
+    events_in_scope: dict[str, dict[str, str]] = {}
     first_captured: datetime | None = None
     last_captured: datetime | None = None
     sites_seen: dict[str, Site] = {}
@@ -820,6 +864,15 @@ def build_camtrap_dp_tables(
             event.event_end_local if event else file_obj.captured_at_local, tz_name
         )
         captured_iso = _iso_datetime(file_obj.captured_at_local, tz_name)
+        if event is not None:
+            events_in_scope.setdefault(
+                event_id,
+                {
+                    "deployment_id": deployment.id,
+                    "event_start": event_start or captured_iso,
+                    "event_end": event_end or captured_iso,
+                },
+            )
 
         if not detections or file_obj.observation_type == "blank":
             observations_rows.append(
@@ -835,6 +888,11 @@ def build_camtrap_dp_tables(
             continue
 
         for detection, taxonomy in detections:
+            # Media-level rows are the per-box detections (one row per
+            # bounding box). Box-less species are carried by the
+            # event-level rows emitted after this loop, so skip any here.
+            if detection.bbox_x is None:
+                continue
             obs_type = _obs_type_from_category(detection.category)
             sci_name = _scientific_name(detection, taxonomy)
             species_name = _species_label(detection, taxonomy)
@@ -850,12 +908,8 @@ def build_camtrap_dp_tables(
                 else ""
             )
 
-            # Row order must match _CAMTRAP_OBS_HEADERS exactly.
-            # Event-level observations (no bbox) emit at
-            # observationLevel="event" with empty bbox columns; this is
-            # the canonical Camtrap-DP shape for "species was seen in
-            # this clip without a frame-anchored ROI."
-            has_bbox = detection.bbox_x is not None
+            # Row order must match _CAMTRAP_OBS_HEADERS exactly. One
+            # media-level row per bounding box (observationLevel="media").
             observations_rows.append(
                 [
                     f"{obs_id_prefix}-{detection.id}",    # observationID
@@ -864,7 +918,7 @@ def build_camtrap_dp_tables(
                     event_id,                              # eventID
                     event_start or captured_iso,           # eventStart
                     event_end or captured_iso,             # eventEnd
-                    "media" if has_bbox else "event",      # observationLevel
+                    "media",                               # observationLevel
                     obs_type,                              # observationType
                     "",                                    # cameraSetupType
                     sci_name,                              # scientificName
@@ -876,10 +930,10 @@ def build_camtrap_dp_tables(
                     "",                                    # individualPositionRadius
                     "",                                    # individualPositionAngle
                     "",                                    # individualSpeed
-                    round(detection.bbox_x, 6) if has_bbox else "",     # bboxX
-                    round(detection.bbox_y, 6) if has_bbox else "",     # bboxY
-                    round(detection.bbox_width, 6) if has_bbox else "", # bboxWidth
-                    round(detection.bbox_height, 6) if has_bbox else "",# bboxHeight
+                    round(detection.bbox_x, 6),            # bboxX
+                    round(detection.bbox_y, 6),            # bboxY
+                    round(detection.bbox_width, 6),        # bboxWidth
+                    round(detection.bbox_height, 6),       # bboxHeight
                     method,                                # classificationMethod
                     classified_by,                         # classifiedBy
                     "",                                    # classificationTimestamp
@@ -887,6 +941,34 @@ def build_camtrap_dp_tables(
                     "",                                    # observationTags
                     comments,                              # observationComments
                 ]
+            )
+
+    # Event-level observations: one row per species per event carrying the
+    # effective count (human override, else MaxN). Mutually exclusive and
+    # summable, the Camtrap-DP shape for "N individuals in this sequence".
+    # The per-box media rows above remain for spatial detail.
+    if events_in_scope:
+        for obs, taxonomy in (
+            db.query(EventObservation, LabelTaxonomy)
+            .outerjoin(
+                LabelTaxonomy,
+                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+            )
+            .filter(EventObservation.event_id.in_(list(events_in_scope.keys())))
+            .all()
+        ):
+            count = obs.effective_count
+            if count <= 0:
+                continue
+            ctx = events_in_scope[obs.event_id]
+            sci_name = (
+                taxonomy.scientific_name if taxonomy else None
+            ) or (obs.label or "")
+            species_name = (taxonomy.name if taxonomy else None) or obs.label
+            if obs.category == "animal" and species_name:
+                observed_taxa.setdefault(species_name, (taxonomy, species_name))
+            observations_rows.append(
+                _camtrap_event_row(obs, ctx, count, sci_name, classified_by)
             )
 
     datapackage = _build_datapackage(
@@ -904,6 +986,51 @@ def build_camtrap_dp_tables(
         datapackage,
         camtrap_skipped_deployment_ids,
     )
+
+
+def _camtrap_event_row(
+    obs: EventObservation,
+    ctx: dict[str, str],
+    count: int,
+    sci_name: str,
+    classified_by: str,
+) -> list[Any]:
+    """Event-level observation row (per species per event, no bbox).
+
+    Order must match _CAMTRAP_OBS_HEADERS exactly. classificationMethod is
+    "human" when the count was set by a person, else "machine" (MaxN).
+    """
+    method = "human" if obs.human_count is not None else "machine"
+    return [
+        f"obs-event-{obs.id}",            # observationID
+        ctx["deployment_id"],             # deploymentID
+        "",                               # mediaID (event-level, no media)
+        obs.event_id,                     # eventID
+        ctx["event_start"],               # eventStart
+        ctx["event_end"],                 # eventEnd
+        "event",                          # observationLevel
+        _obs_type_from_category(obs.category),  # observationType
+        "",                               # cameraSetupType
+        sci_name,                         # scientificName
+        count,                            # count
+        "",                               # lifeStage
+        "",                               # sex
+        "",                               # behavior
+        "",                               # individualID
+        "",                               # individualPositionRadius
+        "",                               # individualPositionAngle
+        "",                               # individualSpeed
+        "",                               # bboxX
+        "",                               # bboxY
+        "",                               # bboxWidth
+        "",                               # bboxHeight
+        method,                           # classificationMethod
+        classified_by,                    # classifiedBy
+        "",                               # classificationTimestamp
+        "",                               # classificationProbability
+        "",                               # observationTags
+        "",                               # observationComments
+    ]
 
 
 def _obs_type_from_category(category: str) -> str:

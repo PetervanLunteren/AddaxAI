@@ -7,14 +7,17 @@ Provides endpoints for event grouping, browsing, and navigation.
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.crud import event as event_crud
+from app.api.crud import event_observation as event_obs_crud
 from app.api.crud import label_tree as label_tree_crud
 from app.api.crud.event import VERIFY_SORT_VALUES
 from app.api.schemas.event import (
     AdjacentEventsResponse,
     EventFilterOptions,
+    EventObservationItem,
     EventSummary,
     EventVerificationStats,
     EventWithFiles,
@@ -25,6 +28,7 @@ from app.api.schemas.event import (
 from app.api.schemas.file import FileWithDetections
 from app.db.base import get_db
 from app.models import Project
+from app.models.event_observation import EventObservation
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -327,9 +331,11 @@ async def get_event(
     if event.deployment and event.deployment.site:
         site_name = event.deployment.site.name
 
-    from app.api.crud.event_observation import get_max_n_frames
-
-    max_n_frames = get_max_n_frames(db, event_id)
+    max_n_frames = event_obs_crud.get_max_n_frames(db, event_id)
+    observations = [
+        _obs_item(obs)
+        for obs in event_obs_crud.list_event_observations(db, event_id)
+    ]
 
     return EventWithFiles(
         id=event.id,
@@ -338,10 +344,116 @@ async def get_event(
         event_end_local=event.event_end_local,
         file_count=event.file_count,
         max_n_frames=max_n_frames,
+        verified=event.verified,
+        observations=observations,
         created_at_utc=event.created_at_utc,
         site_name=site_name,
         files=[FileWithDetections.model_validate(f, from_attributes=True) for f in sorted_files],
     )
+
+
+def _obs_item(obs: EventObservation) -> EventObservationItem:
+    """Build one count-list item, resolving display names from the
+    taxonomy (common_name / scientific_name) when present."""
+    tax = obs.label_taxonomy
+    return EventObservationItem(
+        id=obs.id,
+        category=obs.category,
+        label=obs.label,
+        label_taxonomy_id=obs.label_taxonomy_id,
+        common_name=(tax.common_name if tax else None) or obs.label,
+        scientific_name=tax.scientific_name if tax else None,
+        max_n=obs.max_n,
+        effective_count=obs.effective_count,
+    )
+
+
+class EventVerifyRequest(BaseModel):
+    """Set the explicit human sign-off on an event's species and counts."""
+
+    verified: bool
+
+
+class SetCountRequest(BaseModel):
+    """Set, or clear with count=null, the human count on one observation."""
+
+    count: int | None = Field(None, ge=0)
+
+
+class AddSpeciesRequest(BaseModel):
+    """Record a species the AI missed entirely (or bump an existing row)."""
+
+    category: str
+    count: int = Field(..., ge=1)
+    label: str | None = None
+    label_taxonomy_id: str | None = None
+
+
+@router.patch("/{event_id}/verify", response_model=EventWithFiles)
+async def verify_event(
+    event_id: str,
+    body: EventVerifyRequest,
+    db: Session = Depends(get_db),
+):
+    """Mark/unmark the event's species and counts as human-verified."""
+    event = event_obs_crud.set_event_verified(db, event_id, body.verified)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return await get_event(event_id, db)
+
+
+@router.post("/{event_id}/observations", response_model=EventWithFiles)
+async def add_event_observation(
+    event_id: str,
+    body: AddSpeciesRequest,
+    db: Session = Depends(get_db),
+):
+    """Add a species the AI missed (or set the count of an existing one)."""
+    if not event_crud.get_event_with_files(db, event_id):
+        raise HTTPException(status_code=404, detail="Event not found")
+    event_obs_crud.add_human_species(
+        db,
+        event_id,
+        category=body.category,
+        count=body.count,
+        label=body.label,
+        label_taxonomy_id=body.label_taxonomy_id,
+    )
+    return await get_event(event_id, db)
+
+
+@router.patch(
+    "/{event_id}/observations/{observation_id}",
+    response_model=EventWithFiles,
+)
+async def set_observation_count(
+    event_id: str,
+    observation_id: str,
+    body: SetCountRequest,
+    db: Session = Depends(get_db),
+):
+    """Set (or clear) the human count for one species in the event."""
+    obs = event_obs_crud.set_human_count(db, observation_id, body.count)
+    if obs is None:
+        raise HTTPException(status_code=404, detail="Observation not found")
+    return await get_event(event_id, db)
+
+
+@router.delete(
+    "/{event_id}/observations/{observation_id}",
+    response_model=EventWithFiles,
+)
+async def delete_event_observation(
+    event_id: str,
+    observation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Remove the human contribution to one species (deletes a human-only
+    row, or clears the override on an AI row)."""
+    result = event_obs_crud.delete_event_observation(db, observation_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Observation not found")
+    return await get_event(event_id, db)
 
 
 @router.get("/{event_id}/adjacent", response_model=AdjacentEventsResponse)

@@ -54,7 +54,8 @@ export function useFolderRun(): FolderRunContextValue {
  * (/folder-runs/new) renders the merged Setup page. */
 function stepFromPath(pathname: string): FolderRunStep {
   if (pathname.endsWith("/overview")) return "overview";
-  if (pathname.endsWith("/edit")) return "edit";
+  if (pathname.endsWith("/labels")) return "labels";
+  if (pathname.endsWith("/observations")) return "observations";
   if (pathname.endsWith("/save")) return "save";
   return "model";
 }

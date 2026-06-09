@@ -1,5 +1,5 @@
 /**
- * Observations sort/display settings popover.
+ * Labels sort/display settings popover.
  *
  * Renders its own toolbar icon trigger (Settings2) so it sits inline
  * with the other utility icons in the verify toolbar. Hosts the
@@ -7,7 +7,7 @@
  * max-detections cap for similarity sort.
  *
  * All values are persisted to localStorage by the parent (see
- * ObservationsTab's persistSetting helper). The max-detections cap
+ * LabelsTab's persistSetting helper). The max-detections cap
  * used to live on the project DB row; it moved here because it's a
  * per-user memory budget that benefits from being one click away
  * from the feature it controls.
@@ -30,9 +30,9 @@ import {
 import { Switch } from "../ui/switch";
 import { cn } from "../../lib/utils";
 import type { TileSize } from "./CropGrid";
-import { OBSERVATIONS_MAX_DETECTIONS_OPTIONS } from "./observationsViewOptions";
+import { LABELS_MAX_DETECTIONS_OPTIONS } from "./labelsViewOptions";
 
-interface ObservationsSettingsProps {
+interface LabelsSettingsProps {
   showLabelDividers: boolean;
   onShowLabelDividersChange: (v: boolean) => void;
   tileSize: TileSize;
@@ -45,7 +45,7 @@ interface ObservationsSettingsProps {
 
 const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 
-export function ObservationsSettings({
+export function LabelsSettings({
   showLabelDividers,
   onShowLabelDividersChange,
   tileSize,
@@ -53,7 +53,7 @@ export function ObservationsSettings({
   maxDetections,
   onMaxDetectionsChange,
   similaritySort,
-}: ObservationsSettingsProps) {
+}: LabelsSettingsProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -111,9 +111,9 @@ export function ObservationsSettings({
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm">Max observations per sort</p>
+          <p className="text-sm">Max labels per sort</p>
           <p className="text-xs text-muted-foreground">
-            Hard limit on how many observations one similarity sort
+            Hard limit on how many labels one similarity sort
             loads. Narrowing filters first is always faster than
             raising the cap.
           </p>
@@ -125,7 +125,7 @@ export function ObservationsSettings({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {OBSERVATIONS_MAX_DETECTIONS_OPTIONS.map((opt) => (
+              {LABELS_MAX_DETECTIONS_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={String(opt.value)}>
                   {opt.label}
                 </SelectItem>
