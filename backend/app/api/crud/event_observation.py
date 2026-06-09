@@ -42,7 +42,7 @@ def calculate_max_n_for_event(
     2. Rebuild the event's `event_observations` rows: one per AI species
        (carrying forward any human_count set for it) plus any human-only
        species the AI did not detect this round (max_n=0, no frame).
-    3. Clear `Event.verified` when the effective species/count set changed
+    3. Clear `Event.confirmed` when the effective species/count set changed
        (a Labels-page relabel/add/delete that moves a count un-signs the
        event); a pure detection-verify that leaves counts unchanged does not.
 
@@ -177,8 +177,8 @@ def calculate_max_n_for_event(
 
     if prior_effective != new_effective:
         event = db.get(Event, event_id)
-        if event is not None and event.verified:
-            event.verified = False
+        if event is not None and event.confirmed:
+            event.confirmed = False
 
     return observations
 
@@ -318,7 +318,7 @@ def set_human_count(
     obs.human_count = count
     event = db.get(Event, obs.event_id)
     if event is not None:
-        event.verified = False
+        event.confirmed = False
     db.commit()
     db.refresh(obs)
     return obs
@@ -385,7 +385,7 @@ def add_human_species(
 
     event = db.get(Event, event_id)
     if event is not None:
-        event.verified = False
+        event.confirmed = False
     db.commit()
     db.refresh(obs)
     return obs
@@ -415,19 +415,19 @@ def delete_event_observation(
         obs.human_count = None
     event = db.get(Event, event_id)
     if event is not None:
-        event.verified = False
+        event.confirmed = False
     db.commit()
     return event_id
 
 
-def set_event_verified(
-    db: Session, event_id: str, verified: bool
+def set_event_confirmed(
+    db: Session, event_id: str, confirmed: bool
 ) -> Event | None:
-    """Set the explicit human sign-off on an event's species and counts."""
+    """Set the human confirmation on an event's species and counts."""
     event = db.get(Event, event_id)
     if event is None:
         return None
-    event.verified = verified
+    event.confirmed = confirmed
     db.commit()
     db.refresh(event)
     return event

@@ -716,11 +716,11 @@ export interface EventSummary {
   verified_maxn_count: number;
   total_maxn_count: number;
   /**
-   * Explicit human sign-off on the event's species and counts (stored on
-   * Event.verified, set on the Observations page). Drives the corner
-   * verified badge on event cards.
+   * Human confirmation of the event's species and counts (stored on
+   * Event.confirmed, the "Confirm" action on the Observations page).
+   * Drives the corner confirmed badge on event cards.
    */
-  is_verified: boolean;
+  is_confirmed: boolean;
   any_file_flagged: boolean;
   any_file_favorited: boolean;
 }
@@ -733,8 +733,8 @@ export interface EventWithFiles {
   event_end_local: string;
   file_count: number;
   max_n_frames: MaxNFrame[];
-  /** Explicit human sign-off on the species and counts. */
-  verified: boolean;
+  /** Human confirmation of the species and counts ("Confirm" action). */
+  confirmed: boolean;
   /** Per-species count list (AI + human-only), highest count first. */
   observations: EventObservationItem[];
   created_at_utc: string;
@@ -743,8 +743,8 @@ export interface EventWithFiles {
 }
 
 export interface EventVerificationStats {
-  /** Events whose MaxN frames are all verified (blank-event fallback: any file verified). */
-  events_fully_verified: number;
+  /** Events the user has confirmed (Event.confirmed). */
+  events_confirmed: number;
   events_total: number;
   total_files: number;
   verified_files: number;
@@ -758,7 +758,7 @@ export interface EventVerificationStats {
 export interface AdjacentEventsResponse {
   previous_id: string | null;
   next_id: string | null;
-  next_unverified_id: string | null;
+  next_unconfirmed_id: string | null;
   current_index: number;
   total_count: number;
 }

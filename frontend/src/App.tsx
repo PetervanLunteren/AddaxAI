@@ -30,7 +30,7 @@ import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
 import LabelsPage from "./pages/LabelsPage";
-import ObservationsPage from "./pages/ObservationsPage";
+import CountsPage from "./pages/CountsPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import SetupPage from "./pages/SetupPage";
@@ -41,7 +41,7 @@ import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
 import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
 import { FolderRunOverviewStep } from "./pages/folder-run/FolderRunOverviewStep";
 import { FolderRunLabelsStep } from "./pages/folder-run/FolderRunLabelsStep";
-import { FolderRunObservationsStep } from "./pages/folder-run/FolderRunObservationsStep";
+import { FolderRunCountsStep } from "./pages/folder-run/FolderRunCountsStep";
 import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
@@ -389,7 +389,7 @@ function App() {
               <Route path="model" element={<FolderRunModelStep />} />
               <Route path="overview" element={<FolderRunOverviewStep />} />
               <Route path="labels" element={<FolderRunLabelsStep />} />
-              <Route path="observations" element={<FolderRunObservationsStep />} />
+              <Route path="counts" element={<FolderRunCountsStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
             </Route>
 
@@ -400,7 +400,7 @@ function App() {
               <Route index element={<ProjectIndexRoute />} />
               <Route path="process" element={<AnalysesPage />} />
               <Route path="labels" element={<LabelsPage />} />
-              <Route path="observations" element={<ObservationsPage />} />
+              <Route path="counts" element={<CountsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />

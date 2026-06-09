@@ -444,7 +444,7 @@ def test_event_verify_and_count_endpoints(client, db):
     db.commit()
 
     data = client.get(f"/api/events/{ev.id}").json()
-    assert data["verified"] is False
+    assert data["confirmed"] is False
     assert len(data["observations"]) == 1
     obs = data["observations"][0]
     assert obs["effective_count"] == 1
@@ -453,16 +453,16 @@ def test_event_verify_and_count_endpoints(client, db):
     obs_id = obs["id"]
 
     data = client.patch(
-        f"/api/events/{ev.id}/verify", json={"verified": True}
+        f"/api/events/{ev.id}/confirm", json={"confirmed": True}
     ).json()
-    assert data["verified"] is True
+    assert data["confirmed"] is True
 
     # Bumping a count clears the sign-off.
     data = client.patch(
         f"/api/events/{ev.id}/observations/{obs_id}", json={"count": 3}
     ).json()
     assert data["observations"][0]["effective_count"] == 3
-    assert data["verified"] is False
+    assert data["confirmed"] is False
 
     # Add a species the AI never detected.
     data = client.post(

@@ -33,6 +33,10 @@ interface AnnotationCanvasProps {
   detectionThreshold: number;
   selectedDetectionId: string | null;
   onSelectDetection: (id: string | null) => void;
+  /** Fired when the user clicks a box's label pill — opens the relabel
+   *  dialog for that detection. The selected box is highlighted so it's
+   *  clear which one is being edited. */
+  onRequestRelabel?: (id: string) => void;
   drawMode: boolean;
   onDrawModeChange: (active: boolean) => void;
   /**
@@ -66,6 +70,7 @@ export function AnnotationCanvas({
   detectionThreshold,
   selectedDetectionId,
   onSelectDetection,
+  onRequestRelabel,
   drawMode,
   onDrawModeChange,
   onMutated,
@@ -631,8 +636,28 @@ export function AnnotationCanvas({
                   onDragEnd={(e) => handleDragEnd(detection, e)}
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
-                {/* Label pill */}
-                <Group x={pillX} y={pillY} listening={false}>
+                {/* Label pill — click to relabel this box in place. */}
+                <Group
+                  x={pillX}
+                  y={pillY}
+                  listening={!drawMode}
+                  onClick={() => {
+                    onSelectDetection(detection.id);
+                    onRequestRelabel?.(detection.id);
+                  }}
+                  onTap={() => {
+                    onSelectDetection(detection.id);
+                    onRequestRelabel?.(detection.id);
+                  }}
+                  onMouseEnter={(e) => {
+                    const c = e.target.getStage()?.container();
+                    if (c) c.style.cursor = "pointer";
+                  }}
+                  onMouseLeave={(e) => {
+                    const c = e.target.getStage()?.container();
+                    if (c) c.style.cursor = drawMode ? "crosshair" : "default";
+                  }}
+                >
                   <Rect
                     width={pill.pillWidth}
                     height={pill.pillHeight}

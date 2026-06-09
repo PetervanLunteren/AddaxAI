@@ -1,19 +1,19 @@
 /**
- * Verify view — the Observations page body, decoupled from page chrome.
+ * Verify view — the Counts page body, decoupled from page chrome.
  *
- * Keeps the `Verify*` name because it operates on the `verified` data
+ * Keeps the `Verify*` name because it operates on the verification data
  * model. It renders the event gallery: a filter bar, a grid of
  * `EventCard`s, and the `EventDetailModal` (gallery + tools on the
  * left, panel on the right). The per-detection label-cleanup view lives
  * separately in `LabelsTab` / the Labels page. Mounted in two contexts:
  *
- * - Research projects: wrapped by `pages/ObservationsPage.tsx`, which
- *   adds the page chrome (header "Observations", DiagnosticReportButton).
- * - Folder runs: wrapped by `pages/folder-run/FolderRunObservationsStep`,
+ * - Research projects: wrapped by `pages/CountsPage.tsx`, which adds the
+ *   page chrome (header "Counts", DiagnosticReportButton).
+ * - Folder runs: wrapped by `pages/folder-run/FolderRunCountsStep`,
  *   which mounts it inside the stepper with a sticky Back / Continue bar.
  *
  * Filter URL state lives in `useSearchParams`, path-agnostic so the same
- * wiring works on `/projects/<id>/observations` and the folder-run step.
+ * wiring works on `/projects/<id>/counts` and the folder-run step.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -303,12 +303,12 @@ export function VerifyView({ projectId }: VerifyViewProps) {
           <VerifyProgressPill
             pct={
               verificationStats.events_total > 0
-                ? (verificationStats.events_fully_verified /
+                ? (verificationStats.events_confirmed /
                     verificationStats.events_total) *
                   100
                 : 0
             }
-            label="verified"
+            label="confirmed"
           />
         </VerifyToolbar>
       )}
@@ -456,7 +456,7 @@ function EventCard({
       onClick={onClick}
     >
       <StatusBadgeCluster
-        verified={event.is_verified}
+        confirmed={event.is_confirmed}
         favorited={event.any_file_favorited}
         flagged={event.any_file_flagged}
       />

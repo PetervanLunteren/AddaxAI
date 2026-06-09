@@ -15,7 +15,7 @@ from app.api.crud.event_observation import (
     calculate_max_n_for_event,
     get_event_ids_for_detections,
     recalculate_max_n_for_project,
-    set_event_verified,
+    set_event_confirmed,
     set_human_count,
 )
 from app.models.event import Event, event_files
@@ -437,20 +437,20 @@ def test_recompute_clears_event_verified_when_counts_change(db):
     calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()
 
-    set_event_verified(db, ev.id, True)
-    assert db.get(Event, ev.id).verified is True
+    set_event_confirmed(db, ev.id, True)
+    assert db.get(Event, ev.id).confirmed is True
 
     # No-op recompute (nothing changed) keeps the sign-off.
     calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()
-    assert db.get(Event, ev.id).verified is True
+    assert db.get(Event, ev.id).confirmed is True
 
     # Removing a detection lowers MaxN 3 -> 2; the sign-off clears.
     db.delete(dets[0])
     db.flush()
     calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()
-    assert db.get(Event, ev.id).verified is False
+    assert db.get(Event, ev.id).confirmed is False
 
 
 def test_dashboard_total_observations_uses_effective_count(db):

@@ -1,5 +1,5 @@
 /**
- * Event count panel — the Observations-page count editor.
+ * Event count panel — the Counts-page count editor.
  *
  * The right-hand panel of EventDetailModal. Shows the event's species
  * and counts (effective_count = human override, else AI MaxN) and lets
@@ -24,7 +24,7 @@ interface EventCountPanelProps {
   eventId: string;
   projectId: string;
   observations: EventObservationItem[];
-  verified: boolean;
+  confirmed: boolean;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
 }
@@ -33,7 +33,7 @@ export function EventCountPanel({
   eventId,
   projectId,
   observations,
-  verified,
+  confirmed,
   labelOptions,
   labelOptionsLoading,
 }: EventCountPanelProps) {
@@ -67,8 +67,8 @@ export function EventCountPanel({
     onError: (e: Error) =>
       toast.error("Could not update", { description: e.message }),
   });
-  const setVerified = useMutation({
-    mutationFn: (v: boolean) => eventsApi.setVerified(eventId, v),
+  const setConfirmed = useMutation({
+    mutationFn: (v: boolean) => eventsApi.setConfirmed(eventId, v),
     onSuccess: invalidate,
     onError: (e: Error) =>
       toast.error("Could not update", { description: e.message }),
@@ -81,20 +81,20 @@ export function EventCountPanel({
     <div className="mx-3 mt-3 rounded-lg border bg-muted/40 flex flex-col">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="flex items-center gap-1.5">
-          <h3 className="text-sm font-semibold">Observations</h3>
+          <h3 className="text-sm font-semibold">Counts</h3>
           <Badge variant="outline" className="text-xs">
             {observations.length}
           </Badge>
         </div>
         <Button
           size="sm"
-          variant={verified ? "default" : "outline"}
-          onClick={() => setVerified.mutate(!verified)}
-          disabled={setVerified.isPending}
+          variant={confirmed ? "default" : "outline"}
+          onClick={() => setConfirmed.mutate(!confirmed)}
+          disabled={setConfirmed.isPending}
           className="h-7 gap-1.5"
         >
           <Check className="h-3.5 w-3.5" />
-          {verified ? "Verified" : "Verify event"}
+          {confirmed ? "Confirmed" : "Confirm"}
         </Button>
       </div>
 

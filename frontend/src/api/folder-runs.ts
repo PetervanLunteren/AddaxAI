@@ -13,7 +13,7 @@ import type { ProjectResponse } from "./types";
 export type FolderRunStep =
   | "model"
   | "labels"
-  | "observations"
+  | "counts"
   | "overview"
   | "save";
 

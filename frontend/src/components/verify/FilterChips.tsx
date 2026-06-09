@@ -35,6 +35,9 @@ interface FilterChipsProps {
   displayLabels?: Record<string, string>;
   /** Project detection_threshold — used to detect when det range is "default". */
   detectionFloor?: number;
+  /** Override the verification chip wording (the Counts page uses
+   *  "Confirmed" / "Unconfirmed"; defaults to "Verified" / "Unverified"). */
+  verificationLabels?: Record<string, string>;
 }
 
 /** Format a raw label ID for display (e.g. "artiodactyla:unspecified" -> "Artiodactyla"). */
@@ -71,6 +74,7 @@ export function FilterChips({
   siteNames,
   displayLabels,
   detectionFloor = 0,
+  verificationLabels = VERIFICATION_LABELS,
 }: FilterChipsProps) {
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
 
@@ -138,7 +142,7 @@ export function FilterChips({
   if (filters.verification && filters.verification !== "all") {
     chips.push({
       key: "verification",
-      label: VERIFICATION_LABELS[filters.verification] ?? filters.verification,
+      label: verificationLabels[filters.verification] ?? filters.verification,
       onRemove: () => onChange({ ...filters, verification: undefined }),
     });
   }
@@ -162,7 +166,7 @@ export function FilterChips({
   }
 
   // Empty chip. "hide" is the implicit default (shown as a removable
-  // chip like the Observations "Unverified" default); removing it means
+  // chip like the Counts "Unconfirmed" default); removing it means
   // "show everything", which must be set to "all" explicitly because
   // undefined falls back to the "hide" default.
   if (filters.empty && filters.empty !== "all") {

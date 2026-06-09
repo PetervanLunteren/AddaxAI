@@ -344,7 +344,7 @@ async def get_event(
         event_end_local=event.event_end_local,
         file_count=event.file_count,
         max_n_frames=max_n_frames,
-        verified=event.verified,
+        confirmed=event.confirmed,
         observations=observations,
         created_at_utc=event.created_at_utc,
         site_name=site_name,
@@ -368,10 +368,10 @@ def _obs_item(obs: EventObservation) -> EventObservationItem:
     )
 
 
-class EventVerifyRequest(BaseModel):
-    """Set the explicit human sign-off on an event's species and counts."""
+class EventConfirmRequest(BaseModel):
+    """Set the human confirmation of an event's species and counts."""
 
-    verified: bool
+    confirmed: bool
 
 
 class SetCountRequest(BaseModel):
@@ -389,14 +389,14 @@ class AddSpeciesRequest(BaseModel):
     label_taxonomy_id: str | None = None
 
 
-@router.patch("/{event_id}/verify", response_model=EventWithFiles)
-async def verify_event(
+@router.patch("/{event_id}/confirm", response_model=EventWithFiles)
+async def confirm_event(
     event_id: str,
-    body: EventVerifyRequest,
+    body: EventConfirmRequest,
     db: Session = Depends(get_db),
 ):
-    """Mark/unmark the event's species and counts as human-verified."""
-    event = event_obs_crud.set_event_verified(db, event_id, body.verified)
+    """Set/clear the human confirmation of the event's species and counts."""
+    event = event_obs_crud.set_event_confirmed(db, event_id, body.confirmed)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return await get_event(event_id, db)

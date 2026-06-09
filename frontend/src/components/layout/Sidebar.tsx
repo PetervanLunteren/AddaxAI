@@ -55,7 +55,7 @@ export function Sidebar() {
   const workItems: NavItem[] = [
     { to: `/projects/${projectId}/process`, icon: Play, label: "Process" },
     { to: `/projects/${projectId}/labels`, icon: Pencil, label: "Labels" },
-    { to: `/projects/${projectId}/observations`, icon: Layers, label: "Observations" },
+    { to: `/projects/${projectId}/counts`, icon: Layers, label: "Counts" },
     { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
     {
       to: `/projects/${projectId}/insights`,

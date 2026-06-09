@@ -1,8 +1,9 @@
 /**
- * Observations step (slug `observations`, optional).
+ * Counts step (slug `counts`, optional).
  *
  * Second of the two verification steps. The ecological record: review
- * each event's media in the gallery and confirm the species and counts.
+ * each event's media in the gallery and confirm the species and counts
+ * (the data model and exports keep the standard term "observation").
  * Optional, so the gallery is collapsed behind an "Open" toggle and the
  * default page is lightweight so the obvious path is to skip ahead.
  *
@@ -21,7 +22,7 @@ import { VerifyView } from "../../components/verify/VerifyView";
 import { folderRunsApi } from "../../api/folder-runs";
 import { useFolderRun } from "./FolderRunLayout";
 
-export function FolderRunObservationsStep() {
+export function FolderRunCountsStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
@@ -93,7 +94,7 @@ export function FolderRunObservationsStep() {
     return (
       <div className="space-y-6">
         <StepHeader
-          title="Observations"
+          title="Counts"
           caption="Confirm the species and counts if you want, or skip ahead."
         />
         <Card>
@@ -106,7 +107,7 @@ export function FolderRunObservationsStep() {
   return (
     <div className="space-y-6 pb-24">
       <StepHeader
-        title="Observations"
+        title="Counts"
         caption="Confirm the species and counts if you want, or skip ahead."
       />
       <VerifyView projectId={runId} />

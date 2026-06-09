@@ -43,7 +43,7 @@ def test_single_event(db):
 
     assert result["previous_id"] is None
     assert result["next_id"] is None
-    assert result["next_unverified_id"] is None
+    assert result["next_unconfirmed_id"] is None
     assert result["current_index"] == 0
     assert result["total_count"] == 1
 
@@ -109,52 +109,52 @@ def test_last_event_no_next(db):
     assert result["total_count"] == 2
 
 
-def test_next_unverified_skips_verified(db):
+def test_next_unconfirmed_skips_confirmed(db):
     """
-    Three events: A (newest), B (middle, all verified), C (oldest, unverified).
-    Query A → next_unverified should be C, skipping fully-verified B.
+    Three events: A (newest), B (middle, confirmed), C (oldest, unconfirmed).
+    Query A → next_unconfirmed should be C, skipping confirmed B. Keys on
+    Event.confirmed, not file verification.
     """
     project, dep = _setup_project(db)
 
     ev_c = make_event_with_files(
         db, deployment_id=dep.id,
         event_start_local=datetime(2024, 6, 1, 10, 0),
-        files_verified=[False],
     )
-    make_event_with_files(
+    ev_b = make_event_with_files(
         db, deployment_id=dep.id,
         event_start_local=datetime(2024, 6, 1, 12, 0),
-        files_verified=[True, True],  # fully verified
     )
+    ev_b.confirmed = True
+    db.commit()
     ev_a = make_event_with_files(
         db, deployment_id=dep.id,
         event_start_local=datetime(2024, 6, 1, 14, 0),
-        files_verified=[False],
     )
 
     result = get_adjacent_events(db, ev_a.id, project.id)
 
-    assert result["next_unverified_id"] == ev_c.id
+    assert result["next_unconfirmed_id"] == ev_c.id
 
 
-def test_next_unverified_none_remaining(db):
-    """All events after current are fully verified → next_unverified_id=None."""
+def test_next_unconfirmed_none_remaining(db):
+    """All events after current are confirmed → next_unconfirmed_id=None."""
     project, dep = _setup_project(db)
 
-    make_event_with_files(
+    ev_old = make_event_with_files(
         db, deployment_id=dep.id,
         event_start_local=datetime(2024, 6, 1, 10, 0),
-        files_verified=[True],  # fully verified
     )
+    ev_old.confirmed = True
+    db.commit()
     ev_new = make_event_with_files(
         db, deployment_id=dep.id,
         event_start_local=datetime(2024, 6, 1, 14, 0),
-        files_verified=[False],
     )
 
     result = get_adjacent_events(db, ev_new.id, project.id)
 
-    assert result["next_unverified_id"] is None
+    assert result["next_unconfirmed_id"] is None
 
 
 def test_nonexistent_event(db):
@@ -166,7 +166,7 @@ def test_nonexistent_event(db):
 
     assert result["previous_id"] is None
     assert result["next_id"] is None
-    assert result["next_unverified_id"] is None
+    assert result["next_unconfirmed_id"] is None
     assert result["current_index"] == 0
     assert result["total_count"] == 0
 

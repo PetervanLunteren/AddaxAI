@@ -2,7 +2,7 @@
  * StatusBadgeCluster - top-right corner cluster of status badges for
  * Files / Events cards.
  *
- * Three booleans drive up to three circular badges: verified (teal),
+ * Three booleans drive up to three circular badges: confirmed (teal),
  * favorited (dark red), flagged (light teal). Stacked right-to-left with
  * an overlapping ring-2 ring-background treatment so the badges protrude
  * from the card's corner. Matches AddaxAI-Connect's ImagesPage pattern
@@ -17,25 +17,25 @@
 import { Check, Flag, Heart } from "lucide-react";
 
 interface StatusBadgeClusterProps {
-  verified?: boolean;
+  confirmed?: boolean;
   favorited?: boolean;
   flagged?: boolean;
 }
 
 export function StatusBadgeCluster({
-  verified = false,
+  confirmed = false,
   favorited = false,
   flagged = false,
 }: StatusBadgeClusterProps) {
-  if (!verified && !favorited && !flagged) return null;
+  if (!confirmed && !favorited && !flagged) return null;
 
   return (
     <div className="absolute -top-2 -right-2 z-10 flex flex-row-reverse -space-x-1.5 space-x-reverse">
-      {verified && (
+      {confirmed && (
         <div
           className="relative z-30 w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-background"
           style={{ backgroundColor: "#0f6064" }}
-          title="Verified"
+          title="Confirmed"
         >
           <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
         </div>

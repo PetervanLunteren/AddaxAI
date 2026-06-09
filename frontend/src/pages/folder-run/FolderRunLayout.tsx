@@ -55,7 +55,7 @@ export function useFolderRun(): FolderRunContextValue {
 function stepFromPath(pathname: string): FolderRunStep {
   if (pathname.endsWith("/overview")) return "overview";
   if (pathname.endsWith("/labels")) return "labels";
-  if (pathname.endsWith("/observations")) return "observations";
+  if (pathname.endsWith("/counts")) return "counts";
   if (pathname.endsWith("/save")) return "save";
   return "model";
 }

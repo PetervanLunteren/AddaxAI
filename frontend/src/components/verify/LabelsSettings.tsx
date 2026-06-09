@@ -30,6 +30,7 @@ import {
 import { Switch } from "../ui/switch";
 import { cn } from "../../lib/utils";
 import type { TileSize } from "./CropGrid";
+import { TileSizeToggle } from "./TileSizeToggle";
 import { LABELS_MAX_DETECTIONS_OPTIONS } from "./labelsViewOptions";
 
 interface LabelsSettingsProps {
@@ -42,8 +43,6 @@ interface LabelsSettingsProps {
   /** When false, label dividers don't group anything — toggle is disabled. */
   similaritySort: boolean;
 }
-
-const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 
 export function LabelsSettings({
   showLabelDividers,
@@ -92,22 +91,7 @@ export function LabelsSettings({
 
         <div className="space-y-1.5">
           <p className="text-sm">Tile size</p>
-          <div className="flex rounded-lg bg-muted p-0.5">
-            {TILE_SIZES.map((size) => (
-              <button
-                key={size}
-                className={cn(
-                  "flex-1 px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                  tileSize === size
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => onTileSizeChange(size)}
-              >
-                {size}
-              </button>
-            ))}
-          </div>
+          <TileSizeToggle value={tileSize} onChange={onTileSizeChange} />
         </div>
 
         <div className="space-y-1.5">

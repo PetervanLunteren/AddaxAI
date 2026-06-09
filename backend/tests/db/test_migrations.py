@@ -210,9 +210,9 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
         conn.execute(
             text("ALTER TABLE detections DROP COLUMN suggestion_dismissed")
         )
-        # events.verified (detectable) + event_observations.human_count
-        # were added by f2a3b4c5d6e7, the newest detectable fingerprint.
-        conn.execute(text("ALTER TABLE events DROP COLUMN verified"))
+        # events.confirmed (detectable, renamed from verified by a3b4c5d6e7f8)
+        # + event_observations.human_count are the newest detectable schema.
+        conn.execute(text("ALTER TABLE events DROP COLUMN confirmed"))
         conn.execute(
             text("ALTER TABLE event_observations DROP COLUMN human_count")
         )

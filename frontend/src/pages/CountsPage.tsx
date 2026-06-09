@@ -1,12 +1,12 @@
 /**
- * Observations page — thin wrapper around `VerifyView`.
+ * Counts page — thin wrapper around `VerifyView`.
  *
- * One of the two verification pages (the other is `LabelsPage`).
- * Observations is the ecological record: review each event's media in
- * the gallery and confirm the species and counts. Provides the
- * canonical research-projects page chrome and hands `projectId` to
- * `VerifyView`, which owns the event gallery, state, queries, and the
- * event detail modal.
+ * One of the two verification pages (the other is `LabelsPage`). The
+ * Counts page is the ecological record: review each event's media in the
+ * gallery and confirm the species and counts (the data model and exports
+ * keep the standard term "observation"). Provides the canonical
+ * research-projects page chrome and hands `projectId` to `VerifyView`,
+ * which owns the event gallery, state, queries, and the event detail modal.
  */
 
 import { useParams } from "react-router-dom";
@@ -16,7 +16,7 @@ import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticRepo
 import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { VerifyView } from "../components/verify/VerifyView";
 
-export default function ObservationsPage() {
+export default function CountsPage() {
   const { projectId } = useParams<{ projectId: string }>();
 
   // Drive the subtitle from the unfiltered event count. Same query key
@@ -35,7 +35,7 @@ export default function ObservationsPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Observations</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Counts</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
                   ? "Confirm the species and counts per event"

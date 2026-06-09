@@ -5,7 +5,7 @@
  * highlighted, completed steps render with a check mark, upcoming
  * steps are muted.
  *
- * Step ordering is fixed: model → labels → observations → overview → save.
+ * Step ordering is fixed: model → labels → counts → overview → save.
  * "Completed" means a step preceding the current one.
  *
  * Direct navigation: chips up to and including the backend's
@@ -30,7 +30,7 @@ interface Step {
 const STEPS: Step[] = [
   { id: "model", label: "Setup" },
   { id: "labels", label: "Labels" },
-  { id: "observations", label: "Observations" },
+  { id: "counts", label: "Counts" },
   { id: "overview", label: "Summary" },
   { id: "save", label: "Output" },
 ];

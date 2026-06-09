@@ -6,7 +6,7 @@
  * cohort relabel, per-detection label cleanup). Mounted by
  * `pages/LabelsPage.tsx` (research projects) and
  * `pages/folder-run/FolderRunLabelsStep.tsx` (folder runs), mirroring
- * how `VerifyView` backs the Observations page.
+ * how `VerifyView` backs the Counts page.
  */
 
 import { useQuery } from "@tanstack/react-query";

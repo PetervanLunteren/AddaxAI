@@ -64,7 +64,7 @@ const PROJECT_PAGE_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   process: "Process",
   labels: "Labels",
-  observations: "Observations",
+  counts: "Counts",
   sites: "Sites",
   deployments: "Deployments",
   export: "Export",
@@ -76,7 +76,7 @@ const PROJECT_PAGE_LABELS: Record<string, string> = {
 const FOLDER_RUN_STEP_LABELS: Record<string, string> = {
   model: "Setup",
   labels: "Labels",
-  observations: "Observations",
+  counts: "Counts",
   overview: "Summary",
   save: "Output",
 };

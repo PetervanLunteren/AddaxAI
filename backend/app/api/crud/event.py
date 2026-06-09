@@ -297,12 +297,12 @@ def _apply_event_filters(
 
     if verification in ("verified", "unverified"):
         # Event verification is an explicit human sign-off stored on
-        # Event.verified (set on the Observations page when the species
+        # Event.confirmed (set on the Observations page when the species
         # and counts are confirmed). Distinct from Detection.verified.
         if verification == "verified":
-            query = query.filter(Event.verified == True)  # noqa: E712
+            query = query.filter(Event.confirmed == True)  # noqa: E712
         else:
-            query = query.filter(Event.verified == False)  # noqa: E712
+            query = query.filter(Event.confirmed == False)  # noqa: E712
 
     if flagged in ("flagged", "not_flagged"):
         flagged_subq = (
@@ -593,9 +593,9 @@ def get_events_by_project(
         )
 
         # Event verification is the explicit human sign-off on species and
-        # counts, stored on Event.verified (set on the Observations page).
+        # counts, stored on Event.confirmed (set on the Observations page).
         # The file-level verified_* counts above stay as secondary detail.
-        is_verified = event.verified
+        is_confirmed = event.confirmed
 
         # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
         thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
@@ -629,7 +629,7 @@ def get_events_by_project(
                 "total_count": len(sorted_files),
                 "verified_maxn_count": verified_maxn_count,
                 "total_maxn_count": total_maxn_count,
-                "is_verified": is_verified,
+                "is_confirmed": is_confirmed,
                 "any_file_flagged": any_file_flagged,
                 "any_file_favorited": any_file_favorited,
             }
@@ -719,7 +719,7 @@ def get_adjacent_events(
     """
     Get adjacent event IDs for navigation.
 
-    Returns previous_id, next_id, next_unverified_id, current_index, total_count.
+    Returns previous_id, next_id, next_unconfirmed_id, current_index, total_count.
     Order matches `get_events_by_project` for the same `(sort, seed)`. The
     next/prev predicates are derived from the active sort key so modal
     Next/Prev tracks the displayed grid order.
@@ -751,7 +751,7 @@ def get_adjacent_events(
         return {
             "previous_id": None,
             "next_id": None,
-            "next_unverified_id": None,
+            "next_unconfirmed_id": None,
             "current_index": 0,
             "total_count": 0,
         }
@@ -777,20 +777,14 @@ def get_adjacent_events(
     # 3. Next (one row below current in display order).
     nxt = base().filter(next_pred).order_by(*next_order).first()
 
-    # 4. Next unverified (next row in display order with at least one
-    # unverified file). Uses base() so all active filters apply.
-    unv_file = aliased(File)
-    unv_subq = (
-        select(event_files.c.event_id)
-        .join(unv_file, unv_file.id == event_files.c.file_id)
-        .where(event_files.c.event_id == Event.id)
-        .where(unv_file.verified == False)  # noqa: E712
-        .correlate(Event)
-    )
-    nxt_unv = (
+    # 4. Next unconfirmed (next row in display order whose species and
+    # counts have not been confirmed). Uses base() so all active filters
+    # apply. This drives the "next event to confirm" jump on the
+    # Observations page.
+    nxt_unconf = (
         base()
         .filter(next_pred)
-        .filter(exists(unv_subq))
+        .filter(Event.confirmed == False)  # noqa: E712
         .order_by(*next_order)
         .first()
     )
@@ -819,7 +813,7 @@ def get_adjacent_events(
     return {
         "previous_id": prev[0] if prev else None,
         "next_id": nxt[0] if nxt else None,
-        "next_unverified_id": nxt_unv[0] if nxt_unv else None,
+        "next_unconfirmed_id": nxt_unconf[0] if nxt_unconf else None,
         "current_index": idx,
         "total_count": total,
     }
@@ -938,21 +932,21 @@ def get_event_verification_stats(
     verified_detections = int(det_verified_q.scalar() or 0)
 
     # Event-level verification: total and signed-off counts. Event
-    # verification is the explicit human sign-off stored on Event.verified.
+    # verification is the explicit human sign-off stored on Event.confirmed.
     events_total_q = db.query(func.count(Event.id)).filter(
         Event.id.in_(select(event_ids_subq.c.id))
     )
     events_total = events_total_q.scalar() or 0
 
-    events_fully_verified_q = (
+    events_confirmed_q = (
         db.query(func.count(Event.id))
         .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .filter(Event.verified == True)  # noqa: E712
+        .filter(Event.confirmed == True)  # noqa: E712
     )
-    events_fully_verified = events_fully_verified_q.scalar() or 0
+    events_confirmed = events_confirmed_q.scalar() or 0
 
     return {
-        "events_fully_verified": events_fully_verified,
+        "events_confirmed": events_confirmed,
         "events_total": events_total,
         "total_files": file_stats[0] or 0,
         "verified_files": int(file_stats[1] or 0),

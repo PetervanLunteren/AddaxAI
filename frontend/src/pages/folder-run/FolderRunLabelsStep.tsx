@@ -33,7 +33,7 @@ export function FolderRunLabelsStep() {
   const [selectionCount, setSelectionCount] = useState(0);
 
   const advance = useMutation({
-    mutationFn: () => folderRunsApi.updateStep(runId!, "observations"),
+    mutationFn: () => folderRunsApi.updateStep(runId!, "counts"),
     onSuccess: (next) => {
       queryClient.setQueryData(["folder-run", runId], next);
       navigate(`/folder-runs/${runId}/observations`);

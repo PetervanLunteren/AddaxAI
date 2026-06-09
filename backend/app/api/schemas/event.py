@@ -49,10 +49,11 @@ class EventSummary(BaseModel):
     total_count: int
     verified_maxn_count: int
     total_maxn_count: int
-    # Explicit human sign-off on the event's species and counts, stored
-    # on Event.verified (set on the Observations page). The verified_count
-    # / verified_maxn_count fields above are file-level secondary detail.
-    is_verified: bool
+    # Human confirmation of the event's species and counts, stored on
+    # Event.confirmed (the "Confirm" action on the Observations page). The
+    # verified_count / verified_maxn_count fields above are file-level
+    # secondary detail.
+    is_confirmed: bool
     # Aggregated file-level state for the card corner cluster.
     any_file_flagged: bool
     any_file_favorited: bool
@@ -89,8 +90,8 @@ class EventWithFiles(BaseModel):
     event_end_local: datetime
     file_count: int
     max_n_frames: list[MaxNFrame]
-    # Explicit human sign-off on the species and counts.
-    verified: bool = False
+    # Human confirmation of the species and counts ("Confirm" action).
+    confirmed: bool = False
     # Per-species count list (AI + human-only), highest count first.
     observations: list[EventObservationItem] = []
     created_at_utc: datetime
@@ -123,7 +124,7 @@ class AdjacentEventsResponse(BaseModel):
 
     previous_id: str | None
     next_id: str | None
-    next_unverified_id: str | None
+    next_unconfirmed_id: str | None
     current_index: int
     total_count: int
 
@@ -138,12 +139,12 @@ class DateRange(BaseModel):
 class EventVerificationStats(BaseModel):
     """Aggregate verification stats across filtered events.
 
-    The Events tab progress bar reads `events_fully_verified` /
+    The Events tab progress bar reads `events_confirmed` /
     `events_total`. The other fields remain for any downstream
     consumer that needs file-level granularity.
     """
 
-    events_fully_verified: int
+    events_confirmed: int
     events_total: int
     total_files: int
     verified_files: int

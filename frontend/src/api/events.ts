@@ -96,13 +96,13 @@ export const eventsApi = {
     return api.get<EventWithFiles>(`/api/events/${eventId}`);
   },
 
-  /** Set the explicit human sign-off on the event's species and counts. */
-  setVerified: async (
+  /** Set the human confirmation of the event's species and counts. */
+  setConfirmed: async (
     eventId: string,
-    verified: boolean,
+    confirmed: boolean,
   ): Promise<EventWithFiles> => {
-    return api.patch<EventWithFiles>(`/api/events/${eventId}/verify`, {
-      verified,
+    return api.patch<EventWithFiles>(`/api/events/${eventId}/confirm`, {
+      confirmed,
     });
   },
 

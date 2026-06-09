@@ -216,6 +216,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "event sign-off (events.verified); detectable via events.verified"
         ),
     ),
+    _Fingerprint(
+        revision="a3b4c5d6e7f8",
+        table="events",
+        column="confirmed",
+        description=(
+            "rename events.verified -> events.confirmed (the Observations "
+            "page 'Confirm' action); detectable via events.confirmed"
+        ),
+    ),
 )
 
 

@@ -10,7 +10,7 @@
  * sliders, so the bar stays a single row.
  *
  * Page specifics:
- * - Observations (events): all slots; `showLikedFlaggedEmpty = true`.
+ * - Counts (events): all slots; `showLikedFlaggedEmpty = true`.
  * - Labels: same slots, but the More popover only contains the
  *   confidence ranges (`showLikedFlaggedEmpty = false`). Verified
  *   options match (all / unverified / verified).
@@ -54,6 +54,19 @@ const DEFAULT_VERIFICATION_OPTIONS: VerificationOption[] = [
   { value: "verified", label: "Verified" },
 ];
 
+// The Counts page (countBy="event") filters on Event.confirmed, so it
+// reads "Confirmed" / "Unconfirmed". The shared `verification` param value
+// stays verified/unverified; only the display wording changes.
+const EVENT_VERIFICATION_OPTIONS: VerificationOption[] = [
+  { value: "all", label: "All" },
+  { value: "unverified", label: "Unconfirmed" },
+  { value: "verified", label: "Confirmed" },
+];
+const EVENT_VERIFICATION_LABELS: Record<string, string> = {
+  verified: "Confirmed",
+  unverified: "Unconfirmed",
+};
+
 interface VerifyFilterBarProps {
   filters: EventFilterParams;
   onChange: (next: EventFilterParams) => void;
@@ -77,10 +90,17 @@ export function VerifyFilterBar({
   classificationModelId,
   detectionFloor = 0,
   countBy,
-  verificationOptions = DEFAULT_VERIFICATION_OPTIONS,
+  verificationOptions,
   showLikedFlaggedEmpty = true,
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
+
+  // Event scope (Counts page) confirms; detection/file scope (Labels)
+  // verifies. Drives the verification filter's wording.
+  const isEventScope = countBy === "event";
+  const verOptions =
+    verificationOptions ??
+    (isEventScope ? EVENT_VERIFICATION_OPTIONS : DEFAULT_VERIFICATION_OPTIONS);
 
   // Folder runs are a single deployment with no site, so the Sites
   // filter is meaningless there. Detect the mode from the project
@@ -214,7 +234,7 @@ export function VerifyFilterBar({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Verified</label>
+          <label className="text-xs font-medium text-muted-foreground">{isEventScope ? "Confirmed" : "Verified"}</label>
           <Select
             value={filters.verification ?? "all"}
             onValueChange={(v) =>
@@ -230,7 +250,7 @@ export function VerifyFilterBar({
               </span>
             </SelectTrigger>
             <SelectContent>
-              {verificationOptions.map((opt) => (
+              {verOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -260,6 +280,7 @@ export function VerifyFilterBar({
         siteNames={siteNames}
         displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}
+        verificationLabels={isEventScope ? EVENT_VERIFICATION_LABELS : undefined}
       />
     </div>
   );

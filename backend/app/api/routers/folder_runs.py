@@ -57,7 +57,7 @@ router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
 FolderRunStep = Literal[
-    "model", "labels", "observations", "overview", "save"
+    "model", "labels", "counts", "overview", "save"
 ]
 
 
@@ -366,7 +366,11 @@ def _load_run(db: Session, run_id: str) -> FolderRunResponse:
     queue_entry = entries[0] if entries else None
 
     state: dict = project.folder_run_state or {}
-    step: FolderRunStep = state.get("step", "model")
+    raw_step = state.get("step", "model")
+    # Forward-compat: the "observations" step was renamed to "counts". Map
+    # any in-flight run still persisted at the old slug so re-attach doesn't
+    # fail the FolderRunStep validation below.
+    step: FolderRunStep = "counts" if raw_step == "observations" else raw_step
 
     # Surface the running deployment_analysis job (if any) so the
     # frontend can re-attach to the progress modal after a refresh.
@@ -519,7 +523,9 @@ def lookup_folder_run(
         return None
 
     state: dict = existing.folder_run_state or {}
-    step: FolderRunStep = state.get("step", "model")
+    raw_step = state.get("step", "model")
+    # Forward-compat: "observations" step was renamed to "counts" (see lookup).
+    step: FolderRunStep = "counts" if raw_step == "observations" else raw_step
 
     # Cheap aggregates: total files, total threshold+verified
     # detections, distinct species label count, count of files with a
