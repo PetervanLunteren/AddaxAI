@@ -41,36 +41,12 @@
 - [ ] EventCard grid chips still show species names without "×N", and the dashboard's headline verification progress card (separate from the Observations-page pill, which is already event-level) still counts files — I can switch it to event-level if you want.. 
 
 
-- [ ] Investigate how it currently works to add an observation without a box in the verification of images and events. This is done so you can add a hidden individual in a video for example (3 deer walking by, only two in a single frame, so one can be added without a box). Makes sense? Or perhaps a bit confusing? Should we do a box less observation or simply something custom field for videos like “distinct number of individuals”? What would be less confusing? Now it writes fake detections to a frame number which is also not true. How would that then work in the CSV output? And should we add that to the events view too? As you can have an event of 5 elephants walking past while you only see 3 max at every given image. How should we make this feel logical for users. How do other platforms do it? Do a full audit. 
 
-
-I think this is something we should discuss properly and weigh the pros and cons. I think the source of the confusing sits in the different types of viewing the data and verifying it. We have observations (verify instance), media (verify file), and events (verify certain files). The count_override we discussed targets only events en videos (which are a type of event themselves, but listed under media). Agree?
-
-If we decide to add count_override, where do we list them? At events and videos? Or also with images in media mode? And how to we do it if there are multiple species present in a video? count override deer +3 and count override wolf +1? This does get confusing quick i think.
-
-What if we chnage the way we verify events? What if we make event verification not about boxes at all, but just show a gallery of images (with optional bbox overlay show hide), and some way to quickly see all the images / videos in an event, and then a non boxed version of verification, where the user can set things like "label : number of individuals", so they can say 3 deer and 2 wolves, irrelevant of which file or wich box they were at. Does that make sense? 
-
-But we do have to think about the consequences though. What does that do with the metrics? And also if we do not have bbox info, we cant do the planned things like depth estimation and WildBook integration (or.... maybe I'm thinking wrong. The bboxes are still there, tehy are just not verified, which is not nessisarily a problem for these features...). Anyway, lots of things to talk about. What do you think? Keep in mind what the other platforms do, what the data standards are. Do web queries if needed, I'm not in a rush. 
-
-Give me a recommendation as a path to go for AddaxAI and ways of ve3rifying that suit the app and the standard ways, with an eye on the future. 
-
-Instructions:
-* Conduct a complete audit before making any changes. Assess the impact on the entire application.
-* Codex will review your output once you are done, so make sure you exceed his expectations
-* Do not sugar coat, be honest and clear
-* Read all MD file in root to get a understanding of the project. 
-* If something is unclear at any point, stop and ask before continuing.
-* I'm not in a rush. Please be precise and do the task thoroughly. 
-* Follow the KISS principle. Keep things as simple as possible.
-* Follow the DRY principle (Don't Repeat Yourself). Avoid duplication and maintain a single source of truth.
-* Follow the YAGNI principle (You Aren't Gonna Need It). Do not build functionality until it is actually needed.
-* Use a clear mental model that makes the feature easy for users to understand. Good UX should feel simple.
-* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
 
 
 
 ## Priority 1
-- [ ] Add different modes at the home screen.
+- [ ] Add different modes at the home screen. What if we frame the two workflows as "Processing workflow / One-off analysis tool" and "Management platform"? Because that is the real distiction, right? One just processes the data and lets you handle it, the other stores it and can be revisisted later and can be added to like a project. 
 - [ ] Add a country dropdown for models with geofence data (speciesnet eg), I;ve received the feedback that the country dropdown was hard to find. Perhaps a country dropdown and then a small line saying something like "X of Y labels included/excluded. Click here to refine." Or something like that. Because it is a pretty powerful feature that one can refine the geofence reules themselves. What do you think? How would that look? Give me a few options as previews, so I can visually see, we can refine, and then I can choose. We'll need to replace all the label slection pickers that are visible (fodler mode step 1, create project modal, project settings, more?). 
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"

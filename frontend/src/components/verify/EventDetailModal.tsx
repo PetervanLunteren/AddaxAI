@@ -30,6 +30,8 @@ import {
   FolderOpen,
   Play,
   MoreVertical,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
@@ -479,6 +481,11 @@ export function EventDetailModal({
               flagged: !currentFile.flagged,
             });
           break;
+        case "b":
+        case "B":
+          e.preventDefault();
+          setBoxesHidden((h) => !h);
+          break;
         case "Escape":
           e.preventDefault();
           onClose();
@@ -504,36 +511,6 @@ export function EventDetailModal({
     viewMode,
     sourceVideos,
   ]);
-
-  // B key hold: momentarily hide boxes in the focus image (and, mirrored,
-  // in the filmstrip thumbnails).
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-      if ((e.key === "b" || e.key === "B") && !e.repeat) {
-        setBoxesHidden(true);
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "b" || e.key === "B") {
-        setBoxesHidden(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -643,6 +620,21 @@ export function EventDetailModal({
                 contrast={contrast}
                 onContrastChange={setContrast}
               />
+              {/* Show / hide the AI boxes — toggle off to count the scene
+                  yourself without the AI's boxes anchoring you. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setBoxesHidden((h) => !h)}
+                title={boxesHidden ? "Show AI boxes (B)" : "Hide AI boxes (B)"}
+              >
+                {boxesHidden ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </Button>
               {/* Flag for review — the one triage action worth its own key. */}
               <Button
                 variant="ghost"
@@ -869,7 +861,7 @@ export function EventDetailModal({
                     ["Click", "Focus a thumbnail"],
                     ["P", "Play video"],
                     ["F", "Flag / unflag"],
-                    ["B (hold)", "Hide boxes"],
+                    ["B", "Show / hide AI boxes"],
                     ["Esc", "Close"],
                   ].map(([key, action]) => (
                     <div key={key} className="flex items-center text-xs gap-3 h-7">
