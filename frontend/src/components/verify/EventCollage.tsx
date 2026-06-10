@@ -8,9 +8,8 @@
  *   4: 2x2
  *
  * Each tile fetches its file detail via the shared ["file", fileId]
- * query so detection bboxes can be drawn with the same SVG mask
- * pattern used by FileCard. The viewBox of each tile matches the
- * tile's pixel aspect ratio so bboxes stay aligned in every layout.
+ * query and hands it to FrameThumbnail, which draws the bboxes in image
+ * space and slices them to the tile so they stay aligned in every layout.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -46,7 +45,6 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
         <EventCollageTile
           fileId={fileIds[0]}
           detectionThreshold={detectionThreshold}
-          viewBox={{ width: 320, height: 180 }}
         />
       </div>
     );
@@ -60,7 +58,6 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
             key={id}
             fileId={id}
             detectionThreshold={detectionThreshold}
-            viewBox={{ width: 160, height: 180 }}
           />
         ))}
       </div>
@@ -73,17 +70,14 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
         <EventCollageTile
           fileId={fileIds[0]}
           detectionThreshold={detectionThreshold}
-          viewBox={{ width: 160, height: 90 }}
         />
         <EventCollageTile
           fileId={fileIds[1]}
           detectionThreshold={detectionThreshold}
-          viewBox={{ width: 160, height: 90 }}
         />
         <EventCollageTile
           fileId={fileIds[2]}
           detectionThreshold={detectionThreshold}
-          viewBox={{ width: 320, height: 90 }}
           className="col-span-2"
         />
       </div>
@@ -97,7 +91,6 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
           key={id}
           fileId={id}
           detectionThreshold={detectionThreshold}
-          viewBox={{ width: 160, height: 90 }}
         />
       ))}
     </div>
@@ -107,14 +100,12 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
 interface EventCollageTileProps {
   fileId: string;
   detectionThreshold: number;
-  viewBox: { width: number; height: number };
   className?: string;
 }
 
 function EventCollageTile({
   fileId,
   detectionThreshold,
-  viewBox,
   className,
 }: EventCollageTileProps) {
   const { data: file } = useQuery({
@@ -127,7 +118,6 @@ function EventCollageTile({
       fileId={fileId}
       file={file}
       detectionThreshold={detectionThreshold}
-      viewBox={viewBox}
       className={className}
     />
   );

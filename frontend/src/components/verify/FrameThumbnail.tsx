@@ -3,11 +3,11 @@
  * overlay. One renderer for the event collage (event cards) and the event
  * filmstrip (Counts modal).
  *
- * Draws the 512px thumbnail (?size=thumb) and, when `showBoxes` is on and
- * the file's detections have loaded, a dimming spotlight with colored box
- * outlines (the SVG-mask pattern shared across the verify views). The
- * `viewBox` aspect must match the tile's rendered aspect so the boxes stay
- * aligned under object-cover.
+ * Draws the 512px thumbnail (?size=thumb) and, when `showBoxes` is on and the
+ * file's detections have loaded, a dimming spotlight with colored box
+ * outlines. The SVG draws in the image's own pixel space with
+ * preserveAspectRatio="slice" (SVG's object-cover), so the boxes line up with
+ * the object-cover image at any tile aspect, with no manual fitting math.
  */
 
 import { API_BASE_URL } from "../../lib/api-client";
@@ -22,8 +22,6 @@ interface FrameThumbnailProps {
   detectionThreshold: number;
   /** Draw the spotlight + boxes. Default true. */
   showBoxes?: boolean;
-  /** SVG viewBox; its aspect must match the tile's rendered aspect. */
-  viewBox: { width: number; height: number };
   /** CSS filter applied to the image (brightness / contrast). */
   imageFilter?: string;
   className?: string;
@@ -34,13 +32,9 @@ export function FrameThumbnail({
   file,
   detectionThreshold,
   showBoxes = true,
-  viewBox,
   imageFilter,
   className,
 }: FrameThumbnailProps) {
-  const VW = viewBox.width;
-  const VH = viewBox.height;
-
   const dets =
     file && showBoxes
       ? file.detections.filter((d) =>
@@ -48,32 +42,11 @@ export function FrameThumbnail({
         )
       : [];
 
-  let boxes: Array<{
-    id: string;
-    bx: number;
-    by: number;
-    bw: number;
-    bh: number;
-    color: string;
-  }> = [];
-  if (file && dets.length > 0) {
-    const imgW = file.width_px || 1;
-    const imgH = file.height_px || 1;
-    const scale = Math.max(VW / imgW, VH / imgH);
-    const dw = imgW * scale;
-    const dh = imgH * scale;
-    const ox = (VW - dw) / 2;
-    const oy = (VH - dh) / 2;
-    boxes = dets.map((det) => ({
-      id: det.id,
-      bx: ox + det.bbox_x * dw,
-      by: oy + det.bbox_y * dh,
-      bw: det.bbox_width * dw,
-      bh: det.bbox_height * dh,
-      color: getDetectionColor(det),
-    }));
-  }
-
+  // Draw in the image's pixel space; the SVG slices it to the tile exactly
+  // like the image's object-cover.
+  const imgW = file?.width_px || 1;
+  const imgH = file?.height_px || 1;
+  const rx = Math.round(Math.min(imgW, imgH) * 0.02);
   const maskId = `m-frame-${fileId}`;
 
   return (
@@ -90,46 +63,47 @@ export function FrameThumbnail({
         }}
       />
       {/* Spotlight + outlines. Rendered once `file` has loaded (and boxes
-          are on) so empty frames dim uniformly, the same baseline used by
-          the event-card collage. */}
+          are on) so empty frames dim uniformly. */}
       {file && showBoxes && (
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
-          viewBox={`0 0 ${VW} ${VH}`}
+          viewBox={`0 0 ${imgW} ${imgH}`}
+          preserveAspectRatio="xMidYMid slice"
         >
           <defs>
             <mask id={maskId}>
-              <rect width={VW} height={VH} fill="white" />
-              {boxes.map((b) => (
+              <rect width={imgW} height={imgH} fill="white" />
+              {dets.map((d) => (
                 <rect
-                  key={b.id}
-                  x={b.bx}
-                  y={b.by}
-                  width={b.bw}
-                  height={b.bh}
-                  rx={4}
+                  key={d.id}
+                  x={d.bbox_x * imgW}
+                  y={d.bbox_y * imgH}
+                  width={d.bbox_width * imgW}
+                  height={d.bbox_height * imgH}
+                  rx={rx}
                   fill="black"
                 />
               ))}
             </mask>
           </defs>
           <rect
-            width={VW}
-            height={VH}
+            width={imgW}
+            height={imgH}
             fill="rgba(0,0,0,0.55)"
             mask={`url(#${maskId})`}
           />
-          {boxes.map((b) => (
+          {dets.map((d) => (
             <rect
-              key={b.id}
-              x={b.bx}
-              y={b.by}
-              width={b.bw}
-              height={b.bh}
-              rx={4}
+              key={d.id}
+              x={d.bbox_x * imgW}
+              y={d.bbox_y * imgH}
+              width={d.bbox_width * imgW}
+              height={d.bbox_height * imgH}
+              rx={rx}
               fill="none"
-              stroke={b.color}
-              strokeWidth={2.5}
+              stroke={getDetectionColor(d)}
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
             />
           ))}
         </svg>

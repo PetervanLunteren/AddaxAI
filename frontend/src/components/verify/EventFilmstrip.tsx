@@ -15,9 +15,8 @@ import type { TileSize } from "./CropGrid";
 import type { FileWithDetections } from "../../api/types";
 
 // Minimum tile width per size; the grid fits as many columns as the region
-// width allows. 4:3 tiles, so the viewBox aspect matches.
+// width allows.
 const TILE_MIN_WIDTH: Record<TileSize, number> = { S: 96, M: 140, L: 200 };
-const TILE_VIEWBOX = { width: 160, height: 120 };
 
 interface EventFilmstripProps {
   files: FileWithDetections[];
@@ -77,7 +76,6 @@ export function EventFilmstrip({
                 detectionThreshold={detectionThreshold}
                 showBoxes={showBoxes}
                 imageFilter={imageFilter}
-                viewBox={TILE_VIEWBOX}
               />
               {file.file_type === "video" && (
                 <span className="pointer-events-none absolute bottom-1 left-1 flex items-center justify-center rounded-full bg-black/60 p-1">

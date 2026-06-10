@@ -57,6 +57,10 @@ import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 
+// Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
+// wheel events per swipe scrubs at a steady ~8 frames/second.
+const SCRUB_THROTTLE_MS = 120;
+
 interface EventDetailModalProps {
   eventId: string | null;
   projectId: string;
@@ -539,6 +543,27 @@ export function EventDetailModal({
     [files],
   );
 
+  // Shift+wheel over the focus scrubs through frames (stills, so scrubbing
+  // past a video does not start playback). Throttled to a steady pace: a
+  // trackpad fires a burst of wheel events per swipe, so without this one
+  // flick would jump dozens of frames. Magnitude is ignored, so the speed
+  // feels the same on a mouse wheel and a trackpad.
+  const lastScrubRef = useRef(0);
+  const handleScrubFrame = useCallback(
+    (delta: number) => {
+      const now = performance.now();
+      if (now - lastScrubRef.current < SCRUB_THROTTLE_MS) return;
+      lastScrubRef.current = now;
+      const dir = delta > 0 ? 1 : -1;
+      setSelectedFileIndex((i) =>
+        Math.max(0, Math.min(files.length - 1, i + dir)),
+      );
+      setSelectedDetectionId(null);
+      setViewMode("frame");
+    },
+    [files.length],
+  );
+
   const prevDisabled = !adjacent?.previous_id;
   const nextDisabled = !adjacent?.next_id;
   const nextUnconfirmedDisabled = !adjacent?.next_unconfirmed_id;
@@ -994,6 +1019,7 @@ export function EventDetailModal({
                       queryClient.invalidateQueries({ queryKey: ["file"] });
                       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
                     }}
+                    onScrubFrame={handleScrubFrame}
                     imageFilter={imageFilter}
                     defaultCategory={effectiveActiveLabel.category}
                     defaultLabel={effectiveActiveLabel.label}
@@ -1139,6 +1165,8 @@ export function EventDetailModal({
                       {[
                         ["Enter", "Confirm + next event"],
                         ["← →", "Prev / next frame"],
+                        ["Shift + scroll", "Scrub frames"],
+                        ["Scroll", "Zoom the focus"],
                         ["Click", "Focus a thumbnail"],
                         ["B (hold)", "Hide boxes"],
                         ["Esc", "Close"],

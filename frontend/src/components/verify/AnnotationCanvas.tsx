@@ -45,6 +45,9 @@ interface AnnotationCanvasProps {
    * grid lists). The canvas itself does not know which keys to touch.
    */
   onMutated?: () => void;
+  /** Shift+wheel steps to the previous/next frame instead of zooming.
+   *  `delta` is the wheel deltaY (negative = up/previous). */
+  onScrubFrame?: (delta: number) => void;
   imageFilter?: string;
   defaultCategory?: string;
   defaultLabel?: string;
@@ -74,6 +77,7 @@ export function AnnotationCanvas({
   drawMode,
   onDrawModeChange,
   onMutated,
+  onScrubFrame,
   imageFilter,
   defaultCategory,
   defaultLabel,
@@ -375,9 +379,20 @@ export function AnnotationCanvas({
     y: Math.min(0, Math.max(pos.y, stageSize.height * (1 - z))),
   });
 
-  // Zoom via scroll wheel / trackpad pinch
+  // Plain wheel = zoom; Shift+wheel = step to the prev/next frame.
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
+    if (e.evt.shiftKey && onScrubFrame) {
+      // Holding Shift makes the browser remap the wheel to the horizontal
+      // axis (deltaY becomes 0, the value lands in deltaX), so scrub on
+      // whichever axis actually carries the scroll.
+      const d =
+        Math.abs(e.evt.deltaY) >= Math.abs(e.evt.deltaX)
+          ? e.evt.deltaY
+          : e.evt.deltaX;
+      onScrubFrame(d);
+      return;
+    }
     const stage = stageRef.current;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
