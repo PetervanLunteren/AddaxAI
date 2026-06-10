@@ -48,6 +48,10 @@ interface AnnotationCanvasProps {
   /** Shift+wheel steps to the previous/next frame instead of zooming.
    *  `delta` is the wheel deltaY (negative = up/previous). */
   onScrubFrame?: (delta: number) => void;
+  /** View-only: boxes render but are not interactive (no drag / select /
+   *  relabel), so a drag anywhere pans the zoomed image. Used by the Counts
+   *  modal, where label/box editing lives on the Labels page. */
+  readOnly?: boolean;
   imageFilter?: string;
   defaultCategory?: string;
   defaultLabel?: string;
@@ -78,6 +82,7 @@ export function AnnotationCanvas({
   onDrawModeChange,
   onMutated,
   onScrubFrame,
+  readOnly,
   imageFilter,
   defaultCategory,
   defaultLabel,
@@ -204,13 +209,21 @@ export function AnnotationCanvas({
       const transformer = transformerRef.current;
       const wasVisible = transformer?.visible();
       transformer?.visible(false);
+      // The annotated download always carries the labels and the spotlight
+      // dim, even when they're hidden on screen in read-only (Counts) mode.
+      const annot = [
+        ...stage.find(".label-pill"),
+        ...stage.find(".spotlight"),
+      ];
+      annot.forEach((n: any) => n.visible(true));
       stage.batchDraw();
 
       const pixelRatio = Math.max(1, imgWidth / stage.width());
       const dataUrl = stage.toDataURL({ pixelRatio });
 
-      // Restore transform and transformer
+      // Restore transform, transformer, and on-screen annotation visibility.
       transformer?.visible(wasVisible ?? true);
+      annot.forEach((n: any) => n.visible(!readOnly));
       stage.scale(savedScale);
       stage.position(savedPos);
       stage.batchDraw();
@@ -583,9 +596,13 @@ export function AnnotationCanvas({
 
         {/* Detections layer */}
         <Layer>
-          {/* Spotlight dim overlay — darkens everything outside bounding boxes */}
+          {/* Spotlight dim overlay — darkens everything outside bounding
+              boxes. Hidden on screen in read-only (Counts) mode so the focus
+              is a clean study view, but still drawn into the download. */}
           {!boxesHidden && filteredDetections.length > 0 && (
             <Shape
+              name="spotlight"
+              visible={!readOnly}
               sceneFunc={(context) => {
                 const ctx = (context as any)._context as CanvasRenderingContext2D;
                 ctx.save();
@@ -621,6 +638,25 @@ export function AnnotationCanvas({
             const color = getDetectionColor(detection);
             const isSelected = selectedDetectionId === detection.id;
             const pill = computePillLayout(detection);
+            // Read-only focus: a slightly bolder colored line so it stays
+            // dominant, flanked by thin casing hairlines (white one line in,
+            // black one line out). Offset by half the colored width plus half
+            // the hairline so they sit beside the color, never over it.
+            const colorW = readOnly
+              ? isSelected
+                ? 4.5
+                : 3.5
+              : isSelected
+                ? 3
+                : 2;
+            const caseW = 0.75;
+            // In read-only mode keep the line + hairlines a constant screen
+            // width by dividing out the zoom, so zooming into a small animal
+            // gives a thin border (not one scaled up to eat the pixels).
+            const zDiv = readOnly ? zoom : 1;
+            const lineW = colorW / zDiv;
+            const hairW = caseW / zDiv;
+            const caseOff = (colorW + caseW) / 2 / zDiv;
 
             // Clamp the pill so it stays inside the stage. Without this, a
             // bbox near the right edge of the image pushes its label pill
@@ -633,6 +669,39 @@ export function AnnotationCanvas({
 
             return (
               <React.Fragment key={detection.id}>
+                {/* Read-only focus has no dim to provide contrast, so the
+                    colored line gets a single black hairline just outside it
+                    (carries it on light backgrounds) and a single white
+                    hairline just inside (on dark ones): white / color / black,
+                    not a symmetric sandwich. */}
+                {readOnly && (
+                  <>
+                    <Rect
+                      x={x - caseOff}
+                      y={y - caseOff}
+                      width={w + caseOff * 2}
+                      height={h + caseOff * 2}
+                      stroke="rgba(0,0,0,0.6)"
+                      strokeWidth={hairW}
+                      fill="transparent"
+                      cornerRadius={BBOX_CORNER_RADIUS + caseOff}
+                      listening={false}
+                    />
+                    {w - caseOff * 2 > 0 && h - caseOff * 2 > 0 && (
+                      <Rect
+                        x={x + caseOff}
+                        y={y + caseOff}
+                        width={w - caseOff * 2}
+                        height={h - caseOff * 2}
+                        stroke="rgba(255,255,255,0.7)"
+                        strokeWidth={hairW}
+                        fill="transparent"
+                        cornerRadius={Math.max(0, BBOX_CORNER_RADIUS - caseOff)}
+                        listening={false}
+                      />
+                    )}
+                  </>
+                )}
                 {/* Bounding box (stroke only, rounded) */}
                 <Rect
                   id={`det-${detection.id}`}
@@ -641,18 +710,24 @@ export function AnnotationCanvas({
                   width={w}
                   height={h}
                   stroke={color}
-                  strokeWidth={isSelected ? 3 : 2}
-                  opacity={BBOX_OPACITY}
+                  strokeWidth={lineW}
+                  opacity={readOnly ? 1 : BBOX_OPACITY}
                   fill="transparent"
                   cornerRadius={BBOX_CORNER_RADIUS}
-                  draggable={!drawMode}
+                  listening={!readOnly}
+                  draggable={!drawMode && !readOnly}
                   onClick={() => onSelectDetection(detection.id)}
                   onTap={() => onSelectDetection(detection.id)}
                   onDragEnd={(e) => handleDragEnd(detection, e)}
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
-                {/* Label pill — click to relabel this box in place. */}
+                {/* Label pill — click to relabel this box in place. Hidden
+                    on screen in read-only (Counts) mode (the species live in
+                    the count panel and the pill would occlude the animal),
+                    but still drawn into the annotated download. */}
                 <Group
+                  name="label-pill"
+                  visible={!readOnly}
                   x={pillX}
                   y={pillY}
                   listening={!drawMode}

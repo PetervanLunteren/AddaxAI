@@ -471,3 +471,12 @@ def test_event_verify_and_count_endpoints(client, db):
     ).json()
     by_label = {o["label"]: o for o in data["observations"]}
     assert by_label["fox"]["effective_count"] == 2
+
+    # Reset to the AI proposal: the human-only fox row is gone, the cow
+    # override is cleared back to its MaxN, and the sign-off is cleared.
+    client.patch(f"/api/events/{ev.id}/confirm", json={"confirmed": True})
+    data = client.post(f"/api/events/{ev.id}/observations/reset").json()
+    assert data["confirmed"] is False
+    assert len(data["observations"]) == 1
+    assert data["observations"][0]["label"] == "cow"
+    assert data["observations"][0]["effective_count"] == 1

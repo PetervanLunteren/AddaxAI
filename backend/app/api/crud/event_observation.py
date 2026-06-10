@@ -290,14 +290,19 @@ def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
 def list_event_observations(
     db: Session, event_id: str
 ) -> list[EventObservation]:
-    """All observation rows for an event (AI + human-only), highest
-    effective count first. Drives the Observations-page count editor."""
+    """All observation rows for an event (AI + human-only).
+
+    Ordered by the AI MaxN (highest first), then label. The key is
+    deliberately independent of `human_count` so editing a count never
+    reshuffles the rows under the user's cursor; human-only rows (max_n=0)
+    fall to the bottom alphabetically.
+    """
     rows = (
         db.query(EventObservation)
         .filter(EventObservation.event_id == event_id)
         .all()
     )
-    return sorted(rows, key=lambda o: o.effective_count, reverse=True)
+    return sorted(rows, key=lambda o: (-o.max_n, o.label or ""))
 
 
 def set_human_count(
@@ -428,6 +433,32 @@ def set_event_confirmed(
     if event is None:
         return None
     event.confirmed = confirmed
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def reset_event_to_ai(db: Session, event_id: str) -> Event | None:
+    """Drop every human edit to the event's counts, back to the AI proposal.
+
+    Clears `human_count` on the AI rows and deletes the human-only rows
+    (the species the AI never detected). Clears the event's sign-off.
+    Returns the event, or None when the id is unknown.
+    """
+    event = db.get(Event, event_id)
+    if event is None:
+        return None
+    rows = (
+        db.query(EventObservation)
+        .filter(EventObservation.event_id == event_id)
+        .all()
+    )
+    for obs in rows:
+        if obs.max_n == 0:
+            db.delete(obs)
+        else:
+            obs.human_count = None
+    event.confirmed = False
     db.commit()
     db.refresh(event)
     return event

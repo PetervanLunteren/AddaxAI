@@ -24,21 +24,16 @@ import {
   ChevronRight,
   ChevronsRight,
   X,
-  SquareDashed,
   Download,
   Flag,
   Heart,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
   FolderOpen,
   Play,
-  Tag,
+  MoreVertical,
 } from "lucide-react";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
-import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
 import { basename } from "../../lib/path-utils";
@@ -53,9 +48,8 @@ import { ViewControls } from "./ViewControls";
 import type { TileSize } from "./CropGrid";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { EventCountPanel } from "./EventCountPanel";
-import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
-import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
+import { useLabelOptions } from "../../hooks/useLabelOptions";
 
 // Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
 // wheel events per swipe scrubs at a steady ~8 frames/second.
@@ -79,14 +73,6 @@ export function EventDetailModal({
   const queryClient = useQueryClient();
   const revealInFolder = useRevealInFolder();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
-  const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
-    null
-  );
-  const [drawMode, setDrawMode] = useState(false);
-  // Active species for both drawing new boxes AND adding event-level
-  // observations. Sidebar Tag picker is the manual override; falls
-  // back to `defaultActiveLabel` (most common in this event) when null.
-  const [activeLabel, setActiveLabel] = useState<{ category: string; label: string | undefined } | null>(null);
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
   // One-shot flag: set when Download is clicked on a video while in frame
   // view, so the VideoPlayer runs the annotated-video export once it mounts.
@@ -95,9 +81,6 @@ export function EventDetailModal({
   const [videoPopoverOpen, setVideoPopoverOpen] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
-  const [relabelDetectionId, setRelabelDetectionId] = useState<string | null>(null);
-  const [localThreshold, setLocalThreshold] = useState<number | null>(null);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
 
@@ -163,12 +146,6 @@ export function EventDetailModal({
   );
 
   const exportFnRef = useRef<(() => void) | null>(null);
-  const zoomFnRef = useRef<{
-    zoomIn: () => void;
-    zoomOut: () => void;
-    resetZoom: () => void;
-    getZoom: () => number;
-  } | null>(null);
   const [viewport, setViewport] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -226,29 +203,6 @@ export function EventDetailModal({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Load shortcut label mappings from project data
-  useEffect(() => {
-    if (project?.shortcut_labels) {
-      const parsed: Record<number, LabelOption> = {};
-      for (const [k, v] of Object.entries(project.shortcut_labels)) {
-        parsed[Number(k)] = v as LabelOption;
-      }
-      setShortcutLabels(parsed);
-    }
-  }, [project?.shortcut_labels]);
-
-  // Update shortcut labels in state and persist to backend
-  const updateShortcutLabels = useCallback(
-    (updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>) => {
-      setShortcutLabels((prev) => {
-        const next = updater(prev);
-        projectsApi.update(projectId, { shortcut_labels: next });
-        return next;
-      });
-    },
-    [projectId]
-  );
-
   // Event summary for the top card: media breakdown + date/time span. This
   // describes the event you're confirming, not the frame you happen to be on.
   const eventSummary = useMemo(() => {
@@ -305,7 +259,6 @@ export function EventDetailModal({
       }
     });
     setSelectedFileIndex(bestIdx);
-    setSelectedDetectionId(null);
     setViewMode("frame");
     setPendingVideoExport(false);
     setSelectedVideoId(null);
@@ -316,8 +269,7 @@ export function EventDetailModal({
   const currentFile = files[selectedFileIndex] as
     | FileWithDetections
     | undefined;
-  const projectThreshold = project?.detection_threshold ?? 0;
-  const detectionThreshold = localThreshold ?? projectThreshold;
+  const detectionThreshold = project?.detection_threshold ?? 0;
   const imageFilter =
     brightness !== 50 || contrast !== 50
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
@@ -352,59 +304,6 @@ export function EventDetailModal({
       allDetections: videoFile.detections,
     };
   }, [currentFile, files, selectedVideoId]);
-
-  // Default active label: most common species across all detections
-  // in the event. The sidebar Tag picker uses this when the user
-  // hasn't set a manual override. Same value drives Draw-box and
-  // Add-Obs so both apply the same species.
-  const defaultActiveLabel = useMemo(() => {
-    if (!event?.files)
-      return { category: "animal", label: undefined as string | undefined };
-
-    const labelCounts = new Map<
-      string,
-      { count: number; category: string; label: string | undefined }
-    >();
-
-    for (const f of event.files) {
-      for (const d of f.detections) {
-        if (d.confidence >= detectionThreshold) {
-          const key = d.label || d.category;
-          const existing = labelCounts.get(key);
-          if (existing) {
-            existing.count++;
-          } else {
-            labelCounts.set(key, {
-              count: 1,
-              category: d.category,
-              label: d.label || undefined,
-            });
-          }
-        }
-      }
-    }
-
-    let best = { category: "animal", label: undefined as string | undefined };
-    let bestCount = 0;
-    for (const entry of labelCounts.values()) {
-      if (entry.count > bestCount) {
-        bestCount = entry.count;
-        best = { category: entry.category, label: entry.label };
-      }
-    }
-
-    return best;
-  }, [event?.files, detectionThreshold]);
-
-  // Effective active label: manual override falls through to default.
-  const effectiveActiveLabel = activeLabel ?? defaultActiveLabel;
-
-  // Reset manual override when the event changes. Within one event we
-  // keep the override across files so a "wolf" pick survives navigating
-  // between files of the same encounter.
-  useEffect(() => {
-    setActiveLabel(null);
-  }, [eventId]);
 
   // A stable, large modal: the focus + filmstrip both want the room, and
   // the focus canvas re-fits its container as the divider moves.
@@ -450,58 +349,6 @@ export function EventDetailModal({
     },
   });
 
-  // Filtered detections for the current file (for Tab cycling)
-  const filteredDetections = useMemo(() => {
-    if (!currentFile) return [];
-    let dets = currentFile.detections.filter(
-      (d) => d.confidence >= detectionThreshold
-    );
-    // For videos in frame view, only include best-frame detections
-    if (
-      currentFile.file_type === "video" &&
-      currentFile.best_frame_number != null &&
-      viewMode === "frame"
-    ) {
-      dets = dets.filter((d) => d.frame_number === currentFile.best_frame_number);
-    }
-    return dets;
-  }, [currentFile, detectionThreshold, viewMode]);
-
-  // Delete selected detection mutation
-  const deleteDetectionMutation = useMutation({
-    mutationFn: (id: string) => {
-      // Capture the next detection before deleting
-      const idx = filteredDetections.findIndex((d) => d.id === id);
-      const next =
-        filteredDetections[idx + 1] ?? filteredDetections[idx - 1] ?? null;
-      return detectionsApi.delete(id).then(() => next);
-    },
-    onSuccess: (next) => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-      setSelectedDetectionId(next?.id ?? null);
-    },
-  });
-
-  // Relabel a box in the focus (driven by clicking its label pill / Tab).
-  const relabelTargetDetection = relabelDetectionId
-    ? currentFile?.detections.find((d) => d.id === relabelDetectionId) ?? null
-    : null;
-  const relabelMutation = useMutation({
-    mutationFn: ({ id, option }: { id: string; option: LabelOption }) =>
-      detectionsApi.update(id, {
-        category: option.category,
-        label: option.label ?? null,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-      setRelabelDetectionId(null);
-    },
-  });
-
   // Navigation handlers
   const navigateEvent = useCallback(
     (targetEventId: string | null | undefined) => {
@@ -517,6 +364,16 @@ export function EventDetailModal({
   const handleNextUnconfirmed = useCallback(() => {
     navigateEvent(adjacent?.next_unconfirmed_id);
   }, [adjacent, navigateEvent]);
+
+  // Confirm the event (if not already) and jump to the next unconfirmed one.
+  // Shared by the Enter key and the count panel's Confirm button.
+  const handleConfirmAndAdvance = useCallback(() => {
+    if (event && !event.confirmed) {
+      eventConfirmMutation.mutateAsync(true).then(handleNextUnconfirmed);
+    } else {
+      handleNextUnconfirmed();
+    }
+  }, [event, eventConfirmMutation, handleNextUnconfirmed]);
 
   // Download button. For a video, always produce the annotated VIDEO:
   // switch to video view (mounting the player) and flag a one-shot export
@@ -536,7 +393,6 @@ export function EventDetailModal({
   const handleSelectFile = useCallback(
     (index: number) => {
       setSelectedFileIndex(index);
-      setSelectedDetectionId(null);
       const f = files[index];
       setViewMode(f && isPlayableVideo(f) ? "video" : "frame");
     },
@@ -558,7 +414,6 @@ export function EventDetailModal({
       setSelectedFileIndex((i) =>
         Math.max(0, Math.min(files.length - 1, i + dir)),
       );
-      setSelectedDetectionId(null);
       setViewMode("frame");
     },
     [files.length],
@@ -584,64 +439,19 @@ export function EventDetailModal({
       // Confirm + advance to the next unconfirmed event.
       if (e.key === "Enter") {
         e.preventDefault();
-        if (event && !event.confirmed) {
-          eventConfirmMutation
-            .mutateAsync(true)
-            .then(() => handleNextUnconfirmed());
-        } else {
-          handleNextUnconfirmed();
-        }
+        handleConfirmAndAdvance();
         return;
       }
 
       switch (e.key) {
-        case "ArrowUp":
-          e.preventDefault();
-          if (filteredDetections.length === 0) break;
-          setSelectedDetectionId((prev) => {
-            const currentIdx = prev
-              ? filteredDetections.findIndex((d) => d.id === prev)
-              : -1;
-            const nextIdx =
-              currentIdx <= 0
-                ? filteredDetections.length - 1
-                : currentIdx - 1;
-            return filteredDetections[nextIdx].id;
-          });
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (filteredDetections.length === 0) break;
-          setSelectedDetectionId((prev) => {
-            const currentIdx = prev
-              ? filteredDetections.findIndex((d) => d.id === prev)
-              : -1;
-            const nextIdx =
-              currentIdx < 0 || currentIdx >= filteredDetections.length - 1
-                ? 0
-                : currentIdx + 1;
-            return filteredDetections[nextIdx].id;
-          });
-          break;
         case "ArrowLeft":
           e.preventDefault();
-          if (selectedFileIndex > 0) {
-            setSelectedFileIndex((i) => i - 1);
-            setSelectedDetectionId(null);
-          }
+          if (selectedFileIndex > 0) setSelectedFileIndex((i) => i - 1);
           break;
         case "ArrowRight":
           e.preventDefault();
-          if (selectedFileIndex < files.length - 1) {
+          if (selectedFileIndex < files.length - 1)
             setSelectedFileIndex((i) => i + 1);
-            setSelectedDetectionId(null);
-          }
-          break;
-        case "Tab":
-          if (selectedDetectionId) {
-            e.preventDefault();
-            setRelabelDetectionId(selectedDetectionId);
-          }
           break;
         case "p":
         case "P":
@@ -669,24 +479,9 @@ export function EventDetailModal({
               flagged: !currentFile.flagged,
             });
           break;
-        case "Delete":
-        case "Backspace":
-          if (selectedDetectionId) {
-            e.preventDefault();
-            deleteDetectionMutation.mutate(selectedDetectionId);
-          }
-          break;
         case "Escape":
           e.preventDefault();
-          if (relabelDetectionId) {
-            setRelabelDetectionId(null);
-          } else if (selectedDetectionId) {
-            setSelectedDetectionId(null);
-          } else if (drawMode) {
-            setDrawMode(false);
-          } else {
-            onClose();
-          }
+          onClose();
           break;
       }
     };
@@ -695,25 +490,17 @@ export function EventDetailModal({
     // before any focused button's implicit Enter-activates-click. Without
     // capture, clicking the > nav button grabs focus, and the next Enter
     // would re-fire that button's onClick (handleNext) instead of going
-    // through the case "Enter" branch (verify + handleNextUnverified).
+    // through the case "Enter" branch (confirm + next unconfirmed).
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     isOpen,
-    event,
     currentFile,
-    drawMode,
-    filteredDetections,
-    handleNextUnconfirmed,
-    relabelDetectionId,
+    handleConfirmAndAdvance,
     onClose,
-    selectedDetectionId,
     selectedFileIndex,
     files.length,
-    eventConfirmMutation,
     flagMutation,
-    deleteDetectionMutation,
-    files,
     viewMode,
     sourceVideos,
   ]);
@@ -769,45 +556,7 @@ export function EventDetailModal({
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left toolbar — tools that act on the focused image. */}
           {currentFile && (
-            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white shrink-0">
-              <Button
-                variant={drawMode ? "default" : "ghost"}
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setDrawMode(!drawMode)}
-                title="Draw new box (D)"
-              >
-                <SquareDashed className="h-4 w-4" />
-              </Button>
-              {/* Active species picker — always visible. Sets the
-                  species applied to a newly drawn box. Auto-defaults to
-                  the event's most-common label; click to override. */}
-              <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100">
-                <LabelPicker
-                  value={effectiveActiveLabel.label || effectiveActiveLabel.category}
-                  onSelect={(option) =>
-                    setActiveLabel({ category: option.category, label: option.label ?? undefined })
-                  }
-                  options={labelOptions}
-                  isLoading={labelOptionsLoading}
-                  pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
-                    key: Number(k),
-                    option: v,
-                  }))}
-                  hideDot
-                  hideLabel
-                  projectId={projectId}
-                  triggerIcon={Tag}
-                  triggerTitle={
-                    effectiveActiveLabel.label
-                      ? `Set label for new boxes · current: ${
-                          effectiveActiveLabel.label.charAt(0).toUpperCase() +
-                          effectiveActiveLabel.label.slice(1).replace(/[_-]+/g, " ")
-                        }`
-                      : "Set label for new boxes · not set (defaults to animal)"
-                  }
-                />
-              </div>
+            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
               {/* Video toggle (for video file rows) */}
               {currentFile.file_type === "video" && (
                 sourceVideos.length > 1 ? (
@@ -884,66 +633,17 @@ export function EventDetailModal({
                   </Button>
                 )
               )}
-              <div className="w-6 border-t my-0.5" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => zoomFnRef.current?.zoomIn()}
-                title="Zoom in"
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => zoomFnRef.current?.zoomOut()}
-                title="Zoom out"
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => zoomFnRef.current?.resetZoom()}
-                title="Reset zoom"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-              <div className="w-6 border-t my-0.5" />
+              {currentFile.file_type === "video" && (
+                <div className="w-6 border-t my-0.5" />
+              )}
+              {/* Image: brightness / contrast (seeing a dark IR animal). */}
               <ViewControls
-                detectionThreshold={detectionThreshold}
-                projectThreshold={projectThreshold}
-                localThreshold={localThreshold}
-                onThresholdChange={setLocalThreshold}
                 brightness={brightness}
                 onBrightnessChange={setBrightness}
                 contrast={contrast}
                 onContrastChange={setContrast}
               />
-              <div className="w-6 border-t my-0.5" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() =>
-                  favoriteMutation.mutate({
-                    fileId: currentFile.id,
-                    favorited: !currentFile.favorited,
-                  })
-                }
-                disabled={favoriteMutation.isPending}
-                title={currentFile.favorited ? "Unlike" : "Like"}
-              >
-                <Heart
-                  className={cn(
-                    "h-4 w-4",
-                    currentFile.favorited && "fill-[#882000] text-[#882000]"
-                  )}
-                />
-              </Button>
+              {/* Flag for review — the one triage action worth its own key. */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -964,35 +664,63 @@ export function EventDetailModal({
                   )}
                 />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleDownload}
-                title={
-                  currentFile && isPlayableVideo(currentFile)
-                    ? "Download annotated video"
-                    : "Download annotated image"
-                }
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => revealInFolder(currentFile)}
-                title="Open in file explorer"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
+              {/* Everything else (zoom, like, download, reveal) is rarely
+                  used here, so it lives behind one "more" menu. */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="More"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="right" align="start" className="w-48 p-1">
+                  <button
+                    onClick={() =>
+                      favoriteMutation.mutate({
+                        fileId: currentFile.id,
+                        favorited: !currentFile.favorited,
+                      })
+                    }
+                    disabled={favoriteMutation.isPending}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <Heart
+                      className={cn(
+                        "h-4 w-4",
+                        currentFile.favorited && "fill-[#882000] text-[#882000]"
+                      )}
+                    />
+                    {currentFile.favorited ? "Unlike" : "Like"}
+                  </button>
+                  <button
+                    onClick={handleDownload}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    {isPlayableVideo(currentFile)
+                      ? "Download video"
+                      : "Download image"}
+                  </button>
+                  <button
+                    onClick={() => revealInFolder(currentFile)}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Open in file explorer
+                  </button>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
           {/* Center column: focused image + resizable filmstrip below. */}
           <div ref={centerColumnRef} className="flex-1 flex flex-col min-w-0">
             {/* Focused image / video — all tools act here. */}
-            <div className="flex-1 flex items-center justify-center bg-black/95 min-h-0 p-2 rounded-lg">
+            <div className="flex-1 flex items-center justify-center bg-black/95 min-h-0">
               {currentFile ? (
                 viewMode === "video" && isPlayableVideo(currentFile) ? (
                   <VideoPlayer
@@ -1005,27 +733,20 @@ export function EventDetailModal({
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
                   />
                 ) : (
+                  // View-only on the Counts page: boxes show but aren't
+                  // edited here (label/box cleanup lives on the Labels page).
                   <AnnotationCanvas
                     file={currentFile}
                     detectionThreshold={detectionThreshold}
-                    selectedDetectionId={selectedDetectionId}
-                    onSelectDetection={setSelectedDetectionId}
-                    onRequestRelabel={setRelabelDetectionId}
-                    drawMode={drawMode}
-                    onDrawModeChange={setDrawMode}
-                    onMutated={() => {
-                      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-                      queryClient.invalidateQueries({ queryKey: ["events"] });
-                      queryClient.invalidateQueries({ queryKey: ["file"] });
-                      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-                    }}
+                    selectedDetectionId={null}
+                    onSelectDetection={() => {}}
+                    drawMode={false}
+                    onDrawModeChange={() => {}}
+                    readOnly
                     onScrubFrame={handleScrubFrame}
                     imageFilter={imageFilter}
-                    defaultCategory={effectiveActiveLabel.category}
-                    defaultLabel={effectiveActiveLabel.label}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
-                    zoomFnRef={zoomFnRef}
                   />
                 )
               ) : (
@@ -1056,7 +777,7 @@ export function EventDetailModal({
           </div>
 
           {/* Right sidebar: navigation + verification panel */}
-          <div className="w-80 bg-white flex flex-col shrink-0">
+          <div className="w-80 bg-white border-l flex flex-col shrink-0">
             <div className="flex items-center justify-between px-3 py-1.5 shrink-0">
               <div className="flex items-center gap-0.5">
                 <Button
@@ -1117,38 +838,17 @@ export function EventDetailModal({
               </div>
             )}
 
-            {/* Event-level species + count editor (the ecological record). */}
+            {/* Event-level species + count editor (the ecological record,
+                and the star of this modal). */}
             {event && (
               <EventCountPanel
                 eventId={event.id}
                 projectId={projectId}
                 observations={event.observations}
                 confirmed={event.confirmed}
+                onConfirm={handleConfirmAndAdvance}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
-              />
-            )}
-
-            {/* In-image relabel: clicking a box's label opens this dialog
-                for that detection (the box stays highlighted). */}
-            {relabelDetectionId && (
-              <LabelPicker
-                headless
-                forceOpen
-                value={relabelTargetDetection?.label || relabelTargetDetection?.category || null}
-                options={labelOptions}
-                isLoading={labelOptionsLoading}
-                projectId={projectId}
-                pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
-                  key: Number(k),
-                  option: v,
-                }))}
-                onSelect={(option) =>
-                  relabelMutation.mutate({ id: relabelDetectionId, option })
-                }
-                onOpenChange={(open) => {
-                  if (!open) setRelabelDetectionId(null);
-                }}
               />
             )}
 
@@ -1158,63 +858,25 @@ export function EventDetailModal({
                 <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowShortcuts(false)} />
                 <div className="absolute bottom-10 right-6 mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50 whitespace-nowrap">
-                  <div className="flex gap-8">
-                    {/* Left column: navigation */}
-                    <div>
-                      <div className="text-[11px] font-semibold text-muted-foreground mb-1">Navigate</div>
-                      {[
-                        ["Enter", "Confirm + next event"],
-                        ["← →", "Prev / next frame"],
-                        ["Shift + scroll", "Scrub frames"],
-                        ["Scroll", "Zoom the focus"],
-                        ["Click", "Focus a thumbnail"],
-                        ["B (hold)", "Hide boxes"],
-                        ["Esc", "Close"],
-                      ].map(([key, action]) => (
-                        <div key={key} className="flex items-center text-xs gap-3 h-7">
-                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
-                          <span>{action}</span>
-                        </div>
-                      ))}
+                  <div className="text-[11px] font-semibold text-muted-foreground mb-1">Shortcuts</div>
+                  {[
+                    ["Enter", "Confirm + next event"],
+                    ["↑ ↓", "Select species row"],
+                    ["0-9", "Set its count"],
+                    ["← →", "Prev / next frame"],
+                    ["Shift + scroll", "Scrub frames"],
+                    ["Scroll", "Zoom the focus"],
+                    ["Click", "Focus a thumbnail"],
+                    ["P", "Play video"],
+                    ["F", "Flag / unflag"],
+                    ["B (hold)", "Hide boxes"],
+                    ["Esc", "Close"],
+                  ].map(([key, action]) => (
+                    <div key={key} className="flex items-center text-xs gap-3 h-7">
+                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                      <span>{action}</span>
                     </div>
-
-                    {/* Right column: editing the focused image */}
-                    <div>
-                      <div className="text-[11px] font-semibold text-muted-foreground mb-1">Edit the focus</div>
-                      {[
-                        ["↑ ↓", "Select box"],
-                        ["Click label", "Relabel box"],
-                        ["Tab", "Relabel selected box"],
-                        ["D", "Draw a box"],
-                        ["Del", "Delete box"],
-                        ["P", "Play video"],
-                        ["F", "Flag / unflag"],
-                      ].map(([key, action]) => (
-                        <div key={key} className="flex items-center text-xs gap-3 h-7">
-                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
-                          <span>{action}</span>
-                        </div>
-                      ))}
-
-                      <div className="border-t my-2" />
-                      <div className="text-[11px] font-semibold text-muted-foreground mb-1">Quick labels (for the box pickers)</div>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <div key={n} className="flex items-center text-xs gap-3 h-7">
-                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
-                          <span>Pin label</span>
-                          <LabelPicker
-                            value={shortcutLabels[n]?.value ?? null}
-                            onSelect={(option) =>
-                              updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
-                            }
-                            options={labelOptions}
-                            isLoading={labelOptionsLoading}
-                            projectId={projectId}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  ))}
                 </div>
                 </>
               )}

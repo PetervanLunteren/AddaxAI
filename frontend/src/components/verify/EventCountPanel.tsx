@@ -1,17 +1,26 @@
 /**
- * Event count panel — the Counts-page count editor.
+ * Event count panel — the Counts-page count editor and the star of the
+ * modal. The right-hand panel of EventDetailModal.
  *
- * The right-hand panel of EventDetailModal. Shows the event's species
- * and counts (effective_count = human override, else AI MaxN) and lets
- * the verifier adjust each count, reset to the AI value, add a species
- * the AI missed, and sign the event off. The count is event-scoped
- * (across all files), distinct from the per-file detection list.
+ * Owns everything about the event's counts: the species rows (effective
+ * count = human override, else AI MaxN), the +/- steppers and inline count
+ * input, removing a species, the event-wide "reset to AI", and the
+ * keyboard accelerators (up/down to pick a row, a digit to set its count).
+ * Confirm+advance is handed in from the modal (`onConfirm`) so the Enter key
+ * and this button share one path.
+ *
+ * Rows with an effective count of 0 are hidden: that is how a species is
+ * "removed" (a human-added row is deleted; an AI row keeps its boxes but its
+ * count drops to 0, which survives a MaxN recompute and leaves the
+ * ecological exports). Re-add via the picker or "Reset to AI".
  */
 
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { Check, Minus, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
+import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
@@ -23,8 +32,12 @@ import type { EventObservationItem } from "../../api/types";
 interface EventCountPanelProps {
   eventId: string;
   projectId: string;
+  /** Full observation list (including hidden count-0 rows). */
   observations: EventObservationItem[];
   confirmed: boolean;
+  /** Confirm the event and jump to the next unconfirmed one (modal owns it,
+   *  shared with the Enter key). */
+  onConfirm: () => void;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
 }
@@ -34,6 +47,7 @@ export function EventCountPanel({
   projectId,
   observations,
   confirmed,
+  onConfirm,
   labelOptions,
   labelOptionsLoading,
 }: EventCountPanelProps) {
@@ -42,13 +56,14 @@ export function EventCountPanel({
     queryClient.invalidateQueries({ queryKey: ["event", eventId] });
     queryClient.invalidateQueries({ queryKey: ["events"] });
   };
+  const onError = (verb: string) => (e: Error) =>
+    toast.error(`Could not ${verb}`, { description: e.message });
 
   const setCount = useMutation({
-    mutationFn: ({ obsId, count }: { obsId: string; count: number | null }) =>
+    mutationFn: ({ obsId, count }: { obsId: string; count: number }) =>
       eventsApi.setObservationCount(eventId, obsId, count),
     onSuccess: invalidate,
-    onError: (e: Error) =>
-      toast.error("Could not set count", { description: e.message }),
+    onError: onError("set the count"),
   });
   const addSpecies = useMutation({
     mutationFn: (opt: LabelOption) =>
@@ -58,48 +73,107 @@ export function EventCountPanel({
         label: opt.label ?? null,
       }),
     onSuccess: invalidate,
-    onError: (e: Error) =>
-      toast.error("Could not add species", { description: e.message }),
+    onError: onError("add the species"),
   });
   const removeObs = useMutation({
     mutationFn: (obsId: string) => eventsApi.deleteObservation(eventId, obsId),
     onSuccess: invalidate,
-    onError: (e: Error) =>
-      toast.error("Could not update", { description: e.message }),
+    onError: onError("remove the species"),
   });
-  const setConfirmed = useMutation({
-    mutationFn: (v: boolean) => eventsApi.setConfirmed(eventId, v),
+  const resetCounts = useMutation({
+    mutationFn: () => eventsApi.resetCounts(eventId),
     onSuccess: invalidate,
-    onError: (e: Error) =>
-      toast.error("Could not update", { description: e.message }),
+    onError: onError("reset the counts"),
   });
-
   const busy =
-    setCount.isPending || addSpecies.isPending || removeObs.isPending;
+    setCount.isPending ||
+    addSpecies.isPending ||
+    removeObs.isPending ||
+    resetCounts.isPending;
+
+  // Visible rows = species actually present (count > 0). A count-0 row is a
+  // removed species, hidden from the editor.
+  const visible = observations.filter((o) => o.effective_count > 0);
+  // Any override, count-0 removal, or human-only row counts as a human edit
+  // (so "Reset to AI" lights up).
+  const hasHumanEdits = observations.some(
+    (o) => o.max_n === 0 || o.effective_count !== o.max_n,
+  );
+
+  // Set a count, treating 0 as "remove": an AI row goes to count 0 (survives
+  // recompute), a human-only row is deleted outright.
+  const applyCount = (obs: EventObservationItem, count: number) => {
+    const next = Math.max(0, count);
+    if (next === 0 && obs.max_n === 0) {
+      removeObs.mutate(obs.id);
+    } else {
+      setCount.mutate({ obsId: obs.id, count: next });
+    }
+  };
+
+  const [addOpen, setAddOpen] = useState(false);
+
+  // Active row for the keyboard accelerators. Refs keep the window listener
+  // stable while still reading the latest values.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const activeRef = useRef(0);
+  activeRef.current = activeIndex;
+
+  // Keep the active row in range and reset it when the event changes.
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [eventId]);
+  useEffect(() => {
+    if (activeIndex > visible.length - 1) {
+      setActiveIndex(Math.max(0, visible.length - 1));
+    }
+  }, [visible.length, activeIndex]);
+
+  // up/down pick a species row; a digit sets the active row's count. Bound
+  // only while the panel is mounted (i.e. the modal is open). Editing keys
+  // are ignored while typing in an input (the count field, the picker).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      const rows = visibleRef.current;
+      if (rows.length === 0) return;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((i) => (i <= 0 ? rows.length - 1 : i - 1));
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((i) => (i >= rows.length - 1 ? 0 : i + 1));
+      } else if (e.key >= "0" && e.key <= "9") {
+        const obs = rows[activeRef.current];
+        if (!obs) return;
+        e.preventDefault();
+        applyCount(obs, Number(e.key));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // applyCount is stable enough; rows/active come from refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-3 mt-3 rounded-lg border bg-muted/40 flex flex-col">
-      <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        <div className="flex items-center gap-1.5">
-          <h3 className="text-sm font-semibold">Counts</h3>
-          <Badge variant="outline" className="text-xs">
-            {observations.length}
-          </Badge>
-        </div>
-        <Button
-          size="sm"
-          variant={confirmed ? "default" : "outline"}
-          onClick={() => setConfirmed.mutate(!confirmed)}
-          disabled={setConfirmed.isPending}
-          className="h-7 gap-1.5"
-        >
-          <Check className="h-3.5 w-3.5" />
-          {confirmed ? "Confirmed" : "Confirm"}
-        </Button>
+      <div className="flex items-center gap-1.5 px-3 pt-3 pb-2">
+        <h3 className="text-sm font-semibold">Counts</h3>
+        <Badge variant="outline" className="text-xs">
+          {visible.length}
+        </Badge>
       </div>
 
-      <div className="px-3 pb-3 space-y-1">
-        {observations.map((obs) => {
+      <div className="px-3 space-y-1">
+        {visible.map((obs, index) => {
           const name = resolveSpeciesName({
             common_name: obs.common_name,
             scientific_name: obs.scientific_name,
@@ -107,12 +181,14 @@ export function EventCountPanel({
             category: obs.category,
           });
           const colorKey = obs.label_taxonomy_id || obs.label || obs.category;
-          const isOverridden = obs.effective_count !== obs.max_n;
-          const isHumanOnly = obs.max_n === 0;
           return (
             <div
               key={obs.id}
-              className="flex items-center justify-between gap-2 rounded border bg-white px-2 py-1.5 text-sm"
+              onMouseDown={() => setActiveIndex(index)}
+              className={cn(
+                "flex items-center justify-between gap-2 rounded border bg-white px-2 py-1.5 text-sm",
+                index === activeIndex && "ring-2 ring-primary/40",
+              )}
             >
               <span className="flex items-center gap-1.5 truncate">
                 <span
@@ -120,90 +196,107 @@ export function EventCountPanel({
                   style={{ backgroundColor: getSpeciesColor(colorKey) }}
                 />
                 <span className="truncate">{name}</span>
-                {isOverridden && !isHumanOnly && (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    AI saw {obs.max_n}
-                  </span>
-                )}
               </span>
               <span className="flex shrink-0 items-center gap-1">
                 <Button
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6"
-                  disabled={busy || obs.effective_count <= 0}
+                  disabled={busy}
                   title="Decrease"
-                  onClick={() =>
-                    setCount.mutate({
-                      obsId: obs.id,
-                      count: Math.max(0, obs.effective_count - 1),
-                    })
-                  }
+                  onClick={() => applyCount(obs, obs.effective_count - 1)}
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </Button>
-                <span className="w-6 text-center tabular-nums">
-                  {obs.effective_count}
-                </span>
+                <input
+                  key={obs.effective_count}
+                  type="text"
+                  inputMode="numeric"
+                  defaultValue={obs.effective_count}
+                  disabled={busy}
+                  className="w-9 rounded border bg-white px-1 py-0.5 text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  onBlur={(e) => {
+                    const n = parseInt(e.currentTarget.value, 10);
+                    if (Number.isFinite(n) && n !== obs.effective_count) {
+                      applyCount(obs, n);
+                    }
+                  }}
+                />
                 <Button
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6"
                   disabled={busy}
                   title="Increase"
-                  onClick={() =>
-                    setCount.mutate({
-                      obsId: obs.id,
-                      count: obs.effective_count + 1,
-                    })
-                  }
+                  onClick={() => applyCount(obs, obs.effective_count + 1)}
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
-                {(isOverridden || isHumanOnly) && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-muted-foreground"
-                    disabled={busy}
-                    title={isHumanOnly ? "Remove species" : "Reset to AI count"}
-                    onClick={() => removeObs.mutate(obs.id)}
-                  >
-                    {isHumanOnly ? (
-                      <X className="h-3.5 w-3.5" />
-                    ) : (
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-muted-foreground"
+                  disabled={busy}
+                  title="Remove species"
+                  onClick={() => applyCount(obs, 0)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
               </span>
             </div>
           );
         })}
 
-        {observations.length === 0 && (
+        {visible.length === 0 && (
           <div className="py-3 text-center text-xs text-muted-foreground">
             No species recorded
           </div>
         )}
 
-        {/* Add a species the AI missed entirely. */}
-        <div className="flex items-center gap-2 pt-1">
-          <LabelPicker
-            value={null}
-            onSelect={(option) => addSpecies.mutate(option)}
-            options={labelOptions}
-            isLoading={labelOptionsLoading}
-            projectId={projectId}
-            triggerIcon={Plus}
-            triggerTitle="Add a species the AI missed"
-            hideDot
-            hideLabel
-          />
-          <span className="text-xs text-muted-foreground">
-            Add a species the AI missed
-          </span>
-        </div>
+        {/* Add a species the AI missed. Full-width target (its own button
+            drives a headless picker). */}
+        <button
+          onClick={() => setAddOpen(true)}
+          disabled={busy}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add species
+        </button>
+        <LabelPicker
+          headless
+          forceOpen={addOpen}
+          onOpenChange={setAddOpen}
+          value={null}
+          onSelect={(option) => addSpecies.mutate(option)}
+          options={labelOptions}
+          isLoading={labelOptionsLoading}
+          projectId={projectId}
+        />
+      </div>
+
+      {/* Footer: reset to the AI proposal, then the primary Confirm. */}
+      <div className="mt-2 border-t px-3 py-2 space-y-2">
+        {hasHumanEdits && (
+          <button
+            onClick={() => resetCounts.mutate()}
+            disabled={busy}
+            className="w-full text-center text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            Reset to AI
+          </button>
+        )}
+        <Button
+          variant={confirmed ? "outline" : "default"}
+          onClick={onConfirm}
+          className="w-full gap-1.5"
+        >
+          <Check className="h-4 w-4" />
+          {confirmed ? "Confirmed" : "Confirm"}
+        </Button>
       </div>
     </div>
   );

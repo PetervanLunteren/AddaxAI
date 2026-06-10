@@ -456,6 +456,15 @@ async def delete_event_observation(
     return await get_event(event_id, db)
 
 
+@router.post("/{event_id}/observations/reset", response_model=EventWithFiles)
+async def reset_event_counts(event_id: str, db: Session = Depends(get_db)):
+    """Drop every human count edit on the event, back to the AI proposal."""
+    event = event_obs_crud.reset_event_to_ai(db, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return await get_event(event_id, db)
+
+
 @router.get("/{event_id}/adjacent", response_model=AdjacentEventsResponse)
 def get_adjacent_events(
     event_id: str,

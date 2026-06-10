@@ -14,7 +14,9 @@ from app.api.crud.event_observation import (
     add_human_species,
     calculate_max_n_for_event,
     get_event_ids_for_detections,
+    list_event_observations,
     recalculate_max_n_for_project,
+    reset_event_to_ai,
     set_event_confirmed,
     set_human_count,
 )
@@ -473,3 +475,87 @@ def test_dashboard_total_observations_uses_effective_count(db):
     set_human_count(db, obs[0].id, 5)
     db.commit()
     assert get_dashboard_overview(db, project.id).total_observations == 5
+
+
+def test_remove_ai_species_via_zero_count_survives_recompute(db):
+    """Removing an AI species in the Counts panel sets human_count=0, which
+    survives a recompute (the durable representation of 'not present')."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    # "Remove" the species: the human says none are actually present.
+    set_human_count(db, obs[0].id, 0)
+
+    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert len(recalc) == 1
+    assert recalc[0].max_n == 2  # the boxes are still there
+    assert recalc[0].human_count == 0  # but the human override survives
+    assert recalc[0].effective_count == 0
+
+
+def test_reset_event_to_ai_drops_human_edits(db):
+    """reset_event_to_ai clears overrides on AI rows, deletes human-only
+    rows, and clears the event sign-off."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    set_human_count(db, obs[0].id, 9)  # override the AI row
+    add_human_species(db, ev.id, category="animal", count=1, label="fox")
+    set_event_confirmed(db, ev.id, True)
+
+    event = reset_event_to_ai(db, ev.id)
+    assert event is not None
+    assert event.confirmed is False
+
+    rows = (
+        db.query(EventObservation)
+        .filter(EventObservation.event_id == ev.id)
+        .all()
+    )
+    assert len(rows) == 1  # the human-only fox row is gone
+    assert rows[0].label == "cow"
+    assert rows[0].human_count is None  # override cleared
+    assert rows[0].effective_count == 2  # back to the AI MaxN
+
+
+def test_list_event_observations_order_is_stable_under_count_edits(db):
+    """Row order follows AI MaxN (then label), never the editable count, so
+    bumping a count does not reshuffle the list under the user."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{
+            "detections": [("cow", "animal", 0.9)] * 3
+            + [("fox", "animal", 0.9)],
+        }],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    before = [o.label for o in list_event_observations(db, ev.id)]
+    assert before == ["cow", "fox"]  # cow (max_n 3) before fox (max_n 1)
+
+    # Bump fox far above cow; order must NOT change.
+    fox = next(o for o in list_event_observations(db, ev.id) if o.label == "fox")
+    set_human_count(db, fox.id, 50)
+    after = [o.label for o in list_event_observations(db, ev.id)]
+    assert after == ["cow", "fox"]

@@ -144,6 +144,13 @@ export const eventsApi = {
     );
   },
 
+  /** Drop every human count edit on the event, back to the AI proposal. */
+  resetCounts: async (eventId: string): Promise<EventWithFiles> => {
+    return api.post<EventWithFiles>(
+      `/api/events/${eventId}/observations/reset`,
+    );
+  },
+
   /** Get adjacent event IDs for navigation with optional filters. */
   getAdjacent: async (
     eventId: string,
