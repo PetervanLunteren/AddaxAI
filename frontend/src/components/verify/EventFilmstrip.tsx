@@ -9,6 +9,7 @@
 import { Play } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { formatTimeOffset } from "../../lib/datetime";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { TileSizeToggle } from "./TileSizeToggle";
 import type { TileSize } from "./CropGrid";
@@ -39,6 +40,13 @@ export function EventFilmstrip({
   tileSize,
   onTileSizeChange,
 }: EventFilmstripProps) {
+  // Each tile shows the time gap since the previous frame, so an unusually
+  // large gap (a pause, or really two encounters) jumps out. The first
+  // frame and any file without a timestamp show no label.
+  const times = files.map((f) =>
+    f.captured_at_local ? new Date(f.captured_at_local).getTime() : null,
+  );
+
   return (
     <div className="flex h-full flex-col bg-muted/30">
       <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b shrink-0">
@@ -58,7 +66,19 @@ export function EventFilmstrip({
             gridTemplateColumns: `repeat(auto-fill, minmax(${TILE_MIN_WIDTH[tileSize]}px, 1fr))`,
           }}
         >
-          {files.map((file, index) => (
+          {files.map((file, index) => {
+            const t = times[index];
+            const prev = index > 0 ? times[index - 1] : null;
+            // First frame is the reference point ("start"); the rest show the
+            // gap since the previous frame. "+0" would be wrong — there's no
+            // previous frame to measure from.
+            const offset =
+              index === 0
+                ? "start"
+                : t != null && prev != null
+                  ? formatTimeOffset((t - prev) / 1000)
+                  : null;
+            return (
             <button
               key={file.id}
               type="button"
@@ -77,13 +97,19 @@ export function EventFilmstrip({
                 showBoxes={showBoxes}
                 imageFilter={imageFilter}
               />
+              {offset != null && (
+                <span className="pointer-events-none absolute top-1 left-1 rounded bg-black/55 px-1.5 py-0.5 text-[11px] leading-none tabular-nums text-white/90">
+                  {offset}
+                </span>
+              )}
               {file.file_type === "video" && (
                 <span className="pointer-events-none absolute bottom-1 left-1 flex items-center justify-center rounded-full bg-black/60 p-1">
                   <Play className="h-3 w-3 fill-white text-white" />
                 </span>
               )}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

@@ -35,6 +35,7 @@ export interface PersistedFolderRunSettings {
   event_smoothing: boolean;
   smoothing_strength: "mild" | "normal" | "aggressive";
   taxonomic_rollup: boolean;
+  independence_interval: number;
 }
 
 export function saveLastUsedSettings(

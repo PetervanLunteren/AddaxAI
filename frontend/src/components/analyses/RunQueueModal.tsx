@@ -643,10 +643,10 @@ export function RunQueueModal({
                       disabled={isClosing}
                       onClick={async () => {
                         await handleClose();
-                        navigate(`/projects/${projectId}/observations`);
+                        navigate(`/projects/${projectId}/counts`);
                       }}
                     >
-                      Observations
+                      Counts
                     </Button>
                     <Button
                       disabled={isClosing}

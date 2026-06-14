@@ -7,7 +7,7 @@
  * the obvious path is to skip ahead (direct response to feedback that a
  * wall of grid made the step feel required).
  *
- * Continue PATCHes `step=observations` server-side and navigates onward.
+ * Continue PATCHes `step=counts` server-side and navigates onward.
  */
 
 import { useState } from "react";
@@ -36,7 +36,7 @@ export function FolderRunLabelsStep() {
     mutationFn: () => folderRunsApi.updateStep(runId!, "counts"),
     onSuccess: (next) => {
       queryClient.setQueryData(["folder-run", runId], next);
-      navigate(`/folder-runs/${runId}/observations`);
+      navigate(`/folder-runs/${runId}/counts`);
     },
   });
 

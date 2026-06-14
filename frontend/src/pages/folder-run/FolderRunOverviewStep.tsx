@@ -61,7 +61,7 @@ export function FolderRunOverviewStep() {
     <div className="grid grid-cols-3 items-center gap-3">
       <Button
         variant="outline"
-        onClick={() => navigate(`/folder-runs/${runId}/observations`)}
+        onClick={() => navigate(`/folder-runs/${runId}/counts`)}
         className="justify-self-start gap-2"
       >
         <ArrowLeft className="h-4 w-4" />

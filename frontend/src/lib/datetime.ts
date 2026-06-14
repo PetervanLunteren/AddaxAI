@@ -114,3 +114,27 @@ export function formatShortDate(
     timeZone: "UTC",
   });
 }
+
+/**
+ * Compact relative time gap, e.g. `+45s`, `+25m`, `+1h25m`. Keeps exact
+ * seconds within a minute (burst pacing carries meaning there) and rounds
+ * away the finer unit as the gap grows. Shared by the Counts focus chip and
+ * the filmstrip's per-frame gap labels.
+ */
+export function formatTimeOffset(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `+${s}s`;
+  // Under 10 minutes the seconds still carry meaning (burst pacing), so keep
+  // the minute + second pair (1m15s). Past that, seconds are noise on a gap
+  // that's clearly a separate encounter, so round to whole minutes.
+  if (s < 600) {
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem ? `+${m}m${rem}s` : `+${m}m`;
+  }
+  const totalMin = Math.round(s / 60);
+  if (totalMin < 60) return `+${totalMin}m`;
+  const h = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return mm ? `+${h}h${mm}m` : `+${h}h`;
+}

@@ -29,9 +29,12 @@ import {
   Heart,
   FolderOpen,
   Play,
+  Pause,
+  Repeat,
   MoreVertical,
   Eye,
   EyeOff,
+  RotateCcw,
 } from "lucide-react";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
@@ -39,7 +42,11 @@ import { filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
 import { basename } from "../../lib/path-utils";
-import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
+import {
+  formatCameraDate,
+  formatCameraTime,
+  formatTimeOffset,
+} from "../../lib/datetime";
 import { useRevealInFolder } from "../../lib/file-reveal";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -56,6 +63,9 @@ import { useLabelOptions } from "../../hooks/useLabelOptions";
 // Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
 // wheel events per swipe scrubs at a steady ~8 frames/second.
 const SCRUB_THROTTLE_MS = 120;
+
+// Auto-play cadence: how long each frame is shown before advancing (2 fps).
+const AUTOPLAY_INTERVAL_MS = 500;
 
 interface EventDetailModalProps {
   eventId: string | null;
@@ -76,11 +86,25 @@ export function EventDetailModal({
   const revealInFolder = useRevealInFolder();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
+  // Auto-play: cine-loop the event's frames on a timer. A ref mirrors the
+  // value so the busiest-frame open effect can read it without re-running.
+  const [autoPlay, setAutoPlay] = useState(false);
+  const autoPlayRef = useRef(false);
+  useEffect(() => {
+    autoPlayRef.current = autoPlay;
+  }, [autoPlay]);
+  // Brief "looped back to the start" cue, flashed when auto-play wraps to 0.
+  // A nonce that bumps on each wrap so the overlay re-mounts and re-animates
+  // (and the CSS fade self-hides it). indexRef lets the interval see the
+  // latest frame without re-subscribing.
+  const [restartFlash, setRestartFlash] = useState(0);
+  const indexRef = useRef(0);
+  useEffect(() => {
+    indexRef.current = selectedFileIndex;
+  }, [selectedFileIndex]);
   // One-shot flag: set when Download is clicked on a video while in frame
   // view, so the VideoPlayer runs the annotated-video export once it mounts.
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
-  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
-  const [videoPopoverOpen, setVideoPopoverOpen] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [brightness, setBrightness] = useState(50);
@@ -260,52 +284,47 @@ export function EventDetailModal({
         bestIdx = i;
       }
     });
-    setSelectedFileIndex(bestIdx);
+    // Auto-play restarts each event from the beginning; otherwise land on the
+    // busiest frame.
+    setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
     setPendingVideoExport(false);
-    setSelectedVideoId(null);
-    setVideoPopoverOpen(false);
   }, [eventId, event?.id]);
 
   const files = event?.files ?? [];
   const currentFile = files[selectedFileIndex] as
     | FileWithDetections
     | undefined;
+  // Time gap from the previous frame to the focused one (same signal as the
+  // filmstrip's per-tile labels); null on the first frame or missing times.
+  const focusGap = (() => {
+    const cur = currentFile?.captured_at_local;
+    const prev =
+      selectedFileIndex > 0
+        ? files[selectedFileIndex - 1]?.captured_at_local
+        : null;
+    if (!cur || !prev) return null;
+    return formatTimeOffset(
+      (new Date(cur).getTime() - new Date(prev).getTime()) / 1000,
+    );
+  })();
   const detectionThreshold = project?.detection_threshold ?? 0;
   const imageFilter =
     brightness !== 50 || contrast !== 50
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
       : undefined;
 
-  // Derive list of video File rows from the event's files. Post-2026-05
-  // refactor, each video File row carries all its detections directly
-  // (with `frame_number` set per detection), so `frameCount` is the
-  // number of distinct frames that produced ≥1 detection.
-  const sourceVideos = useMemo(() => {
-    const videos: { id: string; frameCount: number }[] = [];
-    for (const f of files) {
-      if (f.file_type !== "video") continue;
-      const frameSet = new Set<number>();
-      for (const d of f.detections) {
-        if (d.frame_number != null) frameSet.add(d.frame_number);
-      }
-      videos.push({ id: f.id, frameCount: frameSet.size });
-    }
-    return videos;
-  }, [files]);
-
-  // For video files: hand the VideoPlayer every detection on that
-  // file so boxes can render against the right frame during playback.
+  // For the focused video file: hand the VideoPlayer every detection on
+  // that file so boxes can render against the right frame during playback.
+  // Each video is its own filmstrip tile, so the focused file is always
+  // the one to play — no separate video selection.
   const videoPlaybackProps = useMemo(() => {
-    const videoId = selectedVideoId ?? (currentFile?.file_type === "video" ? currentFile.id : null);
-    if (!videoId) return undefined;
-    const videoFile = files.find((f) => f.id === videoId);
-    if (!videoFile) return undefined;
+    if (currentFile?.file_type !== "video") return undefined;
     return {
-      sourceVideoId: videoId,
-      allDetections: videoFile.detections,
+      sourceVideoId: currentFile.id,
+      allDetections: currentFile.detections,
     };
-  }, [currentFile, files, selectedVideoId]);
+  }, [currentFile]);
 
   // A stable, large modal: the focus + filmstrip both want the room, and
   // the focus canvas re-fits its container as the divider moves.
@@ -394,6 +413,7 @@ export function EventDetailModal({
   // straight into playback.
   const handleSelectFile = useCallback(
     (index: number) => {
+      setAutoPlay(false); // manual navigation takes over from auto-play
       setSelectedFileIndex(index);
       const f = files[index];
       setViewMode(f && isPlayableVideo(f) ? "video" : "frame");
@@ -412,6 +432,7 @@ export function EventDetailModal({
       const now = performance.now();
       if (now - lastScrubRef.current < SCRUB_THROTTLE_MS) return;
       lastScrubRef.current = now;
+      setAutoPlay(false); // manual navigation takes over from auto-play
       const dir = delta > 0 ? 1 : -1;
       setSelectedFileIndex((i) =>
         Math.max(0, Math.min(files.length - 1, i + dir)),
@@ -420,6 +441,58 @@ export function EventDetailModal({
     },
     [files.length],
   );
+
+  // Auto-play toggle. Turning it on restarts the playthrough from frame 0.
+  const toggleAutoPlay = useCallback(() => {
+    if (!autoPlayRef.current) {
+      setSelectedFileIndex(0);
+      setViewMode("frame");
+    }
+    setAutoPlay((on) => !on);
+  }, []);
+
+  // Watch the focused video: swap the best-frame still for the real player.
+  // Stops the cine-loop first (you've grabbed control of one clip).
+  const playFocusedVideo = useCallback(() => {
+    setAutoPlay(false);
+    setViewMode("video");
+  }, []);
+
+  // The loop: advance one frame each tick, wrapping to the start. Flash the
+  // restart cue on the wrap (last frame -> 0), not on the first pass.
+  useEffect(() => {
+    if (!autoPlay || !isOpen || files.length <= 1) return;
+    const id = setInterval(() => {
+      const next = (indexRef.current + 1) % files.length;
+      if (next === 0) setRestartFlash((n) => n + 1);
+      setSelectedFileIndex(next);
+    }, AUTOPLAY_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [autoPlay, isOpen, files.length]);
+
+  // Warm the next frame's full-res image one step ahead so the loop stays
+  // smooth on the first pass (same URL AnnotationCanvas fetches, so the
+  // browser cache is shared).
+  const preloadFileId =
+    autoPlay && files.length > 1
+      ? (files[(selectedFileIndex + 1) % files.length]?.id ?? null)
+      : null;
+  useEffect(() => {
+    if (!preloadFileId) return;
+    const img = new Image();
+    img.src = `/api/files/${preloadFileId}/image`;
+  }, [preloadFileId]);
+
+  // Auto-play is session-scoped: it resets off when the modal closes. Also
+  // clear the restart-cue nonce, otherwise it stays > 0 and the overlay
+  // replays its fade the next time the modal mounts (the subtree unmounts on
+  // close, so a fresh mount re-runs the CSS animation).
+  useEffect(() => {
+    if (!isOpen) {
+      setAutoPlay(false);
+      setRestartFlash(0);
+    }
+  }, [isOpen]);
 
   const prevDisabled = !adjacent?.previous_id;
   const nextDisabled = !adjacent?.next_id;
@@ -446,29 +519,43 @@ export function EventDetailModal({
       }
 
       switch (e.key) {
+        case " ":
+          // Space toggles auto-play (cine-loop the event's frames).
+          e.preventDefault();
+          toggleAutoPlay();
+          break;
+        // No modifier = move across events; Shift = move within the event
+        // (frames). Shift as the frame-level modifier mirrors Shift+scroll.
+        // Event nav keeps the cine-loop running (session mode); a manual
+        // frame step grabs control and stops it.
         case "ArrowLeft":
           e.preventDefault();
-          if (selectedFileIndex > 0) setSelectedFileIndex((i) => i - 1);
+          if (e.shiftKey) {
+            setAutoPlay(false);
+            if (selectedFileIndex > 0) setSelectedFileIndex((i) => i - 1);
+          } else {
+            navigateEvent(adjacent?.previous_id);
+          }
           break;
         case "ArrowRight":
           e.preventDefault();
-          if (selectedFileIndex < files.length - 1)
-            setSelectedFileIndex((i) => i + 1);
+          if (e.shiftKey) {
+            setAutoPlay(false);
+            if (selectedFileIndex < files.length - 1)
+              setSelectedFileIndex((i) => i + 1);
+          } else {
+            navigateEvent(adjacent?.next_id);
+          }
           break;
         case "p":
         case "P":
+          // Toggle the focused video between its still and the real player.
           if (currentFile && isPlayableVideo(currentFile)) {
             e.preventDefault();
             if (viewMode === "video") {
-              // Toggling OFF — just switch back to frame mode
               setViewMode("frame");
-              setVideoPopoverOpen(false);
-            } else if (sourceVideos.length > 1) {
-              // Multiple videos — open selector popover
-              setVideoPopoverOpen(true);
             } else {
-              // Single video — toggle directly
-              setViewMode("video");
+              playFocusedVideo();
             }
           }
           break;
@@ -504,12 +591,15 @@ export function EventDetailModal({
     isOpen,
     currentFile,
     handleConfirmAndAdvance,
+    toggleAutoPlay,
     onClose,
     selectedFileIndex,
     files.length,
     flagMutation,
     viewMode,
-    sourceVideos,
+    playFocusedVideo,
+    navigateEvent,
+    adjacent,
   ]);
 
   if (!isOpen) return null;
@@ -534,85 +624,9 @@ export function EventDetailModal({
           {/* Left toolbar — tools that act on the focused image. */}
           {currentFile && (
             <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
-              {/* Video toggle (for video file rows) */}
-              {currentFile.file_type === "video" && (
-                sourceVideos.length > 1 ? (
-                  <Popover open={videoPopoverOpen} onOpenChange={setVideoPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={viewMode === "video" ? "default" : "ghost"}
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          if (viewMode === "video") {
-                            setViewMode("frame");
-                            setVideoPopoverOpen(false);
-                          }
-                          // Opening is handled by Popover onOpenChange
-                        }}
-                        disabled={!isPlayableVideo(currentFile)}
-                        title={
-                          !isPlayableVideo(currentFile)
-                            ? "Video format not supported for browser playback"
-                            : viewMode === "video"
-                              ? "View frame"
-                              : "Play video"
-                        }
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent side="right" className="w-48 p-2">
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
-                          Select video
-                        </p>
-                        {sourceVideos.map((sv, i) => (
-                          <button
-                            key={sv.id}
-                            className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
-                            onClick={() => {
-                              setSelectedVideoId(sv.id);
-                              const videoFileIndex = files.findIndex(
-                                (f) => f.id === sv.id
-                              );
-                              if (videoFileIndex >= 0)
-                                setSelectedFileIndex(videoFileIndex);
-                              setVideoPopoverOpen(false);
-                              setViewMode("video");
-                            }}
-                          >
-                            Video {i + 1}{" "}
-                            <span className="text-muted-foreground">
-                              ({sv.frameCount} frame{sv.frameCount !== 1 ? "s" : ""})
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                ) : (
-                  <Button
-                    variant={viewMode === "video" ? "default" : "ghost"}
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setViewMode(viewMode === "video" ? "frame" : "video")}
-                    disabled={!isPlayableVideo(currentFile)}
-                    title={
-                      !isPlayableVideo(currentFile)
-                        ? "Video format not supported for browser playback"
-                        : viewMode === "video"
-                          ? "View frame"
-                          : "Play video"
-                    }
-                  >
-                    <Play className="h-4 w-4" />
-                  </Button>
-                )
-              )}
-              {currentFile.file_type === "video" && (
-                <div className="w-6 border-t my-0.5" />
-              )}
+              {/* Watching a video moved to a big center play button over the
+                  focus (the universal pattern), so the rail no longer carries
+                  a play control of its own — only the cine-loop below. */}
               {/* Image: brightness / contrast (seeing a dark IR animal). */}
               <ViewControls
                 brightness={brightness}
@@ -635,6 +649,25 @@ export function EventDetailModal({
                   <Eye className="h-4 w-4" />
                 )}
               </Button>
+              {/* Loop event — cine-loop the event's frames to see motion.
+                  Videos show as their best frame here; watch a clip in full
+                  via the center play button on the focus. The loop glyph
+                  keeps it distinct from that video-play triangle. */}
+              {files.length > 1 && (
+                <Button
+                  variant={autoPlay ? "default" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={toggleAutoPlay}
+                  title={autoPlay ? "Stop (Space)" : "Loop event (Space)"}
+                >
+                  {autoPlay ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Repeat className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
               {/* Flag for review — the one triage action worth its own key. */}
               <Button
                 variant="ghost"
@@ -712,7 +745,28 @@ export function EventDetailModal({
           {/* Center column: focused image + resizable filmstrip below. */}
           <div ref={centerColumnRef} className="flex-1 flex flex-col min-w-0">
             {/* Focused image / video — all tools act here. */}
-            <div className="flex-1 flex items-center justify-center bg-black/95 min-h-0">
+            <div className="relative flex-1 flex items-center justify-center bg-black/95 min-h-0">
+              {/* Restart cue — flashed centered when the auto-play loop wraps
+                  back to the first frame. Self-hides via the CSS fade. */}
+              {restartFlash > 0 && (
+                <div
+                  key={restartFlash}
+                  className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                  style={{ animation: "restart-flash 0.8s ease-out forwards" }}
+                >
+                  <RotateCcw className="h-20 w-20 text-white" />
+                </div>
+              )}
+              {/* Position-in-event chip + gap since the previous frame —
+                  glanceable while scrubbing, eyes on the focus. */}
+              {files.length > 1 && (
+                <div className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md bg-black/60 px-2.5 py-1 text-sm font-medium tabular-nums text-white/90">
+                  {selectedFileIndex + 1} / {files.length}
+                  {focusGap && (
+                    <span className="text-white/60"> · {focusGap}</span>
+                  )}
+                </div>
+              )}
               {currentFile ? (
                 viewMode === "video" && isPlayableVideo(currentFile) ? (
                   <VideoPlayer
@@ -744,6 +798,33 @@ export function EventDetailModal({
               ) : (
                 <div className="text-white/50">Loading...</div>
               )}
+
+              {/* Big center play button over a focused video's still — the
+                  universal "watch this clip" affordance. Hidden during the
+                  cine-loop (frames are flipping) and once the player is up.
+                  The wrapper is click-through so the still still pans/zooms;
+                  only the button itself catches the click. */}
+              {currentFile?.file_type === "video" &&
+                viewMode !== "video" &&
+                !autoPlay &&
+                (isPlayableVideo(currentFile) ? (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={playFocusedVideo}
+                      title="Watch this video (P)"
+                      className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/40 transition hover:scale-105 hover:bg-black/75"
+                    >
+                      <Play className="h-7 w-7 translate-x-0.5 fill-white text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center">
+                    <span className="rounded-md bg-black/60 px-2.5 py-1 text-xs text-white/80">
+                      Video format not supported for playback
+                    </span>
+                  </div>
+                ))}
             </div>
 
             {/* Draggable divider between the focus and the filmstrip. */}
@@ -824,7 +905,8 @@ export function EventDetailModal({
                 {event.site_name && <div>{event.site_name}</div>}
                 {currentFile && (
                   <div className="truncate pt-0.5 text-[11px] text-muted-foreground/70">
-                    viewing {basename(currentFile.file_path)}
+                    Viewing {basename(currentFile.file_path)} (
+                    {selectedFileIndex + 1} of {files.length})
                   </div>
                 )}
               </div>
@@ -855,11 +937,13 @@ export function EventDetailModal({
                     ["Enter", "Confirm + next event"],
                     ["↑ ↓", "Select species row"],
                     ["0-9", "Set its count"],
-                    ["← →", "Prev / next frame"],
+                    ["← →", "Prev / next event"],
+                    ["Shift + ← →", "Prev / next frame"],
+                    ["Space", "Loop event"],
                     ["Shift + scroll", "Scrub frames"],
                     ["Scroll", "Zoom the focus"],
                     ["Click", "Focus a thumbnail"],
-                    ["P", "Play video"],
+                    ["P", "Watch focused video"],
                     ["F", "Flag / unflag"],
                     ["B", "Show / hide AI boxes"],
                     ["Esc", "Close"],

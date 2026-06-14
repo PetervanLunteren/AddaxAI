@@ -94,6 +94,7 @@ export function AnnotationCanvas({
   const transformerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [loading, setLoading] = useState(true);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -114,22 +115,29 @@ export function AnnotationCanvas({
     shouldDrawBbox(d, file, detectionThreshold),
   );
 
-  // Load image — clear immediately to avoid showing old image with new detections,
-  // and ignore stale loads from rapid navigation (A → B → C where B's onload
-  // fires after C has started loading).
+  // Load image. Keep the previous image on screen while the next one loads
+  // (so rapid navigation / auto-play doesn't flash black between frames), and
+  // hide the boxes while `loading` so the old image is never shown with the
+  // new file's detections. Stale loads (A → B → C where B's onload fires after
+  // C has started) are ignored via `cancelled`.
   useEffect(() => {
-    setImage(null);
+    setLoading(true);
     let cancelled = false;
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     img.src = imageUrl;
     img.onload = () => {
-      if (!cancelled) {
-        setImage(img);
-        updateStageSize(img.naturalWidth, img.naturalHeight);
-      }
+      if (cancelled) return;
+      setImage(img);
+      updateStageSize(img.naturalWidth, img.naturalHeight);
+      setLoading(false);
     };
-    return () => { cancelled = true; };
+    img.onerror = () => {
+      if (!cancelled) setLoading(false);
+    };
+    return () => {
+      cancelled = true;
+    };
   }, [imageUrl]);
 
   // Update stage size based on container
@@ -210,20 +218,22 @@ export function AnnotationCanvas({
       const wasVisible = transformer?.visible();
       transformer?.visible(false);
       // The annotated download always carries the labels and the spotlight
-      // dim, even when they're hidden on screen in read-only (Counts) mode.
-      const annot = [
-        ...stage.find(".label-pill"),
-        ...stage.find(".spotlight"),
-      ];
-      annot.forEach((n: any) => n.visible(true));
+      // dim. Labels are already on screen everywhere now; the spotlight is
+      // still hidden on screen in read-only (Counts) mode, so force it on
+      // just for the export and restore it after.
+      const pills = stage.find(".label-pill");
+      const spots = stage.find(".spotlight");
+      [...pills, ...spots].forEach((n: any) => n.visible(true));
       stage.batchDraw();
 
       const pixelRatio = Math.max(1, imgWidth / stage.width());
       const dataUrl = stage.toDataURL({ pixelRatio });
 
-      // Restore transform, transformer, and on-screen annotation visibility.
+      // Restore transform, transformer, and on-screen annotation visibility:
+      // pills stay shown, the spotlight reverts to its read-only state.
       transformer?.visible(wasVisible ?? true);
-      annot.forEach((n: any) => n.visible(!readOnly));
+      pills.forEach((n: any) => n.visible(true));
+      spots.forEach((n: any) => n.visible(!readOnly));
       stage.scale(savedScale);
       stage.position(savedPos);
       stage.batchDraw();
@@ -599,7 +609,7 @@ export function AnnotationCanvas({
           {/* Spotlight dim overlay — darkens everything outside bounding
               boxes. Hidden on screen in read-only (Counts) mode so the focus
               is a clean study view, but still drawn into the download. */}
-          {!boxesHidden && filteredDetections.length > 0 && (
+          {!loading && !boxesHidden && filteredDetections.length > 0 && (
             <Shape
               name="spotlight"
               visible={!readOnly}
@@ -630,7 +640,7 @@ export function AnnotationCanvas({
             />
           )}
 
-          {!boxesHidden && filteredDetections.map((detection) => {
+          {!loading && !boxesHidden && filteredDetections.map((detection) => {
             const x = normToPixel(detection.bbox_x, imgWidth);
             const y = normToPixel(detection.bbox_y, imgHeight);
             const w = normToPixel(detection.bbox_width, imgWidth);
@@ -644,12 +654,12 @@ export function AnnotationCanvas({
             // the hairline so they sit beside the color, never over it.
             const colorW = readOnly
               ? isSelected
-                ? 4.5
-                : 3.5
+                ? 2.9
+                : 2.25
               : isSelected
                 ? 3
                 : 2;
-            const caseW = 0.75;
+            const caseW = 0.48;
             // In read-only mode keep the line + hairlines a constant screen
             // width by dividing out the zoom, so zooming into a small animal
             // gives a thin border (not one scaled up to eat the pixels).
@@ -721,13 +731,15 @@ export function AnnotationCanvas({
                   onDragEnd={(e) => handleDragEnd(detection, e)}
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
-                {/* Label pill — click to relabel this box in place. Hidden
-                    on screen in read-only (Counts) mode (the species live in
-                    the count panel and the pill would occlude the animal),
-                    but still drawn into the annotated download. */}
+                {/* Label pill — click to relabel this box in place. Shown in
+                    read-only (Counts) mode too: when skimming or looping an
+                    event you can't cross-reference box colours against a
+                    legend at speed, so the per-box species is what makes the
+                    scene readable. The show/hide AI overlays toggle (B) clears
+                    them along with the boxes when a frame gets too busy. */}
                 <Group
                   name="label-pill"
-                  visible={!readOnly}
+                  visible={true}
                   x={pillX}
                   y={pillY}
                   listening={!drawMode}

@@ -130,6 +130,18 @@ const VIDEO_FPS_OPTIONS = [
   { value: "10", label: "10 frames per second" },
 ];
 
+const INDEPENDENCE_INTERVAL_OPTIONS = [
+  { value: "0", label: "Disabled" },
+  { value: "60", label: "1 minute" },
+  { value: "300", label: "5 minutes" },
+  { value: "900", label: "15 minutes" },
+  { value: "1800", label: "30 minutes" },
+  { value: "3600", label: "60 minutes" },
+  // Debugging option: large interval to group many files (e.g. several
+  // videos) into one event so multi-video event handling can be tested.
+  { value: "2592000", label: "1 month (for debugging)" },
+];
+
 const settingsSchema = z.object({
   folder_path: z.string().min(1, "Pick a folder"),
   detection_model_id: z.string().min(1),
@@ -146,6 +158,7 @@ const settingsSchema = z.object({
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
+  independence_interval: z.number().int().min(0),
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
@@ -241,6 +254,7 @@ export function FolderRunModelStep() {
       event_smoothing: true,
       smoothing_strength: "normal",
       taxonomic_rollup: true,
+      independence_interval: 1800,
     },
   });
 
@@ -279,6 +293,7 @@ export function FolderRunModelStep() {
       smoothing_strength: (run.project.smoothing_strength ??
         "normal") as "mild" | "normal" | "aggressive",
       taxonomic_rollup: run.project.taxonomic_rollup,
+      independence_interval: run.project.independence_interval,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.project.id]);
@@ -444,6 +459,7 @@ export function FolderRunModelStep() {
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
+      independence_interval: data.independence_interval,
     });
 
   /** Start analysis in an existing run. PATCH settings, kick the
@@ -571,6 +587,7 @@ export function FolderRunModelStep() {
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
+      independence_interval: data.independence_interval,
     });
   };
 
@@ -1282,6 +1299,42 @@ export function FolderRunModelStep() {
                             </FormControl>
                             <SelectContent>
                               {VIDEO_FPS_OPTIONS.map((opt) => (
+                                <SelectItem
+                                  key={opt.value}
+                                  value={opt.value}
+                                >
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </SettingRow>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="independence_interval"
+                      render={({ field }) => (
+                        <SettingRow
+                          label="Independence interval"
+                          description="Files at the same camera within this window are merged into one event. The count per event is MaxN, the peak individuals in a single frame."
+                        >
+                          <Select
+                            key={String(field.value)}
+                            value={String(field.value)}
+                            onValueChange={(v) =>
+                              field.onChange(parseInt(v))
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {INDEPENDENCE_INTERVAL_OPTIONS.map((opt) => (
                                 <SelectItem
                                   key={opt.value}
                                   value={opt.value}
