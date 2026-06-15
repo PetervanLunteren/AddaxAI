@@ -11,10 +11,10 @@ import { api } from "../lib/api-client";
 import type { ProjectResponse } from "./types";
 
 export type FolderRunStep =
-  | "model"
+  | "setup"
   | "labels"
   | "counts"
-  | "overview"
+  | "summary"
   | "save";
 
 /** Queue entry shape carried on a folder-run response. Matches the

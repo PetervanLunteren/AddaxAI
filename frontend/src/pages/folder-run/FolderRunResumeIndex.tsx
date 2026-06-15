@@ -23,7 +23,7 @@ export function FolderRunResumeIndex() {
   // Guard against an unknown persisted step (e.g. a run created before
   // the Edit step was split, or before Observations was renamed to
   // back to the first verify step so resume never lands on a dead route.
-  const known = ["model", "labels", "counts", "overview", "save"];
+  const known = ["setup", "labels", "counts", "summary", "save"];
   const step = known.includes(run.step) ? run.step : "labels";
   return <Navigate to={`/folder-runs/${runId}/${step}`} replace />;
 }

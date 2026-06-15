@@ -26,7 +26,7 @@
  * single source of truth for the run-progress + terminal-state UI
  * shared with research-projects mode). The modal's terminal footer
  * is overridden so the user gets a "Continue" button that bumps the
- * folder-run step to "overview" and navigates forward.
+ * folder-run step to "labels" and navigates forward.
  *
  * Model preparation lives on this step: each picker has a status
  * badge that opens an inline prep overlay.
@@ -524,7 +524,7 @@ export function FolderRunModelStep() {
         navigate(`/folder-runs/${run.project.id}/labels`);
         return;
       }
-      navigate(`/folder-runs/${run.project.id}/model`);
+      navigate(`/folder-runs/${run.project.id}/setup`);
       setRunState({
         jobIds: resp.job_ids,
         queueEntryIds: resp.queue_entry_ids,
@@ -724,7 +724,7 @@ export function FolderRunModelStep() {
     <>
       <StepHeader
         title="Set up the analysis"
-        caption="Pick the folder, the AI models, and tune how AddaxAI will process it."
+        caption="Pick the folder and AI models. Adjust settings if needed."
       />
       <Card>
         <CardContent className="space-y-6 p-6">
@@ -906,7 +906,7 @@ export function FolderRunModelStep() {
                   {hasClassifier && taxonomy && (
                     <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
-                        <FormLabel>Label selection</FormLabel>
+                        <FormLabel>Species selection</FormLabel>
                         <FormDescription className="text-sm">
                           Limit predictions to species expected in your
                           area to cut false positives.

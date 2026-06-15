@@ -16,9 +16,10 @@
 - [x] run a folder of videos
 - [x] Run a folder of edge cases
 
-- [ ] Lets talk about the titles, captions, action names, etc. Focus on the folder run workflow for now. List them all and tell me what you think. It should be all clear, short, good UX UI. 
 
 - [ ] focus on the dashboard now. What should change now we have split the labels and the counts? 
+
+- [ ] focus on the exports now. Where do the counts go now? Does it make sense to have separate CSVs for the labels and the counts per event? Or merge them into one? How should we do this? WHat is customary? How do other well known platforms so something like this? 
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
 

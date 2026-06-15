@@ -3,8 +3,8 @@
  *
  * First of the two verification steps. Per-detection label cleanup via
  * the crop grid. Editing is optional, so the heavy grid is collapsed
- * behind an "Open editor" toggle and the default page is lightweight so
- * the obvious path is to skip ahead (direct response to feedback that a
+ * behind a "Show editor" toggle and the default page is lightweight so
+ * the obvious path is to continue (direct response to feedback that a
  * wall of grid made the step feel required).
  *
  * Continue PATCHes `step=counts` server-side and navigates onward.
@@ -59,7 +59,7 @@ export function FolderRunLabelsStep() {
     <div className="grid grid-cols-3 items-center gap-3">
       <Button
         variant="outline"
-        onClick={() => navigate(`/folder-runs/${runId}/model`)}
+        onClick={() => navigate(`/folder-runs/${runId}/setup`)}
         className="justify-self-start gap-2"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -73,12 +73,12 @@ export function FolderRunLabelsStep() {
         {editorOpen ? (
           <>
             <ChevronDown className="h-4 w-4 rotate-180" />
-            Close editor
+            Hide editor
           </>
         ) : (
           <>
             <Pencil className="h-4 w-4" />
-            Open editor
+            Show editor
           </>
         )}
       </Button>
@@ -99,7 +99,7 @@ export function FolderRunLabelsStep() {
       <div className="space-y-6">
         <StepHeader
           title="Clean up labels"
-          caption="Fix the AI's species labels if you want, or skip ahead."
+          caption="Fix the AI's species labels, or continue."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>
@@ -112,7 +112,7 @@ export function FolderRunLabelsStep() {
     <div className="space-y-6 pb-24">
       <StepHeader
         title="Clean up labels"
-        caption="Fix the AI's species labels if you want, or skip ahead."
+        caption="Fix the AI's species labels, or continue."
       />
       <LabelsView projectId={runId} onSelectionChange={setSelectionCount} />
       {selectionCount === 0 && (

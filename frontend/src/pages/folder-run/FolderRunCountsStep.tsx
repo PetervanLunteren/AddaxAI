@@ -4,8 +4,8 @@
  * Second of the two verification steps. The ecological record: review
  * each event's media in the gallery and confirm the species and counts
  * (the data model and exports keep the standard term "observation").
- * Optional, so the gallery is collapsed behind an "Open" toggle and the
- * default page is lightweight so the obvious path is to skip ahead.
+ * Optional, so the gallery is collapsed behind a "Show" toggle and the
+ * default page is lightweight so the obvious path is to continue.
  *
  * Continue PATCHes `step=overview` server-side and navigates onward.
  */
@@ -29,10 +29,10 @@ export function FolderRunCountsStep() {
   const [galleryOpen, setGalleryOpen] = useState(false);
 
   const advance = useMutation({
-    mutationFn: () => folderRunsApi.updateStep(runId!, "overview"),
+    mutationFn: () => folderRunsApi.updateStep(runId!, "summary"),
     onSuccess: (next) => {
       queryClient.setQueryData(["folder-run", runId], next);
-      navigate(`/folder-runs/${runId}/overview`);
+      navigate(`/folder-runs/${runId}/summary`);
     },
   });
 
@@ -69,12 +69,12 @@ export function FolderRunCountsStep() {
         {galleryOpen ? (
           <>
             <ChevronDown className="h-4 w-4 rotate-180" />
-            Close gallery
+            Hide gallery
           </>
         ) : (
           <>
             <Layers className="h-4 w-4" />
-            Open gallery
+            Show gallery
           </>
         )}
       </Button>
@@ -94,8 +94,8 @@ export function FolderRunCountsStep() {
     return (
       <div className="space-y-6">
         <StepHeader
-          title="Counts"
-          caption="Confirm the species and counts if you want, or skip ahead."
+          title="Confirm counts"
+          caption="Confirm the counts, or continue."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>
@@ -107,8 +107,8 @@ export function FolderRunCountsStep() {
   return (
     <div className="space-y-6 pb-24">
       <StepHeader
-        title="Counts"
-        caption="Confirm the species and counts if you want, or skip ahead."
+        title="Confirm counts"
+        caption="Confirm the counts, or continue."
       />
       <VerifyView projectId={runId} />
       <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">

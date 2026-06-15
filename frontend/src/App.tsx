@@ -386,8 +386,8 @@ function App() {
                 redirects to the persisted step. */}
             <Route path="/folder-runs/:runId" element={<FolderRunLayout />}>
               <Route index element={<FolderRunResumeIndex />} />
-              <Route path="model" element={<FolderRunModelStep />} />
-              <Route path="overview" element={<FolderRunOverviewStep />} />
+              <Route path="setup" element={<FolderRunModelStep />} />
+              <Route path="summary" element={<FolderRunOverviewStep />} />
               <Route path="labels" element={<FolderRunLabelsStep />} />
               <Route path="counts" element={<FolderRunCountsStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
