@@ -189,6 +189,10 @@ export function VideoPlayer({
   const [currentFrame, setCurrentFrame] = useState<number>(0);
   const [displayWidth, setDisplayWidth] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  // Export progress, driven by playback position (recording runs at 1x, so
+  // these are exact, not estimates): fraction done and wall-clock seconds left.
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportRemaining, setExportRemaining] = useState(0);
   const animFrameRef = useRef<number>(0);
   const exportAbortRef = useRef(false);
 
@@ -377,10 +381,14 @@ export function VideoPlayer({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setIsExporting(false);
+      setExportProgress(0);
+      setExportRemaining(0);
     };
 
     exportAbortRef.current = false;
     setIsExporting(true);
+    setExportProgress(0);
+    setExportRemaining(0);
 
     const beginRecording = () => {
       recorder.start(1000);
@@ -394,6 +402,13 @@ export function VideoPlayer({
         }
 
         const frame = Math.round(video.currentTime * frameRate);
+
+        // Progress from playback position. Guard NaN/Infinity duration.
+        const dur = video.duration;
+        if (dur && Number.isFinite(dur)) {
+          setExportProgress(Math.min(1, video.currentTime / dur));
+          setExportRemaining(Math.max(0, dur - video.currentTime));
+        }
 
         // Draw video frame
         ctx.drawImage(video, 0, 0, imgW, imgH);
@@ -485,11 +500,28 @@ export function VideoPlayer({
           onEnded={handlePause}
         />
 
-        {/* Recording indicator */}
+        {/* Recording indicator — centered over the focus while the
+            annotated video records. Progress and time-left are exact since
+            recording is locked to 1x playback. Click-through so it never
+            blocks the video underneath. */}
         {isExporting && (
-          <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-black/70 text-white text-xs px-2 py-1 rounded">
-            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-            Recording…
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="flex flex-col items-center gap-3 rounded-lg bg-black/70 px-6 py-5 text-white">
+              <div className="flex items-center gap-2 text-base font-medium">
+                <span className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
+                Recording…
+              </div>
+              <div className="h-2 w-56 overflow-hidden rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-150"
+                  style={{ width: `${Math.round(exportProgress * 100)}%` }}
+                />
+              </div>
+              <div className="text-xs text-white/80 tabular-nums">
+                {Math.round(exportProgress * 100)}% ·{" "}
+                {Math.ceil(exportRemaining)}s left
+              </div>
+            </div>
           </div>
         )}
 

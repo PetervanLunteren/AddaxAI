@@ -116,6 +116,8 @@ export function EventDetailModal({
   );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // "More" menu open state, so picking an item closes it (menu behaviour).
+  const [moreOpen, setMoreOpen] = useState(false);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
 
@@ -742,7 +744,7 @@ export function EventDetailModal({
               </Button>
               {/* Everything else (zoom, like, download, reveal) is rarely
                   used here, so it lives behind one "more" menu. */}
-              <Popover>
+              <Popover open={moreOpen} onOpenChange={setMoreOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="ghost"
@@ -755,12 +757,13 @@ export function EventDetailModal({
                 </PopoverTrigger>
                 <PopoverContent side="right" align="start" className="w-48 p-1">
                   <button
-                    onClick={() =>
+                    onClick={() => {
+                      setMoreOpen(false);
                       favoriteMutation.mutate({
                         fileId: currentFile.id,
                         favorited: !currentFile.favorited,
-                      })
-                    }
+                      });
+                    }}
                     disabled={favoriteMutation.isPending}
                     className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                   >
@@ -773,7 +776,10 @@ export function EventDetailModal({
                     {currentFile.favorited ? "Unlike" : "Like"}
                   </button>
                   <button
-                    onClick={handleDownload}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      handleDownload();
+                    }}
                     className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                   >
                     <Download className="h-4 w-4" />
@@ -782,7 +788,10 @@ export function EventDetailModal({
                       : "Download image"}
                   </button>
                   <button
-                    onClick={() => revealInFolder(currentFile)}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      revealInFolder(currentFile);
+                    }}
                     className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                   >
                     <FolderOpen className="h-4 w-4" />
