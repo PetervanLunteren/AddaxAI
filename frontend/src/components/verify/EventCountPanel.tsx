@@ -17,7 +17,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Minus, Plus, X } from "lucide-react";
+import { Check, Minus, Plus, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
 import { cn } from "../../lib/utils";
@@ -164,15 +164,28 @@ export function EventCountPanel({
   }, []);
 
   return (
-    <div className="mx-3 mt-3 rounded-lg border bg-muted/40 flex flex-col">
-      <div className="flex items-center gap-1.5 px-3 pt-3 pb-2">
+    <div className="mx-3 mt-3 mb-2 flex min-h-0 flex-1 flex-col rounded-lg border bg-muted/40">
+      <div className="flex shrink-0 items-center gap-1.5 px-3 pt-3 pb-2">
         <h3 className="text-sm font-semibold">Counts</h3>
         <Badge variant="outline" className="text-xs">
           {visible.length}
         </Badge>
+        {/* Persistent confirmed cue: clearer than the Confirm button's
+            fill change, and uses the same teal/check as the grid badge. */}
+        {confirmed && (
+          <span
+            className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+            style={{ backgroundColor: "#0f6064" }}
+          >
+            <Check className="h-3 w-3" strokeWidth={3} />
+            Confirmed
+          </span>
+        )}
       </div>
 
-      <div className="px-3 space-y-1">
+      {/* Scrollable species list; the footer (reset + confirm) stays pinned
+          below so a long list never pushes Confirm off-screen. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-1 space-y-1">
         {visible.map((obs, index) => {
           const name = resolveSpeciesName({
             common_name: obs.common_name,
@@ -195,7 +208,9 @@ export function EventCountPanel({
                   className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
                   style={{ backgroundColor: getSpeciesColor(colorKey) }}
                 />
-                <span className="truncate">{name}</span>
+                <span className="truncate" title={name}>
+                  {name}
+                </span>
               </span>
               <span className="flex shrink-0 items-center gap-1">
                 <Button
@@ -278,16 +293,19 @@ export function EventCountPanel({
         />
       </div>
 
-      {/* Footer: reset to the AI proposal, then the primary Confirm. */}
-      <div className="mt-2 border-t px-3 py-2 space-y-2">
+      {/* Footer: reset to the AI proposal, then the primary Confirm. Pinned
+          to the panel bottom so Confirm holds a stable position. */}
+      <div className="shrink-0 border-t px-3 py-2 space-y-2">
         {hasHumanEdits && (
-          <button
+          <Button
+            variant="ghost"
             onClick={() => resetCounts.mutate()}
             disabled={busy}
-            className="w-full text-center text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="w-full gap-1.5 text-muted-foreground"
           >
+            <RotateCcw className="h-4 w-4" />
             Reset to AI
-          </button>
+          </Button>
         )}
         <Button
           variant={confirmed ? "outline" : "default"}

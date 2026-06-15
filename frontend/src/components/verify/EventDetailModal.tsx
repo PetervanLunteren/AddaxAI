@@ -992,7 +992,7 @@ export function EventDetailModal({
             {/* Event summary — what you're confirming (media, when, where).
                 The muted last line names the frame you're currently viewing. */}
             {event && eventSummary && (
-              <div className="mx-3 mt-3 rounded-lg border bg-muted/40 px-3 py-2 space-y-0.5 text-xs text-muted-foreground">
+              <div className="mx-3 mt-3 shrink-0 rounded-lg border bg-muted/40 px-3 py-2 space-y-0.5 text-xs text-muted-foreground">
                 <div className="font-medium text-foreground">
                   {eventSummary.media}
                 </div>

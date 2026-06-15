@@ -16,20 +16,6 @@
 - [x] run a folder of videos
 - [x] Run a folder of edge cases
 
-- [ ] How difficult would it be to have the timestamps of the frames being offset by the first timestamp? Currently it works by having all the frames have the same timestamp of the video, right? How difficult would it be? And what do we benefit from it from a user perspective? What are the pros and cons? Is it worth the effort? 
-
-- [ ] the filmstrip below the event show verification flags. Why? Where is that coming from? What verified it? Is that still old code? 
-
-- [ ] On the observations card a few comments:
-        - The confirm button should be the primary action, so priamry colour a t the bottom. 
-        - The "+ Add a species the AI missed" can be shorter, and the button should cover the whole text. Perhaps somethjing like "+ Add observation" or "+ Add row"
-        - Why cant you remove the AI proposed species row? Curently, the [X] only appears at the manually added rows. Is that by design?
-        - The "AI saw X" is noise. remove it
-        - do not reorder the list depending on count. If you press + on the last one, the order keep moving and you end up nclicking on the wrong +'s.
-        - Do not do the inline reset button. It is annyoing since it is at the position of the inital +. perhaps better a event wide reset button that resets it to the AI state? 
-        - Thwre should be a scroll if there are too many species for the screen. (do debug month interval for videos and check)
-
-- [ ] SHould we also add sex, age, and behaviour while were at it? I think this would be a power feature. Have a look at /Users/peter/Documents/Repos/AddaxAI-Connect/ to see how its done there. This is how it looks. '/Users/peter/Desktop/Screenshot 2026-06-09 at 14.31.44.png' Can we learn something here? It also has opptions like duplicateing if you need to split for a different behaviour etc. 
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
 
