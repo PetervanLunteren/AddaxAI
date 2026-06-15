@@ -261,19 +261,19 @@ export function ExportBody({
         checked={exportOpts.csv}
         onChange={(v) => setExportOpts({ ...exportOpts, csv: v })}
         label="CSV"
-        caption="One row per detection"
+        caption="Tables for deployments, files, detections, and counts"
       />
       <CaptionedCheckbox
         checked={exportOpts.xlsx}
         onChange={(v) => setExportOpts({ ...exportOpts, xlsx: v })}
         label="XLSX"
-        caption="The same table, as an Excel file"
+        caption="The same tables in one Excel workbook"
       />
       <CaptionedCheckbox
         checked={exportOpts.recognitionJson}
         onChange={(v) => setExportOpts({ ...exportOpts, recognitionJson: v })}
         label="JSON"
-        caption="Recognition file you can load into Timelapse"
+        caption="Recognition file for Timelapse, detections only"
       />
     </div>
   );

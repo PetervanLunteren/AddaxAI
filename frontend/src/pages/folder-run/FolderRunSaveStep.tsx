@@ -153,7 +153,7 @@ export function FolderRunSaveStep() {
         {/* Data exports: lightweight, non-destructive, on by default. */}
         <GroupCard
           title="Export results"
-          caption="Tables and the recognition file, your media is left untouched"
+          caption="Data tables and the recognition file. Your media is untouched."
           enabled={form.exportOpts.enabled}
           onEnabledChange={(v) =>
             form.setExportOpts({ ...form.exportOpts, enabled: v })
