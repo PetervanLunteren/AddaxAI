@@ -7,6 +7,7 @@ event_observations table.
 """
 
 import uuid
+from collections import defaultdict
 
 from sqlalchemy import delete, func, or_
 from sqlalchemy.orm import Session
@@ -39,6 +40,10 @@ def calculate_max_n_for_event(
     Algorithm:
     1. Count detections per (file, frame, taxonomy) and take the maximum
        count per species (= MaxN). Ties break on summed confidence.
+       For videos, a species only counts if it appears on the video's best
+       frame (or was verified on some frame): non-best-frame labels are
+       per-frame classifier noise the user can't see or clean in the Labels
+       step, so they must not spawn spurious species rows.
     2. Rebuild the event's `event_observations` rows: one per AI species
        (carrying forward any human_count set for it) plus any human-only
        species the AI did not detect this round (max_n=0, no frame).
@@ -60,6 +65,9 @@ def calculate_max_n_for_event(
     # collapsing into MaxN=8. For image rows, `frame_number` is NULL and
     # all detections in one file land in a single group (NULL == NULL in
     # GROUP BY semantics), preserving the legacy per-image behaviour.
+    # file_type / best_frame_number / any_verified ride along to gate video
+    # species to the best frame (below). They are constant per file_id, so
+    # adding the two columns to GROUP BY doesn't change the grouping.
     counts = (
         db.query(
             Detection.file_id,
@@ -69,6 +77,9 @@ def calculate_max_n_for_event(
             Detection.category,
             func.count(Detection.id).label("det_count"),
             func.sum(Detection.confidence).label("conf_sum"),
+            File.file_type,
+            File.best_frame_number,
+            func.max(Detection.verified).label("any_verified"),
         )
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
@@ -80,6 +91,8 @@ def calculate_max_n_for_event(
             Detection.label_taxonomy_id,
             effective_label,
             Detection.category,
+            File.file_type,
+            File.best_frame_number,
         )
         .all()
     )
@@ -101,25 +114,46 @@ def calculate_max_n_for_event(
             prior_human[key] = r.human_count
         prior_effective[key] = r.effective_count
 
+    # A video species is only suggested if it appears on the video's best
+    # frame (the canonical, user-cleanable view) or was verified on some
+    # frame. Non-best-frame-only labels are per-frame classifier noise the
+    # user can't see or clean in the Labels step, so they must not spawn
+    # spurious species rows. Images are never gated (every image detection
+    # is visible and cleanable).
+    allowed_video_keys: dict[str, set[str]] = defaultdict(set)
+    for r in counts:
+        if r.file_type != "video":
+            continue
+        key = r.label_taxonomy_id or r.eff_label
+        on_best = (
+            r.best_frame_number is not None
+            and r.frame_number == r.best_frame_number
+        )
+        if on_best or r.any_verified:
+            allowed_video_keys[r.file_id].add(key)
+
     # Find MaxN per taxonomy_id (or label string as fallback key). The
     # winning row's `file_id` is stored as max_n_file_id; for videos
     # this is the parent video File row regardless of which frame
     # within it contributed the MaxN count. The UI surfaces the video's
     # `best_frame_path` thumbnail, which is the canonical representative
-    # of the file.
+    # of the file. A gated video species (best-frame absent, unverified) is
+    # skipped, but an allowed species still takes its peak across all frames.
     max_n_per_key: dict[str, dict] = {}
-    for file_id, _frame_number, taxonomy_id, label, category, det_count, conf_sum in counts:
-        key = taxonomy_id or label
-        new_score = (det_count, conf_sum)
+    for r in counts:
+        key = r.label_taxonomy_id or r.eff_label
+        if r.file_type == "video" and key not in allowed_video_keys[r.file_id]:
+            continue
+        new_score = (r.det_count, r.conf_sum)
         prev = max_n_per_key.get(key)
         if prev is None or new_score > (prev["count"], prev["conf_sum"]):
             max_n_per_key[key] = {
-                "count": det_count,
-                "conf_sum": conf_sum,
-                "file_id": file_id,
-                "category": category,
-                "label": label,
-                "taxonomy_id": taxonomy_id,
+                "count": r.det_count,
+                "conf_sum": r.conf_sum,
+                "file_id": r.file_id,
+                "category": r.category,
+                "label": r.eff_label,
+                "taxonomy_id": r.label_taxonomy_id,
             }
 
     # Rebuild: delete then recreate the AI rows (carrying human_count) plus

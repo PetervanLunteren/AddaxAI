@@ -559,3 +559,225 @@ def test_list_event_observations_order_is_stable_under_count_edits(db):
     set_human_count(db, fox.id, 50)
     after = [o.label for o in list_event_observations(db, ev.id)]
     assert after == ["cow", "fox"]
+
+
+# ── Video best-frame species gate ───────────────────────────────────────
+#
+# For videos, only species present on the best frame (or verified on some
+# frame) may produce a count row; non-best-frame labels are per-frame
+# classifier noise the user can never see or clean, so they must not spawn
+# spurious species. Images are never gated.
+
+
+def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
+    """Create an event whose files can be videos with per-frame detections.
+
+    file_specs: list of dicts:
+        - file_type: "image" | "video" (default "image")
+        - best_frame_number: int | None (videos)
+        - detections: list of dicts with keys
+            label, frame_number (opt), category (opt "animal"),
+            confidence (opt 0.9), verified (opt False)
+    Returns (event, files).
+    """
+    eid = str(uuid.uuid4())
+    ev = Event(
+        id=eid,
+        deployment_id=deployment_id,
+        event_start_local=event_start_local,
+        event_end_local=event_start_local,
+        file_count=len(file_specs),
+    )
+    db.add(ev)
+    db.flush()
+
+    files = []
+    for seq, spec in enumerate(file_specs):
+        fkw = {"file_type": spec.get("file_type", "image")}
+        if "best_frame_number" in spec:
+            fkw["best_frame_number"] = spec["best_frame_number"]
+        f = make_file(
+            db,
+            deployment_id=deployment_id,
+            captured_at_local=event_start_local,
+            **fkw,
+        )
+        db.execute(
+            insert(event_files).values(
+                event_id=eid,
+                file_id=f.id,
+                sequence_number=seq,
+            )
+        )
+        files.append(f)
+        for d in spec["detections"]:
+            make_detection(
+                db,
+                file_id=f.id,
+                category=d.get("category", "animal"),
+                confidence=d.get("confidence", 0.9),
+                label=d["label"],
+                frame_number=d.get("frame_number"),
+                verified=d.get("verified", False),
+            )
+    db.flush()
+    return ev, files
+
+
+def test_video_non_best_frame_label_is_gated_out(db):
+    """A label that only appears on a non-best frame is dropped."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},     # best frame
+                {"label": "carnivora", "frame_number": 12},  # non-best noise
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert {o.label for o in obs} == {"leopard"}  # carnivora gated out
+
+
+def test_video_best_frame_species_counts_peak_across_frames(db):
+    """An allowed species still takes its peak count across all frames."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},   # best frame: 1
+                {"label": "leopard", "frame_number": 40},  # non-best: 3
+                {"label": "leopard", "frame_number": 40},
+                {"label": "leopard", "frame_number": 40},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert len(obs) == 1
+    assert obs[0].label == "leopard"
+    assert obs[0].max_n == 3  # allowed via best frame, peak across all frames
+
+
+def test_video_verified_non_best_frame_species_survives(db):
+    """A human-verified species survives even off the best frame."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},
+                # not on best frame, but the human confirmed it:
+                {"label": "serval", "frame_number": 12, "verified": True},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert {o.label for o in obs} == {"leopard", "serval"}
+
+
+def test_image_multispecies_is_not_gated(db):
+    """Images are never gated: every species in a photo is kept."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "image",
+            "detections": [
+                {"label": "cow"},
+                {"label": "bear"},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert {o.label for o in obs} == {"cow", "bear"}
+
+
+def test_multi_video_event_gates_per_file(db):
+    """The gate is per video: a species allowed in one video is not
+    rescued for another video where it's only a non-best-frame label."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {  # video A: leopard on its best frame
+            "file_type": "video",
+            "best_frame_number": 0,
+            "detections": [{"label": "leopard", "frame_number": 0}],
+        },
+        {  # video B: cow on best frame, leopard only on a non-best frame
+            "file_type": "video",
+            "best_frame_number": 0,
+            "detections": [
+                {"label": "cow", "frame_number": 0},
+                {"label": "leopard", "frame_number": 7},  # gated for B
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    by_label = {o.label: o.max_n for o in obs}
+    assert set(by_label) == {"leopard", "cow"}
+    # leopard counted only from video A (1); video B's frame-7 leopard gated.
+    assert by_label["leopard"] == 1
+    assert by_label["cow"] == 1
+
+
+def test_event_card_chips_match_best_frame_gate(db):
+    """Gallery-card chips exclude non-best-frame video noise, same as the
+    count suggestion (the chips are built from raw detections, so they must
+    be gated against the event's EventObservation rows)."""
+    from app.api.crud.event import get_events_by_project
+
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},     # best frame
+                {"label": "carnivora", "frame_number": 12},  # non-best noise
+            ],
+        },
+    ])
+
+    # Populate EventObservation (the gate source), as analysis would.
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    summaries = get_events_by_project(db, project.id, project_floor=0.5)
+    assert len(summaries) == 1
+    assert summaries[0]["labels"] == ["leopard"]  # carnivora chip gated out

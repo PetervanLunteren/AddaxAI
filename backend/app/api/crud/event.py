@@ -5,6 +5,7 @@ Events are time-clustered groups of files within a deployment.
 """
 
 import uuid
+from collections import defaultdict
 from datetime import datetime, time
 
 from sqlalchemy import Integer, delete, exists, func, insert, or_, select
@@ -503,6 +504,28 @@ def get_events_by_project(
     for eid in event_ids:
         max_n_by_event[eid] = get_max_n_frames(db, eid)
 
+    # Gallery-card chips must match the Counts panel's species. Source the
+    # allowed species per event from its EventObservation rows, which
+    # already apply the best-frame gate for videos (see
+    # calculate_max_n_for_event). Without this, non-best-frame per-frame
+    # classifier noise leaks into the card chips even though it's correctly
+    # excluded from the count suggestion.
+    allowed_keys_by_event: dict[str, set[str]] = defaultdict(set)
+    if event_ids:
+        obs_rows = (
+            db.query(
+                EventObservation.event_id,
+                EventObservation.label_taxonomy_id,
+                EventObservation.label,
+            )
+            .filter(EventObservation.event_id.in_(event_ids))
+            .all()
+        )
+        for eid, tid, lbl in obs_rows:
+            key = tid or lbl
+            if key is not None:
+                allowed_keys_by_event[eid].add(key)
+
     summaries = []
     for event in unique_events:
         # Sort files by sequence within event
@@ -516,6 +539,7 @@ def get_events_by_project(
         label_set: set[str] = set()
         label_to_scientific: dict[str, str] = {}
         label_to_common: dict[str, str] = {}
+        allowed_keys = allowed_keys_by_event.get(event.id, set())
         for f in sorted_files:
             for d in f.detections:
                 meets_floor = (
@@ -531,6 +555,12 @@ def get_events_by_project(
                 )
                 if meets_floor and meets_min and meets_max:
                     tid = d.label_taxonomy_id
+                    raw = d.label if d.label is not None else d.category
+                    # Same gate as the count suggestion: only species the
+                    # event's EventObservation rows kept (best-frame gated
+                    # for videos) become chips.
+                    if (tid or raw) not in allowed_keys:
+                        continue
                     if tid:
                         label_set.add(tid)
                         if tid not in label_to_scientific:
@@ -542,7 +572,6 @@ def get_events_by_project(
                             if common:
                                 label_to_common[tid] = common
                     else:
-                        raw = d.label if d.label is not None else d.category
                         label_set.add(raw)
                         if d.scientific_name and raw not in label_to_scientific:
                             label_to_scientific[raw] = d.scientific_name

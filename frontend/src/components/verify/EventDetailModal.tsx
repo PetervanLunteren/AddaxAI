@@ -36,9 +36,11 @@ import {
   EyeOff,
   RotateCcw,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
+import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
 import { basename } from "../../lib/path-utils";
@@ -57,6 +59,7 @@ import { ViewControls } from "./ViewControls";
 import type { TileSize } from "./CropGrid";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { EventCountPanel } from "./EventCountPanel";
+import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 
@@ -105,6 +108,12 @@ export function EventDetailModal({
   // One-shot flag: set when Download is clicked on a video while in frame
   // view, so the VideoPlayer runs the annotated-video export once it mounts.
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
+  // When set, the relabel LabelPicker is open for this detection (clicked
+  // its label pill on the focus image). Counts-page in-place single-box
+  // relabel; per-detection cleanup at scale still lives on the Labels page.
+  const [relabelDetectionId, setRelabelDetectionId] = useState<string | null>(
+    null,
+  );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [brightness, setBrightness] = useState(50);
@@ -289,6 +298,7 @@ export function EventDetailModal({
     setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
     setPendingVideoExport(false);
+    setRelabelDetectionId(null);
   }, [eventId, event?.id]);
 
   const files = event?.files ?? [];
@@ -312,6 +322,13 @@ export function EventDetailModal({
   const imageFilter =
     brightness !== 50 || contrast !== 50
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
+      : undefined;
+
+  // The detection whose label pill was clicked (pills only render for the
+  // focused file), seeding the relabel picker's current value.
+  const relabelDetection =
+    relabelDetectionId != null
+      ? currentFile?.detections.find((d) => d.id === relabelDetectionId)
       : undefined;
 
   // For the focused video file: hand the VideoPlayer every detection on
@@ -368,6 +385,33 @@ export function EventDetailModal({
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["file"] });
     },
+  });
+
+  // In-place single-box relabel: clicking a label pill on the focus image
+  // relabels that one detection through the same path the Labels page uses
+  // (detectionsApi.bulkRelabel with a one-id array). The backend re-derives
+  // the event's MaxN and clears Event.confirmed if the species/count set
+  // changed, so we just refetch. Mirrors the Labels page's invalidation set
+  // (LabelsTab) so the filter tree / cohorts / Labels grid stay consistent.
+  const relabelMutation = useMutation({
+    mutationFn: ({
+      id,
+      label,
+      category,
+    }: {
+      id: string;
+      label: string | null;
+      category: string;
+    }) => detectionsApi.bulkRelabel([id], label, category),
+    onSuccess: () => {
+      setRelabelDetectionId(null);
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   // Navigation handlers
@@ -491,6 +535,7 @@ export function EventDetailModal({
     if (!isOpen) {
       setAutoPlay(false);
       setRestartFlash(0);
+      setRelabelDetectionId(null);
     }
   }, [isOpen]);
 
@@ -510,6 +555,11 @@ export function EventDetailModal({
       ) {
         return;
       }
+
+      // The relabel picker is open: let it own the keyboard (Escape closes
+      // it, not the modal; arrows/Enter drive its list) instead of the
+      // modal's shortcuts firing underneath.
+      if (relabelDetectionId) return;
 
       // Confirm + advance to the next unconfirmed event.
       if (e.key === "Enter") {
@@ -600,6 +650,7 @@ export function EventDetailModal({
     playFocusedVideo,
     navigateEvent,
     adjacent,
+    relabelDetectionId,
   ]);
 
   if (!isOpen) return null;
@@ -784,8 +835,12 @@ export function EventDetailModal({
                   <AnnotationCanvas
                     file={currentFile}
                     detectionThreshold={detectionThreshold}
-                    selectedDetectionId={null}
+                    selectedDetectionId={relabelDetectionId}
                     onSelectDetection={() => {}}
+                    onRequestRelabel={(id) => {
+                      setAutoPlay(false);
+                      setRelabelDetectionId(id);
+                    }}
                     drawMode={false}
                     onDrawModeChange={() => {}}
                     readOnly
@@ -825,6 +880,37 @@ export function EventDetailModal({
                     </span>
                   </div>
                 ))}
+            </div>
+
+            {/* Headless relabel picker — opened by clicking a label pill on
+                the focus image. The trigger is taken out of the flow
+                (absolute, zero-size); the dialog is portaled by Radix, so
+                the wrapper position doesn't matter. Mirrors the Labels page
+                (DetectionDetailModal). */}
+            <div
+              aria-hidden="true"
+              className="absolute h-0 w-0 overflow-hidden pointer-events-none"
+            >
+              <LabelPicker
+                headless
+                value={relabelDetection?.label ?? null}
+                displayName={relabelDetection?.scientific_name ?? null}
+                options={labelOptions}
+                isLoading={labelOptionsLoading}
+                projectId={projectId}
+                forceOpen={relabelDetectionId !== null}
+                onOpenChange={(open) => {
+                  if (!open) setRelabelDetectionId(null);
+                }}
+                onSelect={(option) => {
+                  if (relabelDetectionId == null) return;
+                  relabelMutation.mutate({
+                    id: relabelDetectionId,
+                    label: option.label,
+                    category: option.category,
+                  });
+                }}
+              />
             </div>
 
             {/* Draggable divider between the focus and the filmstrip. */}
