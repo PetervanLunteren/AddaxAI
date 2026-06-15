@@ -16,14 +16,7 @@
 - [x] run a folder of videos
 - [x] Run a folder of edge cases
 
-
-- [ ] focus on the exports now. Is there anything wer need to do now that we split the labels and the counts? Where do the counts go now? Does it make sense to have separate CSVs for the labels and the counts per event? Or merge them into one? How should we do this? WHat is customary? How do other well known platforms so something like this? 
-
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
-
-
-
-
 
 ## Priority 1
 - [ ] Add different modes at the home screen. What if we frame the two workflows as "Processing workflow / One-off analysis tool" and "Management platform"? Because that is the real distiction, right? One just processes the data and lets you handle it, the other stores it and can be revisisted later and can be added to like a project. 
