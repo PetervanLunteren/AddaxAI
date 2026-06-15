@@ -91,6 +91,26 @@ def serialize_xlsx(
     return buf.getvalue()
 
 
+def serialize_xlsx_multi(
+    sheets: list[tuple[str, list[str], list[list[Any]]]],
+) -> bytes:
+    """One workbook with several sheets. Each entry is
+    ``(sheet_title, headers, rows)``; sheets are added in order."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    # The workbook starts with one empty sheet; reuse it for the first entry.
+    for index, (title, headers, rows) in enumerate(sheets):
+        ws = wb.active if index == 0 else wb.create_sheet()
+        ws.title = title
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Spatial serializers (GeoJSON / Shapefile / GeoPackage)
 #

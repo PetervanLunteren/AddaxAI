@@ -174,8 +174,13 @@ function buildTree({
   }
 
   if (exportOpts.enabled) {
-    if (exportOpts.csv) files.push({ name: "observations.csv" });
-    if (exportOpts.xlsx) files.push({ name: "observations.xlsx" });
+    if (exportOpts.csv) {
+      files.push({ name: "deployments.csv" });
+      files.push({ name: "files.csv" });
+      files.push({ name: "detections.csv" });
+      files.push({ name: "counts.csv" });
+    }
+    if (exportOpts.xlsx) files.push({ name: "spreadsheet.xlsx" });
     if (exportOpts.recognitionJson)
       files.push({ name: "recognitions.json" });
   }

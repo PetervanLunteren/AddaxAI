@@ -86,6 +86,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Subscribe to download completions. Fired once per file that the main
+   * process auto-saves to the Downloads folder. Returns an unsubscribe
+   * function. Used to show a "saved to Downloads" toast with a
+   * reveal-in-folder action.
+   */
+  onDownloadComplete: (
+    callback: (info: {
+      filename: string;
+      path: string;
+      success: boolean;
+    }) => void,
+  ): (() => void) => {
+    const listener = (
+      _event: unknown,
+      info: { filename: string; path: string; success: boolean },
+    ) => callback(info);
+    ipcRenderer.on('download:complete', listener);
+    return () => ipcRenderer.removeListener('download:complete', listener);
+  },
+
+  /**
    * Resolve the absolute filesystem path of a `File` from a drag-and-drop
    * event. Electron 32+ removed the legacy `File.path` property, so the
    * renderer has to call `webUtils.getPathForFile()` for dropped folders

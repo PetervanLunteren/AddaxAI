@@ -1,9 +1,18 @@
 """
 Export endpoints for project data.
 
-Three synchronous streaming endpoints, one per export type:
+Streaming endpoints, one per export type:
 
-- ``/observations``: flat one-row-per-species-per-image in CSV / TSV / XLSX.
+- ``/deployments``: one row per deployment (location + effort: site,
+  coordinates, date span, trap-nights) in CSV / TSV / XLSX.
+- ``/files``: one row per media file, including empties (the membership
+  table) in CSV / TSV / XLSX.
+- ``/detections``: flat one-row-per-detection (the labels grain) in
+  CSV / TSV / XLSX.
+- ``/observations``: event-level one-row-per-species-per-event with the
+  effective count (the Counts grain) in CSV / TSV / XLSX.
+- ``/spreadsheet``: combined XLSX with Deployments, Files, Detections and
+  Counts sheets for the one format that holds several tables in one file.
 - ``/spatial``: GIS layers in GeoJSON / Shapefile (ZIP) / GeoPackage.
 - ``/camtrap-dp``: Camera Trap Data Package v1.0 (GBIF-compatible) as a ZIP.
 
@@ -53,20 +62,18 @@ def _attachment_headers(filename: str) -> dict[str, str]:
     return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
-@router.get("/observations")
-async def export_observations(
-    project_id: str,
-    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
-    db: Session = Depends(get_db),
+def _tabular_response(
+    headers: list[str],
+    rows: list[list[object]],
+    base: str,
+    sheet_title: str,
+    format: str,
 ) -> StreamingResponse:
-    """Flat observations: one row per species per image."""
-    project = _resolve_project(project_id, db)
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    headers, rows = export_crud.build_observation_rows(db, project, scoped)
-
-    base = _filename_base(project, "observations")
+    """Serialize (headers, rows) to CSV / TSV / XLSX as a download."""
     if format == "xlsx":
-        payload = export_formats.serialize_xlsx(headers, rows, sheet_title="Observations")
+        payload = export_formats.serialize_xlsx(
+            headers, rows, sheet_title=sheet_title
+        )
         return StreamingResponse(
             BytesIO(payload),
             media_type=(
@@ -86,6 +93,82 @@ async def export_observations(
         BytesIO(payload),
         media_type="text/csv",
         headers=_attachment_headers(f"{base}.csv"),
+    )
+
+
+@router.get("/deployments")
+async def export_deployments(
+    project_id: str,
+    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Location / effort table: one row per deployment (site + trap-nights)."""
+    project = _resolve_project(project_id, db)
+    headers, rows = export_crud.build_deployments_rows(db, project)
+    base = _filename_base(project, "deployments")
+    return _tabular_response(headers, rows, base, "Deployments", format)
+
+
+@router.get("/files")
+async def export_files(
+    project_id: str,
+    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Media / membership table: one row per file, including empties."""
+    project = _resolve_project(project_id, db)
+    headers, rows = export_crud.build_files_rows(db, project)
+    base = _filename_base(project, "files")
+    return _tabular_response(headers, rows, base, "Files", format)
+
+
+@router.get("/detections")
+async def export_detections(
+    project_id: str,
+    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Flat detections: one row per detection (the labels grain)."""
+    project = _resolve_project(project_id, db)
+    scoped = export_crud.get_scoped_detection_rows(db, project)
+    headers, rows = export_crud.build_detection_rows(db, project, scoped)
+    base = _filename_base(project, "detections")
+    return _tabular_response(headers, rows, base, "Detections", format)
+
+
+@router.get("/observations")
+async def export_observations(
+    project_id: str,
+    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Event-level observations: one row per species per event with count."""
+    project = _resolve_project(project_id, db)
+    headers, rows = export_crud.build_observation_rows(db, project)
+    base = _filename_base(project, "counts")
+    return _tabular_response(headers, rows, base, "Counts", format)
+
+
+@router.get("/spreadsheet")
+async def export_spreadsheet(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Combined workbook: a Detections sheet and a Counts sheet.
+
+    XLSX only — the one format that holds two tables in a single file. For
+    CSV / TSV the client downloads the two single-table endpoints instead.
+    """
+    project = _resolve_project(project_id, db)
+    sheets = export_crud.build_spreadsheet_sheets(db, project)
+    payload = export_formats.serialize_xlsx_multi(sheets)
+    base = _filename_base(project, "spreadsheet")
+    return StreamingResponse(
+        BytesIO(payload),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers=_attachment_headers(f"{base}.xlsx"),
     )
 
 

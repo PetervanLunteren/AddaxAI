@@ -78,19 +78,19 @@ def test_activity_pattern_reports_missing_sites(db):
     assert response.deployments_without_site == 1
 
 
-def test_export_observations_csv_writes_blanks_for_null_site(client, db):
+def test_export_deployments_csv_writes_blanks_for_null_site(client, db):
     project, _site, _d1, _d2, _dep_null = _seed_project_with_mixed_sites(db)
 
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = client.get(f"/api/projects/{project.id}/export/deployments?format=csv")
     assert resp.status_code == 200
     body = resp.content.decode("utf-8")
     lines = body.strip().splitlines()
-    # Header + at least three data rows (one per deployment's blank event).
+    # Header + one row per deployment (3), including the null-site one.
     assert len(lines) >= 4
     header = lines[0].split(",")
     lat_idx = header.index("latitude")
     lon_idx = header.index("longitude")
-    # At least one row has blank lat/lon (the null-site deployment).
+    # The null-site deployment has blank lat/lon.
     blank_rows = [
         line for line in lines[1:]
         if (line.split(",")[lat_idx] == "" and line.split(",")[lon_idx] == "")

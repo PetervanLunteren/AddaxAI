@@ -66,66 +66,49 @@ OBSERVATIONS_SCHEMA = (
     "/observations-table-schema.json"
 )
 
-# Flat observations CSV. One row per detection (the fine-grained grain:
-# nothing is aggregated away — a user can re-aggregate by groupby, but
-# can't un-aggregate a summary). Columns left-to-right: ids, where/when,
-# the detector stage, the classifier stage, checked.
+# Flat detections CSV. One row per detection (the box grain). Lean on
+# attributes (no time / place / paths — join to files.csv for those), but
+# carries the full set of FK ids (file_id, deployment_id, event_id) so it
+# links directly to every parent table without chained joins. Mirrors
+# Camtrap-DP, whose observations table carries deploymentID / mediaID /
+# eventID together.
 #
-#   detection_id    — the detection row id; empty on a blank-file row.
-#   file_id, event_id — foreign keys for joining back to files / events.
-#                     A file with no event falls back to its own id, so
-#                     event_id is never empty. Event bounds aren't stored;
-#                     they're min/max of `datetime` per event_id.
-#   relative_path   — the file's path relative to its deployment's source
-#                     folder (forward slashes). Disambiguates duplicate
-#                     filenames across cameras and stays portable. Falls
-#                     back to the bare filename when the deployment folder
-#                     is unknown or the file sits outside it.
-#   absolute_path   — the original source file's full path on disk. Directly
-#                     openable, but machine-specific: valid only where the
-#                     deployment is currently linked (re-export after moving
-#                     data to refresh it). relative_path is the portable
-#                     identity; this is the convenient-here companion.
-#   detection_category    — detector class: animal / person / vehicle (or
-#                     "blank" for an empty file).
-#   detection_confidence  — detector (MegaDetector) score for the box.
-#   bbox_*          — normalized [0,1] box; empty for event-level / blank.
-#   frame_number    — video frame index; empty for images.
-#   classification_label — the assigned species identification, by model
-#                     or human (provenance-neutral; see is_verified).
-#                     Empty when nothing was classified (person, vehicle,
-#                     unclassified animal, blank).
+# Column order follows the pipeline: ids, the detector stage (category +
+# score), the classifier stage (label + score), the label's taxonomy /
+# names, then geometry, then the verified flag.
+#
+#   detection_id    — the detection row id.
+#   file_id         — FK to files.csv (time, place, paths live there).
+#   deployment_id   — FK to deployments.csv (site, effort).
+#   event_id        — FK to the event (also on files.csv).
+#   category        — detector class: animal / person / vehicle.
+#   detection_confidence — detector (MegaDetector) score for the box.
+#   classification_label — the current species label, by model or human
+#                     (provenance-neutral; see is_verified). Empty when
+#                     nothing was classified (person, vehicle, unclassified).
 #   classification_confidence — score for that label: the classifier's
 #                     score, or 1.0 when a human assigned it.
 #   taxon_*         — formal ranks from label_taxonomy; empty where the
-#                     label has no (or partial) taxonomy. The full Latin
-#                     name is `taxon_genus + taxon_species`.
+#                     label has no (or partial) taxonomy.
+#   frame_number    — video frame index; empty for images.
+#   bbox_*          — normalized [0,1] box.
 #   is_verified     — this detection is human-verified.
 #
-# Empty files get one sentinel row (detection_category="blank") so survey
-# visits / empty cameras stay visible for effort accounting.
-_FLAT_OBS_HEADERS = [
+# Empty files do not appear here (a detections table holds detections);
+# they live in files.csv. The per-event species count lives in counts.csv.
+_FLAT_DETECTION_HEADERS = [
     "detection_id",
     "file_id",
+    "deployment_id",
     "event_id",
-    "relative_path",
-    "absolute_path",
-    "datetime",
-    "site_name",
-    "latitude",
-    "longitude",
-    "detection_category",
+    # Detector stage (MegaDetector): category + score.
+    "category",
     "detection_confidence",
-    "bbox_x",
-    "bbox_y",
-    "bbox_width",
-    "bbox_height",
-    "frame_number",
-    # The model's prediction (label + its score), then everything that
-    # describes that label: taxonomy broad -> specific, then the two
-    # human-readable display names.
+    # Classifier stage: species label + score.
     "classification_label",
     "classification_confidence",
+    # Everything that describes the label: taxonomy broad -> specific, then
+    # the two human-readable display names.
     "taxon_class",
     "taxon_order",
     "taxon_family",
@@ -133,11 +116,13 @@ _FLAT_OBS_HEADERS = [
     "taxon_species",
     "scientific_name",
     "common_name",
+    # Geometry: video frame index, then the normalized [0,1] box.
+    "frame_number",
+    "bbox_x",
+    "bbox_y",
+    "bbox_width",
+    "bbox_height",
     "is_verified",
-    # Human-authoritative count of this species in the detection's event
-    # (human override if set, else the AI MaxN). Event-level, so it
-    # repeats across every detection row of the same species in the event.
-    "count",
 ]
 
 # CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
@@ -388,32 +373,6 @@ def _events_by_file(
     return {fid: event for fid, event in db.execute(stmt).all()}
 
 
-def _effective_count_map(
-    db: Session, event_ids: Iterable[str]
-) -> dict[tuple[str, str | None], int]:
-    """Map `(event_id, taxonomy_id-or-label)` to the effective count
-    (human override if set, else MaxN) for the flat-CSV count column."""
-    ids = list(event_ids)
-    if not ids:
-        return {}
-    rows = (
-        db.query(
-            EventObservation.event_id,
-            EventObservation.label_taxonomy_id,
-            EventObservation.label,
-            EventObservation.max_n,
-            EventObservation.human_count,
-        )
-        .filter(EventObservation.event_id.in_(ids))
-        .all()
-    )
-    result: dict[tuple[str, str | None], int] = {}
-    for event_id, tax_id, label, max_n, human_count in rows:
-        key = tax_id or label
-        result[(event_id, key)] = human_count if human_count is not None else max_n
-    return result
-
-
 def _classifier_label(project: Project) -> str:
     """What to put in CamTrap DP ``classifiedBy``."""
     if project.classification_model_id:
@@ -468,69 +427,36 @@ def _iso_datetime(dt: datetime | None, tz_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Flat observations rows (one row per species per image)
+# Flat detections rows (one row per detection / bounding box)
 # ---------------------------------------------------------------------------
 
 
-def build_observation_rows(
+def build_detection_rows(
     db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
 ) -> tuple[list[str], list[list[Any]]]:
     """
-    Build `(headers, rows)` for the flat Observations export.
+    Build `(headers, rows)` for the flat Detections export.
 
-    Grain: one row per detection. Files with no in-scope detections get
-    a single sentinel ``category="blank"`` row so empty cameras stay
-    visible for effort accounting.
+    Grain: one row per detection (the box view). Lean on attributes (time /
+    place / paths live in files.csv) but carries the full FK id set
+    (file_id, deployment_id, event_id) for direct linkability. Files with no
+    detections do not appear here; per-event counts live in counts.csv.
     """
-    tz_name = project.timezone
-
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
-    count_map = _effective_count_map(db, {e.id for e in event_map.values()})
 
     rows: list[list[Any]] = []
-    for file_obj, deployment, site, detections in grouped:
-        captured = _iso_datetime(file_obj.captured_at_local, tz_name)
-        site_name = site.name if site is not None else ""
-        latitude = site.latitude if site is not None else ""
-        longitude = site.longitude if site is not None else ""
-        relative_path = _relative_path(file_obj, deployment)
-        # The full source path as stored (already absolute). Native OS
-        # separators so it opens directly; machine-specific by design.
-        absolute_path = file_obj.file_path
-
-        # Event grouping. A file with no event falls back to its own id
-        # so the column is never empty.
+    for file_obj, deployment, _site, detections in grouped:
+        deployment_id = deployment.id if deployment is not None else ""
         event = event_map.get(file_obj.id)
         event_id = event.id if event else file_obj.id
-
-        # Shared file/where/when block for every row on this file. The
-        # row's own id (detection_id) leads; this is everything after it.
-        where_when = [
-            file_obj.id,
-            event_id,
-            relative_path,
-            absolute_path,
-            captured,
-            site_name,
-            latitude,
-            longitude,
-        ]
-
-        if not detections:
-            rows.append([""] + where_when + _blank_detection_cells(file_obj))
-            continue
-
         for detection, taxonomy in detections:
-            key = detection.label_taxonomy_id or detection.label
-            count = count_map.get((event_id, key), "")
             rows.append(
-                [detection.id]
-                + where_when
-                + _detection_cells(detection, taxonomy, count)
+                [detection.id, file_obj.id, deployment_id, event_id]
+                + _detection_cells(detection, taxonomy)
             )
 
-    return _FLAT_OBS_HEADERS, rows
+    return _FLAT_DETECTION_HEADERS, rows
 
 
 def _round_or_blank(value: float | None, ndigits: int) -> float | str:
@@ -540,47 +466,241 @@ def _round_or_blank(value: float | None, ndigits: int) -> float | str:
 def _detection_cells(
     detection: Detection,
     taxonomy: LabelTaxonomy | None,
-    count: int | str = "",
 ) -> list[Any]:
-    """The detector + classifier tail of a flat observations row.
+    """The detector + classifier tail of a detections row (everything after
+    the id columns).
 
-    ``classification_label`` is the species label only — empty for
-    person, vehicle, or an unclassified animal, so the detector and
-    classifier stages stay cleanly separated. ``count`` is the event-level
-    effective count for this species (blank when none).
+    ``classification_label`` is the species label only — empty for person,
+    vehicle, or an unclassified animal.
     """
     return [
         detection.category,
         round(detection.confidence, 6),
-        _round_or_blank(detection.bbox_x, 6),
-        _round_or_blank(detection.bbox_y, 6),
-        _round_or_blank(detection.bbox_width, 6),
-        _round_or_blank(detection.bbox_height, 6),
-        detection.frame_number if detection.frame_number is not None else "",
         detection.label or "",
         _round_or_blank(detection.label_confidence, 6),
         *_taxon_ranks(taxonomy),
         detection.scientific_name or "",
         detection.common_name or "",
+        detection.frame_number if detection.frame_number is not None else "",
+        _round_or_blank(detection.bbox_x, 6),
+        _round_or_blank(detection.bbox_y, 6),
+        _round_or_blank(detection.bbox_width, 6),
+        _round_or_blank(detection.bbox_height, 6),
         "TRUE" if detection.verified else "FALSE",
-        count,
     ]
 
 
-def _blank_detection_cells(file_obj: File) -> list[Any]:
-    """Sentinel tail for an empty file (no in-scope detections)."""
+# ---------------------------------------------------------------------------
+# Deployments rows (one row per deployment, the location / effort table)
+# ---------------------------------------------------------------------------
+
+# One row per deployment: where it was (site + coordinates) and the effort
+# (date span + trap-nights). The single home for location, so files.csv and
+# counts.csv carry only deployment_id and join here. Mirrors the Camtrap-DP
+# deployments table.
+_DEPLOYMENTS_HEADERS = [
+    "deployment_id",
+    "site_name",
+    "latitude",
+    "longitude",
+    "deployment_start",
+    "deployment_end",
+    "trap_nights",
+]
+
+
+def build_deployments_rows(
+    db: Session, project: Project
+) -> tuple[list[str], list[list[Any]]]:
+    """Build `(headers, rows)` for the Deployments export: one row per
+    deployment with its site, coordinates, date span and trap-nights. The
+    single home for location / effort; files and counts join here on
+    deployment_id."""
+    from app.api.crud.trap_nights import compute_trap_nights_for_deployments
+
+    deployments = (
+        db.query(Deployment, Site)
+        .outerjoin(Site, Site.id == Deployment.site_id)
+        .filter(Deployment.project_id == project.id)
+        .order_by(Deployment.start_date_local.asc(), Deployment.id)
+        .all()
+    )
+    trap_nights = compute_trap_nights_for_deployments(
+        db, [dep.id for dep, _site in deployments]
+    )
+
+    rows: list[list[Any]] = []
+    for dep, site in deployments:
+        rows.append(
+            [
+                dep.id,
+                site.name if site is not None else "",
+                site.latitude if site is not None else "",
+                site.longitude if site is not None else "",
+                dep.start_date_local.isoformat() if dep.start_date_local else "",
+                dep.end_date_local.isoformat() if dep.end_date_local else "",
+                trap_nights.get(dep.id, ""),
+            ]
+        )
+
+    return _DEPLOYMENTS_HEADERS, rows
+
+
+# ---------------------------------------------------------------------------
+# Files rows (one row per media file, the media / membership table)
+# ---------------------------------------------------------------------------
+
+# One row per file, including empties. This is the tidy home for "which
+# files had no detections" (category=blank) and "which files are in which
+# event" (event_id), instead of faking blank rows in the detections table.
+# Mirrors the Camtrap-DP media table. Location lives in deployments.csv;
+# join on deployment_id.
+#
+# event_id fallback: a file with no event (e.g. no timestamp, so it never
+# got clustered) carries its own file_id here so the column is never empty.
+# Event and file ids are disjoint UUIDs, so this never collides with a real
+# event_id; just don't assume every files.event_id exists as an event.
+_FILES_HEADERS = [
+    "file_id",
+    "deployment_id",
+    "event_id",
+    "file_type",
+    "relative_path",
+    "absolute_path",
+    "datetime",
+    # animal / person / vehicle / blank — what the file holds.
+    "category",
+    "is_verified",
+]
+
+
+def build_files_rows(
+    db: Session, project: Project
+) -> tuple[list[str], list[list[Any]]]:
+    """Build `(headers, rows)` for the Files export: one row per media file,
+    including files with no detections (the effort table). `event_id`
+    answers "which files are in this event"."""
+    tz_name = project.timezone
+
+    scoped_rows = get_scoped_detection_rows(db, project)
+    grouped = list(_group_rows_by_file(scoped_rows))
+    event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
+
+    rows: list[list[Any]] = []
+    for file_obj, deployment, _site, _detections in grouped:
+        event = event_map.get(file_obj.id)
+        event_id = event.id if event else file_obj.id
+        rows.append(
+            [
+                file_obj.id,
+                deployment.id if deployment is not None else "",
+                event_id,
+                file_obj.file_type or "",
+                _relative_path(file_obj, deployment),
+                file_obj.file_path,
+                _iso_datetime(file_obj.captured_at_local, tz_name),
+                file_obj.observation_type or "",
+                "TRUE" if file_obj.verified else "FALSE",
+            ]
+        )
+
+    return _FILES_HEADERS, rows
+
+
+# ---------------------------------------------------------------------------
+# Event-level observations rows (one row per species per event)
+# ---------------------------------------------------------------------------
+
+# The ecological record table: one row per event x species with the
+# effective count (human-confirmed if set, else the AI count) and the
+# event sign-off. This is the analysis-ready "record table" and the Counts
+# page output, distinct from the per-detection Detections export above.
+_OBSERVATIONS_HEADERS = [
+    "event_id",
+    "deployment_id",
+    "event_start",
+    "event_end",
+    "category",
+    "classification_label",
+    "taxon_class",
+    "taxon_order",
+    "taxon_family",
+    "taxon_genus",
+    "taxon_species",
+    "scientific_name",
+    "common_name",
+    # The human-confirmed count, falling back to the AI's count when the
+    # event isn't confirmed.
+    "count",
+    "is_confirmed",
+]
+
+
+def build_observation_rows(
+    db: Session, project: Project
+) -> tuple[list[str], list[list[Any]]]:
+    """
+    Build `(headers, rows)` for the event-level Observations export.
+
+    Grain: one row per event x species, carrying the effective count
+    (human-confirmed if set, else the AI count) and the event sign-off.
+    Count-0 rows (a species a human removed) are skipped. This maps to the
+    Counts page; the per-detection grain lives in the Detections export.
+    """
+    tz_name = project.timezone
+
+    query = (
+        db.query(EventObservation, Event, Deployment, LabelTaxonomy)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Deployment.id == Event.deployment_id)
+        .outerjoin(
+            LabelTaxonomy,
+            LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+        )
+        .filter(Deployment.project_id == project.id)
+        .order_by(Event.event_start_local.asc(), Event.id)
+    )
+
+    rows: list[list[Any]] = []
+    for obs, event, deployment, taxonomy in query.all():
+        count = obs.effective_count
+        if count <= 0:
+            continue
+        rows.append(
+            [
+                event.id,
+                deployment.id,
+                _iso_datetime(event.event_start_local, tz_name),
+                _iso_datetime(event.event_end_local, tz_name),
+                obs.category,
+                obs.label or "",
+                *_taxon_ranks(taxonomy),
+                (taxonomy.scientific_name if taxonomy else "") or "",
+                (taxonomy.common_name if taxonomy else "") or "",
+                count,
+                "TRUE" if event.confirmed else "FALSE",
+            ]
+        )
+
+    return _OBSERVATIONS_HEADERS, rows
+
+
+def build_spreadsheet_sheets(
+    db: Session, project: Project
+) -> list[tuple[str, list[str], list[list[Any]]]]:
+    """The tables that make up a combined spreadsheet: Deployments, Files,
+    Detections, and Counts. Single source for both the project Export
+    page's XLSX and the folder-run Save step, so the two never drift."""
+    scoped = get_scoped_detection_rows(db, project)
+    dep_headers, dep_rows = build_deployments_rows(db, project)
+    files_headers, files_rows = build_files_rows(db, project)
+    det_headers, det_rows = build_detection_rows(db, project, scoped)
+    obs_headers, obs_rows = build_observation_rows(db, project)
     return [
-        "blank",      # detection_category
-        "",           # detection_confidence
-        "", "", "", "",  # bbox
-        "",           # frame_number
-        "",           # classification_label
-        "",           # classification_confidence
-        "", "", "", "", "",  # taxon ranks
-        "",           # scientific_name
-        "",           # common_name
-        "TRUE" if file_obj.verified else "FALSE",
-        "",           # count
+        ("Deployments", dep_headers, dep_rows),
+        ("Files", files_headers, files_rows),
+        ("Detections", det_headers, det_rows),
+        ("Counts", obs_headers, obs_rows),
     ]
 
 

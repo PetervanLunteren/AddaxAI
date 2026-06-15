@@ -365,6 +365,32 @@ function ProjectIndexRoute() {
   return <Navigate to={hasData ? "dashboard" : "process"} replace />;
 }
 
+/**
+ * Shows a toast when the Electron main process finishes auto-saving a
+ * download to the Downloads folder (it no longer pops a Save dialog).
+ * One toast per file, with a reveal-in-folder action. No-op in the
+ * browser, where `electronAPI` is undefined and downloads behave normally.
+ */
+function DownloadCompleteToasts() {
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onDownloadComplete) return;
+    return api.onDownloadComplete(({ filename, path, success }) => {
+      if (!success) {
+        toast.error(`Could not save ${filename}`);
+        return;
+      }
+      toast.success(`Saved ${filename} to Downloads`, {
+        action: {
+          label: "Show in folder",
+          onClick: () => void api.showItemInFolder(path),
+        },
+      });
+    });
+  }, []);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -418,6 +444,7 @@ function App() {
 
         {/* Global toast notifications */}
         <ModelUpdateToast />
+        <DownloadCompleteToasts />
         <Toaster />
       </BrowserRouter>
     </QueryClientProvider>

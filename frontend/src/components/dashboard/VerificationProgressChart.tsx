@@ -130,7 +130,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                   {/* These break down "Labels verified" (detection-level),
                       not "Counts confirmed", so label the group. */}
                   <div className="text-xs font-medium text-muted-foreground">
-                    Per label
+                    Labels verified per taxon
                   </div>
                   {labelStats.rows.map((row) => (
                     <SlimProgressRow
