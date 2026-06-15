@@ -98,7 +98,7 @@ export function FolderRunLabelsStep() {
     return (
       <div className="space-y-6">
         <StepHeader
-          title="Clean up labels"
+          title="Check labels"
           caption="Fix the AI's species labels, or continue."
         />
         <Card>
@@ -111,7 +111,7 @@ export function FolderRunLabelsStep() {
   return (
     <div className="space-y-6 pb-24">
       <StepHeader
-        title="Clean up labels"
+        title="Check labels"
         caption="Fix the AI's species labels, or continue."
       />
       <LabelsView projectId={runId} onSelectionChange={setSelectionCount} />

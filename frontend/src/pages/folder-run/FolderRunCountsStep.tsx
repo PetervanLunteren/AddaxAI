@@ -95,7 +95,7 @@ export function FolderRunCountsStep() {
       <div className="space-y-6">
         <StepHeader
           title="Confirm counts"
-          caption="Confirm the counts, or continue."
+          caption="Adjust how many individuals each event has, or continue."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>
@@ -108,7 +108,7 @@ export function FolderRunCountsStep() {
     <div className="space-y-6 pb-24">
       <StepHeader
         title="Confirm counts"
-        caption="Confirm the counts, or continue."
+        caption="Adjust how many individuals each event has, or continue."
       />
       <VerifyView projectId={runId} />
       <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">

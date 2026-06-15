@@ -1,21 +1,17 @@
 /**
- * "About this view" popover for dashboard cards.
- *
- * Trigger: small info icon. Click-to-open. Shows two sub-sections —
- * "What it shows" and "How it's computed" — with the same structure
- * the insight pages use via PlotExplainer, just compressed into a
- * popover so it does not take vertical space inside the card itself.
+ * Small info popover for dashboard cards. Trigger: an info icon.
+ * Holds one short blurb explaining only what isn't obvious from the
+ * card itself, no headers or sections.
  */
 
 import { Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 interface DashboardAboutPopoverProps {
-  what: React.ReactNode;
-  how: React.ReactNode;
+  children: React.ReactNode;
 }
 
-export function DashboardAboutPopover({ what, how }: DashboardAboutPopoverProps) {
+export function DashboardAboutPopover({ children }: DashboardAboutPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -33,17 +29,9 @@ export function DashboardAboutPopover({ what, how }: DashboardAboutPopoverProps)
         sideOffset={6}
         collisionPadding={16}
         avoidCollisions
-        className="w-80 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height,80vh)] overflow-y-auto p-4 space-y-4"
+        className="w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height,80vh)] overflow-y-auto p-3 text-sm text-muted-foreground space-y-2"
       >
-        <p className="text-sm font-semibold">About this view</p>
-        <section className="space-y-1.5">
-          <h4 className="text-sm font-semibold">What it shows</h4>
-          <div className="text-sm text-muted-foreground space-y-2">{what}</div>
-        </section>
-        <section className="space-y-1.5">
-          <h4 className="text-sm font-semibold">How it's computed</h4>
-          <div className="text-sm text-muted-foreground space-y-2">{how}</div>
-        </section>
+        {children}
       </PopoverContent>
     </Popover>
   );

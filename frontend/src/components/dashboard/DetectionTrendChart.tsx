@@ -121,6 +121,39 @@ function pickGranularity(days: number): Granularity {
   return "day";
 }
 
+/**
+ * Rolling-average window per granularity, chosen so the window maps to a
+ * natural cycle (a week, a month, a year). Keeps the smoothed line
+ * comparable across granularities.
+ */
+function getSmoothingWindow(
+  granularity: Granularity,
+): { size: number; label: string } {
+  if (granularity === "day") return { size: 7, label: "7-day average" };
+  if (granularity === "week") return { size: 4, label: "4-week average" };
+  return { size: 12, label: "12-month average" };
+}
+
+/**
+ * Trailing simple moving average. Same length as the input; the first
+ * (window - 1) slots are null so the chart leaves a warm-up gap instead
+ * of drawing a partial average.
+ */
+function trailingMovingAverage(
+  values: number[],
+  window: number,
+): (number | null)[] {
+  if (values.length < window) return values.map(() => null);
+  const out: (number | null)[] = [];
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= window) sum -= values[i - window];
+    out.push(i >= window - 1 ? +(sum / window).toFixed(2) : null);
+  }
+  return out;
+}
+
 interface DetectionTrendChartProps {
   dateRange: DateRange;
   projectId: string;
@@ -216,6 +249,15 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
 
   const normalizedValues = useMemo(() => values.map(norm), [values, trapNights]);
 
+  // Trailing moving average over the rate series, window tied to the
+  // granularity. Reveals the trend under the bursty raw line.
+  const { size: smoothingWindow, label: smoothingLabel } =
+    getSmoothingWindow(granularity);
+  const movingAverage = useMemo(
+    () => trailingMovingAverage(normalizedValues, smoothingWindow),
+    [normalizedValues, smoothingWindow],
+  );
+
   // Derive line color from selected species
   const lineColor = selectedSpecies === "all" ? "#0f6064" : getSpeciesColor(selectedSpecies);
 
@@ -253,9 +295,28 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           pointRadius: normalizedValues.length > 60 ? 0 : 3,
           pointHoverRadius: 5,
         },
+        {
+          label: smoothingLabel,
+          data: movingAverage,
+          borderColor: lineColor,
+          backgroundColor: "transparent",
+          borderDash: [6, 4],
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
       ],
     }),
-    [labels, normalizedValues, lineColor, createGradient, selectedSpecies],
+    [
+      labels,
+      normalizedValues,
+      movingAverage,
+      smoothingLabel,
+      lineColor,
+      createGradient,
+      selectedSpecies,
+    ],
   );
 
   const chartOptions: ChartOptions<"line"> = {
@@ -263,11 +324,20 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: true,
+        position: "top",
+        align: "end",
+        labels: { boxWidth: 24, usePointStyle: false },
+      },
       tooltip: {
+        // Drop the moving-average's warm-up null points from the tooltip.
+        filter: (item) => item.parsed.y != null,
         callbacks: {
           label: (context) => {
-            return `${context.parsed.y.toLocaleString()} per 100 trap nights`;
+            const y = context.parsed.y;
+            if (y == null) return "";
+            return `${context.dataset.label}: ${y.toLocaleString()} per 100 trap nights`;
           },
         },
       },
@@ -298,26 +368,14 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
             <div className="flex items-center gap-1.5">
               <CardTitle className="text-lg">Observation trend</CardTitle>
               <MissingDatesIcon projectId={projectId} />
-              <DashboardAboutPopover
-                what={
-                  <p>
-                    Daily observation count over the survey period. The
-                    species filter at the top isolates one taxon; the
-                    granularity selector switches the bin between day,
-                    week, and month.
-                  </p>
-                }
-                how={
-                  <p>
-                    For each bin, sums each event's MaxN across every
-                    event whose start time falls in the bin. MaxN is
-                    the most individuals of the taxon visible in a
-                    single frame within an event. The bar height is
-                    the number of independent individuals observed
-                    that bin, not the number of detections.
-                  </p>
-                }
-              />
+              <DashboardAboutPopover>
+                <p>
+                  Individuals observed per bin (each event's confirmed
+                  count, or the AI's count where not yet confirmed), not
+                  detections. Filter by species. Bin by day, week, or
+                  month.
+                </p>
+              </DashboardAboutPopover>
             </div>
             <p className="text-sm text-muted-foreground">
               Observations over time

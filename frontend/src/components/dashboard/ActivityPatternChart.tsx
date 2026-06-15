@@ -10,14 +10,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Filter } from "lucide-react";
-import { cn } from "../../lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "../ui/select";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
@@ -325,50 +324,29 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
             <div className="flex items-center gap-1.5">
               <CardTitle className="text-lg">Activity pattern</CardTitle>
               <MissingDatesIcon projectId={projectId} />
-              <DashboardAboutPopover
-                what={
-                  <p>
-                    Observation counts by hour of day for the filtered
-                    project view. The coloured bands behind the bars
-                    show night, twilight, and day at the project's
-                    averaged camera location. Use the species filter to
-                    compare patterns between taxa.
-                  </p>
-                }
-                how={
-                  <p>
-                    For each hour 0 to 23, sums each event's MaxN across
-                    every event whose start time falls in that hour.
-                    MaxN is the most individuals of the taxon visible in
-                    a single frame within an event. The bands come from
-                    python-astral applied to the project's averaged site
-                    coordinates and IANA timezone for a date drawn from
-                    the filter range midpoint. When the project has no
-                    sites with coordinates, the bands are hidden.
-                  </p>
-                }
-              />
+              <DashboardAboutPopover>
+                <p>
+                  Individuals observed by hour of day (each event's
+                  confirmed count, or the AI's count where not yet
+                  confirmed). Filter by species to compare taxa.
+                </p>
+                <p>
+                  The bands show night, twilight, and day from the site
+                  coordinates and timezone. They are hidden when no site
+                  has coordinates.
+                </p>
+              </DashboardAboutPopover>
             </div>
             <p className="text-sm text-muted-foreground">
-              {selectedSpecies === "all"
-                ? "Observations by hour of day"
-                : `Observations by hour of day · ${resolveSpeciesName({
-                    scientific_name: selectedSpecies,
-                    common_name: speciesList?.find(
-                      (s) => s.species === selectedSpecies,
-                    )?.common_name,
-                  })}`}
+              Observations by hour of day
             </p>
           </div>
           <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
             <SelectTrigger
               aria-label="Filter by species"
-              className={cn(
-                "w-auto shrink-0 px-2 gap-1 hover:bg-accent",
-                selectedSpecies !== "all" && "bg-accent text-primary"
-              )}
+              className="w-32 h-9 text-sm [&>span]:truncate"
             >
-              <Filter className="h-4 w-4" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
               <SelectItem value="all">All</SelectItem>

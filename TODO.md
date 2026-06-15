@@ -17,9 +17,7 @@
 - [x] Run a folder of edge cases
 
 
-- [ ] focus on the dashboard now. What should change now we have split the labels and the counts? 
-
-- [ ] focus on the exports now. Where do the counts go now? Does it make sense to have separate CSVs for the labels and the counts per event? Or merge them into one? How should we do this? WHat is customary? How do other well known platforms so something like this? 
+- [ ] focus on the exports now. Is there anything wer need to do now that we split the labels and the counts? Where do the counts go now? Does it make sense to have separate CSVs for the labels and the counts per event? Or merge them into one? How should we do this? WHat is customary? How do other well known platforms so something like this? 
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
 

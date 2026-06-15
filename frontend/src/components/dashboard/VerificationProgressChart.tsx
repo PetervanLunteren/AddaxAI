@@ -100,36 +100,14 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
         <div>
           <div className="flex items-center gap-1.5">
             <CardTitle className="text-lg">Verification</CardTitle>
-            <DashboardAboutPopover
-              what={
-                <>
-                  <p>
-                    Two jobs, two bars. "Labels verified" is the percent of
-                    detections a person has checked on the Labels page.
-                    "Counts confirmed" is the percent of events signed off
-                    on the Counts page (species and counts).
-                  </p>
-                  <p>
-                    The list below shows verified vs total detections per
-                    label, sorted by support.
-                  </p>
-                </>
-              }
-              how={
-                <>
-                  <p>
-                    You generally do not need to verify every detection.
-                    The Counts modal walks through MaxN frames first (the
-                    peak-count frames per species in an event); verifying
-                    those covers what statistics need.
-                  </p>
-                  <p>
-                    Per-class rows count detections that pass the project
-                    threshold or are verified, and skip false detections.
-                  </p>
-                </>
-              }
-            />
+            <DashboardAboutPopover>
+              <p>
+                Two jobs. "Labels verified" is the percent of detections
+                checked on the Labels page. "Counts confirmed" is the
+                percent of events signed off on the Counts page. The list
+                below is label verification per taxon.
+              </p>
+            </DashboardAboutPopover>
           </div>
           <p className="text-sm text-muted-foreground">
             Progress overall and per label
