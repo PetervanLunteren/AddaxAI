@@ -450,6 +450,16 @@ function EventCard({
     return !observationBadgeNames.has(display);
   });
 
+  // Effective count per species chip. Keyed the same way as `labels`
+  // (label_taxonomy_id when present, else the raw label), so the count
+  // joins to each chip. The peak frame per species carries the count.
+  const countByKey = new Map<string, number>();
+  for (const mf of event.max_n_frames) {
+    const key = mf.label_taxonomy_id ?? mf.label;
+    if (!key) continue;
+    countByKey.set(key, Math.max(countByKey.get(key) ?? 0, mf.effective_count));
+  }
+
   return (
     <Card
       className="relative hover:shadow-lg transition-shadow cursor-pointer"
@@ -487,22 +497,30 @@ function EventCard({
             })}
           {speciesLabels.length > 0 ? (
             <>
-              {speciesLabels.slice(0, 2).map((sp) => (
-                <Badge
-                  key={sp}
-                  variant="default"
-                  className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
-                  style={{
-                    backgroundColor: getSpeciesColor(sp),
-                    color: getSpeciesTextColor(sp),
-                  }}
-                >
-                  <span className="truncate">
-                    {speciesLabelMap(event)[sp] ||
-                      sp.charAt(0).toUpperCase() + sp.slice(1)}
-                  </span>
-                </Badge>
-              ))}
+              {speciesLabels.slice(0, 2).map((sp) => {
+                const count = countByKey.get(sp) ?? 0;
+                return (
+                  <Badge
+                    key={sp}
+                    variant="default"
+                    className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
+                    style={{
+                      backgroundColor: getSpeciesColor(sp),
+                      color: getSpeciesTextColor(sp),
+                    }}
+                  >
+                    <span className="truncate">
+                      {speciesLabelMap(event)[sp] ||
+                        sp.charAt(0).toUpperCase() + sp.slice(1)}
+                    </span>
+                    {count > 0 && (
+                      <span className="ml-1 shrink-0 tabular-nums opacity-90">
+                        ×{count}
+                      </span>
+                    )}
+                  </Badge>
+                );
+              })}
               {speciesLabels.length > 2 && (
                 <Badge variant="default" className="text-[10px] px-1.5 py-0.5">
                   +{speciesLabels.length - 2}

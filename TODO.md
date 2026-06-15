@@ -16,11 +16,11 @@
 - [x] run a folder of videos
 - [x] Run a folder of edge cases
 
+- [ ] Lets talk about the titles, captions, action names, etc. Focus on the folder run workflow for now. List them all and tell me what you think. It should be all clear, short, good UX UI. 
+
+- [ ] focus on the dashboard now. What should change now we have split the labels and the counts? 
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
-
-- [ ] EventCard grid chips still show species names without "×N", and the dashboard's headline verification progress card (separate from the Observations-page pill, which is already event-level) still counts files — I can switch it to event-level if you want.. 
-
 
 
 
