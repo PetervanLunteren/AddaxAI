@@ -131,7 +131,7 @@ export function PromoteDialog({
             <TimezoneSelect value={timezone} onChange={setTimezone} />
             <p className="text-xs text-muted-foreground">
               The wall-clock timezone the cameras were configured to.
-              Used by activity plots and Camtrap-DP export. Pick a
+              Used by activity plots and Camtrap DP export. Pick a
               regional zone (DST aware) or a fixed offset depending on
               how the cameras were set up.
             </p>

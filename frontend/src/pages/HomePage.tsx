@@ -5,8 +5,12 @@
  * want AddaxAI to do, not which mode you are in. Two equal-weight
  * paths:
  *
- * 1. Analyse a folder — the legacy point-at-a-folder workflow.
- * 2. Research projects — the existing project workspace.
+ * 1. Analyse a folder: a quick one-off run, results out, no setup.
+ * 2. Projects: the stored, revisitable project workspace.
+ *
+ * The two cards differentiate on one-off vs persistent (not on
+ * feature count): a folder run hands you output files and steps back,
+ * a project keeps everything in the app to return to and add to.
  *
  * Both cards share the same chrome (padding, heading size, icon size,
  * single primary button) so the user is not nudged toward one over
@@ -20,7 +24,7 @@
  */
 
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Camera, FolderOpen } from "lucide-react";
+import { ArrowRight, LayoutDashboard, FolderOpen } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { AppHamburger } from "../components/layout/AppHamburger";
@@ -66,16 +70,17 @@ export function HomePage() {
                     Analyse a folder
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Run AI on one folder and save results you can use
-                    right away.
+                    A quick one-off run. Point at a folder, get results,
+                    move on.
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Best for quick camera-trap batches, legacy AddaxAI-style
-                workflows, folder separation, visualised images, people
-                blurring, and CSV or JSON outputs.
+                Run the AI, review and fix the results if you want, then
+                get files out: a results table, a recognition file for
+                Timelapse, species-separated folders, visualised or
+                blurred images. You manage the output files yourself.
               </p>
 
               <div className="mt-auto">
@@ -95,24 +100,24 @@ export function HomePage() {
             <CardContent className="flex flex-1 flex-col gap-6 p-8">
               <div className="flex items-start gap-4">
                 <div className="rounded-lg bg-primary/10 p-3">
-                  <Camera className="h-8 w-8 text-primary" />
+                  <LayoutDashboard className="h-8 w-8 text-primary" />
                 </div>
                 <div className="flex-1">
                   <h2 className="text-xl font-semibold tracking-tight">
-                    Research projects
+                    Projects
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Manage sites, deployments, verification,
-                    dashboards, insights, and exports.
+                    A workspace you come back to and keep adding cameras
+                    to.
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Best for studies with multiple camera locations,
-                repeated imports, metadata, long-term verification,
-                maps, activity plots, performance checks, and
-                Camtrap-DP style exports.
+                Track many cameras over time: keep verification history,
+                watch dashboards and maps, compare activity, and export
+                to Camtrap DP. Everything stays stored and revisitable in
+                the app.
               </p>
 
               <div className="mt-auto">

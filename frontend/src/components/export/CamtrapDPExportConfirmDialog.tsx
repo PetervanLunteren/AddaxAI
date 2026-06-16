@@ -44,9 +44,9 @@ export function CamtrapDPExportConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Before you export CamtrapDP</DialogTitle>
+          <DialogTitle>Before you export Camtrap DP</DialogTitle>
           <DialogDescription>
-            Confirm your data meets the CamtrapDP schema before
+            Confirm your data meets the Camtrap DP schema before
             exporting.
           </DialogDescription>
         </DialogHeader>
@@ -56,7 +56,7 @@ export function CamtrapDPExportConfirmDialog({
             className="rounded-md border px-3 py-2"
             style={{ backgroundColor: "#71b7ba22", borderColor: "#71b7ba" }}
           >
-            CamtrapDP expects every deployment in the database to
+            Camtrap DP expects every deployment in the database to
             represent one camera, one location, and one continuous
             period. Basically, exactly what you would get on a single
             SD card. If this criterion is not met, the export publishes
@@ -80,7 +80,7 @@ export function CamtrapDPExportConfirmDialog({
             >
               {noSiteCount} {depWord} in this project have no camera
               site. They will be excluded from this export because
-              CamtrapDP requires lat/lon for every deployment row. You
+              Camtrap DP requires lat/lon for every deployment row. You
               can add sites to the existing deployments on the{" "}
               <Link
                 to={`/projects/${projectId}/deployments?site_ids=${NO_SITE_SENTINEL}`}

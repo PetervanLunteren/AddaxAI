@@ -350,7 +350,7 @@ export default function ExportPage() {
                 ) : (
                   <>
                     <Download className="h-4 w-4" />
-                    Download CamTrap DP
+                    Download Camtrap DP
                   </>
                 )}
               </Button>

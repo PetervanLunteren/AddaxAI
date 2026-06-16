@@ -140,7 +140,7 @@ export function Sidebar() {
           to="/projects"
           className="mt-2 text-xs text-primary hover:underline"
         >
-          ← Back to research projects
+          ← Back to projects
         </NavLink>
       </div>
     </aside>

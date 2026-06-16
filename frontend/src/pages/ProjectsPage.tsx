@@ -84,7 +84,7 @@ export function ProjectsPage() {
               />
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">
-                  Research projects
+                  Projects
                 </h1>
                 <p className="text-sm text-muted-foreground">
                   Use projects when you want to combine multiple

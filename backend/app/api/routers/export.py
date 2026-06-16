@@ -244,7 +244,7 @@ async def prepare_camtrap_dp(
         raise HTTPException(
             status_code=422,
             detail=(
-                "CamTrap DP requires at least one deployment with a camera "
+                "Camtrap DP requires at least one deployment with a camera "
                 "site (deployments without a site have no lat/lon and are "
                 "excluded from this format)."
             ),

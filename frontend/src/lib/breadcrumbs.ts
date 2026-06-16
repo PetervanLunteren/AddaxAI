@@ -44,7 +44,7 @@ function projectName(projectId: string | undefined): string {
 
 const HOME: BreadcrumbItem = { label: "Home", to: "/" };
 const RESEARCH_PROJECTS: BreadcrumbItem = {
-  label: "Research projects",
+  label: "Projects",
   to: "/projects",
 };
 
@@ -133,7 +133,7 @@ const ROUTES: BreadcrumbRoute[] = [
   },
   {
     pattern: "/projects",
-    resolve: () => [HOME, { label: "Research projects" }],
+    resolve: () => [HOME, { label: "Projects" }],
   },
   {
     pattern: "/folder-runs/new",
