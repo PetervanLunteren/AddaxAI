@@ -14,7 +14,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 
-import { observationsApi } from "../../api/observations";
+import { labelsApi } from "../../api/labels";
 import { Button } from "../ui/button";
 
 interface SuggestionsToolbarPillProps {
@@ -33,7 +33,7 @@ export function SuggestionsToolbarPill({
 }: SuggestionsToolbarPillProps) {
   const { data } = useQuery({
     queryKey: ["cohorts", projectId],
-    queryFn: () => observationsApi.cohorts(projectId),
+    queryFn: () => labelsApi.cohorts(projectId),
     // The same expensive ML pass that powers the suggestions sort.
     // Cache for 5 minutes so the toolbar doesn't re-fetch as the user
     // moves around the page; bulk-relabel invalidates the key.

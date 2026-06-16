@@ -1,11 +1,11 @@
 /**
  * Step progress indicator for the folder-run stepper.
  *
- * Renders the four steps as numbered chips. The current step is
+ * Renders the steps as numbered chips. The current step is
  * highlighted, completed steps render with a check mark, upcoming
  * steps are muted.
  *
- * Step ordering is fixed: model → edit → overview → save.
+ * Step ordering is fixed: setup → labels → counts → summary → save.
  * "Completed" means a step preceding the current one.
  *
  * Direct navigation: chips up to and including the backend's
@@ -28,10 +28,11 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { id: "model", label: "Setup" },
-  { id: "edit", label: "Edit" },
-  { id: "overview", label: "Summary" },
-  { id: "save", label: "Output" },
+  { id: "setup", label: "Setup" },
+  { id: "labels", label: "Labels" },
+  { id: "counts", label: "Counts" },
+  { id: "summary", label: "Summary" },
+  { id: "save", label: "Save" },
 ];
 
 interface StepProgressProps {

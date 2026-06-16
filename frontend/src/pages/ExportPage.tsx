@@ -1,5 +1,5 @@
 /**
- * Export page — three cards: Observations, Spatial, CamTrap DP.
+ * Export page — three cards: Spreadsheet, Spatial, CamTrap DP.
  *
  * Ports the layout and formats from AddaxAI Connect's ExportsPage so users
  * can download project data in community-standard shapes: analyst-friendly
@@ -9,7 +9,6 @@
 
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Download, Loader2 } from "lucide-react";
 
 import {
@@ -20,7 +19,6 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { projectsApi } from "../api/projects";
 import {
   exportApi,
   type ObservationFormat,
@@ -33,15 +31,6 @@ import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExpo
 import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
 import { downloadBlob } from "../lib/download";
 
-function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .trim()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/[\s_]+/g, "-") || "project"
-  );
-}
 
 const OBSERVATION_OPTIONS: { value: ObservationFormat; label: string }[] = [
   { value: "csv", label: "CSV" },
@@ -106,10 +95,6 @@ function ErrorBanner({ message }: ErrorBannerProps) {
   );
 }
 
-function todayIso(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Export failed";
@@ -117,22 +102,17 @@ function errorMessage(err: unknown): string {
 
 export default function ExportPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId!),
-    enabled: !!projectId,
-  });
   const { data: noSite } = useNoSiteDeployments(projectId);
 
-  const [obsFormat, setObsFormat] = useState<ObservationFormat>("csv");
+  const [tableFormat, setTableFormat] = useState<ObservationFormat>("csv");
   const [spatialFormat, setSpatialFormat] = useState<SpatialFormat>("geojson");
   const [dpMedia, setDpMedia] = useState<CamtrapMedia>("metadata");
 
-  const [obsLoading, setObsLoading] = useState(false);
+  const [tableLoading, setTableLoading] = useState(false);
   const [spatialLoading, setSpatialLoading] = useState(false);
   const [dpLoading, setDpLoading] = useState(false);
 
-  const [obsError, setObsError] = useState<string | null>(null);
+  const [tableError, setTableError] = useState<string | null>(null);
   const [spatialError, setSpatialError] = useState<string | null>(null);
   const [dpError, setDpError] = useState<string | null>(null);
 
@@ -141,21 +121,34 @@ export default function ExportPage() {
   const [dpJobId, setDpJobId] = useState<string | null>(null);
   const [dpJobIncludesThumbnails, setDpJobIncludesThumbnails] = useState(false);
 
-  const projectSlug = slugify(project?.name ?? "project");
-  const today = todayIso();
   const noSiteCount = noSite?.count ?? 0;
 
-  const handleDownloadObservations = async () => {
+  // One "Spreadsheet" download covering both tables. XLSX is a single
+  // two-sheet workbook (Detections + Counts). CSV / TSV can't hold two
+  // sheets, so the click saves two files (detections + counts); browsers
+  // may show a one-time "allow multiple downloads" prompt outside Electron.
+  const handleDownloadSpreadsheet = async () => {
     if (!projectId) return;
-    setObsLoading(true);
-    setObsError(null);
+    setTableLoading(true);
+    setTableError(null);
     try {
-      const blob = await exportApi.downloadObservations(projectId, obsFormat);
-      downloadBlob(blob, `observations-${projectSlug}-${today}.${obsFormat}`);
+      if (tableFormat === "xlsx") {
+        const blob = await exportApi.downloadSpreadsheetXlsx(projectId);
+        downloadBlob(blob, "addaxai-spreadsheet.xlsx");
+      } else {
+        const deployments = await exportApi.downloadDeployments(projectId, tableFormat);
+        downloadBlob(deployments, `addaxai-deployments.${tableFormat}`);
+        const files = await exportApi.downloadFiles(projectId, tableFormat);
+        downloadBlob(files, `addaxai-files.${tableFormat}`);
+        const detections = await exportApi.downloadDetections(projectId, tableFormat);
+        downloadBlob(detections, `addaxai-detections.${tableFormat}`);
+        const counts = await exportApi.downloadObservations(projectId, tableFormat);
+        downloadBlob(counts, `addaxai-counts.${tableFormat}`);
+      }
     } catch (err) {
-      setObsError(errorMessage(err));
+      setTableError(errorMessage(err));
     } finally {
-      setObsLoading(false);
+      setTableLoading(false);
     }
   };
 
@@ -182,7 +175,7 @@ export default function ExportPage() {
     };
     try {
       const blob = await exportApi.downloadSpatial(projectId, spatialFormat);
-      downloadBlob(blob, `spatial-${projectSlug}-${today}.${ext[spatialFormat]}`);
+      downloadBlob(blob, `addaxai-spatial.${ext[spatialFormat]}`);
     } catch (err) {
       setSpatialError(errorMessage(err));
     } finally {
@@ -223,7 +216,7 @@ export default function ExportPage() {
     }
     try {
       const blob = await exportApi.downloadCamtrapDPZip(projectId, jobId);
-      downloadBlob(blob, `camtrap-dp-${projectSlug}-${today}.zip`);
+      downloadBlob(blob, "addaxai-camtrap-dp.zip");
     } catch (err) {
       setDpError(errorMessage(err));
     } finally {
@@ -257,25 +250,25 @@ export default function ExportPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Observations</CardTitle>
+            <CardTitle>Spreadsheet</CardTitle>
             <CardDescription>
-              Detections spreadsheet, one row per detection.
+              Tables for deployments, files, detections, and counts.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {obsError && <ErrorBanner message={obsError} />}
+            {tableError && <ErrorBanner message={tableError} />}
             <div className="flex items-center justify-between gap-4">
               <TextToggle
                 options={OBSERVATION_OPTIONS}
-                value={obsFormat}
-                onChange={setObsFormat}
+                value={tableFormat}
+                onChange={setTableFormat}
               />
               <Button
-                onClick={handleDownloadObservations}
-                disabled={obsLoading}
+                onClick={handleDownloadSpreadsheet}
+                disabled={tableLoading}
                 className="flex items-center gap-2"
               >
-                {obsLoading ? (
+                {tableLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Preparing export...
@@ -283,7 +276,7 @@ export default function ExportPage() {
                 ) : (
                   <>
                     <Download className="h-4 w-4" />
-                    Download {obsFormat.toUpperCase()}
+                    Download {tableFormat.toUpperCase()}
                   </>
                 )}
               </Button>

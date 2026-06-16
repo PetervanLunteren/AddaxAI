@@ -18,6 +18,9 @@ interface ClusterLayerProps {
   maxRate: number;
 }
 
+// @types/leaflet.markercluster isn't installed; type only the bit we use.
+type MarkerCluster = { getAllChildMarkers: () => L.CircleMarker[] };
+
 export function ClusterLayer({ sites, maxRate }: ClusterLayerProps) {
   // Index by coordinate so the cluster icon can look up member features.
   const coordsToFeature = new Map<string, ObservationRateMapFeature>();
@@ -25,7 +28,7 @@ export function ClusterLayer({ sites, maxRate }: ClusterLayerProps) {
     coordsToFeature.set(`${s.latitude},${s.longitude}`, s);
   }
 
-  const createClusterCustomIcon = (cluster: L.MarkerCluster) => {
+  const createClusterCustomIcon = (cluster: MarkerCluster) => {
     const markers = cluster.getAllChildMarkers();
     let totalObs = 0;
     let totalNights = 0;

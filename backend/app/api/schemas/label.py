@@ -1,10 +1,10 @@
 """
-Pydantic schemas for the Observations API.
+Pydantic schemas for the Labels API.
 
-Request/response models for the Observations verify tab: sort (greedy
+Request/response models for the Labels verify tab: sort (greedy
 nearest-neighbor chain), search (find similar), and embedding coverage
 stats. The underlying technique is cosine similarity on DINOv2 crop
-embeddings; the schemas here are named after the tab (observations),
+embeddings; the schemas here are named after the tab (labels),
 not the algorithm.
 """
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_serializer
 
 from app.utils.datetime_serialization import serialize_local_datetime
 
-ObservationSort = Literal[
+LabelSort = Literal[
     "similarity",
     "similarity_reverse",
     "newest",
@@ -27,7 +27,7 @@ ObservationSort = Literal[
 ]
 
 
-class ObservationFilters(BaseModel):
+class LabelFilters(BaseModel):
     """Filters for selecting detections to sort or search.
 
     `project_floor` is server-injected (not user-facing) and applied as
@@ -53,29 +53,29 @@ _DEFAULT_MAX_DETECTIONS = 20000
 
 
 class SortRequest(BaseModel):
-    """Request body for the Observations sort endpoint.
+    """Request body for the Labels sort endpoint.
 
     ``max_detections`` is the per-user memory budget for one sort,
-    set in the Observations view-options popover (localStorage on
+    set in the Labels view-options popover (localStorage on
     the client). Defaults to 20000 when the client omits it.
     """
 
-    filters: ObservationFilters = Field(default_factory=ObservationFilters)
-    sort: ObservationSort = "similarity"
+    filters: LabelFilters = Field(default_factory=LabelFilters)
+    sort: LabelSort = "similarity"
     max_detections: int = Field(
         default=_DEFAULT_MAX_DETECTIONS, ge=1000, le=50000
     )
 
 
 class SearchRequest(BaseModel):
-    """Request body for the Observations search endpoint.
+    """Request body for the Labels search endpoint.
 
     ``max_detections`` mirrors the sort endpoint — same per-user cap
     drives the underlying neighbour query.
     """
 
     anchor_detection_id: str
-    filters: ObservationFilters = Field(default_factory=ObservationFilters)
+    filters: LabelFilters = Field(default_factory=LabelFilters)
     limit: int = Field(100, ge=1, le=500)
     threshold: float = Field(0.0, ge=-1.0, le=1.0)
     max_detections: int = Field(
@@ -130,14 +130,14 @@ class DetectionSummary(BaseModel):
 
 
 class SortResponse(BaseModel):
-    """Response for the Observations sort endpoint."""
+    """Response for the Labels sort endpoint."""
 
     detections: list[DetectionSummary]
     total_detections: int
 
 
 class SearchResponse(BaseModel):
-    """Response for the Observations search endpoint."""
+    """Response for the Labels search endpoint."""
 
     anchor: DetectionSummary
     results: list[DetectionSummary]
@@ -183,12 +183,12 @@ class CohortsResponse(BaseModel):
     cohorts: list[CohortItem]
 
 
-class ObservationStatsResponse(BaseModel):
+class LabelStatsResponse(BaseModel):
     """Embedding coverage stats."""
 
     total_detections: int
     # Verification progress pill, counted over the population the
-    # Observations view shows (embedded + threshold-or-verified, i.e.
+    # Labels view shows (embedded + threshold-or-verified, i.e.
     # the similarity-sort population). `verified_detections /
     # reviewable_detections` is the % bar; counting the whole dataset
     # rather than the user's active filters, but matching what's on

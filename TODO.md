@@ -13,29 +13,13 @@
 - [x] SHould we make display name option toggle for common name or scientific? Not all labels will have a common name (e.g. if rollup happens), but some will. So perhaps then show common if present, else scientific? how would that work? Invesitgate. Is this a simple refactor? Or a major one? Where so we store this toggle? Or should we just default to common-if-present?
 - [x] In proejcts mode, if no site is selected, but the timezone is set in the settings, it shows "Sun-time mode needs at least one camera site with GPS coordinates. Assign a location to a site or switch the time axis to clock-time." Is that by design? The seetigns TZ is silently set to browser time, shihc might not be the TZ in the camera traps. We might need to think about this. Is TZ in settings all we need, or is the a lat/lon all we need? or do we need both? 
 - [x] We should probabaly have a "Decline suggestion" button that ignores the cohort of suggestions. It doesnt do anything to the cohort crops, it just removes them from the suggestions. This is good for the workflow "yes, these are indeed crows -> accept. No, these are actually a bunch of different animals. I dont want to fix them all here, and I also dont want to click and relabel here. Just ignore the suggestion and send them back to the main sort so I can relabel them there-> ignore.". 
-- [ ] run a folder of videos
-- [ ] Run a folder of edge cases
-
-
-
-
-
-- The common/scientific name toggle is not used in the detections list of a verified modal. If you verify an image with two red deer, you see "C. elaphus x2" in the verified list of that imagedetailModal. Update to follow the common/scientific name toggle. 
-
-
-
-- If I run the edge cases folder in the folder run mode, it gives me these warnings: .,... Why does it block missing timestamps? It shouldnt do that. If there are no timestamps, it should just continue with a warning. Same behaviour in the project mode. Investigate. 
-
-- If I run a folder on folder mode and it finisghed processing, and I click outside the modal, it returns to the step 1 of course (which it should of course), but it seems like the settings are then forgotten (it shows no cls model selected, which can be confusing for the user). If I hard reload, it comes back. Investigate. 
+- [x] run a folder of videos
+- [x] Run a folder of edge cases
 
 - [ ] The 73 tsc -b errors should be fixed. Investigate. 
 
-- [ ] Investigate how it currently works to add an observation without a box in the verification of images and events. This is done so you can add a hidden individual in a video for example (3 deer walking by, only two in a single frame, so one can be added without a box). Makes sense? Or perhaps a bit confusing? Should we do a box less observation or simply something custom field for videos like “distinct number of individuals”? What would be less confusing? Now it writes fake detections to a frame number which is also not true. How would that then work in the CSV output? And should we add that to the events view too? As you can have an event of 5 elephants walking past while you only see 3 max at every given image. How should we make this feel logical for users. How do other platforms do it? Do a full audit. 
-
-
-
 ## Priority 1
-- [ ] Add different modes at the home screen.
+- [ ] Add different modes at the home screen. What if we frame the two workflows as "Processing workflow / One-off analysis tool" and "Management platform"? Because that is the real distiction, right? One just processes the data and lets you handle it, the other stores it and can be revisisted later and can be added to like a project. 
 - [ ] Add a country dropdown for models with geofence data (speciesnet eg), I;ve received the feedback that the country dropdown was hard to find. Perhaps a country dropdown and then a small line saying something like "X of Y labels included/excluded. Click here to refine." Or something like that. Because it is a pretty powerful feature that one can refine the geofence reules themselves. What do you think? How would that look? Give me a few options as previews, so I can visually see, we can refine, and then I can choose. We'll need to replace all the label slection pickers that are visible (fodler mode step 1, create project modal, project settings, more?). 
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"

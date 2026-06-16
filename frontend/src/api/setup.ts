@@ -17,6 +17,7 @@ export interface SetupStatus {
   progress_pct: number;
   message: string;
   error: string | null;
+  user_data_dir: string;
 }
 
 export const setupApi = {

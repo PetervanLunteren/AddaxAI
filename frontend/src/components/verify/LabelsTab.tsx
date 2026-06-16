@@ -1,8 +1,8 @@
 /**
- * ObservationsTab - orchestrates the embedding-driven observation grid.
+ * LabelsTab - orchestrates the embedding-driven label grid.
  *
  * Manages its own filter state (independent from Events / Files tabs) via
- * obs_* URL params. Provides sort/search mode via segmented control,
+ * lbl_* URL params. Provides sort/search mode via segmented control,
  * selection model, and coordinates toolbar, grid, bulk actions, settings,
  * and detail sheet.
  */
@@ -20,9 +20,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  observationsApi,
-  type ObservationsProgressEvent,
-} from "../../api/observations";
+  labelsApi,
+  type LabelsProgressEvent,
+} from "../../api/labels";
 import { detectionsApi } from "../../api/detections";
 import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
@@ -42,25 +42,24 @@ import {
   VerifyToolbar,
   VerifyToolbarIcon,
 } from "./VerifyToolbar";
-import { ObservationsSettings } from "./ObservationsSettings";
-import { OBSERVATIONS_MAX_DETECTIONS_DEFAULT } from "./observationsViewOptions";
-import { ObservationsKeyboardPopover } from "./ObservationsKeyboardPopover";
+import { LabelsSettings } from "./LabelsSettings";
+import { LABELS_MAX_DETECTIONS_DEFAULT } from "./labelsViewOptions";
+import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
 import { VerifyHelpSheet } from "./VerifyHelpSheet";
-import { ObservationsWelcomePopover } from "./ObservationsWelcomePopover";
+import { LabelsWelcomePopover } from "./LabelsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import type {
   CohortItem,
   SortResponse,
   DetectionSummary,
-  ObservationFilters,
-  ObservationSort,
+  LabelFilters,
+  LabelSort,
   EventFilterParams,
   VerifySort,
-  VerifyViewMode,
 } from "../../api/types";
 
-const OBSERVATIONS_SORT_MODES: readonly VerifySort[] = [
+const LABELS_SORT_MODES: readonly VerifySort[] = [
   "similarity",
   "similarity_reverse",
   "newest",
@@ -68,23 +67,21 @@ const OBSERVATIONS_SORT_MODES: readonly VerifySort[] = [
   "cls_low",
 ];
 
-interface ObservationsTabProps {
+interface LabelsTabProps {
   projectId: string;
   classificationModelId: string | null;
-  view: VerifyViewMode;
-  onViewChange: (view: VerifyViewMode) => void;
   /** Fires when the size of the active bulk selection changes. The
-   *  folder-run Edit step uses it to hide its sticky Back / Continue
+   *  folder-run Labels step uses it to hide its sticky Back / Continue
    *  bar while a selection is live, so the BulkActionBar doesn't sit
    *  on top of it and the user can't accidentally advance mid-action. */
   onSelectionChange?: (count: number) => void;
 }
 
-// ── Observations filter state (independent from Events / Files filters) ──
+// ── Labels filter state (independent from Events / Files filters) ──
 
-type ObservationsVerification = "all" | "unverified" | "verified";
+type LabelsVerification = "all" | "unverified" | "verified";
 
-interface ObservationsFilterState {
+interface LabelsFilterState {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
@@ -95,65 +92,65 @@ interface ObservationsFilterState {
   max_label_confidence?: number;
   /** Default "unverified" when omitted — verified detections are usually
    *  not what the user is looking at on this tab. */
-  verification?: ObservationsVerification;
+  verification?: LabelsVerification;
 }
 
-/** Parse obs_* params from URL. */
-function obsFiltersFromSearchParams(sp: URLSearchParams): ObservationsFilterState {
-  const f: ObservationsFilterState = {};
-  const sites = sp.get("obs_sites");
+/** Parse lbl_* params from URL. */
+function lblFiltersFromSearchParams(sp: URLSearchParams): LabelsFilterState {
+  const f: LabelsFilterState = {};
+  const sites = sp.get("lbl_sites");
   if (sites) f.site_ids = sites.split(",");
-  const from = sp.get("obs_from");
+  const from = sp.get("lbl_from");
   if (from) f.date_from = from;
-  const to = sp.get("obs_to");
+  const to = sp.get("lbl_to");
   if (to) f.date_to = to;
-  const labels = sp.get("obs_labels");
+  const labels = sp.get("lbl_labels");
   if (labels) f.labels = labels.split(",");
-  const minC = sp.get("obs_min_confidence");
+  const minC = sp.get("lbl_min_confidence");
   if (minC !== null) f.min_confidence = parseFloat(minC);
-  const maxC = sp.get("obs_max_confidence");
+  const maxC = sp.get("lbl_max_confidence");
   if (maxC !== null) f.max_confidence = parseFloat(maxC);
-  const minLC = sp.get("obs_min_label_confidence");
+  const minLC = sp.get("lbl_min_label_confidence");
   if (minLC !== null) f.min_label_confidence = parseFloat(minLC);
-  const maxLC = sp.get("obs_max_label_confidence");
+  const maxLC = sp.get("lbl_max_label_confidence");
   if (maxLC !== null) f.max_label_confidence = parseFloat(maxLC);
-  const ver = sp.get("obs_verification");
+  const ver = sp.get("lbl_verification");
   if (ver === "all" || ver === "unverified" || ver === "verified") {
     f.verification = ver;
   }
   return f;
 }
 
-/** Write obs_* params to URL, preserving non-obs params. */
-function obsFiltersToSearchParams(
-  filters: ObservationsFilterState,
+/** Write lbl_* params to URL, preserving non-lbl params. */
+function lblFiltersToSearchParams(
+  filters: LabelsFilterState,
   current: URLSearchParams,
 ): URLSearchParams {
   const sp = new URLSearchParams(current);
   for (const key of [...sp.keys()]) {
-    if (key.startsWith("obs_")) sp.delete(key);
+    if (key.startsWith("lbl_")) sp.delete(key);
   }
-  if (filters.site_ids?.length) sp.set("obs_sites", filters.site_ids.join(","));
-  if (filters.date_from) sp.set("obs_from", filters.date_from);
-  if (filters.date_to) sp.set("obs_to", filters.date_to);
-  if (filters.labels?.length) sp.set("obs_labels", filters.labels.join(","));
+  if (filters.site_ids?.length) sp.set("lbl_sites", filters.site_ids.join(","));
+  if (filters.date_from) sp.set("lbl_from", filters.date_from);
+  if (filters.date_to) sp.set("lbl_to", filters.date_to);
+  if (filters.labels?.length) sp.set("lbl_labels", filters.labels.join(","));
   if (filters.min_confidence !== undefined)
-    sp.set("obs_min_confidence", String(filters.min_confidence));
+    sp.set("lbl_min_confidence", String(filters.min_confidence));
   if (filters.max_confidence !== undefined)
-    sp.set("obs_max_confidence", String(filters.max_confidence));
+    sp.set("lbl_max_confidence", String(filters.max_confidence));
   if (filters.min_label_confidence !== undefined)
-    sp.set("obs_min_label_confidence", String(filters.min_label_confidence));
+    sp.set("lbl_min_label_confidence", String(filters.min_label_confidence));
   if (filters.max_label_confidence !== undefined)
-    sp.set("obs_max_label_confidence", String(filters.max_label_confidence));
+    sp.set("lbl_max_label_confidence", String(filters.max_label_confidence));
   // "unverified" is the implicit default — no URL param when set to that.
   if (filters.verification && filters.verification !== "unverified") {
-    sp.set("obs_verification", filters.verification);
+    sp.set("lbl_verification", filters.verification);
   }
   return sp;
 }
 
-/** Convert ObservationsFilterState → ObservationFilters for API calls. */
-function toObservationFilters(f: ObservationsFilterState): ObservationFilters {
+/** Convert LabelsFilterState → LabelFilters for API calls. */
+function toLabelFilters(f: LabelsFilterState): LabelFilters {
   return {
     labels: f.labels,
     site_ids: f.site_ids,
@@ -206,10 +203,10 @@ function selectionMajority(
   return mode;
 }
 
-/** Adapt ObservationsFilterState to the EventFilterParams shape that
+/** Adapt LabelsFilterState to the EventFilterParams shape that
  *  VerifyFilterBar reads. The verified select lives on the bar and
  *  emits its value into `filters.verification`. */
-function toFilterBarFilters(f: ObservationsFilterState): EventFilterParams {
+function toFilterBarFilters(f: LabelsFilterState): EventFilterParams {
   return {
     site_ids: f.site_ids,
     date_from: f.date_from,
@@ -233,7 +230,7 @@ function toFilterBarFilters(f: ObservationsFilterState): EventFilterParams {
 const NARROW_TIP_MIN_TOTAL = 5000;
 
 /**
- * Loading state for the Observations grid. Shows a real progress bar
+ * Loading state for the Labels grid. Shows a real progress bar
  * while the subprocess streams `progress` events; falls back to an
  * indeterminate spinner during the brief window before the first
  * event arrives.
@@ -243,10 +240,10 @@ const NARROW_TIP_MIN_TOTAL = 5000;
  * between phases (which reads like a flicker), each phase is mapped
  * to one slice of the overall 0 → 100% bar.
  */
-function ObservationsLoadingState({
+function LabelsLoadingState({
   progress,
 }: {
-  progress: ObservationsProgressEvent | null;
+  progress: LabelsProgressEvent | null;
 }) {
   const phaseLabel = progress
     ? PHASE_LABELS[progress.phase] ?? progress.phase
@@ -275,7 +272,7 @@ function ObservationsLoadingState({
   );
 }
 
-const PHASE_LABELS: Record<ObservationsProgressEvent["phase"], string> = {
+const PHASE_LABELS: Record<LabelsProgressEvent["phase"], string> = {
   load: "Loading embeddings",
   sort: "Ordering by similarity",
   neighbors: "Comparing neighbours",
@@ -287,7 +284,7 @@ const PHASE_LABELS: Record<ObservationsProgressEvent["phase"], string> = {
 // not perfectly proportional to wall-clock time but close enough
 // that the bar moves smoothly forward.
 const PHASE_RANGES: Record<
-  ObservationsProgressEvent["phase"],
+  LabelsProgressEvent["phase"],
   { start: number; end: number }
 > = {
   load: { start: 0, end: 33 },
@@ -295,7 +292,7 @@ const PHASE_RANGES: Record<
   neighbors: { start: 66, end: 100 },
 };
 
-function overallProgressPct(progress: ObservationsProgressEvent): number {
+function overallProgressPct(progress: LabelsProgressEvent): number {
   const range = PHASE_RANGES[progress.phase];
   if (!range) return 0;
   const phaseFrac =
@@ -303,26 +300,24 @@ function overallProgressPct(progress: ObservationsProgressEvent): number {
   return Math.round(range.start + (range.end - range.start) * phaseFrac);
 }
 
-export function ObservationsTab({
+export function LabelsTab({
   projectId,
   classificationModelId,
-  view,
-  onViewChange,
   onSelectionChange,
-}: ObservationsTabProps) {
+}: LabelsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  // ── Own filter state from URL obs_* params ──────────────────────────
-  const obsFilters = useMemo(
-    () => obsFiltersFromSearchParams(searchParams),
+  // ── Own filter state from URL lbl_* params ──────────────────────────
+  const lblFilters = useMemo(
+    () => lblFiltersFromSearchParams(searchParams),
     [searchParams],
   );
 
-  const setObsFilters = useCallback(
-    (next: ObservationsFilterState) => {
+  const setLblFilters = useCallback(
+    (next: LabelsFilterState) => {
       setSearchParams(
-        (prev) => obsFiltersToSearchParams(next, prev),
+        (prev) => lblFiltersToSearchParams(next, prev),
         { replace: true },
       );
     },
@@ -332,17 +327,17 @@ export function ObservationsTab({
   /** Handler for VerifyFilterBar onChange (EventFilterParams shape).
    *
    *  The bar collapses "all" → undefined upstream because Events / Files
-   *  treat undefined as "no filter". On Observations the implicit default
+   *  treat undefined as "no filter". On Labels the implicit default
    *  is "unverified", so we have to record "all" explicitly when the user
    *  picks it; otherwise the state falls back to the unverified default
    *  and the dropdown silently reverts. */
   const handleFilterBarChange = useCallback(
     (fp: EventFilterParams) => {
       const v = fp.verification;
-      const verification: ObservationsVerification =
+      const verification: LabelsVerification =
         v === "unverified" || v === "verified" ? v : "all";
-      setObsFilters({
-        ...obsFilters,
+      setLblFilters({
+        ...lblFilters,
         site_ids: fp.site_ids,
         date_from: fp.date_from,
         date_to: fp.date_to,
@@ -354,11 +349,11 @@ export function ObservationsTab({
         verification,
       });
     },
-    [obsFilters, setObsFilters],
+    [lblFilters, setLblFilters],
   );
 
   // ── Local settings state (persisted to localStorage) ────────────────
-  const LS_KEY = "addaxai:observationsSettings";
+  const LS_KEY = "addaxai:labelsSettings";
   const savedSettings = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
     catch { return {}; }
@@ -371,7 +366,7 @@ export function ObservationsTab({
     } catch { /* ignore */ }
   }, []);
 
-  const isObservationSort = (v: unknown): v is ObservationSort =>
+  const isLabelSort = (v: unknown): v is LabelSort =>
     v === "similarity" ||
     v === "similarity_reverse" ||
     v === "newest" ||
@@ -379,15 +374,15 @@ export function ObservationsTab({
     v === "cls_low" ||
     v === "suggestions";
 
-  const initialSort: ObservationSort = isObservationSort(savedSettings.sort)
+  const initialSort: LabelSort = isLabelSort(savedSettings.sort)
     ? savedSettings.sort
     : savedSettings.reverseSort // migrate the dropped reverseSort flag
       ? "similarity_reverse"
       : "similarity";
-  const [obsSort, _setObsSort] = useState<ObservationSort>(initialSort);
-  const setObsSort = useCallback(
-    (v: ObservationSort) => {
-      _setObsSort(v);
+  const [lblSort, _setLblSort] = useState<LabelSort>(initialSort);
+  const setLblSort = useCallback(
+    (v: LabelSort) => {
+      _setLblSort(v);
       persistSetting("sort", v);
     },
     [persistSetting],
@@ -397,8 +392,8 @@ export function ObservationsTab({
   const setTileSize = useCallback((v: TileSize) => { _setTileSize(v); persistSetting("tileSize", v); }, [persistSetting]);
 
   // Verification filter is the bar's "Verified" select; default unverified.
-  const verificationFilter: ObservationsVerification =
-    obsFilters.verification ?? "unverified";
+  const verificationFilter: LabelsVerification =
+    lblFilters.verification ?? "unverified";
 
   const [showLabelDividers, _setShowLabelDividers] = useState(savedSettings.showLabelDividers ?? false);
   const setShowLabelDividers = useCallback((v: boolean) => { _setShowLabelDividers(v); persistSetting("showLabelDividers", v); }, [persistSetting]);
@@ -409,7 +404,7 @@ export function ObservationsTab({
   const [maxDetections, _setMaxDetections] = useState<number>(
     typeof savedSettings.maxDetections === "number"
       ? savedSettings.maxDetections
-      : OBSERVATIONS_MAX_DETECTIONS_DEFAULT,
+      : LABELS_MAX_DETECTIONS_DEFAULT,
   );
   const setMaxDetections = useCallback(
     (v: number) => {
@@ -425,11 +420,11 @@ export function ObservationsTab({
   const [helpOpen, setHelpOpen] = useState(false);
   const [relabelOpen, setRelabelOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
-    () => !localStorage.getItem("addaxai:observationsWelcomeDismissed")
+    () => !localStorage.getItem("addaxai:labelsWelcomeDismissed")
   );
   const handleDismissWelcome = useCallback(() => {
     setShowWelcome(false);
-    localStorage.setItem("addaxai:observationsWelcomeDismissed", "1");
+    localStorage.setItem("addaxai:labelsWelcomeDismissed", "1");
   }, []);
 
   // Explicit sorting flag — avoids isPending getting stuck in Strict Mode
@@ -445,12 +440,12 @@ export function ObservationsTab({
   // Results
   const [sortResult, setSortResult] = useState<SortResponse | null>(null);
   // Sort mode that produced the current sortResult. The dividers prop
-  // tracks this rather than obsSort so the brief window after a sort
+  // tracks this rather than lblSort so the brief window after a sort
   // switch — where the old result lingers until the new sort lands —
   // does not paint cohort dividers over similarity data (which would
   // collapse everything that shares (label, "", category) into a
   // single "(no label)" cohort).
-  const [resultSort, setResultSort] = useState<ObservationSort | null>(null);
+  const [resultSort, setResultSort] = useState<LabelSort | null>(null);
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -509,13 +504,13 @@ export function ObservationsTab({
   // Stats query — embedded-detection counts for the missing-embeddings
   // banner and the "no embeddings yet" empty state.
   const { data: stats } = useQuery({
-    queryKey: ["observations-stats", projectId],
-    queryFn: () => observationsApi.stats(projectId),
+    queryKey: ["labels-stats", projectId],
+    queryFn: () => labelsApi.stats(projectId),
     enabled: !!projectId,
   });
 
   // Separate stats query for the progress pill, so it reports the same
-  // "percent observations verified" number as the Events and Media
+  // "percent labels verified" number as the Events and Media
   // pills (both read from this endpoint too). Sourced from the events
   // stats endpoint, which counts all reviewable detections, not only
   // the embedded ones, so the pill matches across views.
@@ -527,20 +522,20 @@ export function ObservationsTab({
 
   // Streaming progress reported by the subprocess (load → sort → neighbors).
   // Cleared whenever a new sort starts and when results land.
-  const [progress, setProgress] = useState<ObservationsProgressEvent | null>(
+  const [progress, setProgress] = useState<LabelsProgressEvent | null>(
     null,
   );
 
   // Sort mutation — takes the sort mode as the mutation argument so
   // `onSuccess` can pin the resulting data to it. Otherwise a rapid
   // sort-mode flip would race the in-flight result against the latest
-  // `obsSort` state and paint the wrong dividers on the response.
+  // `lblSort` state and paint the wrong dividers on the response.
   const sortMutation = useMutation({
-    mutationFn: (sort: ObservationSort) =>
-      observationsApi.sortStream(
+    mutationFn: (sort: LabelSort) =>
+      labelsApi.sortStream(
         projectId,
         {
-          filters: toObservationFilters(obsFilters),
+          filters: toLabelFilters(lblFilters),
           sort,
           max_detections: maxDetections,
         },
@@ -570,15 +565,15 @@ export function ObservationsTab({
   // maxDetections is part of the key so raising or lowering the cap
   // in the view-options popover triggers a fresh sort with the new
   // candidate pool — otherwise the old result would stay stale.
-  const filtersKey = JSON.stringify(toObservationFilters(obsFilters));
-  const sortKey = `${filtersKey}|${obsSort}|${maxDetections}`;
+  const filtersKey = JSON.stringify(toLabelFilters(lblFilters));
+  const sortKey = `${filtersKey}|${lblSort}|${maxDetections}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
   // Auto-sort on mount and when filters or sort mode change.
   useEffect(() => {
     if (stats?.embedded_detections && sortKey !== lastSortKeyRef.current) {
       lastSortKeyRef.current = sortKey;
-      sortMutation.mutate(obsSort);
+      sortMutation.mutate(lblSort);
     }
   }, [sortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -653,7 +648,7 @@ export function ObservationsTab({
 
   const handleActionComplete = useCallback(() => {
     // Re-run the current sort to refresh data
-    sortMutation.mutate(obsSort);
+    sortMutation.mutate(lblSort);
     queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     // Cohort counts feed the toolbar pill; any relabel / verify path
     // can change which detections still belong in a cohort. Invalidate
@@ -664,7 +659,7 @@ export function ObservationsTab({
     // verified-progress pill — see applyDetectionAction.
     queryClient.invalidateQueries({ queryKey: ["events"] });
     queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
-  }, [obsSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
   const patchLocalDetections = useCallback(
@@ -699,7 +694,7 @@ export function ObservationsTab({
   const applyDetectionAction = useCallback(
     (ids: string[], patch: (d: DetectionSummary) => DetectionSummary) => {
       const idSet = new Set(ids);
-      if (obsSort === "suggestions") {
+      if (lblSort === "suggestions") {
         setSortResult((prev) =>
           prev
             ? {
@@ -719,7 +714,7 @@ export function ObservationsTab({
         );
       }
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-      // Verifying observations cascades up to File.verified (and thus
+      // Verifying labels cascades up to File.verified (and thus
       // event verification). Invalidate the Media and Events queries so
       // those views show the updated badges/filters when the user
       // switches to them, instead of stale cached state. Inactive
@@ -729,7 +724,7 @@ export function ObservationsTab({
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
     },
-    [obsSort, patchLocalDetections, projectId, queryClient],
+    [lblSort, patchLocalDetections, projectId, queryClient],
   );
 
   const handleBulkRelabel = useCallback(
@@ -783,7 +778,7 @@ export function ObservationsTab({
         queryClient.invalidateQueries({ queryKey: ["events"] });
         queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
         toast.success(
-          `Relabelled ${cohort.count} observation${
+          `Relabelled ${cohort.count} label${
             cohort.count === 1 ? "" : "s"
           } to ${cohort.suggested_scientific_name || cohort.suggested_label}.`,
         );
@@ -850,8 +845,8 @@ export function ObservationsTab({
 
   // Convenience used by SuggestionsToolbarPill.
   const exitSuggestionsMode = useCallback(
-    () => setObsSort("similarity"),
-    [setObsSort],
+    () => setLblSort("similarity"),
+    [setLblSort],
   );
 
   const handleMarkFalse = useCallback(
@@ -969,7 +964,7 @@ export function ObservationsTab({
         import("../../api/detections").then(({ detectionsApi }) => {
           detectionsApi
             .bulkVerify(ids, true)
-            .then((data) => {
+            .then(() => {
               handleBulkVerify(ids);
               clearSelection();
             });
@@ -1090,7 +1085,7 @@ export function ObservationsTab({
   // consistent. A same-mode re-sort (refresh, bulk action, filter
   // tweak) keeps the current grid in place, no flash.
   const isLoading =
-    isSorting && (!hasResults || resultSort !== obsSort);
+    isSorting && (!hasResults || resultSort !== lblSort);
 
   const handleEmbedNow = async () => {
     try {
@@ -1104,15 +1099,13 @@ export function ObservationsTab({
   return (
     <div className="space-y-4">
       <VerifyFilterBar
-        filters={toFilterBarFilters(obsFilters)}
+        filters={toFilterBarFilters(lblFilters)}
         onChange={handleFilterBarChange}
         projectId={projectId}
         classificationModelId={classificationModelId}
         detectionFloor={project?.detection_threshold ?? 0}
         countBy="detection"
         showLikedFlaggedEmpty={false}
-        view={view}
-        onViewChange={onViewChange}
       />
 
       {/* Warning when embeddings are incomplete */}
@@ -1148,26 +1141,26 @@ export function ObservationsTab({
           title="Help"
           onClick={() => setHelpOpen(true)}
         />
-        <ObservationsKeyboardPopover
+        <LabelsKeyboardPopover
           shortcutLabels={shortcutLabels}
           onShortcutLabelsChange={updateShortcutLabels}
           labelOptions={labelOptions}
           labelOptionsLoading={labelOptionsLoading}
           projectId={projectId}
         />
-        <ObservationsSettings
+        <LabelsSettings
           showLabelDividers={showLabelDividers}
           onShowLabelDividersChange={setShowLabelDividers}
           tileSize={tileSize}
           onTileSizeChange={setTileSize}
           maxDetections={maxDetections}
           onMaxDetectionsChange={setMaxDetections}
-          similaritySort={obsSort === "similarity" || obsSort === "similarity_reverse"}
+          similaritySort={lblSort === "similarity" || lblSort === "similarity_reverse"}
         />
         <VerifyToolbarIcon
           icon={RefreshCw}
           title="Refresh"
-          onClick={() => sortMutation.mutate(obsSort)}
+          onClick={() => sortMutation.mutate(lblSort)}
           spinning={isSorting}
           disabled={!stats?.embedded_detections || isSorting}
         />
@@ -1175,20 +1168,20 @@ export function ObservationsTab({
             workflow with its own entry / exit via the pill below. The
             pill itself is rendered in any sort mode because the count
             signal is still useful when the user is browsing normally. */}
-        {obsSort !== "suggestions" && (
+        {lblSort !== "suggestions" && (
           <SortSelector
-            sort={obsSort}
+            sort={lblSort}
             seed={null}
-            availableSorts={OBSERVATIONS_SORT_MODES}
+            availableSorts={LABELS_SORT_MODES}
             onChange={(next) => {
-              if (isObservationSort(next)) setObsSort(next);
+              if (isLabelSort(next)) setLblSort(next);
             }}
           />
         )}
         <SuggestionsToolbarPill
           projectId={projectId}
-          isActive={obsSort === "suggestions"}
-          onEnter={() => setObsSort("suggestions")}
+          isActive={lblSort === "suggestions"}
+          onEnter={() => setLblSort("suggestions")}
           onExit={exitSuggestionsMode}
         />
         {sortResult && (
@@ -1214,7 +1207,7 @@ export function ObservationsTab({
               variant="outline"
               size="sm"
               className="mt-4"
-              onClick={() => sortMutation.mutate(obsSort)}
+              onClick={() => sortMutation.mutate(lblSort)}
             >
               Try again
             </Button>
@@ -1225,9 +1218,9 @@ export function ObservationsTab({
         // fired yet (e.g. stats still loading). Either way, show the
         // loading state.
         <div className="flex items-center justify-center h-64">
-          <ObservationsLoadingState progress={progress} />
+          <LabelsLoadingState progress={progress} />
         </div>
-      ) : obsSort === "suggestions" && allDetections.length === 0 ? (
+      ) : lblSort === "suggestions" && allDetections.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Check className="h-8 w-8 mb-3 text-primary" />
@@ -1248,7 +1241,7 @@ export function ObservationsTab({
       ) : allDetections.length === 0 && totalCount > 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
-          <p className="text-sm">All {totalCount} observations in this view are verified.</p>
+          <p className="text-sm">All {totalCount} labels in this view are verified.</p>
           <p className="text-xs mt-1">Set the verification filter to &quot;All&quot; to see them.</p>
         </div>
       ) : allDetections.length === 0 ? (
@@ -1256,10 +1249,10 @@ export function ObservationsTab({
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              No observations match your filters
+              No labels match your filters
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Try adjusting or clearing your filters to see more observations.
+              Try adjusting or clearing your filters to see more labels.
             </p>
           </CardContent>
         </Card>
@@ -1310,7 +1303,7 @@ export function ObservationsTab({
         onRelabelOpenChange={setRelabelOpen}
       />
 
-      <ObservationsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
+      <LabelsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
       <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
 
       <DetectionDetailModal
@@ -1371,7 +1364,7 @@ export function ObservationsTab({
               }
             }
             // All verified — close the sheet
-            toast.success("All observations verified");
+            toast.success("All labels verified");
             setDetailDetection(null);
             return false;
           }

@@ -1,6 +1,6 @@
 /**
- * Observations API client - embedding-based sort and search for the
- * Observations verify tab.
+ * Labels API client - embedding-based sort and search for the
+ * Labels verify tab.
  *
  * Underlying technique is still "similarity" (cosine distance on DINOv2
  * embeddings); the user-facing naming reflects the unit of work instead.
@@ -14,18 +14,18 @@
 import { api } from "../lib/api-client";
 import type {
   CohortsResponse,
-  ObservationStatsResponse,
+  LabelStatsResponse,
   SearchRequest,
   SearchResponse,
   SortRequest,
   SortResponse,
 } from "./types";
 
-export type ObservationsProgressPhase = "load" | "sort" | "neighbors";
+export type LabelsProgressPhase = "load" | "sort" | "neighbors";
 
-export interface ObservationsProgressEvent {
+export interface LabelsProgressEvent {
   type: "progress";
-  phase: ObservationsProgressPhase;
+  phase: LabelsProgressPhase;
   done: number;
   total: number;
 }
@@ -43,7 +43,7 @@ interface ErrorEvent {
 }
 
 type StreamEvent<T> =
-  | ObservationsProgressEvent
+  | LabelsProgressEvent
   | ResultEvent<T>
   | ErrorEvent;
 
@@ -62,7 +62,7 @@ type StreamEvent<T> =
 async function streamNdjson<T>(
   url: string,
   body: unknown,
-  onProgress: (e: ObservationsProgressEvent) => void,
+  onProgress: (e: LabelsProgressEvent) => void,
   signal?: AbortSignal,
 ): Promise<T> {
   const isPost = body !== undefined;
@@ -121,9 +121,9 @@ async function streamNdjson<T>(
   return result;
 }
 
-export const observationsApi = {
+export const labelsApi = {
   /**
-   * Sort observations by visual similarity. Drains the NDJSON stream
+   * Sort labels by visual similarity. Drains the NDJSON stream
    * and returns only the final result. Use `sortStream` if you also
    * need progress events.
    */
@@ -131,39 +131,39 @@ export const observationsApi = {
     projectId: string,
     body: SortRequest,
   ): Promise<SortResponse> => {
-    return observationsApi.sortStream(projectId, body, () => {});
+    return labelsApi.sortStream(projectId, body, () => {});
   },
 
   sortStream: async (
     projectId: string,
     body: SortRequest,
-    onProgress: (e: ObservationsProgressEvent) => void,
+    onProgress: (e: LabelsProgressEvent) => void,
     signal?: AbortSignal,
   ): Promise<SortResponse> => {
     return streamNdjson<SortResponse>(
-      `/api/projects/${projectId}/observations/sort`,
+      `/api/projects/${projectId}/labels/sort`,
       body,
       onProgress,
       signal,
     );
   },
 
-  /** Find observations similar to an anchor. */
+  /** Find labels similar to an anchor. */
   search: async (
     projectId: string,
     body: SearchRequest,
   ): Promise<SearchResponse> => {
-    return observationsApi.searchStream(projectId, body, () => {});
+    return labelsApi.searchStream(projectId, body, () => {});
   },
 
   searchStream: async (
     projectId: string,
     body: SearchRequest,
-    onProgress: (e: ObservationsProgressEvent) => void,
+    onProgress: (e: LabelsProgressEvent) => void,
     signal?: AbortSignal,
   ): Promise<SearchResponse> => {
     return streamNdjson<SearchResponse>(
-      `/api/projects/${projectId}/observations/search`,
+      `/api/projects/${projectId}/labels/search`,
       body,
       onProgress,
       signal,
@@ -171,9 +171,9 @@ export const observationsApi = {
   },
 
   /** Get embedding coverage stats for a project. */
-  stats: async (projectId: string): Promise<ObservationStatsResponse> => {
-    return api.get<ObservationStatsResponse>(
-      `/api/projects/${projectId}/observations/stats`,
+  stats: async (projectId: string): Promise<LabelStatsResponse> => {
+    return api.get<LabelStatsResponse>(
+      `/api/projects/${projectId}/labels/stats`,
     );
   },
 
@@ -183,19 +183,19 @@ export const observationsApi = {
    * surface progress.
    */
   cohorts: async (projectId: string): Promise<CohortsResponse> => {
-    return observationsApi.cohortsStream(projectId, () => {});
+    return labelsApi.cohortsStream(projectId, () => {});
   },
 
   cohortsStream: async (
     projectId: string,
-    onProgress: (e: ObservationsProgressEvent) => void,
+    onProgress: (e: LabelsProgressEvent) => void,
     signal?: AbortSignal,
   ): Promise<CohortsResponse> => {
     // GET request — no body. The endpoint reads `min_count` and
     // `max_cohorts` from query params; defaults (5 / 20) are baked into
     // the panel's expected workload, so callers don't override them.
     return streamNdjson<CohortsResponse>(
-      `/api/projects/${projectId}/observations/cohorts`,
+      `/api/projects/${projectId}/labels/cohorts`,
       undefined,
       onProgress,
       signal,

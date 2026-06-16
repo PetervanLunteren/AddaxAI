@@ -41,8 +41,26 @@ async function fetchBlob(endpoint: string): Promise<Blob> {
 }
 
 export const exportApi = {
+  /** Location / effort table: one row per deployment (site, trap-nights). */
+  downloadDeployments: (projectId: string, format: ObservationFormat): Promise<Blob> =>
+    fetchBlob(`/api/projects/${projectId}/export/deployments?format=${format}`),
+
+  /** Media / membership table: one row per file, including empties. */
+  downloadFiles: (projectId: string, format: ObservationFormat): Promise<Blob> =>
+    fetchBlob(`/api/projects/${projectId}/export/files?format=${format}`),
+
+  /** Per-detection table (the labels grain): one row per bounding box. */
+  downloadDetections: (projectId: string, format: ObservationFormat): Promise<Blob> =>
+    fetchBlob(`/api/projects/${projectId}/export/detections?format=${format}`),
+
+  /** Event-level table (the counts grain): one row per species per event
+   *  with the effective count. */
   downloadObservations: (projectId: string, format: ObservationFormat): Promise<Blob> =>
     fetchBlob(`/api/projects/${projectId}/export/observations?format=${format}`),
+
+  /** Combined two-sheet workbook (Detections + Counts). XLSX only. */
+  downloadSpreadsheetXlsx: (projectId: string): Promise<Blob> =>
+    fetchBlob(`/api/projects/${projectId}/export/spreadsheet`),
 
   downloadSpatial: (projectId: string, format: SpatialFormat): Promise<Blob> =>
     fetchBlob(`/api/projects/${projectId}/export/spatial?format=${format}`),

@@ -107,7 +107,6 @@ export function FolderSelector({
   const { data: scanResult, isLoading: isScanning } = useFolderScan(
     noScan ? null : value,
   );
-  const [showManualInput, setShowManualInput] = useState(!isElectron());
   const [isDragOver, setIsDragOver] = useState(false);
   const inElectron = isElectron();
 

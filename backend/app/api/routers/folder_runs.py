@@ -57,8 +57,21 @@ router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
 FolderRunStep = Literal[
-    "model", "edit", "overview", "save"
+    "setup", "labels", "counts", "summary", "save"
 ]
+
+# Forward-compat: map renamed step slugs so runs persisted under the old
+# names re-attach without failing FolderRunStep validation. "observations"
+# became "counts"; "model" became "setup"; "overview" became "summary".
+_LEGACY_STEP_MAP: dict[str, str] = {
+    "observations": "counts",
+    "model": "setup",
+    "overview": "summary",
+}
+
+
+def _normalize_step(raw_step: str) -> "FolderRunStep":
+    return _LEGACY_STEP_MAP.get(raw_step, raw_step)  # type: ignore[return-value]
 
 
 # ----------------------------------------------------------------------
@@ -366,7 +379,7 @@ def _load_run(db: Session, run_id: str) -> FolderRunResponse:
     queue_entry = entries[0] if entries else None
 
     state: dict = project.folder_run_state or {}
-    step: FolderRunStep = state.get("step", "model")
+    step: FolderRunStep = _normalize_step(state.get("step", "setup"))
 
     # Surface the running deployment_analysis job (if any) so the
     # frontend can re-attach to the progress modal after a refresh.
@@ -417,7 +430,7 @@ def create_folder_run(
     the caller navigates to that step.
 
     For new folders the original path applies: create the project +
-    queue entry with `step='model'`. Timezone defaults to UTC
+    queue entry with `step='setup'`. Timezone defaults to UTC
     because folder runs do not expose the sun-overlay / Camtrap-DP
     flows that depend on it; the promotion dialog asks for a real
     timezone when the user converts a folder run into a research
@@ -451,16 +464,16 @@ def create_folder_run(
     else:
         name = _unique_project_name(db, _auto_name(payload.source_folder))
 
-    # Persist step="model" because the act of creating the run is
+    # Persist step="setup" because the act of creating the run is
     # what completes the folder picker. The user is about to land on
-    # the Setup (model) step, so that's the right resume target if
-    # they close the tab now.
+    # the Setup step, so that's the right resume target if they close
+    # the tab now.
     project_create = ProjectCreate(
         name=name,
         timezone="UTC",
         mode="folder_run",
         folder_run_state={
-            "step": "model",
+            "step": "setup",
             "source_folder": payload.source_folder,
         },
     )
@@ -497,7 +510,7 @@ def create_folder_run(
     return FolderRunResponse(
         project=ProjectResponse.model_validate(project),
         queue_entry=DeploymentQueueResponse.model_validate(queue_entry),
-        step="model",
+        step="setup",
     )
 
 
@@ -519,7 +532,7 @@ def lookup_folder_run(
         return None
 
     state: dict = existing.folder_run_state or {}
-    step: FolderRunStep = state.get("step", "model")
+    step: FolderRunStep = _normalize_step(state.get("step", "setup"))
 
     # Cheap aggregates: total files, total threshold+verified
     # detections, distinct species label count, count of files with a

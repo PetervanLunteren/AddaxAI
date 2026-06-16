@@ -1,19 +1,19 @@
 /**
- * Single-row filter bar for the verify tabs.
+ * Single-row filter bar for the verify pages.
  *
  * Layout:
  *
  *   [ Sites | Date range | Labels | Verified | More ]
  *
- * Each tab fills the same slots. The More popover hosts the rare
+ * Both pages fill the same slots. The More popover hosts the rare
  * filters (liked / flagged / empty) plus the confidence range
  * sliders, so the bar stays a single row.
  *
- * Tab specifics:
- * - Events / Files: all five slots; `showLikedFlaggedEmpty = true`.
- * - Observations: same slots, but the More popover only contains the
+ * Page specifics:
+ * - Counts (events): all slots; `showLikedFlaggedEmpty = true`.
+ * - Labels: same slots, but the More popover only contains the
  *   confidence ranges (`showLikedFlaggedEmpty = false`). Verified
- *   options match the other tabs (all / unverified / verified).
+ *   options match (all / unverified / verified).
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +28,6 @@ import { speciesLabelMap } from "../../lib/species-name-mode";
 import type {
   EventFilterParams,
   VerificationFilter,
-  VerifyViewMode,
 } from "../../api/types";
 import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
@@ -55,11 +54,18 @@ const DEFAULT_VERIFICATION_OPTIONS: VerificationOption[] = [
   { value: "verified", label: "Verified" },
 ];
 
-const VIEW_OPTIONS: { value: VerifyViewMode; label: string }[] = [
-  { value: "observations", label: "Observations" },
-  { value: "media", label: "Media" },
-  { value: "events", label: "Events" },
+// The Counts page (countBy="event") filters on Event.confirmed, so it
+// reads "Confirmed" / "Unconfirmed". The shared `verification` param value
+// stays verified/unverified; only the display wording changes.
+const EVENT_VERIFICATION_OPTIONS: VerificationOption[] = [
+  { value: "all", label: "All" },
+  { value: "unverified", label: "Unconfirmed" },
+  { value: "verified", label: "Confirmed" },
 ];
+const EVENT_VERIFICATION_LABELS: Record<string, string> = {
+  verified: "Confirmed",
+  unverified: "Unconfirmed",
+};
 
 interface VerifyFilterBarProps {
   filters: EventFilterParams;
@@ -73,12 +79,8 @@ interface VerifyFilterBarProps {
   /** Verified dropdown options; defaults to all / unverified / verified. */
   verificationOptions?: VerificationOption[];
   /** Whether the More popover renders the liked / flagged / empty
-   *  selects. False on Observations (those don't apply there). */
+   *  selects. False on the Labels page (those don't apply there). */
   showLikedFlaggedEmpty?: boolean;
-  /** Current grouping + setter for the "View as" dropdown. The same
-   *  dataset is shown as observations / media / events. */
-  view: VerifyViewMode;
-  onViewChange: (view: VerifyViewMode) => void;
 }
 
 export function VerifyFilterBar({
@@ -88,12 +90,17 @@ export function VerifyFilterBar({
   classificationModelId,
   detectionFloor = 0,
   countBy,
-  verificationOptions = DEFAULT_VERIFICATION_OPTIONS,
+  verificationOptions,
   showLikedFlaggedEmpty = true,
-  view,
-  onViewChange,
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
+
+  // Event scope (Counts page) confirms; detection/file scope (Labels)
+  // verifies. Drives the verification filter's wording.
+  const isEventScope = countBy === "event";
+  const verOptions =
+    verificationOptions ??
+    (isEventScope ? EVENT_VERIFICATION_OPTIONS : DEFAULT_VERIFICATION_OPTIONS);
 
   // Folder runs are a single deployment with no site, so the Sites
   // filter is meaningless there. Detect the mode from the project
@@ -141,34 +148,12 @@ export function VerifyFilterBar({
       label: labelNames[lbl] ?? lbl,
     })) ?? [];
 
-  // Five controls without Sites (folder runs), six with it (projects).
-  const gridCols = showSites ? "lg:grid-cols-6" : "lg:grid-cols-5";
+  // Four controls without Sites (folder runs), five with it (projects).
+  const gridCols = showSites ? "lg:grid-cols-5" : "lg:grid-cols-4";
 
   return (
     <div className="space-y-2 rounded-lg border bg-white px-3 py-2">
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-3`}>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
-            View as
-          </label>
-          <Select
-            value={view}
-            onValueChange={(v) => onViewChange(v as VerifyViewMode)}
-          >
-            <SelectTrigger className="h-9 min-h-0 text-sm">
-              <span className="truncate">
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {VIEW_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         {showSites && (
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Sites</label>
@@ -249,7 +234,7 @@ export function VerifyFilterBar({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Verified</label>
+          <label className="text-xs font-medium text-muted-foreground">{isEventScope ? "Confirmed" : "Verified"}</label>
           <Select
             value={filters.verification ?? "all"}
             onValueChange={(v) =>
@@ -265,7 +250,7 @@ export function VerifyFilterBar({
               </span>
             </SelectTrigger>
             <SelectContent>
-              {verificationOptions.map((opt) => (
+              {verOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -295,6 +280,7 @@ export function VerifyFilterBar({
         siteNames={siteNames}
         displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}
+        verificationLabels={isEventScope ? EVENT_VERIFICATION_LABELS : undefined}
       />
     </div>
   );

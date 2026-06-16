@@ -50,13 +50,14 @@ export function useFolderRun(): FolderRunContextValue {
 }
 
 /** Step inferred from the current URL. Used to drive the visual
- * progress indicator. Defaults to "model" because the brand-new path
+ * progress indicator. Defaults to "setup" because the brand-new path
  * (/folder-runs/new) renders the merged Setup page. */
 function stepFromPath(pathname: string): FolderRunStep {
-  if (pathname.endsWith("/overview")) return "overview";
-  if (pathname.endsWith("/edit")) return "edit";
+  if (pathname.endsWith("/summary")) return "summary";
+  if (pathname.endsWith("/labels")) return "labels";
+  if (pathname.endsWith("/counts")) return "counts";
   if (pathname.endsWith("/save")) return "save";
-  return "model";
+  return "setup";
 }
 
 export function FolderRunLayout() {

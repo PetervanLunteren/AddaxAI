@@ -46,7 +46,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [showAddSiteModal, setShowAddSiteModal] = useState(false);
-  const [touchedFields, setTouchedFields] = useState({ folder: false, site: false });
+  const [, setTouchedFields] = useState({ folder: false, site: false });
   const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [notes, setNotes] = useState("");

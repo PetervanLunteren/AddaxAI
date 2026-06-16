@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, CheckCircle2, Download, Ban } from "lucide-react";
+import { Loader2, CheckCircle2, Download, Ban, Info } from "lucide-react";
 import { basename } from "@/lib/path-utils";
 import {
   Dialog,
@@ -44,6 +44,7 @@ interface LogRow {
 // human label.
 const TYPE_LABELS: Record<string, string> = {
   missing_timestamp: "No capture timestamp",
+  video_processing_failure: "Could not be read",
   job_failed: "Deployment failed",
 };
 
@@ -324,7 +325,12 @@ export function RunQueueModal({
   });
 
   const runEntries = (allEntries || []).filter((e) => queueEntryIds.includes(e.id));
-  const logRows = buildLogRows(runEntries);
+  // Files with no capture date were still detected and classified and live
+  // in the database; they are NOT skipped or failed. Keep them out of the
+  // issues table and the skipped tally, and surface them as a calm note.
+  const allRows = buildLogRows(runEntries);
+  const datelessCount = allRows.filter((r) => r.type === "missing_timestamp").length;
+  const logRows = allRows.filter((r) => r.type !== "missing_timestamp");
 
   // Synthesize a row for a job-level crash (no per-entry error recorded).
   if ((isComplete || hasError) && hasError && logRows.every((r) => r.severity !== "error")) {
@@ -549,6 +555,17 @@ export function RunQueueModal({
 
           {showLogTable && <LogTable rows={logRows} />}
 
+          {inTerminalState && datelessCount > 0 && (
+            <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                {datelessCount} file{datelessCount === 1 ? "" : "s"} had no
+                capture date. They were still detected and classified and are in
+                your data, just left out of time-based stats and charts.
+              </span>
+            </div>
+          )}
+
           {!inTerminalState && (
             <>
               {showSpinner && (
@@ -626,10 +643,10 @@ export function RunQueueModal({
                       disabled={isClosing}
                       onClick={async () => {
                         await handleClose();
-                        navigate(`/projects/${projectId}/edit`);
+                        navigate(`/projects/${projectId}/counts`);
                       }}
                     >
-                      Edit
+                      Counts
                     </Button>
                     <Button
                       disabled={isClosing}

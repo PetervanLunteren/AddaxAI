@@ -11,11 +11,16 @@ from datetime import datetime
 from sqlalchemy import insert
 
 from app.api.crud.event_observation import (
+    add_human_species,
     calculate_max_n_for_event,
     get_event_ids_for_detections,
+    list_event_observations,
     recalculate_max_n_for_project,
+    reset_event_to_ai,
+    set_event_confirmed,
+    set_human_count,
 )
-from app.models.event import event_files
+from app.models.event import Event, event_files
 from app.models.event_observation import EventObservation
 from tests.conftest import (
     make_deployment,
@@ -357,3 +362,422 @@ def test_max_n_groups_per_frame_for_videos(db):
 
     obs_by_label = {o.label: o for o in obs}
     assert obs_by_label["deer"].max_n == 3
+
+
+# ── Human count layer + event sign-off ─────────────────────────────
+
+
+def test_human_count_overrides_and_survives_recompute(db):
+    """A human count overrides the AI MaxN for the effective count and
+    is preserved when MaxN is later recomputed."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert obs[0].max_n == 2
+    assert obs[0].effective_count == 2
+
+    # Saw 3 more the AI missed across other frames: bump to 5.
+    updated = set_human_count(db, obs[0].id, 5)
+    assert updated.human_count == 5
+    assert updated.effective_count == 5
+
+    # A later recompute keeps the human count, not just the AI MaxN.
+    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert len(recalc) == 1
+    assert recalc[0].max_n == 2
+    assert recalc[0].human_count == 5
+    assert recalc[0].effective_count == 5
+
+
+def test_add_human_species_creates_human_only_row_and_survives(db):
+    """A species the AI never detected is stored as a human-only row
+    (max_n=0, no frame) and survives a recompute."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)]}],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    obs = add_human_species(db, ev.id, category="animal", count=1, label="fox")
+    assert obs.max_n == 0
+    assert obs.human_count == 1
+    assert obs.max_n_file_id is None
+
+    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    by_label = {o.label: o for o in recalc}
+    assert "cow" in by_label
+    assert "fox" in by_label
+    assert by_label["fox"].max_n == 0
+    assert by_label["fox"].human_count == 1
+
+
+def test_recompute_clears_event_verified_when_counts_change(db):
+    """The event sign-off survives a no-op recompute but clears when the
+    species/count set actually changes."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, dets = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 3}],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    set_event_confirmed(db, ev.id, True)
+    assert db.get(Event, ev.id).confirmed is True
+
+    # No-op recompute (nothing changed) keeps the sign-off.
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert db.get(Event, ev.id).confirmed is True
+
+    # Removing a detection lowers MaxN 3 -> 2; the sign-off clears.
+    db.delete(dets[0])
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert db.get(Event, ev.id).confirmed is False
+
+
+def test_dashboard_total_observations_uses_effective_count(db):
+    """The dashboard observation total sums the effective count
+    (human override, else MaxN), not the raw AI MaxN."""
+    from app.api.crud.statistics import get_dashboard_overview
+
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+
+    assert get_dashboard_overview(db, project.id).total_observations == 2
+
+    set_human_count(db, obs[0].id, 5)
+    db.commit()
+    assert get_dashboard_overview(db, project.id).total_observations == 5
+
+
+def test_remove_ai_species_via_zero_count_survives_recompute(db):
+    """Removing an AI species in the Counts panel sets human_count=0, which
+    survives a recompute (the durable representation of 'not present')."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    # "Remove" the species: the human says none are actually present.
+    set_human_count(db, obs[0].id, 0)
+
+    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert len(recalc) == 1
+    assert recalc[0].max_n == 2  # the boxes are still there
+    assert recalc[0].human_count == 0  # but the human override survives
+    assert recalc[0].effective_count == 0
+
+
+def test_reset_event_to_ai_drops_human_edits(db):
+    """reset_event_to_ai clears overrides on AI rows, deletes human-only
+    rows, and clears the event sign-off."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 2}],
+    )
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    set_human_count(db, obs[0].id, 9)  # override the AI row
+    add_human_species(db, ev.id, category="animal", count=1, label="fox")
+    set_event_confirmed(db, ev.id, True)
+
+    event = reset_event_to_ai(db, ev.id)
+    assert event is not None
+    assert event.confirmed is False
+
+    rows = (
+        db.query(EventObservation)
+        .filter(EventObservation.event_id == ev.id)
+        .all()
+    )
+    assert len(rows) == 1  # the human-only fox row is gone
+    assert rows[0].label == "cow"
+    assert rows[0].human_count is None  # override cleared
+    assert rows[0].effective_count == 2  # back to the AI MaxN
+
+
+def test_list_event_observations_order_is_stable_under_count_edits(db):
+    """Row order follows AI MaxN (then label), never the editable count, so
+    bumping a count does not reshuffle the list under the user."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{
+            "detections": [("cow", "animal", 0.9)] * 3
+            + [("fox", "animal", 0.9)],
+        }],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    before = [o.label for o in list_event_observations(db, ev.id)]
+    assert before == ["cow", "fox"]  # cow (max_n 3) before fox (max_n 1)
+
+    # Bump fox far above cow; order must NOT change.
+    fox = next(o for o in list_event_observations(db, ev.id) if o.label == "fox")
+    set_human_count(db, fox.id, 50)
+    after = [o.label for o in list_event_observations(db, ev.id)]
+    assert after == ["cow", "fox"]
+
+
+# ── Video best-frame species gate ───────────────────────────────────────
+#
+# For videos, only species present on the best frame (or verified on some
+# frame) may produce a count row; non-best-frame labels are per-frame
+# classifier noise the user can never see or clean, so they must not spawn
+# spurious species. Images are never gated.
+
+
+def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
+    """Create an event whose files can be videos with per-frame detections.
+
+    file_specs: list of dicts:
+        - file_type: "image" | "video" (default "image")
+        - best_frame_number: int | None (videos)
+        - detections: list of dicts with keys
+            label, frame_number (opt), category (opt "animal"),
+            confidence (opt 0.9), verified (opt False)
+    Returns (event, files).
+    """
+    eid = str(uuid.uuid4())
+    ev = Event(
+        id=eid,
+        deployment_id=deployment_id,
+        event_start_local=event_start_local,
+        event_end_local=event_start_local,
+        file_count=len(file_specs),
+    )
+    db.add(ev)
+    db.flush()
+
+    files = []
+    for seq, spec in enumerate(file_specs):
+        fkw = {"file_type": spec.get("file_type", "image")}
+        if "best_frame_number" in spec:
+            fkw["best_frame_number"] = spec["best_frame_number"]
+        f = make_file(
+            db,
+            deployment_id=deployment_id,
+            captured_at_local=event_start_local,
+            **fkw,
+        )
+        db.execute(
+            insert(event_files).values(
+                event_id=eid,
+                file_id=f.id,
+                sequence_number=seq,
+            )
+        )
+        files.append(f)
+        for d in spec["detections"]:
+            make_detection(
+                db,
+                file_id=f.id,
+                category=d.get("category", "animal"),
+                confidence=d.get("confidence", 0.9),
+                label=d["label"],
+                frame_number=d.get("frame_number"),
+                verified=d.get("verified", False),
+            )
+    db.flush()
+    return ev, files
+
+
+def test_video_non_best_frame_label_is_gated_out(db):
+    """A label that only appears on a non-best frame is dropped."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},     # best frame
+                {"label": "carnivora", "frame_number": 12},  # non-best noise
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert {o.label for o in obs} == {"leopard"}  # carnivora gated out
+
+
+def test_video_best_frame_species_counts_peak_across_frames(db):
+    """An allowed species still takes its peak count across all frames."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},   # best frame: 1
+                {"label": "leopard", "frame_number": 40},  # non-best: 3
+                {"label": "leopard", "frame_number": 40},
+                {"label": "leopard", "frame_number": 40},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert len(obs) == 1
+    assert obs[0].label == "leopard"
+    assert obs[0].max_n == 3  # allowed via best frame, peak across all frames
+
+
+def test_video_verified_non_best_frame_species_survives(db):
+    """A human-verified species survives even off the best frame."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},
+                # not on best frame, but the human confirmed it:
+                {"label": "serval", "frame_number": 12, "verified": True},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert {o.label for o in obs} == {"leopard", "serval"}
+
+
+def test_image_multispecies_is_not_gated(db):
+    """Images are never gated: every species in a photo is kept."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "image",
+            "detections": [
+                {"label": "cow"},
+                {"label": "bear"},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert {o.label for o in obs} == {"cow", "bear"}
+
+
+def test_multi_video_event_gates_per_file(db):
+    """The gate is per video: a species allowed in one video is not
+    rescued for another video where it's only a non-best-frame label."""
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {  # video A: leopard on its best frame
+            "file_type": "video",
+            "best_frame_number": 0,
+            "detections": [{"label": "leopard", "frame_number": 0}],
+        },
+        {  # video B: cow on best frame, leopard only on a non-best frame
+            "file_type": "video",
+            "best_frame_number": 0,
+            "detections": [
+                {"label": "cow", "frame_number": 0},
+                {"label": "leopard", "frame_number": 7},  # gated for B
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    by_label = {o.label: o.max_n for o in obs}
+    assert set(by_label) == {"leopard", "cow"}
+    # leopard counted only from video A (1); video B's frame-7 leopard gated.
+    assert by_label["leopard"] == 1
+    assert by_label["cow"] == 1
+
+
+def test_event_card_chips_match_best_frame_gate(db):
+    """Gallery-card chips exclude non-best-frame video noise, same as the
+    count suggestion (the chips are built from raw detections, so they must
+    be gated against the event's EventObservation rows)."""
+    from app.api.crud.event import get_events_by_project
+
+    project = make_project(db, detection_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},     # best frame
+                {"label": "carnivora", "frame_number": 12},  # non-best noise
+            ],
+        },
+    ])
+
+    # Populate EventObservation (the gate source), as analysis would.
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    summaries = get_events_by_project(db, project.id, project_floor=0.5)
+    assert len(summaries) == 1
+    assert summaries[0]["labels"] == ["leopard"]  # carnivora chip gated out

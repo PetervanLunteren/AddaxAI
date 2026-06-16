@@ -7,7 +7,7 @@
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { QueueEntryCard } from "./QueueEntryCard";
-import { Play, Clock, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Play, Clock, Loader2, CheckCircle2 } from "lucide-react";
 
 interface QueueEntry {
   id: string;

@@ -75,11 +75,22 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
       statisticsApi.getVerificationProgressByLabel(projectId, siteIds, dateFrom, dateTo),
   });
 
-  const overallRow: BarRow | null = eventStats
+  // Two jobs, two bars: Labels (per-detection label cleanup, detection-
+  // level) and Counts (event species + count sign-off, event-level). They
+  // are separate pages and complete independently, so one number can't
+  // represent both. The per-label breakdown below belongs to Labels.
+  const labelsRow: BarRow | null = eventStats
     ? {
-        label: "Total observations",
+        label: "Labels verified",
         verified: eventStats.verified_detections,
         total: eventStats.total_detections,
+      }
+    : null;
+  const countsRow: BarRow | null = eventStats
+    ? {
+        label: "Counts confirmed",
+        verified: eventStats.events_confirmed,
+        total: eventStats.events_total,
       }
     : null;
 
@@ -89,37 +100,14 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
         <div>
           <div className="flex items-center gap-1.5">
             <CardTitle className="text-lg">Verification</CardTitle>
-            <DashboardAboutPopover
-              what={
-                <>
-                  <p>
-                    Percent of observations a person has verified. The
-                    same number is shown on every Verify view (Events,
-                    Media, Observations), so progress reads the same
-                    wherever you are.
-                  </p>
-                  <p>
-                    The list below shows verified vs total observations
-                    per label, sorted by support.
-                  </p>
-                </>
-              }
-              how={
-                <>
-                  <p>
-                    You generally do not need to verify every detection.
-                    The Events and Media modals walk through MaxN frames
-                    first (the peak-count frames per species in an
-                    event); verifying those covers what statistics need.
-                  </p>
-                  <p>
-                    Per-class rows count observations that pass the
-                    project threshold or are verified, and skip false
-                    detections.
-                  </p>
-                </>
-              }
-            />
+            <DashboardAboutPopover>
+              <p>
+                Two jobs. "Labels verified" is the percent of detections
+                checked on the Labels page. "Counts confirmed" is the
+                percent of events signed off on the Counts page. The list
+                below is label verification per taxon.
+              </p>
+            </DashboardAboutPopover>
           </div>
           <p className="text-sm text-muted-foreground">
             Progress overall and per label
@@ -131,13 +119,19 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
           <div className="flex items-center justify-center py-8">
             <p className="text-muted-foreground">Loading...</p>
           </div>
-        ) : overallRow ? (
+        ) : labelsRow && countsRow ? (
           <div className="rounded-lg bg-muted/50 p-3 max-h-80 overflow-y-auto">
             <div className="flex flex-col gap-3">
-              <SlimProgressRow {...overallRow} />
+              <SlimProgressRow {...labelsRow} />
+              <SlimProgressRow {...countsRow} />
               {labelStats && labelStats.rows.length > 0 && (
                 <>
                   <Separator className="my-1" />
+                  {/* These break down "Labels verified" (detection-level),
+                      not "Counts confirmed", so label the group. */}
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Labels verified per taxon
+                  </div>
                   {labelStats.rows.map((row) => (
                     <SlimProgressRow
                       key={row.label_taxonomy_id ?? row.scientific_name}

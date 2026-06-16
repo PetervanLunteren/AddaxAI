@@ -1,5 +1,5 @@
 /**
- * Keyboard shortcuts popover for the Observations tab.
+ * Keyboard shortcuts popover for the Labels tab.
  *
  * Renders its own toolbar icon trigger (Keyboard) so it sits inline
  * with the other utility icons in the verify toolbar. Lists the grid
@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 
-interface ObservationsKeyboardPopoverProps {
+interface LabelsKeyboardPopoverProps {
   shortcutLabels: Record<number, LabelOption>;
   onShortcutLabelsChange: (
     updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>,
@@ -51,13 +51,13 @@ function ShortcutKey({ keys }: { keys: string }) {
   );
 }
 
-export function ObservationsKeyboardPopover({
+export function LabelsKeyboardPopover({
   shortcutLabels,
   onShortcutLabelsChange,
   labelOptions,
   labelOptionsLoading,
   projectId,
-}: ObservationsKeyboardPopoverProps) {
+}: LabelsKeyboardPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>

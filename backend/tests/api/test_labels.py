@@ -3,7 +3,7 @@
 import json
 from unittest.mock import patch
 
-from app.api.schemas.observation import DetectionSummary, SearchResponse, SortResponse
+from app.api.schemas.label import DetectionSummary, SearchResponse, SortResponse
 from tests.conftest import make_project
 
 
@@ -27,7 +27,7 @@ def _read_result(resp) -> dict:
 
 def test_get_observation_stats(client, db):
     p = make_project(db)
-    resp = client.get(f"/api/projects/{p.id}/observations/stats")
+    resp = client.get(f"/api/projects/{p.id}/labels/stats")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_detections"] == 0
@@ -42,11 +42,11 @@ def test_sort_observations_success(client, db):
         {"type": "result", **mock_result},
     )
     with patch(
-        "app.api.routers.observations.stream_sort_async",
+        "app.api.routers.labels.stream_sort_async",
         return_value=iter(events),
     ):
         resp = client.post(
-            f"/api/projects/{p.id}/observations/sort",
+            f"/api/projects/{p.id}/labels/sort",
             json={"filters": {}, "sort": "similarity"},
         )
     assert resp.status_code == 200
@@ -61,11 +61,11 @@ def test_sort_observations_default_sort(client, db):
     mock_result = SortResponse(detections=[], total_detections=0).model_dump()
     events = _ndjson_stream({"type": "result", **mock_result})
     with patch(
-        "app.api.routers.observations.stream_sort_async",
+        "app.api.routers.labels.stream_sort_async",
         return_value=iter(events),
     ) as mock_sort:
         resp = client.post(
-            f"/api/projects/{p.id}/observations/sort",
+            f"/api/projects/{p.id}/labels/sort",
             json={"filters": {}},
         )
         # Force the streaming response to be consumed so the mock is invoked.
@@ -79,7 +79,7 @@ def test_sort_observations_default_sort(client, db):
 def test_sort_observations_rejects_unknown_mode(client, db):
     p = make_project(db)
     resp = client.post(
-        f"/api/projects/{p.id}/observations/sort",
+        f"/api/projects/{p.id}/labels/sort",
         json={"filters": {}, "sort": "bogus"},
     )
     assert resp.status_code == 422
@@ -88,11 +88,11 @@ def test_sort_observations_rejects_unknown_mode(client, db):
 def test_sort_observations_error(client, db):
     p = make_project(db)
     with patch(
-        "app.api.routers.observations.stream_sort_async",
+        "app.api.routers.labels.stream_sort_async",
         side_effect=FileNotFoundError("script not found"),
     ):
         resp = client.post(
-            f"/api/projects/{p.id}/observations/sort",
+            f"/api/projects/{p.id}/labels/sort",
             json={"filters": {}, "sort": "similarity"},
         )
     assert resp.status_code == 503
@@ -116,11 +116,11 @@ def test_search_observations_success(client, db):
     ).model_dump()
     events = _ndjson_stream({"type": "result", **mock_result})
     with patch(
-        "app.api.routers.observations.stream_search_async",
+        "app.api.routers.labels.stream_search_async",
         return_value=iter(events),
     ):
         resp = client.post(
-            f"/api/projects/{p.id}/observations/search",
+            f"/api/projects/{p.id}/labels/search",
             json={"anchor_detection_id": "abc", "filters": {}},
         )
     assert resp.status_code == 200
@@ -131,11 +131,11 @@ def test_search_observations_success(client, db):
 def test_search_observations_error(client, db):
     p = make_project(db)
     with patch(
-        "app.api.routers.observations.stream_search_async",
+        "app.api.routers.labels.stream_search_async",
         side_effect=FileNotFoundError("script not found"),
     ):
         resp = client.post(
-            f"/api/projects/{p.id}/observations/search",
+            f"/api/projects/{p.id}/labels/search",
             json={"anchor_detection_id": "abc", "filters": {}},
         )
     assert resp.status_code == 503

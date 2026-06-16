@@ -1,33 +1,40 @@
 /**
- * Event detail modal - full-screen event viewer with filmstrip navigation.
+ * Event detail modal — the Counts-page event viewer.
  *
- * Shows the selected event's images with interactive annotation canvas,
- * filmstrip for multi-file navigation, verification panel, and
- * event-to-event navigation.
+ * Center: one focused image (the annotation canvas / video player) where
+ * every tool acts, above a resizable wrapping-grid filmstrip of the event's
+ * frames; drag the divider to trade focus size for scanning room, and click
+ * a thumbnail to focus it. Left: the tool rail (draw, tag, zoom, brightness /
+ * contrast / threshold, flag, like, download). Right: the event-level species
+ * + count editor (EventCountPanel) with the single "Confirm" sign-off.
+ * Per-detection label cleanup at scale lives on the Labels page.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { basename } from "../../lib/path-utils";
 import {
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
   X,
-  Scale,
-  Sun,
-  Contrast,
-  SquareDashed,
   Download,
   Flag,
   Heart,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
   FolderOpen,
   Play,
-  Binoculars,
-  Tag,
+  Pause,
+  Repeat,
+  MoreVertical,
+  Eye,
+  EyeOff,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "../../lib/api-client";
@@ -36,20 +43,32 @@ import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
-import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
+import { basename } from "../../lib/path-utils";
+import {
+  formatCameraDate,
+  formatCameraTime,
+  formatTimeOffset,
+} from "../../lib/datetime";
 import { useRevealInFolder } from "../../lib/file-reveal";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { Slider } from "../ui/slider";
 import type { EventFilterParams, FileWithDetections } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
+import { ViewControls } from "./ViewControls";
+import type { TileSize } from "./CropGrid";
 import { AnnotationCanvas } from "./AnnotationCanvas";
-import { FileVerificationPanel } from "./FileVerificationPanel";
+import { EventCountPanel } from "./EventCountPanel";
 import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
-import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
-import { getSpeciesColor, getSpeciesTextColor } from "../../utils/species-colors";
+import { useLabelOptions } from "../../hooks/useLabelOptions";
+
+// Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
+// wheel events per swipe scrubs at a steady ~8 frames/second.
+const SCRUB_THROTTLE_MS = 120;
+
+// Auto-play cadence: how long each frame is shown before advancing (2 fps).
+const AUTOPLAY_INTERVAL_MS = 500;
 
 interface EventDetailModalProps {
   eventId: string | null;
@@ -69,40 +88,105 @@ export function EventDetailModal({
   const queryClient = useQueryClient();
   const revealInFolder = useRevealInFolder();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
-  const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
-    null
-  );
-  const [drawMode, setDrawMode] = useState(false);
-  // Active species for both drawing new boxes AND adding event-level
-  // observations. Sidebar Tag picker is the manual override; falls
-  // back to `defaultActiveLabel` (most common in this event) when null.
-  const [activeLabel, setActiveLabel] = useState<{ category: string; label: string | undefined } | null>(null);
-  const [bulkSelection, setBulkSelection] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
+  // Auto-play: cine-loop the event's frames on a timer. A ref mirrors the
+  // value so the busiest-frame open effect can read it without re-running.
+  const [autoPlay, setAutoPlay] = useState(false);
+  const autoPlayRef = useRef(false);
+  useEffect(() => {
+    autoPlayRef.current = autoPlay;
+  }, [autoPlay]);
+  // Brief "looped back to the start" cue, flashed when auto-play wraps to 0.
+  // A nonce that bumps on each wrap so the overlay re-mounts and re-animates
+  // (and the CSS fade self-hides it). indexRef lets the interval see the
+  // latest frame without re-subscribing.
+  const [restartFlash, setRestartFlash] = useState(0);
+  const indexRef = useRef(0);
+  useEffect(() => {
+    indexRef.current = selectedFileIndex;
+  }, [selectedFileIndex]);
   // One-shot flag: set when Download is clicked on a video while in frame
   // view, so the VideoPlayer runs the annotated-video export once it mounts.
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
-  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
-  const [videoPopoverOpen, setVideoPopoverOpen] = useState(false);
+  // When set, the relabel LabelPicker is open for this detection (clicked
+  // its label pill on the focus image). Counts-page in-place single-box
+  // relabel; per-detection cleanup at scale still lives on the Labels page.
+  const [relabelDetectionId, setRelabelDetectionId] = useState<string | null>(
+    null,
+  );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
-  const [openLabelPickerFor, setOpenLabelPickerFor] = useState<string | null>(null);
-  const [localThreshold, setLocalThreshold] = useState<number | null>(null);
+  // "More" menu open state, so picking an item closes it (menu behaviour).
+  const [moreOpen, setMoreOpen] = useState(false);
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
+
+  // Filmstrip view settings, persisted per user: the resizable filmstrip
+  // height (set by dragging the divider) and the S/M/L thumbnail size.
+  const countsSettings = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("addaxai:countsSettings") || "{}");
+    } catch {
+      return {};
+    }
+  }, []);
+  const persistCountsSetting = useCallback((key: string, value: unknown) => {
+    try {
+      const cur = JSON.parse(
+        localStorage.getItem("addaxai:countsSettings") || "{}",
+      );
+      cur[key] = value;
+      localStorage.setItem("addaxai:countsSettings", JSON.stringify(cur));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const [filmstripHeight, setFilmstripHeight] = useState<number>(
+    countsSettings.filmstripHeight ?? 220,
+  );
+  const [tileSize, _setTileSize] = useState<TileSize>(
+    countsSettings.tileSize ?? "M",
+  );
+  const setTileSize = useCallback(
+    (v: TileSize) => {
+      _setTileSize(v);
+      persistCountsSetting("tileSize", v);
+    },
+    [persistCountsSetting],
+  );
+  const centerColumnRef = useRef<HTMLDivElement>(null);
+
+  // Drag the divider between the focus image and the filmstrip.
+  const startDividerDrag = useCallback(
+    (e: ReactMouseEvent) => {
+      e.preventDefault();
+      let latest = filmstripHeight;
+      const onMove = (ev: MouseEvent) => {
+        const el = centerColumnRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        latest = Math.max(
+          120,
+          Math.min(rect.height * 0.8, rect.bottom - ev.clientY),
+        );
+        setFilmstripHeight(latest);
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        persistCountsSetting("filmstripHeight", latest);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [filmstripHeight, persistCountsSetting],
+  );
+
   const exportFnRef = useRef<(() => void) | null>(null);
-  const zoomFnRef = useRef<{
-    zoomIn: () => void;
-    zoomOut: () => void;
-    resetZoom: () => void;
-    getZoom: () => number;
-  } | null>(null);
   const [viewport, setViewport] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
-  const fileNavRef = useRef<"forward" | "backward" | null>(null);
 
   // Fetch event data
   const { data: event, isError: eventError, error: eventErrorObj } = useQuery({
@@ -156,310 +240,148 @@ export function EventDetailModal({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Load shortcut label mappings from project data
-  useEffect(() => {
-    if (project?.shortcut_labels) {
-      const parsed: Record<number, LabelOption> = {};
-      for (const [k, v] of Object.entries(project.shortcut_labels)) {
-        parsed[Number(k)] = v as LabelOption;
-      }
-      setShortcutLabels(parsed);
-    }
-  }, [project?.shortcut_labels]);
+  // Event summary for the top card: media breakdown + date/time span. This
+  // describes the event you're confirming, not the frame you happen to be on.
+  const eventSummary = useMemo(() => {
+    if (!event) return null;
+    const videos = event.files.filter((f) => f.file_type === "video").length;
+    const images = event.files.length - videos;
+    const parts: string[] = [];
+    if (images) parts.push(`${images} image${images > 1 ? "s" : ""}`);
+    if (videos) parts.push(`${videos} video${videos > 1 ? "s" : ""}`);
+    const media =
+      parts.join(" · ") ||
+      `${event.file_count} file${event.file_count === 1 ? "" : "s"}`;
 
-  // Update shortcut labels in state and persist to backend
-  const updateShortcutLabels = useCallback(
-    (updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>) => {
-      setShortcutLabels((prev) => {
-        const next = updater(prev);
-        projectsApi.update(projectId, { shortcut_labels: next });
-        return next;
-      });
-    },
-    [projectId]
-  );
-
-  // Compute MaxN file IDs set for navigation
-  const maxNFileIds = useMemo(() => {
-    if (!event?.max_n_frames) return new Set<string>();
-    return new Set(event.max_n_frames.map((f) => f.file_id));
-  }, [event?.max_n_frames]);
-
-  // When event changes, open to the first unverified MaxN frame (in MaxN mode)
-  // or the first file (in file mode). If navigating via file-level nav,
-  // continue the sequential flow.
-  useEffect(() => {
-    // ←/→ always navigates by MaxN frame; this effect picks the
-    // initial selectedFileIndex on event load. fileNavRef tells us
-    // whether we arrived from the previous or next event.
-    if (fileNavRef.current) {
-      const dir = fileNavRef.current;
-      fileNavRef.current = null;
-      if (event?.files.length) {
-        const maxNIds = new Set(event.max_n_frames?.map((f) => f.file_id) ?? []);
-        if (dir === "backward") {
-          // Land on the last MaxN frame in the new event.
-          let found = false;
-          for (let i = event.files.length - 1; i >= 0; i--) {
-            if (maxNIds.has(event.files[i].id)) {
-              setSelectedFileIndex(i);
-              found = true;
-              break;
-            }
-          }
-          if (!found) setSelectedFileIndex(event.files.length - 1);
-        } else {
-          // Forward: first unverified MaxN, else first MaxN, else 0.
-          let found = false;
-          for (let i = 0; i < event.files.length; i++) {
-            if (maxNIds.has(event.files[i].id) && !event.files[i].verified) {
-              setSelectedFileIndex(i);
-              found = true;
-              break;
-            }
-          }
-          if (!found) {
-            for (let i = 0; i < event.files.length; i++) {
-              if (maxNIds.has(event.files[i].id)) {
-                setSelectedFileIndex(i);
-                found = true;
-                break;
-              }
-            }
-          }
-          if (!found) setSelectedFileIndex(0);
-        }
+    let when: string | null = null;
+    if (event.event_start_local) {
+      const dateOpts = { day: "numeric", month: "short", year: "numeric" } as const;
+      const timeOpts = { hour: "2-digit", minute: "2-digit" } as const;
+      const start = event.event_start_local;
+      const end = event.event_end_local || start;
+      const startDate = formatCameraDate(start, dateOpts, "en-GB");
+      const startTime = formatCameraTime(start, timeOpts, "en-GB");
+      const endTime = formatCameraTime(end, timeOpts, "en-GB");
+      const sameDay = start.slice(0, 10) === end.slice(0, 10);
+      if (sameDay) {
+        when =
+          startTime === endTime
+            ? `${startDate}, ${startTime}`
+            : `${startDate}, ${startTime} – ${endTime}`;
       } else {
-        setSelectedFileIndex(0);
+        const endDate = formatCameraDate(end, dateOpts, "en-GB");
+        when = `${startDate} ${startTime} – ${endDate} ${endTime}`;
       }
-    } else if (!event) {
-      setSelectedFileIndex(0);
-    } else {
-      // Fresh open: first unverified MaxN frame, else first MaxN, else 0.
-      const maxNIds = new Set(event.max_n_frames?.map((f) => f.file_id) ?? []);
-      let found = false;
-      for (let i = 0; i < event.files.length; i++) {
-        if (maxNIds.has(event.files[i].id) && !event.files[i].verified) {
-          setSelectedFileIndex(i);
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        for (let i = 0; i < event.files.length; i++) {
-          if (maxNIds.has(event.files[i].id)) {
-            setSelectedFileIndex(i);
-            found = true;
-            break;
-          }
-        }
-      }
-      if (!found) setSelectedFileIndex(0);
     }
-    setSelectedDetectionId(null);
+    return { media, when };
+  }, [event]);
+
+  // On open or event change, focus the busiest frame: the image (or video
+  // best frame) with the most detections, regardless of species. Gives
+  // multi-species events one unambiguous landing frame.
+  useEffect(() => {
+    const fs = event?.files ?? [];
+    const peakCount = (f: FileWithDetections) =>
+      f.file_type === "video" && f.best_frame_number != null
+        ? f.detections.filter((d) => d.frame_number === f.best_frame_number)
+            .length
+        : f.detections.length;
+    let bestIdx = 0;
+    let bestCount = -1;
+    fs.forEach((f, i) => {
+      const c = peakCount(f);
+      if (c > bestCount) {
+        bestCount = c;
+        bestIdx = i;
+      }
+    });
+    // Auto-play restarts each event from the beginning; otherwise land on the
+    // busiest frame.
+    setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
     setPendingVideoExport(false);
-    setSelectedVideoId(null);
-    setVideoPopoverOpen(false);
+    setRelabelDetectionId(null);
   }, [eventId, event?.id]);
 
   const files = event?.files ?? [];
   const currentFile = files[selectedFileIndex] as
     | FileWithDetections
     | undefined;
-  const projectThreshold = project?.detection_threshold ?? 0;
-  const detectionThreshold = localThreshold ?? projectThreshold;
+  // Time gap from the previous frame to the focused one (same signal as the
+  // filmstrip's per-tile labels); null on the first frame or missing times.
+  const focusGap = (() => {
+    const cur = currentFile?.captured_at_local;
+    const prev =
+      selectedFileIndex > 0
+        ? files[selectedFileIndex - 1]?.captured_at_local
+        : null;
+    if (!cur || !prev) return null;
+    return formatTimeOffset(
+      (new Date(cur).getTime() - new Date(prev).getTime()) / 1000,
+    );
+  })();
+  const detectionThreshold = project?.detection_threshold ?? 0;
   const imageFilter =
     brightness !== 50 || contrast !== 50
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
       : undefined;
 
-  // MaxN frames for the currently selected file (for badge display)
-  const currentFileMaxNFrames = useMemo(() => {
-    if (!currentFile || !event?.max_n_frames) return [];
-    return event.max_n_frames.filter((f) => f.file_id === currentFile.id);
-  }, [currentFile, event?.max_n_frames]);
+  // The detection whose label pill was clicked (pills only render for the
+  // focused file), seeding the relabel picker's current value.
+  const relabelDetection =
+    relabelDetectionId != null
+      ? currentFile?.detections.find((d) => d.id === relabelDetectionId)
+      : undefined;
 
-  // Derive list of video File rows from the event's files. Post-2026-05
-  // refactor, each video File row carries all its detections directly
-  // (with `frame_number` set per detection), so `frameCount` is the
-  // number of distinct frames that produced ≥1 detection.
-  const sourceVideos = useMemo(() => {
-    const videos: { id: string; frameCount: number }[] = [];
-    for (const f of files) {
-      if (f.file_type !== "video") continue;
-      const frameSet = new Set<number>();
-      for (const d of f.detections) {
-        if (d.frame_number != null) frameSet.add(d.frame_number);
-      }
-      videos.push({ id: f.id, frameCount: frameSet.size });
-    }
-    return videos;
-  }, [files]);
-
-  // For video files: hand the VideoPlayer every detection on that
-  // file so boxes can render against the right frame during playback.
+  // For the focused video file: hand the VideoPlayer every detection on
+  // that file so boxes can render against the right frame during playback.
+  // Each video is its own filmstrip tile, so the focused file is always
+  // the one to play — no separate video selection.
   const videoPlaybackProps = useMemo(() => {
-    const videoId = selectedVideoId ?? (currentFile?.file_type === "video" ? currentFile.id : null);
-    if (!videoId) return undefined;
-    const videoFile = files.find((f) => f.id === videoId);
-    if (!videoFile) return undefined;
+    if (currentFile?.file_type !== "video") return undefined;
     return {
-      sourceVideoId: videoId,
-      allDetections: videoFile.detections,
+      sourceVideoId: currentFile.id,
+      allDetections: currentFile.detections,
     };
-  }, [currentFile, files, selectedVideoId]);
+  }, [currentFile]);
 
-  // Default active label: most common species across all detections
-  // in the event. The sidebar Tag picker uses this when the user
-  // hasn't set a manual override. Same value drives Draw-box and
-  // Add-Obs so both apply the same species.
-  const defaultActiveLabel = useMemo(() => {
-    if (!event?.files)
-      return { category: "animal", label: undefined as string | undefined };
+  // A stable, large modal: the focus + filmstrip both want the room, and
+  // the focus canvas re-fits its container as the divider moves.
+  const modalStyle = useMemo(
+    () => ({
+      width: Math.round(viewport.width * 0.95),
+      height: Math.round(viewport.height * 0.95),
+    }),
+    [viewport],
+  );
 
-    const labelCounts = new Map<
-      string,
-      { count: number; category: string; label: string | undefined }
-    >();
-
-    for (const f of event.files) {
-      for (const d of f.detections) {
-        if (d.confidence >= detectionThreshold) {
-          const key = d.label || d.category;
-          const existing = labelCounts.get(key);
-          if (existing) {
-            existing.count++;
-          } else {
-            labelCounts.set(key, {
-              count: 1,
-              category: d.category,
-              label: d.label || undefined,
-            });
-          }
-        }
-      }
-    }
-
-    let best = { category: "animal", label: undefined as string | undefined };
-    let bestCount = 0;
-    for (const entry of labelCounts.values()) {
-      if (entry.count > bestCount) {
-        bestCount = entry.count;
-        best = { category: entry.category, label: entry.label };
-      }
-    }
-
-    return best;
-  }, [event?.files, detectionThreshold]);
-
-  // Effective active label: manual override falls through to default.
-  const effectiveActiveLabel = activeLabel ?? defaultActiveLabel;
-
-  // Reset manual override when the event changes. Within one event we
-  // keep the override across files so a "wolf" pick survives navigating
-  // between files of the same encounter.
-  useEffect(() => {
-    setActiveLabel(null);
-  }, [eventId]);
-
-  // Calculate modal dimensions to tightly fit the image + UI panels.
-  // Keep previous size while loading to avoid a resize flash between images.
-  const lastModalStyle = useRef<{ width: number; height: number } | null>(null);
-  const modalStyle = useMemo(() => {
-    const TOOLBAR_W = 44;
-    const PANEL_W = 320;
-    const FILMSTRIP_H = files.length > 0 ? 96 : 0;
-    const IMAGE_PAD = 16;
-
-    const maxW = viewport.width * 0.95;
-    const maxH = viewport.height * 0.95;
-
-    if (!currentFile?.width_px || !currentFile?.height_px) {
-      return lastModalStyle.current ?? { width: maxW, height: maxH };
-    }
-
-    const maxImgW = maxW - TOOLBAR_W - PANEL_W;
-    const maxImgH = maxH - FILMSTRIP_H - IMAGE_PAD;
-
-    // Fit image maintaining aspect ratio, capped at natural resolution
-    const scale = Math.min(
-      maxImgW / currentFile.width_px,
-      maxImgH / currentFile.height_px,
-      1
-    );
-    const imgDisplayW = currentFile.width_px * scale;
-    const imgDisplayH = currentFile.height_px * scale;
-
-    const style = {
-      width: Math.round(imgDisplayW + TOOLBAR_W + PANEL_W),
-      height: Math.round(imgDisplayH + FILMSTRIP_H + IMAGE_PAD),
-    };
-    lastModalStyle.current = style;
-    return style;
-  }, [currentFile?.width_px, currentFile?.height_px, files.length, viewport]);
-
-  // Verify current file mutation
-  const verifyMutation = useMutation({
-    mutationFn: () => {
-      if (!currentFile) return Promise.resolve(null);
-      return filesApi.update(currentFile.id, {
-        verified: !currentFile.verified,
-      });
+  // Event confirmation (the count panel's "Confirm"; also the Enter key).
+  const eventConfirmMutation = useMutation({
+    mutationFn: (confirmed: boolean) => {
+      if (!event) return Promise.resolve(null);
+      return eventsApi.setConfirmed(event.id, confirmed);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
     },
   });
 
 
-  // Direct-action observation create. Same flow as Draw-box: uses
-  // the currently-active species (auto-default or Tag-picker override)
-  // and submits immediately, no confirmation popover.
-  const observeMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentFile) return;
-      await detectionsApi.createObservation({
-        file_id: currentFile.id,
-        category: effectiveActiveLabel.category,
-        label: effectiveActiveLabel.label ?? null,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
-      const name =
-        effectiveActiveLabel.label ?? effectiveActiveLabel.category;
-      toast.success(`Added ${name} observation`);
-    },
-    onError: (err: Error) => {
-      toast.error("Could not add observation", { description: err.message });
-    },
-  });
-
-  // Favorite mutation
+  // Like / flag live at the file level (the Event card badge lights up if
+  // any file is set). Keyed by fileId.
   const favoriteMutation = useMutation({
-    mutationFn: () => {
-      if (!currentFile) return Promise.resolve(null);
-      return filesApi.update(currentFile.id, { favorited: !currentFile.favorited });
-    },
+    mutationFn: ({ fileId, favorited }: { fileId: string; favorited: boolean }) =>
+      filesApi.update(fileId, { favorited }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["file"] });
     },
   });
-
-  // Flag mutation — toggles flagged on the currently viewed file. Flag
-  // lives at the file level; the Event card badge lights up if any file
-  // in the event is flagged.
   const flagMutation = useMutation({
-    mutationFn: () => {
-      if (!currentFile) return Promise.resolve(null);
-      return filesApi.update(currentFile.id, { flagged: !currentFile.flagged });
-    },
+    mutationFn: ({ fileId, flagged }: { fileId: string; flagged: boolean }) =>
+      filesApi.update(fileId, { flagged }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -467,52 +389,31 @@ export function EventDetailModal({
     },
   });
 
-  // Filtered detections for the current file (for Tab cycling)
-  const filteredDetections = useMemo(() => {
-    if (!currentFile) return [];
-    let dets = currentFile.detections.filter(
-      (d) => d.confidence >= detectionThreshold
-    );
-    // For videos in frame view, only include best-frame detections
-    if (
-      currentFile.file_type === "video" &&
-      currentFile.best_frame_number != null &&
-      viewMode === "frame"
-    ) {
-      dets = dets.filter((d) => d.frame_number === currentFile.best_frame_number);
-    }
-    return dets;
-  }, [currentFile, detectionThreshold, viewMode]);
-
-  // Mark blank mutation: delete all detections + verify + advance
-  const markBlankMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentFile) return;
-      await detectionsApi.deleteByFile(currentFile.id);
-      await filesApi.update(currentFile.id, { verified: true });
-    },
+  // In-place single-box relabel: clicking a label pill on the focus image
+  // relabels that one detection through the same path the Labels page uses
+  // (detectionsApi.bulkRelabel with a one-id array). The backend re-derives
+  // the event's MaxN and clears Event.confirmed if the species/count set
+  // changed, so we just refetch. Mirrors the Labels page's invalidation set
+  // (LabelsTab) so the filter tree / cohorts / Labels grid stay consistent.
+  const relabelMutation = useMutation({
+    mutationFn: ({
+      id,
+      label,
+      category,
+    }: {
+      id: string;
+      label: string | null;
+      category: string;
+    }) => detectionsApi.bulkRelabel([id], label, category),
     onSuccess: () => {
+      setRelabelDetectionId(null);
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
     },
-  });
-
-  // Delete selected detection mutation
-  const deleteDetectionMutation = useMutation({
-    mutationFn: (id: string) => {
-      // Capture the next detection before deleting
-      const idx = filteredDetections.findIndex((d) => d.id === id);
-      const next =
-        filteredDetections[idx + 1] ?? filteredDetections[idx - 1] ?? null;
-      return detectionsApi.delete(id).then(() => next);
-    },
-    onSuccess: (next) => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-      setSelectedDetectionId(next?.id ?? null);
-    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   // Navigation handlers
@@ -526,53 +427,20 @@ export function EventDetailModal({
     []
   );
 
-  // ←/→ navigates by MaxN frame across the event (and crosses to the
-  // adjacent event at the boundary). Shift+←/→ in the keyboard handler
-  // walks every frame inside the current event for the rare per-frame
-  // inspection case.
-  const nextUnverifiedFileIndex = useMemo(() => {
-    for (let i = selectedFileIndex + 1; i < files.length; i++) {
-      if (maxNFileIds.has(files[i].id) && !files[i].verified) return i;
-    }
-    return -1;
-  }, [files, selectedFileIndex, maxNFileIds]);
+  // Jump to the next event that still needs its species + counts confirmed.
+  const handleNextUnconfirmed = useCallback(() => {
+    navigateEvent(adjacent?.next_unconfirmed_id);
+  }, [adjacent, navigateEvent]);
 
-  const handlePrev = useCallback(() => {
-    for (let i = selectedFileIndex - 1; i >= 0; i--) {
-      if (maxNFileIds.has(files[i].id)) {
-        setSelectedFileIndex(i);
-        return;
-      }
+  // Confirm the event (if not already) and jump to the next unconfirmed one.
+  // Shared by the Enter key and the count panel's Confirm button.
+  const handleConfirmAndAdvance = useCallback(() => {
+    if (event && !event.confirmed) {
+      eventConfirmMutation.mutateAsync(true).then(handleNextUnconfirmed);
+    } else {
+      handleNextUnconfirmed();
     }
-    // No earlier MaxN frame in this event — cross to previous event.
-    if (adjacent?.previous_id) {
-      fileNavRef.current = "backward";
-      navigateEvent(adjacent.previous_id);
-    }
-  }, [selectedFileIndex, adjacent, navigateEvent, files, maxNFileIds]);
-
-  const handleNext = useCallback(() => {
-    for (let i = selectedFileIndex + 1; i < files.length; i++) {
-      if (maxNFileIds.has(files[i].id)) {
-        setSelectedFileIndex(i);
-        return;
-      }
-    }
-    // No later MaxN frame in this event — cross to next event.
-    if (adjacent?.next_id) {
-      fileNavRef.current = "forward";
-      navigateEvent(adjacent.next_id);
-    }
-  }, [selectedFileIndex, files, adjacent, navigateEvent, maxNFileIds]);
-
-  const handleNextUnverified = useCallback(() => {
-    if (nextUnverifiedFileIndex >= 0) {
-      setSelectedFileIndex(nextUnverifiedFileIndex);
-    } else if (adjacent?.next_unverified_id) {
-      fileNavRef.current = "forward";
-      navigateEvent(adjacent.next_unverified_id);
-    }
-  }, [nextUnverifiedFileIndex, adjacent, navigateEvent]);
+  }, [event, eventConfirmMutation, handleNextUnconfirmed]);
 
   // Download button. For a video, always produce the annotated VIDEO:
   // switch to video view (mounting the player) and flag a one-shot export
@@ -587,67 +455,95 @@ export function EventDetailModal({
     }
   }, [currentFile]);
 
-  // Verify and advance. With several files selected, bulk-verify them all;
-  // otherwise verify the current file (if not already) and move to the next
-  // unverified one. Shared by the Enter shortcut and the "Mark verified"
-  // button so the two never drift apart.
-  const handleVerifyAndNext = useCallback(() => {
-    if (bulkSelection.size > 1) {
-      const toVerify = [...bulkSelection]
-        .map((i) => files[i])
-        .filter((f) => f && !f.verified);
-      if (toVerify.length > 0) {
-        Promise.all(
-          toVerify.map((f) => filesApi.update(f.id, { verified: true })),
-        ).then(() => {
-          queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-          queryClient.invalidateQueries({ queryKey: ["events"] });
-          queryClient.invalidateQueries({ queryKey: ["file"] });
-          setBulkSelection(new Set());
-          handleNextUnverified();
-        });
-      } else {
-        setBulkSelection(new Set());
-        handleNextUnverified();
-      }
-    } else if (currentFile && !currentFile.verified) {
-      verifyMutation.mutateAsync().then(() => handleNextUnverified());
-    } else {
-      handleNextUnverified();
-    }
-  }, [
-    bulkSelection,
-    files,
-    queryClient,
-    eventId,
-    currentFile,
-    verifyMutation,
-    handleNextUnverified,
-  ]);
+  // Click a thumbnail in the filmstrip: make it the focus. A video focuses
+  // straight into playback.
+  const handleSelectFile = useCallback(
+    (index: number) => {
+      setAutoPlay(false); // manual navigation takes over from auto-play
+      setSelectedFileIndex(index);
+      const f = files[index];
+      setViewMode(f && isPlayableVideo(f) ? "video" : "frame");
+    },
+    [files],
+  );
 
-  const handleFilmstripSelect = useCallback((index: number, shiftKey: boolean) => {
-    if (shiftKey && files.length > 1) {
-      const start = Math.min(selectedFileIndex, index);
-      const end = Math.max(selectedFileIndex, index);
-      const range = new Set<number>();
-      for (let i = start; i <= end; i++) range.add(i);
-      setBulkSelection(range);
-    } else {
-      setBulkSelection(new Set());
-    }
-    setSelectedFileIndex(index);
-    setSelectedDetectionId(null);
-  }, [selectedFileIndex, files.length]);
+  // Shift+wheel over the focus scrubs through frames (stills, so scrubbing
+  // past a video does not start playback). Throttled to a steady pace: a
+  // trackpad fires a burst of wheel events per swipe, so without this one
+  // flick would jump dozens of frames. Magnitude is ignored, so the speed
+  // feels the same on a mouse wheel and a trackpad.
+  const lastScrubRef = useRef(0);
+  const handleScrubFrame = useCallback(
+    (delta: number) => {
+      const now = performance.now();
+      if (now - lastScrubRef.current < SCRUB_THROTTLE_MS) return;
+      lastScrubRef.current = now;
+      setAutoPlay(false); // manual navigation takes over from auto-play
+      const dir = delta > 0 ? 1 : -1;
+      setSelectedFileIndex((i) =>
+        Math.max(0, Math.min(files.length - 1, i + dir)),
+      );
+      setViewMode("frame");
+    },
+    [files.length],
+  );
 
-  const prevDisabled = (() => {
-    const hasPrevMaxN = files.slice(0, selectedFileIndex).some((f) => maxNFileIds.has(f.id));
-    return !hasPrevMaxN && !adjacent?.previous_id;
-  })();
-  const nextDisabled = (() => {
-    const hasNextMaxN = files.slice(selectedFileIndex + 1).some((f) => maxNFileIds.has(f.id));
-    return !hasNextMaxN && !adjacent?.next_id;
-  })();
-  const nextUnverifiedDisabled = nextUnverifiedFileIndex < 0 && !adjacent?.next_unverified_id;
+  // Auto-play toggle. Turning it on restarts the playthrough from frame 0.
+  const toggleAutoPlay = useCallback(() => {
+    if (!autoPlayRef.current) {
+      setSelectedFileIndex(0);
+      setViewMode("frame");
+    }
+    setAutoPlay((on) => !on);
+  }, []);
+
+  // Watch the focused video: swap the best-frame still for the real player.
+  // Stops the cine-loop first (you've grabbed control of one clip).
+  const playFocusedVideo = useCallback(() => {
+    setAutoPlay(false);
+    setViewMode("video");
+  }, []);
+
+  // The loop: advance one frame each tick, wrapping to the start. Flash the
+  // restart cue on the wrap (last frame -> 0), not on the first pass.
+  useEffect(() => {
+    if (!autoPlay || !isOpen || files.length <= 1) return;
+    const id = setInterval(() => {
+      const next = (indexRef.current + 1) % files.length;
+      if (next === 0) setRestartFlash((n) => n + 1);
+      setSelectedFileIndex(next);
+    }, AUTOPLAY_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [autoPlay, isOpen, files.length]);
+
+  // Warm the next frame's full-res image one step ahead so the loop stays
+  // smooth on the first pass (same URL AnnotationCanvas fetches, so the
+  // browser cache is shared).
+  const preloadFileId =
+    autoPlay && files.length > 1
+      ? (files[(selectedFileIndex + 1) % files.length]?.id ?? null)
+      : null;
+  useEffect(() => {
+    if (!preloadFileId) return;
+    const img = new Image();
+    img.src = `/api/files/${preloadFileId}/image`;
+  }, [preloadFileId]);
+
+  // Auto-play is session-scoped: it resets off when the modal closes. Also
+  // clear the restart-cue nonce, otherwise it stays > 0 and the overlay
+  // replays its fade the next time the modal mounts (the subtree unmounts on
+  // close, so a fresh mount re-runs the CSS animation).
+  useEffect(() => {
+    if (!isOpen) {
+      setAutoPlay(false);
+      setRestartFlash(0);
+      setRelabelDetectionId(null);
+    }
+  }, [isOpen]);
+
+  const prevDisabled = !adjacent?.previous_id;
+  const nextDisabled = !adjacent?.next_id;
+  const nextUnconfirmedDisabled = !adjacent?.next_unconfirmed_id;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -662,160 +558,76 @@ export function EventDetailModal({
         return;
       }
 
+      // The relabel picker is open: let it own the keyboard (Escape closes
+      // it, not the modal; arrows/Enter drive its list) instead of the
+      // modal's shortcuts firing underneath.
+      if (relabelDetectionId) return;
+
+      // Confirm + advance to the next unconfirmed event.
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleConfirmAndAdvance();
+        return;
+      }
+
       switch (e.key) {
-        case "ArrowUp":
+        case " ":
+          // Space toggles auto-play (cine-loop the event's frames).
           e.preventDefault();
-          if (filteredDetections.length === 0) break;
-          setSelectedDetectionId((prev) => {
-            const currentIdx = prev
-              ? filteredDetections.findIndex((d) => d.id === prev)
-              : -1;
-            const nextIdx =
-              currentIdx <= 0
-                ? filteredDetections.length - 1
-                : currentIdx - 1;
-            return filteredDetections[nextIdx].id;
-          });
+          toggleAutoPlay();
           break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (filteredDetections.length === 0) break;
-          setSelectedDetectionId((prev) => {
-            const currentIdx = prev
-              ? filteredDetections.findIndex((d) => d.id === prev)
-              : -1;
-            const nextIdx =
-              currentIdx < 0 || currentIdx >= filteredDetections.length - 1
-                ? 0
-                : currentIdx + 1;
-            return filteredDetections[nextIdx].id;
-          });
-          break;
+        // No modifier = move across events; Shift = move within the event
+        // (frames). Shift as the frame-level modifier mirrors Shift+scroll.
+        // Event nav keeps the cine-loop running (session mode); a manual
+        // frame step grabs control and stops it.
         case "ArrowLeft":
           e.preventDefault();
-          setBulkSelection(new Set());
           if (e.shiftKey) {
-            // Navigate files within event, stop at boundary
-            if (selectedFileIndex > 0) {
-              setSelectedFileIndex((i) => i - 1);
-              setSelectedDetectionId(null);
-            }
+            setAutoPlay(false);
+            if (selectedFileIndex > 0) setSelectedFileIndex((i) => i - 1);
           } else {
-            handlePrev();
+            navigateEvent(adjacent?.previous_id);
           }
           break;
         case "ArrowRight":
           e.preventDefault();
-          setBulkSelection(new Set());
           if (e.shiftKey) {
-            // Navigate files within event, stop at boundary
-            if (selectedFileIndex < files.length - 1) {
+            setAutoPlay(false);
+            if (selectedFileIndex < files.length - 1)
               setSelectedFileIndex((i) => i + 1);
-              setSelectedDetectionId(null);
-            }
           } else {
-            handleNext();
-          }
-          break;
-        case "Enter":
-          e.preventDefault();
-          handleVerifyAndNext();
-          break;
-        case "e":
-        case "E":
-          e.preventDefault();
-          if (currentFile) {
-            markBlankMutation.mutateAsync().then(() => handleNextUnverified());
-          }
-          break;
-        case "1": case "2": case "3": case "4": case "5": {
-          const slot = parseInt(e.key);
-          const label = shortcutLabels[slot];
-          if (!label || !currentFile) break;
-          e.preventDefault();
-          Promise.all(
-            filteredDetections.map((d) =>
-              detectionsApi.update(d.id, {
-                category: label.category,
-                label: label.label,
-              })
-            )
-          ).then(() => {
-            queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-            queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-          });
-          break;
-        }
-        case "Tab":
-          if (selectedDetectionId) {
-            e.preventDefault();
-            setOpenLabelPickerFor(selectedDetectionId);
+            navigateEvent(adjacent?.next_id);
           }
           break;
         case "p":
         case "P":
+          // Toggle the focused video between its still and the real player.
           if (currentFile && isPlayableVideo(currentFile)) {
             e.preventDefault();
             if (viewMode === "video") {
-              // Toggling OFF — just switch back to frame mode
               setViewMode("frame");
-              setVideoPopoverOpen(false);
-            } else if (sourceVideos.length > 1) {
-              // Multiple videos — open selector popover
-              setVideoPopoverOpen(true);
             } else {
-              // Single video — toggle directly
-              setViewMode("video");
+              playFocusedVideo();
             }
           }
-          break;
-        case "v":
-        case "V":
-          e.preventDefault();
-          verifyMutation.mutate();
           break;
         case "f":
         case "F":
           e.preventDefault();
-          flagMutation.mutate();
+          if (currentFile)
+            flagMutation.mutate({
+              fileId: currentFile.id,
+              flagged: !currentFile.flagged,
+            });
           break;
-        case "a":
-        case "A":
-          // Cmd+A / Ctrl+A: select all files (for bulk verify). Plain A
-          // is unbound.
-          if (e.metaKey || e.ctrlKey) {
-            e.preventDefault();
-            if (files.length > 1) {
-              const all = new Set<number>();
-              for (let i = 0; i < files.length; i++) all.add(i);
-              setBulkSelection(all);
-            }
-          }
-          break;
-        case "n":
-        case "N":
-          if (e.metaKey || e.ctrlKey) break;
+        case "b":
+        case "B":
           e.preventDefault();
-          observeMutation.mutate();
-          break;
-        case "Delete":
-        case "Backspace":
-          if (selectedDetectionId) {
-            e.preventDefault();
-            deleteDetectionMutation.mutate(selectedDetectionId);
-          }
+          setBoxesHidden((h) => !h);
           break;
         case "Escape":
           e.preventDefault();
-          if (bulkSelection.size > 0) {
-            setBulkSelection(new Set());
-          } else if (selectedDetectionId) {
-            setSelectedDetectionId(null);
-          } else if (drawMode) {
-            setDrawMode(false);
-          } else {
-            onClose();
-          }
+          onClose();
           break;
       }
     };
@@ -824,63 +636,24 @@ export function EventDetailModal({
     // before any focused button's implicit Enter-activates-click. Without
     // capture, clicking the > nav button grabs focus, and the next Enter
     // would re-fire that button's onClick (handleNext) instead of going
-    // through the case "Enter" branch (verify + handleNextUnverified).
+    // through the case "Enter" branch (confirm + next unconfirmed).
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     isOpen,
     currentFile,
-    drawMode,
-    filteredDetections,
-    handlePrev,
-    handleNext,
-    handleNextUnverified,
-    handleVerifyAndNext,
+    handleConfirmAndAdvance,
+    toggleAutoPlay,
     onClose,
-    selectedDetectionId,
     selectedFileIndex,
     files.length,
-    verifyMutation,
     flagMutation,
-    markBlankMutation,
-    deleteDetectionMutation,
-    shortcutLabels,
-    eventId,
-    queryClient,
-    bulkSelection,
-    files,
     viewMode,
-    sourceVideos,
+    playFocusedVideo,
+    navigateEvent,
+    adjacent,
+    relabelDetectionId,
   ]);
-
-  // B key hold: momentarily hide boxes
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-      if ((e.key === "b" || e.key === "B") && !e.repeat) {
-        setBoxesHidden(true);
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "b" || e.key === "B") {
-        setBoxesHidden(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -901,309 +674,64 @@ export function EventDetailModal({
 
         {/* Main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Left toolbar */}
+          {/* Left toolbar — tools that act on the focused image. */}
           {currentFile && (
-            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white shrink-0">
-              <Button
-                variant={drawMode ? "default" : "ghost"}
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setDrawMode(!drawMode)}
-                title="Draw new box (D)"
-              >
-                <SquareDashed className="h-4 w-4" />
-              </Button>
-              {/* Add observation (N). Direct action using the active
-                  species; same pattern as Draw-box. */}
+            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
+              {/* Watching a video moved to a big center play button over the
+                  focus (the universal pattern), so the rail no longer carries
+                  a play control of its own — only the cine-loop below. */}
+              {/* Image: brightness / contrast (seeing a dark IR animal). */}
+              <ViewControls
+                brightness={brightness}
+                onBrightnessChange={setBrightness}
+                contrast={contrast}
+                onContrastChange={setContrast}
+              />
+              {/* Show / hide the AI boxes — toggle off to count the scene
+                  yourself without the AI's boxes anchoring you. */}
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => observeMutation.mutate()}
-                disabled={observeMutation.isPending}
-                title="Add observation without a bounding box (N)"
+                onClick={() => setBoxesHidden((h) => !h)}
+                title={boxesHidden ? "Show AI boxes (B)" : "Hide AI boxes (B)"}
               >
-                <Binoculars className="h-4 w-4" />
-              </Button>
-              {/* Active species picker — always visible. Sets the
-                  species both Draw-box and Add-Obs apply. Auto-defaults
-                  to the event's most-common label; click to override. */}
-              <div className="[&_button]:h-8 [&_button]:w-8 [&_button]:p-0 [&_button]:justify-center [&_svg]:opacity-100">
-                <LabelPicker
-                  value={effectiveActiveLabel.label || effectiveActiveLabel.category}
-                  onSelect={(option) =>
-                    setActiveLabel({ category: option.category, label: option.label ?? undefined })
-                  }
-                  options={labelOptions}
-                  isLoading={labelOptionsLoading}
-                  pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
-                    key: Number(k),
-                    option: v,
-                  }))}
-                  hideDot
-                  hideLabel
-                  projectId={projectId}
-                  triggerIcon={Tag}
-                  triggerTitle={
-                    effectiveActiveLabel.label
-                      ? `Set label for new boxes and observations · current: ${
-                          effectiveActiveLabel.label.charAt(0).toUpperCase() +
-                          effectiveActiveLabel.label.slice(1).replace(/[_-]+/g, " ")
-                        }`
-                      : "Set label for new boxes and observations · not set (defaults to animal)"
-                  }
-                />
-              </div>
-              {/* Video toggle (for video file rows) */}
-              {currentFile.file_type === "video" && (
-                sourceVideos.length > 1 ? (
-                  <Popover open={videoPopoverOpen} onOpenChange={setVideoPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={viewMode === "video" ? "default" : "ghost"}
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          if (viewMode === "video") {
-                            setViewMode("frame");
-                            setVideoPopoverOpen(false);
-                          }
-                          // Opening is handled by Popover onOpenChange
-                        }}
-                        disabled={!isPlayableVideo(currentFile)}
-                        title={
-                          !isPlayableVideo(currentFile)
-                            ? "Video format not supported for browser playback"
-                            : viewMode === "video"
-                              ? "View frame"
-                              : "Play video"
-                        }
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent side="right" className="w-48 p-2">
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
-                          Select video
-                        </p>
-                        {sourceVideos.map((sv, i) => (
-                          <button
-                            key={sv.id}
-                            className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
-                            onClick={() => {
-                              setSelectedVideoId(sv.id);
-                              const videoFileIndex = files.findIndex(
-                                (f) => f.id === sv.id
-                              );
-                              if (videoFileIndex >= 0)
-                                setSelectedFileIndex(videoFileIndex);
-                              setVideoPopoverOpen(false);
-                              setViewMode("video");
-                            }}
-                          >
-                            Video {i + 1}{" "}
-                            <span className="text-muted-foreground">
-                              ({sv.frameCount} frame{sv.frameCount !== 1 ? "s" : ""})
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                {boxesHidden ? (
+                  <EyeOff className="h-4 w-4" />
                 ) : (
-                  <Button
-                    variant={viewMode === "video" ? "default" : "ghost"}
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setViewMode(viewMode === "video" ? "frame" : "video")}
-                    disabled={!isPlayableVideo(currentFile)}
-                    title={
-                      !isPlayableVideo(currentFile)
-                        ? "Video format not supported for browser playback"
-                        : viewMode === "video"
-                          ? "View frame"
-                          : "Play video"
-                    }
-                  >
-                    <Play className="h-4 w-4" />
-                  </Button>
-                )
-              )}
-              <div className="w-6 border-t my-0.5" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => zoomFnRef.current?.zoomIn()}
-                title="Zoom in"
-              >
-                <ZoomIn className="h-4 w-4" />
+                  <Eye className="h-4 w-4" />
+                )}
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => zoomFnRef.current?.zoomOut()}
-                title="Zoom out"
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => zoomFnRef.current?.resetZoom()}
-                title="Reset zoom"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-              <div className="w-6 border-t my-0.5" />
-              {/* View threshold popover (local override; does not change
-                  the project's detection_threshold). */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title={`View threshold: ${(detectionThreshold * 100).toFixed(0)}%`}
-                  >
-                    <Scale className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent side="right" className="w-48 p-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">View threshold</span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {(detectionThreshold * 100).toFixed(0)}%
-                        </span>
-                        {localThreshold !== null && (
-                          <button
-                            onClick={() => setLocalThreshold(null)}
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                            title={`Reset to project default (${(projectThreshold * 100).toFixed(0)}%)`}
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <Slider
-                      value={[detectionThreshold]}
-                      onValueChange={([v]) => setLocalThreshold(v)}
-                      min={0}
-                      max={1}
-                      step={0.05}
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {/* Brightness popover */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title={`Brightness: ${brightness}%`}
-                  >
-                    <Sun className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent side="right" className="w-48 p-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">Brightness</span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {brightness}%
-                        </span>
-                        {brightness !== 50 && (
-                          <button
-                            onClick={() => setBrightness(50)}
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                            title="Reset to 50%"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <Slider
-                      value={[brightness]}
-                      onValueChange={([v]) => setBrightness(v)}
-                      min={0}
-                      max={100}
-                      step={5}
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {/* Contrast popover */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title={`Contrast: ${contrast}%`}
-                  >
-                    <Contrast className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent side="right" className="w-48 p-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">Contrast</span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {contrast}%
-                        </span>
-                        {contrast !== 50 && (
-                          <button
-                            onClick={() => setContrast(50)}
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                            title="Reset to 50%"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <Slider
-                      value={[contrast]}
-                      onValueChange={([v]) => setContrast(v)}
-                      min={0}
-                      max={100}
-                      step={5}
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <div className="w-6 border-t my-0.5" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => favoriteMutation.mutate()}
-                disabled={favoriteMutation.isPending}
-                title={currentFile.favorited ? "Unlike" : "Like"}
-              >
-                <Heart
-                  className={cn(
-                    "h-4 w-4",
-                    currentFile.favorited && "fill-[#882000] text-[#882000]"
+              {/* Loop event — cine-loop the event's frames to see motion.
+                  Videos show as their best frame here; watch a clip in full
+                  via the center play button on the focus. The loop glyph
+                  keeps it distinct from that video-play triangle. */}
+              {files.length > 1 && (
+                <Button
+                  variant={autoPlay ? "default" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={toggleAutoPlay}
+                  title={autoPlay ? "Stop (Space)" : "Loop event (Space)"}
+                >
+                  {autoPlay ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Repeat className="h-4 w-4" />
                   )}
-                />
-              </Button>
+                </Button>
+              )}
+              {/* Flag for review — the one triage action worth its own key. */}
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => flagMutation.mutate()}
+                onClick={() =>
+                  flagMutation.mutate({
+                    fileId: currentFile.id,
+                    flagged: !currentFile.flagged,
+                  })
+                }
                 disabled={flagMutation.isPending}
                 title={currentFile.flagged ? "Remove flag" : "Flag for review (F)"}
               >
@@ -1214,35 +742,91 @@ export function EventDetailModal({
                   )}
                 />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleDownload}
-                title={
-                  currentFile && isPlayableVideo(currentFile)
-                    ? "Download annotated video"
-                    : "Download annotated image"
-                }
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => revealInFolder(currentFile)}
-                title="Open in file explorer"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
+              {/* Everything else (zoom, like, download, reveal) is rarely
+                  used here, so it lives behind one "more" menu. */}
+              <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="More"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="right" align="start" className="w-48 p-1">
+                  <button
+                    onClick={() => {
+                      setMoreOpen(false);
+                      favoriteMutation.mutate({
+                        fileId: currentFile.id,
+                        favorited: !currentFile.favorited,
+                      });
+                    }}
+                    disabled={favoriteMutation.isPending}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <Heart
+                      className={cn(
+                        "h-4 w-4",
+                        currentFile.favorited && "fill-[#882000] text-[#882000]"
+                      )}
+                    />
+                    {currentFile.favorited ? "Unlike" : "Like"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMoreOpen(false);
+                      handleDownload();
+                    }}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    {isPlayableVideo(currentFile)
+                      ? "Download video"
+                      : "Download image"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMoreOpen(false);
+                      revealInFolder(currentFile);
+                    }}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Open in file explorer
+                  </button>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
-          {/* Image area */}
-          <div className="flex-1 flex flex-col min-w-0">
-            {/* Main image/video with detections */}
-            <div className="flex-1 flex items-center justify-center bg-black/95 min-h-0 p-2 rounded-lg">
+          {/* Center column: focused image + resizable filmstrip below. */}
+          <div ref={centerColumnRef} className="flex-1 flex flex-col min-w-0">
+            {/* Focused image / video — all tools act here. */}
+            <div className="relative flex-1 flex items-center justify-center bg-black/95 min-h-0">
+              {/* Restart cue — flashed centered when the auto-play loop wraps
+                  back to the first frame. Self-hides via the CSS fade. */}
+              {restartFlash > 0 && (
+                <div
+                  key={restartFlash}
+                  className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                  style={{ animation: "restart-flash 0.8s ease-out forwards" }}
+                >
+                  <RotateCcw className="h-20 w-20 text-white" />
+                </div>
+              )}
+              {/* Position-in-event chip + gap since the previous frame —
+                  glanceable while scrubbing, eyes on the focus. */}
+              {files.length > 1 && (
+                <div className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md bg-black/60 px-2.5 py-1 text-sm font-medium tabular-nums text-white/90">
+                  {selectedFileIndex + 1} / {files.length}
+                  {focusGap && (
+                    <span className="text-white/60"> · {focusGap}</span>
+                  )}
+                </div>
+              )}
               {currentFile ? (
                 viewMode === "video" && isPlayableVideo(currentFile) ? (
                   <VideoPlayer
@@ -1255,47 +839,113 @@ export function EventDetailModal({
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
                   />
                 ) : (
+                  // View-only on the Counts page: boxes show but aren't
+                  // edited here (label/box cleanup lives on the Labels page).
                   <AnnotationCanvas
                     file={currentFile}
                     detectionThreshold={detectionThreshold}
-                    selectedDetectionId={selectedDetectionId}
-                    onSelectDetection={setSelectedDetectionId}
-                    drawMode={drawMode}
-                    onDrawModeChange={setDrawMode}
-                    onMutated={() => {
-                      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-                      queryClient.invalidateQueries({ queryKey: ["events"] });
-                      queryClient.invalidateQueries({ queryKey: ["file"] });
-                      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+                    selectedDetectionId={relabelDetectionId}
+                    onSelectDetection={() => {}}
+                    onRequestRelabel={(id) => {
+                      setAutoPlay(false);
+                      setRelabelDetectionId(id);
                     }}
+                    drawMode={false}
+                    onDrawModeChange={() => {}}
+                    readOnly
+                    onScrubFrame={handleScrubFrame}
                     imageFilter={imageFilter}
-                    defaultCategory={effectiveActiveLabel.category}
-                    defaultLabel={effectiveActiveLabel.label}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
-                    zoomFnRef={zoomFnRef}
                   />
                 )
               ) : (
                 <div className="text-white/50">Loading...</div>
               )}
+
+              {/* Big center play button over a focused video's still — the
+                  universal "watch this clip" affordance. Hidden during the
+                  cine-loop (frames are flipping) and once the player is up.
+                  The wrapper is click-through so the still still pans/zooms;
+                  only the button itself catches the click. */}
+              {currentFile?.file_type === "video" &&
+                viewMode !== "video" &&
+                !autoPlay &&
+                (isPlayableVideo(currentFile) ? (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={playFocusedVideo}
+                      title="Watch this video (P)"
+                      className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/40 transition hover:scale-105 hover:bg-black/75"
+                    >
+                      <Play className="h-7 w-7 translate-x-0.5 fill-white text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center">
+                    <span className="rounded-md bg-black/60 px-2.5 py-1 text-xs text-white/80">
+                      Video format not supported for playback
+                    </span>
+                  </div>
+                ))}
             </div>
 
-            {/* Filmstrip */}
-            {files.length > 0 && (
+            {/* Headless relabel picker — opened by clicking a label pill on
+                the focus image. The trigger is taken out of the flow
+                (absolute, zero-size); the dialog is portaled by Radix, so
+                the wrapper position doesn't matter. Mirrors the Labels page
+                (DetectionDetailModal). */}
+            <div
+              aria-hidden="true"
+              className="absolute h-0 w-0 overflow-hidden pointer-events-none"
+            >
+              <LabelPicker
+                headless
+                value={relabelDetection?.label ?? null}
+                displayName={relabelDetection?.scientific_name ?? null}
+                options={labelOptions}
+                isLoading={labelOptionsLoading}
+                projectId={projectId}
+                forceOpen={relabelDetectionId !== null}
+                onOpenChange={(open) => {
+                  if (!open) setRelabelDetectionId(null);
+                }}
+                onSelect={(option) => {
+                  if (relabelDetectionId == null) return;
+                  relabelMutation.mutate({
+                    id: relabelDetectionId,
+                    label: option.label,
+                    category: option.category,
+                  });
+                }}
+              />
+            </div>
+
+            {/* Draggable divider between the focus and the filmstrip. */}
+            <div
+              onMouseDown={startDividerDrag}
+              className="h-1.5 shrink-0 cursor-row-resize bg-border transition-colors hover:bg-primary/40"
+              title="Drag to resize the filmstrip"
+            />
+
+            {/* Resizable filmstrip grid; thumbnails mirror the focus. */}
+            <div style={{ height: filmstripHeight }} className="shrink-0 min-h-0">
               <EventFilmstrip
                 files={files}
                 selectedIndex={selectedFileIndex}
+                onSelectFile={handleSelectFile}
                 detectionThreshold={detectionThreshold}
-                maxNFrames={event?.max_n_frames ?? []}
-                onSelectIndex={handleFilmstripSelect}
-                bulkSelection={bulkSelection}
+                showBoxes={!boxesHidden}
+                imageFilter={imageFilter}
+                tileSize={tileSize}
+                onTileSizeChange={setTileSize}
               />
-            )}
+            </div>
           </div>
 
           {/* Right sidebar: navigation + verification panel */}
-          <div className="w-80 bg-white flex flex-col shrink-0">
+          <div className="w-80 bg-white border-l flex flex-col shrink-0">
             <div className="flex items-center justify-between px-3 py-1.5 shrink-0">
               <div className="flex items-center gap-0.5">
                 <Button
@@ -1303,8 +953,8 @@ export function EventDetailModal({
                   size="icon"
                   className="h-7 w-7"
                   disabled={prevDisabled}
-                  onClick={handlePrev}
-                  title="Previous (←)"
+                  onClick={() => navigateEvent(adjacent?.previous_id)}
+                  title="Previous event (←)"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -1313,8 +963,8 @@ export function EventDetailModal({
                   size="icon"
                   className="h-7 w-7"
                   disabled={nextDisabled}
-                  onClick={handleNext}
-                  title="Next (→)"
+                  onClick={() => navigateEvent(adjacent?.next_id)}
+                  title="Next event (→)"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -1322,9 +972,9 @@ export function EventDetailModal({
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
-                  disabled={nextUnverifiedDisabled}
-                  onClick={handleNextUnverified}
-                  title="Next unverified"
+                  disabled={nextUnconfirmedDisabled}
+                  onClick={handleNextUnconfirmed}
+                  title="Next unconfirmed event"
                 >
                   <ChevronsRight className="h-4 w-4" />
                 </Button>
@@ -1339,63 +989,35 @@ export function EventDetailModal({
               </Button>
             </div>
 
-            {/* File metadata card */}
-            {currentFile && (
-              <div className="mx-3 mt-2 rounded-lg border bg-muted/40">
-                <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-                  <h3 className="text-sm font-semibold">
-                    {currentFile.file_type === "video" ? "Video" : "Image"}
-                  </h3>
-                  {currentFileMaxNFrames.map((frame) => (
-                    <span
-                      key={frame.label}
-                      className="text-[10px] leading-none font-medium px-1.5 py-0.5 rounded-sm capitalize"
-                      style={{ backgroundColor: getSpeciesColor(frame.label_taxonomy_id || frame.label || ""), color: getSpeciesTextColor(frame.label_taxonomy_id || frame.label || "") }}
-                    >
-                      MaxN: {frame.label} ×{frame.max_n}
-                    </span>
-                  ))}
+            {/* Event summary — what you're confirming (media, when, where).
+                The muted last line names the frame you're currently viewing. */}
+            {event && eventSummary && (
+              <div className="mx-3 mt-3 shrink-0 rounded-lg border bg-muted/40 px-3 py-2 space-y-0.5 text-xs text-muted-foreground">
+                <div className="font-medium text-foreground">
+                  {eventSummary.media}
                 </div>
-                <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
-                  <div className="truncate">
-                    {basename(currentFile.file_path)}
+                {eventSummary.when && <div>{eventSummary.when}</div>}
+                {event.site_name && <div>{event.site_name}</div>}
+                {currentFile && (
+                  <div className="truncate pt-0.5 text-[11px] text-muted-foreground/70">
+                    Viewing {basename(currentFile.file_path)} (
+                    {selectedFileIndex + 1} of {files.length})
                   </div>
-                  <div>
-                    {formatCameraDate(currentFile.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
-                    {formatCameraTime(currentFile.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}
-                    {event?.site_name && ` · ${event.site_name}`}
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
-            {/* Verification panel */}
-            {currentFile && (
-              <FileVerificationPanel
-                key={currentFile.id}
-                file={currentFile}
+            {/* Event-level species + count editor (the ecological record,
+                and the star of this modal). */}
+            {event && (
+              <EventCountPanel
+                eventId={event.id}
                 projectId={projectId}
-                detectionThreshold={detectionThreshold}
+                observations={event.observations}
+                confirmed={event.confirmed}
+                onConfirm={handleConfirmAndAdvance}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
-                selectedDetectionId={selectedDetectionId}
-                onSelectDetection={setSelectedDetectionId}
-                openLabelPickerFor={openLabelPickerFor}
-                onLabelPickerOpenChange={(open) => {
-                  if (!open) setOpenLabelPickerFor(null);
-                }}
-                pinnedOptions={Object.entries(shortcutLabels).map(([k, v]) => ({
-                  key: Number(k),
-                  option: v,
-                }))}
-                onVerify={handleVerifyAndNext}
-                verifyPending={verifyMutation.isPending}
-                onMutated={() => {
-                  queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-                  queryClient.invalidateQueries({ queryKey: ["events"] });
-                  queryClient.invalidateQueries({ queryKey: ["file"] });
-                  queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-                }}
               />
             )}
 
@@ -1405,64 +1027,27 @@ export function EventDetailModal({
                 <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowShortcuts(false)} />
                 <div className="absolute bottom-10 right-6 mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50 whitespace-nowrap">
-                  <div className="flex gap-8">
-                    {/* Left column: navigation & selection */}
-                    <div>
-                      {[
-                        ["← →", "Prev / next MaxN frame"],
-                        ["Shift + ← →", "Prev / next frame in event"],
-                        ["↑ ↓", "Select observation"],
-                        ["Shift + Click", "Select file range"],
-                        [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all files"],
-                        ["Scroll", "Zoom in / out"],
-                        ["P", "Toggle video / frame"],
-                        ["B (hold)", "Hide boxes"],
-                        ["Esc", "Deselect / close"],
-                      ].map(([key, action]) => (
-                        <div key={key} className="flex items-center text-xs gap-3 h-7">
-                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
-                          <span>{action}</span>
-                        </div>
-                      ))}
+                  <div className="text-[11px] font-semibold text-muted-foreground mb-1">Shortcuts</div>
+                  {[
+                    ["Enter", "Confirm + next event"],
+                    ["↑ ↓", "Select species row"],
+                    ["0-9", "Set its count"],
+                    ["← →", "Prev / next event"],
+                    ["Shift + ← →", "Prev / next frame"],
+                    ["Space", "Loop event"],
+                    ["Shift + scroll", "Scrub frames"],
+                    ["Scroll", "Zoom the focus"],
+                    ["Click", "Focus a thumbnail"],
+                    ["P", "Watch focused video"],
+                    ["F", "Flag / unflag"],
+                    ["B", "Show / hide AI boxes"],
+                    ["Esc", "Close"],
+                  ].map(([key, action]) => (
+                    <div key={key} className="flex items-center text-xs gap-3 h-7">
+                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                      <span>{action}</span>
                     </div>
-
-                    {/* Right column: actions & label shortcuts */}
-                    <div>
-                      {[
-                        ["Enter", "Verify + next unverified"],
-                        ["V", "Verify (stay on file)"],
-                        ["E", "Empty + next unverified"],
-                        ["F", "Flag / unflag file"],
-                        ["Tab", "Change label"],
-                        ["N", "Add observation"],
-                        ["D", "Draw a box"],
-                        ["Del", "Delete observation"],
-                      ].map(([key, action]) => (
-                        <div key={key} className="flex items-center text-xs gap-3 h-7">
-                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
-                          <span>{action}</span>
-                        </div>
-                      ))}
-
-                      <div className="border-t my-2" />
-
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <div key={n} className="flex items-center text-xs gap-3 h-7">
-                          <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{n}</code>
-                          <span>Change all to</span>
-                          <LabelPicker
-                            value={shortcutLabels[n]?.value ?? null}
-                            onSelect={(option) =>
-                              updateShortcutLabels((prev) => ({ ...prev, [n]: option }))
-                            }
-                            options={labelOptions}
-                            isLoading={labelOptionsLoading}
-                            projectId={projectId}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  ))}
                 </div>
                 </>
               )}

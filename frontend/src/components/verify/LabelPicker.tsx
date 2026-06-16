@@ -234,6 +234,7 @@ export function LabelPicker({
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
       const option: LabelOption = {
         value: created.name,
+        displayName: created.name,
         category: "animal",
         label: created.name,
       };

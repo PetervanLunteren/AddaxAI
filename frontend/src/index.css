@@ -137,3 +137,11 @@ html, body {
   z-index: 9999 !important;
   border-radius: 0 !important;
 }
+
+/* Brief centered cue shown when the Counts auto-play loop wraps back to the
+   first frame, so the viewer knows a new pass started. */
+@keyframes restart-flash {
+  0% { opacity: 0; transform: scale(0.7); }
+  25% { opacity: 0.85; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.15); }
+}

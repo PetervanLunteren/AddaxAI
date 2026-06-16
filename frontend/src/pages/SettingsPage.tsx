@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, ChevronsUpDown, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
@@ -71,19 +71,6 @@ import {
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "../components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../components/ui/popover";
-import {
   Form,
   FormControl,
   FormDescription,
@@ -92,7 +79,6 @@ import {
   FormMessage,
 } from "../components/ui/form";
 import { TimezoneSelect } from "../components/ui/timezone-select";
-import { cn } from "../lib/utils";
 import { invalidateProjectData } from "../lib/invalidate-project";
 
 const settingsSchema = z.object({
@@ -940,7 +926,7 @@ export default function SettingsPage() {
                                     variant="outline"
                                     className="px-3"
                                     onClick={() => {
-                                      setSelectedModelId(field.value);
+                                      setSelectedModelId(field.value ?? null);
                                       setShowModelInfo(true);
                                     }}
                                   >
@@ -1050,7 +1036,7 @@ export default function SettingsPage() {
                                     variant="outline"
                                     className="px-3"
                                     onClick={() => {
-                                      setSelectedModelId(field.value);
+                                      setSelectedModelId(field.value ?? null);
                                       setShowModelInfo(true);
                                     }}
                                   >
@@ -1164,7 +1150,7 @@ export default function SettingsPage() {
                                     variant="outline"
                                     className="px-3"
                                     onClick={() => {
-                                      setSelectedModelId(field.value);
+                                      setSelectedModelId(field.value ?? null);
                                       setShowModelInfo(true);
                                     }}
                                   >
@@ -1545,7 +1531,7 @@ export default function SettingsPage() {
                             !!saveJobId ||
                             detectionModelStatus?.status !== "ready" ||
                             (hasClassificationModel && classificationModelStatus?.status !== "ready") ||
-                            (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
+                            Boolean(embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
                           }
                         >
                           <Save className="h-4 w-4 mr-2" />

@@ -6,7 +6,6 @@
  */
 
 import { useState } from "react";
-import { Loader2, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import {

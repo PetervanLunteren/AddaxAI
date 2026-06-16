@@ -5,9 +5,10 @@ Events are time-clustered groups of files within a deployment.
 """
 
 import uuid
+from collections import defaultdict
 from datetime import datetime, time
 
-from sqlalchemy import Integer, and_, delete, exists, func, insert, or_, select
+from sqlalchemy import Integer, delete, exists, func, insert, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
@@ -296,44 +297,13 @@ def _apply_event_filters(
         query = query.filter(exists(conf_subq))
 
     if verification in ("verified", "unverified"):
-        # AddaxAI rule: an event is verified when all its MaxN frames are
-        # verified; for blank events (no MaxN) the fallback is "any file
-        # verified". Matches the is_verified summary field and the stats
-        # bar, so the three surfaces always agree.
-        UnverifiedMaxNFile = aliased(File)
-        unverified_maxn_exists = exists(
-            select(EventObservation.id)
-            .join(
-                UnverifiedMaxNFile,
-                UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
-            )
-            .where(EventObservation.event_id == Event.id)
-            .where(EventObservation.max_n_file_id.isnot(None))
-            .where(UnverifiedMaxNFile.verified == False)  # noqa: E712
-        )
-        any_maxn_exists = exists(
-            select(EventObservation.id).where(
-                and_(
-                    EventObservation.event_id == Event.id,
-                    EventObservation.max_n_file_id.isnot(None),
-                )
-            )
-        )
-        AnyVerifiedFile = aliased(File)
-        any_verified_file_exists = exists(
-            select(event_files.c.event_id)
-            .join(AnyVerifiedFile, AnyVerifiedFile.id == event_files.c.file_id)
-            .where(event_files.c.event_id == Event.id)
-            .where(AnyVerifiedFile.verified == True)  # noqa: E712
-        )
-        verified_clause = or_(
-            and_(any_maxn_exists, ~unverified_maxn_exists),
-            and_(~any_maxn_exists, any_verified_file_exists),
-        )
+        # Event verification is an explicit human sign-off stored on
+        # Event.confirmed (set on the Observations page when the species
+        # and counts are confirmed). Distinct from Detection.verified.
         if verification == "verified":
-            query = query.filter(verified_clause)
+            query = query.filter(Event.confirmed == True)  # noqa: E712
         else:
-            query = query.filter(~verified_clause)
+            query = query.filter(Event.confirmed == False)  # noqa: E712
 
     if flagged in ("flagged", "not_flagged"):
         flagged_subq = (
@@ -534,6 +504,28 @@ def get_events_by_project(
     for eid in event_ids:
         max_n_by_event[eid] = get_max_n_frames(db, eid)
 
+    # Gallery-card chips must match the Counts panel's species. Source the
+    # allowed species per event from its EventObservation rows, which
+    # already apply the best-frame gate for videos (see
+    # calculate_max_n_for_event). Without this, non-best-frame per-frame
+    # classifier noise leaks into the card chips even though it's correctly
+    # excluded from the count suggestion.
+    allowed_keys_by_event: dict[str, set[str]] = defaultdict(set)
+    if event_ids:
+        obs_rows = (
+            db.query(
+                EventObservation.event_id,
+                EventObservation.label_taxonomy_id,
+                EventObservation.label,
+            )
+            .filter(EventObservation.event_id.in_(event_ids))
+            .all()
+        )
+        for eid, tid, lbl in obs_rows:
+            key = tid or lbl
+            if key is not None:
+                allowed_keys_by_event[eid].add(key)
+
     summaries = []
     for event in unique_events:
         # Sort files by sequence within event
@@ -547,6 +539,7 @@ def get_events_by_project(
         label_set: set[str] = set()
         label_to_scientific: dict[str, str] = {}
         label_to_common: dict[str, str] = {}
+        allowed_keys = allowed_keys_by_event.get(event.id, set())
         for f in sorted_files:
             for d in f.detections:
                 meets_floor = (
@@ -562,6 +555,12 @@ def get_events_by_project(
                 )
                 if meets_floor and meets_min and meets_max:
                     tid = d.label_taxonomy_id
+                    raw = d.label if d.label is not None else d.category
+                    # Same gate as the count suggestion: only species the
+                    # event's EventObservation rows kept (best-frame gated
+                    # for videos) become chips.
+                    if (tid or raw) not in allowed_keys:
+                        continue
                     if tid:
                         label_set.add(tid)
                         if tid not in label_to_scientific:
@@ -573,7 +572,6 @@ def get_events_by_project(
                             if common:
                                 label_to_common[tid] = common
                     else:
-                        raw = d.label if d.label is not None else d.category
                         label_set.add(raw)
                         if d.scientific_name and raw not in label_to_scientific:
                             label_to_scientific[raw] = d.scientific_name
@@ -623,13 +621,10 @@ def get_events_by_project(
             if file_verified_map.get(mf["file_id"], False)
         )
 
-        # Event verification (AddaxAI rule): all MaxN frames verified.
-        # Blank events (no MaxN) fall back to "any file verified" so they
-        # require an explicit user confirmation rather than auto-completing.
-        if total_maxn_count > 0:
-            is_verified = verified_maxn_count == total_maxn_count
-        else:
-            is_verified = any(f.verified for f in sorted_files)
+        # Event verification is the explicit human sign-off on species and
+        # counts, stored on Event.confirmed (set on the Observations page).
+        # The file-level verified_* counts above stay as secondary detail.
+        is_confirmed = event.confirmed
 
         # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
         thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
@@ -663,7 +658,7 @@ def get_events_by_project(
                 "total_count": len(sorted_files),
                 "verified_maxn_count": verified_maxn_count,
                 "total_maxn_count": total_maxn_count,
-                "is_verified": is_verified,
+                "is_confirmed": is_confirmed,
                 "any_file_flagged": any_file_flagged,
                 "any_file_favorited": any_file_favorited,
             }
@@ -753,7 +748,7 @@ def get_adjacent_events(
     """
     Get adjacent event IDs for navigation.
 
-    Returns previous_id, next_id, next_unverified_id, current_index, total_count.
+    Returns previous_id, next_id, next_unconfirmed_id, current_index, total_count.
     Order matches `get_events_by_project` for the same `(sort, seed)`. The
     next/prev predicates are derived from the active sort key so modal
     Next/Prev tracks the displayed grid order.
@@ -785,7 +780,7 @@ def get_adjacent_events(
         return {
             "previous_id": None,
             "next_id": None,
-            "next_unverified_id": None,
+            "next_unconfirmed_id": None,
             "current_index": 0,
             "total_count": 0,
         }
@@ -811,20 +806,14 @@ def get_adjacent_events(
     # 3. Next (one row below current in display order).
     nxt = base().filter(next_pred).order_by(*next_order).first()
 
-    # 4. Next unverified (next row in display order with at least one
-    # unverified file). Uses base() so all active filters apply.
-    unv_file = aliased(File)
-    unv_subq = (
-        select(event_files.c.event_id)
-        .join(unv_file, unv_file.id == event_files.c.file_id)
-        .where(event_files.c.event_id == Event.id)
-        .where(unv_file.verified == False)  # noqa: E712
-        .correlate(Event)
-    )
-    nxt_unv = (
+    # 4. Next unconfirmed (next row in display order whose species and
+    # counts have not been confirmed). Uses base() so all active filters
+    # apply. This drives the "next event to confirm" jump on the
+    # Observations page.
+    nxt_unconf = (
         base()
         .filter(next_pred)
-        .filter(exists(unv_subq))
+        .filter(Event.confirmed == False)  # noqa: E712
         .order_by(*next_order)
         .first()
     )
@@ -853,7 +842,7 @@ def get_adjacent_events(
     return {
         "previous_id": prev[0] if prev else None,
         "next_id": nxt[0] if nxt else None,
-        "next_unverified_id": nxt_unv[0] if nxt_unv else None,
+        "next_unconfirmed_id": nxt_unconf[0] if nxt_unconf else None,
         "current_index": idx,
         "total_count": total,
     }
@@ -971,54 +960,22 @@ def get_event_verification_stats(
     total_detections = int(det_total_q.scalar() or 0)
     verified_detections = int(det_verified_q.scalar() or 0)
 
-    # Event-level verification: total and fully-verified counts.
-    # AddaxAI rule: an event is verified when all its MaxN frames are
-    # verified, or (for blank events with no MaxN) when any file in it
-    # is verified.
+    # Event-level verification: total and signed-off counts. Event
+    # verification is the explicit human sign-off stored on Event.confirmed.
     events_total_q = db.query(func.count(Event.id)).filter(
         Event.id.in_(select(event_ids_subq.c.id))
     )
     events_total = events_total_q.scalar() or 0
 
-    UnverifiedMaxNFile = aliased(File)
-    unverified_maxn_exists = exists(
-        select(EventObservation.id)
-        .join(
-            UnverifiedMaxNFile,
-            UnverifiedMaxNFile.id == EventObservation.max_n_file_id,
-        )
-        .where(EventObservation.event_id == Event.id)
-        .where(EventObservation.max_n_file_id.isnot(None))
-        .where(UnverifiedMaxNFile.verified == False)  # noqa: E712
-    )
-    any_maxn_exists = exists(
-        select(EventObservation.id).where(
-            and_(
-                EventObservation.event_id == Event.id,
-                EventObservation.max_n_file_id.isnot(None),
-            )
-        )
-    )
-    AnyVerifiedFile = aliased(File)
-    any_verified_file_exists = exists(
-        select(event_files.c.event_id)
-        .join(AnyVerifiedFile, AnyVerifiedFile.id == event_files.c.file_id)
-        .where(event_files.c.event_id == Event.id)
-        .where(AnyVerifiedFile.verified == True)  # noqa: E712
-    )
-    events_fully_verified_clause = or_(
-        and_(any_maxn_exists, ~unverified_maxn_exists),
-        and_(~any_maxn_exists, any_verified_file_exists),
-    )
-    events_fully_verified_q = (
+    events_confirmed_q = (
         db.query(func.count(Event.id))
         .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .filter(events_fully_verified_clause)
+        .filter(Event.confirmed == True)  # noqa: E712
     )
-    events_fully_verified = events_fully_verified_q.scalar() or 0
+    events_confirmed = events_confirmed_q.scalar() or 0
 
     return {
-        "events_fully_verified": events_fully_verified,
+        "events_confirmed": events_confirmed,
         "events_total": events_total,
         "total_files": file_stats[0] or 0,
         "verified_files": int(file_stats[1] or 0),

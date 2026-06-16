@@ -29,7 +29,8 @@ import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
-import EditPage from "./pages/EditPage";
+import LabelsPage from "./pages/LabelsPage";
+import CountsPage from "./pages/CountsPage";
 import ExportPage from "./pages/ExportPage";
 import SettingsPage from "./pages/SettingsPage";
 import SetupPage from "./pages/SetupPage";
@@ -39,7 +40,8 @@ import { HomePage } from "./pages/HomePage";
 import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
 import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
 import { FolderRunOverviewStep } from "./pages/folder-run/FolderRunOverviewStep";
-import { FolderRunEditStep } from "./pages/folder-run/FolderRunEditStep";
+import { FolderRunLabelsStep } from "./pages/folder-run/FolderRunLabelsStep";
+import { FolderRunCountsStep } from "./pages/folder-run/FolderRunCountsStep";
 import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
@@ -363,6 +365,32 @@ function ProjectIndexRoute() {
   return <Navigate to={hasData ? "dashboard" : "process"} replace />;
 }
 
+/**
+ * Shows a toast when the Electron main process finishes auto-saving a
+ * download to the Downloads folder (it no longer pops a Save dialog).
+ * One toast per file, with a reveal-in-folder action. No-op in the
+ * browser, where `electronAPI` is undefined and downloads behave normally.
+ */
+function DownloadCompleteToasts() {
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onDownloadComplete) return;
+    return api.onDownloadComplete(({ filename, path, success }) => {
+      if (!success) {
+        toast.error(`Could not save ${filename}`);
+        return;
+      }
+      toast.success(`Saved ${filename} to Downloads`, {
+        action: {
+          label: "Show in folder",
+          onClick: () => void api.showItemInFolder(path),
+        },
+      });
+    });
+  }, []);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -384,9 +412,10 @@ function App() {
                 redirects to the persisted step. */}
             <Route path="/folder-runs/:runId" element={<FolderRunLayout />}>
               <Route index element={<FolderRunResumeIndex />} />
-              <Route path="model" element={<FolderRunModelStep />} />
-              <Route path="overview" element={<FolderRunOverviewStep />} />
-              <Route path="edit" element={<FolderRunEditStep />} />
+              <Route path="setup" element={<FolderRunModelStep />} />
+              <Route path="summary" element={<FolderRunOverviewStep />} />
+              <Route path="labels" element={<FolderRunLabelsStep />} />
+              <Route path="counts" element={<FolderRunCountsStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
             </Route>
 
@@ -396,7 +425,8 @@ function App() {
             <Route path="/projects/:projectId" element={<AppLayout />}>
               <Route index element={<ProjectIndexRoute />} />
               <Route path="process" element={<AnalysesPage />} />
-              <Route path="edit" element={<EditPage />} />
+              <Route path="labels" element={<LabelsPage />} />
+              <Route path="counts" element={<CountsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />
@@ -414,6 +444,7 @@ function App() {
 
         {/* Global toast notifications */}
         <ModelUpdateToast />
+        <DownloadCompleteToasts />
         <Toaster />
       </BrowserRouter>
     </QueryClientProvider>

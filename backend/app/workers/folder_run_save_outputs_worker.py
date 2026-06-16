@@ -42,18 +42,18 @@ from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.annotated_copies import (
     write_annotated_copies,
 )
-from app.ml.postprocessing_outputs.observations_csv import (
-    write_observations_csv,
-)
-from app.ml.postprocessing_outputs.observations_xlsx import (
-    write_observations_xlsx,
-)
 from app.ml.postprocessing_outputs.recognition_json import (
     write_recognition_json,
 )
 from app.ml.postprocessing_outputs.run_readme import write_run_readme
 from app.ml.postprocessing_outputs.separate_folders import (
     separate_into_folders,
+)
+from app.ml.postprocessing_outputs.tables_csv import (
+    write_tables_csv,
+)
+from app.ml.postprocessing_outputs.tables_xlsx import (
+    write_tables_xlsx,
 )
 from app.services.folder_scanner import OUTPUT_DIR_MARKER
 
@@ -237,13 +237,13 @@ async def process_save_outputs_job(job_id: str) -> None:
                         ctx.output_root,
                     ).to_dict()
                 if m == "csv":
-                    return write_observations_csv(
+                    return write_tables_csv(
                         db,
                         project.id,
                         ctx,
                     ).to_dict()
                 if m == "xlsx":
-                    return write_observations_xlsx(
+                    return write_tables_xlsx(
                         db,
                         project.id,
                         ctx,

@@ -204,12 +204,17 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
         conn.execute(text("ALTER TABLE projects DROP COLUMN mode"))
         conn.execute(text("ALTER TABLE projects DROP COLUMN folder_run_state"))
         # common_name (detections) was added by c9d0e1f2a3b4 and
-        # suggestion_dismissed by d0e1f2a3b4c5, the current head and the
-        # newest detectable fingerprint. Drop both so the schema truly
-        # looks initial and the fingerprint walk does not stop near head.
+        # suggestion_dismissed by d0e1f2a3b4c5. Drop both so the schema
+        # truly looks initial and the fingerprint walk does not stop there.
         conn.execute(text("ALTER TABLE detections DROP COLUMN common_name"))
         conn.execute(
             text("ALTER TABLE detections DROP COLUMN suggestion_dismissed")
+        )
+        # events.confirmed (detectable, renamed from verified by a3b4c5d6e7f8)
+        # + event_observations.human_count are the newest detectable schema.
+        conn.execute(text("ALTER TABLE events DROP COLUMN confirmed"))
+        conn.execute(
+            text("ALTER TABLE event_observations DROP COLUMN human_count")
         )
 
     # alembic_version row stays at head — that is exactly the bug.

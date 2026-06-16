@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Ban, Check, CheckCheck, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
@@ -52,7 +52,6 @@ export function BulkActionBar({
   relabelOpen: relabelOpenProp,
   onRelabelOpenChange,
 }: BulkActionBarProps) {
-  const queryClient = useQueryClient();
   const [relabelOpenLocal, setRelabelOpenLocal] = useState(false);
   const relabelOpen = relabelOpenProp ?? relabelOpenLocal;
   const setRelabelOpen = onRelabelOpenChange ?? setRelabelOpenLocal;

@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronRight, Loader2, Pencil, Search } from "lucide-react";
+import { Check, Loader2, Pencil, Search } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import {

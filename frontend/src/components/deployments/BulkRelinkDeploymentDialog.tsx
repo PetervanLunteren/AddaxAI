@@ -185,7 +185,7 @@ export function BulkRelinkDeploymentDialog({
                     {group.items.map((item) => {
                       const dep = deploymentsById.get(item.id);
                       const isExcluded = excluded.has(item.id);
-                      const siteName = dep
+                      const siteName = dep?.site_id
                         ? siteNames[dep.site_id] ?? "Unknown site"
                         : "Unknown";
                       const relativeOld = item.folder_path.slice(
@@ -307,7 +307,7 @@ function ResultPanel({ results, deploymentsById, siteNames }: ResultPanelProps) 
             <div className="space-y-2 text-xs text-destructive/90">
               {failures.map((r) => {
                 const dep = deploymentsById.get(r.deployment_id);
-                const siteName = dep
+                const siteName = dep?.site_id
                   ? siteNames[dep.site_id] ?? "Unknown site"
                   : "Unknown";
                 return (

@@ -44,6 +44,17 @@ export interface ElectronAPI {
   getVersion: () => Promise<string>;
   isElectron: () => boolean;
   /**
+   * Subscribe to download completions (files the main process auto-saved
+   * to the Downloads folder). Returns an unsubscribe function.
+   */
+  onDownloadComplete: (
+    callback: (info: {
+      filename: string;
+      path: string;
+      success: boolean;
+    }) => void,
+  ) => () => void;
+  /**
    * Resolve the absolute filesystem path of a `File` produced by a
    * drag-and-drop event. Wraps Electron's `webUtils.getPathForFile()`.
    */

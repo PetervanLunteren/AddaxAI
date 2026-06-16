@@ -33,6 +33,10 @@ interface AnnotationCanvasProps {
   detectionThreshold: number;
   selectedDetectionId: string | null;
   onSelectDetection: (id: string | null) => void;
+  /** Fired when the user clicks a box's label pill — opens the relabel
+   *  dialog for that detection. The selected box is highlighted so it's
+   *  clear which one is being edited. */
+  onRequestRelabel?: (id: string) => void;
   drawMode: boolean;
   onDrawModeChange: (active: boolean) => void;
   /**
@@ -41,6 +45,13 @@ interface AnnotationCanvasProps {
    * grid lists). The canvas itself does not know which keys to touch.
    */
   onMutated?: () => void;
+  /** Shift+wheel steps to the previous/next frame instead of zooming.
+   *  `delta` is the wheel deltaY (negative = up/previous). */
+  onScrubFrame?: (delta: number) => void;
+  /** View-only: boxes render but are not interactive (no drag / select /
+   *  relabel), so a drag anywhere pans the zoomed image. Used by the Counts
+   *  modal, where label/box editing lives on the Labels page. */
+  readOnly?: boolean;
   imageFilter?: string;
   defaultCategory?: string;
   defaultLabel?: string;
@@ -66,9 +77,12 @@ export function AnnotationCanvas({
   detectionThreshold,
   selectedDetectionId,
   onSelectDetection,
+  onRequestRelabel,
   drawMode,
   onDrawModeChange,
   onMutated,
+  onScrubFrame,
+  readOnly,
   imageFilter,
   defaultCategory,
   defaultLabel,
@@ -80,6 +94,7 @@ export function AnnotationCanvas({
   const transformerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [loading, setLoading] = useState(true);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -100,22 +115,29 @@ export function AnnotationCanvas({
     shouldDrawBbox(d, file, detectionThreshold),
   );
 
-  // Load image — clear immediately to avoid showing old image with new detections,
-  // and ignore stale loads from rapid navigation (A → B → C where B's onload
-  // fires after C has started loading).
+  // Load image. Keep the previous image on screen while the next one loads
+  // (so rapid navigation / auto-play doesn't flash black between frames), and
+  // hide the boxes while `loading` so the old image is never shown with the
+  // new file's detections. Stale loads (A → B → C where B's onload fires after
+  // C has started) are ignored via `cancelled`.
   useEffect(() => {
-    setImage(null);
+    setLoading(true);
     let cancelled = false;
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     img.src = imageUrl;
     img.onload = () => {
-      if (!cancelled) {
-        setImage(img);
-        updateStageSize(img.naturalWidth, img.naturalHeight);
-      }
+      if (cancelled) return;
+      setImage(img);
+      updateStageSize(img.naturalWidth, img.naturalHeight);
+      setLoading(false);
     };
-    return () => { cancelled = true; };
+    img.onerror = () => {
+      if (!cancelled) setLoading(false);
+    };
+    return () => {
+      cancelled = true;
+    };
   }, [imageUrl]);
 
   // Update stage size based on container
@@ -195,13 +217,23 @@ export function AnnotationCanvas({
       const transformer = transformerRef.current;
       const wasVisible = transformer?.visible();
       transformer?.visible(false);
+      // The annotated download always carries the labels and the spotlight
+      // dim. Labels are already on screen everywhere now; the spotlight is
+      // still hidden on screen in read-only (Counts) mode, so force it on
+      // just for the export and restore it after.
+      const pills = stage.find(".label-pill");
+      const spots = stage.find(".spotlight");
+      [...pills, ...spots].forEach((n: any) => n.visible(true));
       stage.batchDraw();
 
       const pixelRatio = Math.max(1, imgWidth / stage.width());
       const dataUrl = stage.toDataURL({ pixelRatio });
 
-      // Restore transform and transformer
+      // Restore transform, transformer, and on-screen annotation visibility:
+      // pills stay shown, the spotlight reverts to its read-only state.
       transformer?.visible(wasVisible ?? true);
+      pills.forEach((n: any) => n.visible(true));
+      spots.forEach((n: any) => n.visible(!readOnly));
       stage.scale(savedScale);
       stage.position(savedPos);
       stage.batchDraw();
@@ -275,18 +307,6 @@ export function AnnotationCanvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [drawMode, onDrawModeChange]);
 
-  // Scale factor from stage to normalized coordinates
-  const scaleX = stageSize.width > 0 ? imgWidth / stageSize.width : 1;
-  const scaleY = stageSize.height > 0 ? imgHeight / stageSize.height : 1;
-
-  // Convert normalized coords to stage pixels
-  const toStage = (normX: number, normY: number, normW: number, normH: number) => ({
-    x: (normX / scaleX) * (stageSize.width / imgWidth) * imgWidth,
-    y: (normY / scaleY) * (stageSize.height / imgHeight) * imgHeight,
-    width: (normW / scaleX) * (stageSize.width / imgWidth) * imgWidth,
-    height: (normH / scaleY) * (stageSize.height / imgHeight) * imgHeight,
-  });
-
   // Simpler conversion: just scale normalized -> stage pixels
   const normToPixel = (v: number, dim: number) =>
     v * (dim === imgWidth ? stageSize.width : stageSize.height);
@@ -345,15 +365,6 @@ export function AnnotationCanvas({
     onSuccess: () => onMutated?.(),
   });
 
-  // Delete detection mutation
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => detectionsApi.delete(id),
-    onSuccess: () => {
-      onMutated?.();
-      onSelectDetection(null);
-    },
-  });
-
   // Convert screen pointer position to stage coordinates (accounting for zoom/pan)
   const getStagePointerPos = () => {
     const pointer = stageRef.current?.getPointerPosition();
@@ -370,9 +381,20 @@ export function AnnotationCanvas({
     y: Math.min(0, Math.max(pos.y, stageSize.height * (1 - z))),
   });
 
-  // Zoom via scroll wheel / trackpad pinch
+  // Plain wheel = zoom; Shift+wheel = step to the prev/next frame.
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
+    if (e.evt.shiftKey && onScrubFrame) {
+      // Holding Shift makes the browser remap the wheel to the horizontal
+      // axis (deltaY becomes 0, the value lands in deltaX), so scrub on
+      // whichever axis actually carries the scroll.
+      const d =
+        Math.abs(e.evt.deltaY) >= Math.abs(e.evt.deltaX)
+          ? e.evt.deltaY
+          : e.evt.deltaX;
+      onScrubFrame(d);
+      return;
+    }
     const stage = stageRef.current;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
@@ -563,9 +585,13 @@ export function AnnotationCanvas({
 
         {/* Detections layer */}
         <Layer>
-          {/* Spotlight dim overlay — darkens everything outside bounding boxes */}
-          {!boxesHidden && filteredDetections.length > 0 && (
+          {/* Spotlight dim overlay — darkens everything outside bounding
+              boxes. Hidden on screen in read-only (Counts) mode so the focus
+              is a clean study view, but still drawn into the download. */}
+          {!loading && !boxesHidden && filteredDetections.length > 0 && (
             <Shape
+              name="spotlight"
+              visible={!readOnly}
               sceneFunc={(context) => {
                 const ctx = (context as any)._context as CanvasRenderingContext2D;
                 ctx.save();
@@ -593,7 +619,7 @@ export function AnnotationCanvas({
             />
           )}
 
-          {!boxesHidden && filteredDetections.map((detection) => {
+          {!loading && !boxesHidden && filteredDetections.map((detection) => {
             const x = normToPixel(detection.bbox_x, imgWidth);
             const y = normToPixel(detection.bbox_y, imgHeight);
             const w = normToPixel(detection.bbox_width, imgWidth);
@@ -601,6 +627,25 @@ export function AnnotationCanvas({
             const color = getDetectionColor(detection);
             const isSelected = selectedDetectionId === detection.id;
             const pill = computePillLayout(detection);
+            // Read-only focus: a slightly bolder colored line so it stays
+            // dominant, flanked by thin casing hairlines (white one line in,
+            // black one line out). Offset by half the colored width plus half
+            // the hairline so they sit beside the color, never over it.
+            const colorW = readOnly
+              ? isSelected
+                ? 2.9
+                : 2.25
+              : isSelected
+                ? 3
+                : 2;
+            const caseW = 0.48;
+            // In read-only mode keep the line + hairlines a constant screen
+            // width by dividing out the zoom, so zooming into a small animal
+            // gives a thin border (not one scaled up to eat the pixels).
+            const zDiv = readOnly ? zoom : 1;
+            const lineW = colorW / zDiv;
+            const hairW = caseW / zDiv;
+            const caseOff = (colorW + caseW) / 2 / zDiv;
 
             // Clamp the pill so it stays inside the stage. Without this, a
             // bbox near the right edge of the image pushes its label pill
@@ -613,6 +658,39 @@ export function AnnotationCanvas({
 
             return (
               <React.Fragment key={detection.id}>
+                {/* Read-only focus has no dim to provide contrast, so the
+                    colored line gets a single black hairline just outside it
+                    (carries it on light backgrounds) and a single white
+                    hairline just inside (on dark ones): white / color / black,
+                    not a symmetric sandwich. */}
+                {readOnly && (
+                  <>
+                    <Rect
+                      x={x - caseOff}
+                      y={y - caseOff}
+                      width={w + caseOff * 2}
+                      height={h + caseOff * 2}
+                      stroke="rgba(0,0,0,0.6)"
+                      strokeWidth={hairW}
+                      fill="transparent"
+                      cornerRadius={BBOX_CORNER_RADIUS + caseOff}
+                      listening={false}
+                    />
+                    {w - caseOff * 2 > 0 && h - caseOff * 2 > 0 && (
+                      <Rect
+                        x={x + caseOff}
+                        y={y + caseOff}
+                        width={w - caseOff * 2}
+                        height={h - caseOff * 2}
+                        stroke="rgba(255,255,255,0.7)"
+                        strokeWidth={hairW}
+                        fill="transparent"
+                        cornerRadius={Math.max(0, BBOX_CORNER_RADIUS - caseOff)}
+                        listening={false}
+                      />
+                    )}
+                  </>
+                )}
                 {/* Bounding box (stroke only, rounded) */}
                 <Rect
                   id={`det-${detection.id}`}
@@ -621,18 +699,46 @@ export function AnnotationCanvas({
                   width={w}
                   height={h}
                   stroke={color}
-                  strokeWidth={isSelected ? 3 : 2}
-                  opacity={BBOX_OPACITY}
+                  strokeWidth={lineW}
+                  opacity={readOnly ? 1 : BBOX_OPACITY}
                   fill="transparent"
                   cornerRadius={BBOX_CORNER_RADIUS}
-                  draggable={!drawMode}
+                  listening={!readOnly}
+                  draggable={!drawMode && !readOnly}
                   onClick={() => onSelectDetection(detection.id)}
                   onTap={() => onSelectDetection(detection.id)}
                   onDragEnd={(e) => handleDragEnd(detection, e)}
                   onTransformEnd={(e) => handleTransformEnd(detection, e)}
                 />
-                {/* Label pill */}
-                <Group x={pillX} y={pillY} listening={false}>
+                {/* Label pill — click to relabel this box in place. Shown in
+                    read-only (Counts) mode too: when skimming or looping an
+                    event you can't cross-reference box colours against a
+                    legend at speed, so the per-box species is what makes the
+                    scene readable. The show/hide AI overlays toggle (B) clears
+                    them along with the boxes when a frame gets too busy. */}
+                <Group
+                  name="label-pill"
+                  visible={true}
+                  x={pillX}
+                  y={pillY}
+                  listening={!drawMode}
+                  onClick={() => {
+                    onSelectDetection(detection.id);
+                    onRequestRelabel?.(detection.id);
+                  }}
+                  onTap={() => {
+                    onSelectDetection(detection.id);
+                    onRequestRelabel?.(detection.id);
+                  }}
+                  onMouseEnter={(e) => {
+                    const c = e.target.getStage()?.container();
+                    if (c) c.style.cursor = "pointer";
+                  }}
+                  onMouseLeave={(e) => {
+                    const c = e.target.getStage()?.container();
+                    if (c) c.style.cursor = drawMode ? "crosshair" : "default";
+                  }}
+                >
                   <Rect
                     width={pill.pillWidth}
                     height={pill.pillHeight}

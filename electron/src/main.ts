@@ -514,8 +514,55 @@ ipcMain.handle('app:getVersion', () => {
  * Application lifecycle handlers
  */
 
+/**
+ * Pick a non-colliding path: append " (1)", " (2)", ... before the
+ * extension if the target already exists, mirroring the OS download
+ * behaviour so a second export never silently overwrites the first.
+ */
+function uniqueDownloadPath(target: string): string {
+  if (!fs.existsSync(target)) return target;
+  const dir = path.dirname(target);
+  const ext = path.extname(target);
+  const base = path.basename(target, ext);
+  let i = 1;
+  let candidate = path.join(dir, `${base} (${i})${ext}`);
+  while (fs.existsSync(candidate)) {
+    i += 1;
+    candidate = path.join(dir, `${base} (${i})${ext}`);
+  }
+  return candidate;
+}
+
+/**
+ * Send renderer-initiated downloads straight to the user's Downloads
+ * folder instead of popping a Save dialog per file. This is what makes a
+ * multi-file export (the spreadsheet CSV/TSV writes detections + counts)
+ * land smoothly without two dialogs. Attached once to the default session.
+ *
+ * Only affects browser-style downloads (the Export page's blob downloads,
+ * the camtrap-dp ZIP). The folder-run Save step writes files server-side
+ * to a chosen folder and never goes through this path.
+ */
+function setupDownloadHandler(): void {
+  session.defaultSession.on('will-download', (_event, item) => {
+    const downloadsDir = app.getPath('downloads');
+    const savePath = uniqueDownloadPath(
+      path.join(downloadsDir, item.getFilename()),
+    );
+    item.setSavePath(savePath);
+    item.once('done', (_e, state) => {
+      mainWindow?.webContents.send('download:complete', {
+        filename: path.basename(savePath),
+        path: savePath,
+        success: state === 'completed',
+      });
+    });
+  });
+}
+
 app.on('ready', async () => {
   try {
+    setupDownloadHandler();
     await startBackend();
     // When launched via `AddaxAI.exe --timelapse <folder>` (Saul's
     // Timelapse integration / shim), open the main window straight on a

@@ -11,7 +11,16 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Table
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Table,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -53,6 +62,14 @@ class Event(Base):
     event_start_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     event_end_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Human confirmation that the event's species and counts are correct
+    # (the "Confirm" action on the Observations page). Distinct from
+    # Detection.verified ("a label was confirmed", set on the Labels page).
+    # Cleared automatically when the event's species/count set changes
+    # (see crud/event_observation).
+    confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
+    )
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

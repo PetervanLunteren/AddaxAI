@@ -96,6 +96,61 @@ export const eventsApi = {
     return api.get<EventWithFiles>(`/api/events/${eventId}`);
   },
 
+  /** Set the human confirmation of the event's species and counts. */
+  setConfirmed: async (
+    eventId: string,
+    confirmed: boolean,
+  ): Promise<EventWithFiles> => {
+    return api.patch<EventWithFiles>(`/api/events/${eventId}/confirm`, {
+      confirmed,
+    });
+  },
+
+  /** Set (or clear, count=null) the human count for one species. */
+  setObservationCount: async (
+    eventId: string,
+    observationId: string,
+    count: number | null,
+  ): Promise<EventWithFiles> => {
+    return api.patch<EventWithFiles>(
+      `/api/events/${eventId}/observations/${observationId}`,
+      { count },
+    );
+  },
+
+  /** Record a species the AI missed (or bump an existing one). */
+  addObservation: async (
+    eventId: string,
+    data: {
+      category: string;
+      count: number;
+      label?: string | null;
+      label_taxonomy_id?: string | null;
+    },
+  ): Promise<EventWithFiles> => {
+    return api.post<EventWithFiles>(
+      `/api/events/${eventId}/observations`,
+      data,
+    );
+  },
+
+  /** Remove the human contribution to one species. */
+  deleteObservation: async (
+    eventId: string,
+    observationId: string,
+  ): Promise<EventWithFiles> => {
+    return api.delete<EventWithFiles>(
+      `/api/events/${eventId}/observations/${observationId}`,
+    );
+  },
+
+  /** Drop every human count edit on the event, back to the AI proposal. */
+  resetCounts: async (eventId: string): Promise<EventWithFiles> => {
+    return api.post<EventWithFiles>(
+      `/api/events/${eventId}/observations/reset`,
+    );
+  },
+
   /** Get adjacent event IDs for navigation with optional filters. */
   getAdjacent: async (
     eventId: string,

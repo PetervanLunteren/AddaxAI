@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { ImageIcon, Upload, X } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import { Button } from "../ui/button";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB

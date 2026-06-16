@@ -287,8 +287,6 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
 
 function describeWarningType(type: string): string {
   switch (type) {
-    case "missing_timestamp":
-      return "No capture timestamp";
     case "video_processing_failure":
       return "Could not be read";
     default:
@@ -301,52 +299,77 @@ function DeploymentWarningsSection({
 }: {
   warnings: NonNullable<DeploymentInfo["warnings"]>;
 }) {
-  // Group by type so the user reads "3 files: no timestamp" rather than
-  // a flat list of 11 rows. Inside each group the file paths are listed.
+  // Files with no capture date were still detected and classified and live
+  // in the database; they are NOT skipped. Keep them separate from the
+  // genuinely-skipped files (corrupt / unreadable) so the user isn't told a
+  // processed file was dropped.
+  const dateless = warnings.filter((w) => w.type === "missing_timestamp");
+  const skipped = warnings.filter((w) => w.type !== "missing_timestamp");
+
+  // Group skipped files by type so the user reads "3 files: could not be
+  // read" rather than a flat list. Inside each group the paths are listed.
   const groups = new Map<string, typeof warnings>();
-  for (const w of warnings) {
+  for (const w of skipped) {
     const existing = groups.get(w.type) ?? [];
     existing.push(w);
     groups.set(w.type, existing);
   }
 
-  // Cap visual height. Real-world deployments are 10k+ files, so a
-  // skip list can be hundreds of rows long; we cap the vertical
-  // footprint and let the user scroll. Long paths get a per-row
-  // horizontal scrollbar so they're not truncated.
   return (
-    <Section title="Skipped files">
-      <p className="mb-3 text-xs text-muted-foreground">
-        {warnings.length === 1
-          ? "1 file was skipped during analysis."
-          : `${warnings.length} files were skipped during analysis.`}{" "}
-        They are not in the database and won't appear on the dashboard.
-      </p>
-      <div className="max-h-72 space-y-3 overflow-auto rounded-md border bg-muted/30 p-3">
-        {Array.from(groups.entries()).map(([type, items]) => (
-          <div key={type}>
-            <div className="text-xs font-medium" style={{ color: "#882000" }}>
-              {describeWarningType(type)} ({items.length})
-            </div>
-            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-              {items.map((w, idx) => (
-                <li
-                  key={`${w.path}-${idx}`}
-                  className="whitespace-nowrap font-mono"
-                >
-                  {w.path}
-                  {w.reason && (
-                    <span className="ml-1 text-muted-foreground/60">
-                      — {w.reason}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
+    <>
+      {skipped.length > 0 && (
+        <Section title="Skipped files">
+          <p className="mb-3 text-xs text-muted-foreground">
+            {skipped.length === 1
+              ? "1 file was skipped during analysis."
+              : `${skipped.length} files were skipped during analysis.`}{" "}
+            They are not in the database and won't appear on the dashboard.
+          </p>
+          {/* Cap visual height. Real-world deployments are 10k+ files, so a
+              skip list can be hundreds of rows long; we cap the vertical
+              footprint and let the user scroll. Long paths get a per-row
+              horizontal scrollbar so they're not truncated. */}
+          <div className="max-h-72 space-y-3 overflow-auto rounded-md border bg-muted/30 p-3">
+            {Array.from(groups.entries()).map(([type, items]) => (
+              <div key={type}>
+                <div className="text-xs font-medium" style={{ color: "#882000" }}>
+                  {describeWarningType(type)} ({items.length})
+                </div>
+                <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                  {items.map((w, idx) => (
+                    <li
+                      key={`${w.path}-${idx}`}
+                      className="whitespace-nowrap font-mono"
+                    >
+                      {w.path}
+                      {w.reason && (
+                        <span className="ml-1 text-muted-foreground/60">
+                          — {w.reason}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-    </Section>
+        </Section>
+      )}
+
+      {skipped.length > 0 && dateless.length > 0 && <Separator />}
+
+      {dateless.length > 0 && (
+        <Section title="Files without a date">
+          <p className="text-xs text-muted-foreground">
+            {dateless.length === 1
+              ? "1 file had no capture date."
+              : `${dateless.length} files had no capture date.`}{" "}
+            They were detected and classified and are in the database, just left
+            out of time-based stats, charts, and trap-night effort.
+          </p>
+        </Section>
+      )}
+    </>
   );
 }
 

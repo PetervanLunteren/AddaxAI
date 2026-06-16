@@ -26,7 +26,7 @@
  * single source of truth for the run-progress + terminal-state UI
  * shared with research-projects mode). The modal's terminal footer
  * is overridden so the user gets a "Continue" button that bumps the
- * folder-run step to "overview" and navigates forward.
+ * folder-run step to "labels" and navigates forward.
  *
  * Model preparation lives on this step: each picker has a status
  * badge that opens an inline prep overlay.
@@ -130,6 +130,18 @@ const VIDEO_FPS_OPTIONS = [
   { value: "10", label: "10 frames per second" },
 ];
 
+const INDEPENDENCE_INTERVAL_OPTIONS = [
+  { value: "0", label: "Disabled" },
+  { value: "60", label: "1 minute" },
+  { value: "300", label: "5 minutes" },
+  { value: "900", label: "15 minutes" },
+  { value: "1800", label: "30 minutes" },
+  { value: "3600", label: "60 minutes" },
+  // Debugging option: large interval to group many files (e.g. several
+  // videos) into one event so multi-video event handling can be tested.
+  { value: "2592000", label: "1 month (for debugging)" },
+];
+
 const settingsSchema = z.object({
   folder_path: z.string().min(1, "Pick a folder"),
   detection_model_id: z.string().min(1),
@@ -146,6 +158,7 @@ const settingsSchema = z.object({
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
+  independence_interval: z.number().int().min(0),
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
@@ -241,6 +254,7 @@ export function FolderRunModelStep() {
       event_smoothing: true,
       smoothing_strength: "normal",
       taxonomic_rollup: true,
+      independence_interval: 1800,
     },
   });
 
@@ -279,6 +293,7 @@ export function FolderRunModelStep() {
       smoothing_strength: (run.project.smoothing_strength ??
         "normal") as "mild" | "normal" | "aggressive",
       taxonomic_rollup: run.project.taxonomic_rollup,
+      independence_interval: run.project.independence_interval,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.project.id]);
@@ -444,6 +459,7 @@ export function FolderRunModelStep() {
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
+      independence_interval: data.independence_interval,
     });
 
   /** Start analysis in an existing run. PATCH settings, kick the
@@ -486,10 +502,16 @@ export function FolderRunModelStep() {
       data: SettingsFormData;
       payload: FolderRunCreate;
     }) => {
-      const run = await folderRunsApi.create(payload);
-      await persistSettings(run.project.id, data);
+      const created = await folderRunsApi.create(payload);
+      // create() returns the project at its default settings, before
+      // persistSettings saves the chosen models. Merge the updated
+      // project back in so the run we cache in onSuccess hydrates the
+      // form with the real selections, not empty defaults. Without this,
+      // closing the run modal reveals an empty model step until reload.
+      const project = await persistSettings(created.project.id, data);
+      const run = { ...created, project };
       const resp = await deploymentQueueApi.process({
-        project_id: run.project.id,
+        project_id: created.project.id,
       });
       return { run, resp };
     },
@@ -499,10 +521,10 @@ export function FolderRunModelStep() {
         queryKey: ["folder-run-lookup", run.queue_entry?.folder_path],
       });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
-        navigate(`/folder-runs/${run.project.id}/edit`);
+        navigate(`/folder-runs/${run.project.id}/labels`);
         return;
       }
-      navigate(`/folder-runs/${run.project.id}/model`);
+      navigate(`/folder-runs/${run.project.id}/setup`);
       setRunState({
         jobIds: resp.job_ids,
         queueEntryIds: resp.queue_entry_ids,
@@ -538,7 +560,7 @@ export function FolderRunModelStep() {
 
   const skipAnalysis = () => {
     if (!lookupRun) return;
-    navigate(`/folder-runs/${lookupRun.id}/edit`);
+    navigate(`/folder-runs/${lookupRun.id}/labels`);
   };
 
   /** Re-run handler. The destructive path depends on whether the
@@ -565,6 +587,7 @@ export function FolderRunModelStep() {
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
+      independence_interval: data.independence_interval,
     });
   };
 
@@ -701,7 +724,7 @@ export function FolderRunModelStep() {
     <>
       <StepHeader
         title="Set up the analysis"
-        caption="Pick the folder, the AI models, and tune how AddaxAI will process it."
+        caption="Pick the folder and AI models. Adjust settings if needed."
       />
       <Card>
         <CardContent className="space-y-6 p-6">
@@ -883,7 +906,7 @@ export function FolderRunModelStep() {
                   {hasClassifier && taxonomy && (
                     <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
-                        <FormLabel>Label selection</FormLabel>
+                        <FormLabel>Species selection</FormLabel>
                         <FormDescription className="text-sm">
                           Limit predictions to species expected in your
                           area to cut false positives.
@@ -1290,6 +1313,42 @@ export function FolderRunModelStep() {
                       )}
                     />
 
+                    <FormField
+                      control={form.control}
+                      name="independence_interval"
+                      render={({ field }) => (
+                        <SettingRow
+                          label="Independence interval"
+                          description="Files at the same camera within this window are merged into one event. The count per event is MaxN, the peak individuals in a single frame."
+                        >
+                          <Select
+                            key={String(field.value)}
+                            value={String(field.value)}
+                            onValueChange={(v) =>
+                              field.onChange(parseInt(v))
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {INDEPENDENCE_INTERVAL_OPTIONS.map((opt) => (
+                                <SelectItem
+                                  key={opt.value}
+                                  value={opt.value}
+                                >
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </SettingRow>
+                      )}
+                    />
+
                     {hasClassifier && (
                       <SettingRow
                         label="Smoothing"
@@ -1395,7 +1454,7 @@ export function FolderRunModelStep() {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          navigate(`/folder-runs/${runId}/edit`)
+                          navigate(`/folder-runs/${runId}/labels`)
                         }
                       >
                         View results
@@ -1581,10 +1640,10 @@ export function FolderRunModelStep() {
               queryClient.invalidateQueries();
               const next = await folderRunsApi.updateStep(
                 runId,
-                "edit",
+                "labels",
               );
               queryClient.setQueryData(["folder-run", runId], next);
-              navigate(`/folder-runs/${runId}/edit`);
+              navigate(`/folder-runs/${runId}/labels`);
             };
             if (kind === "completed") {
               return (

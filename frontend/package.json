@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:check": "tsc -b && vite build",
+    "typecheck": "tsc -b",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -1,5 +1,5 @@
 """
-Observations service — subprocess dispatcher for the Observations verify tab.
+Labels service — subprocess dispatcher for the Labels verify tab.
 
 Delegates sort (greedy nearest-neighbor chain), search (FAISS k-NN), and
 cohort grouping (descendant-promotion review panel) to
@@ -9,7 +9,7 @@ environment. The main backend process never imports numpy or faiss.
 The subprocess emits NDJSON events on stdout (progress, result, error).
 This module exposes:
 
-- `stream_observations_subprocess(...)` — generator yielding raw NDJSON
+- `stream_labels_subprocess(...)` — generator yielding raw NDJSON
   bytes lines for the streaming router endpoints to relay verbatim.
 - `sort_detections` / `search_similar` — non-streaming convenience
   wrappers that drain the stream and return only the final result.
@@ -17,7 +17,7 @@ This module exposes:
 
 The subprocess script is named for the underlying algorithm (cosine
 similarity); this service is named for the feature it serves (the
-Observations tab).
+Labels tab).
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ from typing import Any
 from fastapi import Request
 from sqlalchemy.orm import Session
 
-from app.api.schemas.observation import (
-    ObservationFilters,
+from app.api.schemas.label import (
+    LabelFilters,
     SearchRequest,
     SearchResponse,
     SortRequest,
@@ -72,8 +72,8 @@ def _get_db_path() -> str:
     raise ValueError(f"Unsupported database URL format: {url}")
 
 
-def _filters_to_dict(filters: ObservationFilters) -> dict[str, Any]:
-    """Convert Pydantic ObservationFilters to a JSON-safe dict."""
+def _filters_to_dict(filters: LabelFilters) -> dict[str, Any]:
+    """Convert Pydantic LabelFilters to a JSON-safe dict."""
     d: dict[str, Any] = {}
     if filters.labels:
         # Strip :unspecified suffix from rolled-up taxonomy leaf IDs
@@ -103,7 +103,7 @@ def _filters_to_dict(filters: ObservationFilters) -> dict[str, Any]:
     return d
 
 
-def stream_observations_subprocess(
+def stream_labels_subprocess(
     operation: str, project_id: str, params: dict[str, Any]
 ) -> Iterator[bytes]:
     """Run similarity_script.py and yield each NDJSON line from its stdout.
@@ -130,7 +130,7 @@ def stream_observations_subprocess(
         "--params", json.dumps(params, default=str),
     ]
 
-    logger.info(f"Streaming observations subprocess: {operation} for project {project_id}")
+    logger.info(f"Streaming labels subprocess: {operation} for project {project_id}")
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
@@ -173,7 +173,7 @@ def stream_observations_subprocess(
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
-        msg = f"Observations subprocess timed out after {timeout_s}s"
+        msg = f"Labels subprocess timed out after {timeout_s}s"
         logger.error(msg)
         yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
         return
@@ -191,7 +191,7 @@ def stream_observations_subprocess(
             except subprocess.TimeoutExpired:
                 pass
             logger.info(
-                "Observations subprocess killed on client disconnect"
+                "Labels subprocess killed on client disconnect"
             )
         raise
     finally:
@@ -202,7 +202,7 @@ def stream_observations_subprocess(
                     logger.debug(f"similarity_script: {line}")
 
     if process.returncode != 0 and not saw_terminal_event:
-        msg = f"Observations subprocess failed (exit {process.returncode})"
+        msg = f"Labels subprocess failed (exit {process.returncode})"
         logger.error(msg)
         yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
 
@@ -221,13 +221,13 @@ def _drain_to_result(events: Iterator[bytes]) -> dict[str, Any]:
         elif event["type"] == "error":
             raise ValueError(event["message"])
     if last_result is None:
-        raise RuntimeError("Observations subprocess produced no result event")
+        raise RuntimeError("Labels subprocess produced no result event")
     return last_result
 
 
 def _apply_project_threshold(
-    filters: ObservationFilters, project_id: str, db: Session
-) -> ObservationFilters:
+    filters: LabelFilters, project_id: str, db: Session
+) -> LabelFilters:
     """Inject the project's detection threshold as `project_floor`.
 
     The floor applies the `(confidence >= floor OR verified)` override
@@ -272,7 +272,7 @@ def stream_sort(
 ) -> Iterator[bytes]:
     """NDJSON event stream for the sort endpoint."""
     params = _build_sort_params(project_id, body, db)
-    return stream_observations_subprocess("sort", project_id, params)
+    return stream_labels_subprocess("sort", project_id, params)
 
 
 def stream_search(
@@ -280,7 +280,7 @@ def stream_search(
 ) -> Iterator[bytes]:
     """NDJSON event stream for the search endpoint."""
     params = _build_search_params(project_id, body, db)
-    return stream_observations_subprocess("search", project_id, params)
+    return stream_labels_subprocess("search", project_id, params)
 
 
 def stream_cohorts(
@@ -305,7 +305,7 @@ def stream_cohorts(
             "project_floor": project.detection_threshold if project else 0.0,
         },
     }
-    return stream_observations_subprocess("cohorts", project_id, params)
+    return stream_labels_subprocess("cohorts", project_id, params)
 
 
 def sort_detections(
@@ -329,7 +329,7 @@ def search_similar(
 # ── Async streaming with client-disconnect handling ─────────────────────
 
 
-async def stream_observations_subprocess_async(
+async def stream_labels_subprocess_async(
     request: Request,
     operation: str,
     project_id: str,
@@ -361,7 +361,7 @@ async def stream_observations_subprocess_async(
         "--params", json.dumps(params, default=str),
     ]
     logger.info(
-        f"Streaming observations subprocess (async): {operation} for project {project_id}"
+        f"Streaming labels subprocess (async): {operation} for project {project_id}"
     )
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     process = subprocess.Popen(
@@ -400,7 +400,7 @@ async def stream_observations_subprocess_async(
                 )
                 break
             if time.monotonic() > deadline:
-                msg = f"Observations subprocess timed out after {timeout_s}s"
+                msg = f"Labels subprocess timed out after {timeout_s}s"
                 logger.error(msg)
                 yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
                 break
@@ -436,7 +436,7 @@ async def stream_observations_subprocess_async(
                     logger.debug(f"similarity_script: {line}")
 
     if process.returncode is not None and process.returncode != 0 and not saw_terminal_event:
-        msg = f"Observations subprocess failed (exit {process.returncode})"
+        msg = f"Labels subprocess failed (exit {process.returncode})"
         logger.error(msg)
         yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
 
@@ -445,7 +445,7 @@ async def stream_sort_async(
     request: Request, project_id: str, body: SortRequest, db: Session
 ) -> AsyncIterator[bytes]:
     params = _build_sort_params(project_id, body, db)
-    async for chunk in stream_observations_subprocess_async(
+    async for chunk in stream_labels_subprocess_async(
         request, "sort", project_id, params
     ):
         yield chunk
@@ -455,7 +455,7 @@ async def stream_search_async(
     request: Request, project_id: str, body: SearchRequest, db: Session
 ) -> AsyncIterator[bytes]:
     params = _build_search_params(project_id, body, db)
-    async for chunk in stream_observations_subprocess_async(
+    async for chunk in stream_labels_subprocess_async(
         request, "search", project_id, params
     ):
         yield chunk
@@ -476,7 +476,7 @@ async def stream_cohorts_async(
             "project_floor": project.detection_threshold if project else 0.0,
         },
     }
-    async for chunk in stream_observations_subprocess_async(
+    async for chunk in stream_labels_subprocess_async(
         request, "cohorts", project_id, params
     ):
         yield chunk

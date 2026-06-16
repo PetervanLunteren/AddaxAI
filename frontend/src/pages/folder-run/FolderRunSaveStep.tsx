@@ -144,7 +144,7 @@ export function FolderRunSaveStep() {
     <>
       <StepHeader
         title="Save outputs"
-        caption="Pick what to write to disk and where to save it"
+        caption="Pick what to write to disk and where to save it."
       />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="space-y-6">
@@ -153,7 +153,7 @@ export function FolderRunSaveStep() {
         {/* Data exports: lightweight, non-destructive, on by default. */}
         <GroupCard
           title="Export results"
-          caption="Tables and the recognition file, your media is left untouched"
+          caption="Data tables and the recognition file. Your media is untouched."
           enabled={form.exportOpts.enabled}
           onEnabledChange={(v) =>
             form.setExportOpts({ ...form.exportOpts, enabled: v })

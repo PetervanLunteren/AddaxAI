@@ -3,7 +3,7 @@
  *
  * Seeing the summary is optional, so the dashboard is collapsed behind
  * a toggle — same pattern as the Edit step. The default page is
- * lightweight (title, caption, a "View summary" button, and the Back /
+ * lightweight (title, caption, a "Show summary" button, and the Back /
  * Continue bar) so the obvious path is to move on. This was the same
  * user feedback that drove the Edit step: landing on a wall of content
  * made the step feel required when it is not.
@@ -61,7 +61,7 @@ export function FolderRunOverviewStep() {
     <div className="grid grid-cols-3 items-center gap-3">
       <Button
         variant="outline"
-        onClick={() => navigate(`/folder-runs/${runId}/edit`)}
+        onClick={() => navigate(`/folder-runs/${runId}/counts`)}
         className="justify-self-start gap-2"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -80,7 +80,7 @@ export function FolderRunOverviewStep() {
         ) : (
           <>
             <BarChart3 className="h-4 w-4" />
-            View summary
+            Show summary
           </>
         )}
       </Button>
@@ -103,8 +103,8 @@ export function FolderRunOverviewStep() {
     return (
       <div className="space-y-6">
         <StepHeader
-          title="Summary"
-          caption="See top species, counts, and activity, or skip ahead."
+          title="Review summary"
+          caption="Check top species, counts, and activity, or continue."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>
@@ -120,8 +120,8 @@ export function FolderRunOverviewStep() {
       {/* Bottom padding clears the sticky action bar so the last chart
           on the dashboard is fully visible above it. */}
       <StepHeader
-        title="Summary"
-        caption="See top species, counts, and activity, or skip ahead."
+        title="Review summary"
+        caption="Check top species, counts, and activity, or continue."
       />
       <DashboardView projectId={runId} />
       <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">

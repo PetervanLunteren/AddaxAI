@@ -390,33 +390,21 @@ export function DashboardView({ projectId }: { projectId: string }) {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <CardTitle className="text-lg">Taxa detected</CardTitle>
-                  <DashboardAboutPopover
-                    what={
-                      <p>
-                        Top 10 taxa in the filtered project view,
-                        ranked by either how often they appear
-                        (Frequency) or how many individuals were
-                        observed (Abundance). Switch with the
-                        dropdown.
-                      </p>
-                    }
-                    how={
-                      <p>
-                        Frequency counts the number of independent
-                        events containing the taxon. Abundance sums
-                        each event's MaxN across those events. MaxN
-                        is an event's count of a taxon: the most
-                        individuals of it visible in any single frame
-                        of that event, so the same animals are not
-                        re-counted frame to frame. Events come from
-                        files captured close together in time,
-                        grouped by the project's independence
-                        interval. Frequency is the basis for RAI in
-                        camera-trap ecology.
-                      </p>
-                    }
-                  />
+                  <CardTitle className="text-lg">Top taxa</CardTitle>
+                  <DashboardAboutPopover>
+                    <p>
+                      Top 10 taxa. Frequency counts the independent
+                      events containing the taxon (the basis for RAI).
+                      Abundance counts individuals, using each event's
+                      confirmed count, or the AI's count where not yet
+                      confirmed.
+                    </p>
+                    <p>
+                      The AI's count is the most individuals visible in a
+                      single frame, so the same animals aren't counted
+                      twice from frame to frame.
+                    </p>
+                  </DashboardAboutPopover>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {speciesCountMode === "events"

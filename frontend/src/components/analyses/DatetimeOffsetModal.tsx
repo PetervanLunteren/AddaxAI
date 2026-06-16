@@ -12,7 +12,7 @@
  *   buttons for common corrections (AM/PM flip, timezone shift).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -283,19 +283,6 @@ export function DatetimeOffsetModal({
             <div className="space-y-3">
               {currentFile && (() => {
                 const imgUrl = `${API_BASE_URL}/api/deployments/preview-image?folder=${encodeURIComponent(folderPath)}&file=${encodeURIComponent(currentFile.path)}`;
-                const originalDate = dateFetching
-                  ? "loading..."
-                  : currentDatetime
-                    ? fmtDate(currentDatetime)
-                    : "not available";
-                const adjustedDate =
-                  currentDatetime && offsetSeconds !== 0
-                    ? fmtDate(
-                        new Date(
-                          new Date(currentDatetime).getTime() + offsetSeconds * 1000,
-                        ).toISOString(),
-                      )
-                    : null;
                 return (
                   <>
                     <div className="rounded-lg overflow-hidden border border-border">

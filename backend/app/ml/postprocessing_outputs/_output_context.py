@@ -2,7 +2,7 @@
 
 ``separate_folders`` populates ``OutputContext.resolved_paths`` as it
 places each file. Downstream modules (``annotated_copies``,
-``observations_csv``, ``observations_xlsx``) consult the same context
+``tables_csv``, ``tables_xlsx``) consult the same context
 to discover where each source file ended up, instead of writing into
 siloed wrapper folders next to the separated tree.
 

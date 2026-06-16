@@ -3,11 +3,11 @@
  */
 
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, AlertTriangle } from "lucide-react";
+import { Info } from "lucide-react";
 import { projectsApi, type ProjectUpdate, type ProjectResponse } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { ImageDropZone } from "./ImageDropZone";
@@ -23,7 +23,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -61,11 +60,11 @@ export function EditProjectDialog({
   const queryClient = useQueryClient();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [, setShowDeleteConfirm] = useState(false);
+  const [, setDeleteConfirmText] = useState("");
 
   const form = useForm<ProjectUpdate>({
-    resolver: zodResolver(projectSchema),
+    resolver: zodResolver(projectSchema) as Resolver<ProjectUpdate>,
     defaultValues: {
       name: project.name,
       description: project.description || "",
@@ -154,7 +153,7 @@ export function EditProjectDialog({
                       </Tooltip>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Yellowstone camera trap project" {...field} />
+                      <Input placeholder="e.g., Yellowstone camera trap project" {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -186,6 +185,7 @@ export function EditProjectDialog({
                         rows={2}
                         maxLength={500}
                         {...field}
+                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <div className="flex items-center justify-between">

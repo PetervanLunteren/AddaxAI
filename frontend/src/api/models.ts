@@ -35,7 +35,7 @@ export const modelsApi = {
    * Prepare model (download weights + build environment)
    */
   prepareModel: (modelId: string) =>
-    api.post(`/api/ml/models/${modelId}/prepare`),
+    api.post<{ task_id: string }>(`/api/ml/models/${modelId}/prepare`),
 
   /**
    * Download model weights only

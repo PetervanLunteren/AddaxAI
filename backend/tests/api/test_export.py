@@ -20,6 +20,7 @@ from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
+    make_event_with_files,
     make_file,
     make_project,
     make_site,
@@ -99,7 +100,7 @@ def _build_simple_project(db, *, timezone: str = "UTC", detection_threshold: flo
 # ---------------------------------------------------------------------------
 
 
-def test_export_observations_csv_happy_path(client, db):
+def test_export_detections_csv_happy_path(client, db):
     project, _site, deployment = _build_simple_project(db, timezone="Europe/Amsterdam")
     f_june = make_file(
         db,
@@ -117,33 +118,34 @@ def test_export_observations_csv_happy_path(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/csv")
     assert "attachment; filename=" in resp.headers["content-disposition"]
 
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
+    # Lean detections table: detection_id + file_id + the detection's own
+    # fields. Time / place live in files.csv (join on file_id).
     assert headers == [
-        "detection_id", "file_id", "event_id", "relative_path",
-        "absolute_path",
-        "datetime", "site_name", "latitude", "longitude",
-        "detection_category", "detection_confidence", "bbox_x", "bbox_y",
-        "bbox_width", "bbox_height", "frame_number", "classification_label",
-        "classification_confidence", "taxon_class", "taxon_order",
-        "taxon_family", "taxon_genus", "taxon_species",
-        "scientific_name", "common_name", "is_verified",
+        "detection_id", "file_id", "deployment_id", "event_id",
+        "category", "detection_confidence",
+        "classification_label", "classification_confidence",
+        "taxon_class", "taxon_order", "taxon_family", "taxon_genus",
+        "taxon_species", "scientific_name", "common_name",
+        "frame_number", "bbox_x", "bbox_y", "bbox_width", "bbox_height",
+        "is_verified",
     ]
     cls_i = headers.index("classification_label")
-    cat_i = headers.index("detection_category")
+    cat_i = headers.index("category")
     conf_i = headers.index("detection_confidence")
-    dt_i = headers.index("datetime")
-    fid_i = headers.index("file_id")
-    did_i = headers.index("detection_id")
 
     data = rows[1:]
-    # One row per detection: 2 deer + 1 person on June; 1 blank row for December.
-    assert len(data) == 4
+    # One row per real detection: 2 deer + 1 person. The empty December
+    # file produces no detection row (it lives in the Files export).
+    assert len(data) == 3
+    assert all(r[cat_i] != "blank" for r in data)
+    assert f_dec.id not in {r[headers.index("file_id")] for r in data}
 
     # Each deer detection keeps its own confidence (no max-aggregation).
     deer = [r for r in data if r[cls_i] == "deer"]
@@ -155,38 +157,70 @@ def test_export_observations_csv_happy_path(client, db):
     assert float(person[conf_i]) == pytest.approx(0.95, abs=1e-4)
     assert person[cls_i] == ""
 
-    # December file is an empty/blank sentinel row.
-    blank = next(r for r in data if r[cat_i] == "blank")
-    assert blank[did_i] == ""
-    assert blank[fid_i] == f_dec.id
 
-    # DST-correct offsets.
-    june = next(r for r in data if "2024-06-15" in r[dt_i])
-    assert june[dt_i].endswith("+02:00")
-    assert blank[dt_i].endswith("+01:00")
+def test_export_files_includes_empties(client, db):
+    """The Files export lists every file once, including empties, which is
+    where 'which files had no detections' lives (not faked into detections)."""
+    project, _site, deployment = _build_simple_project(db, timezone="Europe/Amsterdam")
+    f_animal = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        observation_type="animal",
+    )
+    make_detection(db, file_id=f_animal.id, category="animal", confidence=0.9, label="deer")
+    f_blank = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 12, 15, 3, 0, 0),
+        observation_type="blank",
+    )
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers = rows[0]
+    assert headers[0] == "file_id"
+    assert "category" in headers
+    assert "event_id" in headers
+    assert "file_type" in headers
+    fid_i = headers.index("file_id")
+    cat_i = headers.index("category")
+    dt_i = headers.index("datetime")
+
+    data = rows[1:]
+    by_id = {r[fid_i]: r for r in data}
+    # Both files appear, exactly once each; the empty file is category=blank.
+    assert set(by_id) == {f_animal.id, f_blank.id}
+    assert by_id[f_blank.id][cat_i] == "blank"
+    assert by_id[f_animal.id][cat_i] == "animal"
+    # DST-correct per-file offset (datetime lives on the files table now).
+    assert by_id[f_animal.id][dt_i].endswith("+02:00")
+    assert by_id[f_blank.id][dt_i].endswith("+01:00")
 
 
-def test_export_observations_tsv_and_xlsx(client, db):
+def test_export_detections_tsv_and_xlsx(client, db):
     project, _site, deployment = _build_simple_project(db)
     f = make_file(db, deployment_id=deployment.id)
     make_detection(db, file_id=f.id, category="animal", confidence=0.8, label="fox")
     db.commit()
 
-    resp_tsv = client.get(f"/api/projects/{project.id}/export/observations?format=tsv")
+    resp_tsv = client.get(f"/api/projects/{project.id}/export/detections?format=tsv")
     assert resp_tsv.status_code == 200
     assert resp_tsv.headers["content-type"].startswith("text/tab-separated-values")
     tsv_rows = list(csv.reader(io.StringIO(resp_tsv.content.decode("utf-8")), delimiter="\t"))
     assert tsv_rows[0][0] == "detection_id"
     assert any("fox" in r for r in tsv_rows[1:])
 
-    resp_xlsx = client.get(f"/api/projects/{project.id}/export/observations?format=xlsx")
+    resp_xlsx = client.get(f"/api/projects/{project.id}/export/detections?format=xlsx")
     assert resp_xlsx.status_code == 200
     assert "spreadsheetml" in resp_xlsx.headers["content-type"]
     from openpyxl import load_workbook
 
     wb = load_workbook(io.BytesIO(resp_xlsx.content))
     ws = wb.active
-    assert ws.title == "Observations"
+    assert ws.title == "Detections"
     sheet_rows = list(ws.iter_rows(values_only=True))
     assert sheet_rows[0][0] == "detection_id"
     assert any(
@@ -196,7 +230,7 @@ def test_export_observations_tsv_and_xlsx(client, db):
     )
 
 
-def test_export_observations_respects_threshold_and_verified_override(client, db):
+def test_export_detections_respects_threshold_and_verified_override(client, db):
     project, _site, deployment = _build_simple_project(db, detection_threshold=0.5)
     f = make_file(db, deployment_id=deployment.id)
     # Below threshold, unverified → excluded.
@@ -209,14 +243,14 @@ def test_export_observations_respects_threshold_and_verified_override(client, db
     make_detection(db, file_id=f.id, category="animal", confidence=0.8, label="bear")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
     text = resp.content.decode("utf-8")
     assert "deer" in text
     assert "bear" in text
     assert "fox" not in text
 
 
-def test_export_observations_respects_excluded_classes(client, db):
+def test_export_detections_respects_excluded_classes(client, db):
     project = make_project(db, timezone="UTC", excluded_classes=["domestic_cat"])
     site = make_site(db, project_id=project.id)
     deployment = make_deployment(db, site_id=site.id)
@@ -225,15 +259,96 @@ def test_export_observations_respects_excluded_classes(client, db):
     make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="fox")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
     text = resp.content.decode("utf-8")
     assert "fox" in text
     assert "domestic_cat" not in text
 
 
+def test_export_detections_project_not_found(client):
+    resp = client.get("/api/projects/does-not-exist/export/detections?format=csv")
+    assert resp.status_code == 404
+
+
+def test_export_observations_event_level(client, db):
+    """Event-level Observations: one row per species per event with the
+    effective (human-confirmed, else AI) count."""
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        set_human_count,
+    )
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    # Two deer on the same frame → AI MaxN of 2 for the event.
+    make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
+    make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.8, label="deer")
+    obs = calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    # Human bumps the deer count above the per-frame max.
+    set_human_count(db, obs[0].id, 5)
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers = rows[0]
+    assert headers[0] == "event_id"
+    assert "count" in headers
+    assert "is_confirmed" in headers
+    assert "classification_label" in headers
+    count_i = headers.index("count")
+    label_i = headers.index("classification_label")
+
+    data = rows[1:]
+    deer = [r for r in data if r[label_i] == "deer"]
+    # One event-level row for deer, carrying the human count (5), not 2.
+    assert len(deer) == 1
+    assert deer[0][count_i] == "5"
+
+
 def test_export_observations_project_not_found(client):
     resp = client.get("/api/projects/does-not-exist/export/observations?format=csv")
     assert resp.status_code == 404
+
+
+def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
+    """The combined Spreadsheet export is one XLSX with Deployments, Files,
+    Detections and Counts sheets."""
+    from openpyxl import load_workbook
+
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
+    calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/spreadsheet")
+    assert resp.status_code == 200
+    assert "spreadsheetml" in resp.headers["content-type"]
+
+    wb = load_workbook(io.BytesIO(resp.content))
+    assert wb.sheetnames == ["Deployments", "Files", "Detections", "Counts"]
+    deployments = list(wb["Deployments"].iter_rows(values_only=True))
+    files = list(wb["Files"].iter_rows(values_only=True))
+    det = list(wb["Detections"].iter_rows(values_only=True))
+    counts = list(wb["Counts"].iter_rows(values_only=True))
+    assert deployments[0][0] == "deployment_id"
+    assert files[0][0] == "file_id"
+    assert det[0][0] == "detection_id"
+    assert counts[0][0] == "event_id"
+    # The deer appears as a detection row and an event-level count row.
+    assert any("deer" in str(v) for row in det[1:] for v in row)
+    assert any("deer" in str(v) for row in counts[1:] for v in row)
 
 
 # ---------------------------------------------------------------------------
@@ -464,30 +579,44 @@ def test_export_camtrap_dp_blank_row_for_file_without_detections(client, db):
     assert obs_rows[1][2] == f.id
 
 
-def test_export_camtrap_dp_writes_event_level_for_no_bbox(client, db):
-    """An event-level observation (bbox null) emits observationLevel='event'
-    and blank bbox columns. Aligned with the Camtrap-DP standard, which
-    makes bboxX/Y/W/H optional and supports event-level rows."""
+def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
+    """Camtrap-DP dual model: one media-level row per bounding box, plus
+    one event-level row per species carrying the effective (human) count
+    with no bbox. Replaces the retired box-less observation flow."""
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        set_human_count,
+    )
+
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    f = make_file(
+    ev = make_event_with_files(
         db,
         deployment_id=deployment.id,
-        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
-        observation_type="animal",
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
-    make_detection(
+    det = make_detection(
         db,
-        file_id=f.id,
+        file_id=ev.files[0].id,
         category="animal",
-        confidence=1.0,
+        confidence=0.9,
         label="deer",
-        bbox_x=None,
-        bbox_y=None,
-        bbox_width=None,
-        bbox_height=None,
-        classification_method="human",
-        verified=True,
+        bbox_x=0.1,
+        bbox_y=0.1,
+        bbox_width=0.2,
+        bbox_height=0.2,
     )
+    tax = LabelTaxonomy(
+        name="deer", level="species", classification_model_id="",
+        project_id=project.id, common_name="Deer",
+        scientific_name="Cervidae",
+    )
+    db.add(tax)
+    db.flush()
+    det.label_taxonomy_id = tax.id
+    obs = calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    db.flush()
+    # Human bumps the deer count to 3 (more than any single frame showed).
+    set_human_count(db, obs[0].id, 3)
     db.commit()
 
     resp = _run_camtrap_dp_export(client, db, project.id)
@@ -497,19 +626,23 @@ def test_export_camtrap_dp_writes_event_level_for_no_bbox(client, db):
             io.StringIO(zf.read("observations.csv").decode())
         )
 
-    # Find the column indexes by name so the test survives header reorders.
     level_i = headers.index("observationLevel")
+    count_i = headers.index("count")
     bx_i = headers.index("bboxX")
-    by_i = headers.index("bboxY")
-    bw_i = headers.index("bboxWidth")
-    bh_i = headers.index("bboxHeight")
-    method_i = headers.index("classificationMethod")
+    sci_i = headers.index("scientificName")
 
-    assert len(obs_rows) == 1
-    row = obs_rows[0]
-    assert row[level_i] == "event"
-    assert row[bx_i] == row[by_i] == row[bw_i] == row[bh_i] == ""
-    assert row[method_i] == "human"
+    media = [r for r in obs_rows if r[level_i] == "media"]
+    event = [r for r in obs_rows if r[level_i] == "event"]
+    # One media-level row per box (the deer detection), bbox set, count 1.
+    assert len(media) == 1
+    assert media[0][bx_i] != ""
+    assert media[0][count_i] == "1"
+    # One event-level row per species carrying the effective count (3),
+    # no bbox, with the resolved scientific name.
+    assert len(event) == 1
+    assert event[0][count_i] == "3"
+    assert event[0][bx_i] == ""
+    assert event[0][sci_i] == "Cervidae"
 
 
 # ---------------------------------------------------------------------------

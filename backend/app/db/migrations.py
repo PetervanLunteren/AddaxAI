@@ -207,6 +207,24 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "not fingerprinted via PRAGMA table_info"
         ),
     ),
+    _Fingerprint(
+        revision="f2a3b4c5d6e7",
+        table="events",
+        column="verified",
+        description=(
+            "add event counts (event_observations.human_count) and the "
+            "event sign-off (events.verified); detectable via events.verified"
+        ),
+    ),
+    _Fingerprint(
+        revision="a3b4c5d6e7f8",
+        table="events",
+        column="confirmed",
+        description=(
+            "rename events.verified -> events.confirmed (the Observations "
+            "page 'Confirm' action); detectable via events.confirmed"
+        ),
+    ),
 )
 
 

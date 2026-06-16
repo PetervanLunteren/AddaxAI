@@ -4,7 +4,7 @@
  * Modern timeline design with smooth transitions.
  */
 
-import { ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import { WizardProvider, useWizard } from "./WizardContext";
 import { WizardProgress } from "./WizardProgress";
 import { WizardNavigation } from "./WizardNavigation";
