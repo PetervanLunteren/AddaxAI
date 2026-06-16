@@ -6,21 +6,22 @@ import { useState } from "react";
 import { NavLink, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   CardSim,
   ChevronRight,
   Download,
   GanttChartSquare,
   Grid3x3,
   LayoutDashboard,
-  Layers,
   Lightbulb,
   LineChart,
   Map,
   MapPin,
-  Pencil,
-  Play,
   Settings,
+  Sparkles,
   Table2,
+  Tag,
+  Tally5,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
@@ -53,10 +54,10 @@ export function Sidebar() {
   // "Work" pages — daily-flow actions and views, end-to-end pipeline
   // from queueing an analysis through verifying and exporting results.
   const workItems: NavItem[] = [
-    { to: `/projects/${projectId}/process`, icon: Play, label: "Process" },
-    { to: `/projects/${projectId}/labels`, icon: Pencil, label: "Labels" },
-    { to: `/projects/${projectId}/counts`, icon: Layers, label: "Counts" },
     { to: `/projects/${projectId}/dashboard`, icon: LayoutDashboard, label: "Dashboard" },
+    { to: `/projects/${projectId}/process`, icon: Sparkles, label: "Process" },
+    { to: `/projects/${projectId}/labels`, icon: Tag, label: "Labels" },
+    { to: `/projects/${projectId}/counts`, icon: Tally5, label: "Counts" },
     {
       to: `/projects/${projectId}/insights`,
       icon: Lightbulb,
@@ -111,38 +112,44 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 border-r bg-white">
+    <aside className="fixed left-0 top-0 flex h-screen w-64 flex-col border-r bg-white">
       {/* Logo/Brand */}
       <div className="flex h-16 items-center border-b px-4">
         <img
           src="/branding/logo-wordmark.png"
           alt="AddaxAI"
-          className="h-10 w-auto"
+          className="h-11 w-auto"
         />
       </div>
 
+      {/* Current project + back-link. Sits between the logo and the nav
+          (mirrors AddaxAI-Connect) so the workspace context lives at the
+          top, where users expect it. */}
+      {projectId && (
+        <div className="shrink-0 border-b px-4 py-4">
+          <div className="border-l-[3px] border-primary pl-3">
+            <p className="truncate text-base font-bold leading-tight text-primary">
+              {project?.name || "Loading..."}
+            </p>
+            <NavLink
+              to="/projects"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Back to projects
+            </NavLink>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="flex flex-col gap-1 p-4">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-4">
         {workItems.map(renderNavLink)}
         <div className="my-2 border-t" />
         {configItems.map(renderNavLink)}
         <div className="my-2 border-t" />
         {utilityItems.map(renderNavLink)}
       </nav>
-
-      {/* Project Info at Bottom */}
-      <div className="absolute bottom-0 left-0 right-0 border-t bg-muted/30 p-4">
-        <p className="text-xs font-medium text-muted-foreground">Current project</p>
-        <p className="truncate text-sm font-semibold">
-          {project?.name || "Loading..."}
-        </p>
-        <NavLink
-          to="/projects"
-          className="mt-2 text-xs text-primary hover:underline"
-        >
-          ← Back to projects
-        </NavLink>
-      </div>
     </aside>
   );
 }

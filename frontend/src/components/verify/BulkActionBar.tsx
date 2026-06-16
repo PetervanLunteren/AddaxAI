@@ -136,8 +136,8 @@ export function BulkActionBar({
           title={`Relabel all ${count} to ${majorityLabel} and verify`}
         >
           <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
-          <span className="truncate max-w-[180px] capitalize">
-            Set all to {majorityLabel}
+          <span className="truncate max-w-[180px]">
+            Set all to <span className="capitalize">{majorityLabel}</span>
           </span>
           <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">M</kbd>
         </Button>

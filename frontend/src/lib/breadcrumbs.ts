@@ -137,19 +137,19 @@ const ROUTES: BreadcrumbRoute[] = [
   },
   {
     pattern: "/folder-runs/new",
-    resolve: () => [HOME, { label: "Analyse a folder" }],
+    resolve: () => [HOME, { label: "Folder runs" }],
   },
   {
     pattern: "/folder-runs/:runId/:stepSlug",
     resolve: ({ stepSlug }) => [
       HOME,
-      { label: "Analyse a folder" },
+      { label: "Folder runs" },
       { label: FOLDER_RUN_STEP_LABELS[stepSlug ?? ""] ?? (stepSlug ?? "") },
     ],
   },
   {
     pattern: "/folder-runs/:runId",
-    resolve: () => [HOME, { label: "Analyse a folder" }],
+    resolve: () => [HOME, { label: "Folder runs" }],
   },
 ];
 

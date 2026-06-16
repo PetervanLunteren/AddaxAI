@@ -30,6 +30,7 @@ import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Progress } from "../ui/progress";
 import { invalidateProjectData } from "../../lib/invalidate-project";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { CropGrid } from "./CropGrid";
 import type { TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
@@ -167,7 +168,8 @@ interface SelectionMajority {
   count: number;
   label: string;
   category: string;
-  displayName: string | null;
+  common_name: string | null;
+  scientific_name: string | null;
 }
 
 /** Most common label among the selected detections.
@@ -192,7 +194,8 @@ function selectionMajority(
         count: 1,
         label: d.label,
         category: d.category,
-        displayName: d.scientific_name,
+        common_name: d.common_name,
+        scientific_name: d.scientific_name,
       });
     }
   }
@@ -916,7 +919,7 @@ export function LabelsTab({
         toast.info("No labels in selection to apply");
         return;
       }
-      const { label: modeLabel, category: modeCategory, displayName: modeDisplayName } = mode;
+      const { label: modeLabel, category: modeCategory } = mode;
       detectionsApi
         .bulkRelabel(ids, modeLabel, modeCategory)
         .then(() => {
@@ -924,7 +927,8 @@ export function LabelsTab({
             ...d,
             label: modeLabel,
             category: modeCategory,
-            scientific_name: modeDisplayName,
+            common_name: mode.common_name,
+            scientific_name: mode.scientific_name,
             label_taxonomy_id: null,
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,
@@ -932,7 +936,7 @@ export function LabelsTab({
           }));
           clearSelection();
           toast.success(
-            `Relabelled ${ids.length} to ${modeDisplayName || modeLabel}`,
+            `Relabelled ${ids.length} to ${resolveSpeciesName(mode)}`,
           );
         })
         .catch((err: Error) => toast.error(err.message));
@@ -1053,7 +1057,7 @@ export function LabelsTab({
   const majorityLabel = useMemo(() => {
     if (selectedIds.size === 0) return null;
     const mode = selectionMajority(allDetections, selectedIds);
-    return mode ? mode.displayName || mode.label : null;
+    return mode ? resolveSpeciesName(mode) : null;
   }, [selectedIds, allDetections]);
 
   // No embeddings state

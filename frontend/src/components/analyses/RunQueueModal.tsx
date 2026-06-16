@@ -10,7 +10,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, CheckCircle2, Download, Ban, Info } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  Download,
+  Ban,
+  Info,
+  Tag,
+  Tally5,
+  LayoutDashboard,
+  ChevronRight,
+} from "lucide-react";
 import { basename } from "@/lib/path-utils";
 import {
   Dialog,
@@ -153,6 +163,41 @@ function severityBadge(severity: Severity) {
     <span className="inline-flex items-center rounded-md bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px] font-medium">
       Warning
     </span>
+  );
+}
+
+/**
+ * A clickable "what next" row in the completion modal: icon + a short
+ * action title + a one-line description of where it takes you. Used so
+ * the post-analysis step is self-explanatory instead of a bare button.
+ */
+function NextStepRow({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+  disabled,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+    >
+      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+      <div className="flex-1">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 
@@ -418,8 +463,8 @@ export function RunQueueModal({
           <DialogDescription>
             {isComplete
               ? mode === "folder-run"
-                ? "Your folder has been analysed."
-                : "All deployments processed. Open the dashboard, verify, or run more."
+                ? "Your folder has been analysed. AddaxAI suggested a species and a count for everything it found. The next steps let you review and correct them before saving."
+                : "AddaxAI filled in a suggested species label and a count for everything it found. You can accept these as they are, but the AI makes mistakes, so a quick review is recommended."
               : hasCancelled
                 ? mode === "folder-run"
                   ? "The run was stopped before finishing."
@@ -516,6 +561,44 @@ export function RunQueueModal({
               </div>
             );
           })()}
+
+          {isComplete && mode !== "folder-run" && successCount > 0 && (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                What next?
+              </p>
+              <NextStepRow
+                icon={Tag}
+                title="Check the labels"
+                description="Correct the species the AI assigned to each animal."
+                disabled={isClosing}
+                onClick={async () => {
+                  await handleClose();
+                  navigate(`/projects/${projectId}/labels`);
+                }}
+              />
+              <NextStepRow
+                icon={Tally5}
+                title="Confirm the counts"
+                description="Check how many individuals the AI counted per observation."
+                disabled={isClosing}
+                onClick={async () => {
+                  await handleClose();
+                  navigate(`/projects/${projectId}/counts`);
+                }}
+              />
+              <NextStepRow
+                icon={LayoutDashboard}
+                title="Open the dashboard"
+                description="See an overview of what was found."
+                disabled={isClosing}
+                onClick={async () => {
+                  await handleClose();
+                  navigate(`/projects/${projectId}/dashboard`);
+                }}
+              />
+            </div>
+          )}
 
           {hasCancelled && (() => {
             const completedCount = runEntries.filter(
@@ -621,45 +704,22 @@ export function RunQueueModal({
                 isClosing,
               })
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={handleClose}
-                  disabled={isClosing}
-                >
-                  {isClosing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Closing...
-                    </>
-                  ) : (
-                    "New analysis"
-                  )}
-                </Button>
-                {isComplete && successCount > 0 && (
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                disabled={isClosing}
+              >
+                {isClosing ? (
                   <>
-                    <Button
-                      variant="outline"
-                      disabled={isClosing}
-                      onClick={async () => {
-                        await handleClose();
-                        navigate(`/projects/${projectId}/counts`);
-                      }}
-                    >
-                      Counts
-                    </Button>
-                    <Button
-                      disabled={isClosing}
-                      onClick={async () => {
-                        await handleClose();
-                        navigate(`/projects/${projectId}/dashboard`);
-                      }}
-                    >
-                      Dashboard
-                    </Button>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Closing...
                   </>
+                ) : isComplete ? (
+                  "Analyse more data"
+                ) : (
+                  "Close"
                 )}
-              </>
+              </Button>
             )}
           </DialogFooter>
         ) : hasJob && !isCancelling ? (

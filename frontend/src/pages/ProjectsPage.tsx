@@ -87,19 +87,12 @@ export function ProjectsPage() {
                   Projects
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Use projects when you want to combine multiple
-                  deployments, keep verification history, analyse
-                  metadata, and build exports over time.
+                  Structure your data into projects. Start a new one or
+                  open an existing one.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => navigate("/folder-runs/new")}
-              >
-                Analyse a folder instead
-              </Button>
               <Button
                 onClick={() => {
                   logger.info("User clicked New Project button");
@@ -107,7 +100,7 @@ export function ProjectsPage() {
                 }}
               >
                 <Plus className="h-4 w-4" />
-                New research project
+                New project
               </Button>
               <AppHamburger />
             </div>
@@ -227,15 +220,17 @@ export function ProjectsPage() {
         ) : (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="mb-4 max-w-md text-center text-muted-foreground">
-                Create a project for studies with multiple camera
-                locations, deployments, maps, verification, dashboards,
-                and exports.
+              <p className="max-w-md text-center text-muted-foreground">
+                There are no projects yet.{" "}
+                <button
+                  type="button"
+                  onClick={() => setCreateDialogOpen(true)}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Click here
+                </button>{" "}
+                to create your first one.
               </p>
-              <Button onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="h-4 w-4" />
-                New research project
-              </Button>
             </CardContent>
           </Card>
         )}
