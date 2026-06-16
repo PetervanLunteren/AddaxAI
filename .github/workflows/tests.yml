@@ -8,8 +8,12 @@ name: Tests
 # tests would have caught that locally; CI makes sure they catch it
 # at PR time too.
 #
-# Scope is intentionally tight (no full backend suite, no frontend) to
-# keep this fast. Expand later if other gates earn their seconds.
+# Scope is intentionally tight (no full backend suite) to keep this
+# fast. The frontend job is typecheck-only: `vite build` (and `vite dev`)
+# transpile with esbuild and never run the TypeScript compiler, so type
+# errors otherwise accumulate invisibly and only surface on a manual
+# `tsc -b`. This gate runs the compiler at PR time. Expand later if
+# other gates earn their seconds.
 
 on:
   pull_request:
@@ -17,6 +21,26 @@ on:
     branches: [main]
 
 jobs:
+  frontend-typecheck:
+    name: Frontend typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck (tsc -b)
+        working-directory: frontend
+        run: npm run typecheck
+
   backend-migrations:
     name: Backend migration safety
     runs-on: ubuntu-latest

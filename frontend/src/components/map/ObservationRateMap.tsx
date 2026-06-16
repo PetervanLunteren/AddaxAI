@@ -49,7 +49,7 @@ function MapEventHandler({
   onZoomChange: (zoom: number) => void;
   onBoundsChange: (bounds: L.LatLngBounds) => void;
 }) {
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastZoomTimeRef = useRef<number>(0);
 
   const map = useMapEvents({

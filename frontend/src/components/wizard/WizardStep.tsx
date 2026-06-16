@@ -4,7 +4,7 @@
  * Fades in/out with slide animation.
  */
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useWizard } from "./WizardContext";
 
 interface WizardStepProps {

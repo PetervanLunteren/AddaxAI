@@ -106,14 +106,6 @@ export function AddDeploymentDialog({
     },
   });
 
-  const prepareModelMutation = useMutation({
-    mutationFn: (modelId: string) => mlModelsApi.prepare(modelId),
-    onSuccess: (response) => {
-      // Start tracking progress via WebSocket
-      setPrepareTaskId(response.task_id);
-    },
-  });
-
   const prepareWeightsMutation = useMutation({
     mutationFn: (modelId: string) => mlModelsApi.prepareWeights(modelId),
     onSuccess: (response) => {

@@ -59,7 +59,6 @@ export function SpeciesSelector({
     enabled: !!modelId,
   });
 
-  const allClasses = taxonomy?.all_classes || [];
   const tree = taxonomy?.tree || [];
 
   const handleSelectionChange = useCallback(

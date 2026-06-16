@@ -60,7 +60,6 @@ export function SpeciesSelectionModal({
   onExclusionChange,
   open,
   onOpenChange,
-  totalSpeciesCount,
   countryCode,
   stateCode,
   onLocationChange,

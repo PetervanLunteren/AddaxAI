@@ -177,7 +177,10 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
-        run: npm run build
+        # build:check runs `tsc -b && vite build`. Plain `vite build`
+        # transpiles with esbuild and never type-checks, so a type error
+        # would otherwise ship in a release bundle. Type-check first.
+        run: npm run build:check
 
       - name: Build PyInstaller backend
         working-directory: backend

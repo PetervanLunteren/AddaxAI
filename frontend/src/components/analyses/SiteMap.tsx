@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
+import type { StyleSpecification } from "maplibre-gl";
 import { MapPin, MapIcon, Satellite } from "lucide-react";
 import { sitesApi } from "@/api/sites";
 import {
@@ -181,7 +182,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
         }}
         onLoad={handleMapLoad}
         onClick={handleMapClick}
-        mapStyle={MAP_STYLES[mapStyle].url}
+        mapStyle={MAP_STYLES[mapStyle].url as string | StyleSpecification}
         onError={onMapError}
         style={{ width: "100%", height: "100%" }}
       >

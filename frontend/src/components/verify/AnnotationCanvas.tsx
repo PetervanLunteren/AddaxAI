@@ -307,18 +307,6 @@ export function AnnotationCanvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [drawMode, onDrawModeChange]);
 
-  // Scale factor from stage to normalized coordinates
-  const scaleX = stageSize.width > 0 ? imgWidth / stageSize.width : 1;
-  const scaleY = stageSize.height > 0 ? imgHeight / stageSize.height : 1;
-
-  // Convert normalized coords to stage pixels
-  const toStage = (normX: number, normY: number, normW: number, normH: number) => ({
-    x: (normX / scaleX) * (stageSize.width / imgWidth) * imgWidth,
-    y: (normY / scaleY) * (stageSize.height / imgHeight) * imgHeight,
-    width: (normW / scaleX) * (stageSize.width / imgWidth) * imgWidth,
-    height: (normH / scaleY) * (stageSize.height / imgHeight) * imgHeight,
-  });
-
   // Simpler conversion: just scale normalized -> stage pixels
   const normToPixel = (v: number, dim: number) =>
     v * (dim === imgWidth ? stageSize.width : stageSize.height);
@@ -375,15 +363,6 @@ export function AnnotationCanvas({
       });
     },
     onSuccess: () => onMutated?.(),
-  });
-
-  // Delete detection mutation
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => detectionsApi.delete(id),
-    onSuccess: () => {
-      onMutated?.();
-      onSelectDetection(null);
-    },
   });
 
   // Convert screen pointer position to stage coordinates (accounting for zoom/pan)

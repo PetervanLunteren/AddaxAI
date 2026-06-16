@@ -356,16 +356,14 @@ export function ActivityOverlapChart({
             },
             label: (item) => {
               if (item.dataset.label === "Overlap") return "";
-              return `${item.dataset.label}: ${item.parsed.y.toFixed(3)}`;
+              return `${item.dataset.label}: ${(item.parsed.y ?? 0).toFixed(3)}`;
             },
           },
         },
-        // @ts-expect-error custom plugin options aren't in Chart.js's typings
         twilightBands: {
           sunBands: bandsForMode,
           visible: bandsForMode !== null,
         },
-        // @ts-expect-error custom plugin options aren't in Chart.js's typings
         rugTicks: {
           speciesA: data.species_a.raw_detection_times.map((t) => t - sunShift),
           speciesB: data.species_b?.raw_detection_times.map((t) => t - sunShift),

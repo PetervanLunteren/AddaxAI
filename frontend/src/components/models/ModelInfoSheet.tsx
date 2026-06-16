@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { modelsApi } from "@/api/models";
 import { api } from "@/lib/api-client";
 import {
@@ -16,9 +16,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { ModelInfo } from "@/api/types";
 
 interface ModelInfoSheetProps {
   modelId: string | null;

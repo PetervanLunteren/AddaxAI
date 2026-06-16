@@ -73,13 +73,13 @@ export function useTaskProgress({
   const [metrics, setMetrics] = useState<TqdmMetrics | null>(null);
   const [computeDevice, setComputeDevice] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSetDeploymentContextRef = useRef<boolean>(false);
   const deploymentIndexRef = useRef<number | undefined>(undefined);
   const reconnectAttemptRef = useRef(0);
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskCompletedRef = useRef(false);
-  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpdateRef = useRef<{
     message: string;
     progress: number;

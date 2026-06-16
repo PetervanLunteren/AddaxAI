@@ -10,7 +10,7 @@ import { useCallback, useMemo } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { GeoJSON, useMap } from "react-leaflet";
 import { featureCollection } from "@turf/helpers";
-import type { Feature, FeatureCollection, Polygon } from "geojson";
+import type { Feature, FeatureCollection, Geometry, Polygon } from "geojson";
 import type { LatLngBounds, Layer } from "leaflet";
 
 import type { ObservationRateMapFeature } from "../../api/statistics";
@@ -77,7 +77,7 @@ export function HexbinLayer({
   }, [hexCells, effectiveMax]);
 
   const styleFunction = useCallback(
-    (feature: Feature<Polygon, HexFeatureProperties> | undefined) => {
+    (feature: Feature<Geometry, HexFeatureProperties> | undefined) => {
       const props = feature?.properties;
       if (!props) return {};
       const isEmpty = props.hexCell.observation_count === 0;
