@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Plus, MoreVertical, Pencil, Trash2, ImageIcon } from "lucide-react";
 import { projectsApi, type ProjectWithStats } from "../api/projects";
 import { modelsApi } from "../api/models";
@@ -34,7 +34,6 @@ import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
 import { AppHamburger } from "../components/layout/AppHamburger";
-import { Breadcrumbs } from "../components/layout/Breadcrumbs";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -67,28 +66,33 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <Breadcrumbs />
       {/* Header. relative + z-40 lifts the header's stacking context
           above <main>, so the AppHamburger dropdown (z-50 absolute,
           contained within this stacking context because backdrop-blur
           makes <header> a stacking-context root) can paint over the
           project cards instead of behind them. */}
       <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <img
-                src="/branding/logo-mark.png"
-                alt=""
-                className="h-16 w-16 shrink-0"
-              />
+              <Link
+                to="/"
+                aria-label="Home"
+                title="Home"
+                className="shrink-0 rounded-lg transition-opacity hover:opacity-80"
+              >
+                <img
+                  src="/branding/logo-mark.png"
+                  alt="AddaxAI"
+                  className="h-12 w-12"
+                />
+              </Link>
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">
                   Projects
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Structure your data into projects. Start a new one or
-                  open an existing one.
+                  Manage wildlife monitoring projects
                 </p>
               </div>
             </div>

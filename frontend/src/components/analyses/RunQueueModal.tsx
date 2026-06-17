@@ -235,22 +235,35 @@ function LogTable({ rows }: LogTableProps) {
       </div>
 
       <div className="max-h-64 overflow-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full table-fixed text-left text-xs">
           <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500 sticky top-0">
             <tr>
-              <th className="px-3 py-2 font-medium">Severity</th>
-              <th className="px-3 py-2 font-medium">Type</th>
-              <th className="px-3 py-2 font-medium">Deployment</th>
+              <th className="w-[92px] px-3 py-2 font-medium">Severity</th>
+              <th className="w-[150px] px-3 py-2 font-medium">Type</th>
+              <th className="w-[130px] px-3 py-2 font-medium">Deployment</th>
               <th className="px-3 py-2 font-medium">Detail</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map((r, i) => (
-              <tr key={i} className="align-top">
+              <tr key={i}>
                 <td className="px-3 py-2">{severityBadge(r.severity)}</td>
-                <td className="px-3 py-2 text-gray-900">{r.typeLabel}</td>
-                <td className="px-3 py-2 text-gray-700">{r.deployment}</td>
-                <td className="px-3 py-2 text-gray-700 font-mono break-all">{r.detail}</td>
+                <td className="truncate px-3 py-2 text-gray-900" title={r.typeLabel}>
+                  {r.typeLabel}
+                </td>
+                <td className="truncate px-3 py-2 text-gray-700" title={r.deployment}>
+                  {r.deployment}
+                </td>
+                <td className="px-3 py-2 text-gray-700 font-mono" title={r.detail}>
+                  {/* Truncate from the start so the filename (end of the
+                      path) stays visible, with a leading ellipsis. */}
+                  <span
+                    className="block overflow-hidden text-ellipsis whitespace-nowrap"
+                    style={{ direction: "rtl", textAlign: "left" }}
+                  >
+                    {r.detail}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -562,44 +575,6 @@ export function RunQueueModal({
             );
           })()}
 
-          {isComplete && mode !== "folder-run" && successCount > 0 && (
-            <div className="space-y-2 pt-1">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                What next?
-              </p>
-              <NextStepRow
-                icon={Tag}
-                title="Check the labels"
-                description="Correct the species the AI assigned to each animal."
-                disabled={isClosing}
-                onClick={async () => {
-                  await handleClose();
-                  navigate(`/projects/${projectId}/labels`);
-                }}
-              />
-              <NextStepRow
-                icon={Tally5}
-                title="Confirm the counts"
-                description="Check how many individuals the AI counted per observation."
-                disabled={isClosing}
-                onClick={async () => {
-                  await handleClose();
-                  navigate(`/projects/${projectId}/counts`);
-                }}
-              />
-              <NextStepRow
-                icon={LayoutDashboard}
-                title="Open the dashboard"
-                description="See an overview of what was found."
-                disabled={isClosing}
-                onClick={async () => {
-                  await handleClose();
-                  navigate(`/projects/${projectId}/dashboard`);
-                }}
-              />
-            </div>
-          )}
-
           {hasCancelled && (() => {
             const completedCount = runEntries.filter(
               (e) => e.status === "completed",
@@ -646,6 +621,46 @@ export function RunQueueModal({
                 capture date. They were still detected and classified and are in
                 your data, just left out of time-based stats and charts.
               </span>
+            </div>
+          )}
+
+          {/* What next? comes last: the user reads what happened and any
+              issues first, then decides the next step. */}
+          {isComplete && mode !== "folder-run" && successCount > 0 && (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                What next?
+              </p>
+              <NextStepRow
+                icon={Tag}
+                title="Check the labels"
+                description="Correct the species the AI assigned to each animal."
+                disabled={isClosing}
+                onClick={async () => {
+                  await handleClose();
+                  navigate(`/projects/${projectId}/labels`);
+                }}
+              />
+              <NextStepRow
+                icon={Tally5}
+                title="Confirm the counts"
+                description="Check how many individuals the AI counted per observation."
+                disabled={isClosing}
+                onClick={async () => {
+                  await handleClose();
+                  navigate(`/projects/${projectId}/counts`);
+                }}
+              />
+              <NextStepRow
+                icon={LayoutDashboard}
+                title="Open the dashboard"
+                description="See an overview of what was found."
+                disabled={isClosing}
+                onClick={async () => {
+                  await handleClose();
+                  navigate(`/projects/${projectId}/dashboard`);
+                }}
+              />
             </div>
           )}
 

@@ -21,10 +21,10 @@
  */
 
 import { createContext, useContext } from "react";
-import { Outlet, useNavigate, useParams } from "react-router-dom";
+import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Breadcrumbs } from "../../components/layout/Breadcrumbs";
 import { StepProgress } from "../../components/folder-run/StepProgress";
+import { AppHamburger } from "../../components/layout/AppHamburger";
 import {
   folderRunsApi,
   type FolderRunResponse,
@@ -92,18 +92,52 @@ export function FolderRunLayout() {
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-        <Breadcrumbs />
-        {/* Same width as the page content below so the indicator lines
-            up with each step's body across the whole flow. */}
-        <header className="border-b bg-white/80 backdrop-blur-sm">
-          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* Standard page header (matches Projects and the project pages):
+            logo + title + subtitle on the left, app menu on the right.
+            The logo links home; the stepper sits in its own band below.
+            relative z-40 lets the AppHamburger dropdown paint over the
+            content (same reasoning as ProjectsPage). */}
+        <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
+          <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/"
+                  aria-label="Home"
+                  title="Home"
+                  className="shrink-0 rounded-lg transition-opacity hover:opacity-80"
+                >
+                  <img
+                    src="/branding/logo-mark.png"
+                    alt="AddaxAI"
+                    className="h-12 w-12"
+                  />
+                </Link>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Analyse a folder
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    Run a quick, one-off analysis on a folder
+                  </p>
+                </div>
+              </div>
+              <AppHamburger />
+            </div>
+          </div>
+        </header>
+
+        {/* Stepper band — where you are in the run. Same width as the
+            page content below so the indicator lines up with each step. */}
+        <div className="border-b bg-white/60 backdrop-blur-sm">
+          <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
             <StepProgress
               current={currentStep}
               furthest={run?.step}
               onStepClick={runId ? handleStepClick : undefined}
             />
           </div>
-        </header>
+        </div>
 
         <main
           className={`mx-auto ${mainMaxWidth} px-4 py-8 sm:px-6 lg:px-8`}

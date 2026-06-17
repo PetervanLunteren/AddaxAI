@@ -24,6 +24,7 @@ import {
   Database,
   Download,
   FolderOpen,
+  Home,
   Info,
   LogOut,
   Menu,
@@ -170,6 +171,14 @@ export function AppHamburger() {
             className="absolute right-0 z-50 mt-2 w-64 rounded-md border bg-white shadow-lg"
           >
             <Section>
+              <Item
+                icon={Home}
+                label="Home"
+                onClick={() => {
+                  close();
+                  navigate("/");
+                }}
+              />
               <Item
                 icon={Info}
                 label="About"

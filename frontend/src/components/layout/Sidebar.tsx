@@ -114,12 +114,17 @@ export function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 flex h-screen w-64 flex-col border-r bg-white">
       {/* Logo/Brand */}
-      <div className="flex h-16 items-center border-b px-4">
-        <img
-          src="/branding/logo-wordmark.png"
-          alt="AddaxAI"
-          className="h-11 w-auto"
-        />
+      {/* Height matches the page-header band in the content area (uniform
+          py-4 + title + subtitle across pages) so the top divider runs
+          straight across the sidebar and the content. */}
+      <div className="flex h-[85px] items-center border-b px-4">
+        <NavLink to="/" aria-label="Home" title="Home">
+          <img
+            src="/branding/logo-wordmark.png"
+            alt="AddaxAI"
+            className="h-14 w-auto"
+          />
+        </NavLink>
       </div>
 
       {/* Current project + back-link. Sits between the logo and the nav
