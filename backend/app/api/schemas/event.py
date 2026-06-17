@@ -26,8 +26,11 @@ class EventSummary(BaseModel):
 
     id: str
     deployment_id: str
-    event_start_local: datetime
-    event_end_local: datetime
+    # Null when the event's files have no extractable capture time. Missing
+    # capture time is tolerated, not fatal (see DEVELOPERS.md datetime conventions);
+    # these events drop out of time-based features but must still serialize.
+    event_start_local: datetime | None
+    event_end_local: datetime | None
     file_count: int
     thumbnail_file_id: str | None
     # Up to four file IDs used for the event-card collage. First slots
@@ -61,8 +64,8 @@ class EventSummary(BaseModel):
     # event_start_local / event_end_local are naive wall-clock times in
     # the project's local camera timezone (see DEVELOPERS.md).
     @field_serializer("event_start_local", "event_end_local")
-    def _serialize_event_local(self, value: datetime) -> str:
-        return serialize_local_datetime(value)  # type: ignore[return-value]
+    def _serialize_event_local(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value)
 
 
 class EventObservationItem(BaseModel):
@@ -86,8 +89,11 @@ class EventWithFiles(BaseModel):
 
     id: str
     deployment_id: str
-    event_start_local: datetime
-    event_end_local: datetime
+    # Null when the event's files have no extractable capture time. Missing
+    # capture time is tolerated, not fatal (see DEVELOPERS.md datetime conventions);
+    # these events drop out of time-based features but must still serialize.
+    event_start_local: datetime | None
+    event_end_local: datetime | None
     file_count: int
     max_n_frames: list[MaxNFrame]
     # Human confirmation of the species and counts ("Confirm" action).
@@ -99,8 +105,8 @@ class EventWithFiles(BaseModel):
     files: list[FileWithDetections]
 
     @field_serializer("event_start_local", "event_end_local")
-    def _serialize_event_local(self, value: datetime) -> str:
-        return serialize_local_datetime(value)  # type: ignore[return-value]
+    def _serialize_event_local(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value)
 
     class Config:
         from_attributes = True

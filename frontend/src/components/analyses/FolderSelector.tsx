@@ -131,6 +131,9 @@ export function FolderSelector({
           <label className="text-sm font-medium">Folder</label>
         )}
 
+        {/* Field + scan caption grouped tight (space-y-1) so the caption sits
+            4px under the field, matching the model / label captions. */}
+        <div className="space-y-1">
         {/* Folder affordance:
             - Selected: breadcrumb pill of the trailing path segments
               (count adapts to segment length, see BreadcrumbsRow) + Change
@@ -304,6 +307,7 @@ export function FolderSelector({
             </Alert>
           )
         ) : null}
+        </div>
     </div>
   );
 }

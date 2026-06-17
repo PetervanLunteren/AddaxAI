@@ -250,6 +250,7 @@ export const statisticsApi = {
   getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string, taxonomicRank?: string, countMode?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo, taxonomicRank });
     const modeParam = countMode ? `&count_mode=${countMode}` : "";
+    // Returns every observed species; the top-taxa bars slice to 10 client-side.
     return api.get<SpeciesCount[]>(`/api/statistics/species?${query}${modeParam}`);
   },
 

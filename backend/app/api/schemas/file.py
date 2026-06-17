@@ -166,3 +166,19 @@ class AdjacentFilesResponse(BaseModel):
     next_unverified_id: str | None
     current_index: int
     total_count: int
+
+
+class FilmstripFrame(BaseModel):
+    """One frame of a video's on-demand filmstrip preview."""
+
+    frame_number: int
+    # Seconds into the clip; null when the video has no known frame rate.
+    time_seconds: float | None
+    # Inline JPEG data URI ("data:image/jpeg;base64,...").
+    image: str
+
+
+class FilmstripResponse(BaseModel):
+    """Evenly-spaced low-res frames for the counts-modal video gallery."""
+
+    frames: list[FilmstripFrame]

@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-cv2 = pytest.importorskip("cv2")
+pytest.importorskip("cv2")
 
 from app.ml.inference.video_iter import (  # noqa: E402
     iter_wanted_frames,
@@ -20,30 +20,10 @@ from app.ml.inference.video_iter import (  # noqa: E402
 )
 
 
-def _make_video(path, total_frames: int, fps: int = 10, size: tuple[int, int] = (64, 48)) -> None:
-    """
-    Render a deterministic test video. Each frame is a solid colour
-    whose blue channel encodes the frame index, so the test can verify
-    `iter_wanted_frames` yielded the right indices by looking at the
-    pixel values.
-    """
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(path), fourcc, fps, size)
-    if not writer.isOpened():
-        pytest.skip("cv2.VideoWriter could not open mp4v encoder on this machine")
-    try:
-        for i in range(total_frames):
-            frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
-            frame[:, :, 0] = i  # OpenCV writes BGR, so channel 0 = blue
-            writer.write(frame)
-    finally:
-        writer.release()
-
-
 @pytest.fixture
-def tiny_video(tmp_path):
+def tiny_video(tmp_path, make_video):
     video_path = tmp_path / "tiny.mp4"
-    _make_video(video_path, total_frames=20)
+    make_video(video_path, total_frames=20)
     return video_path
 
 

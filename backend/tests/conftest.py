@@ -277,3 +277,30 @@ def make_event_with_files(
 
     db.flush()
     return ev
+
+
+@pytest.fixture
+def make_video():
+    """Factory to render a deterministic tiny MP4 for video tests.
+
+    Each frame is a solid colour whose blue channel encodes the frame index
+    (i % 256), so tests can verify which frames were decoded. Returns a
+    callable: make(path, total_frames, fps=10, size=(64, 48)).
+    """
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    def _make(path, total_frames, fps=10, size=(64, 48)):
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(path), fourcc, fps, size)
+        if not writer.isOpened():
+            pytest.skip("cv2.VideoWriter could not open mp4v encoder on this machine")
+        try:
+            for i in range(total_frames):
+                frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
+                frame[:, :, 0] = i % 256  # BGR: channel 0 = blue
+                writer.write(frame)
+        finally:
+            writer.release()
+
+    return _make

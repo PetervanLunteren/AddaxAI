@@ -13,13 +13,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, InfoIcon, RefreshCw, X } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { LabelSelectionField } from "../components/taxonomy/LabelSelectionField";
-import { ModelSelectValue } from "../components/models/ModelSelectValue";
+import { ModelSelect } from "../components/models/ModelSelect";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
 import { ModelPreparationView } from "../components/projects/ModelPreparationView";
@@ -877,60 +877,28 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex gap-2 items-stretch">
-                          <Select key={field.value} onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select detection model">
-                                  {field.value && (() => {
-                                    const selectedModel = detectionModels.find(
-                                      (m) => m.model_id === field.value
-                                    );
-                                    if (!selectedModel) return null;
-                                    return (
-                                      <ModelSelectValue model={selectedModel} />
-                                    );
-                                  })()}
-                                </SelectValue>
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {detectionModels.map((model) => (
-                                <SelectItem key={model.model_id} value={model.model_id}>
-                                  {model.emoji} {model.friendly_name}
-                                  {model.description_short && (
-                                    <>
-                                      <br />
-                                      <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                    </>
-                                  )}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {field.value && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="self-center">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3"
-                                    onClick={() => {
-                                      setSelectedModelId(field.value ?? null);
-                                      setShowModelInfo(true);
-                                    }}
-                                  >
-                                    <InfoIcon className="h-4 w-4" />
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>View model information</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
+                        <ModelSelect
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          models={detectionModels}
+                          placeholder="Select detection model"
+                          onShowInfo={() => {
+                            setSelectedModelId(field.value ?? null);
+                            setShowModelInfo(true);
+                          }}
+                        >
+                          {detectionModels.map((model) => (
+                            <SelectItem key={model.model_id} value={model.model_id}>
+                              {model.emoji} {model.friendly_name}
+                              {model.description_short && (
+                                <>
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">{model.description_short}</span>
+                                </>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </ModelSelect>
                         <FormMessage />
 
                         {/* Model Status Badge */}
@@ -959,72 +927,34 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex gap-2 items-stretch">
-                          <Select
-                            key={field.value ?? "none"}
-                            onValueChange={(val) => {
-                              // Show confirmation when removing classification model
-                              if (val === "none" && field.value && field.value !== "none") {
-                                setRemoveClsConfirmOpen(true);
-                              } else {
-                                field.onChange(val);
-                              }
-                            }}
-                            value={field.value ?? "none"}
-                            defaultValue={field.value ?? "none"}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select classification model">
-                                  {(() => {
-                                    if (!field.value || field.value === "none") {
-                                      return (
-                                        <span>∅ No classification model</span>
-                                      );
-                                    }
-                                    const selectedModel = classificationModels.find(
-                                      (m) => m.model_id === field.value
-                                    );
-                                    if (!selectedModel) return null;
-                                    return <ModelSelectValue model={selectedModel} />;
-                                  })()}
-                                </SelectValue>
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="none">
-                                ∅ No classification model
-                                <br />
-                                <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
-                              </SelectItem>
-                              <ClassificationModelGroupedItems
-                                models={classificationModels.filter((m) => m.model_id !== "none")}
-                              />
-                            </SelectContent>
-                          </Select>
-                          {field.value && field.value !== "none" && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="self-center">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3"
-                                    onClick={() => {
-                                      setSelectedModelId(field.value ?? null);
-                                      setShowModelInfo(true);
-                                    }}
-                                  >
-                                    <InfoIcon className="h-4 w-4" />
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>View model information</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
+                        <ModelSelect
+                          value={field.value ?? "none"}
+                          onValueChange={(val) => {
+                            // Show confirmation when removing classification model
+                            if (val === "none" && field.value && field.value !== "none") {
+                              setRemoveClsConfirmOpen(true);
+                            } else {
+                              field.onChange(val);
+                            }
+                          }}
+                          models={classificationModels}
+                          placeholder="Select classification model"
+                          noneValue="none"
+                          noneLabel="No classification model"
+                          onShowInfo={() => {
+                            setSelectedModelId(field.value ?? null);
+                            setShowModelInfo(true);
+                          }}
+                        >
+                          <SelectItem value="none">
+                            ∅ No classification model
+                            <br />
+                            <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
+                          </SelectItem>
+                          <ClassificationModelGroupedItems
+                            models={classificationModels.filter((m) => m.model_id !== "none")}
+                          />
+                        </ModelSelect>
                         <FormMessage />
 
                         {/* Model Status Badge */}
@@ -1053,78 +983,39 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex gap-2 items-stretch">
-                          <Select
-                            key={field.value ?? "none"}
-                            onValueChange={field.onChange}
-                            value={field.value ?? "none"}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select embedding model">
-                                  {(() => {
-                                    if (!field.value || field.value === "none") {
-                                      return (
-                                        <span>∅ No embedding model</span>
-                                      );
-                                    }
-                                    const selectedModel = embeddingModels.find(
-                                      (m) => m.model_id === field.value
-                                    );
-                                    if (!selectedModel) return null;
-                                    return (
-                                      <ModelSelectValue model={selectedModel} />
-                                    );
-                                  })()}
-                                </SelectValue>
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="none">
-                                ∅ No embedding model
-                                <br />
-                                <span className="text-xs text-muted-foreground">
-                                  Skip if you do not need similarity sort or clustering
-                                </span>
-                              </SelectItem>
-                              {embeddingModels
-                                .filter((m) => m.model_id !== "none")
-                                .map((model) => (
-                                <SelectItem key={model.model_id} value={model.model_id}>
-                                  {model.emoji} {model.friendly_name}
-                                  {model.description_short && (
-                                    <>
-                                      <br />
-                                      <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                    </>
-                                  )}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {field.value && field.value !== "none" && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="self-center">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3"
-                                    onClick={() => {
-                                      setSelectedModelId(field.value ?? null);
-                                      setShowModelInfo(true);
-                                    }}
-                                  >
-                                    <InfoIcon className="h-4 w-4" />
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>View model information</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
+                        <ModelSelect
+                          value={field.value ?? "none"}
+                          onValueChange={field.onChange}
+                          models={embeddingModels}
+                          placeholder="Select embedding model"
+                          noneValue="none"
+                          noneLabel="No embedding model"
+                          onShowInfo={() => {
+                            setSelectedModelId(field.value ?? null);
+                            setShowModelInfo(true);
+                          }}
+                        >
+                          <SelectItem value="none">
+                            ∅ No embedding model
+                            <br />
+                            <span className="text-xs text-muted-foreground">
+                              Skip if you do not need similarity sort or clustering
+                            </span>
+                          </SelectItem>
+                          {embeddingModels
+                            .filter((m) => m.model_id !== "none")
+                            .map((model) => (
+                            <SelectItem key={model.model_id} value={model.model_id}>
+                              {model.emoji} {model.friendly_name}
+                              {model.description_short && (
+                                <>
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">{model.description_short}</span>
+                                </>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </ModelSelect>
                         <FormMessage />
 
                         {/* Model Status Badge */}

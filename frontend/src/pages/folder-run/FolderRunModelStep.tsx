@@ -5,7 +5,7 @@
  * where every run-time knob lives AND where the analysis actually
  * kicks off — the dedicated
  * "Analysis" step was merged in (it was a dead page hosting a single
- * Play button before the modal opened).
+ * start button before the modal opened).
  *
  * Main fields (always visible):
  * - Classification model (info button + status badge + grouped items)
@@ -44,9 +44,8 @@ import * as z from "zod";
 import {
   AlertCircle,
   ChevronDown,
-  InfoIcon,
   Loader2,
-  Play,
+  Sparkles,
 } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
@@ -93,7 +92,7 @@ import { ModelPreparationErrorView } from "../../components/projects/ModelPrepar
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
 import { LabelSelectionField } from "../../components/taxonomy/LabelSelectionField";
-import { ModelSelectValue } from "../../components/models/ModelSelectValue";
+import { ModelSelect } from "../../components/models/ModelSelect";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
@@ -781,90 +780,33 @@ export function FolderRunModelStep() {
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-stretch gap-2">
-                            <Select
-                              // Remount when the seeded value arrives.
-                              // Inside a <form> Radix renders a hidden
-                              // native <select> for form participation;
-                              // its <option>s only exist while the
-                              // dropdown is open, so changing the value
-                              // post-mount with the dropdown closed makes
-                              // the browser coerce it to "" and fire
-                              // onValueChange(""), blanking the field.
-                              // Keying forces the value to be the initial
-                              // value (no post-mount transition). Same
-                              // workaround as the video-fps select below.
-                              key={field.value ?? NO_CLASSIFIER}
-                              onValueChange={(val) =>
-                                field.onChange(
-                                  val === NO_CLASSIFIER
-                                    ? NO_CLASSIFIER
-                                    : val,
-                                )
-                              }
-                              value={field.value ?? NO_CLASSIFIER}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select classification model">
-                                    {(() => {
-                                      if (
-                                        !field.value ||
-                                        field.value === NO_CLASSIFIER
-                                      ) {
-                                        return (
-                                          <span>∅ No classification model</span>
-                                        );
-                                      }
-                                      const selected =
-                                        classificationModels.find(
-                                          (m) =>
-                                            m.model_id === field.value,
-                                        );
-                                      if (!selected) return null;
-                                      return <ModelSelectValue model={selected} />;
-                                    })()}
-                                  </SelectValue>
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value={NO_CLASSIFIER}>
-                                  ∅ No classification model
-                                  <br />
-                                  <span className="text-xs text-muted-foreground">
-                                    Run animal detector only,
-                                    identify species manually
-                                  </span>
-                                </SelectItem>
-                                <ClassificationModelGroupedItems
-                                  models={classificationModels.filter(
-                                    (m) => m.model_id !== "none",
-                                  )}
-                                />
-                              </SelectContent>
-                            </Select>
-                            {hasClassifier && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="self-center">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="px-3"
-                                      onClick={() =>
-                                        setShowClsInfo(true)
-                                      }
-                                    >
-                                      <InfoIcon className="h-4 w-4" />
-                                    </Button>
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>View model information</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                          </div>
+                          <ModelSelect
+                            value={field.value ?? NO_CLASSIFIER}
+                            onValueChange={(val) =>
+                              field.onChange(
+                                val === NO_CLASSIFIER ? NO_CLASSIFIER : val,
+                              )
+                            }
+                            models={classificationModels}
+                            placeholder="Select classification model"
+                            noneValue={NO_CLASSIFIER}
+                            noneLabel="No classification model"
+                            onShowInfo={() => setShowClsInfo(true)}
+                          >
+                            <SelectItem value={NO_CLASSIFIER}>
+                              ∅ No classification model
+                              <br />
+                              <span className="text-xs text-muted-foreground">
+                                Run animal detector only, identify species
+                                manually
+                              </span>
+                            </SelectItem>
+                            <ClassificationModelGroupedItems
+                              models={classificationModels.filter(
+                                (m) => m.model_id !== "none",
+                              )}
+                            />
+                          </ModelSelect>
                           {hasClassifier &&
                             classificationStatus &&
                             classificationStatus.status !== "ready" && (
@@ -951,75 +893,27 @@ export function FolderRunModelStep() {
                             </FormDescription>
                           </div>
                           <div className="space-y-2">
-                            <div className="flex items-stretch gap-2">
-                              <Select
-                                // See the classification select above:
-                                // remount on value change so Radix's
-                                // hidden form <select> doesn't blank it.
-                                key={field.value}
-                                onValueChange={field.onChange}
-                                value={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select detection model">
-                                      {field.value &&
-                                        (() => {
-                                          const selected =
-                                            detectionModels.find(
-                                              (m) =>
-                                                m.model_id ===
-                                                field.value,
-                                            );
-                                          if (!selected) return null;
-                                          return (
-                                            <ModelSelectValue model={selected} />
-                                          );
-                                        })()}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {detectionModels.map((m) => (
-                                    <SelectItem
-                                      key={m.model_id}
-                                      value={m.model_id}
-                                    >
-                                      {m.emoji} {m.friendly_name}
-                                      {m.description_short && (
-                                        <>
-                                          <br />
-                                          <span className="text-xs text-muted-foreground">
-                                            {m.description_short}
-                                          </span>
-                                        </>
-                                      )}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {field.value && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="self-center">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="px-3"
-                                        onClick={() =>
-                                          setShowDetInfo(true)
-                                        }
-                                      >
-                                        <InfoIcon className="h-4 w-4" />
-                                      </Button>
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>View model information</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                            </div>
+                            <ModelSelect
+                              value={field.value}
+                              onValueChange={field.onChange}
+                              models={detectionModels}
+                              placeholder="Select detection model"
+                              onShowInfo={() => setShowDetInfo(true)}
+                            >
+                              {detectionModels.map((m) => (
+                                <SelectItem key={m.model_id} value={m.model_id}>
+                                  {m.emoji} {m.friendly_name}
+                                  {m.description_short && (
+                                    <>
+                                      <br />
+                                      <span className="text-xs text-muted-foreground">
+                                        {m.description_short}
+                                      </span>
+                                    </>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </ModelSelect>
                             {detectionStatus &&
                               detectionStatus.status !== "ready" && (
                                 <ModelStatusBadge
@@ -1050,100 +944,43 @@ export function FolderRunModelStep() {
                             </FormDescription>
                           </div>
                           <div className="space-y-2">
-                            <div className="flex items-stretch gap-2">
-                              <Select
-                                // See the classification select above:
-                                // remount on value change so Radix's
-                                // hidden form <select> doesn't blank it.
-                                key={field.value ?? NO_EMBEDDING}
-                                onValueChange={(val) =>
-                                  field.onChange(
-                                    val === NO_EMBEDDING
-                                      ? NO_EMBEDDING
-                                      : val,
-                                  )
-                                }
-                                value={field.value ?? NO_EMBEDDING}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select embedding model">
-                                      {(() => {
-                                        if (
-                                          !field.value ||
-                                          field.value === NO_EMBEDDING
-                                        ) {
-                                          return (
-                                            <span>∅ No embedding model</span>
-                                          );
-                                        }
-                                        const selected =
-                                          embeddingModels.find(
-                                            (m) =>
-                                              m.model_id ===
-                                              field.value,
-                                          );
-                                        if (!selected) return null;
-                                        return (
-                                          <ModelSelectValue model={selected} />
-                                        );
-                                      })()}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value={NO_EMBEDDING}>
-                                    ∅ No embedding model
-                                    <br />
-                                    <span className="text-xs text-muted-foreground">
-                                      Skip if you don't need
-                                      similarity sort or clustering
-                                    </span>
+                            <ModelSelect
+                              value={field.value ?? NO_EMBEDDING}
+                              onValueChange={(val) =>
+                                field.onChange(
+                                  val === NO_EMBEDDING ? NO_EMBEDDING : val,
+                                )
+                              }
+                              models={embeddingModels}
+                              placeholder="Select embedding model"
+                              noneValue={NO_EMBEDDING}
+                              noneLabel="No embedding model"
+                              onShowInfo={() => setShowEmbInfo(true)}
+                            >
+                              <SelectItem value={NO_EMBEDDING}>
+                                ∅ No embedding model
+                                <br />
+                                <span className="text-xs text-muted-foreground">
+                                  Skip if you don't need similarity sort or
+                                  clustering
+                                </span>
+                              </SelectItem>
+                              {embeddingModels
+                                .filter((m) => m.model_id !== "none")
+                                .map((m) => (
+                                  <SelectItem key={m.model_id} value={m.model_id}>
+                                    {m.emoji} {m.friendly_name}
+                                    {m.description_short && (
+                                      <>
+                                        <br />
+                                        <span className="text-xs text-muted-foreground">
+                                          {m.description_short}
+                                        </span>
+                                      </>
+                                    )}
                                   </SelectItem>
-                                  {embeddingModels
-                                    .filter(
-                                      (m) => m.model_id !== "none",
-                                    )
-                                    .map((m) => (
-                                    <SelectItem
-                                      key={m.model_id}
-                                      value={m.model_id}
-                                    >
-                                      {m.emoji} {m.friendly_name}
-                                      {m.description_short && (
-                                        <>
-                                          <br />
-                                          <span className="text-xs text-muted-foreground">
-                                            {m.description_short}
-                                          </span>
-                                        </>
-                                      )}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {hasEmbedding && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="self-center">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="px-3"
-                                        onClick={() =>
-                                          setShowEmbInfo(true)
-                                        }
-                                      >
-                                        <InfoIcon className="h-4 w-4" />
-                                      </Button>
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>View model information</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                            </div>
+                                ))}
+                            </ModelSelect>
                             {hasEmbedding &&
                               embeddingStatus &&
                               embeddingStatus.status !== "ready" && (
@@ -1450,7 +1287,7 @@ export function FolderRunModelStep() {
                               {isMutating ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Play className="h-4 w-4" />
+                                <Sparkles className="h-4 w-4" />
                               )}
                               {isMutating
                                 ? "Starting..."

@@ -79,10 +79,20 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
     return className.replace(/_/g, " ").toLowerCase();
   };
 
-  // Format all classes with sentence case (only first letter of entire list capitalized)
-  const formattedClassList = classList.map(formatClassName).join(", ");
-  const formattedClasses = formattedClassList.length > 0
-    ? formattedClassList.charAt(0).toUpperCase() + formattedClassList.slice(1) + "."
+  // Format the classes with sentence case (only the first letter capitalized).
+  // Long lists (SpeciesNet has 2000+) are truncated to keep the panel readable;
+  // the full count stays in the heading.
+  const MAX_CLASSES_SHOWN = 100;
+  const classNames = classList.map(formatClassName);
+  const visibleClassList = classNames.slice(0, MAX_CLASSES_SHOWN).join(", ");
+  const sentenceCased = visibleClassList.length > 0
+    ? visibleClassList.charAt(0).toUpperCase() + visibleClassList.slice(1)
+    : "";
+  const remainingClasses = classNames.length - Math.min(classNames.length, MAX_CLASSES_SHOWN);
+  const formattedClasses = sentenceCased
+    ? remainingClasses > 0
+      ? `${sentenceCased} … +${remainingClasses} more`
+      : `${sentenceCased}.`
     : "";
 
   return (

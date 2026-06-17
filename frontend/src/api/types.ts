@@ -550,6 +550,18 @@ export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
 }
 
+// On-demand video filmstrip: evenly-spaced low-res frames for the
+// counts-modal gallery. Decoded on request, not persisted.
+export interface FilmstripFrame {
+  frame_number: number;
+  time_seconds: number | null;
+  image: string; // "data:image/jpeg;base64,..."
+}
+
+export interface FilmstripResponse {
+  frames: FilmstripFrame[];
+}
+
 // Shared verify-tab filter type. Binary (plus "all"): an event is
 // verified when all its MaxN frames are verified (blank events fall
 // back to "any file verified"); a file is verified when File.verified
@@ -693,8 +705,8 @@ export interface EventSummary {
   id: string;
   deployment_id: string;
   /** ISO 8601 with the project's local UTC offset. */
-  event_start_local: string;
-  event_end_local: string;
+  event_start_local: string | null;
+  event_end_local: string | null;
   file_count: number;
   thumbnail_file_id: string | null;
   /** Up to four file IDs picked by the backend for the event-card collage:
@@ -729,8 +741,8 @@ export interface EventWithFiles {
   id: string;
   deployment_id: string;
   /** ISO 8601 with the project's local UTC offset. */
-  event_start_local: string;
-  event_end_local: string;
+  event_start_local: string | null;
+  event_end_local: string | null;
   file_count: number;
   max_n_frames: MaxNFrame[];
   /** Human confirmation of the species and counts ("Confirm" action). */

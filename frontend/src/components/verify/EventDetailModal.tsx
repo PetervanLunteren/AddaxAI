@@ -53,7 +53,11 @@ import { useRevealInFolder } from "../../lib/file-reveal";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import type { EventFilterParams, FileWithDetections } from "../../api/types";
+import type {
+  EventFilterParams,
+  EventWithFiles,
+  FileWithDetections,
+} from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
 import { ViewControls } from "./ViewControls";
 import type { TileSize } from "./CropGrid";
@@ -61,6 +65,7 @@ import { AnnotationCanvas } from "./AnnotationCanvas";
 import { EventCountPanel } from "./EventCountPanel";
 import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
+import { VideoFilmstrip } from "./VideoFilmstrip";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 
 // Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
@@ -219,6 +224,38 @@ export function EventDetailModal({
     queryFn: () => eventsApi.getAdjacent(eventId!, projectId, filters),
     enabled: !!eventId && isOpen,
   });
+
+  // Prefetch the next event and, if it has a video, its filmstrip, so moving
+  // forward through observations feels instant (the filmstrip decode is the
+  // slow part — see VideoFilmstrip / the backend's build_filmstrip).
+  useEffect(() => {
+    const nextId = adjacent?.next_id;
+    if (!nextId || !isOpen) return;
+    let cancelled = false;
+    queryClient
+      .prefetchQuery({
+        queryKey: ["event", nextId],
+        queryFn: () => eventsApi.get(nextId),
+      })
+      .then(() => {
+        if (cancelled) return;
+        const nextEvent = queryClient.getQueryData<EventWithFiles>([
+          "event",
+          nextId,
+        ]);
+        const video = nextEvent?.files.find((f) => f.file_type === "video");
+        if (video) {
+          queryClient.prefetchQuery({
+            queryKey: ["filmstrip", video.id],
+            queryFn: () => filesApi.getFilmstrip(video.id),
+            staleTime: Infinity,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [adjacent?.next_id, isOpen, queryClient]);
 
   // Fetch project for detection threshold
   const { data: project } = useQuery({
@@ -838,6 +875,13 @@ export function EventDetailModal({
                     autoExport={pendingVideoExport}
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
                   />
+                ) : currentFile.file_type === "video" &&
+                  !(autoPlay && files.length > 1) ? (
+                  // Video, frame mode: show the time-spaced filmstrip gallery
+                  // (the play overlay below sits on top). Only an actively
+                  // flipping cine-loop (autoPlay across >1 file) falls back to
+                  // the best-frame still; a lone video keeps its filmstrip.
+                  <VideoFilmstrip fileId={currentFile.id} />
                 ) : (
                   // View-only on the Counts page: boxes show but aren't
                   // edited here (label/box cleanup lives on the Labels page).

@@ -240,21 +240,24 @@ export function DashboardView({ projectId }: { projectId: string }) {
       ? "Independent events per 100 trap nights"
       : "Observations per 100 trap nights";
 
+  // The endpoint returns every observed species (so the chart selectors can
+  // list them all); the top-taxa bars show only the top 10.
+  const topSpecies = (species ?? []).slice(0, 10);
   const speciesData = {
-    labels:
-      species?.map((s) =>
-        resolveSpeciesName({
-          scientific_name: s.species,
-          common_name: s.common_name,
-        }),
-      ) ?? [],
+    labels: topSpecies.map((s) =>
+      resolveSpeciesName({
+        scientific_name: s.species,
+        common_name: s.common_name,
+      }),
+    ),
     datasets: [
       {
         label: speciesAxisLabel,
-        data: species?.map((s) => norm(s.count)) ?? [],
-        backgroundColor:
-          species?.map((s) => getSpeciesColorWithAlpha(s.species, 0.8)) ?? [],
-        borderColor: species?.map((s) => getSpeciesColor(s.species)) ?? [],
+        data: topSpecies.map((s) => norm(s.count)),
+        backgroundColor: topSpecies.map((s) =>
+          getSpeciesColorWithAlpha(s.species, 0.8),
+        ),
+        borderColor: topSpecies.map((s) => getSpeciesColor(s.species)),
         borderWidth: 1,
       },
     ],

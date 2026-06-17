@@ -10,6 +10,7 @@ import type {
   FileSummary,
   FileVerificationStats,
   FileWithDetections,
+  FilmstripResponse,
 } from "./types";
 
 /** Append verify-tab filter params to a URLSearchParams instance. */
@@ -58,6 +59,13 @@ export const filesApi = {
    */
   get: async (id: string, options?: { signal?: AbortSignal }): Promise<FileWithDetections> => {
     return api.get<FileWithDetections>(`/api/files/${id}`, options);
+  },
+
+  /**
+   * Get an on-demand filmstrip (evenly-spaced low-res frames) for a video.
+   */
+  getFilmstrip: async (id: string): Promise<FilmstripResponse> => {
+    return api.get<FilmstripResponse>(`/api/files/${id}/filmstrip`);
   },
 
   /**

@@ -23,6 +23,8 @@ from app.api.schemas.file import (
     FileUpdate,
     FileVerificationStats,
     FileWithDetections,
+    FilmstripFrame,
+    FilmstripResponse,
 )
 from app.db.base import get_db
 from app.models import Deployment, File, Project
@@ -373,6 +375,35 @@ def get_file_video(
         path=str(file_path),
         media_type=media_type,
         filename=file_path.name,
+    )
+
+
+# Sync `def` on purpose: decoding the filmstrip reads the clip with cv2 and
+# can take a second or more, so FastAPI runs it in the threadpool instead of
+# blocking the event loop. Results are cached in build_filmstrip's LRU.
+@router.get("/{file_id}/filmstrip", response_model=FilmstripResponse)
+def get_file_filmstrip(
+    file_id: str,
+    db: Session = Depends(get_db),
+) -> FilmstripResponse:
+    """
+    Decode a small set of evenly-spaced low-res frames for a video, for the
+    counts-modal gallery. Frames are generated on demand and never persisted.
+
+    Raises:
+        HTTPException: 404 if the file is missing, 400 if it is not a video.
+    """
+    from app.services.filmstrip_service import build_filmstrip
+
+    file = file_crud.get_file_with_detections(db, file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    if file.file_type != "video":
+        raise HTTPException(status_code=400, detail="File is not a video")
+
+    frames = build_filmstrip(file.file_path, file.frame_rate)
+    return FilmstripResponse(
+        frames=[FilmstripFrame(**frame) for frame in frames]
     )
 
 

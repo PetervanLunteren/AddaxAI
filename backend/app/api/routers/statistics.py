@@ -67,6 +67,8 @@ def species_distribution(
     count_mode: str = Query("events"),
     db: Session = Depends(get_db),
 ) -> list[SpeciesCount]:
+    # Returns every observed species. The dashboard trims to the top 10
+    # client-side; the chart species selectors use the full list.
     return stats_crud.get_species_distribution(
         db, project_id, _parse_site_ids(site_ids), date_from, date_to,
         taxonomic_rank, count_mode,

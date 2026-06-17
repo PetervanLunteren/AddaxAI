@@ -340,10 +340,15 @@ def get_species_distribution(
     taxonomic_rank: str | None = None,
     count_mode: str = "events",
 ) -> list[SpeciesCount]:
-    """Top 10 labels by event count or MaxN sum.
+    """All observed labels, ranked descending by event count or MaxN sum.
 
     count_mode="events": number of independent events per label.
     count_mode="max_n": sum of MaxN across events per label.
+
+    Returns every observed species (no cap). The dashboard top-taxa bars
+    trim to the top 10 client-side; the species selectors on the trend,
+    activity, and overlap charts use the full list so any species can be
+    picked.
 
     Taxonomic rank modes: aggregates by the requested rank using
     the label_taxonomy join on EventObservation.label.
@@ -431,7 +436,6 @@ def get_species_distribution(
         .where(Deployment.project_id == project_id)
         .group_by(label_expr)
         .order_by(count_expr.desc())
-        .limit(10)
     )
 
     if needs_join:

@@ -12,7 +12,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, InfoIcon } from "lucide-react";
+import { Info } from "lucide-react";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { ImageDropZone } from "./ImageDropZone";
 import { modelsApi } from "../../api/models";
@@ -21,13 +21,7 @@ import { ModelStatusBadge } from "./ModelStatusBadge";
 import { ModelPreparationView } from "./ModelPreparationView";
 import { ModelPreparationErrorView } from "./ModelPreparationErrorView";
 import { Button } from "../ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { SelectItem } from "../ui/select";
 import { ClassificationModelGroupedItems } from "../models/ClassificationModelGroupedItems";
 import {
   Dialog,
@@ -55,7 +49,7 @@ import {
 } from "../ui/tooltip";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import { LabelSelectionField } from "../taxonomy/LabelSelectionField";
-import { ModelSelectValue } from "../models/ModelSelectValue";
+import { ModelSelect } from "../models/ModelSelect";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -322,59 +316,24 @@ export function CreateProjectDialog({
                         </TooltipContent>
                       </Tooltip>
                     </FormLabel>
-                    <div className="flex gap-2 items-stretch">
-                      <Select
-                        onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
-                        defaultValue={field.value ?? "none"}
-                        value={field.value ?? "none"}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select classification model">
-                            {(() => {
-                              if (!field.value || field.value === "none") {
-                                return <span>∅ No classification model</span>;
-                              }
-                              const selectedModel = classificationModels.find(
-                                (m) => m.model_id === field.value
-                              );
-                              if (!selectedModel) return null;
-                              return <ModelSelectValue model={selectedModel} />;
-                            })()}
-                          </SelectValue>
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          ∅ No classification model
-                          <br />
-                          <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
-                        </SelectItem>
-                        <ClassificationModelGroupedItems
-                          models={classificationModels.filter((m) => m.model_id !== "none")}
-                        />
-                      </SelectContent>
-                    </Select>
-                    {field.value && field.value !== "none" && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="self-center">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="px-3"
-                              onClick={() => setShowModelInfo(true)}
-                            >
-                              <InfoIcon className="h-4 w-4" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>View model information</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
+                    <ModelSelect
+                      value={field.value ?? "none"}
+                      onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
+                      models={classificationModels}
+                      placeholder="Select classification model"
+                      noneValue="none"
+                      noneLabel="No classification model"
+                      onShowInfo={() => setShowModelInfo(true)}
+                    >
+                      <SelectItem value="none">
+                        ∅ No classification model
+                        <br />
+                        <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
+                      </SelectItem>
+                      <ClassificationModelGroupedItems
+                        models={classificationModels.filter((m) => m.model_id !== "none")}
+                      />
+                    </ModelSelect>
                   <FormMessage />
                 </FormItem>
               )}

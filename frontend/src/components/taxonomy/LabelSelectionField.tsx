@@ -158,7 +158,7 @@ export function LabelSelectionField({
 
   return (
     <>
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {hasGeofence && (
           <Popover open={locationOpen} onOpenChange={setLocationOpen}>
             <PopoverTrigger asChild>
