@@ -26,7 +26,7 @@ import {
 
 interface ModelPreparationViewProps {
   modelName: string;
-  modelEmoji: string;
+  modelEmoji?: string | null;
   progress: number; // 0.0-1.0
   message: string;
   onCancel: () => void;

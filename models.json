@@ -4,7 +4,6 @@
       {
         "model_id": "MD5A-0-0",
         "friendly_name": "MegaDetector v5a",
-        "emoji": "🐅",
         "env": "addaxai-base",
         "model_fname": "md_v5a.0.0.pt",
         "description": "MegaDetector is an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
@@ -18,7 +17,6 @@
       {
         "model_id": "MD5B-0-0",
         "friendly_name": "MegaDetector v5b",
-        "emoji": "🦘",
         "env": "addaxai-base",
         "model_fname": "md_v5b.0.0.pt",
         "description": "MegaDetector 5b differs from 5a only in its training data and is also an object detection model that identifies animals, people, and vehicles in camera trap images (which also makes it useful for eliminating blank images). This model is trained on several hundred thousand bounding boxes from a variety of ecosystems. The animals located by this model with be further identified by the species recognition models.",
@@ -32,7 +30,6 @@
       {
         "model_id": "MD1000-REDWOOD-0-0",
         "friendly_name": "MegaDetector v1000 Redwood",
-        "emoji": "🌲",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-redwood.pt",
         "description": "This model is a new addition to the MegaDetector series, designed to improve accuracy, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them. Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
@@ -46,7 +43,6 @@
       {
         "model_id": "MD1000-SPRUCE-0-0",
         "friendly_name": "MegaDetector v1000 Spruce",
-        "emoji": "🌱",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-spruce.pt",
         "description": "This model is a new addition to the MegaDetector series, designed to improve processing speed, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them. Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
@@ -60,7 +56,6 @@
       {
         "model_id": "MD1000-CEDAR-0-0",
         "friendly_name": "MegaDetector v1000 Cedar",
-        "emoji": "🌳",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-cedar.pt",
         "description": "This model is a new addition to the MegaDetector series, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them. Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
@@ -74,7 +69,6 @@
       {
         "model_id": "MD1000-LARCH-0-0",
         "friendly_name": "MegaDetector v1000 Larch",
-        "emoji": "🍂",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-larch.pt",
         "description": "This model is a new addition to the MegaDetector series, designed to improve processing speed, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them. Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
@@ -88,7 +82,6 @@
       {
         "model_id": "MD1000-SORREL-0-0",
         "friendly_name": "MegaDetector v1000 Sorrel",
-        "emoji": "🌿",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-sorrel.pt",
         "description": "This model is a new addition to the MegaDetector series, designed to improve processing speed, but still needs to be thoroughly tested by the community. These are object detection models designed to identify animals, people, and vehicles in camera trap images. Animals detected by this model will be passed to species recognition models for further identification. By default, if you're already using MDv5a or MDv5b, keep using it until you have time to do a thorough comparison on your data against MDv1000-redwood. If you're starting from scratch and you want the safe thing that has been studied extensively in the literature, use MDv5a. If you want to join me on the cutting edge and see some bananas-good recall, use MDv1000-redwood. Only use the smaller model MDv1000-spruce if you're sure you need them. Faster sounds better, but in a world where a regular laptop with no GPU can process 50k images per day even through MDv5, and GPUs than can do 1M images per day come standard on home PCs now, the scenario where speed makes a qualitative difference is niche, and if in practice running 2x faster means you need to lower your confidence threshold to preserve recall, you've reduced compute time to increase human time, which is almost never a tradeoff you want to make.",
@@ -348,7 +341,6 @@
       {
         "model_id": "DINOV2-VITS14",
         "friendly_name": "DINOv2 ViT-S/14",
-        "emoji": "🐣",
         "env": "addaxai-base",
         "model_fname": "dinov2_vits14_pretrain.pth",
         "description": "DINOv2 small vision transformer (ViT-S/14) trained with self-supervised learning by Meta AI. Produces 384-dimensional feature vectors for detection crops. This is the fastest variant (21M parameters) and the recommended starting point for most camera trap projects. It processes crops roughly 2.5x faster than ViT-B and 7x faster than ViT-L, while still capturing enough visual detail for similarity search and clustering. Ideal for large datasets with hundreds of thousands of detections.",
@@ -364,7 +356,6 @@
       {
         "model_id": "DINOV2-VITB14",
         "friendly_name": "DINOv2 ViT-B/14",
-        "emoji": "🦆",
         "env": "addaxai-base",
         "model_fname": "dinov2_vitb14_pretrain.pth",
         "description": "DINOv2 base vision transformer (ViT-B/14) trained with self-supervised learning by Meta AI. Produces 768-dimensional feature vectors for detection crops. This is the mid-range variant (86M parameters), roughly 2.5x slower than ViT-S but with higher-dimensional embeddings that capture finer visual distinctions. Consider this model if you need better discrimination and have a GPU available.",
@@ -380,7 +371,6 @@
       {
         "model_id": "DINOV2-VITL14",
         "friendly_name": "DINOv2 ViT-L/14",
-        "emoji": "🦅",
         "env": "addaxai-base",
         "model_fname": "dinov2_vitl14_pretrain.pth",
         "description": "DINOv2 large vision transformer (ViT-L/14) trained with self-supervised learning by Meta AI. Produces 1024-dimensional feature vectors for detection crops. This is the largest variant (300M parameters), roughly 7x slower than ViT-S. It offers the highest embedding quality but with diminishing returns over ViT-B. Best suited for small datasets or research workflows where maximum discriminative power justifies the extra compute time. A GPU is strongly recommended.",

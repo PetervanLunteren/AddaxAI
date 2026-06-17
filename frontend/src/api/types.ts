@@ -811,7 +811,7 @@ export const CLASSIFICATION_MODELS: ClassificationModel[] = [
 export interface ModelInfo {
   model_id: string;
   friendly_name: string;
-  emoji: string;
+  emoji?: string | null;
   type: "detection" | "classification" | "embedding";
   description: string;
   description_short?: string | null;

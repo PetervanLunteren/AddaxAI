@@ -11,16 +11,11 @@ import { Fragment, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
-  Calendar,
   ChevronDown,
   ChevronRight,
   Folder,
   FolderInput,
-  Image,
   Loader2,
-  MapPin,
-  MapPinOff,
-  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,12 +31,6 @@ import {
 import { useFolderScan } from "@/hooks/useFolderScan";
 import { isElectron } from "@/lib/platform";
 import { formatOffset } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 // Dev-only: Test deployment folders for quick selection
 const TEST_DEPLOYMENTS: { scope: string; path: string }[] = [
@@ -81,7 +70,7 @@ interface FolderSelectorProps {
   onAdjustDates?: () => void;
   /** Hide the built-in "Folder" label (when the parent provides its own). */
   hideLabel?: boolean;
-  /** Hide the scan result panel (file counts, GPS, dates, adjust-dates link). */
+  /** Hide the scan result caption (file counts, dates, adjust-dates link). */
   hideScanResult?: boolean;
   /** Render scan results as a single muted dot-separated line instead
    *  of the tall teal card, for places where vertical space is at a
@@ -136,8 +125,7 @@ export function FolderSelector({
   const hasFiles = scanResult && scanResult.total_count > 0;
 
   return (
-    <TooltipProvider>
-      <div className="space-y-2">
+    <div className="space-y-2">
         {/* Label (suppressed when the parent provides its own label) */}
         {!hideLabel && (
           <label className="text-sm font-medium">Folder</label>
@@ -237,7 +225,7 @@ export function FolderSelector({
         ) : hideScanResult ? null : value ? (
           isScanning ? (
             compactScanResult ? (
-              <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 pl-3 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 <span>Scanning folder...</span>
               </div>
@@ -258,99 +246,14 @@ export function FolderSelector({
               />
             ) : (
             <>
-              <div className="border border-[#0f6064] bg-[#ebf0f2] rounded-lg p-4 space-y-2">
-                {/* File counts — only show types that exist */}
-                {scanResult.image_count > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
-                    <Image className="h-4 w-4" />
-                    <span>{scanResult.image_count} {scanResult.image_count === 1 ? "image" : "images"}</span>
-                  </div>
-                )}
-                {scanResult.video_count > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
-                    <Video className="h-4 w-4" />
-                    <span>{scanResult.video_count} {scanResult.video_count === 1 ? "video" : "videos"}</span>
-                  </div>
-                )}
-
-                {/* GPS — show "found" with coordinates in tooltip, or "not found". */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 text-sm text-[#0f6064] cursor-default">
-                      {scanResult.gps_location ? (
-                        <>
-                          <MapPin className="h-4 w-4" />
-                          <span>GPS found</span>
-                        </>
-                      ) : (
-                        <>
-                          <MapPinOff className="h-4 w-4" />
-                          <span>No GPS metadata</span>
-                        </>
-                      )}
-                    </div>
-                  </TooltipTrigger>
-                  {scanResult.gps_location && (
-                    <TooltipContent>
-                      {scanResult.gps_location.latitude.toFixed(6)}, {scanResult.gps_location.longitude.toFixed(6)}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-
-                {/* Date range — date-only, rough estimate. The backend
-                    reads dates from a sample of files (first/last + 100
-                    random), not every file, so this is an approximate span,
-                    not an exact min/max. Exact per-file times live in the
-                    Adjust-dates modal. Format e.g. "7 Feb 2016". */}
-                <div className="flex items-center gap-1.5 text-sm text-[#0f6064]">
-                  <Calendar className="h-4 w-4" />
-                  <span>
-                    {scanResult.start_date && scanResult.end_date ? (
-                      (() => {
-                        const fmt = (d: Date) => d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
-                        const offsetMs = datetimeOffsetSeconds * 1000;
-                        const start = new Date(new Date(scanResult.start_date).getTime() + offsetMs);
-                        const end = new Date(new Date(scanResult.end_date).getTime() + offsetMs);
-                        const range = start.toDateString() === end.toDateString()
-                          ? fmt(start)
-                          : `${fmt(start)} – ${fmt(end)}`;
-                        return `Dates span roughly ${range}`;
-                      })()
-                    ) : (
-                      "No datetime metadata"
-                    )}
-                  </span>
-                </div>
-
-                {/* Datetime offset link */}
-                {onAdjustDates && scanResult.start_date && (
-                  <div className="text-sm text-[#0f6064]">
-                    {datetimeOffsetSeconds !== 0 ? (
-                      <span>
-                        Offset:{" "}
-                        <button
-                          type="button"
-                          onClick={onAdjustDates}
-                          className="underline underline-offset-2 hover:text-[#0a4a4d]"
-                        >
-                          {formatOffset(datetimeOffsetSeconds)}
-                        </button>
-                      </span>
-                    ) : (
-                      <span>
-                        Dates look wrong?{" "}
-                        <button
-                          type="button"
-                          onClick={onAdjustDates}
-                          className="underline underline-offset-2 hover:text-[#0a4a4d]"
-                        >
-                          Adjust dates
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
+              <CompactScanLine
+                imageCount={scanResult.image_count}
+                videoCount={scanResult.video_count}
+                startDate={scanResult.start_date}
+                endDate={scanResult.end_date}
+                offsetSeconds={datetimeOffsetSeconds}
+                onAdjustDates={onAdjustDates}
+              />
 
               {/* Some files lack a capture date. Non-blocking: the
                   backend still detects and classifies them; they just
@@ -401,16 +304,16 @@ export function FolderSelector({
             </Alert>
           )
         ) : null}
-      </div>
-    </TooltipProvider>
+    </div>
   );
 }
 
 /**
- * Single-row teal scan summary (the `compactScanResult` mode): same
- * palette as the full panel, but compressed into one horizontal pill so
- * it costs much less vertical space. Skips counts that are zero. Falls
- * back to a "no datetime metadata" cell when EXIF timestamps are absent.
+ * Single muted caption summarising a folder scan: file counts and rough
+ * date span, dot-separated. Skips counts that are zero and falls back to a
+ * "no datetime metadata" note when EXIF timestamps are absent. When
+ * `onAdjustDates` is supplied, appends an "Adjust dates" link (and shows the
+ * active offset) in the same style as the label picker's "Refine" link.
  */
 function CompactScanLine({
   imageCount,
@@ -418,12 +321,14 @@ function CompactScanLine({
   startDate,
   endDate,
   offsetSeconds,
+  onAdjustDates,
 }: {
   imageCount: number;
   videoCount: number;
   startDate: string | null;
   endDate: string | null;
   offsetSeconds: number;
+  onAdjustDates?: () => void;
 }) {
   // Date-only, rough estimate: the scan reads a sample of files, not every
   // one, so this is an approximate span. Exact per-file times are in the
@@ -446,28 +351,34 @@ function CompactScanLine({
   } else {
     dateRange = "No datetime metadata";
   }
+
+  const parts: string[] = [];
+  if (imageCount > 0) {
+    parts.push(`${imageCount} ${imageCount === 1 ? "image" : "images"}`);
+  }
+  if (videoCount > 0) {
+    parts.push(`${videoCount} ${videoCount === 1 ? "video" : "videos"}`);
+  }
+  parts.push(dateRange);
+  if (offsetSeconds !== 0) {
+    parts.push(`offset ${formatOffset(offsetSeconds)}`);
+  }
+
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-md border border-[#0f6064] bg-[#ebf0f2] px-3 py-2 text-sm text-[#0f6064]">
-      {imageCount > 0 && (
-        <div className="flex items-center gap-1.5">
-          <Image className="h-4 w-4" />
-          <span>
-            {imageCount} {imageCount === 1 ? "image" : "images"}
-          </span>
-        </div>
+    <div className="pl-3 text-xs text-muted-foreground">
+      {parts.join(" · ")}
+      {onAdjustDates && startDate && (
+        <>
+          {" · "}
+          <button
+            type="button"
+            onClick={onAdjustDates}
+            className="text-primary font-medium hover:underline"
+          >
+            Adjust dates
+          </button>
+        </>
       )}
-      {videoCount > 0 && (
-        <div className="flex items-center gap-1.5">
-          <Video className="h-4 w-4" />
-          <span>
-            {videoCount} {videoCount === 1 ? "video" : "videos"}
-          </span>
-        </div>
-      )}
-      <div className="flex items-center gap-1.5">
-        <Calendar className="h-4 w-4" />
-        <span>{dateRange}</span>
-      </div>
     </div>
   );
 }

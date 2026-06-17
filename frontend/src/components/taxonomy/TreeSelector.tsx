@@ -41,8 +41,6 @@ interface TreeSelectorProps {
   emptyMessage?: string;
   /** Count unit label, e.g. "event". Omit for settings tree (no item counts). */
   countUnit?: string;
-  /** Optional content rendered in the same row as the search bar (right side). */
-  searchRowExtra?: React.ReactNode;
 }
 
 /** A flattened row representing one visible node in the tree. */
@@ -188,7 +186,6 @@ export function TreeSelector({
   fillHeight = false,
   emptyMessage = "No labels available",
   countUnit,
-  searchRowExtra,
 }: TreeSelectorProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -321,19 +318,15 @@ export function TreeSelector({
   return (
     <div className={`space-y-2 border rounded-md p-3${fillHeight ? " h-full flex flex-col overflow-hidden" : ""}`}>
       <p className="text-sm text-muted-foreground">{counterText}</p>
-      {/* Optional extra content (e.g. geography filter) + search */}
-      <div className={searchRowExtra ? "grid grid-cols-2 gap-2" : ""}>
-        {searchRowExtra}
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search labels..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search labels..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
       </div>
 
       {/* Bulk action buttons */}

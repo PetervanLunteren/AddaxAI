@@ -2,6 +2,18 @@
 
 ## Priority 1
 - [ ] Add a country dropdown for models with geofence data (speciesnet eg), I;ve received the feedback that the country dropdown was hard to find. Perhaps a country dropdown and then a small line saying something like "X of Y labels included/excluded. Click here to refine." Or something like that. Because it is a pretty powerful feature that one can refine the geofence reules themselves. What do you think? How would that look? Give me a few options as previews, so I can visually see, we can refine, and then I can choose. We'll need to replace all the label slection pickers that are visible (fodler mode step 1, create project modal, project settings, more?). 
+
+
+
+
+
+❯ should we do the caption line on the projects page folkder scan too?
+
+
+  '/Users/peter/Desktop/Screenshot 2026-06-17 at 14.53.25.png'
+
+
+- double check if the (?) help slideouts for label cleanup and counts confirmation pages / steps are up to date.  
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback

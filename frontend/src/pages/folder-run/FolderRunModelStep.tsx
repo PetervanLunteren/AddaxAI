@@ -9,7 +9,7 @@
  *
  * Main fields (always visible):
  * - Classification model (info button + status badge + grouped items)
- * - Label selection (SpeciesSelectionModal with country / state
+ * - Label selection (LabelSelectionField with country / state
  *   geofilter), only when a classifier is picked
  *
  * Advanced (collapsed by default; defaults are tuned for the common
@@ -45,7 +45,6 @@ import {
   AlertCircle,
   ChevronDown,
   InfoIcon,
-  ListTodo,
   Loader2,
   Play,
 } from "lucide-react";
@@ -93,7 +92,8 @@ import { ModelInfoSheet } from "../../components/models/ModelInfoSheet";
 import { ModelPreparationErrorView } from "../../components/projects/ModelPreparationErrorView";
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
-import { SpeciesSelectionModal } from "../../components/taxonomy/SpeciesSelectionModal";
+import { LabelSelectionField } from "../../components/taxonomy/LabelSelectionField";
+import { ModelSelectValue } from "../../components/models/ModelSelectValue";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
@@ -186,7 +186,6 @@ export function FolderRunModelStep() {
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
 
-  const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [showDetInfo, setShowDetInfo] = useState(false);
   const [showClsInfo, setShowClsInfo] = useState(false);
   const [showEmbInfo, setShowEmbInfo] = useState(false);
@@ -814,15 +813,7 @@ export function FolderRunModelStep() {
                                         field.value === NO_CLASSIFIER
                                       ) {
                                         return (
-                                          <div className="flex flex-col items-start py-1">
-                                            <div>
-                                              ∅ No classification model
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                              Run animal detector only,
-                                              identify species manually
-                                            </div>
-                                          </div>
+                                          <span>∅ No classification model</span>
                                         );
                                       }
                                       const selected =
@@ -831,19 +822,7 @@ export function FolderRunModelStep() {
                                             m.model_id === field.value,
                                         );
                                       if (!selected) return null;
-                                      return (
-                                        <div className="flex flex-col items-start py-1">
-                                          <div>
-                                            {selected.emoji}{" "}
-                                            {selected.friendly_name}
-                                          </div>
-                                          {selected.description_short && (
-                                            <div className="text-xs text-muted-foreground">
-                                              {selected.description_short}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
+                                      return <ModelSelectValue model={selected} />;
                                     })()}
                                   </SelectValue>
                                 </SelectTrigger>
@@ -913,23 +892,24 @@ export function FolderRunModelStep() {
                         </FormDescription>
                       </div>
                       <div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setLabelModalOpen(true)}
-                          className="flex min-h-14 w-full flex-col items-start justify-center gap-1 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <ListTodo className="h-4 w-4" />
-                            <span>Select labels</span>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            Currently included{" "}
-                            {(taxonomy.all_classes?.length || 0) -
-                              excludedClasses.length}{" "}
-                            of {taxonomy.all_classes?.length || 0}
-                          </span>
-                        </Button>
+                        <LabelSelectionField
+                          modelId={classificationModelId!}
+                          excludedClasses={excludedClasses}
+                          totalSpeciesCount={taxonomy.all_classes?.length || 0}
+                          countryCode={form.watch("country_code")}
+                          stateCode={form.watch("state_code")}
+                          onExclusionChange={(classes) =>
+                            form.setValue("excluded_classes", classes, {
+                              shouldDirty: true,
+                            })
+                          }
+                          onLocationChange={(country, state) => {
+                            form.setValue("country_code", country, {
+                              shouldDirty: true,
+                            });
+                            form.setValue("state_code", state, { shouldDirty: true });
+                          }}
+                        />
                       </div>
                     </div>
                   )}
@@ -993,19 +973,7 @@ export function FolderRunModelStep() {
                                             );
                                           if (!selected) return null;
                                           return (
-                                            <div className="flex flex-col items-start py-1">
-                                              <div>
-                                                {selected.emoji}{" "}
-                                                {selected.friendly_name}
-                                              </div>
-                                              {selected.description_short && (
-                                                <div className="text-xs text-muted-foreground">
-                                                  {
-                                                    selected.description_short
-                                                  }
-                                                </div>
-                                              )}
-                                            </div>
+                                            <ModelSelectValue model={selected} />
                                           );
                                         })()}
                                     </SelectValue>
@@ -1106,16 +1074,7 @@ export function FolderRunModelStep() {
                                           field.value === NO_EMBEDDING
                                         ) {
                                           return (
-                                            <div className="flex flex-col items-start py-1">
-                                              <div>
-                                                ∅ No embedding model
-                                              </div>
-                                              <div className="text-xs text-muted-foreground">
-                                                Skip if you don't need
-                                                similarity sort or
-                                                clustering
-                                              </div>
-                                            </div>
+                                            <span>∅ No embedding model</span>
                                           );
                                         }
                                         const selected =
@@ -1126,17 +1085,7 @@ export function FolderRunModelStep() {
                                           );
                                         if (!selected) return null;
                                         return (
-                                          <div className="flex flex-col items-start py-1">
-                                            <div>
-                                              {selected.emoji}{" "}
-                                              {selected.friendly_name}
-                                            </div>
-                                            {selected.description_short && (
-                                              <div className="text-xs text-muted-foreground">
-                                                {selected.description_short}
-                                              </div>
-                                            )}
-                                          </div>
+                                          <ModelSelectValue model={selected} />
                                         );
                                       })()}
                                     </SelectValue>
@@ -1542,29 +1491,6 @@ export function FolderRunModelStep() {
         open={showEmbInfo}
         onOpenChange={setShowEmbInfo}
       />
-
-      {hasClassifier && taxonomy && (
-        <SpeciesSelectionModal
-          modelId={classificationModelId!}
-          excludedClasses={excludedClasses}
-          onExclusionChange={(classes) =>
-            form.setValue("excluded_classes", classes, {
-              shouldDirty: true,
-            })
-          }
-          open={labelModalOpen}
-          onOpenChange={setLabelModalOpen}
-          totalSpeciesCount={taxonomy.all_classes?.length || 0}
-          countryCode={form.watch("country_code")}
-          stateCode={form.watch("state_code")}
-          onLocationChange={(country, state) => {
-            form.setValue("country_code", country, {
-              shouldDirty: true,
-            });
-            form.setValue("state_code", state, { shouldDirty: true });
-          }}
-        />
-      )}
 
       <Dialog
         open={prepStage === "preparing" || prepStage === "error"}

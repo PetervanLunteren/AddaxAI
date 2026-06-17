@@ -31,7 +31,9 @@ class ModelManifest(BaseModel):
     # Identity
     model_id: str
     friendly_name: str
-    emoji: str
+    # Optional decorative/regional icon. Classification models carry a
+    # regional flag; detection / embedding models omit it.
+    emoji: str | None = None
     type: str | None = (
         None  # Unused legacy field, kept for backward compatibility with existing manifests
     )

@@ -12,7 +12,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info, InfoIcon, ListTodo } from "lucide-react";
+import { Info, InfoIcon } from "lucide-react";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { ImageDropZone } from "./ImageDropZone";
 import { modelsApi } from "../../api/models";
@@ -54,7 +54,8 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
-import { SpeciesSelectionModal } from "../taxonomy/SpeciesSelectionModal";
+import { LabelSelectionField } from "../taxonomy/LabelSelectionField";
+import { ModelSelectValue } from "../models/ModelSelectValue";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -124,7 +125,6 @@ export function CreateProjectDialog({
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
 
   // Label selection state
-  const [labelSelectionModalOpen, setLabelSelectionModalOpen] = useState(false);
   const excludedClasses = form.watch("excluded_classes") ?? [];
 
   // Fetch taxonomy for selected classification model
@@ -333,31 +333,13 @@ export function CreateProjectDialog({
                             <SelectValue placeholder="Select classification model">
                             {(() => {
                               if (!field.value || field.value === "none") {
-                                return (
-                                  <div className="flex flex-col items-start py-1">
-                                    <div>∅ No classification model</div>
-                                    <div className="text-xs text-muted-foreground">
-                                      Run animal detector only, identify species manually
-                                    </div>
-                                  </div>
-                                );
+                                return <span>∅ No classification model</span>;
                               }
                               const selectedModel = classificationModels.find(
                                 (m) => m.model_id === field.value
                               );
                               if (!selectedModel) return null;
-                              return (
-                                <div className="flex flex-col items-start py-1">
-                                  <div>
-                                    {selectedModel.emoji} {selectedModel.friendly_name}
-                                  </div>
-                                  {selectedModel.description_short && (
-                                    <div className="text-xs text-muted-foreground">
-                                      {selectedModel.description_short}
-                                    </div>
-                                  )}
-                                </div>
-                              );
+                              return <ModelSelectValue model={selectedModel} />;
                             })()}
                           </SelectValue>
                         </SelectTrigger>
@@ -423,20 +405,20 @@ export function CreateProjectDialog({
                       </TooltipContent>
                     </Tooltip>
                   </FormLabel>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setLabelSelectionModalOpen(true)}
-                    className="w-full min-h-14 flex flex-col items-start justify-center gap-1 text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <ListTodo className="h-4 w-4" />
-                      <span>Select labels</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      Currently included {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
-                    </span>
-                  </Button>
+                  <LabelSelectionField
+                    modelId={classificationModelId}
+                    excludedClasses={excludedClasses}
+                    totalSpeciesCount={taxonomy.all_classes?.length || 0}
+                    countryCode={form.watch("country_code")}
+                    stateCode={form.watch("state_code")}
+                    onExclusionChange={(classes) => {
+                      form.setValue("excluded_classes", classes, { shouldDirty: true });
+                    }}
+                    onLocationChange={(country, state) => {
+                      form.setValue("country_code", country, { shouldDirty: true });
+                      form.setValue("state_code", state, { shouldDirty: true });
+                    }}
+                  />
                 </FormItem>
               )}
 
@@ -514,26 +496,6 @@ export function CreateProjectDialog({
         open={showModelInfo}
         onOpenChange={setShowModelInfo}
       />
-
-      {/* Label Selection Modal */}
-      {classificationModelId && taxonomy && (
-        <SpeciesSelectionModal
-          modelId={classificationModelId}
-          excludedClasses={excludedClasses}
-          onExclusionChange={(classes) => {
-            form.setValue("excluded_classes", classes, { shouldDirty: true });
-          }}
-          open={labelSelectionModalOpen}
-          onOpenChange={setLabelSelectionModalOpen}
-          totalSpeciesCount={taxonomy.all_classes?.length || 0}
-          countryCode={form.watch("country_code")}
-          stateCode={form.watch("state_code")}
-          onLocationChange={(country, state) => {
-            form.setValue("country_code", country, { shouldDirty: true });
-            form.setValue("state_code", state, { shouldDirty: true });
-          }}
-        />
-      )}
     </Dialog>
   );
 }

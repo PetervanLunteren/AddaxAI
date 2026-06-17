@@ -13,12 +13,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, ListTodo, InfoIcon, RefreshCw, X } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, InfoIcon, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
-import { SpeciesSelectionModal } from "../components/taxonomy/SpeciesSelectionModal";
+import { LabelSelectionField } from "../components/taxonomy/LabelSelectionField";
+import { ModelSelectValue } from "../components/models/ModelSelectValue";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
 import { ModelPreparationView } from "../components/projects/ModelPreparationView";
@@ -186,7 +187,6 @@ export default function SettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
   const [excludedClasses, setExcludedClasses] = useState<string[]>([]);
-  const [labelSelectionModalOpen, setLabelSelectionModalOpen] = useState(false);
   const [showModelInfo, setShowModelInfo] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
@@ -888,16 +888,7 @@ export default function SettingsPage() {
                                     );
                                     if (!selectedModel) return null;
                                     return (
-                                      <div className="flex flex-col items-start py-1">
-                                        <div>
-                                          {selectedModel.emoji} {selectedModel.friendly_name}
-                                        </div>
-                                        {selectedModel.description_short && (
-                                          <div className="text-xs text-muted-foreground">
-                                            {selectedModel.description_short}
-                                          </div>
-                                        )}
-                                      </div>
+                                      <ModelSelectValue model={selectedModel} />
                                     );
                                   })()}
                                 </SelectValue>
@@ -988,30 +979,14 @@ export default function SettingsPage() {
                                   {(() => {
                                     if (!field.value || field.value === "none") {
                                       return (
-                                        <div className="flex flex-col items-start py-1">
-                                          <div>∅ No classification model</div>
-                                          <div className="text-xs text-muted-foreground">
-                                            Run animal detector only, identify species manually
-                                          </div>
-                                        </div>
+                                        <span>∅ No classification model</span>
                                       );
                                     }
                                     const selectedModel = classificationModels.find(
                                       (m) => m.model_id === field.value
                                     );
                                     if (!selectedModel) return null;
-                                    return (
-                                      <div className="flex flex-col items-start py-1">
-                                        <div>
-                                          {selectedModel.emoji} {selectedModel.friendly_name}
-                                        </div>
-                                        {selectedModel.description_short && (
-                                          <div className="text-xs text-muted-foreground">
-                                            {selectedModel.description_short}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
+                                    return <ModelSelectValue model={selectedModel} />;
                                   })()}
                                 </SelectValue>
                               </SelectTrigger>
@@ -1090,12 +1065,7 @@ export default function SettingsPage() {
                                   {(() => {
                                     if (!field.value || field.value === "none") {
                                       return (
-                                        <div className="flex flex-col items-start py-1">
-                                          <div>∅ No embedding model</div>
-                                          <div className="text-xs text-muted-foreground">
-                                            Skip if you do not need similarity sort or clustering
-                                          </div>
-                                        </div>
+                                        <span>∅ No embedding model</span>
                                       );
                                     }
                                     const selectedModel = embeddingModels.find(
@@ -1103,16 +1073,7 @@ export default function SettingsPage() {
                                     );
                                     if (!selectedModel) return null;
                                     return (
-                                      <div className="flex flex-col items-start py-1">
-                                        <div>
-                                          {selectedModel.emoji} {selectedModel.friendly_name}
-                                        </div>
-                                        {selectedModel.description_short && (
-                                          <div className="text-xs text-muted-foreground">
-                                            {selectedModel.description_short}
-                                          </div>
-                                        )}
-                                      </div>
+                                      <ModelSelectValue model={selectedModel} />
                                     );
                                   })()}
                                 </SelectValue>
@@ -1257,20 +1218,21 @@ export default function SettingsPage() {
                       </FormDescription>
                     </div>
                     <div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setLabelSelectionModalOpen(true)}
-                        className="w-full min-h-14 flex flex-col items-start justify-center gap-1 text-left"
-                      >
-                        <div className="flex items-center gap-2">
-                          <ListTodo className="h-4 w-4" />
-                          <span>Select labels</span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          Currently included {(taxonomy.all_classes?.length || 0) - excludedClasses.length} of {taxonomy.all_classes?.length || 0}
-                        </span>
-                      </Button>
+                      <LabelSelectionField
+                        modelId={classificationModelId}
+                        excludedClasses={excludedClasses}
+                        totalSpeciesCount={taxonomy.all_classes?.length || 0}
+                        countryCode={countryCode}
+                        stateCode={form.watch("state_code")}
+                        onExclusionChange={(classes) => {
+                          setExcludedClasses(classes);
+                          form.setValue("excluded_classes", classes, { shouldDirty: true });
+                        }}
+                        onLocationChange={(country, state) => {
+                          form.setValue("country_code", country, { shouldDirty: true });
+                          form.setValue("state_code", state, { shouldDirty: true });
+                        }}
+                      />
                     </div>
                   </div>
                 </CardContent>
@@ -1559,27 +1521,6 @@ export default function SettingsPage() {
           open={showModelInfo}
           onOpenChange={setShowModelInfo}
         />
-
-        {/* Label Selection Modal */}
-        {classificationModelId && taxonomy && (
-          <SpeciesSelectionModal
-            modelId={classificationModelId}
-            excludedClasses={excludedClasses}
-            onExclusionChange={(classes) => {
-              setExcludedClasses(classes);
-              form.setValue("excluded_classes", classes, { shouldDirty: true });
-            }}
-            open={labelSelectionModalOpen}
-            onOpenChange={setLabelSelectionModalOpen}
-            totalSpeciesCount={taxonomy.all_classes?.length || 0}
-            countryCode={countryCode}
-            stateCode={form.watch("state_code")}
-            onLocationChange={(country, state) => {
-              form.setValue("country_code", country, { shouldDirty: true });
-              form.setValue("state_code", state, { shouldDirty: true });
-            }}
-          />
-        )}
 
         {/* Model Preparation Dialog */}
         <Dialog open={preparationStage === "preparing"} onOpenChange={(open) => !open && handleCancelPreparation()}>

@@ -73,7 +73,7 @@ class ModelInfo(BaseModel):
 
     model_id: str
     friendly_name: str
-    emoji: str
+    emoji: str | None = None
     type: Literal["detection", "classification", "embedding"]
     description: str
     description_short: str | None = None
