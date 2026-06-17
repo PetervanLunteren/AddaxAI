@@ -12,6 +12,7 @@
 
 import { API_BASE_URL } from "../../lib/api-client";
 import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
+import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections } from "../../api/types";
 
 interface FrameThumbnailProps {
@@ -47,7 +48,6 @@ export function FrameThumbnail({
   const imgW = file?.width_px || 1;
   const imgH = file?.height_px || 1;
   const rx = Math.round(Math.min(imgW, imgH) * 0.02);
-  const maskId = `m-frame-${fileId}`;
 
   return (
     <div
@@ -70,27 +70,17 @@ export function FrameThumbnail({
           viewBox={`0 0 ${imgW} ${imgH}`}
           preserveAspectRatio="xMidYMid slice"
         >
-          <defs>
-            <mask id={maskId}>
-              <rect width={imgW} height={imgH} fill="white" />
-              {dets.map((d) => (
-                <rect
-                  key={d.id}
-                  x={d.bbox_x * imgW}
-                  y={d.bbox_y * imgH}
-                  width={d.bbox_width * imgW}
-                  height={d.bbox_height * imgH}
-                  rx={rx}
-                  fill="black"
-                />
-              ))}
-            </mask>
-          </defs>
-          <rect
+          <SpotlightDim
             width={imgW}
             height={imgH}
+            rx={rx}
             fill="rgba(0,0,0,0.55)"
-            mask={`url(#${maskId})`}
+            boxes={dets.map((d) => ({
+              x: d.bbox_x * imgW,
+              y: d.bbox_y * imgH,
+              width: d.bbox_width * imgW,
+              height: d.bbox_height * imgH,
+            }))}
           />
           {dets.map((d) => (
             <rect

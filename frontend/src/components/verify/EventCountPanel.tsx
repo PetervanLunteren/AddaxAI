@@ -29,6 +29,11 @@ import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { EventObservationItem } from "../../api/types";
 
+// How long a typed digit stays "open" to be extended by the next one, so
+// "1" then "2" within the window sets 12 instead of 2. Single digits still
+// apply instantly; the next digit just revises the number while it's fresh.
+const DIGIT_WINDOW_MS = 700;
+
 interface EventCountPanelProps {
   eventId: string;
   projectId: string;
@@ -120,10 +125,16 @@ export function EventCountPanel({
   visibleRef.current = visible;
   const activeRef = useRef(0);
   activeRef.current = activeIndex;
+  // Digit accumulation for multi-digit count entry (see DIGIT_WINDOW_MS).
+  const digitBufferRef = useRef<{ obsId: string; digits: string } | null>(null);
+  const digitTimerRef = useRef<number | null>(null);
 
   // Keep the active row in range and reset it when the event changes.
   useEffect(() => {
     setActiveIndex(0);
+    if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
+    digitTimerRef.current = null;
+    digitBufferRef.current = null;
   }, [eventId]);
   useEffect(() => {
     if (activeIndex > visible.length - 1) {
@@ -131,10 +142,16 @@ export function EventCountPanel({
     }
   }, [visible.length, activeIndex]);
 
-  // up/down pick a species row; a digit sets the active row's count. Bound
-  // only while the panel is mounted (i.e. the modal is open). Editing keys
-  // are ignored while typing in an input (the count field, the picker).
+  // up/down pick a species row; digits set the active row's count (type fast
+  // for multi-digit); + / - nudge it by one. Bound only while the panel is
+  // mounted (i.e. the modal is open). Editing keys are ignored while typing in
+  // an input (the count field, the picker).
   useEffect(() => {
+    const clearDigitBuffer = () => {
+      if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
+      digitTimerRef.current = null;
+      digitBufferRef.current = null;
+    };
     const handler = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
@@ -142,23 +159,54 @@ export function EventCountPanel({
       ) {
         return;
       }
+      // Add a species — works even with no rows yet (that's when you most
+      // need it), so handle it before the empty-list guard.
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        clearDigitBuffer();
+        setAddOpen(true);
+        return;
+      }
       const rows = visibleRef.current;
       if (rows.length === 0) return;
       if (e.key === "ArrowUp") {
         e.preventDefault();
+        clearDigitBuffer();
         setActiveIndex((i) => (i <= 0 ? rows.length - 1 : i - 1));
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
+        clearDigitBuffer();
         setActiveIndex((i) => (i >= rows.length - 1 ? 0 : i + 1));
       } else if (e.key >= "0" && e.key <= "9") {
         const obs = rows[activeRef.current];
         if (!obs) return;
         e.preventDefault();
-        applyCount(obs, Number(e.key));
+        // Extend the open buffer for this row, else start fresh. Cap at 4
+        // digits (9999) so a key-mash can't request an absurd count.
+        const buf = digitBufferRef.current;
+        const prev = buf && buf.obsId === obs.id ? buf.digits : "";
+        const digits = (prev + e.key).slice(0, 4);
+        digitBufferRef.current = { obsId: obs.id, digits };
+        if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
+        digitTimerRef.current = window.setTimeout(clearDigitBuffer, DIGIT_WINDOW_MS);
+        applyCount(obs, Number(digits));
+      } else if (e.key === "+" || e.key === "=" || e.key === "-") {
+        const obs = rows[activeRef.current];
+        if (!obs) return;
+        e.preventDefault();
+        // Nudge from the in-progress number if one is open, else the count.
+        const buf = digitBufferRef.current;
+        const base =
+          buf && buf.obsId === obs.id ? Number(buf.digits) : obs.effective_count;
+        clearDigitBuffer();
+        applyCount(obs, base + (e.key === "-" ? -1 : 1));
       }
     };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
+    };
     // applyCount is stable enough; rows/active come from refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

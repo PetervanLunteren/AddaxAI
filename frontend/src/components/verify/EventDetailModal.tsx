@@ -44,6 +44,7 @@ import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { cn } from "../../lib/utils";
 import { basename } from "../../lib/path-utils";
+import { describeEventMedia } from "../../lib/event-media";
 import {
   formatCameraDate,
   formatCameraTime,
@@ -281,14 +282,7 @@ export function EventDetailModal({
   // describes the event you're confirming, not the frame you happen to be on.
   const eventSummary = useMemo(() => {
     if (!event) return null;
-    const videos = event.files.filter((f) => f.file_type === "video").length;
-    const images = event.files.length - videos;
-    const parts: string[] = [];
-    if (images) parts.push(`${images} image${images > 1 ? "s" : ""}`);
-    if (videos) parts.push(`${videos} video${videos > 1 ? "s" : ""}`);
-    const media =
-      parts.join(" · ") ||
-      `${event.file_count} file${event.file_count === 1 ? "" : "s"}`;
+    const media = describeEventMedia(event.files);
 
     let when: string | null = null;
     if (event.event_start_local) {
@@ -1075,7 +1069,9 @@ export function EventDetailModal({
                   {[
                     ["Enter", "Confirm + next event"],
                     ["↑ ↓", "Select species row"],
-                    ["0-9", "Set its count"],
+                    ["0-9", "Set count (type fast for 12, 130…)"],
+                    ["+ / −", "Adjust count by 1"],
+                    ["A", "Add species"],
                     ["← →", "Prev / next event"],
                     ["Shift + ← →", "Prev / next frame"],
                     ["Space", "Loop event"],

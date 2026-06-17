@@ -607,6 +607,50 @@ export function LabelsTab({
     [sortResult],
   );
 
+  // Latest grid order, read by advanceSelectionAfter so it can stay stable.
+  const allDetectionsRef = useRef<DetectionSummary[]>(allDetections);
+  allDetectionsRef.current = allDetections;
+
+  // After an action consumes the current selection, advance to the next card
+  // where you were — the one that slides into the freed slot — instead of
+  // clearing, so repeated verify / relabel / etc. need no mouse re-click. This
+  // only moves the highlight; it never acts on the new card. Reads the
+  // pre-action order (state updates are async) and never picks an acted card,
+  // so the chosen one survives the strip / verified-filter. Selecting on the
+  // tail falls back to the card just before the acted block.
+  const advanceSelectionAfter = useCallback(
+    (actedIds: string[]) => {
+      const order = allDetectionsRef.current;
+      const acted = new Set(actedIds);
+      let firstIdx = -1;
+      let lastIdx = -1;
+      for (let i = 0; i < order.length; i++) {
+        if (acted.has(order[i].detection_id)) {
+          if (firstIdx === -1) firstIdx = i;
+          lastIdx = i;
+        }
+      }
+      if (lastIdx === -1) {
+        clearSelection();
+        return;
+      }
+      const pick = (id: string) => {
+        selectionAnchorRef.current = id;
+        setSelectedIds(new Set([id]));
+      };
+      for (let i = lastIdx + 1; i < order.length; i++) {
+        const id = order[i].detection_id;
+        if (!acted.has(id)) return pick(id);
+      }
+      for (let i = firstIdx - 1; i >= 0; i--) {
+        const id = order[i].detection_id;
+        if (!acted.has(id)) return pick(id);
+      }
+      clearSelection();
+    },
+    [clearSelection],
+  );
+
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
       if (e.shiftKey && selectionAnchorRef.current) {
@@ -743,8 +787,9 @@ export function LabelsTab({
         verified: true,
       }));
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      advanceSelectionAfter(ids);
     },
-    [applyDetectionAction, queryClient]
+    [applyDetectionAction, advanceSelectionAfter, queryClient]
   );
 
   // Bulk-relabel a cohort straight from the divider button — no
@@ -866,12 +911,12 @@ export function LabelsTab({
             neighbor_top_scientific_name: null,
             verified: true,
           }));
-          clearSelection();
+          advanceSelectionAfter(ids);
           queryClient.invalidateQueries({ queryKey: ["label-tree"] });
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [applyDetectionAction, clearSelection, queryClient]
+    [applyDetectionAction, advanceSelectionAfter, queryClient]
   );
 
   const handleBulkMarkFalse = useCallback(
@@ -886,15 +931,17 @@ export function LabelsTab({
         verified: true,
       }));
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      advanceSelectionAfter(ids);
     },
-    [applyDetectionAction, queryClient]
+    [applyDetectionAction, advanceSelectionAfter, queryClient]
   );
 
   const handleBulkVerify = useCallback(
     (ids: string[]) => {
       applyDetectionAction(ids, (d) => ({ ...d, verified: true }));
+      advanceSelectionAfter(ids);
     },
-    [applyDetectionAction]
+    [applyDetectionAction, advanceSelectionAfter]
   );
 
   /** Relabel the selection to its most common label and verify.
@@ -934,14 +981,14 @@ export function LabelsTab({
             neighbor_top_scientific_name: null,
             verified: true,
           }));
-          clearSelection();
+          advanceSelectionAfter(ids);
           toast.success(
             `Relabelled ${ids.length} to ${resolveSpeciesName(mode)}`,
           );
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [allDetections, applyDetectionAction, clearSelection],
+    [allDetections, applyDetectionAction, advanceSelectionAfter],
   );
 
   // Keyboard shortcuts
@@ -970,7 +1017,6 @@ export function LabelsTab({
             .bulkVerify(ids, true)
             .then(() => {
               handleBulkVerify(ids);
-              clearSelection();
             });
         });
         return;
@@ -1019,14 +1065,14 @@ export function LabelsTab({
             neighbor_top_scientific_name: null,
             verified: true,
           }));
-          clearSelection();
+          advanceSelectionAfter(ids);
         });
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMatchMajority]);
+  }, [selectedIds, detailDetection, allDetections, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMatchMajority, handleBulkVerify, advanceSelectionAfter]);
 
   // Click outside grid to deselect
   useEffect(() => {

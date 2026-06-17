@@ -60,13 +60,14 @@ export function BulkActionBar({
 
   const verifyMutation = useMutation({
     mutationFn: () => detectionsApi.bulkVerify(ids, true),
-    onSuccess: (_data) => {
+    onSuccess: () => {
       if (onVerify) {
+        // Parent advances the selection to the next card; don't clear here.
         onVerify(ids);
       } else {
         onActionComplete();
+        onDeselectAll();
       }
-      onDeselectAll();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -78,8 +79,8 @@ export function BulkActionBar({
         onMarkFalse(ids);
       } else {
         onActionComplete();
+        onDeselectAll();
       }
-      onDeselectAll();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -92,8 +93,8 @@ export function BulkActionBar({
         onRelabel(ids, opt.label, opt.category, opt.displayName);
       } else {
         onActionComplete();
+        onDeselectAll();
       }
-      onDeselectAll();
     },
     onError: (err: Error) => toast.error(err.message),
   });

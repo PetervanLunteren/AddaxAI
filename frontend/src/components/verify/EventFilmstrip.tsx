@@ -10,6 +10,7 @@ import { Play } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { formatTimeOffset } from "../../lib/datetime";
+import { describeEventMedia } from "../../lib/event-media";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { TileSizeToggle } from "./TileSizeToggle";
 import type { TileSize } from "./CropGrid";
@@ -51,7 +52,7 @@ export function EventFilmstrip({
     <div className="flex h-full flex-col bg-muted/30">
       <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b shrink-0">
         <span className="text-xs text-muted-foreground">
-          {files.length} frame{files.length !== 1 ? "s" : ""}
+          {describeEventMedia(files)}
         </span>
         <TileSizeToggle
           value={tileSize}

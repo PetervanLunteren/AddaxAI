@@ -2,12 +2,6 @@
 
 ## Priority 1
 
-This text "1 frame" on the Event detail viewer is misleading. Its not a frame count, its a file count. Better say what the event consists of, so here it would be 1 video. Sometimes it would be 12 images. Or 2 videos and 2 images. Makes sense? '/Users/peter/Desktop/Screenshot 2026-06-17 at 20.00.39.png' Maybe the details info in the top right card could go there?? or what od you think? "1 video 15 Feb 2022, 17:23 asd Viewing REC0024.mp4 (1 of 1)"
-
-to adjust the counts, we do shortcut to number keys. But if I want to do "12" it first does 1 and then 2. Can we do a small deplay here so that users can actually type multi digit numbers? Would + and - also be good shortcuts? 
-
-the overlay / spotlight effect should not be applied in overlap of multiple bounding boxes. See e.g., '/Users/peter/Desktop/Screenshot 2026-06-17 at 20.35.20.png'. Only outside bboxes if not inside any box. Makes sense? 
-
 On the label verification page / step. SHould we auto select the first one in line if we do an action where by the prev selection is gone? Now TYhere is still quite some mouse clicking, and that saves 99% of the time some clicks, as you can just keep one hand on the shft for new selection, and one hand on the mouse. Then move to enter or R or whatever. Otherwise its move mouse to frist, then shift to N, then ... Or would you advise against that? It might be anoying if that is not what you want
 
 
@@ -15,7 +9,6 @@ On the label verification page / step. SHould we auto select the first one in li
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback
-- [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] ADD ALL MODELS (Also Caras model, and make TODO on the cls-pipeline to fix this properly there too)
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
@@ -47,6 +40,7 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 ## Future stuff
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
+- [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR
 - [ ] DOCUMENTATION - in text and in video tutorials - also all the models avaiulable with species etc. 
 - [ ] REPEAT DETECTION ELIMINATION

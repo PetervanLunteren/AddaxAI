@@ -15,7 +15,6 @@ import { splitPath } from "../../lib/path-utils";
 import {
   computePillLayout,
   roundedRectPath,
-  svgRoundedRectPath,
   PILL_PAD_X,
   PILL_PAD_Y,
   DOT_R,
@@ -29,6 +28,7 @@ import {
   DIM_FILL,
   PILL_BG,
 } from "../../lib/detection-overlay";
+import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 interface VideoPlayerProps {
   file: FileWithDetections;
@@ -92,23 +92,30 @@ function drawOverlaysOnCanvas(
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Spotlight dim overlay (evenodd: outer rect minus detection holes)
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(w, 0);
-  ctx.lineTo(w, h);
-  ctx.lineTo(0, h);
-  ctx.closePath();
-  for (const det of dets) {
-    roundedRectPath(
-      ctx,
-      det.bbox_x * w, det.bbox_y * h,
-      det.bbox_width * w, det.bbox_height * h,
-      BBOX_CORNER_RADIUS * scale,
-    );
+  // Spotlight dim: dim everything outside the UNION of the boxes. Built on an
+  // offscreen canvas so punching the box holes (destination-out) clears only
+  // the dim, never the underlying video frame. Overlapping boxes union, so the
+  // overlap stays bright (an evenodd outer-rect-minus-holes path re-dims it).
+  const dimLayer = document.createElement("canvas");
+  dimLayer.width = w;
+  dimLayer.height = h;
+  const dctx = dimLayer.getContext("2d");
+  if (dctx) {
+    dctx.fillStyle = DIM_FILL;
+    dctx.fillRect(0, 0, w, h);
+    dctx.globalCompositeOperation = "destination-out";
+    for (const det of dets) {
+      dctx.beginPath();
+      roundedRectPath(
+        dctx,
+        det.bbox_x * w, det.bbox_y * h,
+        det.bbox_width * w, det.bbox_height * h,
+        BBOX_CORNER_RADIUS * scale,
+      );
+      dctx.fill();
+    }
+    ctx.drawImage(dimLayer, 0, 0);
   }
-  ctx.fillStyle = DIM_FILL;
-  ctx.fill("evenodd");
 
   // Bounding boxes
   for (const det of dets) {
@@ -463,22 +470,6 @@ export function VideoPlayer({
     return () => video.removeEventListener("canplay", run);
   }, [autoExport, startExport, onAutoExportConsumed]);
 
-  // Build spotlight SVG path: outer rect with rounded-rect holes for each detection
-  const spotlightPath = useMemo(() => {
-    if (currentDetections.length === 0) return "";
-    let d = `M0,0H${imgW}V${imgH}H0Z`;
-    for (const det of currentDetections) {
-      d += svgRoundedRectPath(
-        det.bbox_x * imgW,
-        det.bbox_y * imgH,
-        det.bbox_width * imgW,
-        det.bbox_height * imgH,
-        BBOX_CORNER_RADIUS * s,
-      );
-    }
-    return d;
-  }, [currentDetections, imgW, imgH, s]);
-
   return (
     <div className="relative w-full h-full flex items-center justify-center">
       {/* Video + SVG overlay container */}
@@ -533,8 +524,19 @@ export function VideoPlayer({
             viewBox={`0 0 ${imgW} ${imgH}`}
             preserveAspectRatio="xMidYMid meet"
           >
-            {/* Spotlight dim overlay */}
-            <path fillRule="evenodd" d={spotlightPath} fill={DIM_FILL} />
+            {/* Spotlight dim overlay (union of boxes stays bright). */}
+            <SpotlightDim
+              width={imgW}
+              height={imgH}
+              rx={BBOX_CORNER_RADIUS * s}
+              fill={DIM_FILL}
+              boxes={currentDetections.map((det) => ({
+                x: det.bbox_x * imgW,
+                y: det.bbox_y * imgH,
+                width: det.bbox_width * imgW,
+                height: det.bbox_height * imgH,
+              }))}
+            />
 
             {/* Bounding boxes */}
             {currentDetections.map((det) => {
