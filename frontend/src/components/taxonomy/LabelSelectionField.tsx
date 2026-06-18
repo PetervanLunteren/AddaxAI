@@ -13,7 +13,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, SlidersHorizontal } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Popover,
@@ -39,8 +39,10 @@ interface LabelSelectionFieldProps {
   modelId: string;
   /** Currently excluded label names. */
   excludedClasses: string[];
-  /** Total number of labels in the model taxonomy (all_classes length). */
-  totalSpeciesCount: number;
+  /** All label names in the model taxonomy (model all_classes). Used to count
+   *  included labels and to ignore stale exclusions left over from a previously
+   *  selected model. */
+  allClasses: string[];
   /** Current country code from the parent form. */
   countryCode?: string | null;
   /** Current state code from the parent form. */
@@ -54,7 +56,7 @@ interface LabelSelectionFieldProps {
 export function LabelSelectionField({
   modelId,
   excludedClasses,
-  totalSpeciesCount,
+  allClasses,
   countryCode,
   stateCode,
   onExclusionChange,
@@ -141,7 +143,16 @@ export function LabelSelectionField({
     [modelId, onExclusionChange, onLocationChange],
   );
 
-  const includedCount = totalSpeciesCount - excludedClasses.length;
+  // Count only exclusions that exist in the current model. Switching models can
+  // leave stale exclusions from a previous (larger) taxonomy; ignoring them
+  // keeps the count correct and non-negative instead of e.g. "-2046 of 30".
+  const allClassesSet = useMemo(() => new Set(allClasses), [allClasses]);
+  const totalSpeciesCount = allClasses.length;
+  const excludedInModel = useMemo(
+    () => excludedClasses.filter((c) => allClassesSet.has(c)).length,
+    [excludedClasses, allClassesSet],
+  );
+  const includedCount = totalSpeciesCount - excludedInModel;
 
   const summary = (
     <p className="pl-3 text-xs text-muted-foreground">
@@ -159,7 +170,8 @@ export function LabelSelectionField({
   return (
     <>
       <div className="space-y-1">
-        {hasGeofence && (
+        {hasGeofence ? (
+          <>
           <Popover open={locationOpen} onOpenChange={setLocationOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -217,8 +229,27 @@ export function LabelSelectionField({
               </Command>
             </PopoverContent>
           </Popover>
+          {summary}
+          </>
+        ) : (
+          // No geofence: the only action is manual refining, so give it a
+          // full-width control matching the country dropdown's weight instead
+          // of a bare caption floating in an empty column.
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-full justify-between"
+            onClick={() => setModalOpen(true)}
+          >
+            <span className="truncate flex-1 text-left">
+              {excludedInModel === 0
+                ? "All species included"
+                : `${includedCount} of ${totalSpeciesCount} species`}
+            </span>
+            <SlidersHorizontal className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
         )}
-        {summary}
       </div>
 
       <SpeciesSelectionModal

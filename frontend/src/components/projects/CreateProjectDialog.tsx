@@ -359,7 +359,7 @@ export function CreateProjectDialog({
                       </TooltipTrigger>
                       <TooltipContent>
                         <p className="max-w-xs">
-                          Limit predictions to labels expected in your project area to reduce false positives. You can change this later in settings.
+                          Limit which species the model can predict, to cut false positives. You can change this later in settings.
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -367,7 +367,7 @@ export function CreateProjectDialog({
                   <LabelSelectionField
                     modelId={classificationModelId}
                     excludedClasses={excludedClasses}
-                    totalSpeciesCount={taxonomy.all_classes?.length || 0}
+                    allClasses={taxonomy.all_classes ?? []}
                     countryCode={form.watch("country_code")}
                     stateCode={form.watch("state_code")}
                     onExclusionChange={(classes) => {

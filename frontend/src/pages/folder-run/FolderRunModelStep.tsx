@@ -832,15 +832,15 @@ export function FolderRunModelStep() {
                       <div className="space-y-1">
                         <FormLabel>Species selection</FormLabel>
                         <FormDescription className="text-sm">
-                          Limit predictions to species expected in your
-                          area to cut false positives.
+                          Limit which species the model can predict, to cut
+                          false positives.
                         </FormDescription>
                       </div>
                       <div>
                         <LabelSelectionField
                           modelId={classificationModelId!}
                           excludedClasses={excludedClasses}
-                          totalSpeciesCount={taxonomy.all_classes?.length || 0}
+                          allClasses={taxonomy.all_classes ?? []}
                           countryCode={form.watch("country_code")}
                           stateCode={form.watch("state_code")}
                           onExclusionChange={(classes) =>

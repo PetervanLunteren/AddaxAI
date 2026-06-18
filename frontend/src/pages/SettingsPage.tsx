@@ -1063,14 +1063,14 @@ export default function SettingsPage() {
                     <div className="space-y-1">
                       <FormLabel>Label selection</FormLabel>
                       <FormDescription className="text-sm">
-                        Limit predictions to labels expected in your project area to reduce false positives.
+                        Limit which species the model can predict, to cut false positives.
                       </FormDescription>
                     </div>
                     <div>
                       <LabelSelectionField
                         modelId={classificationModelId}
                         excludedClasses={excludedClasses}
-                        totalSpeciesCount={taxonomy.all_classes?.length || 0}
+                        allClasses={taxonomy.all_classes ?? []}
                         countryCode={countryCode}
                         stateCode={form.watch("state_code")}
                         onExclusionChange={(classes) => {
