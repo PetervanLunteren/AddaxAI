@@ -97,9 +97,9 @@ export function LabelsSettings({
         <div className="space-y-1.5">
           <p className="text-sm">Max labels per sort</p>
           <p className="text-xs text-muted-foreground">
-            Hard limit on how many labels one similarity sort
-            loads. Narrowing filters first is always faster than
-            raising the cap.
+            The most labels to load in one sort. A higher limit uses more
+            memory and is slower, so narrowing the filters first is usually
+            easier and faster.
           </p>
           <Select
             value={String(maxDetections)}

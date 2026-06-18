@@ -71,6 +71,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { CaptionedSelect } from "../../components/ui/captioned-select";
+import { SMOOTHING_LEVELS } from "../../lib/smoothing";
+import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { Slider } from "../../components/ui/slider";
 import { Switch } from "../../components/ui/switch";
 import {
@@ -1041,7 +1044,7 @@ export function FolderRunModelStep() {
                       render={({ field }) => (
                         <SettingRow
                           label="Detection confidence threshold"
-                          description="Hide detections below this confidence score. Verified observations are always included."
+                          description={SETTING_CAPTIONS.detectionThreshold}
                         >
                           <div className="flex items-center justify-between">
                             <Slider
@@ -1069,7 +1072,7 @@ export function FolderRunModelStep() {
                       render={({ field }) => (
                         <SettingRow
                           label="Video frame rate"
-                          description="How many frames per second to extract from videos for detection. Higher values find more but take longer."
+                          description={SETTING_CAPTIONS.videoFrameRate}
                         >
                           <Select
                             key={String(field.value)}
@@ -1105,7 +1108,7 @@ export function FolderRunModelStep() {
                       render={({ field }) => (
                         <SettingRow
                           label="Independence interval"
-                          description="Files at the same camera within this window are merged into one event. The count per event is MaxN, the peak individuals in a single frame."
+                          description={SETTING_CAPTIONS.independenceInterval}
                         >
                           <Select
                             key={String(field.value)}
@@ -1138,17 +1141,9 @@ export function FolderRunModelStep() {
                     {hasClassifier && (
                       <SettingRow
                         label="Smoothing"
-                        description="Cleans up species labels across an event, nudging the odd one out toward the rest. Higher settings correct more aggressively."
+                        description={SETTING_CAPTIONS.smoothing}
                       >
-                        <Select
-                          // See the classification select above: remount
-                          // on value change so Radix's hidden form
-                          // <select> doesn't blank it.
-                          key={
-                            form.watch("event_smoothing")
-                              ? form.watch("smoothing_strength")
-                              : "off"
-                          }
+                        <CaptionedSelect
                           value={
                             form.watch("event_smoothing")
                               ? form.watch("smoothing_strength")
@@ -1166,27 +1161,13 @@ export function FolderRunModelStep() {
                               });
                               form.setValue(
                                 "smoothing_strength",
-                                value as
-                                  | "mild"
-                                  | "normal"
-                                  | "aggressive",
+                                value as "mild" | "normal" | "aggressive",
                                 { shouldDirty: true },
                               );
                             }
                           }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="off">Off</SelectItem>
-                            <SelectItem value="mild">Mild</SelectItem>
-                            <SelectItem value="normal">Normal</SelectItem>
-                            <SelectItem value="aggressive">
-                              Aggressive
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                          options={SMOOTHING_LEVELS}
+                        />
                       </SettingRow>
                     )}
 
@@ -1197,7 +1178,7 @@ export function FolderRunModelStep() {
                         render={({ field }) => (
                           <SettingRow
                             label="Taxonomic rollup"
-                            description="When the model isn't sure of the exact species, it falls back to a broader group it's confident about, like genus or family."
+                            description={SETTING_CAPTIONS.taxonomicRollup}
                           >
                             <Switch
                               checked={field.value}

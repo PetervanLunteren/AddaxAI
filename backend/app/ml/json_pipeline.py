@@ -31,7 +31,10 @@ from app.ml.json_utils import (
     extract_animal_detections,
 )
 from app.models import Deployment, File
-from app.utils.media_dates import extract_video_dates
+from app.utils.media_dates import (
+    extract_video_dates,
+    parse_addaxai_filename_datetime,
+)
 
 logger = get_logger(__name__)
 
@@ -48,9 +51,10 @@ def _resolve_capture_timestamp(
     return None if nothing is available.
 
     Videos go through exiftool (`video_dates` pre-populated), images
-    through MegaDetector's embedded EXIF `DateTimeOriginal`. We never
-    substitute a fallback — a file that returns None here is ingested
-    with captured_at_local=NULL and surfaced via
+    through MegaDetector's embedded EXIF `DateTimeOriginal`. As a last
+    resort, an opt-in `…addaxai-YYYYMMDD-HHMMSS.<ext>` filename is parsed,
+    for files whose metadata carries no readable date. A file that still
+    returns None is ingested with captured_at_local=NULL and surfaced via
     `PipelineResult.skipped_missing_timestamp`.
     """
     if is_video:
@@ -63,8 +67,13 @@ def _resolve_capture_timestamp(
                 exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
             )
         except (ValueError, TypeError):
-            return None
-    return None
+            pass
+    ts = parse_addaxai_filename_datetime(absolute_path.name)
+    if ts is not None:
+        logger.debug(
+            "Capture time from addaxai filename: %s -> %s", absolute_path.name, ts
+        )
+    return ts
 
 
 def load_json_to_database(

@@ -69,6 +69,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { CaptionedSelect } from "../components/ui/captioned-select";
+import { SMOOTHING_LEVELS } from "../lib/smoothing";
+import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import {
@@ -811,56 +814,12 @@ export default function SettingsPage() {
         <TooltipProvider>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" key={project?.id}>
-            {/* Card 0: Project info */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Project info</CardTitle>
-                <CardDescription>
-                  High-level metadata about this project.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-0 divide-y border-t">
-                <FormField
-                  control={form.control}
-                  name="timezone"
-                  render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Camera timezone</FormLabel>
-                        <FormDescription className="text-sm">
-                          Whatever your cameras were set to. Used for
-                          exports and activity charts. Doesn't shift the
-                          capture times on your photos or videos. Leave on
-                          "Auto" to derive it from the first site's
-                          location. If the cameras
-                          follow a regional timezone with daylight saving,
-                          pick the city name. If they use a fixed offset all
-                          year (no daylight saving), pick a UTC±N entry
-                          instead.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
-                        <FormControl>
-                          <TimezoneSelect
-                            value={field.value}
-                            onChange={field.onChange}
-                            autoLabel="Auto (from site location)"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </div>
-                    </div>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Card 1: Models */}
+            {/* Card: Models */}
             <Card>
               <CardHeader>
                 <CardTitle>Models</CardTitle>
                 <CardDescription>
-                  Models used to detect objects and classify labels. Changes apply to new analyses only and do not reprocess existing results.
+                  The models used to analyze your images. Changes apply to new analyses only.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y border-t">
@@ -873,7 +832,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Detection model</FormLabel>
                         <FormDescription className="text-sm">
-                          The first step in the pipeline. Scans each image or video frame and draws bounding boxes around animals, people, and vehicles. Everything downstream (classification, embedding, statistics) depends on what the detection model finds.
+                          Finds animals, people, and vehicles in each image or video frame. Everything else builds on what it finds.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -923,7 +882,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
-                          The second step. After the detection model finds an animal, the classification model identifies the species by analyzing the cropped region. People and vehicles are not classified further. Optional, select "none" for detection-only projects.
+                          Identifies the species of each animal the detection model finds. Optional: choose "none" for a detection-only project.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -979,7 +938,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Embedding model</FormLabel>
                         <FormDescription className="text-sm">
-                          The third step. Computes a visual fingerprint for each detected animal. Used to sort and search detections by visual similarity.
+                          Creates a visual fingerprint of each animal, used to sort and search by similarity.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1049,10 +1008,9 @@ export default function SettingsPage() {
                   <CardHeader>
                     <CardTitle>Performance</CardTitle>
                     <CardDescription>
-                      Override how many images each model processes in parallel. Higher
-                      values are faster but use more memory. Leave at default unless
-                      you're running into out-of-memory errors or want to push
-                      throughput on a powerful machine.
+                      How many images each model processes at once. Higher is faster
+                      but uses more memory. Leave as is unless you hit out-of-memory
+                      errors.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-0 divide-y border-t">
@@ -1097,7 +1055,7 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle>Label selection</CardTitle>
                   <CardDescription>
-                    Control which labels can be predicted
+                    Choose which labels the AI can predict.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-0 divide-y border-t">
@@ -1135,7 +1093,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Analysis and counting</CardTitle>
                 <CardDescription>
-                  Control how detections are filtered, grouped, and aggregated. Changes apply to all analyses (past and future) and affect how data is interpreted, not the underlying detections.
+                  How detections are filtered, grouped into events, and counted.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y border-t">
@@ -1148,7 +1106,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Video frame rate</FormLabel>
                         <FormDescription className="text-sm">
-                          How many frames per second to extract from videos for detection. Higher values find more but take longer. Applies to new analyses only.
+                          {SETTING_CAPTIONS.videoFrameRate} Applies to new analyses only.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1185,7 +1143,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Detection confidence threshold</FormLabel>
                         <FormDescription className="text-sm">
-                          Hide detections below this confidence score. Only affects unverified images. Verified observations are always included. Applies retroactively to all statistics and exports.
+                          {SETTING_CAPTIONS.detectionThreshold} Applies retroactively to all statistics and exports.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1215,7 +1173,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Independence interval</FormLabel>
                         <FormDescription className="text-sm">
-                          Consecutive files at the same camera within this window are merged into one independent event. The count for each event uses MaxN, the peak number of individuals visible in a single image within that event. Affects all statistics retroactively.
+                          {SETTING_CAPTIONS.independenceInterval} Affects all statistics retroactively.
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1252,11 +1210,11 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Smoothing</FormLabel>
                         <FormDescription className="text-sm">
-                          Cleans up classification labels in two steps. Image-level smoothing picks the dominant species when multiple detections in the same image disagree. Event-level smoothing then looks across all images in an event and overwrites outlier labels with the dominant species, based on the strength setting below. Taxonomic relationships are considered when resolving conflicts, so labels within the same family are treated more leniently than cross-family disagreements.
+                          {SETTING_CAPTIONS.smoothing}
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <Select
+                        <CaptionedSelect
                           value={form.watch("event_smoothing") ? form.watch("smoothing_strength") : "off"}
                           onValueChange={(value) => {
                             if (!value) return;
@@ -1267,17 +1225,8 @@ export default function SettingsPage() {
                               form.setValue("smoothing_strength", value as "mild" | "normal" | "aggressive", { shouldDirty: true });
                             }
                           }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="off">Off</SelectItem>
-                            <SelectItem value="mild">Mild</SelectItem>
-                            <SelectItem value="normal">Normal</SelectItem>
-                            <SelectItem value="aggressive">Aggressive</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          options={SMOOTHING_LEVELS}
+                        />
                       </div>
                     </div>
                   )}
@@ -1292,7 +1241,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Taxonomic rollup</FormLabel>
                         <FormDescription className="text-sm">
-                          When the model is not confident enough at the species level, it sums probabilities up the taxonomy tree (species, genus, family, order, class) and picks the most specific level where the combined confidence reaches 0.65. For example, a detection uncertain between "lion" and "leopard" may roll up to "felidae" if the family-level confidence is high enough.
+                          {SETTING_CAPTIONS.taxonomicRollup}
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -1304,6 +1253,37 @@ export default function SettingsPage() {
                     </div>
                   )}
                 />}
+
+                {/* Camera timezone: affects how event/activity times and
+                    exports read (moved from the old one-setting card). */}
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Camera timezone</FormLabel>
+                        <FormDescription className="text-sm">
+                          Your cameras' timezone, used for exports and
+                          activity charts. It doesn't change the capture times
+                          on your files. Leave on "Auto" to use the first
+                          site's location. Pick a city for regional time with
+                          daylight saving, or a UTC±N for a fixed offset.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <FormControl>
+                          <TimezoneSelect
+                            value={field.value}
+                            onChange={field.onChange}
+                            autoLabel="Auto (from site location)"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
 
               </CardContent>
             </Card>

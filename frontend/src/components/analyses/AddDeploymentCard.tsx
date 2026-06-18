@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -24,6 +24,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { deploymentQueueApi } from "@/api/deployment-queue";
 import { deploymentsApi } from "@/api/deployments";
 import { Label } from "@/components/ui/label";
@@ -51,6 +61,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
+  // Reprocess confirmation: shown when the folder is already a deployment.
+  const [confirmReprocess, setConfirmReprocess] = useState(false);
 
   // Get folder scan results for validation
   const { data: scanResult, isLoading: isScanning } = useFolderScan(folderPath);
@@ -122,12 +134,15 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           (e.status === "pending" || e.status === "processing"),
       )
     : undefined;
-  const isDuplicate = Boolean(blockingDeployment || blockingQueueEntry);
-  // Missing capture dates no longer block adding a deployment: the
-  // backend ingests date-less files (they drop out of time-based stats),
-  // and the folder scan shows a non-blocking note about it.
-  const isValid =
-    folderPath && hasFiles && !isDuplicate && !isScanning;
+  // A pending/processing queue entry still blocks (can't reprocess something
+  // mid-flight). An existing deployment no longer blocks: adding it again
+  // reprocesses the folder after a confirm (see handleSubmit).
+  // Missing capture dates no longer block adding a deployment: the backend
+  // ingests date-less files (they drop out of time-based stats), and the
+  // folder scan shows a non-blocking note about it.
+  const isValid = Boolean(
+    folderPath && hasFiles && !blockingQueueEntry && !isScanning,
+  );
 
   // Validation messages (for button tooltip). Site is optional (users
   // can run deployment-agnostic batches), so a missing site no longer
@@ -139,18 +154,55 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
     validationMessages.push("Scanning folder...");
   } else if (!hasFiles) {
     validationMessages.push("Selected folder contains no images");
-  } else if (blockingDeployment) {
-    validationMessages.push(
-      "This folder is already a deployment in this project. To re-analyze it with different settings, delete the existing deployment first on the Deployments page.",
-    );
   } else if (blockingQueueEntry) {
     validationMessages.push(
       `This folder is already in the queue (status: ${blockingQueueEntry.status}). Remove it from the queue first.`,
     );
   }
 
+  // Reprocess: delete the existing deployment (cascades away its files,
+  // detections, events, observations and verifications), then queue the
+  // folder again. Sequential; if the delete fails nothing is queued.
+  const reprocess = useMutation({
+    mutationFn: async () => {
+      if (!blockingDeployment || !folderPath || !scanResult) return;
+      await deploymentsApi.delete(blockingDeployment.id);
+      await deploymentQueueApi.create({
+        project_id: projectId,
+        folder_path: folderPath,
+        site_id: siteId,
+        video_count: scanResult.video_count,
+        image_count: scanResult.image_count,
+        datetime_offset_seconds: datetimeOffsetSeconds || null,
+        notes: notes.trim() || null,
+        tags,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["deployment-queue", projectId] });
+      setConfirmReprocess(false);
+      setFolderPath(null);
+      setSiteId(null);
+      setDatetimeOffsetSeconds(0);
+      setNotes("");
+      setTags({});
+    },
+    onError: (error) => {
+      alert(
+        `Failed to reprocess: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    },
+  });
+
   const handleSubmit = () => {
     if (!folderPath || !scanResult) return;
+
+    // Already a deployment: confirm the overwrite before reprocessing.
+    if (blockingDeployment) {
+      setConfirmReprocess(true);
+      return;
+    }
 
     addToQueue.mutate({
       folder_path: folderPath,
@@ -232,13 +284,10 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
               users don't have to hover to see why they're blocked. */}
           {(blockingDeployment || blockingQueueEntry) && (
             <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
               <div className="flex-1">
                 {blockingDeployment ? (
-                  <>
-                    This folder is already a deployment in this project. To
-                    re-analyze it with different settings, delete the existing
-                    deployment first on the Deployments page.
-                  </>
+                  <>This folder is already a deployment in this project.</>
                 ) : (
                   <>
                     This folder is already in the queue (status:{" "}
@@ -268,12 +317,16 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
                 <div className="w-full">
                   <Button
                     onClick={handleSubmit}
-                    disabled={!isValid || addToQueue.isPending}
+                    disabled={!isValid || addToQueue.isPending || reprocess.isPending}
                     className="w-full"
                     size="lg"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    {addToQueue.isPending ? "Adding..." : "Add to queue"}
+                    {addToQueue.isPending
+                      ? "Adding..."
+                      : blockingDeployment
+                        ? "Reprocess folder"
+                        : "Add to queue"}
                   </Button>
                 </div>
               </TooltipTrigger>
@@ -304,6 +357,34 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           onApply={setDatetimeOffsetSeconds}
         />
       )}
+
+      {/* Reprocess confirmation */}
+      <AlertDialog open={confirmReprocess} onOpenChange={setConfirmReprocess}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reprocess this folder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This folder is already in the database. Processing it again
+              overwrites the previous predictions, including any verifications
+              and count confirmations. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reprocess.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                reprocess.mutate();
+              }}
+              disabled={reprocess.isPending}
+            >
+              {reprocess.isPending ? "Reprocessing..." : "Overwrite and reprocess"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add site modal */}
       <AddSiteModal

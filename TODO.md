@@ -1,47 +1,43 @@
 # TODO
 
 ## Priority 1
-- [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
-- [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback
-- [ ] ADD ALL MODELS (Also Caras model, and make TODO on the cls-pipeline to fix this properly there too)
+- [ ] Do Dans feedback
+- [ ] Do all the other feedback received via email
+
+
+## Priority 2
+- [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. Also add a Check for updates option. We can put global settings here (like common-name/scientific-name toggle, or language etc). Make it look like a mature app. What else would you recommend in the menu items, and in which order, groupings? How do other mature apps do it? And what do you recommend for this app? You can web query if you want. How do other mature apps do it? How do they group theior top menu actions, what do they pu in there? We could put all the hamburger actions in there, but also the toggle for common/scientifc names, etc. Also the bug report. What else? I want this to be copmplete and logical.  
+
+## Priority 3 
+- [ ] 
+
+## AFter the Beta phase
+- [ ] ADD ALL MODELS (Also Caras model)
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
-
-❯ Make the caption more user friendly: "Hard limit on how many detections one similarity sort loads. Narrowing filters first is always faster than raising the
-  cap." What do users want to know? This is a limit. The higher the limit, the more memory needed and the slower it gets. Lowering the number of observations 
-  with the filters is generally easier and faster. 
-
-## Priority 2
-- [ ] Make projects-mode analysis blocking too, like the folder-run flow now does. Today it runs in the background queue worker with the `DeploymentHealthToast` showing progress; user can navigate everywhere while it runs, kick off other deployments, etc. For consistency with folder-run's modal-blocking pattern (and the same "ML uses all your compute, don't do other heavy stuff simultaneously" reasoning), wrap the running deployment in the same blocking modal. Keeps the queue concept (sequential deployments), just makes the active one block the UI. Reuse the JobProgressModal from folder-run.
-- [ ] Fallback to read datetimeorignal from filename as a fallback. Reach out to flavio to see how to format the read exactly. example "S1_20250222_072314.mp4", regex: the last two parts separated by "_" in the format of <whatever>_<YYYYMMDD>_<HHMMSS>.<extention>
-
-Open a project with completed deployments → should land on Dashboard. - DOES NOT LAND ON DASHBOARD. LANDS ON PROCESS. 
-
-## Priority 3 
-- [ ] Make a tutorial on how to move data between computers. "The difficulty is that AddaxAI uses three data sources, and all are required. The raw images and videos (to show you while doing verification)The internal JSON files hidden in the processed folders (to reprocess after settings are changed)The internal AddaxAI database (stores all detections, verification statuses, etc)If we want to move everything to a new computer, we must move all three of these components. Luckily, components 1 and 2 are together, so if you have the images on an external drive, you can just plug it into a new computer. Then, you also need to move the DB, which means you must back it up manually, move the DB file to the new computer, and then restore from the there. "
-
-## AFter the Beta phase
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
 - [ ] Any other non used imports or requirements in the environments YMLS? 
 - [ ] Bump addaxai-base from cu118 to cu128 so RTX 50-series (sm_120, Blackwell) gets native kernels instead of the 4-5 min PTX JIT fallback. Suggested pins: torch==2.8.0+cu128, torchvision==0.23.0+cu128, --extra-index-url https://download.pytorch.org/whl/cu128. Both windows and linux YAMLs. Adds ~700 MB to the install but fixes the GPU warning reported at https://forum.addaxai.com/t/model-warning-on-running-with-gpu/202. Requires NVIDIA driver >= 555.x, mention in the beta-tester readme. 
 - [ ] Bump the pytorch env from Python 3.8 to 3.11 (3.8 is EOL since Oct 2024 and recent torch wheels are starting to drop py38 builds). Also bump torch alongside the python jump. SpeciesNet-fine-tuned classifiers (.pt files with pickled onnx2torch operator classes) need a smoke test after the bump: load NAM-ADS-v1 or similar and confirm torch.load() succeeds across the major version jump. 
-- [ ] Do we want a custom minimal menu (just Reload / Force Reload / DevTools / About / Quit) with our own styling? Or keep the electron built in? We can put the hamburger menu in the electron menu row? And the bug report etc. Then we can also add video tutorials etc. Also add a Check for updates option. We can put global settings here (like common-name/scientific-name toggle, or language etc). Make it look like a mature app. What else would you recommend in the menu items, and in which order, groupings? How do other mature apps do it? And what do you recommend for this app? You can web query if you want. 
-- [ ] Would it be a good idea to add a extra level for the smoothing "Very aggresive" (or something similar), that does not run the MD utils smoothing script at all, but just flattens out the entire event to a single label. We'll need to think about which label of course (the max cls conf label for all? or some kind of average label for all?). If we decide to do this, we might also want to add captions in the dropdown that try to explain the tiers off / mild / aggresive / etc. Make it a tall dropdown just like the models dropdown with captions, use the same format. What do you think? 
+- [ ] If we have bumped pytorch env to 3.11, we can implement https://github.com/MNHN-OFVI/DeepForestVisionV2. See email from Hugo at Tue, Jun 16, 4:01 PM for more info. 
 
-- [ ] explain again how the 20K limit affects the search and the pbar., What happens if there are to many above the limit? Does it just take the first N observations, or does it block? 
 
 ## Future stuff
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR
-- [ ] DOCUMENTATION - in text and in video tutorials - also all the models avaiulable with species etc. 
+- [ ] DOCUMENTATION (see items below)
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
 
-
+## Documentation
+- [ ] Make a tutorial on how to move data between computers. "The difficulty is that AddaxAI uses three data sources, and all are required. The raw images and videos (to show you while doing verification)The internal JSON files hidden in the processed folders (to reprocess after settings are changed)The internal AddaxAI database (stores all detections, verification statuses, etc)If we want to move everything to a new computer, we must move all three of these components. Luckily, components 1 and 2 are together, so if you have the images on an external drive, you can just plug it into a new computer. Then, you also need to move the DB, which means you must back it up manually, move the DB file to the new computer, and then restore from the there. "
+- [ ] in text and in video tutorials
+- [ ] also all the models avaiulable with species etc 
+- [ ] also include the fallback date reader from filename (...addaxai-YYYYMMDD-HHMMSS.ext)
 
 ## Nice to haves
 - [ ] SUBSAHARA GEOFILE - Add a geolocation file for the Sub Saharan model too, like SpeciesNet, so users of the SSmodel can also prefil by country. 
@@ -61,32 +57,3 @@ Open a project with completed deployments → should land on Dashboard. - DOES N
 
 
 
-
-
-
-
-Have a look at how the app uses and saves video frames. Report back to me how it works, how the plsitting works, how the reading works, etc. I want a full audit of how this works, as we'll talk about different scenarios of improving the frame splitting and saving. The main reason for delving into this is the following user report. 
-
-It looks like video frames were extracted to disk inside the .addaxai folder during processing (within "video_frames"), and not deleted.  The frames are around the same size as the original videos, even at the default frame sampling rate, so I think this will be problematic.  If we crank up the frame rate at all, the frames would quickly become much larger than the original videos.  If you want to extract frames to disk, I would process each image one frame at a time, then delete the frames.  But are you sure you want to extract frames to disk?  This used to be how I processed videos, but neither run_md_and_speciesnet nor process_video require this.  Best case, you become dependent on (possibly slow) hard drive write speeds, worst case, you also add a lot of storage overhead.
-
-SO long story short, can we somehow avoid saving videos to disk? And hoq would that work? What would be affected by it? Can we run analysis on frames on the fly? Or on batches of frames? Or batches of frames per video? The real issue is that if somebody will analyse a backlog of 1TB videos, this current method will be very destructive. What do you think? How would analysis look if we not save the frames? That means extracting the frames for the detection, classification, and embedding phases. And how would the UI work? Perhaps save thumbnails to disk for UI quickness, and extract on the fly for verification of high quality frames? IDK. Anyway, just some thoughts. I would like to hear the best appraoches from you. 
-
-Instructions:
-* Claude code will review your output once you are done, so make sure you exceed his expectations
-* do not sugar coat, be honest and clear
-* Switch to plan mode, I want this task to be done with "plan mode on"
-* Read all MD file in root to get a understanding of the project. 
-* If something is unclear at any point, stop and ask before continuing.
-* Prioritize simplicity and clarity over perfection. The code must be clean, easy to read, and understandable for collaborators. Avoid unnecessary complexity.
-* I'm not in a rush. Please be precise and do the task thoroughly. 
-* Please ask me any question for clarification. I would rather that you ask too many questions than assume certain details. 
-* Ask me clarifying questions before beginning. Based on the conventions set out in CONVENTIONS.md and your knowledge, give your recommended solution to each questions you ask me. The minimum number of questions to ask me is 3
-
-Workflow:
-* Based on my answers, suggest a few general approaches. These should range from simple solutions to more sophisticated alternatives, with clear trade-offs for each. For every approach, explain:
-   - Complexity (difficulty, dependencies, maintainability)
-   - Readability (clarity for collaborators)
-   - Effect (impact on performance, usability, flexibility)
-* Give your recommendation regarding the alternatives discribed earlier, with a short reasoning. Be short and concise. Key words if possible.
-* After I select an approach, draft a detailed plan for implementation.
-* Only start working if I agree with the proposed plan.

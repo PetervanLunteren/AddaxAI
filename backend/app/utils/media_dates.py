@@ -5,6 +5,7 @@ Extracts creation dates from video metadata. Used by both the folder scanner
 (for deployment preview) and the JSON pipeline (for file timestamps).
 """
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,30 @@ import exiftool
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Strict, opt-in filename date fallback. A user whose files have no readable
+# EXIF/metadata date can rename them to end with `addaxai-YYYYMMDD-HHMMSS`
+# before the extension (e.g. `clip_addaxai-20250222-072314.mp4`); we parse the
+# capture time from that. The `addaxai-` marker makes the match unambiguous (no
+# false positives from serial numbers), so this is a silent last resort with no
+# settings. The marker is case-insensitive; the separator is strictly `-`, and
+# the block must end the filename stem.
+_ADDAXAI_FILENAME_RE = re.compile(r"addaxai-(\d{8})-(\d{6})$", re.IGNORECASE)
+
+
+def parse_addaxai_filename_datetime(filename: str) -> datetime | None:
+    """Capture time from a `…addaxai-YYYYMMDD-HHMMSS.<ext>` filename, else None.
+
+    Returns the naive local datetime, or None when the marker is absent or the
+    digits are not a real calendar datetime.
+    """
+    match = _ADDAXAI_FILENAME_RE.search(Path(filename).stem)
+    if match is None:
+        return None
+    try:
+        return datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
 
 # Metadata fields tried in order of preference
 _DATE_FIELDS = [
